@@ -1,0 +1,19 @@
+{
+  "name": "Elixir Development Container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "extensions": [
+    "jakebecker.elixir-ls",
+    "pantajoe.vscode-elixir-credo"
+  ],
+  "postCreateCommand": "mix deps.get",
+  "forwardPorts": [4000],
+  "remoteUser": "elixir",
+  "updateRemoteUserUID": false
+}
+

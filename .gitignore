@@ -1,0 +1,29 @@
+# Build artifacts
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+
+# Crash dumps and archives
+erl_crash.dump
+*.ez
+
+# Compiled files (BEAM bytecode)
+*.beam
+
+# Application config secrets (should not be committed)
+config/*.secret.exs
+
+# Environment and tool files
+.env
+.tool-versions
+
+# Editor/IDE directories and swap files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Elixir language server artifacts
+.elixir_ls/
