@@ -1,25 +1,16 @@
 defmodule ChainKills.Http.Client do
   @moduledoc """
-  HTTP client using HTTPoison.
+  HTTP client using HTTPoison, plus helper for building cURL commands.
   """
   require Logger
 
   def get(url) do
-    # Pass an empty string instead of nil for GET requests.
+    # For GET requests, pass an empty string as body
     request("GET", url, [], "")
   end
 
   def request(method, url, headers \\ [], body \\ nil) do
-    # Ensure the body is a binary; default to an empty string if nil.
     body = body || ""
-
-    # Logger.debug("""
-    # HTTP Request:
-    #   method = #{inspect(method)}
-    #   url    = #{inspect(url)}
-    #   headers= #{inspect(headers)}
-    #   body   = #{inspect(body)}
-    # """)
 
     options = [
       hackney: [
@@ -30,12 +21,25 @@ defmodule ChainKills.Http.Client do
 
     case HTTPoison.request(method, url, body, headers, options) do
       {:ok, response} ->
-        Logger.debug("HTTP Response OK: status=#{response.status_code}, body-size=#{byte_size(response.body)}")
+        Logger.debug("HTTP #{method} => #{url} (status=#{response.status_code})")
         {:ok, response}
 
       {:error, reason} ->
-        Logger.error("HTTP Request FAILED: #{inspect(reason)}")
+        Logger.error("HTTP #{method} => #{url} FAILED: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  @doc """
+  Builds a sample curl command for debugging or logging.
+  """
+  def build_curl_command(method, url, headers \\ []) do
+    header_str =
+      Enum.map(headers, fn {k, v} ->
+        ~s(-H "#{k}: #{v}")
+      end)
+      |> Enum.join(" ")
+
+    "curl -X #{method} #{header_str} \"#{url}\""
   end
 end

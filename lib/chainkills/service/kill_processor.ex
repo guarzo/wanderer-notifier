@@ -16,11 +16,9 @@ defmodule ChainKills.Service.KillProcessor do
           Logger.info("Kill #{kill_id} is from tracked system #{system_id}.")
           process_kill(kill_id, state)
         else
-          # If not from a tracked system, enrich the kill to check for tracked characters.
+          # If not from a tracked system, enrich to see if a tracked character is involved.
           case ZKillService.get_enriched_killmail(kill_id) do
             {:ok, enriched_kill} ->
-              Logger.info("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill)}")
-              Logger.info("Available fields in enriched killmail: #{inspect(Map.keys(enriched_kill))}")
               if kill_includes_tracked_character?(enriched_kill) do
                 Logger.info("Kill #{kill_id} involves a tracked character.")
                 process_kill(kill_id, state)
@@ -50,8 +48,6 @@ defmodule ChainKills.Service.KillProcessor do
     end
   end
 
-
-  # Only process a kill if it hasn't been processed already.
   defp process_kill(kill_id, state) do
     if Map.has_key?(state.processed_kill_ids, kill_id) do
       Logger.info("Kill mail #{kill_id} already processed, skipping.")
@@ -65,13 +61,11 @@ defmodule ChainKills.Service.KillProcessor do
   defp do_enrich_and_notify(kill_id) do
     case ZKillService.get_enriched_killmail(kill_id) do
       {:ok, enriched_kill} ->
-        Logger.info("Enriched killmail: #{inspect(enriched_kill)}")
-        Logger.info("Available fields in enriched killmail: #{inspect(Map.keys(enriched_kill))}")
-
+        Logger.info("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill)}")
         kill_url = "https://zkillboard.com/kill/#{kill_id}/"
+
         # Send plain text for auto‑unfurling.
         Notifier.send_message(kill_url)
-        # Use the new enriched notification function.
         Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
 
       {:error, err} ->
@@ -81,14 +75,12 @@ defmodule ChainKills.Service.KillProcessor do
     end
   end
 
-  # Check if the kill's system (from the websocket message) is tracked.
   defp kill_from_tracked_system?(system_id) do
     tracked_systems = CacheRepo.get("map:systems") || []
     tracked_ids = Enum.map(tracked_systems, fn s -> to_string(s.system_id) end)
     to_string(system_id) in tracked_ids
   end
 
-  # Check if the enriched kill mail includes a tracked character.
   defp kill_includes_tracked_character?(enriched_kill) do
     tracked_characters = Application.get_env(:chainkills, :tracked_characters, [])
     tracked_chars = Enum.map(tracked_characters, &to_string/1)
@@ -97,7 +89,7 @@ defmodule ChainKills.Service.KillProcessor do
     victim_id_str = if victim_id, do: to_string(victim_id), else: nil
 
     attackers = Map.get(enriched_kill, "attackers", [])
-    attacker_ids = Enum.map(attackers, fn attacker -> to_string(attacker["character_id"]) end)
+    attacker_ids = Enum.map(attackers, fn a -> to_string(a["character_id"]) end)
 
     Enum.any?([victim_id_str | attacker_ids], fn id ->
       id && id in tracked_chars

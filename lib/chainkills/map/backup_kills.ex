@@ -15,7 +15,8 @@ defmodule ChainKills.Map.BackupKills do
         case HttpClient.request("GET", backup_url, headers) do
           {:ok, response} ->
             with {:ok, data_body} <- extract_body(response),
-                 {:ok, backup_json} <- decode_json(data_body) do
+                 {:ok, backup_json} <- decode_json(data_body)
+            do
               process_backup_kills(backup_json)
             else
               {:error, msg} = err ->
@@ -24,12 +25,12 @@ defmodule ChainKills.Map.BackupKills do
             end
 
           {:error, msg} ->
-            Logger.error("[check_backup_kills] error: #{inspect(msg)}")
+            Logger.error("[check_backup_kills] HTTP request error: #{inspect(msg)}")
             {:error, msg}
         end
 
       {:error, msg} ->
-        Logger.error("[check_backup_kills] error: #{inspect(msg)}")
+        Logger.error("[check_backup_kills] error building backup URL: #{inspect(msg)}")
         {:error, msg}
     end
   end
@@ -39,7 +40,6 @@ defmodule ChainKills.Map.BackupKills do
       {:ok, map_url, map_name} ->
         url = "#{map_url}/api/map/systems-kills?slug=#{map_name}&hours_ago=24"
         {:ok, url}
-
       {:error, _} = err ->
         err
     end
@@ -61,23 +61,16 @@ defmodule ChainKills.Map.BackupKills do
   defp process_backup_kills(%{"data" => data}) when is_list(data) do
     tracked_systems = CacheRepo.get("map:systems") || []
     tracked_ids = Enum.map(tracked_systems, fn s -> to_string(s.system_id) end)
-    Logger.info("Tracked wormhole system IDs: #{inspect(tracked_ids)}")
 
-    kill_feed_ids =
-      data
-      |> Enum.filter(fn sys -> (sys["kills"] || sys["Kills"]) != [] end)
-      |> Enum.map(fn sys -> to_string(sys["solar_system_id"] || sys["SolarSystemID"]) end)
-    Logger.info("Kill feed system IDs with kills: #{inspect(kill_feed_ids)}")
-
+    # Go through each system in the feed
     Enum.each(data, fn sys_entry ->
       id = sys_entry["solar_system_id"] || sys_entry["SolarSystemID"]
       sys_id = to_string(id)
-      kills = sys_entry["kills"] || sys_entry["Kills"]
+      kills = sys_entry["kills"] || sys_entry["Kills"] || []
 
+      # Only process kills if system is tracked
       if kills != [] and sys_id in tracked_ids do
-        Enum.each(kills, fn kill ->
-          process_backup_kill(sys_id, kill)
-        end)
+        Enum.each(kills, &process_backup_kill(sys_id, &1))
       end
     end)
 
@@ -97,30 +90,25 @@ defmodule ChainKills.Map.BackupKills do
       nil ->
         kill_url = "https://zkillboard.com/kill/#{kill_id}"
         Logger.info("Found kill in backup feed from system #{system_id_str}: killID=#{kill_id}")
-
-        # Send plain text message for auto‑unfurling.
         ChainKills.Discord.Notifier.send_message(kill_url)
 
-        # Try to enrich the killmail and send the enriched embed.
         case ChainKills.ZKill.Service.get_enriched_killmail(kill_id) do
           {:ok, enriched_kill} ->
             ChainKills.Discord.Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
+            Logger.info("Processed backup kill #{kill_id}")
+
+            ChainKills.Service.mark_as_processed(kill_id)
+
           {:error, err} ->
             Logger.error("Error enriching backup kill #{kill_id}: #{inspect(err)}")
+            ChainKills.Discord.Notifier.send_message("Error processing backup kill #{kill_id}: #{inspect(err)}")
         end
 
-        # Mark this kill as processed in the cache.
+        # Mark in CacheRepo so we don’t send duplicates
         CacheRepo.put(kill_cache_key, :os.system_time(:second))
 
-        case ChainKills.ZKill.Service.get_enriched_killmail(kill_id) do
-          {:ok, _enriched} ->
-            Logger.info("Processed backup kill #{kill_id}")
-          {:error, err} ->
-            Logger.error("Error processing backup kill #{kill_id}: #{inspect(err)}")
-        end
-
       _ ->
-        Logger.info("Kill #{kill_id} already processed, skipping.")
+        Logger.debug("Backup kill #{kill_id} already processed, skipping.")
     end
   end
 

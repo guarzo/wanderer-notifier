@@ -38,6 +38,8 @@ defmodule ChainKills.Service do
     GenServer.stop(__MODULE__)
   end
 
+
+  @impl true
   def init(_opts) do
     Logger.info("Initializing ChainKills Service...")
     # Trap exits so the GenServer doesn't crash when a linked process dies
@@ -58,6 +60,23 @@ defmodule ChainKills.Service do
     {:ok, state}
   end
 
+  def mark_as_processed(kill_id) do
+    GenServer.cast(__MODULE__, {:mark_as_processed, kill_id})
+  end
+
+  @impl true
+  def handle_cast({:mark_as_processed, kill_id}, state) do
+    if Map.has_key?(state.processed_kill_ids, kill_id) do
+      {:noreply, state}
+    else
+      new_state =
+        %{state | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))}
+
+      {:noreply, new_state}
+    end
+  end
+
+  @impl true
   def handle_info(:maintenance, state) do
     Logger.debug("Running periodic maintenance checks")
     new_state = Maintenance.do_periodic_checks(state)
@@ -65,12 +84,14 @@ defmodule ChainKills.Service do
     {:noreply, new_state}
   end
 
+  @impl true
   def handle_info({:zkill_message, message}, state) do
     Logger.debug("Received zkill message: #{message}")
     new_state = KillProcessor.process_zkill_message(message, state)
     {:noreply, new_state}
   end
 
+  @impl true
   def handle_info(:ws_disconnected, state) do
     Logger.warning("Websocket disconnected, scheduling reconnect in #{@reconnect_delay_ms}ms")
     Notifier.send_message("Websocket disconnected, reconnecting in #{@reconnect_delay_ms}ms")
@@ -78,23 +99,27 @@ defmodule ChainKills.Service do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(:reconnect_ws, state) do
     Logger.info("Attempting to reconnect zKill websocket...")
     new_state = reconnect_zkill_ws(state)
     {:noreply, new_state}
   end
 
-  # Updated to differentiate between normal and abnormal exits.
+  # Distinguish normal vs. abnormal exits
+  @impl true
   def handle_info({:EXIT, _pid, reason}, state) when reason == :normal do
-    Logger.info("Linked process exited normally.")
+    Logger.debug("Linked process exited normally.")
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:EXIT, _pid, reason}, state) do
     Logger.error("Linked process exited with reason: #{inspect(reason)}")
     {:noreply, state}
   end
-
+  
+  @impl true
   def terminate(_reason, state) do
     if state.ws_pid, do: Process.exit(state.ws_pid, :normal)
     Notifier.close()
@@ -110,6 +135,7 @@ defmodule ChainKills.Service do
       {:ok, pid} ->
         Logger.info("ZKill websocket started: #{inspect(pid)}")
         %{state | ws_pid: pid}
+
       {:error, reason} ->
         Logger.error("Failed to start websocket: #{inspect(reason)}")
         Notifier.send_message("Failed to start websocket: #{inspect(reason)}")

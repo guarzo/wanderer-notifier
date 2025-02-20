@@ -26,7 +26,6 @@ defmodule ChainKills.ZKill.Service do
       enriched = Map.merge(esi_data, %{"zkb" => zkb_map})
       {:ok, enriched}
     else
-      # If any step fails or data shape doesn't match, we log + return the error
       error ->
         Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(error)}")
         error

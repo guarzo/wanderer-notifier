@@ -1,15 +1,15 @@
 defmodule ChainKills.ZKill.Websocket do
   @moduledoc """
   WebSockex client connecting to zKill's killstream.
-  Follows the WandererApp pattern:
-    - Immediately subscribes upon connection by scheduling a :subscribe message.
-    - Uses a scheduled heartbeat (pong) response after receiving a ping.
-    - Returns {:reconnect, state} on disconnect to leverage built-in auto-reconnect.
+
+  - Immediately subscribes upon connection by scheduling a :subscribe message.
+  - Uses a scheduled heartbeat (pong) response after receiving a ping.
+  - Returns {:reconnect, state} on disconnect to leverage built-in auto-reconnect.
   """
   use WebSockex
   require Logger
 
-  @heartbeat_interval 1_000
+  @heartbeat_interval 10_000
 
   def start_link(parent, url) do
     WebSockex.start_link(url, __MODULE__, %{parent: parent, connected: false})
@@ -24,25 +24,32 @@ defmodule ChainKills.ZKill.Websocket do
   def handle_connect(_conn, state) do
     Logger.info("Connected to zKill websocket.")
     new_state = Map.put(state, :connected, true)
-    # Schedule the subscription so that send_frame is not called from within handle_connect.
+    # Schedule subscription so that send_frame is not called within handle_connect
     Process.send_after(self(), :subscribe, 0)
     {:ok, new_state}
   end
 
-  # Group all handle_info/2 clauses together.
   @impl true
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
     Logger.debug("Subscribing to killstream with message: #{msg}")
     ws_pid = self()
+
+    # Spawn a task but wrap the call in a try/rescue so errors don't crash the websocket.
     Task.start(fn ->
-      case WebSockex.send_frame(ws_pid, {:text, msg}) do
-        :ok ->
-          Logger.debug("Subscription message sent successfully.")
-        {:error, error} ->
-          Logger.error("Failed to send subscription message: #{inspect(error)}")
+      try do
+        case WebSockex.send_frame(ws_pid, {:text, msg}) do
+          :ok ->
+            Logger.debug("Subscription message sent successfully.")
+          {:error, error} ->
+            Logger.error("Failed to send subscription message: #{inspect(error)}")
+        end
+      rescue
+        e ->
+          Logger.error("Error in subscription task: #{inspect(e)}")
       end
     end)
+
     {:ok, state}
   end
 
@@ -52,6 +59,7 @@ defmodule ChainKills.ZKill.Websocket do
     {:reply, {:text, payload}, state}
   end
 
+  # Catch-all for any other info messages
   def handle_info(other, state) do
     Logger.debug("Unhandled info in ZKill.Websocket: #{inspect(other)}")
     {:ok, state}
@@ -92,7 +100,13 @@ defmodule ChainKills.ZKill.Websocket do
   end
 
   @impl true
-  def handle_disconnect(%{code: code, reason: reason} = _disconnect_map, state) do
+  def handle_cast(msg, state) do
+    Logger.debug("Unhandled cast in ZKill.Websocket: #{inspect(msg)}")
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_disconnect(%{code: code, reason: reason}, state) do
     Logger.warning("zKill websocket disconnected: code=#{inspect(code)}, reason=#{inspect(reason)}. Reconnecting...")
     {:reconnect, state}
   end

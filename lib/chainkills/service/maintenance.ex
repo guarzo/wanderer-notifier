@@ -5,15 +5,13 @@ defmodule ChainKills.Service.Maintenance do
     - updating systems
     - updating tracked characters
     - checking backup kills
-
   """
   require Logger
   alias ChainKills.Map.Client, as: MapClient
 
-  # Updated intervals for testing:
-  @systems_update_interval_s 300    # originally 300 seconds
-  @backup_check_interval_s 300      # originally 600 seconds
-  @uptime_required_for_backup_s 3600  # originally 3600 seconds
+  @systems_update_interval_s 300
+  @backup_check_interval_s 300
+  @uptime_required_for_backup_s 3600
 
   def do_periodic_checks(state) do
     now = :os.system_time(:second)
@@ -27,19 +25,16 @@ defmodule ChainKills.Service.Maintenance do
   end
 
   defp maybe_send_status(state, now) do
-    Logger.debug("[Maintenance] maybe_send_status: last_status_time=#{state.last_status_time || 0}, now=#{now}")
     if now - (state.last_status_time || 0) > 60 do
       count = map_size(state.processed_kill_ids)
       Logger.info("[Maintenance] Status update: Processed kills: #{count}")
       %{state | last_status_time: now}
     else
-      Logger.debug("[Maintenance] Skipping status update; interval not reached")
       state
     end
   end
 
   defp maybe_update_systems(state, now) do
-    Logger.debug("[Maintenance] maybe_update_systems: last_systems_update=#{state.last_systems_update || 0}, now=#{now}")
     if now - (state.last_systems_update || 0) > @systems_update_interval_s do
       Logger.info("[Maintenance] Triggering update_systems")
       case MapClient.update_systems() do
@@ -50,13 +45,11 @@ defmodule ChainKills.Service.Maintenance do
       end
       %{state | last_systems_update: now}
     else
-      Logger.debug("[Maintenance] Skipping update_systems; interval not reached")
       state
     end
   end
 
   defp maybe_update_tracked_chars(state, now) do
-    Logger.debug("[Maintenance] maybe_update_tracked_chars: last_characters_update=#{state.last_characters_update || 0}, now=#{now}")
     if now - (state.last_characters_update || 0) > 300 do
       Logger.info("[Maintenance] Triggering update_tracked_characters")
       case MapClient.update_tracked_characters() do
@@ -67,14 +60,12 @@ defmodule ChainKills.Service.Maintenance do
       end
       %{state | last_characters_update: now}
     else
-      Logger.debug("[Maintenance] Skipping update_tracked_characters; interval not reached")
       state
     end
   end
 
   defp maybe_check_backup_kills(state, now) do
     uptime = now - state.service_start_time
-    Logger.debug("[Maintenance] maybe_check_backup_kills: uptime=#{uptime}, last_backup_check=#{state.last_backup_check || 0}, now=#{now}")
     if uptime >= @uptime_required_for_backup_s and (now - (state.last_backup_check || 0) > @backup_check_interval_s) do
       Logger.info("[Maintenance] Triggering check_backup_kills")
       case MapClient.check_backup_kills() do
@@ -85,7 +76,6 @@ defmodule ChainKills.Service.Maintenance do
       end
       %{state | last_backup_check: now}
     else
-      Logger.debug("[Maintenance] Skipping check_backup_kills; conditions not met (uptime: #{uptime})")
       state
     end
   end
