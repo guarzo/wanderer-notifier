@@ -6,7 +6,6 @@ defmodule ChainKills.Service.Maintenance do
     - updating tracked characters
     - checking backup kills
 
-  NOTE: Only kill notifications are sent to Discord.
   """
   require Logger
   alias ChainKills.Map.Client, as: MapClient
