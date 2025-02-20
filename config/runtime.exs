@@ -13,7 +13,6 @@ Enum.each(env_vars, fn {key, value} ->
   System.put_env(key, value)
 end)
 
-# Retrieve the Discord bot token
 token = System.get_env("DISCORD_BOT_TOKEN")
 trimmed_token = if is_binary(token), do: String.trim(token), else: nil
 IO.inspect(trimmed_token, label: "Trimmed DISCORD_BOT_TOKEN")

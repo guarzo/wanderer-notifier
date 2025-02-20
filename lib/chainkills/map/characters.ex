@@ -80,15 +80,14 @@ defmodule ChainKills.Map.Characters do
 
   defp process_characters(_), do: {:ok, []}
 
-  defp validate_map_env do
+  def validate_map_env do
     map_url  = Application.get_env(:chainkills, :map_url)
     map_name = Application.get_env(:chainkills, :map_name)
 
-    cond do
-      map_url in [nil, ""] or map_name in [nil, ""] ->
-        {:error, "map_url or map_name not configured"}
-      true ->
-        {:ok, map_url, map_name}
+    if map_url in [nil, ""] or map_name in [nil, ""] do
+      {:error, "map_url or map_name not configured"}
+    else
+      {:ok, map_url, map_name}
     end
   end
 end

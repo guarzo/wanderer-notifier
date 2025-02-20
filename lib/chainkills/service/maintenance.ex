@@ -12,9 +12,9 @@ defmodule ChainKills.Service.Maintenance do
   alias ChainKills.Map.Client, as: MapClient
 
   # Updated intervals for testing:
-  @systems_update_interval_s 30    # originally 300 seconds
-  @backup_check_interval_s 30      # originally 600 seconds
-  @uptime_required_for_backup_s 0  # originally 3600 seconds
+  @systems_update_interval_s 300    # originally 300 seconds
+  @backup_check_interval_s 300      # originally 600 seconds
+  @uptime_required_for_backup_s 3600  # originally 3600 seconds
 
   def do_periodic_checks(state) do
     now = :os.system_time(:second)

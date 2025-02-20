@@ -143,74 +143,51 @@ defmodule ChainKills.Discord.Notifier do
   defp build_description(normalized) do
     victim = Map.get(normalized, "victim", %{})
     attackers = Map.get(normalized, "attackers", [])
-    final_attacker =
-      Enum.find(attackers, fn a -> Map.get(a, "final_blow", false) end) ||
-        (if attackers != [], do: Enum.max_by(attackers, fn a -> Map.get(a, "damage_done", 0) end), else: %{})
-    top_attacker =
-      if attackers != [] do
-        Enum.max_by(attackers, fn a -> Map.get(a, "damage_done", 0) end)
-      else
-        %{}
-      end
 
-    # Derive victim values.
-    victim_id = Map.get(victim, "character_id", "Unknown")
-    victim_name =
-      Map.get(victim, "character_name") ||
-        "Character #{victim_id}"
-    victim_zkill_url =
-      Map.get(victim, "zkill_url") ||
-        "https://zkillboard.com/character/#{victim_id}/"
-    victim_corp = Map.get(victim, "corporation_id", "Unknown")
-    victim_group =
-      Map.get(victim, "group_name") ||
-        "Corp #{victim_corp}"
-    victim_ship =
-      Map.get(victim, "ship_name") ||
-        "Ship #{Map.get(victim, "ship_type_id", "Unknown")}"
+    final_attacker = get_final_attacker(attackers)
+    top_attacker = get_top_attacker(attackers)
 
-    # Derive final attacker values.
-    final_attacker_id = Map.get(final_attacker, "character_id", "Unknown")
-    final_attacker_name =
-      Map.get(final_attacker, "character_name") ||
-        "Character #{final_attacker_id}"
-    final_attacker_zkill_url =
-      Map.get(final_attacker, "zkill_url") ||
-        "https://zkillboard.com/character/#{final_attacker_id}/"
-    final_attacker_corp = Map.get(final_attacker, "corporation_id", "Unknown")
-    final_attacker_group =
-      Map.get(final_attacker, "group_name") ||
-        "Corp #{final_attacker_corp}"
-    final_attacker_ship =
-      Map.get(final_attacker, "ship_name") ||
-        "Ship #{Map.get(final_attacker, "ship_type_id", "Unknown")}"
+    victim_data = extract_entity(victim, "Character")
+    final_data = extract_entity(final_attacker, "Character")
 
     base_desc =
-      "**[#{victim_name}](#{victim_zkill_url})(#{victim_group})** lost their **#{victim_ship}** " <>
-      "to **[#{final_attacker_name}](#{final_attacker_zkill_url})(#{final_attacker_group})** flying in a **#{final_attacker_ship}**"
+      "**[#{victim_data.name}](#{victim_data.zkill_url})(#{victim_data.group})** lost their **#{victim_data.ship}** " <>
+      "to **[#{final_data.name}](#{final_data.zkill_url})(#{final_data.group})** flying in a **#{final_data.ship}**"
 
     if length(attackers) > 1 do
-      top_attacker_id = Map.get(top_attacker, "character_id", "Unknown")
-      top_attacker_name =
-        Map.get(top_attacker, "character_name") ||
-          "Character #{top_attacker_id}"
-      top_attacker_zkill_url =
-        Map.get(top_attacker, "zkill_url") ||
-          "https://zkillboard.com/character/#{top_attacker_id}/"
-      top_attacker_corp = Map.get(top_attacker, "corporation_id", "Unknown")
-      top_attacker_group =
-        Map.get(top_attacker, "group_name") ||
-          "Corp #{top_attacker_corp}"
-      top_attacker_ship =
-        Map.get(top_attacker, "ship_name") ||
-          "Ship #{Map.get(top_attacker, "ship_type_id", "Unknown")}"
-
+      top_data = extract_entity(top_attacker, "Character")
       base_desc <>
-        ", Top Damage was done by **[#{top_attacker_name}](#{top_attacker_zkill_url})(#{top_attacker_group})** " <>
-        "flying in a **#{top_attacker_ship}**."
+        ", Top Damage was done by **[#{top_data.name}](#{top_data.zkill_url})(#{top_data.group})** " <>
+        "flying in a **#{top_data.ship}**."
     else
       base_desc <> " solo."
     end
+  end
+
+  # Returns the final attacker from the list of attackers.
+  defp get_final_attacker(attackers) when is_list(attackers) do
+    Enum.find(attackers, fn a -> Map.get(a, "final_blow", false) end) ||
+      if attackers != [], do: Enum.max_by(attackers, fn a -> Map.get(a, "damage_done", 0) end), else: %{}
+  end
+
+  # Returns the top attacker (by damage) from the list.
+  defp get_top_attacker(attackers) when is_list(attackers) do
+    if attackers != [] do
+      Enum.max_by(attackers, fn a -> Map.get(a, "damage_done", 0) end)
+    else
+      %{}
+    end
+  end
+
+  # Extracts entity data, with fallbacks derived from IDs.
+  defp extract_entity(entity, default_prefix) when is_map(entity) do
+    character_id = Map.get(entity, "character_id", "Unknown")
+    name = Map.get(entity, "character_name") || "#{default_prefix} #{character_id}"
+    zkill_url = Map.get(entity, "zkill_url") || "https://zkillboard.com/character/#{character_id}/"
+    corp_id = Map.get(entity, "corporation_id", "Unknown")
+    group = Map.get(entity, "group_name") || "Corp #{corp_id}"
+    ship = Map.get(entity, "ship_name") || "Ship #{Map.get(entity, "ship_type_id", "Unknown")}"
+    %{id: character_id, name: name, zkill_url: zkill_url, group: group, ship: ship}
   end
 
   defp send_payload(payload) do

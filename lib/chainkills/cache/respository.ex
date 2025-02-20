@@ -27,12 +27,10 @@ defmodule ChainKills.Cache.Repository do
     end
   end
 
-  # Set with TTL
   def set(key, value, ttl) do
     Cachex.put(@cache_name, key, value, ttl: ttl)
   end
 
-  # Simple put function without TTL, for storing kill IDs
   def put(key, value) do
     Cachex.put(@cache_name, key, value)
   end

@@ -7,29 +7,30 @@ defmodule ChainKills.Map.BackupKills do
   alias ChainKills.Cache.Repository, as: CacheRepo
 
   def check_backup_kills do
-    with {:ok, backup_url} <- build_backup_url() do
-      map_token = Application.get_env(:chainkills, :map_token)
-      headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
+    case build_backup_url() do
+      {:ok, backup_url} ->
+        map_token = Application.get_env(:chainkills, :map_token)
+        headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
 
-      case HttpClient.request("GET", backup_url, headers) do
-        {:ok, response} ->
-          with {:ok, data_body} <- extract_body(response),
-               {:ok, backup_json} <- decode_json(data_body) do
-            process_backup_kills(backup_json)
-          else
-            {:error, msg} = err ->
-              Logger.error("[check_backup_kills] error: #{inspect(msg)}")
-              err
-          end
+        case HttpClient.request("GET", backup_url, headers) do
+          {:ok, response} ->
+            with {:ok, data_body} <- extract_body(response),
+                 {:ok, backup_json} <- decode_json(data_body) do
+              process_backup_kills(backup_json)
+            else
+              {:error, msg} = err ->
+                Logger.error("[check_backup_kills] error: #{inspect(msg)}")
+                err
+            end
 
-        {:error, msg} ->
-          Logger.error("[check_backup_kills] error: #{inspect(msg)}")
-          {:error, msg}
-      end
-    else
-      {:error, msg} = err ->
+          {:error, msg} ->
+            Logger.error("[check_backup_kills] error: #{inspect(msg)}")
+            {:error, msg}
+        end
+
+      {:error, msg} ->
         Logger.error("[check_backup_kills] error: #{inspect(msg)}")
-        err
+        {:error, msg}
     end
   end
 

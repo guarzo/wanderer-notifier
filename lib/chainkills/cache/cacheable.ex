@@ -7,7 +7,6 @@ defmodule ChainKills.Cache.Cacheable do
       case ChainKills.Cache.Repository.get(unquote(key)) do
         nil ->
           result = unquote(block)
-          # Only cache successful responses (assumed to be in the form {:ok, _})
           case result do
             {:ok, _value} ->
               :ok = ChainKills.Cache.Repository.set(unquote(key), result, unquote(ttl))
