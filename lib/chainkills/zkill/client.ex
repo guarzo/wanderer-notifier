@@ -1,52 +1,93 @@
 defmodule ChainKills.ZKill.Client do
   @moduledoc """
-  ZKill client for fetching single killmails, with caching.
+  A minimal example of fetching single killmails from zKillboard.
+  If zKill returns a literal JSON "true", we detect that and log
+  a 'sample curl' command for debugging.
   """
+
   require Logger
-  require ChainKills.Cache.Cacheable
-  alias ChainKills.Cache.Cacheable
   alias ChainKills.Http.Client, as: HttpClient
 
-  @default_base "https://zkillboard.com"
-  @zkill_requests_per_sec 1
-  @zkill_cache_expiration 86_400
+  @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
+  # ^ Adjust or move this to config so that zKill sees you as a real user.
 
   def get_single_killmail(kill_id) do
-    key = "zkill:single:killID:#{kill_id}"
-    Cacheable.cacheable(key, @zkill_cache_expiration) do
-      url = "#{base_url()}/api/killID/#{kill_id}/"
-      Logger.debug("ZKill: fetching single killmail from #{url}")
-      :timer.sleep(div(1000, @zkill_requests_per_sec))
+    url = "https://zkillboard.com/api/killID/#{kill_id}/"
 
-      case HttpClient.get(url) do
-        {:ok, %{status_code: 200, body: body}} ->
-          decode_kills(body)
+    headers = [
+      # Adjust headers as needed
+      {"User-Agent", @user_agent}
+      # Some people also add a "From" or "Accept" header, e.g.:
+      # {"From", "contact@mydomain.tld"},
+      # {"Accept", "application/json"}
+    ]
 
-        {:ok, %{status_code: status}} ->
-          {:error, "Unexpected status: #{status}"}
+    # Optional: build a “sample cURL” command for logs
+    curl_example = build_curl_command(url, headers)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-  end
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          # Here’s the scenario that triggers a MatchError if unhandled:
+          # zKill sometimes returns just "true" or "false" as bare JSON.
+          {:ok, true} ->
+            Logger.warning("""
+            [ZKill] Warning: got `true` from zKill for killmail #{kill_id}.
+            This often means rate-limiting or kill not found.
+            Sample cURL to reproduce:
 
-  defp base_url do
-    Application.get_env(:chainkills, :zkill_base_url, @default_base)
-  end
+            #{curl_example}
+            """)
 
-  defp decode_kills(body) do
-    case Jason.decode(body) do
-      {:ok, kills} when is_list(kills) ->
-        if kills != [] do
-          {:ok, hd(kills)}
-        else
-          {:error, :no_killmail_returned}
+            {:error, :zkb_returned_true}
+
+          {:ok, parsed} ->
+            # Normal scenario: parsed is probably a list or map with kill data.
+            # For example, zKill often returns JSON like: `[ { killID: 123, ... } ]`
+            {:ok, parsed}
+
+          {:error, decode_err} ->
+            Logger.error("""
+            [ZKill] JSON decode error for killmail #{kill_id}: #{inspect(decode_err)}
+            Sample cURL to reproduce:
+
+            #{curl_example}
+            """)
+
+            {:error, :json_error}
         end
 
-      error ->
-        Logger.error("Error decoding single killmail: #{inspect(error)}")
-        {:error, error}
+      {:ok, %{status_code: status, body: body}} ->
+        # If you want, you can log the body too. Usually 404 means kill not found,
+        # 429 means rate-limiting, etc.
+        Logger.error("""
+        [ZKill] Unexpected HTTP status=#{status} from zKill for killmail #{kill_id}.
+        Body: #{body}
+        Sample cURL to reproduce:
+
+        #{curl_example}
+        """)
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        Logger.error("""
+        [ZKill] HTTP request error for killmail #{kill_id}: #{inspect(reason)}
+        Sample cURL to reproduce:
+
+        #{curl_example}
+        """)
+        {:error, reason}
     end
+  end
+
+  defp build_curl_command(url, headers) when is_list(headers) do
+    # Turn each {headerName, headerValue} into -H "headerName: headerValue"
+    header_parts =
+      Enum.map(headers, fn {k, v} ->
+        ~s(-H "#{k}: #{v}")
+      end)
+
+    # Create the final string
+    "curl -X GET #{Enum.join(header_parts, " ")} \"#{url}\""
   end
 end

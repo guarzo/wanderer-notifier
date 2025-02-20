@@ -26,7 +26,8 @@ defmodule ChainKills.MixProject do
       {:nostrum, "~> 0.5"},
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.3"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:exsync, "~> 0.2", only: :dev}
     ]
   end
 end

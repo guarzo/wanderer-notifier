@@ -2,16 +2,38 @@ defmodule ChainKills.Service.KillProcessor do
   @moduledoc """
   Handles kill messages from zKill, including enrichment and deciding
   whether to send a Discord notification.
+  Only notifies if the kill is from a tracked system or involves a tracked character.
   """
   require Logger
-  alias ChainKills.Cache.Repository, as: CacheRepo
   alias ChainKills.ZKill.Service, as: ZKillService
   alias ChainKills.Discord.Notifier
+  alias ChainKills.Cache.Repository, as: CacheRepo
 
   def process_zkill_message(message, state) do
     case decode_zkill_message(message) do
-      {:ok, {kill_id, _system_id}} ->
-        process_if_not_recent(kill_id, state)
+      {:ok, {kill_id, system_id}} ->
+        if kill_from_tracked_system?(system_id) do
+          Logger.info("Kill #{kill_id} is from tracked system #{system_id}.")
+          process_kill(kill_id, state)
+        else
+          # If not from a tracked system, enrich the kill to check for tracked characters.
+          case ZKillService.get_enriched_killmail(kill_id) do
+            {:ok, enriched_kill} ->
+              Logger.info("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill)}")
+              Logger.info("Available fields in enriched killmail: #{inspect(Map.keys(enriched_kill))}")
+              if kill_includes_tracked_character?(enriched_kill) do
+                Logger.info("Kill #{kill_id} involves a tracked character.")
+                process_kill(kill_id, state)
+              else
+                Logger.info("Kill #{kill_id} ignored: not from tracked system or involving tracked character.")
+                state
+              end
+
+            {:error, err} ->
+              Logger.error("Error enriching kill #{kill_id}: #{inspect(err)}")
+              state
+          end
+        end
 
       :error ->
         Logger.error("Failed to decode zKill message: #{message}")
@@ -20,68 +42,65 @@ defmodule ChainKills.Service.KillProcessor do
   end
 
   def decode_zkill_message(json) do
-    case Jason.decode(json) do
-      {:ok, %{"kill_id" => kill_id, "solar_system_id" => sys_id}} ->
+    case Jason.decode(json, keys: :strings) do
+      {:ok, %{"killmail_id" => kill_id, "solar_system_id" => sys_id}} ->
         {:ok, {kill_id, sys_id}}
-
       _ ->
         :error
     end
   end
 
-  defp process_if_not_recent(kill_id, state) do
-    now = :os.system_time(:second)
-    already_processed = Map.get(state.processed_kill_ids, kill_id)
 
-    if already_processed && now - already_processed < 3600 do
-      Logger.info("Skipping kill #{kill_id}, processed recently.")
+  # Only process a kill if it hasn't been processed already.
+  defp process_kill(kill_id, state) do
+    if Map.has_key?(state.processed_kill_ids, kill_id) do
+      Logger.info("Kill mail #{kill_id} already processed, skipping.")
       state
     else
-      do_enrich_and_maybe_notify(kill_id)
-      %{state | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, now)}
+      do_enrich_and_notify(kill_id)
+      %{state | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))}
     end
   end
 
-  defp do_enrich_and_maybe_notify(kill_id) do
+  defp do_enrich_and_notify(kill_id) do
     case ZKillService.get_enriched_killmail(kill_id) do
       {:ok, enriched_kill} ->
         Logger.info("Enriched killmail: #{inspect(enriched_kill)}")
+        Logger.info("Available fields in enriched killmail: #{inspect(Map.keys(enriched_kill))}")
 
-        if relevant_kill?(enriched_kill) do
-          Notifier.send_message("Relevant kill detected (killID=#{kill_id})")
-        else
-          Logger.info("Kill #{kill_id} not in a tracked system or involving tracked characters.")
-        end
+        kill_url = "https://zkillboard.com/kill/#{kill_id}/"
+        # Send plain text for auto‑unfurling.
+        Notifier.send_message(kill_url)
+        # Use the new enriched notification function.
+        Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
 
       {:error, err} ->
-        Notifier.send_message("Failed to process kill #{kill_id}: #{inspect(err)}")
+        error_msg = "Failed to process kill #{kill_id}: #{inspect(err)}"
+        Notifier.send_message(error_msg)
+        Notifier.send_embed("Kill Processing Error", error_msg, nil, 0xFF0000)
     end
   end
 
-  # Decide if kill is relevant (tracked system or characters)
-  defp relevant_kill?(%{"solar_system_id" => sys_id} = kill) do
-    system_tracked? = system_tracked?(sys_id)
-    chars_tracked?  = kill_has_tracked_char?(kill)
-    system_tracked? or chars_tracked?
+  # Check if the kill's system (from the websocket message) is tracked.
+  defp kill_from_tracked_system?(system_id) do
+    tracked_systems = CacheRepo.get("map:systems") || []
+    tracked_ids = Enum.map(tracked_systems, fn s -> to_string(s.system_id) end)
+    to_string(system_id) in tracked_ids
   end
 
-  defp system_tracked?(sys_id) do
-    systems = CacheRepo.get("map:systems") || []
-    tracked_ids = Enum.map(systems, & &1.system_id)
-    sys_id in tracked_ids
-  end
+  # Check if the enriched kill mail includes a tracked character.
+  defp kill_includes_tracked_character?(enriched_kill) do
+    tracked_characters = Application.get_env(:chainkills, :tracked_characters, [])
+    tracked_chars = Enum.map(tracked_characters, &to_string/1)
 
-  defp kill_has_tracked_char?(kill) do
-    chars = CacheRepo.get("map:characters") || []
-    tracked_eve_ids = Enum.map(chars, & &1["eve_id"])
+    victim_id = get_in(enriched_kill, ["victim", "character_id"])
+    victim_id_str = if victim_id, do: to_string(victim_id), else: nil
 
-    victim_id = get_in(kill, ["victim", "character_id"])
-    attacker_ids =
-      kill
-      |> Map.get("attackers", [])
-      |> Enum.map(& &1["character_id"])
-      |> Enum.reject(&is_nil/1)
+    attackers = Map.get(enriched_kill, "attackers", [])
+    attacker_ids = Enum.map(attackers, fn attacker -> to_string(attacker["character_id"]) end)
 
-    (victim_id in tracked_eve_ids) or Enum.any?(attacker_ids, &(&1 in tracked_eve_ids))
+    Enum.any?([victim_id_str | attacker_ids], fn id ->
+      id && id in tracked_chars
+    end)
   end
 end

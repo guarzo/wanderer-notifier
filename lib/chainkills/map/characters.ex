@@ -15,7 +15,7 @@ defmodule ChainKills.Map.Characters do
          {:ok, tracked}    <- process_characters(json)
     do
       CacheRepo.set("map:characters", tracked, @characters_cache_ttl)
-      Logger.info("[update_tracked_characters] fetched #{length(tracked)} tracked characters")
+      # Logger.info("[update_tracked_characters] fetched #{length(tracked)} tracked characters")
       {:ok, tracked}
     else
       {:error, msg} = err ->

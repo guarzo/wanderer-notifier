@@ -1,75 +1,150 @@
 defmodule ChainKills.ESI.Client do
   @moduledoc """
-  Low-level ESI client, using the Cacheable macro for caching.
+  Minimal client for accessing ESI endpoints.
   """
   require Logger
-  require ChainKills.Cache.Cacheable
-  alias ChainKills.Cache.Cacheable
   alias ChainKills.Http.Client, as: HttpClient
 
-  @default_base_url "https://esi.evetech.net/latest"
+  @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
+  @base_url "https://esi.evetech.net/latest"
 
-  def base_url do
-    Application.get_env(:chainkills, :esi_base_url, @default_base_url)
-  end
+  @doc """
+  Fetches a killmail from ESI.
+  """
+  def get_killmail(kill_id, hash) do
+    url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
+    headers = default_headers()
+    curl_example = build_curl_command("GET", url, headers)
 
-  def get_killmail(kill_id, killmail_hash) do
-    key = "esi:killmail:#{kill_id}:#{killmail_hash}"
-    Cacheable.cacheable(key, 3600) do
-      url = "#{base_url()}/killmails/#{kill_id}/#{killmail_hash}/"
-      Logger.info("Fetching killmail from ESI: #{url}")
+    Logger.debug("[ESI] Fetching killmail => #{url}")
 
-      do_http_get(url)
-    end
-  end
-
-  def get_character_info(eve_id) do
-    key = "esi:character:#{eve_id}"
-    Cacheable.cacheable(key, 3600) do
-      url = "#{base_url()}/characters/#{eve_id}/"
-      Logger.info("Fetching character info from ESI: #{url}")
-
-      do_http_get(url)
-    end
-  end
-
-  def get_corporation_info(eve_id) do
-    key = "esi:corporation:#{eve_id}"
-    Cacheable.cacheable(key, 3600) do
-      url = "#{base_url()}/corporations/#{eve_id}/"
-      Logger.info("Fetching corporation info from ESI: #{url}")
-
-      do_http_get(url)
-    end
-  end
-
-  def get_alliance_info(eve_id) do
-    key = "esi:alliance:#{eve_id}"
-    Cacheable.cacheable(key, 3600) do
-      url = "#{base_url()}/alliances/#{eve_id}/"
-      Logger.info("Fetching alliance info from ESI: #{url}")
-
-      do_http_get(url)
-    end
-  end
-
-  defp do_http_get(url) do
-    case HttpClient.get(url) do
+    case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
         case Jason.decode(body) do
-          {:ok, data} -> {:ok, data}
-          error ->
-            Logger.error("Error decoding JSON: #{inspect(error)}")
-            {:error, error}
+          {:ok, true} ->
+            Logger.error("[ESI] Unexpected 'true' response from ESI for kill #{kill_id} with hash=#{hash}. Curl: #{curl_example}")
+            {:error, :esi_returned_true}
+          {:ok, data} ->
+            {:ok, data}
+          {:error, decode_err} ->
+            Logger.error("[ESI] JSON decode error for kill #{kill_id}, hash=#{hash}: #{inspect(decode_err)}. Curl: #{curl_example}")
+            {:error, decode_err}
         end
 
-      {:ok, %{status_code: status}} ->
-        Logger.error("Unexpected status code #{status} from ESI")
-        {:error, "Unexpected status: #{status}"}
+      {:ok, %{status_code: status, body: _body}} ->
+        Logger.error("[ESI] Unexpected status #{status} fetching killmail #{kill_id} with hash=#{hash}. Curl: #{curl_example}")
+        {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
-        Logger.error("HTTP error fetching data from ESI: #{inspect(reason)}")
+        Logger.error("[ESI] HTTP error for killmail #{kill_id}, hash=#{hash}: #{inspect(reason)}. Curl: #{curl_example}")
         {:error, reason}
     end
+  end
+
+  @doc """
+  Fetches character info from ESI.
+  """
+  def get_character_info(eve_id) do
+    url = "#{@base_url}/characters/#{eve_id}/"
+    headers = default_headers()
+    curl_example = build_curl_command("GET", url, headers)
+
+    Logger.debug("[ESI] Fetching character info for Eve ID #{eve_id} => #{url}")
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, data} ->
+            {:ok, Map.put(data, "eve_id", eve_id)}
+          {:error, decode_err} ->
+            Logger.error("[ESI] JSON decode error for character #{eve_id}: #{inspect(decode_err)}. Curl: #{curl_example}")
+            {:error, decode_err}
+        end
+
+      {:ok, %{status_code: status, body: _body}} ->
+        Logger.error("[ESI] Unexpected status #{status} fetching character info for #{eve_id}. Curl: #{curl_example}")
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        Logger.error("[ESI] HTTP error fetching character info for #{eve_id}: #{inspect(reason)}. Curl: #{curl_example}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Fetches corporation info from ESI.
+  """
+  def get_corporation_info(eve_id) do
+    url = "#{@base_url}/corporations/#{eve_id}/"
+    headers = default_headers()
+    curl_example = build_curl_command("GET", url, headers)
+
+    Logger.debug("[ESI] Fetching corporation info for Eve ID #{eve_id} => #{url}")
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, data} ->
+            {:ok, Map.put(data, "eve_id", eve_id)}
+          {:error, decode_err} ->
+            Logger.error("[ESI] JSON decode error for corporation #{eve_id}: #{inspect(decode_err)}. Curl: #{curl_example}")
+            {:error, decode_err}
+        end
+
+      {:ok, %{status_code: status, body: _body}} ->
+        Logger.error("[ESI] Unexpected status #{status} fetching corporation info for #{eve_id}. Curl: #{curl_example}")
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        Logger.error("[ESI] HTTP error fetching corporation info for #{eve_id}: #{inspect(reason)}. Curl: #{curl_example}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Fetches alliance info from ESI.
+  """
+  def get_alliance_info(eve_id) do
+    url = "#{@base_url}/alliances/#{eve_id}/"
+    headers = default_headers()
+    curl_example = build_curl_command("GET", url, headers)
+
+    Logger.debug("[ESI] Fetching alliance info for Eve ID #{eve_id} => #{url}")
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, data} ->
+            {:ok, Map.put(data, "eve_id", eve_id)}
+          {:error, decode_err} ->
+            Logger.error("[ESI] JSON decode error for alliance #{eve_id}: #{inspect(decode_err)}. Curl: #{curl_example}")
+            {:error, decode_err}
+        end
+
+      {:ok, %{status_code: status, body: _body}} ->
+        Logger.error("[ESI] Unexpected status #{status} fetching alliance info for #{eve_id}. Curl: #{curl_example}")
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        Logger.error("[ESI] HTTP error fetching alliance info for #{eve_id}: #{inspect(reason)}. Curl: #{curl_example}")
+        {:error, reason}
+    end
+  end
+
+  defp default_headers do
+    [
+      {"User-Agent", @user_agent},
+      {"Accept", "application/json"}
+    ]
+  end
+
+  defp build_curl_command(method, url, headers) do
+    header_str =
+      Enum.map(headers, fn {k, v} ->
+        ~s(-H "#{k}: #{v}")
+      end)
+      |> Enum.join(" ")
+
+    "curl -X #{method} #{header_str} \"#{url}\""
   end
 end

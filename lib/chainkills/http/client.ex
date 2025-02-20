@@ -13,13 +13,13 @@ defmodule ChainKills.Http.Client do
     # Ensure the body is a binary; default to an empty string if nil.
     body = body || ""
 
-    Logger.debug("""
-    HTTP Request:
-      method = #{inspect(method)}
-      url    = #{inspect(url)}
-      headers= #{inspect(headers)}
-      body   = #{inspect(body)}
-    """)
+    # Logger.debug("""
+    # HTTP Request:
+    #   method = #{inspect(method)}
+    #   url    = #{inspect(url)}
+    #   headers= #{inspect(headers)}
+    #   body   = #{inspect(body)}
+    # """)
 
     options = [
       hackney: [
