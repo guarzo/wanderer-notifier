@@ -41,6 +41,7 @@ defmodule ChainKills.ZKill.Websocket do
         case WebSockex.send_frame(ws_pid, {:text, msg}) do
           :ok ->
             Logger.debug("Subscription message sent successfully.")
+
           {:error, error} ->
             Logger.error("Failed to send subscription message: #{inspect(error)}")
         end
@@ -72,12 +73,21 @@ defmodule ChainKills.ZKill.Websocket do
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, %{"killmail_id" => killmail_id} = data} ->
         zkb_info = Map.get(data, "zkb")
-        Logger.info("[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{inspect(zkb_info)}")
+
+        Logger.info(
+          "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{inspect(zkb_info)}"
+        )
+
       {:ok, %{"kill_id" => kill_id} = data} ->
         sys_id = Map.get(data, "solar_system_id")
-        Logger.info("[ZKill.Websocket] Received kill info: kill_id=#{kill_id}, system_id=#{sys_id} full message=#{inspect(data)}")
+
+        Logger.info(
+          "[ZKill.Websocket] Received kill info: kill_id=#{kill_id}, system_id=#{sys_id} full message=#{inspect(data)}"
+        )
+
       {:ok, other_json} ->
         Logger.debug("Received unrecognized killstream JSON: #{inspect(other_json)}")
+
       {:error, decode_err} ->
         Logger.error("Error decoding zKill frame: #{inspect(decode_err)}. Raw: #{raw_msg}")
     end
@@ -88,7 +98,10 @@ defmodule ChainKills.ZKill.Websocket do
 
   @impl true
   def handle_ping({:ping, _data}, state) do
-    Logger.debug("Received WS ping from zKill. Scheduling heartbeat pong in #{@heartbeat_interval}ms.")
+    Logger.debug(
+      "Received WS ping from zKill. Scheduling heartbeat pong in #{@heartbeat_interval}ms."
+    )
+
     Process.send_after(self(), :heartbeat, @heartbeat_interval)
     {:ok, state}
   end
@@ -107,7 +120,10 @@ defmodule ChainKills.ZKill.Websocket do
 
   @impl true
   def handle_disconnect(%{code: code, reason: reason}, state) do
-    Logger.warning("zKill websocket disconnected: code=#{inspect(code)}, reason=#{inspect(reason)}. Reconnecting...")
+    Logger.warning(
+      "zKill websocket disconnected: code=#{inspect(code)}, reason=#{inspect(reason)}. Reconnecting..."
+    )
+
     {:reconnect, state}
   end
 

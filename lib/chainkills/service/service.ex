@@ -38,7 +38,6 @@ defmodule ChainKills.Service do
     GenServer.stop(__MODULE__)
   end
 
-
   @impl true
   def init(_opts) do
     Logger.info("Initializing ChainKills Service...")
@@ -70,7 +69,11 @@ defmodule ChainKills.Service do
       {:noreply, state}
     else
       new_state =
-        %{state | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))}
+        %{
+          state
+          | processed_kill_ids:
+              Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))
+        }
 
       {:noreply, new_state}
     end
@@ -118,7 +121,7 @@ defmodule ChainKills.Service do
     Logger.error("Linked process exited with reason: #{inspect(reason)}")
     {:noreply, state}
   end
-  
+
   @impl true
   def terminate(_reason, state) do
     if state.ws_pid, do: Process.exit(state.ws_pid, :normal)
@@ -148,6 +151,7 @@ defmodule ChainKills.Service do
       {:ok, pid} ->
         Logger.info("Reconnected to zKill websocket: #{inspect(pid)}")
         %{state | ws_pid: pid}
+
       {:error, reason} ->
         Logger.error("Reconnection failed: #{inspect(reason)}")
         Process.send_after(self(), :reconnect_ws, @reconnect_delay_ms)

@@ -15,8 +15,7 @@ defmodule ChainKills.Map.BackupKills do
         case HttpClient.request("GET", backup_url, headers) do
           {:ok, response} ->
             with {:ok, data_body} <- extract_body(response),
-                 {:ok, backup_json} <- decode_json(data_body)
-            do
+                 {:ok, backup_json} <- decode_json(data_body) do
               process_backup_kills(backup_json)
             else
               {:error, msg} = err ->
@@ -40,6 +39,7 @@ defmodule ChainKills.Map.BackupKills do
       {:ok, map_url, map_name} ->
         url = "#{map_url}/api/map/systems-kills?slug=#{map_name}&hours_ago=24"
         {:ok, url}
+
       {:error, _} = err ->
         err
     end
@@ -51,7 +51,9 @@ defmodule ChainKills.Map.BackupKills do
 
   defp decode_json(raw) do
     case Jason.decode(raw) do
-      {:ok, data} -> {:ok, data}
+      {:ok, data} ->
+        {:ok, data}
+
       error ->
         Logger.error("[check_backup_kills] Error decoding JSON: #{inspect(error)}")
         {:error, error}
@@ -88,9 +90,7 @@ defmodule ChainKills.Map.BackupKills do
 
     case CacheRepo.get(kill_cache_key) do
       nil ->
-        kill_url = "https://zkillboard.com/kill/#{kill_id}"
         Logger.info("Found kill in backup feed from system #{system_id_str}: killID=#{kill_id}")
-        ChainKills.Discord.Notifier.send_message(kill_url)
 
         case ChainKills.ZKill.Service.get_enriched_killmail(kill_id) do
           {:ok, enriched_kill} ->
@@ -101,7 +101,10 @@ defmodule ChainKills.Map.BackupKills do
 
           {:error, err} ->
             Logger.error("Error enriching backup kill #{kill_id}: #{inspect(err)}")
-            ChainKills.Discord.Notifier.send_message("Error processing backup kill #{kill_id}: #{inspect(err)}")
+
+            ChainKills.Discord.Notifier.send_message(
+              "Error processing backup kill #{kill_id}: #{inspect(err)}"
+            )
         end
 
         # Mark in CacheRepo so we don’t send duplicates
@@ -113,8 +116,9 @@ defmodule ChainKills.Map.BackupKills do
   end
 
   defp validate_map_env do
-    map_url  = Application.get_env(:chainkills, :map_url)
+    map_url = Application.get_env(:chainkills, :map_url)
     map_name = Application.get_env(:chainkills, :map_name)
+
     if map_url in [nil, ""] or map_name in [nil, ""] do
       {:error, "map_url or map_name not configured"}
     else

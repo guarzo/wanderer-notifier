@@ -3,11 +3,12 @@ import Dotenvy
 
 env_dir_prefix = Path.expand("..", __DIR__)
 
-env_vars = source!([
-  Path.absname(".env", env_dir_prefix),
-  Path.absname(".#{config_env()}.env", env_dir_prefix),
-  System.get_env()
-])
+env_vars =
+  source!([
+    Path.absname(".env", env_dir_prefix),
+    Path.absname(".#{config_env()}.env", env_dir_prefix),
+    System.get_env()
+  ])
 
 Enum.each(env_vars, fn {key, value} ->
   System.put_env(key, value)

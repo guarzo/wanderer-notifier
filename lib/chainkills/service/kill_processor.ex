@@ -54,7 +54,11 @@ defmodule ChainKills.Service.KillProcessor do
       state
     else
       do_enrich_and_notify(kill_id)
-      %{state | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))}
+
+      %{
+        state
+        | processed_kill_ids: Map.put(state.processed_kill_ids, kill_id, :os.system_time(:second))
+      }
     end
   end
 
@@ -62,10 +66,6 @@ defmodule ChainKills.Service.KillProcessor do
     case ZKillService.get_enriched_killmail(kill_id) do
       {:ok, enriched_kill} ->
         Logger.info("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill)}")
-        kill_url = "https://zkillboard.com/kill/#{kill_id}/"
-
-        # Send plain text for auto‑unfurling.
-        Notifier.send_message(kill_url)
         Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
 
       {:error, err} ->

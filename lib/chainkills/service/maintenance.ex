@@ -37,12 +37,17 @@ defmodule ChainKills.Service.Maintenance do
   defp maybe_update_systems(state, now) do
     if now - (state.last_systems_update || 0) > @systems_update_interval_s do
       Logger.info("[Maintenance] Triggering update_systems")
+
       case MapClient.update_systems() do
         {:ok, new_systems} ->
-          Logger.info("[Maintenance] update_systems successful: found #{length(new_systems)} wormhole systems")
+          Logger.info(
+            "[Maintenance] update_systems successful: found #{length(new_systems)} wormhole systems"
+          )
+
         {:error, err} ->
           Logger.error("[Maintenance] update_systems failed: #{inspect(err)}")
       end
+
       %{state | last_systems_update: now}
     else
       state
@@ -52,12 +57,17 @@ defmodule ChainKills.Service.Maintenance do
   defp maybe_update_tracked_chars(state, now) do
     if now - (state.last_characters_update || 0) > 300 do
       Logger.info("[Maintenance] Triggering update_tracked_characters")
+
       case MapClient.update_tracked_characters() do
         {:ok, chars} ->
-          Logger.info("[Maintenance] update_tracked_characters successful: found #{length(chars)} characters")
+          Logger.info(
+            "[Maintenance] update_tracked_characters successful: found #{length(chars)} characters"
+          )
+
         {:error, err} ->
           Logger.error("[Maintenance] update_tracked_characters failed: #{inspect(err)}")
       end
+
       %{state | last_characters_update: now}
     else
       state
@@ -66,14 +76,19 @@ defmodule ChainKills.Service.Maintenance do
 
   defp maybe_check_backup_kills(state, now) do
     uptime = now - state.service_start_time
-    if uptime >= @uptime_required_for_backup_s and (now - (state.last_backup_check || 0) > @backup_check_interval_s) do
+
+    if uptime >= @uptime_required_for_backup_s and
+         now - (state.last_backup_check || 0) > @backup_check_interval_s do
       Logger.info("[Maintenance] Triggering check_backup_kills")
+
       case MapClient.check_backup_kills() do
         {:ok, _msg} ->
           Logger.info("[Maintenance] check_backup_kills successful")
+
         {:error, err} ->
           Logger.error("[Maintenance] check_backup_kills failed: #{inspect(err)}")
       end
+
       %{state | last_backup_check: now}
     else
       state

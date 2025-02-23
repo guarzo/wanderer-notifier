@@ -20,4 +20,20 @@ defmodule ChainKills.ESI.Service do
   def get_alliance_info(eve_id, _opts \\ []) do
     Client.get_alliance_info(eve_id)
   end
+
+  def get_ship_type_name(ship_type_id, _opts \\ []) do
+    Client.get_universe_type(ship_type_id)
+  end
+
+  def search_inventory_type(query, strict \\ true, _opts \\ []) do
+    Client.search_inventory_type(query, strict)
+  end
+
+  @doc """
+  Fetches solar system info from ESI given a solar_system_id.
+  Expects the response to include a "name" field.
+  """
+  def get_solar_system_name(system_id, _opts \\ []) do
+    Client.get_solar_system(system_id)
+  end
 end

@@ -33,6 +33,7 @@ defmodule ChainKills.ZKill.Client do
             Sample cURL to reproduce:
             #{curl_example}
             """)
+
             {:error, :zkb_returned_true}
 
           {:ok, parsed} ->
@@ -44,7 +45,12 @@ defmodule ChainKills.ZKill.Client do
             Sample cURL to reproduce:
             #{curl_example}
             """)
+
             {:error, :json_error}
+
+          _other ->
+            Logger.error("[ZKill] Unexpected JSON decode result for killmail #{kill_id}.")
+            {:error, :unexpected_json_decode}
         end
 
       {:ok, %{status_code: status, body: body}} ->
@@ -54,6 +60,7 @@ defmodule ChainKills.ZKill.Client do
         Sample cURL to reproduce:
         #{curl_example}
         """)
+
         {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
@@ -62,7 +69,12 @@ defmodule ChainKills.ZKill.Client do
         Sample cURL to reproduce:
         #{curl_example}
         """)
+
         {:error, reason}
+
+      _other ->
+        Logger.error("[ZKill] Unhandled response for killmail #{kill_id}.")
+        {:error, :unhandled_response}
     end
   end
 end

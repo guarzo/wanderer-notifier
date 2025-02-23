@@ -9,7 +9,7 @@ defmodule ChainKills.Map.Client do
   alias ChainKills.Map.BackupKills
 
   # A single function for each major operation:
-  def update_systems,             do: Systems.update_systems()
-  def check_backup_kills,         do: BackupKills.check_backup_kills()
-  def update_tracked_characters,  do: Characters.update_tracked_characters()
+  def update_systems, do: Systems.update_systems()
+  def check_backup_kills, do: BackupKills.check_backup_kills()
+  def update_tracked_characters, do: Characters.update_tracked_characters()
 end
