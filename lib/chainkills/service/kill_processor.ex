@@ -16,7 +16,6 @@ defmodule ChainKills.Service.KillProcessor do
           Logger.info("Kill #{kill_id} is from tracked system #{system_id}.")
           process_kill(kill_id, state)
         else
-          # If not from a tracked system, enrich to see if a tracked character is involved.
           case ZKillService.get_enriched_killmail(kill_id) do
             {:ok, enriched_kill} ->
               if kill_includes_tracked_character?(enriched_kill) do

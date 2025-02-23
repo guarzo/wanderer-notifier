@@ -27,15 +27,15 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_REPOSITORY }}:${{ steps.tag.outputs.image_tag }}
+          tags: guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag }}
 
       - name: Create and push Git tag
         env:
@@ -45,4 +45,3 @@ jobs:
           git config --global user.name "GitHub Actions"
           git tag ${{ steps.tag.outputs.image_tag }}
           git push origin ${{ steps.tag.outputs.image_tag }}
-
