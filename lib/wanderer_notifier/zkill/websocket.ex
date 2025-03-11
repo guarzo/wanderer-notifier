@@ -1,6 +1,6 @@
-defmodule ChainKills.ZKill.Websocket do
+defmodule WandererNotifier.ZKill.Websocket do
   @moduledoc """
-  WebSockex client connecting to zKill's killstream.
+  WebSocket client for zKillboard's WebSocket API.
 
   - Immediately subscribes upon connection by scheduling a :subscribe message.
   - Uses a scheduled heartbeat (pong) response after receiving a ping.

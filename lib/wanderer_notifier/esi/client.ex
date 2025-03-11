@@ -1,9 +1,9 @@
-defmodule ChainKills.ESI.Client do
+defmodule WandererNotifier.ESI.Client do
   @moduledoc """
-  Minimal client for accessing ESI endpoints.
+  Low-level ESI HTTP client.
   """
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
+  alias WandererNotifier.Http.Client, as: HttpClient
 
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"

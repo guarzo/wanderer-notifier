@@ -1,12 +1,10 @@
-defmodule ChainKills.ZKill.Client do
+defmodule WandererNotifier.ZKill.Client do
   @moduledoc """
-  A minimal example of fetching single killmails from zKillboard.
-  If zKill returns a literal JSON "true", we detect that and log
-  a 'sample curl' command for debugging.
+  Low-level zKillboard API client.
   """
 
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
+  alias WandererNotifier.Http.Client, as: HttpClient
 
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   # ^ Adjust or move this to config so that zKill sees you as a real user.

@@ -1,13 +1,13 @@
-defmodule ChainKills.Service.KillProcessor do
+defmodule WandererNotifier.Service.KillProcessor do
   @moduledoc """
   Handles kill messages from zKill, including enrichment and deciding
   whether to send a Discord notification.
   Only notifies if the kill is from a tracked system or involves a tracked character.
   """
   require Logger
-  alias ChainKills.ZKill.Service, as: ZKillService
-  alias ChainKills.Discord.Notifier
-  alias ChainKills.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.ZKill.Service, as: ZKillService
+  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   def process_zkill_message(message, state) do
     case decode_zkill_message(message) do
@@ -81,7 +81,7 @@ defmodule ChainKills.Service.KillProcessor do
   end
 
   defp kill_includes_tracked_character?(enriched_kill) do
-    tracked_characters = Application.get_env(:chainkills, :tracked_characters, [])
+    tracked_characters = Application.get_env(:wanderer_notifier, :tracked_characters, [])
     tracked_chars = Enum.map(tracked_characters, &to_string/1)
 
     victim_id = get_in(enriched_kill, ["victim", "character_id"])

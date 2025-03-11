@@ -1,9 +1,9 @@
-defmodule ChainKills.ESI.Service do
+defmodule WandererNotifier.ESI.Service do
   @moduledoc """
-  High-level ESI service for ChainKills.
+  High-level ESI service for WandererNotifier.
   """
   require Logger
-  alias ChainKills.ESI.Client
+  alias WandererNotifier.ESI.Client
 
   def get_esi_kill_mail(kill_id, killmail_hash, _opts \\ []) do
     Client.get_killmail(kill_id, killmail_hash)

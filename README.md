@@ -1,6 +1,6 @@
-# ChainKills
+# Wanderer Notifier
 
-ChainKills is an Elixir-based application that monitors EVE Online kill data and notifies designated Discord channels about significant events. It integrates with multiple external services to retrieve, enrich, and filter kill information before sending alerts.
+Wanderer Notifier is an Elixir-based application that monitors EVE Online kill data and notifies designated Discord channels about significant events. It integrates with multiple external services to retrieve, enrich, and filter kill information before sending alerts.
 
 ## Features
 
@@ -9,7 +9,37 @@ ChainKills is an Elixir-based application that monitors EVE Online kill data and
 - **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process only those kills originating from systems you care about.
 - **Periodic Maintenance:** Automatically updates system data, processes backup kills, and sends heartbeat notifications to Discord.
 - **Caching:** Implements caching with Cachex to minimize redundant API calls.
-- **Fault Tolerance:** Leverages Elixir’s OTP and supervision trees to ensure a robust and resilient system.
+- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees to ensure a robust and resilient system.
+
+### Notification System
+
+The application provides several types of Discord notifications:
+
+1. **Kill Notifications**
+   - Real-time alerts for ship destructions in tracked systems
+   - Rich embed format with detailed information:
+     - System location and kill value
+     - Victim details (character, corporation, ship type)
+     - Final blow attacker information
+     - Top damage dealer (if different)
+   - Visual elements including ship thumbnails and corporation icons
+   - Direct links to zKillboard
+
+2. **System Notifications**
+   - Alerts when new systems are added to tracking
+   - System identification and zKillboard links
+   - Distinctive orange color scheme for easy identification
+
+3. **Character Notifications**
+   - Notifications for newly tracked characters
+   - Character portraits and corporation affiliations
+   - Links to character profiles
+   - Green color scheme for visual distinction
+
+4. **Service Status Updates**
+   - System startup confirmations
+   - Connection status monitoring
+   - Error reporting and diagnostic information
 
 ## Requirements
 
@@ -22,8 +52,8 @@ ChainKills is an Elixir-based application that monitors EVE Online kill data and
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/yourusername/chainkills.git
-   cd chainkills
+   git clone https://github.com/yourusername/wanderer-notifier.git
+   cd wanderer-notifier
    ```
 
 2. **Setup Environment Variables:**
@@ -104,8 +134,28 @@ The Makefile provides shortcuts for common tasks:
 
 All configuration is managed through environment variables in the `.env` file. A template is provided as `.env.example`.
 
+### Key Configuration Options
 
+1. **Discord Integration**
+   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
+   - `DISCORD_CHANNEL_ID`: Target channel for notifications
+
+2. **Map Configuration**
+   - `MAP_URL`: URL of the map service
+   - `MAP_NAME`: Map identifier for system tracking
+   - `MAP_TOKEN`: Authentication token for map API
+
+3. **External Services**
+   - `ZKILL_BASE_URL`: zKillboard API endpoint
+   - `ESI_BASE_URL`: EVE Swagger Interface endpoint
+
+4. **Optional Settings**
+   - Character tracking lists
+   - Cache durations
+   - Maintenance intervals
 
 ---
 
-*ChainKills* integrates critical EVE Online data with Discord notifications in a robust, fault-tolerant manner. For any questions or issues, please open an issue on the repository.
+*Wanderer Notifier* integrates critical EVE Online data with Discord notifications in a robust, fault-tolerant manner. For any questions or issues, please open an issue on the repository.
+
+For detailed technical documentation and architecture overview, see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).

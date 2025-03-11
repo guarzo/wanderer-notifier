@@ -1,15 +1,15 @@
-defmodule ChainKills.Map.BackupKills do
+defmodule WandererNotifier.Map.BackupKills do
   @moduledoc """
   Processes backup kills from the map API.
   """
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
-  alias ChainKills.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Http.Client, as: HttpClient
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   def check_backup_kills do
     case build_backup_url() do
       {:ok, backup_url} ->
-        map_token = Application.get_env(:chainkills, :map_token)
+        map_token = Application.get_env(:wanderer_notifier, :map_token)
         headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
 
         case HttpClient.request("GET", backup_url, headers) do
@@ -92,22 +92,22 @@ defmodule ChainKills.Map.BackupKills do
       nil ->
         Logger.info("Found kill in backup feed from system #{system_id_str}: killID=#{kill_id}")
 
-        case ChainKills.ZKill.Service.get_enriched_killmail(kill_id) do
+        case WandererNotifier.ZKill.Service.get_enriched_killmail(kill_id) do
           {:ok, enriched_kill} ->
-            ChainKills.Discord.Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
+            WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
             Logger.info("Processed backup kill #{kill_id}")
 
-            ChainKills.Service.mark_as_processed(kill_id)
+            WandererNotifier.Service.mark_as_processed(kill_id)
 
           {:error, err} ->
             Logger.error("Error enriching backup kill #{kill_id}: #{inspect(err)}")
 
-            ChainKills.Discord.Notifier.send_message(
+            WandererNotifier.Discord.Notifier.send_message(
               "Error processing backup kill #{kill_id}: #{inspect(err)}"
             )
         end
 
-        # Mark in CacheRepo so we don’t send duplicates
+        # Mark in CacheRepo so we don't send duplicates
         CacheRepo.put(kill_cache_key, :os.system_time(:second))
 
       _ ->
@@ -116,8 +116,8 @@ defmodule ChainKills.Map.BackupKills do
   end
 
   defp validate_map_env do
-    map_url = Application.get_env(:chainkills, :map_url)
-    map_name = Application.get_env(:chainkills, :map_name)
+    map_url = Application.get_env(:wanderer_notifier, :map_url)
+    map_name = Application.get_env(:wanderer_notifier, :map_name)
 
     if map_url in [nil, ""] or map_name in [nil, ""] do
       {:error, "map_url or map_name not configured"}

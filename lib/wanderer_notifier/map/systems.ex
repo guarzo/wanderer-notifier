@@ -1,12 +1,12 @@
-defmodule ChainKills.Map.Systems do
+defmodule WandererNotifier.Map.Systems do
   @moduledoc """
   Retrieves and processes system data from the map API, filtering for wormhole systems.
-  Only wormhole systems (where a system’s static info shows a non-empty "statics" list or
+  Only wormhole systems (where a system's static info shows a non-empty "statics" list or
   the "type_description" starts with "Class") are returned.
   """
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
-  alias ChainKills.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Http.Client, as: HttpClient
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   @systems_cache_ttl 10_000
   @static_info_cache_ttl 86_400
@@ -21,11 +21,9 @@ defmodule ChainKills.Map.Systems do
       if fresh_systems == [] do
         Logger.warning("[update_systems] Received empty system list. Retaining existing cache.")
       else
-        # Get existing cached systems (if any)
         cached_systems = CacheRepo.get("map:systems") || []
 
         if cached_systems != [] do
-          # Identify new systems (comparing by system_id)
           new_systems =
             Enum.filter(fresh_systems, fn new_sys ->
               not Enum.any?(cached_systems, fn cached ->
@@ -34,7 +32,7 @@ defmodule ChainKills.Map.Systems do
             end)
 
           Enum.each(new_systems, fn system ->
-            ChainKills.Discord.Notifier.send_new_system_notification(system)
+            WandererNotifier.Discord.Notifier.send_new_system_notification(system)
           end)
         else
           Logger.info(
@@ -42,7 +40,6 @@ defmodule ChainKills.Map.Systems do
           )
         end
 
-        # Update the cache with the full fresh list.
         CacheRepo.set("map:systems", fresh_systems, @systems_cache_ttl)
       end
 
@@ -65,7 +62,7 @@ defmodule ChainKills.Map.Systems do
   end
 
   defp fetch_get_body(url) do
-    map_token = Application.get_env(:chainkills, :map_token)
+    map_token = Application.get_env(:wanderer_notifier, :map_token)
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
 
     case HttpClient.request("GET", url, headers) do
@@ -99,7 +96,7 @@ defmodule ChainKills.Map.Systems do
 
   defp fetch_wormhole_system(item) do
     with system_id when is_binary(system_id) <- extract_system_id(item),
-         map_url <- Application.get_env(:chainkills, :map_url),
+         map_url <- Application.get_env(:wanderer_notifier, :map_url),
          static_info_url = "#{map_url}/api/common//system-static-info?id=#{system_id}",
          {:ok, ssi} <- get_or_fetch_system_static_info(static_info_url),
          true <- qualifies_as_wormhole?(ssi) do
@@ -133,7 +130,7 @@ defmodule ChainKills.Map.Systems do
   end
 
   defp fetch_and_cache_system_info(url) do
-    map_token = Application.get_env(:chainkills, :map_token)
+    map_token = Application.get_env(:wanderer_notifier, :map_token)
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
 
     case HttpClient.request("GET", url, headers) do
@@ -150,8 +147,8 @@ defmodule ChainKills.Map.Systems do
   end
 
   defp validate_map_env do
-    map_url = Application.get_env(:chainkills, :map_url)
-    map_name = Application.get_env(:chainkills, :map_name)
+    map_url = Application.get_env(:wanderer_notifier, :map_url)
+    map_name = Application.get_env(:wanderer_notifier, :map_name)
 
     if map_url in [nil, ""] or map_name in [nil, ""] do
       {:error, "map_url or map_name not configured"}

@@ -39,11 +39,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy the release from the build stage (update "your_app" as needed)
-COPY --from=build /app/_build/prod/rel/chainkills ./
+COPY --from=build /app/_build/prod/rel/wanderer_notifier ./
 
 # Expose the port (for a Phoenix app, typically 4000)
 EXPOSE 4000
 
 # Start the application
-CMD ["bin/chainkills", "start"]
+CMD ["bin/wanderer_notifier", "start"]
 

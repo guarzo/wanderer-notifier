@@ -9,7 +9,9 @@
   },
   "extensions": [
     "jakebecker.elixir-ls",
-    "pantajoe.vscode-elixir-credo"
+    "pantajoe.vscode-elixir-credo",
+    "JakeBecker.elixir-ls",
+    "esbenp.prettier-vscode"
   ],
   "postCreateCommand": "mix deps.get",
   "forwardPorts": [4000],

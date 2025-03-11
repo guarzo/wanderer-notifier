@@ -1,10 +1,10 @@
-defmodule ChainKills.Map.Characters do
+defmodule WandererNotifier.Map.Characters do
   @moduledoc """
   Tracked characters API calls.
   """
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
-  alias ChainKills.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Http.Client, as: HttpClient
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   @characters_cache_ttl 300
 
@@ -24,7 +24,7 @@ defmodule ChainKills.Map.Characters do
           end)
 
         Enum.each(new_tracked, fn character ->
-          ChainKills.Discord.Notifier.send_new_tracked_character_notification(character)
+          WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
         end)
       else
         Logger.info(
@@ -52,7 +52,7 @@ defmodule ChainKills.Map.Characters do
   end
 
   defp fetch_characters_body(url) do
-    map_token = Application.get_env(:chainkills, :map_token)
+    map_token = Application.get_env(:wanderer_notifier, :map_token)
 
     headers =
       if map_token do
@@ -97,8 +97,8 @@ defmodule ChainKills.Map.Characters do
   defp process_characters(_), do: {:ok, []}
 
   def validate_map_env do
-    map_url = Application.get_env(:chainkills, :map_url)
-    map_name = Application.get_env(:chainkills, :map_name)
+    map_url = Application.get_env(:wanderer_notifier, :map_url)
+    map_name = Application.get_env(:wanderer_notifier, :map_name)
 
     if map_url in [nil, ""] or map_name in [nil, ""] do
       {:error, "map_url or map_name not configured"}

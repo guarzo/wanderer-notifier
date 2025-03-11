@@ -1,6 +1,6 @@
-defmodule ChainKills.Http.Client do
+defmodule WandererNotifier.Http.Client do
   @moduledoc """
-  HTTP client using HTTPoison, plus helper for building cURL commands.
+  Generic HTTP client wrapper.
   """
   require Logger
 

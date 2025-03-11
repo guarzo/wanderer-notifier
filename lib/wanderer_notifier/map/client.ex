@@ -1,12 +1,11 @@
-defmodule ChainKills.Map.Client do
+defmodule WandererNotifier.Map.Client do
   @moduledoc """
-  Main entry point for map-related functionality.
-  Delegates to submodules for systems, backup kills, and characters.
+  High-level map API client.
   """
 
-  alias ChainKills.Map.Systems
-  alias ChainKills.Map.Characters
-  alias ChainKills.Map.BackupKills
+  alias WandererNotifier.Map.Systems
+  alias WandererNotifier.Map.Characters
+  alias WandererNotifier.Map.BackupKills
 
   # A single function for each major operation:
   def update_systems, do: Systems.update_systems()

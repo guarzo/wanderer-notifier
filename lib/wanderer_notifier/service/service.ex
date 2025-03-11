@@ -1,15 +1,15 @@
-defmodule ChainKills.Service do
+defmodule WandererNotifier.Service do
   @moduledoc """
-  The main ChainKills service (GenServer).
+  The main WandererNotifier service (GenServer).
   Coordinates periodic maintenance and kill processing.
   """
   use GenServer
   require Logger
 
-  alias ChainKills.Discord.Notifier
-  alias ChainKills.ZKill.Websocket, as: ZKillWebsocket
-  alias ChainKills.Service.Maintenance
-  alias ChainKills.Service.KillProcessor
+  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.Service.Maintenance
+  alias WandererNotifier.Service.KillProcessor
 
   @zkill_ws_url "wss://zkillboard.com/websocket/"
   @reconnect_delay_ms 10_000
@@ -40,7 +40,7 @@ defmodule ChainKills.Service do
 
   @impl true
   def init(_opts) do
-    Logger.info("Initializing ChainKills Service...")
+    Logger.info("Initializing WandererNotifier Service...")
     # Trap exits so the GenServer doesn't crash when a linked process dies
     Process.flag(:trap_exit, true)
     now = :os.system_time(:second)
@@ -54,7 +54,7 @@ defmodule ChainKills.Service do
 
     state = start_zkill_ws(state)
     # Send one startup notification to Discord.
-    Notifier.send_message("ChainKills Service started. Listening for kill notifications.")
+    Notifier.send_message("WandererNotifier Service started. Listening for kill notifications.")
     schedule_maintenance()
     {:ok, state}
   end

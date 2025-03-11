@@ -1,22 +1,22 @@
-defmodule ChainKills.Discord.Notifier do
+defmodule WandererNotifier.Discord.Notifier do
   @moduledoc """
   Sends notifications to Discord as channel messages using a bot token.
   Supports plain text messages and rich embed messages.
   """
   import Bitwise
   require Logger
-  alias ChainKills.Http.Client, as: HttpClient
-  alias ChainKills.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Http.Client, as: HttpClient
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   @base_url "https://discord.com/api/channels"
 
   # Retrieve the channel ID and bot token at runtime.
   defp channel_id do
-    Application.get_env(:chainkills, :discord_channel_id)
+    Application.get_env(:wanderer_notifier, :discord_channel_id)
   end
 
   defp bot_token do
-    Application.get_env(:chainkills, :discord_bot_token)
+    Application.get_env(:wanderer_notifier, :discord_bot_token)
   end
 
   defp build_url do
@@ -130,7 +130,7 @@ defmodule ChainKills.Discord.Notifier do
 
     name =
       Map.get(character, "character_name") ||
-        case ChainKills.ESI.Service.get_character_info(character_id) do
+        case WandererNotifier.ESI.Service.get_character_info(character_id) do
           {:ok, %{"name" => n}} -> n
           _ -> "Character #{character_id}"
         end
@@ -138,7 +138,7 @@ defmodule ChainKills.Discord.Notifier do
     corp_id = Map.get(character, "corporation_id") || Map.get(character, "corp_id")
     corp =
       Map.get(character, "corporation_name") ||
-        case ChainKills.ESI.Service.get_corporation_info(corp_id) do
+        case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
           {:ok, %{"name" => n}} -> n
           _ -> "Corp #{corp_id}"
         end
@@ -287,7 +287,7 @@ defmodule ChainKills.Discord.Notifier do
     name =
       case Map.get(entity, "character_name") do
         nil ->
-          case ChainKills.ESI.Service.get_character_info(character_id) do
+          case WandererNotifier.ESI.Service.get_character_info(character_id) do
             {:ok, %{"name" => character_name}} -> character_name
             _ -> "Character #{character_id}"
           end
@@ -299,7 +299,7 @@ defmodule ChainKills.Discord.Notifier do
     corp =
       case Map.get(entity, "corporation_name") do
         nil ->
-          case ChainKills.ESI.Service.get_corporation_info(corporation_id) do
+          case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
             {:ok, %{"name" => corp_name}} -> corp_name
             _ -> "Corp #{corporation_id}"
           end
@@ -310,7 +310,7 @@ defmodule ChainKills.Discord.Notifier do
     ship =
       case Map.get(entity, "ship_name") do
         nil ->
-          case ChainKills.ESI.Service.get_ship_type_name(ship_type_id) do
+          case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
             {:ok, %{"name" => ship_name}} -> ship_name
             _ -> "Ship #{ship_type_id}"
           end
@@ -334,7 +334,7 @@ defmodule ChainKills.Discord.Notifier do
              to_string(solar_system_id)
          end) do
       nil ->
-        case ChainKills.ESI.Service.get_solar_system_name(solar_system_id) do
+        case WandererNotifier.ESI.Service.get_solar_system_name(solar_system_id) do
           {:ok, %{"name" => name}} -> name
           _ -> "Solar System #{solar_system_id}"
         end
