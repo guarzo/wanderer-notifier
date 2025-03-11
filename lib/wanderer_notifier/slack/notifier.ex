@@ -1,10 +1,10 @@
-defmodule WandererNotifier.Slack.Notifier do
+cdefmodule WandererNotifier.Slack.Notifier do
   @moduledoc """
   Sends notifications to Slack using an incoming webhook.
   Supports simple text messages and messages with attachments.
-  
+
   To use this notifier, configure your Slack webhook URL in your config:
-  
+
       config :wanderer_notifier, :slack_webhook_url, "https://hooks.slack.com/services/your/webhook/url"
   """
   require Logger
@@ -30,7 +30,7 @@ defmodule WandererNotifier.Slack.Notifier do
 
   @doc """
   Sends a message with an attachment to Slack.
-  
+
   The attachment supports a title, text, and an optional color (defaults to green).
   """
   @spec send_attachment(String.t(), String.t(), String.t()) :: :ok | {:error, any()}
@@ -68,4 +68,4 @@ defmodule WandererNotifier.Slack.Notifier do
       end
     end
   end
-end 
+end
