@@ -1,10 +1,9 @@
 defmodule WandererNotifier.Http.Client do
   @moduledoc """
-  Generic HTTP client wrapper.
+  Generic HTTP client wrapper with retry functionality.
   """
   require Logger
 
-  # Default retry configuration
   @default_max_retries 3
   @default_initial_backoff 500  # milliseconds
   @default_max_backoff 5000     # milliseconds
@@ -22,8 +21,15 @@ defmodule WandererNotifier.Http.Client do
     body = body || ""
     max_retries = Keyword.get(opts, :max_retries, @default_max_retries)
     initial_backoff = Keyword.get(opts, :initial_backoff, @default_initial_backoff)
-    
-    do_request_with_retry(method, url, headers, body, max_retries, initial_backoff, 0)
+
+    # Spawn a separate task to handle retries asynchronously.
+    task =
+      Task.async(fn ->
+        do_request_with_retry(method, url, headers, body, max_retries, initial_backoff, 0)
+      end)
+
+    # Await the result (you can adjust the timeout as needed)
+    Task.await(task, @default_timeout * max_retries)
   end
 
   defp do_request_with_retry(method, url, headers, body, max_retries, backoff, retry_count) do
@@ -43,14 +49,16 @@ defmodule WandererNotifier.Http.Client do
         {:ok, response}
 
       {:error, %HTTPoison.Error{reason: reason}} = error ->
-        if retry_count < max_retries && transient_error?(reason) do
+        if retry_count < max_retries and transient_error?(reason) do
           # Calculate exponential backoff with jitter
           current_backoff = min(backoff * :math.pow(2, retry_count), @default_max_backoff)
           jitter = :rand.uniform(trunc(current_backoff * 0.2))
           actual_backoff = trunc(current_backoff + jitter)
-          
-          Logger.warning("HTTP #{method} => #{url} FAILED: #{inspect(reason)}. Retrying in #{actual_backoff}ms (attempt #{retry_count + 1}/#{max_retries})")
-          
+
+          Logger.warning(
+            "HTTP #{method} => #{url} FAILED: #{inspect(reason)}. Retrying in #{actual_backoff}ms (attempt #{retry_count + 1}/#{max_retries})"
+          )
+
           :timer.sleep(actual_backoff)
           do_request_with_retry(method, url, headers, body, max_retries, backoff, retry_count + 1)
         else
@@ -59,12 +67,12 @@ defmodule WandererNotifier.Http.Client do
           else
             Logger.error("HTTP #{method} => #{url} FAILED: #{inspect(reason)}")
           end
+
           error
         end
     end
   end
 
-  # Check if an error is transient and can be retried
   defp transient_error?(reason) when reason in @transient_errors, do: true
   defp transient_error?({:closed, _}), do: true
   defp transient_error?({:timeout, _}), do: true
@@ -80,6 +88,6 @@ defmodule WandererNotifier.Http.Client do
       end)
       |> Enum.join(" ")
 
-    "curl -X #{method} #{header_str} \"#{url}\""
+    ~s(curl -X #{method} #{header_str} "#{url}")
   end
 end

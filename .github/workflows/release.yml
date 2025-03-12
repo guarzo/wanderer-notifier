@@ -1,0 +1,52 @@
+name: Official Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version tag'
+        required: false
+        default: 'v1'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '25.0'
+
+      - name: Install dependencies and build release
+        run: |
+          mix deps.get --only prod
+          mix deps.compile
+          mix release
+
+      - name: Build Docker image
+        run: |
+          docker build -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }} .
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Push Docker image
+        run: |
+          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Create Git tag
+        run: |
+          git tag ${{ github.event.inputs.release_version }}
+          git push origin ${{ github.event.inputs.release_version }}

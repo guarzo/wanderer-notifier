@@ -16,7 +16,6 @@ end)
 
 token = System.get_env("DISCORD_BOT_TOKEN")
 trimmed_token = if is_binary(token), do: String.trim(token), else: nil
-IO.inspect(trimmed_token, label: "Trimmed DISCORD_BOT_TOKEN")
 
 config :nostrum,
   token: trimmed_token
@@ -54,4 +53,4 @@ end
 
 # Web server configuration
 config :wanderer_notifier,
-  web_port: String.to_integer(System.get_env("WEB_PORT") || "4000")
+  web_port: String.to_integer(System.get_env("WEB_PORT") || "8080")

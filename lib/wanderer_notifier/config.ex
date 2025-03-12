@@ -97,10 +97,10 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
-  Returns the web server port from the environment or the default (4000).
+  Returns the web server port from the environment or the default (8080).
   """
   def web_port do
-    Application.get_env(:wanderer_notifier, :web_port, 4000)
+    Application.get_env(:wanderer_notifier, :web_port, 8080)
   end
 
   @doc """
