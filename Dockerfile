@@ -1,5 +1,5 @@
 # Stage 1: Build the release
-FROM elixir:1.18-slim AS build
+FROM hexpm/elixir:1.18.0-erlang-26.2.1-ubuntu-23.10-20231211 AS build
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,27 +22,28 @@ RUN mix deps.compile
 # Copy the rest of the application code
 COPY . .
 
-# Build the release (ensure the release name matches your app)
+# Build the release
 RUN mix release
 
 # Stage 2: Build the runtime image
-FROM debian:bookworm-slim
+FROM ubuntu:23.10
 
 # Create non-root user for runtime
 RUN useradd -ms /bin/bash appuser
 
-# Install runtime dependencies (use runtime libraries instead of development packages when possible)
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     libncurses6 \
     libstdc++6 \
     curl \
+    ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy the release from the build stage (ensure the folder name matches your release)
+# Copy the release from the build stage
 COPY --from=build /app/_build/prod/rel/wanderer_notifier ./
 
 # Change ownership of the release directory
