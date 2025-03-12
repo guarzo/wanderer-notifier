@@ -3,10 +3,14 @@ defmodule WandererNotifier.Discord.Notifier do
   Sends notifications to Discord as channel messages using a bot token.
   Supports plain text messages and rich embed messages.
   """
-  import Bitwise
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Cache.Repository, as: CacheRepo
+
+  # Use a runtime environment check instead of compile-time
+  defp env do
+    Application.get_env(:wanderer_notifier, :env, :prod)
+  end
 
   @base_url "https://discord.com/api/channels"
   @verbose_logging false  # Set to true to enable verbose logging
@@ -27,7 +31,7 @@ defmodule WandererNotifier.Discord.Notifier do
   defp build_url do
     id = channel_id()
 
-    if id in [nil, ""] && Mix.env() != :test do
+    if id in [nil, ""] and env() != :test do
       raise "Discord channel ID not configured. Please set :discord_channel_id in your configuration."
     end
 
@@ -37,7 +41,7 @@ defmodule WandererNotifier.Discord.Notifier do
   defp headers do
     token = bot_token()
 
-    if token in [nil, ""] && Mix.env() != :test do
+    if token in [nil, ""] and env() != :test do
       raise "Discord bot token not configured. Please set :discord_bot_token in your configuration."
     end
 
@@ -51,18 +55,17 @@ defmodule WandererNotifier.Discord.Notifier do
   Sends a plain text message to Discord.
   """
   def send_message(message) when is_binary(message) do
-    if Mix.env() == :test do
-      # In test environment, just return :ok
+    if env() == :test do
       if @verbose_logging, do: Logger.info("DISCORD MOCK: #{message}")
       :ok
     else
-      # Track notification
+      # Track notification errors (ignore if failure)
       try do
         WandererNotifier.Stats.increment(:errors)
       rescue
         _ -> :ok
       end
-      
+
       payload = %{"content" => message, "embeds" => []}
       send_payload(payload)
     end
@@ -72,24 +75,17 @@ defmodule WandererNotifier.Discord.Notifier do
   Sends a basic embed message to Discord.
   """
   def send_embed(title, description, url \\ nil, color \\ 0x00FF00) do
-    if Mix.env() == :test do
-      # In test environment, just return :ok
+    if env() == :test do
       if @verbose_logging, do: Logger.info("DISCORD MOCK EMBED: #{title} - #{description}")
       :ok
     else
-      # Track notification
       try do
         WandererNotifier.Stats.increment(:errors)
       rescue
         _ -> :ok
       end
-      
-      embed = %{
-        "title" => title,
-        "description" => description,
-        "color" => color
-      }
 
+      embed = %{"title" => title, "description" => description, "color" => color}
       embed = if url, do: Map.put(embed, "url", url), else: embed
       payload = %{"embeds" => [embed]}
       send_payload(payload)
@@ -101,17 +97,16 @@ defmodule WandererNotifier.Discord.Notifier do
   Expects the enriched killmail (and its nested maps) to have string keys.
   """
   def send_enriched_kill_embed(enriched_kill, kill_id) do
-    if Mix.env() == :test do
+    if env() == :test do
       if @verbose_logging, do: Logger.info("DISCORD TEST KILL EMBED: Kill ID #{kill_id}")
       :ok
     else
-      # Track notification
       try do
         WandererNotifier.Stats.increment(:kills)
       rescue
         _ -> :ok
       end
-      
+
       normalized = normalize_keys(enriched_kill)
 
       system_name =
@@ -119,7 +114,6 @@ defmodule WandererNotifier.Discord.Notifier do
           nil ->
             solar_system_id = Map.get(normalized, "solar_system_id")
             resolve_system_name(solar_system_id)
-
           name ->
             name
         end
@@ -175,18 +169,17 @@ defmodule WandererNotifier.Discord.Notifier do
   If names are missing, ESI lookups are performed.
   """
   def send_new_tracked_character_notification(character) when is_map(character) do
-    if Mix.env() == :test do
+    if env() == :test do
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
       if @verbose_logging, do: Logger.info("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
       :ok
     else
-      # Track notification
       try do
         WandererNotifier.Stats.increment(:characters)
       rescue
         _ -> :ok
       end
-      
+
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
       portrait_url = "https://image.eveonline.com/characters/#{character_id}/portrait"
 
@@ -235,18 +228,17 @@ defmodule WandererNotifier.Discord.Notifier do
   If "system_name" is missing, falls back to a lookup.
   """
   def send_new_system_notification(system) when is_map(system) do
-    if Mix.env() == :test do
+    if env() == :test do
       system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
       if @verbose_logging, do: Logger.info("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
       :ok
     else
-      # Track notification
       try do
         WandererNotifier.Stats.increment(:systems)
       rescue
         _ -> :ok
       end
-      
+
       system_id =
         Map.get(system, "system_id") ||
           Map.get(system, :system_id)
@@ -318,7 +310,6 @@ defmodule WandererNotifier.Discord.Notifier do
   defp normalize_keys(value) when is_list(value), do: Enum.map(value, &normalize_keys/1)
   defp normalize_keys(value), do: value
 
-  # Builds a markdown description using extracted entity data.
   defp build_description(normalized) do
     victim = Map.get(normalized, "victim", %{})
     attackers = Map.get(normalized, "attackers", [])
@@ -331,7 +322,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
     base_desc =
       "**[#{victim_data.name}](#{victim_data.zkill_url}) (#{victim_data.corp})** lost their **#{victim_data.ship}** " <>
-        "to **[#{final_data.name}](#{final_data.zkill_url}) (#{final_data.corp})** flying a **#{final_data.ship}**"
+      "to **[#{final_data.name}](#{final_data.zkill_url}) (#{final_data.corp})** flying a **#{final_data.ship}**"
 
     if length(attackers) > 1 and top_attacker != %{} do
       top_data = extract_entity(top_attacker)
@@ -344,7 +335,6 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Returns the final attacker from the list, skipping NPCs.
   defp get_final_attacker(attackers) when is_list(attackers) do
     valid =
       attackers
@@ -354,7 +344,6 @@ defmodule WandererNotifier.Discord.Notifier do
       if valid != [], do: Enum.max_by(valid, fn a -> Map.get(a, "damage_done", 0) end), else: %{}
   end
 
-  # Returns the top attacker by damage, skipping NPCs.
   defp get_top_attacker(attackers) when is_list(attackers) do
     valid =
       attackers
@@ -367,7 +356,6 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Extracts entity data and uses ESI lookups if names are missing.
   defp extract_entity(entity) when is_map(entity) do
     character_id = Map.get(entity, "character_id", "Unknown")
 
@@ -418,7 +406,6 @@ defmodule WandererNotifier.Discord.Notifier do
     %{id: character_id, name: name, corp: corp, ship: ship, zkill_url: zkill_url}
   end
 
-  # Resolves the system name given a solar_system_id.
   defp resolve_system_name(nil), do: "Unknown System"
 
   defp resolve_system_name(solar_system_id) do
@@ -440,29 +427,15 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Helper to extract total value from enriched killmail.
   defp get_total_value(normalized) do
     case Map.get(normalized, "total_value") do
       nil ->
         get_in(normalized, ["zkb", "totalValue"]) || 0.0
-
       value ->
         value
     end
   end
 
-  # Parses a hex color string (e.g. "#RRGGBB") into an integer.
-  def parse_hex_color(hex_str) do
-    with {r, ""} <- Integer.parse(String.slice(hex_str, 1, 2), 16),
-         {g, ""} <- Integer.parse(String.slice(hex_str, 3, 2), 16),
-         {b, ""} <- Integer.parse(String.slice(hex_str, 5, 2), 16) do
-      (r <<< 16) + (g <<< 8) + b
-    else
-      _ -> 0xFFFFFF
-    end
-  end
-
-  # Formats an ISK value into a short string.
   def format_isk_value(amount) when is_number(amount) do
     cond do
       amount < 1_000_000 ->

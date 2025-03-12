@@ -9,7 +9,8 @@ defmodule WandererNotifier.Application do
   @impl true
   def start(_type, _args) do
     Logger.info("Starting WandererNotifier application...")
-    Logger.info("Environment: #{Mix.env()}")
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
+    Logger.info("Environment: #{env}")
 
     # Log configuration details
     license_key = Config.license_key()
@@ -24,13 +25,13 @@ defmodule WandererNotifier.Application do
     children = [
       # Start the License validation service
       WandererNotifier.License,
-      
+
       # Start the Stats tracking service
       WandererNotifier.Stats,
-      
+
       # Start the Web server
       {Plug.Cowboy, scheme: :http, plug: WandererNotifier.Web.Router, options: [port: Config.web_port(), ip: {0, 0, 0, 0}]},
-      
+
       # Start the main service that handles ZKill websocket
       {WandererNotifier.Service, []}
     ]
@@ -57,19 +58,19 @@ defmodule WandererNotifier.Application do
   def validate_license_and_bot_assignment do
     Logger.info("Starting license validation process...")
     license_status = WandererNotifier.License.validate()
-    
+
     cond do
       # Both license is valid and bot is assigned
       license_status.valid && license_status.bot_assigned ->
         Logger.info("License validation successful - License is valid and bot is properly assigned")
         :ok
-        
+
       # License is valid but bot is not assigned
       license_status.valid && !license_status.bot_assigned ->
         Logger.warning("License is valid but bot is not assigned to this license")
         Logger.warning("The application will continue to run, but some features may be limited")
         :ok
-        
+
       # License is not valid
       !license_status.valid ->
         error_message = license_status.error_message || "Unknown license error"

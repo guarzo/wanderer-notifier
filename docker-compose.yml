@@ -1,0 +1,40 @@
+services:
+  wanderer_notifier:
+    image: guarzo/wanderer-notifier:v1
+    container_name: wanderer_notifier
+    restart: unless-stopped
+    environment:
+      # Discord Configuration
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      
+      # Map Configuration
+      - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
+      - MAP_TOKEN=${MAP_TOKEN}
+      
+      # License Configuration
+      - LICENSE_KEY=${LICENSE_KEY}
+      - BOT_ID=${BOT_ID}
+      - LICENSE_MANAGER_API_URL=${LICENSE_MANAGER_API_URL}
+      
+      # Application Configuration
+      - PORT=${PORT:-4000}
+      - HOST=${HOST:-0.0.0.0}
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
+    volumes:
+      - wanderer_data:/app/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "${PORT:-4000}"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  wanderer_data: 

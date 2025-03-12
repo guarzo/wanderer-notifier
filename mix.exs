@@ -7,7 +7,8 @@ defmodule WandererNotifier.MixProject do
       version: "0.1.0",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -31,6 +32,18 @@ defmodule WandererNotifier.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test}
+    ]
+  end
+
+  defp releases do
+    [
+      wanderer_notifier: [
+        include_executables_for: [:unix],
+        applications: [runtime_tools: :permanent],
+        steps: [:assemble, :tar],
+        validate_compile_env: false,
+        overlays: ["rel/overlays"]
+      ]
     ]
   end
 end

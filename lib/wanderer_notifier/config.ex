@@ -37,7 +37,7 @@ defmodule WandererNotifier.Config do
       _ ->
         base_url = Application.get_env(:wanderer_notifier, :map_url)
         map_name = Application.get_env(:wanderer_notifier, :map_name)
-        
+
         if is_binary(base_url) and is_binary(map_name) and base_url != "" and map_name != "" do
           "#{base_url}/#{map_name}"
         else
@@ -86,14 +86,8 @@ defmodule WandererNotifier.Config do
   In production, it uses the default URL.
   """
   def license_manager_api_url do
-    case Mix.env() do
-      :dev ->
-        # In development, allow override from environment
-        Application.get_env(:wanderer_notifier, :license_manager_api_url) || @default_license_manager_url
-      _ ->
-        # In production, use the default URL
-        @default_license_manager_url
-    end
+    # Allow override from environment in all environments
+    Application.get_env(:wanderer_notifier, :license_manager_api_url) || @default_license_manager_url
   end
 
   @doc """

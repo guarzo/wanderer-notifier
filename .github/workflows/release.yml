@@ -20,7 +20,7 @@ jobs:
       - name: Set up BEAM
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.18'
+          elixir-version: '1.14.5'
           otp-version: '25.0'
 
       - name: Install dependencies and build release
@@ -30,6 +30,14 @@ jobs:
           mix deps.get --only prod
           mix deps.compile
           mix release
+
+      - name: Debug Dockerfile
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing files in current directory:"
+          ls -la
+          echo "Dockerfile content:"
+          cat Dockerfile
 
       - name: Build Docker image
         run: |

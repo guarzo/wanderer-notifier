@@ -10,81 +10,46 @@ defmodule WandererNotifier.Service.KillProcessor do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Features
+  alias WandererNotifier.ESI.Service, as: ESIService
 
-  def process_zkill_message(message, state) do
-    # Always process basic notifications regardless of license
-    if Features.enabled?(:basic_notifications) do
-      case decode_zkill_message(message) do
-        {:ok, {kill_id, system_id}} ->
-          # Check if this is a tracked system notification (requires valid license)
-          tracked_system = kill_from_tracked_system?(system_id) && 
-                          Features.enabled?(:tracked_systems_notifications)
-          
-          if tracked_system do
-            Logger.info("Kill #{kill_id} is from tracked system #{system_id}.")
-            process_kill(kill_id, state)
-          else
-            # Check if this involves a tracked character (requires valid license)
-            if Features.enabled?(:tracked_characters_notifications) do
-              case ZKillService.get_enriched_killmail(kill_id) do
-                {:ok, enriched_kill} ->
-                  if kill_includes_tracked_character?(enriched_kill) do
-                    Logger.info("Kill #{kill_id} involves a tracked character.")
-                    process_kill(kill_id, state)
-                  else
-                    Logger.info(
-                      "Kill #{kill_id} ignored: not from tracked system or involving tracked character."
-                    )
-
-                    state
-                  end
-
-                {:error, err} ->
-                  Logger.error("Error enriching kill #{kill_id}: #{inspect(err)}")
-                  state
-              end
-            else
-              Logger.info("Character tracking notifications disabled due to license restrictions")
-              state
-            end
-          end
-
-        :error ->
-          Logger.error("Failed to decode zKill message: #{message}")
-          state
-      end
-    else
-      Logger.warning("All notifications disabled due to license restrictions")
-      state
+  def process_zkill_message(message, state) when is_binary(message) do
+    case Jason.decode(message) do
+      {:ok, decoded} -> process_decoded_message(decoded, state)
+      {:error, error} ->
+        Logger.error("Failed to decode zkill message: #{inspect(error)}")
+        state
     end
   end
 
-  def decode_zkill_message(json) do
-    try do
-      case Jason.decode(json, keys: :strings) do
-        {:ok, %{"killmail_id" => kill_id, "solar_system_id" => sys_id}} ->
-          {:ok, {kill_id, sys_id}}
+  def process_zkill_message(message, state) when is_map(message) do
+    process_decoded_message(message, state)
+  end
 
-        {:ok, %{"killmail_id" => kill_id, "zkb" => %{"locationID" => location_id}}} ->
-          # Some messages might have locationID instead of solar_system_id
-          {:ok, {kill_id, location_id}}
+  defp process_decoded_message(decoded_message, state) do
+    kill_id = Map.get(decoded_message, "killmail_id")
+    system_id = Map.get(decoded_message, "solar_system_id")
 
-        {:ok, %{"kill_id" => kill_id, "solar_system_id" => sys_id}} ->
-          # Alternative format sometimes used
-          {:ok, {kill_id, sys_id}}
+    if kill_in_tracked_system?(system_id) do
+      case get_enriched_killmail(kill_id) do
+        {:ok, []} ->
+          # If enrichment fails, try using the raw message
+          if kill_includes_tracked_character?(decoded_message) do
+            notify_kill(decoded_message, kill_id)
+          end
+          state
 
-        {:ok, other} ->
-          Logger.warning("Unrecognized zKill message format: #{inspect(other)}")
-          :error
+        {:ok, enriched_kill} ->
+          if kill_includes_tracked_character?(enriched_kill) do
+            notify_kill(enriched_kill, kill_id)
+          end
+          state
 
-        {:error, err} ->
-          Logger.error("Error decoding zKill JSON: #{inspect(err)}")
-          :error
+        {:error, reason} ->
+          Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
+          state
       end
-    rescue
-      e ->
-        Logger.error("Exception decoding zKill message: #{inspect(e)}")
-        :error
+    else
+      state
     end
   end
 
@@ -115,24 +80,65 @@ defmodule WandererNotifier.Service.KillProcessor do
     end
   end
 
-  defp kill_from_tracked_system?(system_id) do
+  defp kill_in_tracked_system?(system_id) do
     tracked_systems = CacheRepo.get("map:systems") || []
     tracked_ids = Enum.map(tracked_systems, fn s -> to_string(s.system_id) end)
     to_string(system_id) in tracked_ids
   end
 
-  defp kill_includes_tracked_character?(enriched_kill) do
+  defp kill_includes_tracked_character?(kill_data) do
     tracked_characters = Config.tracked_characters()
     tracked_chars = Enum.map(tracked_characters, &to_string/1)
 
-    victim_id = get_in(enriched_kill, ["victim", "character_id"])
+    # Get victim ID safely
+    victim = Map.get(kill_data, "victim", %{})
+    victim_id = Map.get(victim, "character_id")
     victim_id_str = if victim_id, do: to_string(victim_id), else: nil
 
-    attackers = Map.get(enriched_kill, "attackers", [])
-    attacker_ids = Enum.map(attackers, fn a -> to_string(a["character_id"]) end)
+    # Get attacker IDs safely
+    attackers = Map.get(kill_data, "attackers", [])
+    attacker_ids = Enum.map(attackers, fn a -> to_string(Map.get(a, "character_id")) end)
 
+    # Check if any ID matches tracked characters
     Enum.any?([victim_id_str | attacker_ids], fn id ->
       id && id in tracked_chars
     end)
+  end
+
+  defp get_enriched_killmail(kill_id) do
+    case ZKillService.get_enriched_killmail(kill_id) do
+      {:ok, enriched_kill} ->
+        {:ok, enriched_kill}
+      {:error, err} ->
+        {:error, err}
+    end
+  end
+
+  defp notify_kill(kill_data, kill_id) do
+    if Features.enabled?(:tracked_systems_notifications) do
+      Logger.info("Kill #{kill_id} is from tracked system.")
+      process_kill(kill_id, %{})
+    else
+      if Features.enabled?(:tracked_characters_notifications) do
+        case get_enriched_killmail(kill_id) do
+          {:ok, enriched_kill} ->
+            if kill_includes_tracked_character?(enriched_kill) do
+              Logger.info("Kill #{kill_id} involves a tracked character.")
+              process_kill(kill_id, %{})
+            else
+              Logger.info(
+                "Kill #{kill_id} ignored: not from tracked system or involving tracked character."
+              )
+              %{}
+            end
+          {:error, err} ->
+            Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(err)}")
+            %{}
+        end
+      else
+        Logger.info("Character tracking notifications disabled due to license restrictions")
+        %{}
+      end
+    end
   end
 end

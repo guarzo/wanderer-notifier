@@ -1,63 +1,69 @@
-# Stage 1: Build the release
-FROM hexpm/elixir:1.18.0-erlang-26.2.1-ubuntu-23.10-20231211 AS build
+# Build stage
+FROM elixir:1.14.5-alpine AS builder
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    npm \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache build-base git
 
-# Set environment to production
+WORKDIR /app
+
+# Install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Set build ENV
 ENV MIX_ENV=prod
 
-# Set the working directory
-WORKDIR /app
-
-# Copy mix files and fetch dependencies
+# Install mix dependencies
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only prod
+
+# Copy config files first
+COPY config config
+
+# Copy release files and ensure correct permissions
+COPY rel rel
+RUN chmod +x rel/overlays/env.sh
+
+# Compile dependencies with Nostrum config
 RUN mix deps.compile
 
-# Copy the rest of the application code
-COPY . .
+# Copy application code
+COPY lib lib
 
-# Build the release
+# Compile the project
+RUN mix compile --no-deps-check
+
+# Build release
 RUN mix release
 
-# Stage 2: Build the runtime image
-FROM ubuntu:23.10
-
-# Create non-root user for runtime
-RUN useradd -ms /bin/bash appuser
+# Run stage
+FROM alpine:3.18.2 AS app
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 \
-    libncurses6 \
-    libstdc++6 \
-    curl \
-    ca-certificates \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl ncurses-libs libstdc++
 
-# Set working directory
 WORKDIR /app
 
-# Copy the release from the build stage
-COPY --from=build /app/_build/prod/rel/wanderer_notifier ./
+# Copy release from builder
+COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
-# Change ownership of the release directory
-RUN chown -R appuser:appuser /app
+# Create directory for runtime environment file
+RUN mkdir -p /app/etc
 
-# Switch to non-root user
-USER appuser
+# Create a non-root user
+RUN adduser -D wanderer
+RUN chown -R wanderer:wanderer /app
+USER wanderer
 
-# Expose the port (if applicable)
-EXPOSE 8080
+# Set default environment variables (can be overridden)
+ENV PORT=4000 \
+    HOST=0.0.0.0
 
-# Optional: add a healthcheck to monitor container health
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD curl -fs http://localhost:8080/ || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD nc -z localhost $PORT || exit 1
 
-# Start the application
-CMD ["bin/wanderer_notifier", "start"]
+EXPOSE $PORT
+
+# Start application
+CMD ["/app/bin/wanderer_notifier", "start"] 
