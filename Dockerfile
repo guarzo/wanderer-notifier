@@ -26,16 +26,17 @@ COPY . .
 RUN mix release
 
 # Stage 2: Build the runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Create non-root user for runtime
 RUN useradd -ms /bin/bash appuser
 
 # Install runtime dependencies (use runtime libraries instead of development packages when possible)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl1.1 \
+    libssl3 \
     libncurses6 \
     libstdc++6 \
+    curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
