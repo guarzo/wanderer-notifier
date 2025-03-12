@@ -11,6 +11,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -23,6 +25,8 @@ jobs:
 
       - name: Install dependencies and build release
         run: |
+          mix local.hex --force
+          mix local.rebar --force
           mix deps.get --only prod
           mix deps.compile
           mix release
