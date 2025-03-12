@@ -1,21 +1,31 @@
 {
-  "name": "Elixir Development Container",
+  "name": "Elixir Dev Container",
+
+  // Build instructions (which Dockerfile, build context, etc.)
   "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
+    "context": "..",
+    "dockerfile": "Dockerfile"
+    // If you have Docker build args, they'd go under "args" here.
   },
+
+  // "runArgs" must be placed at the top level (same level as "build").
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway"
+  ],
+
   "settings": {
     "terminal.integrated.shell.linux": "/bin/bash"
   },
+
   "extensions": [
     "jakebecker.elixir-ls",
-    "pantajoe.vscode-elixir-credo",
     "JakeBecker.elixir-ls",
+    "pantajoe.vscode-elixir-credo",
     "esbenp.prettier-vscode"
   ],
+
   "postCreateCommand": "mix deps.get",
   "forwardPorts": [4000],
   "remoteUser": "elixir",
   "updateRemoteUserUID": false
 }
-

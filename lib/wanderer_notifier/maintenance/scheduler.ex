@@ -12,13 +12,13 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   @uptime_required_for_backup 3600
 
   @type state :: %{
-    last_status_time: integer() | nil,
-    last_systems_update: integer() | nil,
-    last_characters_update: integer() | nil,
-    last_backup_check: integer() | nil,
-    service_start_time: integer(),
-    processed_kill_ids: map()
-  }
+          last_status_time: integer() | nil,
+          last_systems_update: integer() | nil,
+          last_characters_update: integer() | nil,
+          last_backup_check: integer() | nil,
+          service_start_time: integer(),
+          processed_kill_ids: map()
+        }
 
   @spec do_periodic_checks(state()) :: state()
   def do_periodic_checks(state) do
@@ -106,4 +106,4 @@ defmodule WandererNotifier.Maintenance.Scheduler do
       state
     end
   end
-end 
+end

@@ -1,4 +1,4 @@
-cdefmodule WandererNotifier.Slack.Notifier do
+defmodule WandererNotifier.Slack.Notifier do
   @moduledoc """
   Sends notifications to Slack using an incoming webhook.
   Supports simple text messages and messages with attachments.
@@ -10,14 +10,14 @@ cdefmodule WandererNotifier.Slack.Notifier do
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
 
-  @slack_webhook_url Application.get_env(:wanderer_notifier, :slack_webhook_url)
+  @slack_webhook_url Application.compile_env(:wanderer_notifier, :slack_webhook_url, nil)
 
   @type attachment :: %{
-    title: String.t(),
-    text: String.t(),
-    color: String.t(),
-    ts: integer()
-  }
+          title: String.t(),
+          text: String.t(),
+          color: String.t(),
+          ts: integer()
+        }
 
   @doc """
   Sends a simple text message to Slack.
@@ -41,14 +41,18 @@ cdefmodule WandererNotifier.Slack.Notifier do
       color: color,
       ts: DateTime.utc_now() |> DateTime.to_unix()
     }
+
     payload = %{attachments: [attachment]}
     send_payload(payload)
   end
 
   @spec send_payload(map()) :: :ok | {:error, any()}
   defp send_payload(payload) do
-    if @slack_webhook_url in [nil, ""] do
-      Logger.error("Slack webhook URL not configured. Please set :slack_webhook_url in your configuration.")
+    if is_nil(@slack_webhook_url) || @slack_webhook_url == "" do
+      Logger.error(
+        "Slack webhook URL not configured. Please set :slack_webhook_url in your configuration."
+      )
+
       {:error, :no_webhook_url}
     else
       headers = [{"Content-Type", "application/json"}]

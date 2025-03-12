@@ -4,7 +4,8 @@ defmodule WandererNotifier.Http.ResponseHandler do
   """
   require Logger
 
-  @spec handle_response({:ok, any()} | {:error, any()}, String.t()) :: {:ok, map()} | {:error, any()}
+  @spec handle_response({:ok, any()} | {:error, any()}, String.t()) ::
+          {:ok, map()} | {:error, any()}
   def handle_response({:ok, %{status_code: 200, body: body}}, curl_example) do
     case Jason.decode(body) do
       {:ok, data} ->
@@ -25,4 +26,4 @@ defmodule WandererNotifier.Http.ResponseHandler do
     Logger.error("HTTP error: #{inspect(reason)}. cURL: #{curl_example}")
     {:error, reason}
   end
-end 
+end

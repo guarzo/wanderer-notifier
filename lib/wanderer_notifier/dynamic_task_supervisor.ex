@@ -19,7 +19,7 @@ defmodule WandererNotifier.DynamicTaskSupervisor do
   @doc """
   Starts a new task as a child process.
   """
-  @spec start_task((() -> any())) :: DynamicSupervisor.on_start_child()
+  @spec start_task((-> any())) :: DynamicSupervisor.on_start_child()
   def start_task(fun) when is_function(fun, 0) do
     spec = %{
       id: make_ref(),
@@ -29,4 +29,4 @@ defmodule WandererNotifier.DynamicTaskSupervisor do
 
     DynamicSupervisor.start_child(__MODULE__, spec)
   end
-end 
+end

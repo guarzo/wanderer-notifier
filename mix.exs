@@ -26,8 +26,11 @@ defmodule WandererNotifier.MixProject do
       {:nostrum, "~> 0.5"},
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.3"},
+      {:plug, "~> 1.14"},
+      {:plug_cowboy, "~> 2.6"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:exsync, "~> 0.2", only: :dev}
+      {:exsync, "~> 0.2", only: :dev},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 end

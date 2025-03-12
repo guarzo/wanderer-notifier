@@ -1,7 +1,7 @@
 defmodule WandererNotifier.API do
   @moduledoc """
   A context module for interacting with external APIs used by WandererNotifier.
-  
+
   This module provides functions to:
     - Retrieve an enriched killmail by merging data from zKill and ESI.
     - Retrieve character, corporation, alliance, and ship type information from ESI.
@@ -116,4 +116,4 @@ defmodule WandererNotifier.API do
   def get_solar_system_name(system_id) do
     ESIService.get_solar_system_name(system_id)
   end
-end 
+end

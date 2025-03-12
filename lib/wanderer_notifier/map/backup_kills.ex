@@ -5,11 +5,12 @@ defmodule WandererNotifier.Map.BackupKills do
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Config
 
   def check_backup_kills do
     case build_backup_url() do
       {:ok, backup_url} ->
-        map_token = Application.get_env(:wanderer_notifier, :map_token)
+        map_token = Config.map_token()
         headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
 
         case HttpClient.request("GET", backup_url, headers) do
@@ -101,10 +102,6 @@ defmodule WandererNotifier.Map.BackupKills do
 
           {:error, err} ->
             Logger.error("Error enriching backup kill #{kill_id}: #{inspect(err)}")
-
-            WandererNotifier.Discord.Notifier.send_message(
-              "Error processing backup kill #{kill_id}: #{inspect(err)}"
-            )
         end
 
         # Mark in CacheRepo so we don't send duplicates
@@ -116,8 +113,8 @@ defmodule WandererNotifier.Map.BackupKills do
   end
 
   defp validate_map_env do
-    map_url = Application.get_env(:wanderer_notifier, :map_url)
-    map_name = Application.get_env(:wanderer_notifier, :map_name)
+    map_url = Config.map_url()
+    map_name = Config.map_name()
 
     if map_url in [nil, ""] or map_name in [nil, ""] do
       {:error, "map_url or map_name not configured"}

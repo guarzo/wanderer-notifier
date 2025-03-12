@@ -1,28 +1,38 @@
-# Use the latest stable Elixir (Debian-based image)
-FROM elixir:1.18-slim
+# Use a Debian-based Elixir image (NOT the alpine variant).
+FROM elixir:1.18.2-slim
 
-# Install OS dependencies for building Elixir projects and Phoenix hot reload
+# Install OS packages and Node.js (via nodesource),
+# plus inotify-tools and yarn
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential inotify-tools git ca-certificates \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+    sudo \
+    curl \
+    make \
+    git \
+    bash \
+    build-essential \
+    ca-certificates \
+    vim \
+    # Optionally add any other tools you need, e.g. vim, wget...
+    && curl -sL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs inotify-tools \
+    && npm install -g yarn \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user (UID/GID 1000) and set up home directory
-RUN groupadd --gid 1000 elixir && \
-    useradd --uid 1000 --gid 1000 -m -s /bin/bash elixir
+# Create a non-root user named "elixir"
+RUN useradd -ms /bin/bash elixir
 
-# Set working directory and adjust ownership
-WORKDIR /app
-RUN chown -R elixir:elixir /app
+# Give the "elixir" user passwordless sudo
+RUN usermod -aG sudo elixir && \
+    echo "elixir ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Switch to the non-root user
+# Set a working directory (your choice)
+WORKDIR /workspace
+
+# Switch to the non-root user by default
 USER elixir
 
-# Install Hex and Rebar for dependency management
-RUN mix local.hex --force && mix local.rebar --force
+# (Optional) If you want to install Hex/Rebar global for the container, uncomment:
+# RUN mix local.hex --force && mix local.rebar --force
 
-# Expose Phoenix's default port
-EXPOSE 4000
-
-# Default command: IEx shell with Mix
-CMD ["iex", "-S", "mix"]
-
+# Leaving CMD/ENTRYPOINT unset here so you can specify the run command externally.

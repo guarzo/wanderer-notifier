@@ -3,59 +3,59 @@
 
 # Combined License & Bot Registration Integration Tasks
 
-- [ ] **Update Environment & Configuration**
-  - [ ] Add the `LICENSE_KEY` variable to `.env.example` and update documentation.
-  - [ ] (Optional) Add `BOT_REGISTRATION_TOKEN` if required for LM registration.
-  - [ ] Ensure that `LICENSE_MANAGER_API_URL` and `LICENSE_MANAGER_AUTH_KEY` are defined in your environment.
-  - [ ] Update `config/runtime.exs` to load these new environment variables along with existing ones.
+- [x] **Update Environment & Configuration**
+  - [x] Add the `LICENSE_KEY` variable to `.env.example` and update documentation.
+  - [x] (Optional) Add `BOT_REGISTRATION_TOKEN` if required for LM registration.
+  - [x] Ensure that `LICENSE_MANAGER_API_URL` and `LICENSE_MANAGER_AUTH_KEY` are defined in your environment.
+  - [x] Update `config/runtime.exs` to load these new environment variables along with existing ones.
 
-- [ ] **Review the License Manager Code Base**
-  - [ ] Examine the `Wanderer.LicenseManager.Client` module to understand its functions:
+- [x] **Review the License Manager Code Base**
+  - [x] Examine the `Wanderer.LicenseManager.Client` module to understand its functions:
     - `create_license/1`
     - `update_license/2`
     - `validate_license/1`
-  - [ ] Review how error handling and caching are implemented to manage API responses.
+  - [x] Review how error handling and caching are implemented to manage API responses.
 
-- [ ] **Integrate License Validation into Bot Startup**
-  - [ ] In `WandererNotifier.Application.start/2`, retrieve `LICENSE_KEY` from the environment.
-  - [ ] Call `Wanderer.LicenseManager.Client.validate_license/1` using the retrieved key.
-  - [ ] Process the validation result:
+- [x] **Integrate License Validation into Bot Startup**
+  - [x] In `WandererNotifier.Application.start/2`, retrieve `LICENSE_KEY` from the environment.
+  - [x] Call `Wanderer.LicenseManager.Client.validate_license/1` using the retrieved key.
+  - [x] Process the validation result:
     - If valid, extract any extra configuration (e.g., premium feature flags) and store it in the application state.
     - If invalid, log a clear error and determine fallback behavior.
 
-- [ ] **(Optional) Create a Dedicated License Module**
-  - [ ] If additional abstraction is desired, create a module (e.g., `WandererNotifier.License`) that wraps the License Manager API calls.
-  - [ ] Implement a `validate/1` function that uses `Wanderer.LicenseManager.Client.validate_license/1` internally.
+- [x] **(Optional) Create a Dedicated License Module**
+  - [x] If additional abstraction is desired, create a module (e.g., `WandererNotifier.License`) that wraps the License Manager API calls.
+  - [x] Implement a `validate/1` function that uses `Wanderer.LicenseManager.Client.validate_license/1` internally.
 
-- [ ] **Incorporate Bot Registration**
-  - [ ] Determine if a separate bot registration process is needed (check if license manager code already supports bot associations).
-  - [ ] Create or update a module (e.g., `WandererNotifier.BotRegistration`) that:
+- [x] **Incorporate Bot Registration**
+  - [x] Determine if a separate bot registration process is needed (check if license manager code already supports bot associations).
+  - [x] Create or update a module (e.g., `WandererNotifier.BotRegistration`) that:
     - Uses the License Manager API functions to register the bot with LM.
     - Differentiates bots by type so that multiple corps can use the same bot token while having distinct license keys.
-  - [ ] Ensure that the registration logic is executed as a one-off startup step (or manually triggered) and log the outcome.
+  - [x] Ensure that the registration logic is executed as a one-off startup step (or manually triggered) and log the outcome.
 
-- [ ] **Condition Feature Activation Based on License Status**
-  - [ ] Store the license validation result (activation flag or extra configuration) in the application state or configuration.
-  - [ ] Use this flag to conditionally enable premium features within the bot.
-  - [ ] Add logging for both valid and invalid license scenarios.
+- [x] **Condition Feature Activation Based on License Status**
+  - [x] Store the license validation result (activation flag or extra configuration) in the application state or configuration.
+  - [x] Use this flag to conditionally enable premium features within the bot.
+  - [x] Add logging for both valid and invalid license scenarios.
 
-- [ ] **Count by Bot Type Instead of Running Instances**
-  - [ ] Add configuration or logic to identify the "bot type" (using a new configuration variable or derived value).
-  - [ ] Modify the registration logic to count and register by bot type so that multiple instances sharing the same bot token can operate with different license keys.
+- [x] **Count by Bot Type Instead of Running Instances**
+  - [x] Add configuration or logic to identify the "bot type" (using a new configuration variable or derived value).
+  - [x] Modify the registration logic to count and register by bot type so that multiple instances sharing the same bot token can operate with different license keys.
 
-- [ ] **Update Documentation**
-  - [ ] Update the README, project overview, and integration guides to explain the new license validation and bot registration process.
-  - [ ] Document that updating the license key requires modifying the environment variables and restarting the bot.
-  - [ ] Add clear comments in the new modules and startup routines to aid future maintenance.
+- [x] **Update Documentation**
+  - [x] Update the README, project overview, and integration guides to explain the new license validation and bot registration process.
+  - [x] Document that updating the license key requires modifying the environment variables and restarting the bot.
+  - [x] Add clear comments in the new modules and startup routines to aid future maintenance.
 
-- [ ] **Testing & Error Handling**
-  - [ ] Write unit tests for license validation functions (e.g., `Wanderer.LicenseManager.Client.validate_license/1`) and any new registration logic.
-  - [ ] Test both successful validation and failure cases (e.g., invalid or expired licenses).
-  - [ ] Ensure robust error handling and logging for both license validation and bot registration failures.
+- [x] **Testing & Error Handling**
+  - [x] Write unit tests for license validation functions (e.g., `Wanderer.LicenseManager.Client.validate_license/1`) and any new registration logic.
+  - [x] Test both successful validation and failure cases (e.g., invalid or expired licenses).
+  - [x] Ensure robust error handling and logging for both license validation and bot registration failures.
 
-- [ ] **Deployment and Restart Strategy**
-  - [ ] Document the process for updating the license key and restarting the bot.
-  - [ ] (Optional) Consider adding a periodic check or an admin command to re-validate the license during runtime.
+- [x] **Deployment and Restart Strategy**
+  - [x] Document the process for updating the license key and restarting the bot.
+  - [x] (Optional) Consider adding a periodic check or an admin command to re-validate the license during runtime.
 
 
 ## Structure Timer Notifier
@@ -155,7 +155,7 @@
 ## License Manager Integration
 
 ### 1. Environment & Configuration Setup
-- [ ] Create configuration module
+- [x] Create configuration module
   ```elixir
   defmodule WandererNotifier.Config do
     @moduledoc """
@@ -172,7 +172,7 @@
   end
   ```
 
-- [ ] Update `config/runtime.exs`:
+- [x] Update `config/runtime.exs`:
   ```elixir
   config :wanderer_notifier,
     license_key: System.get_env("LICENSE_KEY"),
@@ -181,7 +181,7 @@
     bot_registration_token: System.get_env("BOT_REGISTRATION_TOKEN")
   ```
 
-- [ ] Create `.env.example`:
+- [x] Create `.env.example`:
   ```bash
   LICENSE_KEY=your_license_key_here
   LICENSE_MANAGER_API_URL=https://license.example.com
@@ -190,7 +190,7 @@
   ```
 
 ### 2. License Manager Client Implementation
-- [ ] Create `WandererNotifier.License` module:
+- [x] Create `WandererNotifier.License` module:
   ```elixir
   defmodule WandererNotifier.License do
     @moduledoc """
