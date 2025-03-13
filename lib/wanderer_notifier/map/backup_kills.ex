@@ -6,6 +6,7 @@ defmodule WandererNotifier.Map.BackupKills do
   alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
+  alias WandererNotifier.Helpers.CacheHelpers
 
   def check_backup_kills do
     case build_backup_url() do
@@ -38,7 +39,13 @@ defmodule WandererNotifier.Map.BackupKills do
   defp build_backup_url do
     case validate_map_env() do
       {:ok, map_url, map_name} ->
-        url = "#{map_url}/api/map/systems-kills?slug=#{map_name}&hours_ago=24"
+        # Extract the base URL (without any path segments)
+        uri = URI.parse(map_url)
+        base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+
+        # Construct the backup URL with the correct path
+        url = "#{base_url}/api/map/kills?slug=#{map_name}&hours_ago=24"
+        Logger.debug("[build_backup_url] Built backup URL: #{url}")
         {:ok, url}
 
       {:error, _} = err ->
@@ -62,7 +69,7 @@ defmodule WandererNotifier.Map.BackupKills do
   end
 
   defp process_backup_kills(%{"data" => data}) when is_list(data) do
-    tracked_systems = CacheRepo.get("map:systems") || []
+    tracked_systems = get_tracked_systems()
     tracked_ids = Enum.map(tracked_systems, fn s -> to_string(s.system_id) end)
 
     # Go through each system in the feed
@@ -116,10 +123,20 @@ defmodule WandererNotifier.Map.BackupKills do
     map_url = Config.map_url()
     map_name = Config.map_name()
 
+    Logger.debug("[validate_map_env] Validating map configuration:")
+    Logger.debug("[validate_map_env] - map_url: #{inspect(map_url)}")
+    Logger.debug("[validate_map_env] - map_name: #{inspect(map_name)}")
+
     if map_url in [nil, ""] or map_name in [nil, ""] do
+      Logger.error("[validate_map_env] Map URL or map name is not configured")
       {:error, "map_url or map_name not configured"}
     else
+      Logger.debug("[validate_map_env] Using map URL: #{map_url} and map name: #{map_name}")
       {:ok, map_url, map_name}
     end
+  end
+
+  defp get_tracked_systems do
+    CacheHelpers.get_tracked_systems()
   end
 end

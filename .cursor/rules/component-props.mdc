@@ -1,0 +1,17 @@
+---
+description: "Guidelines for defining and using props in React components. Ensures explicit prop interfaces, type safety, and clarity."
+globs:
+  - "**/*.tsx"
+alwaysApply: false
+---
+# Component Props Guidelines
+
+- **Explicit Interfaces:**  
+  - Always define explicit prop interfaces using TypeScript.
+  - Avoid using `any`—enforce strict types.
+- **Naming & Defaults:**  
+  - Use descriptive names and provide default values where applicable.
+- **Consistency:**  
+  - Maintain consistent prop usage across components.
+- **Reference:**  
+  - Detailed examples are available in @notes/frontend_guidelines.md.

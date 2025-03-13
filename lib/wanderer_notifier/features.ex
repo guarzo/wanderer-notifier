@@ -12,17 +12,18 @@ defmodule WandererNotifier.Features do
     core: [
       :basic_notifications,
       :web_dashboard_basic,
-      :license_status_display
-    ],
-    
-    # Standard features - require valid license
-    standard: [
+      :license_status_display,
+      # Added these features to core to enable them even without a license
       :tracked_systems_notifications,
       :tracked_characters_notifications,
-      :backup_kills_processing,
+      :backup_kills_processing
+    ],
+
+    # Standard features - require valid license
+    standard: [
       :web_dashboard_full
     ],
-    
+
     # Premium features - require valid license and premium tier
     premium: [
       :advanced_statistics,
@@ -34,8 +35,8 @@ defmodule WandererNotifier.Features do
 
   # Maximum limits for free/invalid license
   @free_limits %{
-    tracked_systems: 5,
-    tracked_characters: 10,
+    tracked_systems: nil,  # Changed from 10 to nil (unlimited)
+    tracked_characters: nil,  # Changed from 20 to nil (unlimited)
     notification_history: 24 # hours
   }
 
@@ -50,33 +51,43 @@ defmodule WandererNotifier.Features do
   Checks if a specific feature is enabled based on the current license status.
   """
   def enabled?(feature) do
-    cond do
-      # Core features are always available
-      feature in @features.core ->
-        true
-        
-      # If license is invalid, only core features are available
-      not License.status().valid ->
-        Logger.debug("Feature #{feature} disabled: invalid license")
+    # Special case for character tracking - check if it's explicitly enabled in config
+    if feature == :tracked_characters_notifications do
+      character_tracking_config_enabled? = WandererNotifier.Config.character_tracking_enabled?()
+
+      if not character_tracking_config_enabled? do
+        Logger.debug("[Features] Character tracking is explicitly disabled in configuration")
         false
-        
-      # If bot is not assigned, only core features are available
-      not License.status().bot_assigned ->
-        Logger.debug("Feature #{feature} disabled: bot not assigned")
-        false
-        
-      # Standard features require valid license
-      feature in @features.standard ->
-        true
-        
-      # Premium features require premium tier
-      feature in @features.premium ->
-        License.premium?()
-        
-      # Unknown feature
-      true ->
-        Logger.warning("Unknown feature check: #{feature}")
-        false
+      else
+        # If enabled in config, continue with normal license check
+        Logger.debug("[Features] Character tracking is enabled (default), checking license")
+        check_license_for_feature(feature)
+      end
+    else
+      check_license_for_feature(feature)
+    end
+  end
+
+  # Helper function to check if a feature is enabled based on license status
+  defp check_license_for_feature(feature) do
+    # Check if the feature is in the core features list (always enabled)
+    if feature in @features.core do
+      true
+    else
+      # Check license status
+      case License.status() do
+        %{valid: true, premium: true} ->
+          # Premium license - all features enabled
+          true
+
+        %{valid: true} ->
+          # Standard license - standard features enabled
+          feature in @features.standard
+
+        _ ->
+          # Invalid or no license - only core features
+          false
+      end
     end
   end
 
@@ -88,11 +99,11 @@ defmodule WandererNotifier.Features do
       # If license is invalid or bot not assigned, use free limits
       not License.status().valid or not License.status().bot_assigned ->
         Map.get(@free_limits, resource)
-        
+
       # If premium, unlimited (nil means no limit)
       License.premium?() ->
         nil
-        
+
       # Otherwise use standard limits
       true ->
         Map.get(@standard_limits, resource)
@@ -105,7 +116,7 @@ defmodule WandererNotifier.Features do
   """
   def limit_reached?(resource, current_count) do
     limit = get_limit(resource)
-    
+
     # If limit is nil, there is no limit
     if is_nil(limit) do
       false
@@ -122,11 +133,11 @@ defmodule WandererNotifier.Features do
       # If license is invalid or bot not assigned, use free limits
       not License.status().valid or not License.status().bot_assigned ->
         @free_limits
-        
+
       # If premium, unlimited
       License.premium?() ->
         Map.new(@free_limits, fn {k, _} -> {k, nil} end)
-        
+
       # Otherwise use standard limits
       true ->
         @standard_limits

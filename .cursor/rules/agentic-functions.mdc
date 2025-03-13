@@ -1,0 +1,26 @@
+---
+description: "Guidelines to control overzealous agentic functions. Enforces pacing, scope boundaries, and clear communication checkpoints for all changes."
+alwaysApply: false
+---
+# Agentic Functions & Scope Control
+
+## Pacing and Scope Control
+- **Explicit Checkpoints:**  
+  - Pause after each logical unit of work and wait for explicit approval before continuing.
+  - Do not implement more than one task in a single session without confirmation.
+- **Minimalist Implementation:**  
+  - Always implement only what is necessary to meet the task requirements.
+  - Choose a narrow interpretation of the task when in doubt.
+- **Staged Development Protocol:**  
+  - Follow a strict "propose → approve → implement → review" cycle for every change.
+  - Provide a clear summary of completed components and outline remaining work.
+
+## Scope Boundary Enforcement
+- **File Changes:**  
+  - If a task requires changes in more than three files, pause and request explicit permission.
+  - Avoid “while I'm at it” improvements without prior discussion.
+- **Communication:**  
+  - After every change, summarize the work done and what is planned next.
+  - Clearly mark each implemented feature as [COMPLETE] and wait for confirmation.
+- **Complexity Warning:**  
+  - Flag changes affecting more than three files as [COMPLEX CHANGE] and require additional review.

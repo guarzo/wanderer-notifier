@@ -14,7 +14,7 @@ services:
       
       # License Configuration
       - LICENSE_KEY=${LICENSE_KEY}
-      - BOT_ID=${BOT_ID}
+      # BOT_API_TOKEN is not needed for production (uses a constant value)
       - LICENSE_MANAGER_API_URL=${LICENSE_MANAGER_API_URL}
       
       # Application Configuration

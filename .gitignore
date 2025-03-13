@@ -27,3 +27,6 @@ config/*.secret.exs
 
 # Elixir language server artifacts
 .elixir_ls/
+
+# Cache directory
+/tmp/

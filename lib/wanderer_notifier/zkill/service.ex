@@ -26,4 +26,21 @@ defmodule WandererNotifier.ZKill.Service do
         error
     end
   end
+
+  @doc """
+  Retrieves recent kills from zKillboard.
+
+  ## Parameters
+
+  - `limit`: The maximum number of kills to retrieve (default: 10)
+
+  ## Returns
+
+  - `{:ok, kills}`: A list of recent kills
+  - `{:error, reason}`: If an error occurred
+  """
+  @spec get_recent_kills(integer()) :: {:ok, list(map())} | {:error, any()}
+  def get_recent_kills(limit \\ 10) do
+    ZKillClient.get_recent_kills(limit)
+  end
 end

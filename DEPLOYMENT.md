@@ -20,7 +20,7 @@ MAP_TOKEN=your_map_token
 
 # License Configuration
 LICENSE_KEY=your_license_key
-BOT_ID=your_bot_id
+# BOT_API_TOKEN is not needed for production deployments (uses a constant value)
 LICENSE_MANAGER_API_URL=https://license.manager.url  # Optional, defaults to production URL
 
 # Application Configuration (optional)

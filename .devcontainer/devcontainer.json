@@ -25,7 +25,7 @@
   ],
 
   "postCreateCommand": "mix deps.get",
-  "forwardPorts": [4000],
+  "forwardPorts": [4000, 8080, 3000, 8000, 8002],
   "remoteUser": "elixir",
   "updateRemoteUserUID": false
 }

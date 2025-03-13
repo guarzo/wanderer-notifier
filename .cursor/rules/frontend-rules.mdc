@@ -1,0 +1,49 @@
+---
+description: "Frontend (React/TypeScript) guidelines. Applies to files with extensions .js, .jsx, .ts, .tsx, and associated styling files. Includes component design, performance optimizations, and style-specific rules."
+globs:
+  - "**/*.{js,jsx,ts,tsx,css,scss}"
+alwaysApply: false
+---
+# Frontend (React/TypeScript) Guidelines
+
+## Code Style & Structure
+- Write clean, modular JavaScript/TypeScript following a consistent style.
+- Use functional and declarative patterns; avoid class-based components.
+- Prefer composition and reusable functions over duplication.
+- **Avoid using `setTimeout`** – rely on React’s built-in scheduling or custom hooks for delayed actions.
+
+## Component Conventions
+- Use functional components with Hooks. Define components as:
+  \`\`\`tsx
+  export const MyComponent = () => { ... }
+  \`\`\`
+- Use PascalCase for component names and camelCase for props and variables.
+- Keep components under 250 lines; extract complex logic into custom hooks or helper files.
+- **Avoid passing refs into props** except when used explicitly for imperativeHandlers (e.g. via React.forwardRef/useImperativeHandle).
+- Prefer callbacks with no dependencies by managing mutable values using refs.
+
+## Styling
+- **SCSS Modules:** Always write styles using SCSS files (*.module.scss) for component-specific styling.
+- **Tailwind Colors:** Use colors exclusively from the Tailwind palette; avoid hardcoding custom color values.
+- **Global Styles:** 
+  - Do not use global styles except those provided by Tailwind.
+  - If global styles are necessary, **wrap them inside a specific class or namespace** (e.g. `.global-wrapper`) to prevent unintended style leakage.
+- **fixes.scss Usage:**  
+  - Use `fixes.scss` **only** to override SCSS rules of PrimeReact components.
+  - Never import `fixes.scss` into your components or include global styles in it (except Tailwind utilities).
+
+## Performance Optimization
+- Use `React.memo`, `useCallback`, and `useMemo` to optimize rendering.
+- For large lists, consider virtualization.
+- Prefer dependency-free callbacks by using refs for mutable data.
+
+## Linting & Formatting
+- Enforce consistent code formatting with ESLint and Prettier.
+- Always apply autofix before commits.
+
+## Structured Change Management
+- Follow the MECE process: if a change affects more than **three files**, discuss the update before proceeding.
+- Refer to the global guidelines for details.
+
+## Reference
+- See @notes/frontend_guidelines.md for extended details and examples.

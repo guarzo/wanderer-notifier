@@ -41,6 +41,39 @@ The application provides several types of Discord notifications:
    - Connection status monitoring
    - Error reporting and diagnostic information
 
+## Notification Types and Triggers
+
+The application sends several types of notifications to Discord:
+
+1. **Kill Notifications**
+   - **Trigger**: When a ship is destroyed in a tracked system or involves a tracked character
+   - **Frequency**: Real-time as events occur, plus one forced notification every 5 minutes regardless of filters
+   - **Content**: Detailed information about the kill, including victim, attacker, ship types, and ISK value
+
+2. **System Notifications**
+   - **Trigger**: When a new system is added to the tracking list via the map API
+   - **Frequency**: Real-time when systems are added
+   - **Content**: System name, ID, and link to zKillboard
+
+3. **Character Notifications**
+   - **Trigger**: When a new character is added to the tracking list
+   - **Frequency**: Real-time when characters are added
+   - **Content**: Character name, corporation, and portrait
+
+4. **Service Status Notifications**
+   - **Trigger**: Service startup, connection status changes, or errors
+   - **Frequency**: As events occur
+   - **Content**: Status information and error details
+
+### Testing Notifications
+
+To test different notification types:
+
+1. **Kill Notifications**: These will occur automatically every 5 minutes regardless of filters
+2. **System Notifications**: Add a new system to your map via the map API
+3. **Character Notifications**: Add a new character to your tracking list
+4. **Service Status**: Restart the service or trigger a connection error
+
 ## Requirements
 
 - Elixir (>= 1.12 recommended)
@@ -145,11 +178,16 @@ All configuration is managed through environment variables in the `.env` file. A
    - `MAP_NAME`: Map identifier for system tracking
    - `MAP_TOKEN`: Authentication token for map API
 
-3. **External Services**
+3. **License Configuration**
+   - `LICENSE_KEY`: Your license key for accessing premium features
+   - `BOT_API_TOKEN`: API token for your bot to validate with the license server (only needed for development; in production, a constant value is used)
+   - `LICENSE_MANAGER_API_URL`: URL of the license manager API (optional, defaults to production URL)
+
+4. **External Services**
    - `ZKILL_BASE_URL`: zKillboard API endpoint
    - `ESI_BASE_URL`: EVE Swagger Interface endpoint
 
-4. **Optional Settings**
+5. **Optional Settings**
    - Character tracking lists
    - Cache durations
    - Maintenance intervals

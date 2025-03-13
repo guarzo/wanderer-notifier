@@ -122,11 +122,17 @@ Wanderer Notifier is an Elixir-based monitoring system for EVE Online kill event
    - Connection management
    - Cache-based deduplication
 
+5. **License Management**
+   - Feature access control based on license status
+   - Automatic license validation
+   - Premium features for licensed users
+
 ### Configuration
 
 The system is configured through environment variables:
 - Discord integration settings
 - Map API configuration
+- License configuration (license key and bot API token)
 - ESI and zKillboard endpoints
 - Character tracking lists
 

@@ -5,7 +5,7 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Helpers.CacheHelpers
 
   # Use a runtime environment check instead of compile-time
   defp env do
@@ -124,42 +124,57 @@ defmodule WandererNotifier.Discord.Notifier do
       total_value = get_total_value(normalized)
       formatted_value = format_isk_value(total_value)
 
-      # Build thumbnail from victim's ship type.
-      victim = Map.get(normalized, "victim", %{})
-      victim_ship_type = Map.get(victim, "ship_type_id")
+      # Check if license is valid
+      license_valid = WandererNotifier.License.status().valid
 
-      thumbnail_url =
-        if victim_ship_type do
-          "https://image.eveonline.com/Render/#{victim_ship_type}_128.png"
-        else
-          nil
-        end
+      if license_valid do
+        # Send rich embed for valid license
+        # Build thumbnail from victim's ship type.
+        victim = Map.get(normalized, "victim", %{})
+        victim_ship_type = Map.get(victim, "ship_type_id")
 
-      # Determine author icon from the top attacker's corporation (if available).
-      attackers = Map.get(normalized, "attackers", [])
-      top_attacker = get_top_attacker(attackers)
-      corp_id = Map.get(top_attacker, "corporation_id")
+        thumbnail_url =
+          if victim_ship_type do
+            "https://image.eveonline.com/Render/#{victim_ship_type}_128.png"
+          else
+            nil
+          end
 
-      author_icon_url =
-        if corp_id, do: "https://image.eveonline.com/Corporation/#{corp_id}_64.png", else: nil
+        # Determine author icon from the top attacker's corporation (if available).
+        attackers = Map.get(normalized, "attackers", [])
+        top_attacker = get_top_attacker(attackers)
+        corp_id = Map.get(top_attacker, "corporation_id")
 
-      author_text = "Kill"
-      color = 0x00FF00
+        author_icon_url =
+          if corp_id, do: "https://image.eveonline.com/Corporation/#{corp_id}_64.png", else: nil
 
-      embed =
-        %{
-          "title" => title,
-          "url" => kill_url,
-          "description" => description,
-          "color" => color,
-          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-          "footer" => %{"text" => "Value: #{formatted_value}"}
-        }
-        |> maybe_put("thumbnail", if(thumbnail_url, do: %{"url" => thumbnail_url}))
-        |> put_author(author_text, kill_url, author_icon_url)
+        author_text = "Kill"
+        color = 0x00FF00
 
-      payload = %{"embeds" => [embed]}
-      send_payload(payload)
+        embed =
+          %{
+            "title" => title,
+            "url" => kill_url,
+            "description" => description,
+            "color" => color,
+            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+            "footer" => %{"text" => "Value: #{formatted_value}"}
+          }
+          |> maybe_put("thumbnail", if(thumbnail_url, do: %{"url" => thumbnail_url}))
+          |> put_author(author_text, kill_url, author_icon_url)
+
+        payload = %{"embeds" => [embed]}
+        send_payload(payload)
+      else
+        # Send plain text for invalid license
+        # Extract basic information for plain text
+        victim = Map.get(normalized, "victim", %{})
+        victim_data = extract_entity(victim)
+
+        # Create a simple plain text message
+        message = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship} (#{formatted_value}) - #{kill_url}"
+        send_message(message)
+      end
     end
   end
 
@@ -199,26 +214,36 @@ defmodule WandererNotifier.Discord.Notifier do
             _ -> "Corp #{corp_id}"
           end
 
-      title = "New Tracked Character"
+      # Check if license is valid
+      license_valid = WandererNotifier.License.status().valid
 
-      description =
-        "New tracked character **#{name}** (Corp: #{corp}) has been retrieved from the API."
+      if license_valid do
+        # Send rich embed for valid license
+        title = "New Tracked Character"
 
-      url = "https://zkillboard.com/character/#{character_id}/"
-      color = 0x00FF00
+        description =
+          "New tracked character **#{name}** (Corp: #{corp}) has been retrieved from the API."
 
-      embed =
-        %{
-          "title" => title,
-          "url" => url,
-          "description" => description,
-          "color" => color,
-          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
-        }
-        |> maybe_put("thumbnail", %{"url" => portrait_url})
+        url = "https://zkillboard.com/character/#{character_id}/"
+        color = 0x00FF00
 
-      payload = %{"embeds" => [embed]}
-      send_payload(payload)
+        embed =
+          %{
+            "title" => title,
+            "url" => url,
+            "description" => description,
+            "color" => color,
+            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+          }
+          |> maybe_put("thumbnail", %{"url" => portrait_url})
+
+        payload = %{"embeds" => [embed]}
+        send_payload(payload)
+      else
+        # Send plain text for invalid license
+        message = "New tracked character: #{name} (Corp: #{corp}) - https://zkillboard.com/character/#{character_id}/"
+        send_message(message)
+      end
     end
   end
 
@@ -248,13 +273,17 @@ defmodule WandererNotifier.Discord.Notifier do
           Map.get(system, :alias) ||
           "Solar System #{system_id}"
 
-      title = "New System Found"
-      description = "New system **#{system_name}** (ID: #{system_id}) has been added."
-      url = "https://zkillboard.com/solar-system/#{system_id}/"
-      color = 0xFFAA00
+      # Check if license is valid
+      license_valid = WandererNotifier.License.status().valid
 
-      embed =
-        %{
+      if license_valid do
+        # Send rich embed for valid license
+        title = "New System Tracked"
+        description = "New system **#{system_name}** has been added to tracking."
+        url = "https://zkillboard.com/system/#{system_id}/"
+        color = 0x00FF00
+
+        embed = %{
           "title" => title,
           "url" => url,
           "description" => description,
@@ -262,8 +291,13 @@ defmodule WandererNotifier.Discord.Notifier do
           "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
         }
 
-      payload = %{"embeds" => [embed]}
-      send_payload(payload)
+        payload = %{"embeds" => [embed]}
+        send_payload(payload)
+      else
+        # Send plain text for invalid license
+        message = "New system tracked: #{system_name} - https://zkillboard.com/system/#{system_id}/"
+        send_message(message)
+      end
     end
   end
 
@@ -271,13 +305,18 @@ defmodule WandererNotifier.Discord.Notifier do
     url = build_url()
     json_payload = Jason.encode!(payload)
 
+    Logger.info("Sending Discord notification to URL: #{url}")
+    Logger.debug("Discord notification payload: #{inspect(payload, pretty: true)}")
+    Logger.debug("Discord notification headers: #{inspect(headers(), pretty: true)}")
+
     case HttpClient.request("POST", url, headers(), json_payload) do
       {:ok, %HTTPoison.Response{status_code: status}} when status in 200..299 ->
-        if @verbose_logging, do: Logger.debug("Discord message sent successfully")
+        Logger.info("Discord message sent successfully with status code: #{status}")
         :ok
 
       {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
-        Logger.error("Discord API request failed with status #{status}: #{body}")
+        Logger.error("Discord API request failed with status #{status}")
+        Logger.error("Discord API error response: #{inspect(body)}")
         {:error, body}
 
       {:error, err} ->
@@ -300,6 +339,18 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   # Recursively normalize keys in a map to strings.
+  defp normalize_keys(%WandererNotifier.Killmail{} = killmail) do
+    # Convert the Killmail struct to a map and then normalize it
+    killmail_map = %{
+      "killmail_id" => killmail.killmail_id,
+      "zkb" => normalize_keys(killmail.zkb),
+      "esi_data" => normalize_keys(killmail.esi_data)
+    }
+
+    # Merge ESI data into the top level for easier access
+    Map.merge(killmail_map, normalize_keys(killmail.esi_data || %{}))
+  end
+
   defp normalize_keys(value) when is_map(value) do
     for {k, v} <- value, into: %{} do
       key = if is_atom(k), do: Atom.to_string(k), else: k
@@ -357,42 +408,54 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp extract_entity(entity) when is_map(entity) do
-    character_id = Map.get(entity, "character_id", "Unknown")
+    character_id = Map.get(entity, "character_id")
 
     name =
       case Map.get(entity, "character_name") do
         nil ->
-          case WandererNotifier.ESI.Service.get_character_info(character_id) do
-            {:ok, %{"name" => character_name}} -> character_name
-            _ -> "Character #{character_id}"
+          if is_valid_id?(character_id) do
+            case WandererNotifier.ESI.Service.get_character_info(character_id) do
+              {:ok, %{"name" => character_name}} -> character_name
+              _ -> "Character #{character_id}"
+            end
+          else
+            "Unknown Character"
           end
 
         name ->
           name
       end
 
-    corporation_id = Map.get(entity, "corporation_id", "Unknown")
+    corporation_id = Map.get(entity, "corporation_id")
 
     corp =
       case Map.get(entity, "corporation_name") do
         nil ->
-          case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-            {:ok, %{"name" => corp_name}} -> corp_name
-            _ -> "Corp #{corporation_id}"
+          if is_valid_id?(corporation_id) do
+            case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+              {:ok, %{"name" => corp_name}} -> corp_name
+              _ -> "Corp #{corporation_id}"
+            end
+          else
+            "Unknown Corporation"
           end
 
         corp_name ->
           corp_name
       end
 
-    ship_type_id = Map.get(entity, "ship_type_id", "Unknown")
+    ship_type_id = Map.get(entity, "ship_type_id")
 
     ship =
       case Map.get(entity, "ship_name") do
         nil ->
-          case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
-            {:ok, %{"name" => ship_name}} -> ship_name
-            _ -> "Ship #{ship_type_id}"
+          if is_valid_id?(ship_type_id) do
+            case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+              {:ok, %{"name" => ship_name}} -> ship_name
+              _ -> "Ship #{ship_type_id}"
+            end
+          else
+            "Unknown Ship"
           end
 
         ship_name ->
@@ -401,30 +464,55 @@ defmodule WandererNotifier.Discord.Notifier do
 
     zkill_url =
       Map.get(entity, "zkill_url") ||
-        "https://zkillboard.com/character/#{character_id}/"
+        if is_valid_id?(character_id) do
+          "https://zkillboard.com/character/#{character_id}/"
+        else
+          nil
+        end
 
-    %{id: character_id, name: name, corp: corp, ship: ship, zkill_url: zkill_url}
+    %{id: character_id || "unknown", name: name, corp: corp, ship: ship, zkill_url: zkill_url}
   end
+
+  # Helper function to check if an ID is valid for API calls
+  defp is_valid_id?(nil), do: false
+  defp is_valid_id?("Unknown"), do: false
+  defp is_valid_id?("unknown"), do: false
+  defp is_valid_id?(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {num, ""} when num > 0 -> true
+      _ -> false
+    end
+  end
+  defp is_valid_id?(id) when is_integer(id) and id > 0, do: true
+  defp is_valid_id?(_), do: false
 
   defp resolve_system_name(nil), do: "Unknown System"
 
   defp resolve_system_name(solar_system_id) do
-    tracked = CacheRepo.get("map:systems") || []
+    if not is_valid_id?(solar_system_id) do
+      "Unknown System"
+    else
+      tracked = get_tracked_systems()
 
-    case Enum.find(tracked, fn sys ->
-           to_string(Map.get(sys, "system_id") || Map.get(sys, :system_id)) ==
-             to_string(solar_system_id)
-         end) do
-      nil ->
-        case WandererNotifier.ESI.Service.get_solar_system_name(solar_system_id) do
-          {:ok, %{"name" => name}} -> name
-          _ -> "Solar System #{solar_system_id}"
-        end
+      case Enum.find(tracked, fn sys ->
+             to_string(Map.get(sys, "system_id") || Map.get(sys, :system_id)) ==
+               to_string(solar_system_id)
+           end) do
+        nil ->
+          case WandererNotifier.ESI.Service.get_solar_system_name(solar_system_id) do
+            {:ok, %{"name" => name}} -> name
+            _ -> "Solar System #{solar_system_id}"
+          end
 
-      system ->
-        Map.get(system, "system_name") || Map.get(system, :alias) ||
-          "Solar System #{solar_system_id}"
+        system ->
+          Map.get(system, "system_name") || Map.get(system, :alias) ||
+            "Solar System #{solar_system_id}"
+      end
     end
+  end
+
+  defp get_tracked_systems do
+    CacheHelpers.get_tracked_systems()
   end
 
   defp get_total_value(normalized) do

@@ -36,6 +36,9 @@ config :nostrum, :gateway,
     max: 120_000
   ]
 
+# Configure cache directory
+config :wanderer_notifier, :cache_dir, System.get_env("CACHE_DIR", "/app/data/cache")
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

@@ -37,7 +37,7 @@ config :wanderer_notifier,
 # License Configuration
 config :wanderer_notifier,
   license_key: System.get_env("LICENSE_KEY"),
-  bot_id: System.get_env("BOT_ID"),
+  bot_api_token: System.get_env("BOT_API_TOKEN"),
   license_manager_api_url: System.get_env("LICENSE_MANAGER_API_URL")
 
 # Web server configuration

@@ -25,7 +25,7 @@ defmodule WandererNotifier.ZKill.Websocket do
     try do
       Logger.info("Connected to zKill websocket.")
       new_state = Map.put(state, :connected, true)
-      
+
       # Update websocket status
       try do
         WandererNotifier.Stats.update_websocket(%{
@@ -36,7 +36,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       rescue
         _ -> :ok
       end
-      
+
       # Schedule subscription so that send_frame is not called within handle_connect
       Process.send_after(self(), :subscribe, 0)
       {:ok, new_state}
@@ -112,14 +112,17 @@ defmodule WandererNotifier.ZKill.Websocket do
           {:ok, %{"killmail_id" => killmail_id} = data} when is_map_key(data, "zkb") ->
             zkb_info = Map.get(data, "zkb")
 
-            Logger.info(
-              "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{inspect(zkb_info)}"
+            # Truncate zkb info for logging
+            truncated_zkb = truncate_zkb_for_logging(zkb_info)
+
+            Logger.debug(
+              "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{truncated_zkb}"
             )
 
           {:ok, %{"kill_id" => kill_id} = data} ->
             sys_id = Map.get(data, "solar_system_id")
 
-            Logger.info(
+            Logger.debug(
               "[ZKill.Websocket] Received kill info: kill_id=#{kill_id}, system_id=#{sys_id} full message=#{inspect(data)}"
             )
 
@@ -272,7 +275,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       # Update websocket status
       reconnects = Map.get(state, :reconnects, 0) + 1
       new_state = Map.put(state, :reconnects, reconnects)
-      
+
       try do
         WandererNotifier.Stats.update_websocket(%{
           connected: false,
@@ -299,11 +302,11 @@ defmodule WandererNotifier.ZKill.Websocket do
   def handle_disconnect(reason, state) do
     try do
       Logger.warning("zKill websocket disconnected (fallback): #{inspect(reason)}. Reconnecting...")
-      
+
       # Update websocket status
       reconnects = Map.get(state, :reconnects, 0) + 1
       new_state = Map.put(state, :reconnects, reconnects)
-      
+
       try do
         WandererNotifier.Stats.update_websocket(%{
           connected: false,
@@ -313,7 +316,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       rescue
         _ -> :ok
       end
-      
+
       {:reconnect, new_state}
     rescue
       e ->
@@ -341,4 +344,23 @@ defmodule WandererNotifier.ZKill.Websocket do
         :ok
     end
   end
+
+  # Helper function to truncate zkb info for logging
+  defp truncate_zkb_for_logging(%{"zkb" => zkb} = _message) when is_map(zkb) do
+    # Extract only essential information
+    essential_keys = ["totalValue", "url", "locationID"]
+    truncated_map = Map.take(zkb, essential_keys)
+
+    # Add a note about truncated fields
+    truncated_count = map_size(zkb) - map_size(truncated_map)
+    result = if truncated_count > 0 do
+      Map.put(truncated_map, "_truncated", "#{truncated_count} fields omitted")
+    else
+      truncated_map
+    end
+
+    inspect(result, limit: 5)
+  end
+
+  defp truncate_zkb_for_logging(other), do: inspect(other, limit: 5)
 end

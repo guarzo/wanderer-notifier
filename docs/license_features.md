@@ -81,5 +81,5 @@ WandererNotifier operates with two primary license states:
 To upgrade to a valid license and unlock all features:
 1. Visit the license portal at [license.wanderer-notifier.com](https://license.wanderer-notifier.com)
 2. Purchase a license key
-3. Add the license key to your environment configuration (and optionally set a custom BOT_ID if needed)
+3. Add the license key to your environment configuration (and set your BOT_API_TOKEN)
 4. Restart the application to activate the license 
