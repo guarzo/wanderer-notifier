@@ -698,9 +698,6 @@
             ${makeFeatureItem("Basic Notifications", features.enabled.basic_notifications)}
             ${makeFeatureItem("Systems Notifications", features.enabled.tracked_systems_notifications)}
             ${makeFeatureItem("Characters Notifications", features.enabled.tracked_characters_notifications)}
-            ${makeFeatureItem("Backup Kills Processing", features.enabled.backup_kills_processing)}
-            ${makeFeatureItem("Web Dashboard (Full)", features.enabled.web_dashboard_full)}
-            ${makeFeatureItem("Advanced Statistics", features.enabled.advanced_statistics)}
           </div>
         </div>
       `;

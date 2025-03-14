@@ -166,7 +166,7 @@ defmodule WandererNotifier.Service.KillProcessor do
     tracked_systems = CacheHelpers.get_tracked_systems()
     tracked_ids = Enum.map(tracked_systems, fn s ->
       # Handle both string and atom keys
-      system_id = s["system_id"] || s[:system_id] || ""
+      system_id = Map.get(s, "system_id") || Map.get(s, :system_id) || ""
       to_string(system_id)
     end)
     system_id_str = to_string(system_id)
