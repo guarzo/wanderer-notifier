@@ -30,3 +30,7 @@ config/*.secret.exs
 
 # Cache directory
 /tmp/
+
+# Don't ignore priv directory
+!/priv/
+!/priv/templates/

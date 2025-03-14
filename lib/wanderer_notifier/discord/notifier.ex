@@ -1,12 +1,13 @@
 defmodule WandererNotifier.Discord.Notifier do
   @moduledoc """
-  Sends notifications to Discord as channel messages using a bot token.
-  Supports plain text messages and rich embed messages.
+  Handles sending notifications to Discord.
   """
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
-  alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Cache.Repository, as: CacheRepo
+
+  # Default embed color (blue)
+  @default_embed_color 0x3498DB
 
   # Use a runtime environment check instead of compile-time
   defp env do
@@ -15,7 +16,6 @@ defmodule WandererNotifier.Discord.Notifier do
 
   @base_url "https://discord.com/api/channels"
   @verbose_logging false  # Set to true to enable verbose logging
-  @default_embed_color 0x00FF00
 
   # Define behavior for mocking in tests
   @callback send_message(String.t()) :: :ok | {:error, any()}
@@ -666,7 +666,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp get_tracked_systems do
-    CacheHelpers.get_tracked_systems()
+    WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
   end
 
   defp get_total_value(normalized) do

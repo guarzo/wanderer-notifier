@@ -192,7 +192,7 @@ Wanderer Notifier now offers more functionality in the free version while still 
 | Character Tracking | Unlimited | Unlimited |
 | Notification Format | Basic Text | Rich Embeds |
 | Notification History | 24 hours | 72 hours |
-| Web Dashboard | Basic | Full |
+
 
 ---
 
