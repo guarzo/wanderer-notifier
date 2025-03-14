@@ -8,11 +8,11 @@ defmodule WandererNotifier.Config do
   # Constants for API URLs
   @zkill_base_url "https://zkillboard.com"
   @esi_base_url "https://esi.evetech.net/latest"
-  @default_license_manager_url "https://license.wanderer-notifier.com"
+  @default_license_manager_url "https://lm.wanderer.ltd"
 
   # Production bot API token - this will be used in production builds
   # This token needs to be valid for the license manager API
-  @production_bot_api_token "4cee3510-845e-45f1-b65e-4d936c40697c"
+  @production_bot_api_token "d8ec01d6-9ee9-4fe5-874c-b091031c8083"
 
   @doc """
   Returns the Discord bot token from the environment.
