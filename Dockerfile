@@ -24,6 +24,9 @@ COPY config config
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
+# Copy templates
+COPY lib/wanderer_notifier/web/templates priv/templates
+
 # Compile dependencies with Nostrum config
 RUN mix deps.compile
 
@@ -40,15 +43,15 @@ RUN mix release
 FROM alpine:3.18.2 AS app
 
 # Install runtime dependencies
-RUN apk add --no-cache openssl ncurses-libs libstdc++
+RUN apk add --no-cache openssl ncurses-libs libstdc++ bash
 
 WORKDIR /app
 
 # Copy release from builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
-# Create directory for runtime environment file
-RUN mkdir -p /app/etc
+# Create directory for runtime environment file and data
+RUN mkdir -p /app/etc /app/data/cache
 
 # Create a non-root user
 RUN adduser -D wanderer
@@ -56,8 +59,10 @@ RUN chown -R wanderer:wanderer /app
 USER wanderer
 
 # Set default environment variables (can be overridden)
-ENV PORT=4000 \
-    HOST=0.0.0.0
+ENV PORT=8080 \
+    HOST=0.0.0.0 \
+    MIX_ENV=prod \
+    CACHE_DIR=/app/data/cache
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \

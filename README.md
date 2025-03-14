@@ -47,7 +47,7 @@ The application sends several types of notifications to Discord:
 
 1. **Kill Notifications**
    - **Trigger**: When a ship is destroyed in a tracked system or involves a tracked character
-   - **Frequency**: Real-time as events occur, plus one forced notification every 5 minutes regardless of filters
+   - **Frequency**: Real-time as events occur
    - **Content**: Detailed information about the kill, including victim, attacker, ship types, and ISK value
 
 2. **System Notifications**

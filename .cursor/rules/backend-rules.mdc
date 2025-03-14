@@ -1,8 +1,6 @@
 ---
-description: "Backend (Elixir/Phoenix/Ash) guidelines. Applies to all .ex and .exs files. Focuses on idiomatic code, structured architecture, error handling, and security."
-globs:
-  - "**/*.ex"
-  - "**/*.exs"
+description: 
+globs: *ex,*exs
 alwaysApply: false
 ---
 # Backend (Elixir/Phoenix/Ash) Guidelines

@@ -1,8 +1,7 @@
 ---
-description: "Guidelines for task management and progress tracking. Ensures clear documentation and actionable task breakdown."
-globs:
-  - "**/*"
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
 # Task Management Guidelines
 

@@ -1,7 +1,6 @@
 ---
-description: "Integrated guidelines referencing legacy documentation. Use these references to access detailed project documentation without duplicating content."
-globs:
-  - "**/*"
+description: 
+globs: 
 alwaysApply: false
 ---
 # Integrated Documentation References

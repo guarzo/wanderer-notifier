@@ -59,13 +59,6 @@ defmodule WandererNotifier.Discord.Notifier do
       if @verbose_logging, do: Logger.info("DISCORD MOCK: #{message}")
       :ok
     else
-      # Track notification errors (ignore if failure)
-      try do
-        WandererNotifier.Stats.increment(:errors)
-      rescue
-        _ -> :ok
-      end
-
       payload = %{"content" => message, "embeds" => []}
       send_payload(payload)
     end
@@ -79,12 +72,6 @@ defmodule WandererNotifier.Discord.Notifier do
       if @verbose_logging, do: Logger.info("DISCORD MOCK EMBED: #{title} - #{description}")
       :ok
     else
-      try do
-        WandererNotifier.Stats.increment(:errors)
-      rescue
-        _ -> :ok
-      end
-
       embed = %{"title" => title, "description" => description, "color" => color}
       embed = if url, do: Map.put(embed, "url", url), else: embed
       payload = %{"embeds" => [embed]}
@@ -111,13 +98,6 @@ defmodule WandererNotifier.Discord.Notifier do
 
       # Check if this is a properly enriched kill or a raw/non-enriched kill
       is_properly_enriched = is_kill_properly_enriched?(normalized)
-
-      # Log whether the kill is properly enriched
-      if is_properly_enriched do
-        Logger.info("NOTIFICATION: Kill #{kill_id} is properly enriched, sending full notification")
-      else
-        Logger.info("NOTIFICATION: Kill #{kill_id} is not properly enriched, sending simplified notification")
-      end
 
       system_name =
         case Map.get(normalized, "system_name") do
@@ -220,36 +200,49 @@ defmodule WandererNotifier.Discord.Notifier do
 
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
 
-      # Log the character data for debugging
-      Logger.info("CHARACTER NOTIFICATION DEBUG: Character data: #{inspect(character, pretty: true)}")
-
       # Extract the EVE character ID from the nested character object if available
       eve_character_id = case character do
         %{"character" => %{"eve_id" => eve_id}} when is_binary(eve_id) ->
-          Logger.info("CHARACTER NOTIFICATION DEBUG: Found eve_id in nested character object: #{eve_id}")
           eve_id
         %{"eve_id" => eve_id} when is_binary(eve_id) ->
-          Logger.info("CHARACTER NOTIFICATION DEBUG: Found eve_id in top-level object: #{eve_id}")
           eve_id
         _ ->
-          Logger.info("CHARACTER NOTIFICATION DEBUG: No eve_id found, using character_id as fallback")
           character_id
       end
 
       # Use the EVE character ID for the portrait URL and zkill link
       portrait_url = "https://images.evetech.net/characters/#{eve_character_id}/portrait"
-      Logger.info("CHARACTER NOTIFICATION DEBUG: Using portrait URL: #{portrait_url}")
 
       name =
         Map.get(character, "character_name") ||
         (character["character"] && Map.get(character["character"], "name")) ||
         "Unknown Character"
 
-      # Extract corporation name from the character data
+      # Extract corporation ID from the character data
+      corporation_id =
+        Map.get(character, "corporation_id") ||
+        (character["character"] && Map.get(character["character"], "corporation_id"))
+
+      Logger.debug("CHARACTER NOTIFICATION: Corporation ID from data: #{inspect(corporation_id)}")
+
+      # Extract or fetch corporation name
       corp =
         Map.get(character, "corporation_name") ||
         (character["character"] && Map.get(character["character"], "corporation_name")) ||
-        "Unknown Corporation"
+        if is_valid_id?(corporation_id) do
+          Logger.debug("CHARACTER NOTIFICATION: Fetching corporation name from ESI for ID: #{corporation_id}")
+          case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+            {:ok, %{"name" => corp_name}} ->
+              Logger.debug("CHARACTER NOTIFICATION: Found corporation name: #{corp_name}")
+              corp_name
+            error ->
+              Logger.debug("CHARACTER NOTIFICATION: Failed to get corporation name: #{inspect(error)}")
+              "Unknown Corporation"
+          end
+        else
+          Logger.debug("CHARACTER NOTIFICATION: Invalid corporation ID: #{inspect(corporation_id)}")
+          "Unknown Corporation"
+        end
 
       # Check if license is valid
       license_valid = WandererNotifier.License.status().valid
@@ -376,13 +369,8 @@ defmodule WandererNotifier.Discord.Notifier do
     url = build_url()
     json_payload = Jason.encode!(payload)
 
-    Logger.info("Sending Discord notification to URL: #{url}")
-    Logger.debug("Discord notification payload: #{inspect(payload, pretty: true)}")
-    Logger.debug("Discord notification headers: #{inspect(headers(), pretty: true)}")
-
     case HttpClient.request("POST", url, headers(), json_payload) do
       {:ok, %HTTPoison.Response{status_code: status}} when status in 200..299 ->
-        Logger.info("Discord message sent successfully with status code: #{status}")
         :ok
 
       {:ok, %HTTPoison.Response{status_code: status, body: body}} ->

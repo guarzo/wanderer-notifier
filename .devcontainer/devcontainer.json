@@ -13,6 +13,13 @@
     "--add-host=host.docker.internal:host-gateway"
   ],
 
+  // Add port forwarding configuration
+  "forwardPorts": [4000],
+
+  // Uncomment to connect as a non-root user. See https://aka.ms/vscode-remote/containers/non-root.
+  "remoteUser": "elixir",
+  "updateRemoteUserUID": false,
+
   "settings": {
     "terminal.integrated.shell.linux": "/bin/bash"
   },
@@ -21,7 +28,5 @@
     "JakeBecker.elixir-ls"
   ],
 
-  "postCreateCommand": "mix deps.get",
-  "remoteUser": "elixir",
-  "updateRemoteUserUID": false
+  "postCreateCommand": "mix deps.get"
 }

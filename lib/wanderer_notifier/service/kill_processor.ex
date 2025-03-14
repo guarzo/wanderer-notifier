@@ -10,13 +10,6 @@ defmodule WandererNotifier.Service.KillProcessor do
   alias WandererNotifier.Config
   alias WandererNotifier.Features
   alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Config.Timings
-
-  # Remove hardcoded interval
-  # @forced_notification_interval :timer.minutes(5)
-
-  # Process dictionary key for last forced notification time
-  @last_forced_notification_key :last_forced_kill_notification
 
   # Process dictionary key for recent kills
   @recent_kills_key :recent_kills
@@ -50,44 +43,21 @@ defmodule WandererNotifier.Service.KillProcessor do
       Logger.debug("Stored kill_id=#{kill_id} in recent kills list (#{length(Process.get(@recent_kills_key, []))} kills stored)")
     end
 
-    # Check if we should force a notification regardless of filters
-    should_force_notification = should_force_notification?()
-
-    if should_force_notification do
-      Logger.info("FORCE NOTIFICATION: 5-minute interval reached, forcing notification for kill_id=#{kill_id}")
-    end
-
     # Add debug logging for tracked systems check
     is_tracked_system = kill_in_tracked_system?(system_id)
-    Logger.info("TRACKING CHECK: System #{system_id} is #{if is_tracked_system, do: "tracked", else: "not tracked"}")
+    Logger.debug("TRACKING CHECK: System #{system_id} is #{if is_tracked_system, do: "tracked", else: "not tracked"}")
 
     # Add debug logging for tracked characters check
     has_tracked_character = kill_includes_tracked_character?(decoded_message)
-    Logger.info("TRACKING CHECK: Kill #{kill_id} #{if has_tracked_character, do: "includes", else: "does not include"} tracked character")
+    Logger.debug("TRACKING CHECK: Kill #{kill_id} #{if has_tracked_character, do: "includes", else: "does not include"} tracked character")
 
     # Add debug logging for feature status
     tracked_systems_enabled = Features.tracked_systems_notifications_enabled?()
     tracked_characters_enabled = Features.tracked_characters_notifications_enabled?()
-    Logger.info("FEATURE STATUS: tracked_systems=#{tracked_systems_enabled}, tracked_characters=#{tracked_characters_enabled}")
+    Logger.debug("FEATURE STATUS: tracked_systems=#{tracked_systems_enabled}, tracked_characters=#{tracked_characters_enabled}")
 
     cond do
-      # If we should force a notification, do it
-      should_force_notification ->
-        Logger.info("Forcing kill notification for kill_id=#{kill_id} (5-minute interval)")
-        case get_enriched_killmail(kill_id) do
-          {:ok, enriched_kill} ->
-            Logger.info("Successfully enriched kill_id=#{kill_id} for forced notification")
-            updated_state = process_kill(kill_id, state, enriched_kill)
-            # Update the last forced notification time
-            Process.put(@last_forced_notification_key, :os.system_time(:second))
-            Logger.info("Updated last forced notification time to #{:os.system_time(:second)}")
-            updated_state
-          {:error, reason} ->
-            Logger.error("Failed to get enriched killmail for forced notification #{kill_id}: #{inspect(reason)}")
-            state
-        end
-
-      # Otherwise, use normal filtering logic
+      # If the kill is in a tracked system, process it
       kill_in_tracked_system?(system_id) ->
         Logger.info("NOTIFICATION REASON: Kill is in a tracked system")
         case get_enriched_killmail(kill_id) do
@@ -117,6 +87,7 @@ defmodule WandererNotifier.Service.KillProcessor do
             state
         end
 
+      # If the kill includes a tracked character, process it
       kill_includes_tracked_character?(decoded_message) ->
         Logger.info("NOTIFICATION REASON: Kill includes tracked character")
         case get_enriched_killmail(kill_id) do
@@ -128,6 +99,7 @@ defmodule WandererNotifier.Service.KillProcessor do
             state
         end
 
+      # Otherwise, ignore the kill
       true ->
         Logger.info("NOTIFICATION DECISION: Kill #{kill_id} ignored (not from tracked system or involving tracked character)")
         state
@@ -152,32 +124,6 @@ defmodule WandererNotifier.Service.KillProcessor do
   defp get_most_recent_kill do
     recent_kills = Process.get(@recent_kills_key, [])
     List.first(recent_kills)
-  end
-
-  # Check if we should force a notification based on time elapsed
-  defp should_force_notification?() do
-    last_time = Process.get(@last_forced_notification_key, 0)
-    current_time = :os.system_time(:second)
-    elapsed_seconds = current_time - last_time
-
-    # For testing purposes, add a random chance to force a notification
-    # This will trigger a notification approximately 20% of the time
-    random_chance = :rand.uniform(100) <= 20
-
-    # Use the centralized timing configuration for time-based forcing
-    time_based = elapsed_seconds >= Timings.forced_kill_interval()
-
-    # Log the decision factors
-    if random_chance do
-      Logger.info("FORCE NOTIFICATION: Random chance triggered (20% probability)")
-    end
-
-    if time_based do
-      Logger.info("FORCE NOTIFICATION: Time interval reached (#{elapsed_seconds} seconds since last notification)")
-    end
-
-    # Return true if either condition is met
-    random_chance || time_based
   end
 
   defp process_kill(kill_id, state, enriched_kill) do

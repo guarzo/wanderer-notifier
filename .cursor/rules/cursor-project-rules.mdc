@@ -1,6 +1,7 @@
 ---
-description: "Project-level rules covering context initialization, documentation reference protocols, operational protocols, and technology-specific guidelines."
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
 # Cursor Project Rules
 
@@ -48,8 +49,7 @@ alwaysApply: false
   - Request explicit permission before making global styling changes.
   - Test changes in isolation and document them.
 
-## Directory Structure Maintenance
-- Run `.notes/dir_script.sh` after significant file changes.
+## Directory Structure
 - Use `.notes/directory_structure.md` when planning new features.
 
 ## Priorities & Modes

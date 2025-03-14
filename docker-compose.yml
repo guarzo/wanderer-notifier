@@ -1,9 +1,12 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v1
+    image: guarzo/wanderer-notifier:latest
     container_name: wanderer_notifier
     restart: unless-stopped
     environment:
+      # Environment setting
+      - MIX_ENV=prod
+
       # Discord Configuration
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
@@ -26,6 +29,19 @@ services:
       - "${PORT:-4000}:${PORT:-4000}"
     volumes:
       - wanderer_data:/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "${PORT:-4000}"]
       interval: 30s

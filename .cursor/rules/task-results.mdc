@@ -1,8 +1,7 @@
 ---
-description: "Guidelines for documenting task outcomes and conducting post-implementation reviews. Helps track issues, improvements, and next steps."
-globs:
-  - "**/*"
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
 # Task Results Documentation Guidelines
 

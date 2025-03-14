@@ -1,6 +1,7 @@
 ---
-description: "Guidelines to control overzealous agentic functions. Enforces pacing, scope boundaries, and clear communication checkpoints for all changes."
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
 # Agentic Functions & Scope Control
 

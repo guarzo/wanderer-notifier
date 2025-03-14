@@ -99,51 +99,25 @@ defmodule WandererNotifier.Cache.Repository do
   # Fallback for when no cache_dir is passed (for backward compatibility)
   @impl true
   def init(_) do
-    # Determine cache directory
-    cache_dir = determine_cache_dir()
-    # Schedule the first cache check
     schedule_cache_check()
-    {:ok, %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: cache_dir}}
+    {:ok, %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: nil}}
   end
 
+  # Handle cache check message
   @impl true
   def handle_info(:check_cache, state) do
-    # Check if cache is available
-    cache_available = case Cachex.stats(@cache_name) do
-      {:ok, stats} ->
-        Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
-        true
-      error ->
-        Logger.error("[CacheRepo] Failed to get cache stats: #{inspect(error)}")
-        false
-    end
+    # Get cache stats
+    {:ok, stats} = Cachex.stats(@cache_name)
+    Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
 
-    new_state = if not cache_available do
-      consecutive_failures = state.consecutive_failures + 1
-      Logger.error("[CacheRepo] Cache is no longer available! This may indicate a serious issue. Consecutive failures: #{consecutive_failures}")
-
-      # After 3 consecutive failures, attempt recovery
-      if consecutive_failures >= 3 do
-        Logger.warning("[CacheRepo] Attempting to recover cache after #{consecutive_failures} consecutive failures")
-        attempt_cache_recovery(state.cache_dir)
-        %{state | consecutive_failures: 0}
-      else
-        %{state | consecutive_failures: consecutive_failures}
-      end
-    else
-      # Reset failure counter if cache is available
-      %{state | consecutive_failures: 0}
-    end
-
-    # Get systems count - don't initialize empty arrays here
+    # Check systems and characters counts
     systems = get("map:systems") || []
-    systems_count = length(systems)
-
-    # Get characters count - don't initialize empty arrays here
     characters = get("map:characters") || []
+
+    systems_count = length(systems)
     characters_count = length(characters)
 
-    # Log if counts have changed
+    # Log changes in counts
     if systems_count != state.last_systems_count do
       Logger.info("[CacheRepo] Systems count changed: #{state.last_systems_count} -> #{systems_count}")
     end
@@ -155,7 +129,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Schedule the next check
     schedule_cache_check()
 
-    {:noreply, %{new_state | last_systems_count: systems_count, last_characters_count: characters_count}}
+    {:noreply, %{state | last_systems_count: systems_count, last_characters_count: characters_count}}
   end
 
   defp schedule_cache_check do
@@ -186,15 +160,19 @@ defmodule WandererNotifier.Cache.Repository do
           value
         {:ok, nil} ->
           # Treat nil value as a cache miss and return nil
-          Logger.warning("[CacheRepo] Cache hit for key: #{key}, but value is nil")
-
           # Special handling for map:systems and map:characters keys
-          # If the key exists but the value is nil, reinitialize it with an empty array
           if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
-            Logger.warning("[CacheRepo] Reinitializing #{key} with empty array")
+            # For these keys, initialize with empty array without warning
+            Logger.debug("[CacheRepo] Initializing #{key} with empty array")
             Cachex.put(@cache_name, key, [])
             []
           else
+            # For static_info keys, just return nil without warning
+            if String.starts_with?(key, "static_info:") do
+              Logger.debug("[CacheRepo] Cache miss for static info key: #{key}")
+            else
+              Logger.debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
+            end
             nil
           end
         {:error, error} ->
@@ -298,64 +276,40 @@ defmodule WandererNotifier.Cache.Repository do
     end)
   end
 
-  # Helper functions for logging
-  defp length_of(value) when is_list(value), do: length(value)
-  defp length_of(value) when is_map(value), do: map_size(value)
-  defp length_of(value) when is_binary(value), do: String.length(value)
-  defp length_of(_), do: "N/A"
-
-  # Retry function with exponential backoff
-  defp retry_with_backoff(fun, retries \\ nil) do
-    retries = retries || Timings.max_retries()
-    case fun.() do
-      {:error, _} when retries > 0 ->
-        Process.sleep(Timings.retry_delay())
-        retry_with_backoff(fun, retries - 1)
+  # Retry a function with exponential backoff
+  defp retry_with_backoff(fun, retries \\ Timings.max_retries()) do
+    try do
+      fun.()
+    rescue
+      e ->
+        Logger.error("[CacheRepo] Error in cache operation: #{inspect(e)}")
+        if retries <= 0 do
+          Logger.error("[CacheRepo] Max retries reached, giving up")
+          {:error, e}
+        else
+          Logger.warning("[CacheRepo] Retrying after error (#{retries} retries left)")
+          Process.sleep(Timings.retry_delay())
+          retry_with_backoff(fun, retries - 1)
+        end
+    catch
+      :exit, reason ->
+        Logger.error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
+        if retries <= 0 do
+          Logger.error("[CacheRepo] Max retries reached, giving up")
+          {:error, reason}
+        else
+          Logger.warning("[CacheRepo] Retrying after exit (#{retries} retries left)")
+          Process.sleep(Timings.retry_delay())
+          retry_with_backoff(fun, retries - 1)
+        end
       result ->
         result
     end
   end
 
-  # Attempt to recover the cache by restarting it
-  defp attempt_cache_recovery(_cache_dir) do
-    Logger.warning("[CacheRepo] Attempting to restart the cache...")
-
-    # Stop the existing cache process
-    case Process.whereis(@cache_name) do
-      pid when is_pid(pid) ->
-        Process.exit(pid, :shutdown)
-        Logger.info("[CacheRepo] Successfully stopped the existing cache")
-      nil ->
-        Logger.warning("[CacheRepo] Cache process not found, proceeding with start")
-    end
-
-    # Configure Cachex with optimized settings
-    cachex_options = [
-      # Set a higher limit for maximum entries (default is often too low)
-      limit: 10000,
-
-      # Configure memory limits (in bytes) - 256MB
-      max_size: 256 * 1024 * 1024,
-
-      # Policy for when the cache hits the limit
-      policy: Cachex.Policy.LRW,
-
-      # Enable statistics for better monitoring
-      stats: true,
-
-      # Set fallback function for cache misses
-      fallback: &handle_cache_miss/1
-    ]
-
-    # Start a new cache
-    case Cachex.start(@cache_name, cachex_options) do
-      {:ok, _pid} ->
-        Logger.info("[CacheRepo] Successfully restarted the cache")
-
-        # Trigger a refresh of critical data
-        Process.send_after(WandererNotifier.Service, :force_refresh_cache, 1000)
-      error ->
-        Logger.error("[CacheRepo] Failed to restart the cache: #{inspect(error)}")
-    end
-  end
+  # Helper function to safely get the length of a value
+  defp length_of(value) when is_list(value), do: length(value)
+  defp length_of(value) when is_map(value), do: map_size(value)
+  defp length_of(value) when is_binary(value), do: byte_size(value)
+  defp length_of(_), do: 0
 end

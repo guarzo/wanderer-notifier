@@ -203,22 +203,6 @@ defmodule WandererNotifier.ZKill.Websocket do
     end
   end
 
-  # Catch-all for any other frame types
-  def handle_frame(frame, state) do
-    try do
-      Logger.debug("Received unexpected frame type from zKill: #{inspect(frame)}")
-      {:ok, state}
-    rescue
-      e ->
-        Logger.error("Error in handle_frame/2 (other): #{inspect(e)}")
-        {:ok, state}
-    catch
-      kind, reason ->
-        Logger.error("Caught #{kind} in handle_frame/2: #{inspect(reason)}")
-        {:ok, state}
-    end
-  end
-
   @impl true
   def handle_frame({:ping, ping_frame}, state) do
     if ping_frame == "ping" do
@@ -235,6 +219,22 @@ defmodule WandererNotifier.ZKill.Websocket do
 
       Process.send_after(self(), :heartbeat, Timings.websocket_heartbeat_interval())
       {:ok, state}
+    end
+  end
+
+  # Catch-all for any other frame types
+  def handle_frame(frame, state) do
+    try do
+      Logger.debug("Received unexpected frame type from zKill: #{inspect(frame)}")
+      {:ok, state}
+    rescue
+      e ->
+        Logger.error("Error in handle_frame/2 (other): #{inspect(e)}")
+        {:ok, state}
+    catch
+      kind, reason ->
+        Logger.error("Caught #{kind} in handle_frame/2: #{inspect(reason)}")
+        {:ok, state}
     end
   end
 

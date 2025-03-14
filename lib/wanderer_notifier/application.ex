@@ -13,14 +13,16 @@ defmodule WandererNotifier.Application do
   def start(_type, _args) do
     Logger.info("Starting WandererNotifier...")
 
+    # Get the environment from system environment variable
+    env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
+
     # Start ExSync in development mode
-    if Mix.env() == :dev do
+    if env == :dev do
       Logger.info("Starting ExSync for hot code reloading")
       {:ok, _} = Application.ensure_all_started(:exsync)
     end
 
     # Set the environment in the application configuration
-    env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
     Application.put_env(:wanderer_notifier, :env, env)
 
     Logger.info("Starting WandererNotifier application...")

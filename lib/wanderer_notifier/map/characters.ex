@@ -154,19 +154,36 @@ defmodule WandererNotifier.Map.Characters do
   end
 
   defp process_characters(%{"data" => data}) when is_list(data) do
+    # Log the raw data structure for debugging
+    Logger.debug("[process_characters] Raw data structure: #{inspect(data, pretty: true, limit: 5000)}")
+
     tracked =
       data
       |> Enum.filter(fn item -> Map.get(item, "tracked") == true end)
       |> Enum.map(fn item ->
         char_info = item["character"] || %{}
 
-        %{
+        # Log the character info for debugging
+        Logger.debug("[process_characters] Processing character: #{inspect(char_info, pretty: true)}")
+
+        # Create a map with the necessary fields
+        character_map = %{
           "character_id" => char_info["id"],
           "eve_id" => char_info["eve_id"],
           "character_name" => char_info["name"],
           "corporation_id" => char_info["corporation_id"],
           "alliance_id" => char_info["alliance_id"]
         }
+
+        # Add corporation_name if available
+        character_map = if char_info["corporation_name"] do
+          Logger.debug("[process_characters] Found corporation_name in data: #{char_info["corporation_name"]}")
+          Map.put(character_map, "corporation_name", char_info["corporation_name"])
+        else
+          character_map
+        end
+
+        character_map
       end)
 
     {:ok, tracked}
