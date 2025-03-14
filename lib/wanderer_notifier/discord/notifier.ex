@@ -14,6 +14,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   @base_url "https://discord.com/api/channels"
   @verbose_logging false  # Set to true to enable verbose logging
+  @default_embed_color 0x00FF00
 
   # Define behavior for mocking in tests
   @callback send_message(String.t()) :: :ok | {:error, any()}
@@ -67,7 +68,7 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Sends a basic embed message to Discord.
   """
-  def send_embed(title, description, url \\ nil, color \\ 0x00FF00) do
+  def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
     if env() == :test do
       if @verbose_logging, do: Logger.info("DISCORD MOCK EMBED: #{title} - #{description}")
       :ok
@@ -115,69 +116,40 @@ defmodule WandererNotifier.Discord.Notifier do
       total_value = get_total_value(normalized)
       formatted_value = format_isk_value(total_value)
 
-      # Check if license is valid
-      license_valid = WandererNotifier.License.status().valid
-
-      if license_valid do
-        # Send rich embed for valid license
-        # Build thumbnail from victim's ship type.
-        victim = Map.get(normalized, "victim", %{})
-        victim_ship_type = Map.get(victim, "ship_type_id")
-
-        thumbnail_url =
-          if victim_ship_type do
-            "https://images.evetech.net/types/#{victim_ship_type}/render"
-          else
-            nil
-          end
-
-        # Determine author icon from the top attacker's corporation (if available).
-        attackers = Map.get(normalized, "attackers", [])
-        top_attacker = get_top_attacker(attackers)
-        corp_id = Map.get(top_attacker, "corporation_id")
-
-        author_icon_url =
-          if corp_id, do: "https://images.evetech.net/corporations/#{corp_id}/logo", else: nil
-
-        author_text = "Kill"
-        color = 0x00FF00
-
-        # Create the embed with or without zkill link and value based on enrichment status
-        embed = %{
-          "title" => title,
-          "description" => description,
-          "color" => color,
-          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
-        }
-
-        # Only add URL and footer (value) for properly enriched kills
-        embed = if is_properly_enriched do
-          embed
-          |> Map.put("url", kill_url)
-          |> Map.put("footer", %{"text" => "Value: #{formatted_value}"})
-        else
-          embed
-        end
-
-        # Add thumbnail and author if available
-        embed = embed
-          |> maybe_put("thumbnail", if(thumbnail_url, do: %{"url" => thumbnail_url}))
-          |> put_author(author_text, kill_url, author_icon_url)
-
-        payload = %{"embeds" => [embed]}
-        send_payload(payload)
-      else
-        # Send plain text for invalid license
-        # Extract basic information for plain text
-        victim = Map.get(normalized, "victim", %{})
-        victim_data = extract_entity(victim)
-
-        # Create a simple plain text message, with or without zkill link and value
-        # For invalid license, we now always remove the zkill link and value information
-        message = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship}"
-
-        send_message(message)
-      end
+      # Prepare data for both embed and plain text versions
+      victim = Map.get(normalized, "victim", %{})
+      victim_data = extract_entity(victim)
+      
+      # Plain text version (used for invalid license)
+      plain_text = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship}"
+      
+      # Rich embed version (used for valid license)
+      embed_data = %{
+        title: title,
+        description: description,
+        url: kill_url,
+        color: @default_embed_color,
+        footer_text: if(is_properly_enriched, do: "Value: #{formatted_value}", else: nil)
+      }
+      
+      # Additional embed elements for the rich version
+      victim_ship_type = Map.get(victim, "ship_type_id")
+      thumbnail_url = if victim_ship_type, do: "https://images.evetech.net/types/#{victim_ship_type}/render", else: nil
+      
+      attackers = Map.get(normalized, "attackers", [])
+      top_attacker = get_top_attacker(attackers)
+      corp_id = Map.get(top_attacker, "corporation_id")
+      author_icon_url = if corp_id, do: "https://images.evetech.net/corporations/#{corp_id}/logo", else: nil
+      
+      # Add these to the embed data
+      embed_data = Map.merge(embed_data, %{
+        thumbnail_url: thumbnail_url,
+        author_name: "Kill",
+        author_icon_url: author_icon_url
+      })
+      
+      # Send notification with license check
+      send_notification_with_license_check(plain_text, embed_data)
     end
   end
 
@@ -201,14 +173,7 @@ defmodule WandererNotifier.Discord.Notifier do
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
 
       # Extract the EVE character ID from the nested character object if available
-      eve_character_id = case character do
-        %{"character" => %{"eve_id" => eve_id}} when is_binary(eve_id) ->
-          eve_id
-        %{"eve_id" => eve_id} when is_binary(eve_id) ->
-          eve_id
-        _ ->
-          character_id
-      end
+      eve_character_id = extract_eve_character_id(character, character_id)
 
       # Use the EVE character ID for the portrait URL and zkill link
       portrait_url = "https://images.evetech.net/characters/#{eve_character_id}/portrait"
@@ -226,56 +191,25 @@ defmodule WandererNotifier.Discord.Notifier do
       Logger.debug("CHARACTER NOTIFICATION: Corporation ID from data: #{inspect(corporation_id)}")
 
       # Extract or fetch corporation name
-      corp =
-        Map.get(character, "corporation_name") ||
-        (character["character"] && Map.get(character["character"], "corporation_name")) ||
-        if is_valid_id?(corporation_id) do
-          Logger.debug("CHARACTER NOTIFICATION: Fetching corporation name from ESI for ID: #{corporation_id}")
-          case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-            {:ok, %{"name" => corp_name}} ->
-              Logger.debug("CHARACTER NOTIFICATION: Found corporation name: #{corp_name}")
-              corp_name
-            error ->
-              Logger.debug("CHARACTER NOTIFICATION: Failed to get corporation name: #{inspect(error)}")
-              "Unknown Corporation"
-          end
-        else
-          Logger.debug("CHARACTER NOTIFICATION: Invalid corporation ID: #{inspect(corporation_id)}")
-          "Unknown Corporation"
-        end
+      corp = get_corporation_name(corporation_id, character)
 
-      # Check if license is valid
-      license_valid = WandererNotifier.License.status().valid
-
-      if license_valid do
-        # Send rich embed for valid license
-        title = "New Character"
-
-        # Create zkill URL for the character using the formatted character ID
-        url = "https://zkillboard.com/character/#{eve_character_id}/"
-
-        # Format the description with the character name as a link to zkill
-        description = "[#{name}](#{url}) (#{corp}) is now being tracked"
-
-        color = 0x00FF00
-
-        embed =
-          %{
-            "title" => title,
-            "url" => url,
-            "description" => description,
-            "color" => color,
-            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-            "thumbnail" => %{"url" => portrait_url}
-          }
-
-        payload = %{"embeds" => [embed]}
-        send_payload(payload)
-      else
-        # Send plain text for invalid license
-        message = "New tracked character: #{name}"
-        send_message(message)
-      end
+      # Plain text version (used for invalid license)
+      plain_text = "New tracked character: #{name}"
+      
+      # Rich embed version (used for valid license)
+      url = "https://zkillboard.com/character/#{eve_character_id}/"
+      description = "[#{name}](#{url}) (#{corp}) is now being tracked"
+      
+      embed_data = %{
+        title: "New Character",
+        description: description,
+        url: url,
+        color: @default_embed_color,
+        thumbnail_url: portrait_url
+      }
+      
+      # Send notification with license check
+      send_notification_with_license_check(plain_text, embed_data)
     end
   end
 
@@ -296,72 +230,173 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
-
       system_id =
         Map.get(system, "system_id") ||
           Map.get(system, :system_id) ||
           Map.get(system, "solar_system_id")
 
-      # Get original_name and temporary_name from the system data
-      original_name = Map.get(system, "original_name")
-      temporary_name = Map.get(system, "temporary_name")
-      system_name_from_map = Map.get(system, "system_name") || Map.get(system, :alias) || Map.get(system, "name")
-
-
       # Format the system name according to the requirements
-      system_name = cond do
-        # If we have both original_name and temporary_name, and they're different
-        original_name && temporary_name && temporary_name != "" && original_name != temporary_name ->
-          formatted = "#{original_name} (#{temporary_name})"
-          formatted
+      system_name = format_system_name(system)
 
-        # If we have original_name
-        original_name && original_name != "" ->
-          original_name
+      # Plain text version (used for invalid license)
+      plain_text = "New system mapped: #{system_name}"
+      
+      # Rich embed version (used for valid license)
+      url = "https://zkillboard.com/system/#{system_id}/"
+      description = "[#{system_name}](#{url}) has been added to the map."
+      
+      embed_data = %{
+        title: "New System Mapped",
+        description: description,
+        url: url,
+        color: @default_embed_color
+      }
+      
+      # Send notification with license check
+      send_notification_with_license_check(plain_text, embed_data)
+    end
+  end
 
-        # If we have system_name from map and original_name, and they're different
-        system_name_from_map && original_name && system_name_from_map != original_name ->
-          formatted = "#{system_name_from_map} (#{original_name})"
-          formatted
+  # Helper to extract EVE character ID from various character data structures
+  defp extract_eve_character_id(character, fallback_id) do
+    case character do
+      %{"character" => %{"eve_id" => eve_id}} when is_binary(eve_id) ->
+        eve_id
+      %{"eve_id" => eve_id} when is_binary(eve_id) ->
+        eve_id
+      _ ->
+        fallback_id
+    end
+  end
 
-        # If we have system_name from map
-        system_name_from_map && system_name_from_map != "" ->
-          system_name_from_map
+  # Helper to format system name from various data structures
+  defp format_system_name(system) do
+    # Get original_name and temporary_name from the system data
+    original_name = Map.get(system, "original_name")
+    temporary_name = Map.get(system, "temporary_name")
+    system_name_from_map = Map.get(system, "system_name") || Map.get(system, :alias) || Map.get(system, "name")
+    system_id = Map.get(system, "system_id") || Map.get(system, :system_id) || Map.get(system, "solar_system_id")
 
-        # Fallback to system ID
-        true ->
-          fallback = "Solar System #{system_id}"
-          fallback
+    # Format the system name according to the requirements
+    cond do
+      # If we have both original_name and temporary_name, and they're different
+      original_name && temporary_name && temporary_name != "" && original_name != temporary_name ->
+        "#{original_name} (#{temporary_name})"
+
+      # If we have original_name
+      original_name && original_name != "" ->
+        original_name
+
+      # If we have system_name from map and original_name, and they're different
+      system_name_from_map && original_name && system_name_from_map != original_name ->
+        "#{system_name_from_map} (#{original_name})"
+
+      # If we have system_name from map
+      system_name_from_map && system_name_from_map != "" ->
+        system_name_from_map
+
+      # Fallback to system ID
+      true ->
+        "Solar System #{system_id}"
+    end
+  end
+
+  # Helper to get corporation name with caching
+  defp get_corporation_name(corporation_id, character) do
+    # First try to get from the character data
+    from_data = 
+      Map.get(character, "corporation_name") ||
+      (character["character"] && Map.get(character["character"], "corporation_name"))
+    
+    if from_data do
+      from_data
+    else
+      # If not in data, try to get from cache or ESI
+      get_corporation_name_from_id(corporation_id)
+    end
+  end
+
+  # Get corporation name from ID with caching
+  defp get_corporation_name_from_id(corporation_id) do
+    if not is_valid_id?(corporation_id) do
+      "Unknown Corporation"
+    else
+      # Try to get from cache first
+      cache_key = "corporation_name:#{corporation_id}"
+      
+      case CacheHelpers.get(cache_key) do
+        {:ok, name} when is_binary(name) and name != "" ->
+          Logger.debug("CHARACTER NOTIFICATION: Found corporation name in cache: #{name}")
+          name
+          
+        _ ->
+          # If not in cache, fetch from ESI and cache the result
+          Logger.debug("CHARACTER NOTIFICATION: Fetching corporation name from ESI for ID: #{corporation_id}")
+          case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+            {:ok, %{"name" => corp_name}} ->
+              Logger.debug("CHARACTER NOTIFICATION: Found corporation name: #{corp_name}")
+              # Cache the result for future use (24 hours TTL)
+              CacheHelpers.put(cache_key, corp_name, ttl: :timer.hours(24))
+              corp_name
+              
+            error ->
+              Logger.debug("CHARACTER NOTIFICATION: Failed to get corporation name: #{inspect(error)}")
+              "Unknown Corporation"
+          end
       end
+    end
+  end
 
-      # Check if license is valid
-      license_valid = WandererNotifier.License.status().valid
+  # Shared helper for sending notifications with license check
+  defp send_notification_with_license_check(plain_text, embed_data) do
+    # Check if license is valid
+    license_valid = WandererNotifier.License.status().valid
 
-      if license_valid do
-        # Send rich embed for valid license
-        title = "New System Mapped"
-        url = "https://zkillboard.com/system/#{system_id}/"
+    if license_valid do
+      # Send rich embed for valid license
+      embed = build_embed_from_data(embed_data)
+      payload = %{"embeds" => [embed]}
+      send_payload(payload)
+    else
+      # Send plain text for invalid license
+      send_message(plain_text)
+    end
+  end
 
-        # Make the system name a link to zKillboard in the description
-        description = "[#{system_name}](#{url}) has been added to the map."
-
-        color = 0x00FF00
-
-        embed = %{
-          "title" => title,
-          "url" => url,
-          "description" => description,
-          "color" => color,
-          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
-        }
-
-        payload = %{"embeds" => [embed]}
-        send_payload(payload)
-      else
-        # Send plain text for invalid license
-        message = "New system mapped: #{system_name}"
-        send_message(message)
-      end
+  # Build a complete embed from embed data
+  defp build_embed_from_data(data) do
+    # Start with the basic embed
+    embed = %{
+      "title" => data.title,
+      "description" => data.description,
+      "color" => data.color,
+      "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+    }
+    
+    # Add optional fields if they exist
+    embed = if data.url, do: Map.put(embed, "url", data.url), else: embed
+    
+    # Add footer if footer_text exists
+    embed = if Map.get(data, :footer_text), 
+      do: Map.put(embed, "footer", %{"text" => data.footer_text}), 
+      else: embed
+    
+    # Add thumbnail if thumbnail_url exists
+    embed = if Map.get(data, :thumbnail_url), 
+      do: Map.put(embed, "thumbnail", %{"url" => data.thumbnail_url}), 
+      else: embed
+    
+    # Add author if author_name exists
+    if Map.get(data, :author_name) do
+      author = %{"name" => data.author_name}
+      author = if data.url, do: Map.put(author, "url", data.url), else: author
+      author = if Map.get(data, :author_icon_url), 
+        do: Map.put(author, "icon_url", data.author_icon_url), 
+        else: author
+      
+      Map.put(embed, "author", author)
+    else
+      embed
     end
   end
 
@@ -487,22 +522,7 @@ defmodule WandererNotifier.Discord.Notifier do
       end
 
     corporation_id = Map.get(entity, "corporation_id")
-
-    corp =
-      case Map.get(entity, "corporation_name") do
-        nil ->
-          if is_valid_id?(corporation_id) do
-            case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-              {:ok, %{"name" => corp_name}} -> corp_name
-              _ -> "Corp #{corporation_id}"
-            end
-          else
-            "Unknown Corporation"
-          end
-
-        corp_name ->
-          corp_name
-      end
+    corp = get_corporation_name_from_id(corporation_id)
 
     ship_type_id = Map.get(entity, "ship_type_id")
 
