@@ -375,4 +375,11 @@ defmodule WandererNotifier.Service.KillProcessor do
       ]
     }
   end
+
+  # Get the most recent kills
+  def get_recent_kills do
+    recent_kills = Process.get(@recent_kills_key, [])
+    Logger.info("Returning #{length(recent_kills)} recent kills")
+    recent_kills
+  end
 end

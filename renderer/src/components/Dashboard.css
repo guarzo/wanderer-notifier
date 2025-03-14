@@ -1,0 +1,129 @@
+/* Dashboard Container */
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1rem;
+}
+
+/* Top toolbar (icons for Refresh & Revalidate) */
+.dashboard-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  background-color: #eee;
+  border-radius: 4px;
+}
+
+/* Notification Statistics */
+.notification-stats {
+  display: flex;
+  flex-wrap: wrap; /* wraps to next row if space is limited */
+  gap: 1rem;
+  align-items: center;
+}
+
+.notification-stat {
+  flex: 1 1 auto; /* allows each stat block to grow or shrink */
+  min-width: 150px; /* you can adjust the min width as needed */
+  background-color: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.notification-stat h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+.notification-stat p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* System Status */
+.system-status {
+  background-color: #fefefe;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.system-status h3 {
+  margin-top: 0;
+}
+
+.system-status-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.status-item {
+  flex: 1 1 200px;
+  background-color: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.status-item h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.status-item p {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+}
+
+/* Feature Status */
+.feature-status {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.feature-status h3 {
+  margin-top: 0;
+}
+
+.feature-items {
+  display: flex;
+  flex-wrap: wrap; /* allows wrapping if the container is too narrow */
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.feature-item {
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* space between name & icon */
+  background-color: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.feature-name {
+  font-size: 0.9rem;
+}
+

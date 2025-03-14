@@ -374,6 +374,64 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Error and info messages */
+    .error-message {
+      color: var(--danger);
+      padding: 1rem;
+      background-color: rgba(249, 65, 68, 0.1);
+      border-radius: var(--border-radius);
+      margin-bottom: 1rem;
+    }
+
+    .info-message {
+      color: var(--gray);
+      padding: 1rem;
+      background-color: var(--gray-light);
+      border-radius: var(--border-radius);
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    /* Recent kills styling */
+    .kills-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .kill-item {
+      padding: 0.75rem;
+      border-radius: var(--border-radius);
+      background-color: rgba(67, 97, 238, 0.05);
+      border-left: 3px solid var(--primary);
+    }
+
+    .kill-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+
+    .kill-victim {
+      font-weight: 600;
+      color: var(--dark);
+    }
+
+    .kill-time {
+      color: var(--gray);
+      font-size: 0.9rem;
+    }
+
+    .kill-details {
+      font-size: 0.95rem;
+      color: var(--gray-dark);
+    }
+
+    .kill-ship, .kill-system {
+      font-weight: 500;
+      color: var(--dark);
+    }
   </style>
 </head>
 <body>
@@ -447,13 +505,33 @@
         <div class="card-header">
           <h2>Test Notifications</h2>
         </div>
-        <p>Use these buttons to test different notifications:</p>
-        <div class="test-buttons">
-          <button class="button button-primary" onclick="sendTestNotification()">Test Kill</button>
-          <button class="button button-primary" onclick="sendTestCharacterNotification()">Test Character</button>
-          <button class="button button-primary" onclick="sendTestSystemNotification()">Test System</button>
+        <div class="card-body">
+          <p>Send test notifications to verify your Discord integration is working correctly.</p>
+          <div class="button-group">
+            <button class="button button-primary" onclick="sendTestNotification()">
+              Test Kill Notification
+            </button>
+            <button class="button button-primary" onclick="sendTestSystemNotification()">
+              Test System Notification
+            </button>
+            <button class="button button-primary" onclick="sendTestCharacterNotification()">
+              Test Character Notification
+            </button>
+          </div>
+          <div id="test-notification-result" class="mt-3"></div>
         </div>
-        <div id="test-notification-result"></div>
+      </div>
+
+      <!-- Recent Kills -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Recent Kills</h2>
+        </div>
+        <div class="card-body">
+          <div id="recent-kills">
+            <div class="loading-text">Loading recent kills...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -787,8 +865,72 @@
       }
     }
 
-    document.addEventListener("DOMContentLoaded", fetchStatus);
-    setInterval(fetchStatus, 30000);
+    // === DASHBOARD INITIALIZATION ===
+    document.addEventListener("DOMContentLoaded", function () {
+      // Initial data load
+      fetchStatus();
+
+      // Load recent kills
+      fetchRecentKills();
+
+      // Set up refresh interval (every 30 seconds)
+      setInterval(fetchStatus, 30000);
+
+      // Refresh recent kills every 60 seconds
+      setInterval(fetchRecentKills, 60000);
+    });
+
+    // === RECENT KILLS ===
+    function fetchRecentKills() {
+      fetch("/api/recent-kills")
+        .then((r) => r.json())
+        .then((data) => {
+          updateRecentKills(data);
+        })
+        .catch((err) => {
+          console.error("Error fetching recent kills:", err);
+          document.getElementById("recent-kills").innerHTML =
+            `<div class="error-message">Error loading recent kills: ${err.message}</div>`;
+        });
+    }
+
+    function updateRecentKills(data) {
+      const container = document.getElementById("recent-kills");
+
+      if (!data || !data.kills || data.kills.length === 0) {
+        container.innerHTML = `<div class="info-message">No recent kills available</div>`;
+        return;
+      }
+
+      let html = `<div class="kills-list">`;
+
+      data.kills.forEach(kill => {
+        const victimName = kill.victim?.character_name || "Unknown";
+        const shipType = kill.victim?.ship_name || "Unknown Ship";
+        const systemName = kill.system_name || "Unknown System";
+        const killTime = formatTimestamp(kill.timestamp || new Date().toISOString());
+
+        html += `
+          <div class="kill-item">
+            <div class="kill-header">
+              <span class="kill-victim">${victimName}</span>
+              <span class="kill-time">${killTime}</span>
+            </div>
+            <div class="kill-details">
+              Lost a <span class="kill-ship">${shipType}</span> in <span class="kill-system">${systemName}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
   </script>
 </body>
 </html>

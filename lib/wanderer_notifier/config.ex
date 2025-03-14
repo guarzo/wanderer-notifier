@@ -69,15 +69,33 @@ defmodule WandererNotifier.Config do
   In development and test environments, it uses the value from environment variables.
   """
   def bot_api_token do
-    env = Application.get_env(:wanderer_notifier, :env, :prod)
+    # Check if we're in a development container by looking for a specific environment variable
+    # or by checking if the LICENSE_MANAGER_API_URL is set (which is only used in development)
+    is_dev_container = System.get_env("LICENSE_MANAGER_API_URL") != nil
 
-    case env do
-      :prod ->
-        # In production, use the hardcoded token
+    if is_dev_container do
+      # In development containers, always use the environment variable
+      env_token = Application.get_env(:wanderer_notifier, :bot_api_token)
+      if is_nil(env_token) || env_token == "" do
+        # If the environment variable is not set, log a warning and use the production token
+        require Logger
+        Logger.warning("BOT_API_TOKEN environment variable is not set, using production token")
         @production_bot_api_token
-      _ ->
-        # In development and test, use the environment variable
-        Application.get_env(:wanderer_notifier, :bot_api_token)
+      else
+        env_token
+      end
+    else
+      # For non-development containers, use the original logic
+      env = Application.get_env(:wanderer_notifier, :env, :prod)
+
+      case env do
+        :prod ->
+          # In production, use the hardcoded token
+          @production_bot_api_token
+        _ ->
+          # In development and test, use the environment variable
+          Application.get_env(:wanderer_notifier, :bot_api_token)
+      end
     end
   end
 
@@ -184,6 +202,25 @@ defmodule WandererNotifier.Config do
       "0" -> false
       nil -> true  # Default to true if not set
       _ -> true    # Any other value is considered true
+    end
+  end
+
+  @doc """
+  Returns the public URL for the application.
+  This is used for generating URLs to public assets like images.
+  """
+  def public_url do
+    # First try to get from environment variable
+    case Application.get_env(:wanderer_notifier, :public_url) do
+      url when is_binary(url) and url != "" ->
+        url
+      _ ->
+        # If not set, try to construct from host and port
+        host = Application.get_env(:wanderer_notifier, :host) || "localhost"
+        port = Application.get_env(:wanderer_notifier, :port) || 4000
+        scheme = Application.get_env(:wanderer_notifier, :scheme) || "http"
+
+        "#{scheme}://#{host}:#{port}"
     end
   end
 end

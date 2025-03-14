@@ -1,10 +1,11 @@
 defmodule WandererNotifier.Discord.Notifier do
   @moduledoc """
+  Discord notification service.
   Handles sending notifications to Discord.
   """
   require Logger
-  alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Http.Client, as: HttpClient
 
   # Default embed color (blue)
   @default_embed_color 0x3498DB
@@ -120,10 +121,10 @@ defmodule WandererNotifier.Discord.Notifier do
       # Prepare data for both embed and plain text versions
       victim = Map.get(normalized, "victim", %{})
       victim_data = extract_entity(victim)
-      
+
       # Plain text version (used for invalid license)
       plain_text = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship}"
-      
+
       # Rich embed version (used for valid license)
       embed_data = %{
         title: title,
@@ -132,25 +133,40 @@ defmodule WandererNotifier.Discord.Notifier do
         color: @default_embed_color,
         footer_text: if(is_properly_enriched, do: "Value: #{formatted_value}", else: nil)
       }
-      
+
       # Additional embed elements for the rich version
       victim_ship_type = Map.get(victim, "ship_type_id")
       thumbnail_url = if victim_ship_type, do: "https://images.evetech.net/types/#{victim_ship_type}/render", else: nil
-      
+
       attackers = Map.get(normalized, "attackers", [])
       top_attacker = get_top_attacker(attackers)
       corp_id = Map.get(top_attacker, "corporation_id")
       author_icon_url = if corp_id, do: "https://images.evetech.net/corporations/#{corp_id}/logo", else: nil
-      
+
       # Add these to the embed data
       embed_data = Map.merge(embed_data, %{
         thumbnail_url: thumbnail_url,
         author_name: "Kill",
         author_icon_url: author_icon_url
       })
-      
+
+      # Add security status field if available
+      security_status = Map.get(normalized, "security_status") || Map.get(normalized, "security")
+      embed_data_with_security = if security_status do
+        formatted_security = format_security_status(security_status)
+        Map.update!(embed_data, :fields, fn fields ->
+          fields ++ [%{
+            name: "Security",
+            value: formatted_security,
+            inline: true
+          }]
+        end)
+      else
+        embed_data
+      end
+
       # Send notification with license check
-      send_notification_with_license_check(plain_text, embed_data)
+      send_notification_with_license_check(plain_text, embed_data_with_security)
     end
   end
 
@@ -171,46 +187,125 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
-      character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
+      # Log the character data for debugging
+      Logger.info("CHARACTER NOTIFICATION DATA: #{inspect(character, pretty: true, limit: 10000)}")
+      Logger.info("Character keys: #{inspect(Map.keys(character))}")
 
-      # Extract the EVE character ID from the nested character object if available
-      eve_character_id = extract_eve_character_id(character, character_id)
+      # Extract the EVE ID - only accept numeric IDs
+      eve_id = cond do
+        # Try to get from the top level first (most common case)
+        is_binary(character["character_id"]) && is_valid_numeric_id?(character["character_id"]) ->
+          character["character_id"]
 
-      # Use the EVE character ID for the portrait URL and zkill link
-      portrait_url = "https://images.evetech.net/characters/#{eve_character_id}/portrait"
+        # Try to get from the top level with "eve_id" key
+        is_binary(character["eve_id"]) && is_valid_numeric_id?(character["eve_id"]) ->
+          character["eve_id"]
 
-      name =
-        Map.get(character, "character_name") ||
-        (character["character"] && Map.get(character["character"], "name")) ||
-        "Unknown Character"
+        # Try to get from nested "character" object
+        is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
+        is_valid_numeric_id?(character["character"]["eve_id"]) ->
+          character["character"]["eve_id"]
 
-      # Extract corporation ID from the character data
-      corporation_id =
-        Map.get(character, "corporation_id") ||
-        (character["character"] && Map.get(character["character"], "corporation_id"))
+        # Try to get from nested "character" object with "character_id" key
+        is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
+        is_valid_numeric_id?(character["character"]["character_id"]) ->
+          character["character"]["character_id"]
 
-      Logger.debug("CHARACTER NOTIFICATION: Corporation ID from data: #{inspect(corporation_id)}")
+        # Try to get from nested "character" object with "id" key
+        is_map(character["character"]) && is_binary(character["character"]["id"]) &&
+        is_valid_numeric_id?(character["character"]["id"]) ->
+          character["character"]["id"]
 
-      # Extract or fetch corporation name
-      corp = get_corporation_name(corporation_id, character)
+        # No valid numeric ID found
+        true ->
+          Logger.error("No valid numeric EVE ID found for character: #{inspect(character, pretty: true)}")
+          nil
+      end
 
-      # Plain text version (used for invalid license)
-      plain_text = "New tracked character: #{name}"
-      
-      # Rich embed version (used for valid license)
-      url = "https://zkillboard.com/character/#{eve_character_id}/"
-      description = "[#{name}](#{url}) (#{corp}) is now being tracked"
-      
-      embed_data = %{
-        title: "New Character",
-        description: description,
-        url: url,
-        color: @default_embed_color,
-        thumbnail_url: portrait_url
-      }
-      
-      # Send notification with license check
-      send_notification_with_license_check(plain_text, embed_data)
+      # Log the extracted EVE ID
+      Logger.info("Extracted EVE ID: #{eve_id}")
+
+      # If we don't have a valid EVE ID, log an error and return
+      if is_nil(eve_id) do
+        Logger.error("No valid EVE character ID found for character: #{inspect(character, pretty: true)}")
+        Logger.error("This is a critical error - character tracking requires numeric EVE IDs")
+        return_value = {:error, :invalid_character_id}
+        return_value
+      else
+        # Use the EVE character ID for the portrait URL
+        portrait_url = "https://images.evetech.net/characters/#{eve_id}/portrait"
+        Logger.info("Using EVE portrait URL: #{portrait_url}")
+
+        # Extract character name - handle different possible data structures
+        name = cond do
+          # Try to get from the top level first
+          character["character_name"] != nil ->
+            character["character_name"]
+
+          # Try to get from the top level with "name" key
+          character["name"] != nil ->
+            character["name"]
+
+          # Try to get from nested "character" object
+          is_map(character["character"]) && character["character"]["name"] != nil ->
+            character["character"]["name"]
+
+          # Try to get from nested "character" object with "character_name" key
+          is_map(character["character"]) && character["character"]["character_name"] != nil ->
+            character["character"]["character_name"]
+
+          # Fallback
+          true ->
+            "Unknown Character"
+        end
+
+        # Log the extracted character name
+        Logger.info("Extracted character name: #{name}")
+
+        # Extract corporation name - handle different possible data structures
+        corporation_name = cond do
+          # Try to get from the top level first
+          character["corporation_name"] != nil ->
+            character["corporation_name"]
+
+          # Try to get from nested "character" object
+          is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
+            character["character"]["corporation_name"]
+
+          # Fallback
+          true ->
+            "Unknown Corporation"
+        end
+
+        # Log the extracted corporation name
+        Logger.info("Extracted corporation name: #{corporation_name}")
+
+        # Plain text version (used for invalid license)
+        plain_text = "#{name} (#{corporation_name}) is now being tracked"
+
+        # Rich embed version (used for valid license)
+        url = "https://zkillboard.com/character/#{eve_id}/"
+
+        description = "is now being tracked"
+
+        embed_data = %{
+          title: name,
+          description: description,
+          url: url,
+          color: @default_embed_color,
+          thumbnail_url: portrait_url,
+          fields: [
+            %{
+              name: "Corporation",
+              value: corporation_name,
+              inline: true
+            }
+          ]
+        }
+
+        # Send notification with license check
+        send_notification_with_license_check(plain_text, embed_data)
+      end
     end
   end
 
@@ -231,6 +326,10 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
+      # Log the system data for debugging
+      Logger.info("SYSTEM NOTIFICATION DATA: #{inspect(system, pretty: true, limit: 10000)}")
+      Logger.info("System keys: #{inspect(Map.keys(system))}")
+
       system_id =
         Map.get(system, "system_id") ||
           Map.get(system, :system_id) ||
@@ -239,34 +338,68 @@ defmodule WandererNotifier.Discord.Notifier do
       # Format the system name according to the requirements
       system_name = format_system_name(system)
 
+      # Determine system type and get the appropriate icon
+      system_type = determine_system_type(system)
+      icon_url = get_system_icon_url(system_type)
+
+      # Log the system type and icon URL
+      Logger.info("System type: #{system_type}, Icon URL: #{icon_url}")
+
+      # Get recent kills in this system
+      recent_kills = get_recent_kills_in_system(system_id)
+
       # Plain text version (used for invalid license)
-      plain_text = "New system mapped: #{system_name}"
-      
+      plain_text = "#{system_name} (#{system_type}) has been added to the map."
+
       # Rich embed version (used for valid license)
       url = "https://zkillboard.com/system/#{system_id}/"
-      description = "[#{system_name}](#{url}) has been added to the map."
-      
+      description = "has been added to the map."
+
       embed_data = %{
-        title: "New System Mapped",
+        title: system_name,
         description: description,
         url: url,
-        color: @default_embed_color
+        color: @default_embed_color,
+        thumbnail_url: icon_url,
+        fields: [
+          %{
+            name: "System Type",
+            value: system_type,
+            inline: true
+          }
+        ]
       }
-      
-      # Send notification with license check
-      send_notification_with_license_check(plain_text, embed_data)
-    end
-  end
 
-  # Helper to extract EVE character ID from various character data structures
-  defp extract_eve_character_id(character, fallback_id) do
-    case character do
-      %{"character" => %{"eve_id" => eve_id}} when is_binary(eve_id) ->
-        eve_id
-      %{"eve_id" => eve_id} when is_binary(eve_id) ->
-        eve_id
-      _ ->
-        fallback_id
+      # Add security status field if available
+      security_status = Map.get(system, "security_status") || Map.get(system, "security")
+      embed_data_with_security = if security_status do
+        formatted_security = format_security_status(security_status)
+        Map.update!(embed_data, :fields, fn fields ->
+          fields ++ [%{
+            name: "Security",
+            value: formatted_security,
+            inline: true
+          }]
+        end)
+      else
+        embed_data
+      end
+
+      # Add recent kills field if available
+      embed_data_with_kills = if recent_kills != [] do
+        Map.update!(embed_data_with_security, :fields, fn fields ->
+          fields ++ [%{
+            name: "Recent Activity",
+            value: format_recent_kills(recent_kills),
+            inline: false
+          }]
+        end)
+      else
+        embed_data_with_security
+      end
+
+      # Send notification with license check
+      send_notification_with_license_check(plain_text, embed_data_with_kills)
     end
   end
 
@@ -302,34 +435,19 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Helper to get corporation name with caching
-  defp get_corporation_name(corporation_id, character) do
-    # First try to get from the character data
-    from_data = 
-      Map.get(character, "corporation_name") ||
-      (character["character"] && Map.get(character["character"], "corporation_name"))
-    
-    if from_data do
-      from_data
-    else
-      # If not in data, try to get from cache or ESI
-      get_corporation_name_from_id(corporation_id)
-    end
-  end
-
   # Get corporation name from ID with caching
   defp get_corporation_name_from_id(corporation_id) do
-    if not is_valid_id?(corporation_id) do
+    if not is_valid_numeric_id?(corporation_id) do
       "Unknown Corporation"
     else
       # Try to get from cache first
       cache_key = "corporation_name:#{corporation_id}"
-      
+
       case CacheRepo.get(cache_key) do
         name when is_binary(name) and name != "" ->
           Logger.debug("Found corporation name in cache: #{name}")
           name
-          
+
         _ ->
           # If not in cache, fetch from ESI and cache the result
           Logger.debug("Fetching corporation name from ESI for ID: #{corporation_id}")
@@ -339,7 +457,7 @@ defmodule WandererNotifier.Discord.Notifier do
               # Cache the result for future use (24 hours TTL)
               CacheRepo.set(cache_key, corp_name, :timer.hours(24) |> div(1000))
               corp_name
-              
+
             _error ->
               Logger.debug("Failed to get corporation name for ID: #{corporation_id}")
               "Unknown Corporation"
@@ -356,7 +474,8 @@ defmodule WandererNotifier.Discord.Notifier do
     if license_valid do
       # Send rich embed for valid license
       embed = build_embed_from_data(embed_data)
-      payload = %{"embeds" => [embed]}
+      # Use empty content with the embed to avoid sending both plain text and rich embed
+      payload = %{"content" => "", "embeds" => [embed]}
       send_payload(payload)
     else
       # Send plain text for invalid license
@@ -373,28 +492,28 @@ defmodule WandererNotifier.Discord.Notifier do
       "color" => data.color,
       "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
-    
+
     # Add optional fields if they exist
     embed = if data.url, do: Map.put(embed, "url", data.url), else: embed
-    
+
     # Add footer if footer_text exists
-    embed = if Map.get(data, :footer_text), 
-      do: Map.put(embed, "footer", %{"text" => data.footer_text}), 
+    embed = if Map.get(data, :footer_text),
+      do: Map.put(embed, "footer", %{"text" => data.footer_text}),
       else: embed
-    
+
     # Add thumbnail if thumbnail_url exists
-    embed = if Map.get(data, :thumbnail_url), 
-      do: Map.put(embed, "thumbnail", %{"url" => data.thumbnail_url}), 
+    embed = if Map.get(data, :thumbnail_url),
+      do: Map.put(embed, "thumbnail", %{"url" => data.thumbnail_url}),
       else: embed
-    
+
     # Add author if author_name exists
     if Map.get(data, :author_name) do
       author = %{"name" => data.author_name}
       author = if data.url, do: Map.put(author, "url", data.url), else: author
-      author = if Map.get(data, :author_icon_url), 
-        do: Map.put(author, "icon_url", data.author_icon_url), 
+      author = if Map.get(data, :author_icon_url),
+        do: Map.put(author, "icon_url", data.author_icon_url),
         else: author
-      
+
       Map.put(embed, "author", author)
     else
       embed
@@ -541,12 +660,12 @@ defmodule WandererNotifier.Discord.Notifier do
     else
       # Try to get from cache first
       cache_key = "character_name:#{character_id}"
-      
+
       case CacheRepo.get(cache_key) do
         name when is_binary(name) and name != "" ->
           Logger.debug("Found character name in cache: #{name}")
           name
-          
+
         _ ->
           # If not in cache, fetch from ESI and cache the result
           Logger.debug("Fetching character name from ESI for ID: #{character_id}")
@@ -556,7 +675,7 @@ defmodule WandererNotifier.Discord.Notifier do
               # Cache the result for future use (24 hours TTL)
               CacheRepo.set(cache_key, character_name, :timer.hours(24) |> div(1000))
               character_name
-              
+
             _ ->
               fallback = "Character #{character_id}"
               Logger.debug("Failed to get character name, using fallback: #{fallback}")
@@ -573,12 +692,12 @@ defmodule WandererNotifier.Discord.Notifier do
     else
       # Try to get from cache first
       cache_key = "ship_type_name:#{ship_type_id}"
-      
+
       case CacheRepo.get(cache_key) do
         name when is_binary(name) and name != "" ->
           Logger.debug("Found ship type name in cache: #{name}")
           name
-          
+
         _ ->
           # If not in cache, fetch from ESI and cache the result
           Logger.debug("Fetching ship type name from ESI for ID: #{ship_type_id}")
@@ -588,7 +707,7 @@ defmodule WandererNotifier.Discord.Notifier do
               # Cache the result for future use (7 days TTL - ship types change less frequently)
               CacheRepo.set(cache_key, ship_name, :timer.hours(24 * 7) |> div(1000))
               ship_name
-              
+
             _ ->
               fallback = "Ship #{ship_type_id}"
               Logger.debug("Failed to get ship type name, using fallback: #{fallback}")
@@ -599,17 +718,40 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   # Helper function to check if an ID is valid for API calls
-  defp is_valid_id?(nil), do: false
-  defp is_valid_id?("Unknown"), do: false
-  defp is_valid_id?("unknown"), do: false
-  defp is_valid_id?(id) when is_binary(id) do
+  def is_valid_id?(nil), do: false
+  def is_valid_id?("Unknown"), do: false
+  def is_valid_id?("unknown"), do: false
+  def is_valid_id?(id) when is_binary(id) do
     case Integer.parse(id) do
       {num, ""} when num > 0 -> true
       _ -> false
     end
   end
-  defp is_valid_id?(id) when is_integer(id) and id > 0, do: true
-  defp is_valid_id?(_), do: false
+  def is_valid_id?(id) when is_integer(id) and id > 0, do: true
+  def is_valid_id?(_), do: false
+
+  # Helper function to check if an ID is a valid numeric ID for EVE API calls
+  # This function only accepts numeric IDs, not UUIDs
+  def is_valid_numeric_id?(nil), do: false
+  def is_valid_numeric_id?(""), do: false
+  def is_valid_numeric_id?("Unknown"), do: false
+  def is_valid_numeric_id?("unknown"), do: false
+
+  # Handle numeric string IDs
+  def is_valid_numeric_id?(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {num, ""} when num > 0 ->
+        Logger.debug("ID #{id} parsed as valid numeric ID: #{num}")
+        true
+      _ ->
+        Logger.debug("ID #{id} is not a valid numeric ID")
+        false
+    end
+  end
+
+  # Handle integer IDs
+  def is_valid_numeric_id?(id) when is_integer(id) and id > 0, do: true
+  def is_valid_numeric_id?(_), do: false
 
   defp resolve_system_name(nil), do: "Unknown System"
 
@@ -640,12 +782,12 @@ defmodule WandererNotifier.Discord.Notifier do
     else
       # Try to get from cache first
       cache_key = "solar_system_name:#{solar_system_id}"
-      
+
       case CacheRepo.get(cache_key) do
         name when is_binary(name) and name != "" ->
           Logger.debug("Found solar system name in cache: #{name}")
           name
-          
+
         _ ->
           # If not in cache, fetch from ESI and cache the result
           Logger.debug("Fetching solar system name from ESI for ID: #{solar_system_id}")
@@ -655,7 +797,7 @@ defmodule WandererNotifier.Discord.Notifier do
               # Cache the result for future use (7 days TTL - solar systems change very rarely)
               CacheRepo.set(cache_key, name, :timer.hours(24 * 7) |> div(1000))
               name
-              
+
             _ ->
               fallback = "Solar System #{solar_system_id}"
               Logger.debug("Failed to get solar system name, using fallback: #{fallback}")
@@ -717,5 +859,290 @@ defmodule WandererNotifier.Discord.Notifier do
 
     # Consider it properly enriched if it has zkb data with value and victim details
     has_zkb && has_value && has_victim_details
+  end
+
+  # Helper to determine system type from system data
+  defp determine_system_type(system) do
+    # Extract relevant data
+    class = Map.get(system, "class") || Map.get(system, "wormhole_class")
+    security_status = Map.get(system, "security_status") || Map.get(system, "security")
+    system_type = Map.get(system, "type") || Map.get(system, "system_type")
+
+    cond do
+      # Check for explicit system type first
+      is_binary(system_type) && system_type != "" ->
+        case String.downcase(system_type) do
+          "wormhole" -> determine_wormhole_class(class)
+          "triglavian" -> "Triglavian"
+          "drifter" -> "Drifter"
+          type -> String.capitalize(type)
+        end
+
+      # Check for wormhole class
+      is_binary(class) || is_integer(class) ->
+        determine_wormhole_class(class)
+
+      # Check security status for k-space
+      is_number(security_status) || is_binary(security_status) ->
+        determine_kspace_type(security_status)
+
+      # Default fallback
+      true ->
+        "Unknown"
+    end
+  end
+
+  # Helper to determine wormhole class
+  defp determine_wormhole_class(class) when is_binary(class) do
+    # Try to parse the class as an integer
+    case Integer.parse(class) do
+      {num, ""} -> determine_wormhole_class(num)
+      _ ->
+        # Handle special wormhole types
+        case String.downcase(class) do
+          "thera" -> "Thera"
+          "drifter" -> "Drifter"
+          "shattered" -> "Shattered"
+          _ -> "Class #{class}"
+        end
+    end
+  end
+
+  defp determine_wormhole_class(class) when is_integer(class) do
+    case class do
+      1 -> "Class 1"
+      2 -> "Class 2"
+      3 -> "Class 3"
+      4 -> "Class 4"
+      5 -> "Class 5"
+      6 -> "Class 6"
+      13 -> "Shattered"
+      _ -> "Class #{class}"
+    end
+  end
+
+  defp determine_wormhole_class(_), do: "Unknown Class"
+
+  # Helper to determine k-space type based on security status
+  defp determine_kspace_type(security_status) when is_binary(security_status) do
+    case Float.parse(security_status) do
+      {num, ""} -> determine_kspace_type(num)
+      _ -> "Unknown"
+    end
+  end
+
+  defp determine_kspace_type(security_status) when is_number(security_status) do
+    cond do
+      security_status >= 0.45 -> "High Security"
+      security_status > 0.0 -> "Low Security"
+      true -> "Null Security"
+    end
+  end
+
+  defp determine_kspace_type(_), do: "Unknown"
+
+  # Helper to get system icon URL based on system type
+  defp get_system_icon_url(system_type) do
+    # Use EVE Online official images that are publicly accessible
+    case system_type do
+      # K-Space (Known Space) systems
+      "High Security" -> "https://images.evetech.net/types/3802/icon"  # Amarr Control Tower - gold color for highsec
+      "Low Security" -> "https://images.evetech.net/types/16213/icon"  # Caldari Control Tower - blue color for lowsec
+      "Null Security" -> "https://images.evetech.net/types/16214/icon"  # Gallente Control Tower - green color for nullsec
+
+      # Special space types
+      "Triglavian" -> "https://images.evetech.net/types/47740/icon"  # Triglavian ship
+      "Drifter" -> "https://images.evetech.net/types/34495/icon"  # Drifter structure
+
+      # Wormhole classes with more specific icons
+      "Class 1" -> "https://images.evetech.net/types/30370/icon"  # Wormhole C1
+      "Class 2" -> "https://images.evetech.net/types/30370/icon"  # Wormhole C2
+      "Class 3" -> "https://images.evetech.net/types/30371/icon"  # Wormhole C3
+      "Class 4" -> "https://images.evetech.net/types/30371/icon"  # Wormhole C4
+      "Class 5" -> "https://images.evetech.net/types/30372/icon"  # Wormhole C5
+      "Class 6" -> "https://images.evetech.net/types/30372/icon"  # Wormhole C6
+      "Shattered" -> "https://images.evetech.net/types/30372/icon"  # Shattered wormhole
+
+      # Default/unknown
+      _ -> "https://images.evetech.net/types/30371/icon"  # Generic wormhole icon
+    end
+  end
+
+  # Helper to format security status for display
+  defp format_security_status(security_status) when is_binary(security_status) do
+    case Float.parse(security_status) do
+      {num, ""} -> format_security_status(num)
+      _ -> security_status
+    end
+  end
+
+  defp format_security_status(security_status) when is_number(security_status) do
+    # Format to one decimal place with proper coloring
+    formatted = :io_lib.format("~.1f", [security_status]) |> to_string()
+
+    cond do
+      security_status >= 0.45 -> "#{formatted} (High)"
+      security_status > 0.0 -> "#{formatted} (Low)"
+      true -> "#{formatted} (Null)"
+    end
+  end
+
+  defp format_security_status(security_status), do: "#{security_status}"
+
+  # Helper to get recent kills in a specific system
+  defp get_recent_kills_in_system(system_id) do
+    # Get recent kills from the KillProcessor
+    recent_kills = WandererNotifier.Service.KillProcessor.get_recent_kills()
+
+    # For test notifications, if there are no recent kills, add mock kills
+    if recent_kills == [] && String.contains?(inspect(Process.info(self())), "test-system-notification") do
+      Logger.info("Adding mock kill data for test notification")
+
+      # Create multiple mock kills with realistic data
+      [
+        %{
+          "killmail_id" => "123456789",
+          "solar_system_id" => system_id,
+          "timestamp" => DateTime.utc_now() |> DateTime.add(-15 * 60, :second) |> DateTime.to_iso8601(),
+          "victim" => %{
+            "character_id" => "95465499",
+            "character_name" => "Test Victim",
+            "ship_type_id" => "17740",
+            "ship_type_name" => "Vindicator"
+          }
+        },
+        %{
+          "killmail_id" => "123456790",
+          "solar_system_id" => system_id,
+          "timestamp" => DateTime.utc_now() |> DateTime.add(-45 * 60, :second) |> DateTime.to_iso8601(),
+          "victim" => %{
+            "character_id" => "95465500",
+            "character_name" => "Another Victim",
+            "ship_type_id" => "28352",
+            "ship_type_name" => "Rorqual"
+          }
+        },
+        %{
+          "killmail_id" => "123456791",
+          "solar_system_id" => system_id,
+          "timestamp" => DateTime.utc_now() |> DateTime.add(-120 * 60, :second) |> DateTime.to_iso8601(),
+          "victim" => %{
+            "character_id" => "95465501",
+            "character_name" => "Third Victim",
+            "ship_type_id" => "28659",
+            "ship_type_name" => "Nyx"
+          }
+        },
+        %{
+          "killmail_id" => "123456792",
+          "solar_system_id" => system_id,
+          "timestamp" => DateTime.utc_now() |> DateTime.add(-180 * 60, :second) |> DateTime.to_iso8601(),
+          "victim" => %{
+            "character_id" => "95465502",
+            "character_name" => "Fourth Victim",
+            "ship_type_id" => "670",
+            "ship_type_name" => "Capsule"
+          }
+        }
+      ]
+    else
+      # Filter to only include kills in the specified system
+      system_id_str = to_string(system_id)
+      Enum.filter(recent_kills, fn kill ->
+        kill_system_id = to_string(Map.get(kill, "solar_system_id", ""))
+        kill_system_id == system_id_str
+      end)
+    end
+  end
+
+  # Helper to format recent kills for display in Discord embed
+  defp format_recent_kills(kills) do
+    case kills do
+      [] ->
+        "No recent activity"
+
+      [kill | _] when length(kills) == 1 ->
+        victim_name = get_in(kill, ["victim", "character_name"]) || "Unknown"
+        ship_type = get_in(kill, ["victim", "ship_type_name"]) || "Unknown Ship"
+        kill_id = Map.get(kill, "killmail_id")
+        kill_time = Map.get(kill, "timestamp")
+        formatted_time = if kill_time, do: format_timestamp(kill_time), else: "recently"
+
+        if kill_id do
+          "**Recent kill:** [#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) lost a **#{ship_type}** #{formatted_time}"
+        else
+          "**Recent kill:** #{victim_name} lost a **#{ship_type}** #{formatted_time}"
+        end
+
+      _ ->
+        # Format multiple kills with emojis and better formatting
+        kill_list = Enum.map_join(Enum.take(kills, 3), "\n", fn kill ->
+          victim_name = get_in(kill, ["victim", "character_name"]) || "Unknown"
+          ship_type = get_in(kill, ["victim", "ship_type_name"]) || "Unknown Ship"
+          kill_id = Map.get(kill, "killmail_id")
+          kill_time = Map.get(kill, "timestamp")
+          formatted_time = if kill_time, do: format_timestamp(kill_time), else: "recently"
+
+          ship_emoji = get_ship_emoji(ship_type)
+
+          if kill_id do
+            "#{ship_emoji} [#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) (**#{ship_type}**) #{formatted_time}"
+          else
+            "#{ship_emoji} #{victim_name} (**#{ship_type}**) #{formatted_time}"
+          end
+        end)
+
+        total = length(kills)
+        remaining = total - 3
+
+        header = "**Recent Activity (#{total} kills)**\n"
+
+        if remaining > 0 do
+          "#{header}#{kill_list}\n...and #{remaining} more"
+        else
+          "#{header}#{kill_list}"
+        end
+    end
+  end
+
+  # Helper to get an appropriate emoji for a ship type
+  defp get_ship_emoji(ship_type) do
+    cond do
+      # Capital ships
+      String.contains?(ship_type, "Titan") -> "💥"
+      String.contains?(ship_type, "Supercarrier") || ship_type == "Nyx" || ship_type == "Aeon" || ship_type == "Hel" || ship_type == "Wyvern" -> "💥"
+      String.contains?(ship_type, "Carrier") || ship_type == "Thanatos" || ship_type == "Archon" || ship_type == "Chimera" || ship_type == "Nidhoggur" -> "🚀"
+      String.contains?(ship_type, "Dreadnought") || ship_type == "Moros" || ship_type == "Revelation" || ship_type == "Phoenix" || ship_type == "Naglfar" -> "🚀"
+      String.contains?(ship_type, "Rorqual") -> "⛏️"
+
+      # Expensive ships
+      String.contains?(ship_type, "Marauder") || ship_type == "Golem" || ship_type == "Kronos" || ship_type == "Paladin" || ship_type == "Vargur" -> "💰"
+      String.contains?(ship_type, "Vindicator") || String.contains?(ship_type, "Machariel") || String.contains?(ship_type, "Nightmare") -> "💰"
+
+      # Pods
+      String.contains?(ship_type, "Capsule") || String.contains?(ship_type, "Pod") -> "🥚"
+
+      # Default
+      true -> "🚢"
+    end
+  end
+
+  # Helper to format timestamp for display
+  defp format_timestamp(timestamp) do
+    case DateTime.from_iso8601(timestamp) do
+      {:ok, datetime, _} ->
+        # Calculate time difference in minutes
+        now = DateTime.utc_now()
+        diff_seconds = DateTime.diff(now, datetime)
+
+        cond do
+          diff_seconds < 60 -> "just now"
+          diff_seconds < 3600 -> "#{div(diff_seconds, 60)} minutes ago"
+          diff_seconds < 86400 -> "#{div(diff_seconds, 3600)} hours ago"
+          true -> "#{div(diff_seconds, 86400)} days ago"
+        end
+      _ ->
+        "recently"
+    end
   end
 end

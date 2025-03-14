@@ -166,25 +166,60 @@ defmodule WandererNotifier.Map.Characters do
         # Log the character info for debugging
         Logger.debug("[process_characters] Processing character: #{inspect(char_info, pretty: true)}")
 
-        # Create a map with the necessary fields
-        character_map = %{
-          "character_id" => char_info["id"],
-          "eve_id" => char_info["eve_id"],
-          "character_name" => char_info["name"],
-          "corporation_id" => char_info["corporation_id"],
-          "alliance_id" => char_info["alliance_id"]
-        }
+        # Extract the EVE ID - prioritize numeric IDs
+        eve_id = cond do
+          # First try to get the eve_id which should be the numeric EVE Online ID
+          is_binary(char_info["eve_id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["eve_id"]) ->
+            char_info["eve_id"]
 
-        # Add corporation_name if available
-        character_map = if char_info["corporation_name"] do
-          Logger.debug("[process_characters] Found corporation_name in data: #{char_info["corporation_name"]}")
-          Map.put(character_map, "corporation_name", char_info["corporation_name"])
-        else
-          character_map
+          # Then try the id field if it's numeric
+          is_binary(char_info["id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["id"]) ->
+            char_info["id"]
+
+          # Finally try character_id if it's numeric
+          is_binary(char_info["character_id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["character_id"]) ->
+            char_info["character_id"]
+
+          # If none of the above, log an error and return nil
+          true ->
+            Logger.error("[process_characters] No valid numeric EVE ID found for character: #{inspect(char_info, pretty: true)}")
+            nil
         end
 
-        character_map
+        # Skip characters without a valid EVE ID
+        if is_nil(eve_id) do
+          Logger.warning("[process_characters] Skipping character without valid EVE ID: #{inspect(char_info, pretty: true)}")
+          nil
+        else
+          # Create a map with the necessary fields, ensuring we preserve the original structure
+          # but also add flattened fields for easier access
+          character_map = %{
+            # Store the original character data
+            "character" => char_info,
+
+            # Add flattened fields for easier access - use only the numeric EVE ID
+            "character_id" => eve_id,
+            "eve_id" => eve_id,
+            "character_name" => char_info["name"] || char_info["character_name"],
+            "corporation_id" => char_info["corporation_id"],
+            "alliance_id" => char_info["alliance_id"]
+          }
+
+          # Add corporation_name if available
+          character_map = if char_info["corporation_name"] do
+            Logger.debug("[process_characters] Found corporation_name in data: #{char_info["corporation_name"]}")
+            Map.put(character_map, "corporation_name", char_info["corporation_name"])
+          else
+            character_map
+          end
+
+          # Log the final character map for debugging
+          Logger.debug("[process_characters] Final character map: #{inspect(character_map, pretty: true)}")
+
+          character_map
+        end
       end)
+      |> Enum.filter(&(&1 != nil)) # Remove nil entries (characters without valid EVE IDs)
 
     {:ok, tracked}
   end

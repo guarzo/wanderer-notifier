@@ -17,6 +17,13 @@ defmodule WandererNotifier.Web.Router do
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
   plug(:dispatch)
 
+  # Serve static files from priv/static
+  plug(Plug.Static,
+    at: "/",
+    from: {:wanderer_notifier, "priv/static"},
+    only: ~w(images css js)
+  )
+
   get "/" do
     conn
     |> put_resp_content_type("text/html")
@@ -272,6 +279,24 @@ defmodule WandererNotifier.Web.Router do
     |> send_resp(200, Jason.encode!(response))
   end
 
+  # Endpoint to get recent kills
+  get "/api/recent-kills" do
+    Logger.info("Recent kills endpoint called")
+
+    # Get recent kills from the KillProcessor
+    recent_kills = WandererNotifier.Service.KillProcessor.get_recent_kills()
+
+    # Format the response
+    response = %{
+      success: true,
+      kills: recent_kills || []
+    }
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
+
   defp calculate_percentage(_current, limit) when is_nil(limit), do: nil
   defp calculate_percentage(current, limit) when limit > 0, do: min(100, round(current / limit * 100))
   defp calculate_percentage(_, _), do: 0
@@ -294,19 +319,115 @@ defmodule WandererNotifier.Web.Router do
         {:error, :no_characters_available}
 
       characters ->
-        # Select a random character from the list
-        character = Enum.random(characters)
-        character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
-        character_name = Map.get(character, "character_name") || "Unknown Character"
+        # Filter to only include characters with valid numeric EVE IDs
+        valid_characters = Enum.filter(characters, fn character ->
+          # Check for valid numeric EVE ID in various possible locations
+          has_valid_id = cond do
+            # Check top level character_id
+            is_binary(character["character_id"]) &&
+            WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
+              true
 
-        Logger.info("TEST NOTIFICATION: Using character #{character_name} (ID: #{character_id}) for test notification")
+            # Check top level eve_id
+            is_binary(character["eve_id"]) &&
+            WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
+              true
 
-        # Send the notification through the normal notification path
-        Logger.info("TEST NOTIFICATION: Processing character through normal notification path")
-        WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
+            # Check nested character object
+            is_map(character["character"]) ->
+              cond do
+                # Check nested eve_id
+                is_binary(character["character"]["eve_id"]) &&
+                WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["eve_id"]) ->
+                  true
 
-        Logger.info("TEST NOTIFICATION: Successfully completed test character notification process")
-        {:ok, character_id, character_name}
+                # Check nested character_id
+                is_binary(character["character"]["character_id"]) &&
+                WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["character_id"]) ->
+                  true
+
+                # Check nested id
+                is_binary(character["character"]["id"]) &&
+                WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["id"]) ->
+                  true
+
+                # No valid ID found in nested character object
+                true ->
+                  false
+              end
+
+            # No valid ID found
+            true ->
+              false
+          end
+
+          if !has_valid_id do
+            Logger.warning("TEST NOTIFICATION: Skipping character without valid numeric EVE ID: #{inspect(character, limit: 100)}")
+          end
+
+          has_valid_id
+        end)
+
+        case valid_characters do
+          [] ->
+            Logger.error("TEST NOTIFICATION: No characters with valid numeric EVE IDs available")
+            {:error, :no_valid_characters_available}
+
+          valid_chars ->
+            # Select a random character from the filtered list
+            character = Enum.random(valid_chars)
+
+            # Extract character ID - we know it's valid because we filtered above
+            character_id = cond do
+              is_binary(character["character_id"]) &&
+              WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
+                character["character_id"]
+
+              is_binary(character["eve_id"]) &&
+              WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
+                character["eve_id"]
+
+              is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
+              WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["eve_id"]) ->
+                character["character"]["eve_id"]
+
+              is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
+              WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["character_id"]) ->
+                character["character"]["character_id"]
+
+              is_map(character["character"]) && is_binary(character["character"]["id"]) &&
+              WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["id"]) ->
+                character["character"]["id"]
+            end
+
+            # Extract character name using multiple possible keys
+            character_name = cond do
+              character["character_name"] != nil -> character["character_name"]
+              character["name"] != nil -> character["name"]
+              is_map(character["character"]) && character["character"]["name"] != nil ->
+                character["character"]["name"]
+              is_map(character["character"]) && character["character"]["character_name"] != nil ->
+                character["character"]["character_name"]
+              true -> "Character #{character_id}"
+            end
+
+            Logger.info("TEST NOTIFICATION: Using character #{character_name} (ID: #{character_id}) for test notification")
+            Logger.info("TEST NOTIFICATION: Character data: #{inspect(character, pretty: true, limit: 10000)}")
+
+            # Send the notification through the normal notification path
+            Logger.info("TEST NOTIFICATION: Processing character through normal notification path")
+            result = WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
+
+            case result do
+              {:error, :invalid_character_id} ->
+                Logger.error("TEST NOTIFICATION: Failed to send notification - invalid character ID")
+                {:error, :invalid_character_id}
+
+              _ ->
+                Logger.info("TEST NOTIFICATION: Successfully completed test character notification process")
+                {:ok, character_id, character_name}
+            end
+        end
     end
   end
 

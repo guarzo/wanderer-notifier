@@ -53,19 +53,72 @@ defmodule WandererNotifier.Slack.Notifier do
   Sends a notification about a new tracked character to Slack.
   """
   def send_character_notification(character) when is_map(character) do
-    character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
-    character_name = Map.get(character, "character_name") || "Character #{character_id}"
-    corp_name = Map.get(character, "corporation_name") || "Unknown Corporation"
+    # Extract character ID - only accept numeric IDs
+    character_id = cond do
+      # Check top level character_id
+      is_binary(character["character_id"]) &&
+      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
+        character["character_id"]
 
-    attachment = %{
-      color: "#36a64f",
-      title: "New Character Tracked",
-      text: "#{character_name} from #{corp_name} has been added to tracking.",
-      footer: "Character ID: #{character_id}"
-    }
+      # Check top level eve_id
+      is_binary(character["eve_id"]) &&
+      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
+        character["eve_id"]
 
-    payload = %{attachments: [attachment]}
-    send_payload(payload)
+      # Check nested character object
+      is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
+      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["eve_id"]) ->
+        character["character"]["eve_id"]
+
+      is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
+      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["character_id"]) ->
+        character["character"]["character_id"]
+
+      is_map(character["character"]) && is_binary(character["character"]["id"]) &&
+      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["id"]) ->
+        character["character"]["id"]
+
+      # No valid numeric ID found
+      true ->
+        Logger.error("No valid numeric EVE ID found for character: #{inspect(character, pretty: true)}")
+        nil
+    end
+
+    # If we don't have a valid EVE ID, log an error and return
+    if is_nil(character_id) do
+      Logger.error("No valid EVE character ID found for character: #{inspect(character, pretty: true)}")
+      Logger.error("This is a critical error - character tracking requires numeric EVE IDs")
+      {:error, :invalid_character_id}
+    else
+      # Extract character name using multiple possible keys
+      character_name = cond do
+        character["character_name"] != nil -> character["character_name"]
+        character["name"] != nil -> character["name"]
+        is_map(character["character"]) && character["character"]["name"] != nil ->
+          character["character"]["name"]
+        is_map(character["character"]) && character["character"]["character_name"] != nil ->
+          character["character"]["character_name"]
+        true -> "Character #{character_id}"
+      end
+
+      # Extract corporation name using multiple possible keys
+      corp_name = cond do
+        character["corporation_name"] != nil -> character["corporation_name"]
+        is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
+          character["character"]["corporation_name"]
+        true -> "Unknown Corporation"
+      end
+
+      attachment = %{
+        color: "#36a64f",
+        title: "New Character Tracked",
+        text: "#{character_name} from #{corp_name} has been added to tracking.",
+        footer: "Character ID: #{character_id}"
+      }
+
+      payload = %{attachments: [attachment]}
+      send_payload(payload)
+    end
   end
 
   @spec send_payload(map()) :: :ok | {:error, any()}
