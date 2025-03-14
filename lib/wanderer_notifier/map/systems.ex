@@ -139,18 +139,25 @@ defmodule WandererNotifier.Map.Systems do
 
   defp decode_json(raw), do: Jason.decode(raw)
 
-  defp process_systems(%{"data" => systems_data}) when is_list(systems_data) do
+  defp process_systems(%{"data" => data}) when is_list(data) do
+    Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
+
+    # Filter for wormhole systems
     wormhole_systems =
-      systems_data
-      |> Enum.map(&fetch_wormhole_system/1)
+      Enum.map(data, &fetch_wormhole_system/1)
       |> Enum.filter(& &1)
 
-    # Return systems with consistent string keys: "system_id" and "system_name"
+    Logger.debug("[process_systems] Found #{length(wormhole_systems)} wormhole systems")
+
+    # Process the wormhole systems
     processed =
       Enum.map(wormhole_systems, fn sys ->
+        # Create a map with all the relevant fields
         %{
           "system_id" => sys.system_id,
-          "system_name" => sys.alias || "Solar System #{sys.system_id}"
+          "system_name" => sys.alias || "Solar System #{sys.system_id}",
+          "original_name" => sys.original_name,
+          "temporary_name" => sys.temporary_name
         }
       end)
 
@@ -186,9 +193,18 @@ defmodule WandererNotifier.Map.Systems do
       case get_or_fetch_system_static_info(static_info_url) do
         {:ok, ssi} ->
           if qualifies_as_wormhole?(ssi) do
+            # Extract all the relevant fields from the API response
+            original_name = item["original_name"] || item["OriginalName"]
+            temporary_name = item["temporary_name"] || item["TemporaryName"]
+
+            # Log the extracted fields for debugging
+            Logger.debug("[fetch_wormhole_system] Extracted fields for system_id=#{system_id}: original_name=#{inspect(original_name)}, temporary_name=#{inspect(temporary_name)}")
+
             %{
               system_id: system_id,
-              alias: item["temporary_name"] || item["TemporaryName"]
+              alias: temporary_name,
+              original_name: original_name,
+              temporary_name: temporary_name
             }
           else
             nil

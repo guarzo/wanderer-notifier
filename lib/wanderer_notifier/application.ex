@@ -35,6 +35,15 @@ defmodule WandererNotifier.Application do
     Logger.info("License Manager URL: #{license_manager_url || "Not configured"}")
     Logger.info("Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}")
 
+    # Log notification configuration
+    character_tracking_enabled = Config.character_tracking_enabled?()
+    character_notifications_enabled = Config.character_notifications_enabled?()
+    system_notifications_enabled = Config.system_notifications_enabled?()
+
+    Logger.info("Character tracking enabled: #{character_tracking_enabled}")
+    Logger.info("Character notifications enabled: #{character_notifications_enabled}")
+    Logger.info("System notifications enabled: #{system_notifications_enabled}")
+
     # Start the license validation service first
     children = [
       # Start the Cache Repository
@@ -47,7 +56,7 @@ defmodule WandererNotifier.Application do
       WandererNotifier.Stats,
 
       # Start the Web server
-      {Plug.Cowboy, scheme: :http, plug: WandererNotifier.Web.Router, options: [port: 8002, ip: {0, 0, 0, 0}]},
+      {Plug.Cowboy, scheme: :http, plug: WandererNotifier.Web.Router, options: [port: Config.web_port(), ip: {0, 0, 0, 0}]},
 
       # Start the main service that handles ZKill websocket
       {WandererNotifier.Service, []}

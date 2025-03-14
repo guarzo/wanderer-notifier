@@ -24,8 +24,8 @@ LICENSE_KEY=your_license_key
 LICENSE_MANAGER_API_URL=https://license.manager.url  # Optional, defaults to production URL
 
 # Application Configuration (optional)
-PORT=4000          # Optional, defaults to 4000
-HOST=0.0.0.0       # Optional, defaults to 0.0.0.0
+PORT=4000          # Web server port, defaults to 4000
+HOST=0.0.0.0       # Web server host, defaults to 0.0.0.0
 ```
 
 ## Deployment

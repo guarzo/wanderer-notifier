@@ -10,10 +10,9 @@ defmodule WandererNotifier.Service do
   alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Service.Maintenance
   alias WandererNotifier.Service.KillProcessor
+  alias WandererNotifier.Config.Timings
 
   @zkill_ws_url "wss://zkillboard.com/websocket/"
-  @reconnect_delay_ms 10_000
-  @maintenance_interval_ms 60_000
 
   defmodule State do
     @moduledoc """
@@ -114,8 +113,8 @@ defmodule WandererNotifier.Service do
 
   @impl true
   def handle_info(:ws_disconnected, state) do
-    Logger.warning("Websocket disconnected, scheduling reconnect in #{@reconnect_delay_ms}ms")
-    Process.send_after(self(), :reconnect_ws, @reconnect_delay_ms)
+    Logger.warning("Websocket disconnected, scheduling reconnect in #{Timings.reconnect_delay()}ms")
+    Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
     {:noreply, state}
   end
 
@@ -146,12 +145,12 @@ defmodule WandererNotifier.Service do
 
   @impl true
   def handle_info({:EXIT, pid, reason}, state) do
-    Logger.error("Linked process #{inspect(pid)} exited with reason: #{inspect(reason)}")
+    Logger.warning("Linked process #{inspect(pid)} exited with reason: #{inspect(reason)}")
 
     # Check if the crashed process is the ZKill websocket
     if pid == state.ws_pid do
-      Logger.warning("ZKill websocket crashed. Scheduling reconnect in #{@reconnect_delay_ms}ms")
-      Process.send_after(self(), :reconnect_ws, @reconnect_delay_ms)
+      Logger.warning("ZKill websocket crashed. Scheduling reconnect in #{Timings.reconnect_delay()}ms")
+      Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
       {:noreply, %{state | ws_pid: nil}}
     else
       {:noreply, state}
@@ -166,7 +165,7 @@ defmodule WandererNotifier.Service do
   end
 
   defp schedule_maintenance do
-    Process.send_after(self(), :maintenance, @maintenance_interval_ms)
+    Process.send_after(self(), :maintenance, Timings.maintenance_interval())
   end
 
   defp start_zkill_ws(state) do
@@ -190,7 +189,7 @@ defmodule WandererNotifier.Service do
 
       {:error, reason} ->
         Logger.error("Reconnection failed: #{inspect(reason)}")
-        Process.send_after(self(), :reconnect_ws, @reconnect_delay_ms)
+        Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
         state
     end
   end

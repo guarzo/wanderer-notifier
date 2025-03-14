@@ -52,19 +52,35 @@ defmodule WandererNotifier.Features do
   """
   def enabled?(feature) do
     # Special case for character tracking - check if it's explicitly enabled in config
-    if feature == :tracked_characters_notifications do
-      character_tracking_config_enabled? = WandererNotifier.Config.character_tracking_enabled?()
+    cond do
+      feature == :tracked_characters_notifications ->
+        character_tracking_config_enabled? = WandererNotifier.Config.character_tracking_enabled?()
+        character_notifications_enabled? = WandererNotifier.Config.character_notifications_enabled?()
 
-      if not character_tracking_config_enabled? do
-        Logger.debug("[Features] Character tracking is explicitly disabled in configuration")
-        false
-      else
-        # If enabled in config, continue with normal license check
-        Logger.debug("[Features] Character tracking is enabled (default), checking license")
+        if not character_tracking_config_enabled? or not character_notifications_enabled? do
+          Logger.debug("[Features] Character tracking or notifications are explicitly disabled in configuration")
+          false
+        else
+          # If enabled in config, continue with normal license check
+          Logger.debug("[Features] Character tracking and notifications are enabled (default), checking license")
+          check_license_for_feature(feature)
+        end
+
+      # Special case for system tracking notifications - check if it's explicitly enabled in config
+      feature == :tracked_systems_notifications ->
+        system_notifications_enabled? = WandererNotifier.Config.system_notifications_enabled?()
+
+        if not system_notifications_enabled? do
+          Logger.debug("[Features] System notifications are explicitly disabled in configuration")
+          false
+        else
+          # If enabled in config, continue with normal license check
+          Logger.debug("[Features] System notifications are enabled (default), checking license")
+          check_license_for_feature(feature)
+        end
+
+      true ->
         check_license_for_feature(feature)
-      end
-    else
-      check_license_for_feature(feature)
     end
   end
 
@@ -142,5 +158,19 @@ defmodule WandererNotifier.Features do
       true ->
         @standard_limits
     end
+  end
+
+  @doc """
+  Convenience function to check if tracked systems notifications are enabled.
+  """
+  def tracked_systems_notifications_enabled? do
+    enabled?(:tracked_systems_notifications)
+  end
+
+  @doc """
+  Convenience function to check if tracked characters notifications are enabled.
+  """
+  def tracked_characters_notifications_enabled? do
+    enabled?(:tracked_characters_notifications)
   end
 end

@@ -8,8 +8,8 @@ defmodule WandererNotifier.ZKill.Websocket do
   """
   use WebSockex
   require Logger
-
-  @heartbeat_interval 10_000
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Service.KillProcessor
 
   def start_link(parent, url) do
     WebSockex.start_link(url, __MODULE__, %{parent: parent, connected: false})
@@ -119,6 +119,17 @@ defmodule WandererNotifier.ZKill.Websocket do
               "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{truncated_zkb}"
             )
 
+            # Process the kill message directly using KillProcessor
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              # Forward the message to the parent process for processing
+              send(state.parent, {:zkill_message, raw_msg})
+              Logger.info("Forwarded kill message with ID #{killmail_id} to parent process for processing")
+            else
+              # If parent process is not available, process directly
+              Logger.warning("Parent process not available, processing kill directly")
+              KillProcessor.process_zkill_message(data, %{})
+            end
+
           {:ok, %{"kill_id" => kill_id} = data} ->
             sys_id = Map.get(data, "solar_system_id")
 
@@ -126,9 +137,20 @@ defmodule WandererNotifier.ZKill.Websocket do
               "[ZKill.Websocket] Received kill info: kill_id=#{kill_id}, system_id=#{sys_id} full message=#{inspect(data)}"
             )
 
+            # Forward the message to the parent process
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+              Logger.info("Forwarded kill message with ID #{kill_id} to parent process for processing")
+            end
+
           {:ok, %{"killmail_id" => _} = data} ->
             # Handle case where killmail_id exists but zkb doesn't
             Logger.debug("Received killmail without zkb data: #{inspect(data)}")
+
+            # Forward the message to the parent process
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+            end
 
           {:ok, %{"action" => action} = data} ->
             # Handle action messages like pings, etc.
@@ -137,13 +159,13 @@ defmodule WandererNotifier.ZKill.Websocket do
           {:ok, other_json} ->
             Logger.debug("Received unrecognized killstream JSON: #{inspect(other_json)}")
 
+            # Forward the message to the parent process just in case
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+            end
+
           {:error, decode_err} ->
             Logger.error("Error decoding zKill frame: #{inspect(decode_err)}. Raw: #{raw_msg}")
-        end
-
-        # Always forward the message to the parent process
-        if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
-          send(state.parent, {:zkill_message, raw_msg})
         end
       rescue
         e ->
@@ -198,42 +220,21 @@ defmodule WandererNotifier.ZKill.Websocket do
   end
 
   @impl true
-  def handle_ping({:ping, _data} = _ping, state) do
-    try do
+  def handle_frame({:ping, ping_frame}, state) do
+    if ping_frame == "ping" do
       Logger.debug(
-        "Received WS ping from zKill. Scheduling heartbeat pong in #{@heartbeat_interval}ms."
+        "Received WS ping from zKill. Scheduling heartbeat pong in #{Timings.websocket_heartbeat_interval()}ms."
       )
 
-      Process.send_after(self(), :heartbeat, @heartbeat_interval)
-      {:reply, {:pong, ""}, state}
-    rescue
-      e ->
-        Logger.error("Error in handle_ping/2: #{inspect(e)}")
-        {:reply, {:pong, ""}, state}
-    catch
-      kind, reason ->
-        Logger.error("Caught #{kind} in handle_ping/2: #{inspect(reason)}")
-        {:reply, {:pong, ""}, state}
-    end
-  end
-
-  # Catch-all clause for ping messages that don't match the expected format
-  def handle_ping(ping_frame, state) do
-    try do
-      Logger.debug(
-        "Received unexpected ping format from zKill: #{inspect(ping_frame)}. Scheduling heartbeat pong in #{@heartbeat_interval}ms."
+      Process.send_after(self(), :heartbeat, Timings.websocket_heartbeat_interval())
+      {:ok, state}
+    else
+      Logger.warning(
+        "Received unexpected ping format from zKill: #{inspect(ping_frame)}. Scheduling heartbeat pong in #{Timings.websocket_heartbeat_interval()}ms."
       )
 
-      Process.send_after(self(), :heartbeat, @heartbeat_interval)
-      {:reply, {:pong, ""}, state}
-    rescue
-      e ->
-        Logger.error("Error in handle_ping/2 (catch-all): #{inspect(e)}")
-        {:reply, {:pong, ""}, state}
-    catch
-      kind, reason ->
-        Logger.error("Caught #{kind} in handle_ping/2 (catch-all): #{inspect(reason)}")
-        {:reply, {:pong, ""}, state}
+      Process.send_after(self(), :heartbeat, Timings.websocket_heartbeat_interval())
+      {:ok, state}
     end
   end
 

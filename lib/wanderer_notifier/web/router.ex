@@ -9,6 +9,7 @@ defmodule WandererNotifier.Web.Router do
   alias WandererNotifier.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.Config
 
   plug(Plug.Logger)
   plug(:match)
@@ -74,6 +75,11 @@ defmodule WandererNotifier.Web.Router do
           backup_kills_processing: Features.enabled?(:backup_kills_processing),
           web_dashboard_full: Features.enabled?(:web_dashboard_full),
           advanced_statistics: Features.enabled?(:advanced_statistics)
+        },
+        config: %{
+          character_tracking_enabled: Config.character_tracking_enabled?(),
+          character_notifications_enabled: Config.character_notifications_enabled?(),
+          system_notifications_enabled: Config.system_notifications_enabled?()
         }
       }
     }
@@ -97,11 +103,18 @@ defmodule WandererNotifier.Web.Router do
           details: "The notification was processed through the normal notification path. Check your Discord for the message."
         }
 
-      {:error, :no_kills_available} ->
+      {:error, :enrichment_failed} ->
         %{
           success: false,
-          message: "Failed to send test notification: No recent kills available",
-          details: "The system needs to receive some kills from zKill websocket before test notifications can be sent. Wait a few minutes for some kills to be processed."
+          message: "Failed to send test notification: Could not enrich kill data",
+          details: "There was an error processing the kill data. Check the application logs for more details."
+        }
+
+      {:error, :no_kill_id} ->
+        %{
+          success: false,
+          message: "Failed to send test notification: Invalid kill data",
+          details: "The kill data does not contain a valid kill ID. Check the application logs for more details."
         }
 
       {:error, reason} ->
@@ -212,6 +225,34 @@ defmodule WandererNotifier.Web.Router do
     |> send_resp(200, Jason.encode!(response))
   end
 
+  # Endpoint to revalidate the license
+  get "/api/revalidate-license" do
+    Logger.info("License revalidation requested")
+
+    # Call the License.validate function to revalidate
+    result = WandererNotifier.License.validate()
+
+    response = case result do
+      %{valid: true} ->
+        %{
+          success: true,
+          message: "License validation successful",
+          details: "The license is valid and has been revalidated with the license server."
+        }
+
+      %{valid: false, error_message: error_message} ->
+        %{
+          success: false,
+          message: "License validation failed",
+          details: "Error: #{error_message}"
+        }
+    end
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
+
   defp calculate_percentage(_current, limit) when is_nil(limit), do: nil
   defp calculate_percentage(current, limit) when limit > 0, do: min(100, round(current / limit * 100))
   defp calculate_percentage(_, _), do: 0
@@ -266,10 +307,17 @@ defmodule WandererNotifier.Web.Router do
       systems ->
         # Select a random system from the list
         system = Enum.random(systems)
+
+        # Log the full system data for debugging
+        Logger.info("TEST NOTIFICATION: Full system data: #{inspect(system, pretty: true)}")
+
         system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-        system_name = Map.get(system, "system_name") || Map.get(system, :alias) || "Unknown System"
+        system_name = Map.get(system, "system_name") || Map.get(system, :alias) || Map.get(system, "name") || "Unknown System"
+        original_name = Map.get(system, "original_name")
+        temporary_name = Map.get(system, "temporary_name")
 
         Logger.info("TEST NOTIFICATION: Using system #{system_name} (ID: #{system_id}) for test notification")
+        Logger.info("TEST NOTIFICATION: System details - original_name: #{inspect(original_name)}, temporary_name: #{inspect(temporary_name)}")
 
         # Send the notification through the normal notification path
         Logger.info("TEST NOTIFICATION: Processing system through normal notification path")
@@ -413,6 +461,8 @@ defmodule WandererNotifier.Web.Router do
           <h2>License Status</h2>
           <div id="license-status">Loading...</div>
           <div id="license-details"></div>
+          <button class="action-button" onclick="revalidateLicense()">Revalidate License</button>
+          <div id="license-revalidation-result"></div>
         </div>
 
         <div class="card">
@@ -549,6 +599,36 @@ defmodule WandererNotifier.Web.Router do
             });
         }
 
+        // Revalidate license with the license server
+        function revalidateLicense() {
+          const resultElement = document.getElementById('license-revalidation-result');
+          resultElement.innerHTML = 'Revalidating license...';
+
+          fetch('/api/revalidate-license')
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                resultElement.innerHTML = `
+                  <div class="result-success">
+                    <p><strong>${data.message}</strong></p>
+                    <p>${data.details || ''}</p>
+                  </div>`;
+                // Refresh the license status display
+                fetchStatus();
+              } else {
+                resultElement.innerHTML = `
+                  <div class="result-error">
+                    <p><strong>${data.message}</strong></p>
+                    <p>${data.details || ''}</p>
+                  </div>`;
+              }
+            })
+            .catch(error => {
+              console.error('Error revalidating license:', error);
+              resultElement.innerHTML = `<div class="result-error">Error: ${error.message}</div>`;
+            });
+        }
+
         // Update license status display
         function updateLicenseStatus(license) {
           const statusElement = document.getElementById('license-status');
@@ -598,31 +678,50 @@ defmodule WandererNotifier.Web.Router do
 
         // Update feature status display
         function updateFeatureStatus(features) {
-          const featureElement = document.getElementById('feature-status');
+          const featuresElement = document.getElementById('feature-status');
 
           if (!features || !features.enabled) {
-            featureElement.innerHTML = 'No feature information available';
+            featuresElement.innerHTML = 'No feature information available';
             return;
           }
 
-          let featureHtml = '<div class="feature-grid">';
+          const enabled = features.enabled;
+          const config = features.config || {};
 
-          for (const [feature, enabled] of Object.entries(features.enabled)) {
-            const displayName = feature
-              .split('_')
-              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ');
+          let featuresHtml = '<h3>Features</h3>';
 
-            featureHtml += `
-              <div class="feature-item">
-                <div class="feature-status ${enabled ? 'feature-enabled' : 'feature-disabled'}"></div>
-                <span>${displayName}</span>
-              </div>
-            `;
+          // Add feature status
+          featuresHtml += createFeatureStatusItem('Basic Notifications', enabled.basic_notifications);
+          featuresHtml += createFeatureStatusItem('Tracked Systems Notifications', enabled.tracked_systems_notifications);
+          featuresHtml += createFeatureStatusItem('Tracked Characters Notifications', enabled.tracked_characters_notifications);
+          featuresHtml += createFeatureStatusItem('Backup Kills Processing', enabled.backup_kills_processing);
+          featuresHtml += createFeatureStatusItem('Web Dashboard (Full)', enabled.web_dashboard_full);
+          featuresHtml += createFeatureStatusItem('Advanced Statistics', enabled.advanced_statistics);
+
+          // Add configuration status
+          if (Object.keys(config).length > 0) {
+            featuresHtml += '<h3>Configuration</h3>';
+            featuresHtml += createFeatureStatusItem('Character Tracking', config.character_tracking_enabled);
+            featuresHtml += createFeatureStatusItem('Character Notifications', config.character_notifications_enabled);
+            featuresHtml += createFeatureStatusItem('System Notifications', config.system_notifications_enabled);
+            featuresHtml += '<div class="info-box"><p>To change these settings, update your environment variables:</p>' +
+                           '<ul>' +
+                           '<li><code>ENABLE_CHARACTER_TRACKING=false</code> - Disable character tracking</li>' +
+                           '<li><code>ENABLE_CHARACTER_NOTIFICATIONS=false</code> - Disable character notifications</li>' +
+                           '<li><code>ENABLE_SYSTEM_NOTIFICATIONS=false</code> - Disable system notifications</li>' +
+                           '</ul></div>';
           }
 
-          featureHtml += '</div>';
-          featureElement.innerHTML = featureHtml;
+          featuresElement.innerHTML = featuresHtml;
+        }
+
+        function createFeatureStatusItem(name, enabled) {
+          return `
+            <div class="feature-item">
+              <div class="feature-status ${enabled ? 'feature-enabled' : 'feature-disabled'}"></div>
+              <span>${name}</span>
+            </div>
+          `;
         }
 
         // Update resource usage display

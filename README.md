@@ -191,6 +191,30 @@ All configuration is managed through environment variables in the `.env` file. A
    - Character tracking lists
    - Cache durations
    - Maintenance intervals
+   - Notification controls (see below)
+
+### Notification Control
+
+You can control which notification types are enabled using the following environment variables:
+
+- `ENABLE_CHARACTER_TRACKING`: Controls whether character tracking is enabled (default: `true`)
+- `ENABLE_CHARACTER_NOTIFICATIONS`: Controls whether notifications for tracked characters are sent (default: `true`)
+- `ENABLE_SYSTEM_NOTIFICATIONS`: Controls whether notifications for tracked systems are sent (default: `true`)
+
+To disable any of these features, set the corresponding environment variable to `false` or `0`:
+
+```dotenv
+# Disable character tracking completely
+ENABLE_CHARACTER_TRACKING=false
+
+# Keep character tracking enabled but disable notifications
+ENABLE_CHARACTER_NOTIFICATIONS=false
+
+# Disable system notifications
+ENABLE_SYSTEM_NOTIFICATIONS=false
+```
+
+These settings can be changed without restarting the application by updating the environment variables and reloading the configuration.
 
 ---
 

@@ -83,4 +83,26 @@ defmodule WandererNotifier.Config.Timings do
   Interval between forced kill notifications (5 minutes)
   """
   def forced_kill_interval, do: 300
+
+  # WebSocket intervals
+
+  @doc """
+  Interval for WebSocket heartbeat (10 seconds)
+  """
+  def websocket_heartbeat_interval, do: 10_000
+
+  @doc """
+  Interval for service maintenance (60 seconds)
+  """
+  def maintenance_interval, do: 60_000
+
+  @doc """
+  Delay before reconnecting to WebSocket (10 seconds)
+  """
+  def reconnect_delay, do: 10_000
+
+  @doc """
+  Interval for license refresh (1 hours)
+  """
+  def license_refresh_interval, do: :timer.hours(1)
 end

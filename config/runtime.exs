@@ -42,4 +42,4 @@ config :wanderer_notifier,
 
 # Web server configuration
 config :wanderer_notifier,
-  web_port: String.to_integer(System.get_env("WEB_PORT") || "8080")
+  web_port: String.to_integer(System.get_env("PORT") || "4000")

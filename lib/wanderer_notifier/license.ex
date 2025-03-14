@@ -7,9 +7,10 @@ defmodule WandererNotifier.License do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
+  alias WandererNotifier.Config.Timings
 
-  # Refresh license validation every 24 hours
-  @refresh_interval :timer.hours(24)
+  # Remove hardcoded interval
+  # @refresh_interval :timer.hours(24)
 
   # Define the behaviour callbacks
   @callback validate() :: boolean()
@@ -120,7 +121,7 @@ defmodule WandererNotifier.License do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :refresh, @refresh_interval)
+    Process.send_after(self(), :refresh, Timings.license_refresh_interval())
   end
 
   defp do_validate do

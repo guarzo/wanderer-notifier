@@ -10,9 +10,10 @@ defmodule WandererNotifier.Service.KillProcessor do
   alias WandererNotifier.Config
   alias WandererNotifier.Features
   alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.Config.Timings
 
-  # Time between forced kill notifications (5 minutes)
-  @forced_notification_interval :timer.minutes(5)
+  # Remove hardcoded interval
+  # @forced_notification_interval :timer.minutes(5)
 
   # Process dictionary key for last forced notification time
   @last_forced_notification_key :last_forced_kill_notification
@@ -41,7 +42,7 @@ defmodule WandererNotifier.Service.KillProcessor do
     system_id = Map.get(decoded_message, "solar_system_id")
 
     # Log the incoming kill data
-    Logger.debug("Processing kill_id=#{kill_id} in system_id=#{system_id}")
+    Logger.info("Processing kill_id=#{kill_id} in system_id=#{system_id}")
 
     # Store this kill in our recent kills list
     if kill_id do
@@ -56,6 +57,19 @@ defmodule WandererNotifier.Service.KillProcessor do
       Logger.info("FORCE NOTIFICATION: 5-minute interval reached, forcing notification for kill_id=#{kill_id}")
     end
 
+    # Add debug logging for tracked systems check
+    is_tracked_system = kill_in_tracked_system?(system_id)
+    Logger.info("TRACKING CHECK: System #{system_id} is #{if is_tracked_system, do: "tracked", else: "not tracked"}")
+
+    # Add debug logging for tracked characters check
+    has_tracked_character = kill_includes_tracked_character?(decoded_message)
+    Logger.info("TRACKING CHECK: Kill #{kill_id} #{if has_tracked_character, do: "includes", else: "does not include"} tracked character")
+
+    # Add debug logging for feature status
+    tracked_systems_enabled = Features.tracked_systems_notifications_enabled?()
+    tracked_characters_enabled = Features.tracked_characters_notifications_enabled?()
+    Logger.info("FEATURE STATUS: tracked_systems=#{tracked_systems_enabled}, tracked_characters=#{tracked_characters_enabled}")
+
     cond do
       # If we should force a notification, do it
       should_force_notification ->
@@ -63,11 +77,11 @@ defmodule WandererNotifier.Service.KillProcessor do
         case get_enriched_killmail(kill_id) do
           {:ok, enriched_kill} ->
             Logger.info("Successfully enriched kill_id=#{kill_id} for forced notification")
-            notify_kill(enriched_kill, kill_id)
+            updated_state = process_kill(kill_id, state, enriched_kill)
             # Update the last forced notification time
             Process.put(@last_forced_notification_key, :os.system_time(:second))
             Logger.info("Updated last forced notification time to #{:os.system_time(:second)}")
-            state
+            updated_state
           {:error, reason} ->
             Logger.error("Failed to get enriched killmail for forced notification #{kill_id}: #{inspect(reason)}")
             state
@@ -82,30 +96,40 @@ defmodule WandererNotifier.Service.KillProcessor do
             Logger.warning("Enrichment returned empty result for kill_id=#{kill_id}, falling back to raw message")
             if kill_includes_tracked_character?(decoded_message) do
               Logger.info("Raw message includes tracked character, proceeding with notification")
-              notify_kill(decoded_message, kill_id)
+              process_kill(kill_id, state, decoded_message)
             else
               Logger.info("Raw message does not include tracked character, skipping notification")
+              state
             end
-            state
 
           {:ok, enriched_kill} ->
             Logger.info("Successfully enriched kill_id=#{kill_id}")
             if kill_includes_tracked_character?(enriched_kill) do
               Logger.info("Enriched kill includes tracked character, proceeding with notification")
-              notify_kill(enriched_kill, kill_id)
+              process_kill(kill_id, state, enriched_kill)
             else
               Logger.info("Enriched kill does not include tracked character, but system is tracked")
-              notify_kill(enriched_kill, kill_id)
+              process_kill(kill_id, state, enriched_kill)
             end
-            state
 
           {:error, reason} ->
             Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
             state
         end
 
+      kill_includes_tracked_character?(decoded_message) ->
+        Logger.info("NOTIFICATION REASON: Kill includes tracked character")
+        case get_enriched_killmail(kill_id) do
+          {:ok, enriched_kill} ->
+            Logger.info("Successfully enriched kill_id=#{kill_id}")
+            process_kill(kill_id, state, enriched_kill)
+          {:error, reason} ->
+            Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
+            state
+        end
+
       true ->
-        Logger.debug("Kill_id=#{kill_id} is not in a tracked system and force notification is not triggered")
+        Logger.info("NOTIFICATION DECISION: Kill #{kill_id} ignored (not from tracked system or involving tracked character)")
         state
     end
   end
@@ -136,13 +160,27 @@ defmodule WandererNotifier.Service.KillProcessor do
     current_time = :os.system_time(:second)
     elapsed_seconds = current_time - last_time
 
-    # Convert @forced_notification_interval from milliseconds to seconds for comparison
-    interval_seconds = div(@forced_notification_interval, 1000)
+    # For testing purposes, add a random chance to force a notification
+    # This will trigger a notification approximately 20% of the time
+    random_chance = :rand.uniform(100) <= 20
 
-    elapsed_seconds >= interval_seconds
+    # Use the centralized timing configuration for time-based forcing
+    time_based = elapsed_seconds >= Timings.forced_kill_interval()
+
+    # Log the decision factors
+    if random_chance do
+      Logger.info("FORCE NOTIFICATION: Random chance triggered (20% probability)")
+    end
+
+    if time_based do
+      Logger.info("FORCE NOTIFICATION: Time interval reached (#{elapsed_seconds} seconds since last notification)")
+    end
+
+    # Return true if either condition is met
+    random_chance || time_based
   end
 
-  defp process_kill(kill_id, state) do
+  defp process_kill(kill_id, state, enriched_kill) do
     # Get the processed_kill_ids map from state, defaulting to an empty map if not present
     processed_kill_ids = Map.get(state, :processed_kill_ids, %{})
 
@@ -150,7 +188,7 @@ defmodule WandererNotifier.Service.KillProcessor do
       Logger.info("Kill mail #{kill_id} already processed, skipping.")
       state
     else
-      do_enrich_and_notify(kill_id)
+      do_enrich_and_notify(kill_id, enriched_kill)
 
       # Update the processed_kill_ids map, handling both map and empty state cases
       processed_kill_ids = Map.put(processed_kill_ids, kill_id, :os.system_time(:second))
@@ -158,32 +196,24 @@ defmodule WandererNotifier.Service.KillProcessor do
     end
   end
 
-  defp do_enrich_and_notify(kill_id) do
-    Logger.info("Starting enrichment and notification process for kill_id=#{kill_id}")
+  defp do_enrich_and_notify(kill_id, enriched_kill) do
+    Logger.info("Starting notification process for kill_id=#{kill_id}")
 
-    case ZKillService.get_enriched_killmail(kill_id) do
-      {:ok, enriched_kill} ->
-        # Log key information about the kill
-        victim_name = get_in(enriched_kill, ["victim", "character_name"]) || "Unknown"
-        victim_ship = get_in(enriched_kill, ["victim", "ship_type_name"]) || "Unknown Ship"
-        system_name = get_in(enriched_kill, ["solar_system_name"]) || "Unknown System"
+    # Log key information about the kill
+    victim_name = get_in(enriched_kill, ["victim", "character_name"]) || "Unknown"
+    victim_ship = get_in(enriched_kill, ["victim", "ship_type_name"]) || "Unknown Ship"
+    system_name = get_in(enriched_kill, ["solar_system_name"]) || "Unknown System"
 
-        # Count attackers
-        attackers_count = length(Map.get(enriched_kill, "attackers", []))
+    # Count attackers
+    attackers_count = length(Map.get(enriched_kill, "attackers", []))
 
-        Logger.info("NOTIFICATION DETAILS: #{victim_name} lost a #{victim_ship} in #{system_name} (#{attackers_count} attackers)")
-        Logger.debug("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill, limit: 5000)}")
+    Logger.info("NOTIFICATION DETAILS: #{victim_name} lost a #{victim_ship} in #{system_name} (#{attackers_count} attackers)")
+    Logger.debug("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill, limit: 5000)}")
 
-        # Send the notification
-        Logger.info("Sending Discord notification for kill_id=#{kill_id}")
-        Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
-        Logger.info("Successfully sent Discord notification for kill_id=#{kill_id}")
-
-      {:error, err} ->
-        error_msg = "Failed to process kill #{kill_id}: #{inspect(err)}"
-        Logger.error(error_msg)
-        # Only log the error, don't send Discord notifications for processing errors
-    end
+    # Send the notification using our improved notify_kill function
+    Logger.info("Sending Discord notification for kill_id=#{kill_id}")
+    notify_kill(enriched_kill, kill_id)
+    Logger.info("Successfully sent Discord notification for kill_id=#{kill_id}")
   end
 
   defp kill_in_tracked_system?(system_id) do
@@ -255,39 +285,22 @@ defmodule WandererNotifier.Service.KillProcessor do
     end
   end
 
-  defp notify_kill(_kill_data, kill_id) do
-    Logger.info("Evaluating notification criteria for kill_id=#{kill_id}")
+  defp notify_kill(kill_data, kill_id) do
+    # Add more detailed logging about the kill being notified
+    Logger.info("SENDING NOTIFICATION for kill_id=#{kill_id}")
 
-    # Check if system notifications are enabled
-    systems_enabled = Features.enabled?(:tracked_systems_notifications)
-    Logger.info("Feature status: tracked_systems_notifications=#{systems_enabled}")
+    # Log some basic details about the kill
+    victim_name = get_in(kill_data, ["victim", "character_name"]) || "Unknown"
+    victim_ship = get_in(kill_data, ["victim", "ship_type_name"]) || "Unknown Ship"
+    system_name = get_in(kill_data, ["solar_system_name"]) || "Unknown System"
 
-    # Check if character tracking notifications are enabled
-    # We've modified the Features module to allow this even without a license
-    if Features.enabled?(:tracked_characters_notifications) do
-      Logger.debug("Character tracking notifications are enabled, checking if kill involves tracked character")
+    Logger.info("KILL DETAILS: Victim: #{victim_name}, Ship: #{victim_ship}, System: #{system_name}")
 
-      # Get the enriched killmail
-      case get_enriched_killmail(kill_id) do
-        {:ok, enriched_kill} ->
-          if kill_includes_tracked_character?(enriched_kill) do
-            Logger.info("NOTIFICATION DECISION: Kill #{kill_id} will be notified (involves tracked character)")
-            process_kill(kill_id, %{processed_kill_ids: %{}})
-          else
-            Logger.info(
-              "NOTIFICATION DECISION: Kill #{kill_id} ignored (not from tracked system or involving tracked character)"
-            )
-            %{processed_kill_ids: %{}}
-          end
-        {:error, err} ->
-          Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(err)}")
-          %{processed_kill_ids: %{}}
-      end
-    else
-      # This should now rarely happen since we've moved tracked_characters_notifications to core features
-      Logger.info("NOTIFICATION DECISION: Kill #{kill_id} ignored (character tracking notifications disabled in configuration)")
-      %{processed_kill_ids: %{}}
-    end
+    # Send the notification using the correct function
+    Notifier.send_enriched_kill_embed(kill_data, kill_id)
+
+    # Update stats with the correct function
+    WandererNotifier.Stats.increment(:kills)
   end
 
   @doc """
@@ -303,8 +316,27 @@ defmodule WandererNotifier.Service.KillProcessor do
 
     case get_most_recent_kill() do
       nil ->
-        Logger.error("TEST NOTIFICATION: No recent kills available for test notification")
-        {:error, :no_kills_available}
+        Logger.info("TEST NOTIFICATION: No recent kills available, creating a mock kill for testing")
+
+        # Create a mock kill with basic data
+        mock_kill = create_mock_kill()
+        kill_id = Map.get(mock_kill, "killmail_id")
+        system_id = Map.get(mock_kill, "solar_system_id")
+
+        Logger.info("TEST NOTIFICATION: Created mock kill_id=#{kill_id} in system_id=#{system_id} for test notification")
+
+        # Log some basic information about the mock kill
+        victim_name = get_in(mock_kill, ["victim", "character_name"])
+        victim_ship = get_in(mock_kill, ["victim", "ship_type_name"])
+
+        Logger.info("TEST NOTIFICATION: Mock kill details - Victim: #{victim_name} lost a #{victim_ship}")
+
+        # Send the notification directly
+        Logger.info("TEST NOTIFICATION: Sending Discord notification for mock test kill")
+        notify_kill(mock_kill, kill_id)
+        Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for mock test kill")
+
+        {:ok, kill_id}
 
       kill ->
         kill_id = Map.get(kill, "killmail_id")
@@ -319,17 +351,82 @@ defmodule WandererNotifier.Service.KillProcessor do
 
           Logger.info("TEST NOTIFICATION: Kill details - Victim: #{victim_name} (ID: #{victim_id})")
 
-          # Process the kill through the normal notification path
-          # This ensures we use the same logic as real notifications
-          Logger.info("TEST NOTIFICATION: Processing kill through normal notification path")
-          process_decoded_message(kill, %{processed_kill_ids: %{}})
+          # For test notifications, we'll bypass the normal notification criteria
+          # and directly enrich and send the notification
+          Logger.info("TEST NOTIFICATION: Bypassing normal notification criteria for test")
 
-          Logger.info("TEST NOTIFICATION: Successfully completed test notification process")
-          {:ok, kill_id}
+          case ZKillService.get_enriched_killmail(kill_id) do
+            {:ok, enriched_kill} ->
+              Logger.info("TEST NOTIFICATION: Successfully enriched kill_id=#{kill_id}")
+
+              # Send the notification directly
+              Logger.info("TEST NOTIFICATION: Sending Discord notification for test kill")
+              notify_kill(enriched_kill, kill_id)
+              Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for test kill")
+
+              {:ok, kill_id}
+
+            {:error, err} ->
+              Logger.error("TEST NOTIFICATION: Failed to enrich kill #{kill_id}: #{inspect(err)}")
+              {:error, :enrichment_failed}
+          end
         else
           Logger.error("TEST NOTIFICATION: No kill_id found in recent kill data")
           {:error, :no_kill_id}
         end
     end
+  end
+
+  # Create a mock kill for testing when no real kills are available
+  defp create_mock_kill do
+    # Get a random system from tracked systems if available
+    tracked_systems = CacheHelpers.get_tracked_systems()
+    system = if length(tracked_systems) > 0 do
+      Enum.random(tracked_systems)
+    else
+      %{"system_id" => "30000142", "system_name" => "Jita"}
+    end
+
+    system_id = system["system_id"] || system[:system_id] || "30000142"
+    system_name = system["system_name"] || system[:alias] || "Jita"
+
+    # Generate a random kill ID for the test
+    kill_id = :rand.uniform(999_999_999)
+
+    # Create a mock kill with all the necessary fields for the notification
+    %{
+      "killmail_id" => kill_id,
+      "solar_system_id" => system_id,
+      "solar_system_name" => system_name,
+      "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "zkb" => %{
+        "totalValue" => :rand.uniform(1_000_000_000) / 1.0,
+        "points" => :rand.uniform(100),
+        "url" => "https://zkillboard.com/kill/#{kill_id}/"
+      },
+      "victim" => %{
+        "character_id" => "TEST#{:rand.uniform(10000)}",
+        "character_name" => "Test Victim",
+        "corporation_id" => "TEST#{:rand.uniform(10000)}",
+        "corporation_name" => "Test Corporation",
+        "alliance_id" => "TEST#{:rand.uniform(10000)}",
+        "alliance_name" => "Test Alliance",
+        "ship_type_id" => "TEST#{:rand.uniform(10000)}",
+        "ship_type_name" => "Test Ship"
+      },
+      "attackers" => [
+        %{
+          "character_id" => "TEST#{:rand.uniform(10000)}",
+          "character_name" => "Test Attacker",
+          "corporation_id" => "TEST#{:rand.uniform(10000)}",
+          "corporation_name" => "Test Attacker Corp",
+          "alliance_id" => "TEST#{:rand.uniform(10000)}",
+          "alliance_name" => "Test Attacker Alliance",
+          "ship_type_id" => "TEST#{:rand.uniform(10000)}",
+          "ship_type_name" => "Test Attacker Ship",
+          "final_blow" => true
+        }
+      ]
+    }
   end
 end

@@ -18,6 +18,8 @@ services:
       - LICENSE_MANAGER_API_URL=${LICENSE_MANAGER_API_URL}
       
       # Application Configuration
+      # The PORT environment variable controls the web server port
+      # This is used by both the container and the application
       - PORT=${PORT:-4000}
       - HOST=${HOST:-0.0.0.0}
     ports:

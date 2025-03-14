@@ -104,10 +104,10 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
-  Returns the web server port from the environment or the default (8080).
+  Returns the web server port from the environment or the default (4000).
   """
   def web_port do
-    Application.get_env(:wanderer_notifier, :web_port, 8002)
+    Application.get_env(:wanderer_notifier, :web_port, 4000)
   end
 
   @doc """
@@ -152,6 +152,34 @@ defmodule WandererNotifier.Config do
   """
   def character_tracking_enabled? do
     case System.get_env("ENABLE_CHARACTER_TRACKING") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
+    end
+  end
+
+  @doc """
+  Returns whether system tracking notifications are enabled in the configuration.
+  By default, system tracking notifications are enabled unless explicitly disabled by setting
+  ENABLE_SYSTEM_NOTIFICATIONS to "false" or "0".
+  """
+  def system_notifications_enabled? do
+    case System.get_env("ENABLE_SYSTEM_NOTIFICATIONS") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
+    end
+  end
+
+  @doc """
+  Returns whether character tracking notifications are enabled in the configuration.
+  By default, character tracking notifications are enabled unless explicitly disabled by setting
+  ENABLE_CHARACTER_NOTIFICATIONS to "false" or "0".
+  """
+  def character_notifications_enabled? do
+    case System.get_env("ENABLE_CHARACTER_NOTIFICATIONS") do
       "false" -> false
       "0" -> false
       nil -> true  # Default to true if not set

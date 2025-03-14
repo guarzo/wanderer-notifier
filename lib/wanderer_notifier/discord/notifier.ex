@@ -109,6 +109,16 @@ defmodule WandererNotifier.Discord.Notifier do
 
       normalized = normalize_keys(enriched_kill)
 
+      # Check if this is a properly enriched kill or a raw/non-enriched kill
+      is_properly_enriched = is_kill_properly_enriched?(normalized)
+
+      # Log whether the kill is properly enriched
+      if is_properly_enriched do
+        Logger.info("NOTIFICATION: Kill #{kill_id} is properly enriched, sending full notification")
+      else
+        Logger.info("NOTIFICATION: Kill #{kill_id} is not properly enriched, sending simplified notification")
+      end
+
       system_name =
         case Map.get(normalized, "system_name") do
           nil ->
@@ -118,7 +128,8 @@ defmodule WandererNotifier.Discord.Notifier do
             name
         end
 
-      kill_url = "https://zkillboard.com/kill/#{kill_id}/"
+      # Only include zkill link and value for properly enriched kills
+      kill_url = if is_properly_enriched, do: "https://zkillboard.com/kill/#{kill_id}/", else: nil
       title = "Ship destroyed in #{system_name}"
       description = build_description(normalized)
       total_value = get_total_value(normalized)
@@ -135,7 +146,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
         thumbnail_url =
           if victim_ship_type do
-            "https://image.eveonline.com/Render/#{victim_ship_type}_128.png"
+            "https://images.evetech.net/types/#{victim_ship_type}/render"
           else
             nil
           end
@@ -146,20 +157,30 @@ defmodule WandererNotifier.Discord.Notifier do
         corp_id = Map.get(top_attacker, "corporation_id")
 
         author_icon_url =
-          if corp_id, do: "https://image.eveonline.com/Corporation/#{corp_id}_64.png", else: nil
+          if corp_id, do: "https://images.evetech.net/corporations/#{corp_id}/logo", else: nil
 
         author_text = "Kill"
         color = 0x00FF00
 
-        embed =
-          %{
-            "title" => title,
-            "url" => kill_url,
-            "description" => description,
-            "color" => color,
-            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-            "footer" => %{"text" => "Value: #{formatted_value}"}
-          }
+        # Create the embed with or without zkill link and value based on enrichment status
+        embed = %{
+          "title" => title,
+          "description" => description,
+          "color" => color,
+          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+        }
+
+        # Only add URL and footer (value) for properly enriched kills
+        embed = if is_properly_enriched do
+          embed
+          |> Map.put("url", kill_url)
+          |> Map.put("footer", %{"text" => "Value: #{formatted_value}"})
+        else
+          embed
+        end
+
+        # Add thumbnail and author if available
+        embed = embed
           |> maybe_put("thumbnail", if(thumbnail_url, do: %{"url" => thumbnail_url}))
           |> put_author(author_text, kill_url, author_icon_url)
 
@@ -171,8 +192,10 @@ defmodule WandererNotifier.Discord.Notifier do
         victim = Map.get(normalized, "victim", %{})
         victim_data = extract_entity(victim)
 
-        # Create a simple plain text message
-        message = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship} (#{formatted_value}) - #{kill_url}"
+        # Create a simple plain text message, with or without zkill link and value
+        # For invalid license, we now always remove the zkill link and value information
+        message = "Kill in #{system_name}: #{victim_data.name} lost a #{victim_data.ship}"
+
         send_message(message)
       end
     end
@@ -196,35 +219,51 @@ defmodule WandererNotifier.Discord.Notifier do
       end
 
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
-      portrait_url = "https://image.eveonline.com/characters/#{character_id}/portrait"
+
+      # Log the character data for debugging
+      Logger.info("CHARACTER NOTIFICATION DEBUG: Character data: #{inspect(character, pretty: true)}")
+
+      # Extract the EVE character ID from the nested character object if available
+      eve_character_id = case character do
+        %{"character" => %{"eve_id" => eve_id}} when is_binary(eve_id) ->
+          Logger.info("CHARACTER NOTIFICATION DEBUG: Found eve_id in nested character object: #{eve_id}")
+          eve_id
+        %{"eve_id" => eve_id} when is_binary(eve_id) ->
+          Logger.info("CHARACTER NOTIFICATION DEBUG: Found eve_id in top-level object: #{eve_id}")
+          eve_id
+        _ ->
+          Logger.info("CHARACTER NOTIFICATION DEBUG: No eve_id found, using character_id as fallback")
+          character_id
+      end
+
+      # Use the EVE character ID for the portrait URL and zkill link
+      portrait_url = "https://images.evetech.net/characters/#{eve_character_id}/portrait"
+      Logger.info("CHARACTER NOTIFICATION DEBUG: Using portrait URL: #{portrait_url}")
 
       name =
         Map.get(character, "character_name") ||
-          case WandererNotifier.ESI.Service.get_character_info(character_id) do
-            {:ok, %{"name" => n}} -> n
-            _ -> "Character #{character_id}"
-          end
+        (character["character"] && Map.get(character["character"], "name")) ||
+        "Unknown Character"
 
-      corp_id = Map.get(character, "corporation_id") || Map.get(character, "corp_id")
-
+      # Extract corporation name from the character data
       corp =
         Map.get(character, "corporation_name") ||
-          case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
-            {:ok, %{"name" => n}} -> n
-            _ -> "Corp #{corp_id}"
-          end
+        (character["character"] && Map.get(character["character"], "corporation_name")) ||
+        "Unknown Corporation"
 
       # Check if license is valid
       license_valid = WandererNotifier.License.status().valid
 
       if license_valid do
         # Send rich embed for valid license
-        title = "New Tracked Character"
+        title = "New Character"
 
-        description =
-          "New tracked character **#{name}** (Corp: #{corp}) has been retrieved from the API."
+        # Create zkill URL for the character using the formatted character ID
+        url = "https://zkillboard.com/character/#{eve_character_id}/"
 
-        url = "https://zkillboard.com/character/#{character_id}/"
+        # Format the description with the character name as a link to zkill
+        description = "[#{name}](#{url}) (#{corp}) is now being tracked"
+
         color = 0x00FF00
 
         embed =
@@ -233,15 +272,15 @@ defmodule WandererNotifier.Discord.Notifier do
             "url" => url,
             "description" => description,
             "color" => color,
-            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+            "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+            "thumbnail" => %{"url" => portrait_url}
           }
-          |> maybe_put("thumbnail", %{"url" => portrait_url})
 
         payload = %{"embeds" => [embed]}
         send_payload(payload)
       else
         # Send plain text for invalid license
-        message = "New tracked character: #{name} (Corp: #{corp}) - https://zkillboard.com/character/#{character_id}/"
+        message = "New tracked character: #{name}"
         send_message(message)
       end
     end
@@ -264,23 +303,55 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
+
       system_id =
         Map.get(system, "system_id") ||
-          Map.get(system, :system_id)
+          Map.get(system, :system_id) ||
+          Map.get(system, "solar_system_id")
 
-      system_name =
-        Map.get(system, "system_name") ||
-          Map.get(system, :alias) ||
-          "Solar System #{system_id}"
+      # Get original_name and temporary_name from the system data
+      original_name = Map.get(system, "original_name")
+      temporary_name = Map.get(system, "temporary_name")
+      system_name_from_map = Map.get(system, "system_name") || Map.get(system, :alias) || Map.get(system, "name")
+
+
+      # Format the system name according to the requirements
+      system_name = cond do
+        # If we have both original_name and temporary_name, and they're different
+        original_name && temporary_name && temporary_name != "" && original_name != temporary_name ->
+          formatted = "#{original_name} (#{temporary_name})"
+          formatted
+
+        # If we have original_name
+        original_name && original_name != "" ->
+          original_name
+
+        # If we have system_name from map and original_name, and they're different
+        system_name_from_map && original_name && system_name_from_map != original_name ->
+          formatted = "#{system_name_from_map} (#{original_name})"
+          formatted
+
+        # If we have system_name from map
+        system_name_from_map && system_name_from_map != "" ->
+          system_name_from_map
+
+        # Fallback to system ID
+        true ->
+          fallback = "Solar System #{system_id}"
+          fallback
+      end
 
       # Check if license is valid
       license_valid = WandererNotifier.License.status().valid
 
       if license_valid do
         # Send rich embed for valid license
-        title = "New System Tracked"
-        description = "New system **#{system_name}** has been added to tracking."
+        title = "New System Mapped"
         url = "https://zkillboard.com/system/#{system_id}/"
+
+        # Make the system name a link to zKillboard in the description
+        description = "[#{system_name}](#{url}) has been added to the map."
+
         color = 0x00FF00
 
         embed = %{
@@ -295,7 +366,7 @@ defmodule WandererNotifier.Discord.Notifier do
         send_payload(payload)
       else
         # Send plain text for invalid license
-        message = "New system tracked: #{system_name} - https://zkillboard.com/system/#{system_id}/"
+        message = "New system mapped: #{system_name}"
         send_message(message)
       end
     end
@@ -550,5 +621,18 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   def close do
     :ok
+  end
+
+  # Helper function to check if a kill is properly enriched
+  defp is_kill_properly_enriched?(kill) do
+    # Check for key fields that would indicate proper enrichment
+    has_zkb = Map.has_key?(kill, "zkb") && is_map(Map.get(kill, "zkb"))
+    has_value = has_zkb && Map.has_key?(Map.get(kill, "zkb"), "totalValue")
+    has_victim_details = Map.has_key?(kill, "victim") &&
+                         is_map(Map.get(kill, "victim")) &&
+                         Map.has_key?(Map.get(kill, "victim"), "character_name")
+
+    # Consider it properly enriched if it has zkb data with value and victim details
+    has_zkb && has_value && has_victim_details
   end
 end
