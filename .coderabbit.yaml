@@ -10,6 +10,8 @@ reviews:
   review_status: true              # Include a status (approved/changes requested) summary
   collapse_walkthrough: true       # Collapse detailed code walkthrough by default for brevity
 
+collapse_walkthrough: true       # Collapse detailed code walkthrough by default for brevity
+reviews:
   path_filters:
     - "!node_modules/**"   # Ignore dependencies
     - "!dist/**"           # Ignore build output
