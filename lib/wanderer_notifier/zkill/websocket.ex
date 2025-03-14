@@ -8,8 +8,8 @@ defmodule WandererNotifier.ZKill.Websocket do
   """
   use WebSockex
   require Logger
-
-  @heartbeat_interval 10_000
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Service.KillProcessor
 
   def start_link(parent, url) do
     WebSockex.start_link(url, __MODULE__, %{parent: parent, connected: false})
@@ -25,7 +25,7 @@ defmodule WandererNotifier.ZKill.Websocket do
     try do
       Logger.info("Connected to zKill websocket.")
       new_state = Map.put(state, :connected, true)
-      
+
       # Update websocket status
       try do
         WandererNotifier.Stats.update_websocket(%{
@@ -36,7 +36,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       rescue
         _ -> :ok
       end
-      
+
       # Schedule subscription so that send_frame is not called within handle_connect
       Process.send_after(self(), :subscribe, 0)
       {:ok, new_state}
@@ -112,20 +112,45 @@ defmodule WandererNotifier.ZKill.Websocket do
           {:ok, %{"killmail_id" => killmail_id} = data} when is_map_key(data, "zkb") ->
             zkb_info = Map.get(data, "zkb")
 
-            Logger.info(
-              "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{inspect(zkb_info)}"
+            # Truncate zkb info for logging
+            truncated_zkb = truncate_zkb_for_logging(zkb_info)
+
+            Logger.debug(
+              "[ZKill.Websocket] Received kill partial: killmail_id=#{killmail_id} zkb=#{truncated_zkb}"
             )
+
+            # Process the kill message directly using KillProcessor
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              # Forward the message to the parent process for processing
+              send(state.parent, {:zkill_message, raw_msg})
+              Logger.info("Forwarded kill message with ID #{killmail_id} to parent process for processing")
+            else
+              # If parent process is not available, process directly
+              Logger.warning("Parent process not available, processing kill directly")
+              KillProcessor.process_zkill_message(data, %{})
+            end
 
           {:ok, %{"kill_id" => kill_id} = data} ->
             sys_id = Map.get(data, "solar_system_id")
 
-            Logger.info(
+            Logger.debug(
               "[ZKill.Websocket] Received kill info: kill_id=#{kill_id}, system_id=#{sys_id} full message=#{inspect(data)}"
             )
+
+            # Forward the message to the parent process
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+              Logger.info("Forwarded kill message with ID #{kill_id} to parent process for processing")
+            end
 
           {:ok, %{"killmail_id" => _} = data} ->
             # Handle case where killmail_id exists but zkb doesn't
             Logger.debug("Received killmail without zkb data: #{inspect(data)}")
+
+            # Forward the message to the parent process
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+            end
 
           {:ok, %{"action" => action} = data} ->
             # Handle action messages like pings, etc.
@@ -134,13 +159,13 @@ defmodule WandererNotifier.ZKill.Websocket do
           {:ok, other_json} ->
             Logger.debug("Received unrecognized killstream JSON: #{inspect(other_json)}")
 
+            # Forward the message to the parent process just in case
+            if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
+              send(state.parent, {:zkill_message, raw_msg})
+            end
+
           {:error, decode_err} ->
             Logger.error("Error decoding zKill frame: #{inspect(decode_err)}. Raw: #{raw_msg}")
-        end
-
-        # Always forward the message to the parent process
-        if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
-          send(state.parent, {:zkill_message, raw_msg})
         end
       rescue
         e ->
@@ -178,6 +203,25 @@ defmodule WandererNotifier.ZKill.Websocket do
     end
   end
 
+  @impl true
+  def handle_frame({:ping, ping_frame}, state) do
+    if ping_frame == "ping" do
+      Logger.debug(
+        "Received WS ping from zKill. Scheduling heartbeat pong in #{Timings.websocket_heartbeat_interval()}ms."
+      )
+
+      Process.send_after(self(), :heartbeat, Timings.websocket_heartbeat_interval())
+      {:ok, state}
+    else
+      Logger.warning(
+        "Received unexpected ping format from zKill: #{inspect(ping_frame)}. Scheduling heartbeat pong in #{Timings.websocket_heartbeat_interval()}ms."
+      )
+
+      Process.send_after(self(), :heartbeat, Timings.websocket_heartbeat_interval())
+      {:ok, state}
+    end
+  end
+
   # Catch-all for any other frame types
   def handle_frame(frame, state) do
     try do
@@ -191,46 +235,6 @@ defmodule WandererNotifier.ZKill.Websocket do
       kind, reason ->
         Logger.error("Caught #{kind} in handle_frame/2: #{inspect(reason)}")
         {:ok, state}
-    end
-  end
-
-  @impl true
-  def handle_ping({:ping, _data} = _ping, state) do
-    try do
-      Logger.debug(
-        "Received WS ping from zKill. Scheduling heartbeat pong in #{@heartbeat_interval}ms."
-      )
-
-      Process.send_after(self(), :heartbeat, @heartbeat_interval)
-      {:reply, {:pong, ""}, state}
-    rescue
-      e ->
-        Logger.error("Error in handle_ping/2: #{inspect(e)}")
-        {:reply, {:pong, ""}, state}
-    catch
-      kind, reason ->
-        Logger.error("Caught #{kind} in handle_ping/2: #{inspect(reason)}")
-        {:reply, {:pong, ""}, state}
-    end
-  end
-
-  # Catch-all clause for ping messages that don't match the expected format
-  def handle_ping(ping_frame, state) do
-    try do
-      Logger.debug(
-        "Received unexpected ping format from zKill: #{inspect(ping_frame)}. Scheduling heartbeat pong in #{@heartbeat_interval}ms."
-      )
-
-      Process.send_after(self(), :heartbeat, @heartbeat_interval)
-      {:reply, {:pong, ""}, state}
-    rescue
-      e ->
-        Logger.error("Error in handle_ping/2 (catch-all): #{inspect(e)}")
-        {:reply, {:pong, ""}, state}
-    catch
-      kind, reason ->
-        Logger.error("Caught #{kind} in handle_ping/2 (catch-all): #{inspect(reason)}")
-        {:reply, {:pong, ""}, state}
     end
   end
 
@@ -272,7 +276,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       # Update websocket status
       reconnects = Map.get(state, :reconnects, 0) + 1
       new_state = Map.put(state, :reconnects, reconnects)
-      
+
       try do
         WandererNotifier.Stats.update_websocket(%{
           connected: false,
@@ -299,11 +303,11 @@ defmodule WandererNotifier.ZKill.Websocket do
   def handle_disconnect(reason, state) do
     try do
       Logger.warning("zKill websocket disconnected (fallback): #{inspect(reason)}. Reconnecting...")
-      
+
       # Update websocket status
       reconnects = Map.get(state, :reconnects, 0) + 1
       new_state = Map.put(state, :reconnects, reconnects)
-      
+
       try do
         WandererNotifier.Stats.update_websocket(%{
           connected: false,
@@ -313,7 +317,7 @@ defmodule WandererNotifier.ZKill.Websocket do
       rescue
         _ -> :ok
       end
-      
+
       {:reconnect, new_state}
     rescue
       e ->
@@ -341,4 +345,23 @@ defmodule WandererNotifier.ZKill.Websocket do
         :ok
     end
   end
+
+  # Helper function to truncate zkb info for logging
+  defp truncate_zkb_for_logging(%{"zkb" => zkb} = _message) when is_map(zkb) do
+    # Extract only essential information
+    essential_keys = ["totalValue", "url", "locationID"]
+    truncated_map = Map.take(zkb, essential_keys)
+
+    # Add a note about truncated fields
+    truncated_count = map_size(zkb) - map_size(truncated_map)
+    result = if truncated_count > 0 do
+      Map.put(truncated_map, "_truncated", "#{truncated_count} fields omitted")
+    else
+      truncated_map
+    end
+
+    inspect(result, limit: 5)
+  end
+
+  defp truncate_zkb_for_logging(other), do: inspect(other, limit: 5)
 end

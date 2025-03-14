@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Task Management Guidelines
+
+- **Task Breakdown:**  
+  - Divide work into clear, manageable tasks using the MECE (Mutually Exclusive, Collectively Exhaustive) approach.
+- **Documentation:**  
+  - Update @notes/task_list.md and @notes/conversation_summary.md regularly to record progress.
+- **Prioritization:**  
+  - Prioritize tasks based on project goals and deadlines.
+- **Review:**  
+  - Regularly review progress and adjust plans as necessary.

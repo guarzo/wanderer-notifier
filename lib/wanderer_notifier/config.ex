@@ -9,7 +9,10 @@ defmodule WandererNotifier.Config do
   @zkill_base_url "https://zkillboard.com"
   @esi_base_url "https://esi.evetech.net/latest"
   @default_license_manager_url "https://license.wanderer-notifier.com"
-  @default_bot_id "default_bot_id"
+
+  # Production bot API token - this will be used in production builds
+  # This token needs to be valid for the license manager API
+  @production_bot_api_token "4cee3510-845e-45f1-b65e-4d936c40697c"
 
   @doc """
   Returns the Discord bot token from the environment.
@@ -61,11 +64,21 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
-  Returns the bot ID from the environment.
-  If not set, returns a default value.
+  Returns the bot API token.
+  In production, this returns a constant value.
+  In development and test environments, it uses the value from environment variables.
   """
-  def bot_id do
-    Application.get_env(:wanderer_notifier, :bot_id) || @default_bot_id
+  def bot_api_token do
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
+
+    case env do
+      :prod ->
+        # In production, use the hardcoded token
+        @production_bot_api_token
+      _ ->
+        # In development and test, use the environment variable
+        Application.get_env(:wanderer_notifier, :bot_api_token)
+    end
   end
 
   @doc """
@@ -91,10 +104,10 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
-  Returns the web server port from the environment or the default (8080).
+  Returns the web server port from the environment or the default (4000).
   """
   def web_port do
-    Application.get_env(:wanderer_notifier, :web_port, 8080)
+    Application.get_env(:wanderer_notifier, :web_port, 4000)
   end
 
   @doc """
@@ -121,7 +134,6 @@ defmodule WandererNotifier.Config do
       {:discord_channel_id, discord_channel_id()},
       {:map_url, map_url()},
       {:license_key, license_key()}
-      # Removed bot_id from required keys since it now has a default value
     ]
 
     missing_keys = for {key, value} <- required_keys, is_nil(value) or value == "", do: key
@@ -130,6 +142,48 @@ defmodule WandererNotifier.Config do
       :ok
     else
       {:error, missing_keys}
+    end
+  end
+
+  @doc """
+  Returns whether character tracking is enabled in the configuration.
+  By default, character tracking is enabled unless explicitly disabled by setting
+  ENABLE_CHARACTER_TRACKING to "false" or "0".
+  """
+  def character_tracking_enabled? do
+    case System.get_env("ENABLE_CHARACTER_TRACKING") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
+    end
+  end
+
+  @doc """
+  Returns whether system tracking notifications are enabled in the configuration.
+  By default, system tracking notifications are enabled unless explicitly disabled by setting
+  ENABLE_SYSTEM_NOTIFICATIONS to "false" or "0".
+  """
+  def system_notifications_enabled? do
+    case System.get_env("ENABLE_SYSTEM_NOTIFICATIONS") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
+    end
+  end
+
+  @doc """
+  Returns whether character tracking notifications are enabled in the configuration.
+  By default, character tracking notifications are enabled unless explicitly disabled by setting
+  ENABLE_CHARACTER_NOTIFICATIONS to "false" or "0".
+  """
+  def character_notifications_enabled? do
+    case System.get_env("ENABLE_CHARACTER_NOTIFICATIONS") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
     end
   end
 end

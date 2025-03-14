@@ -24,7 +24,7 @@ defmodule WandererNotifier.MixProject do
       {:dotenvy, "~> 1.0.0"},
       {:httpoison, "~> 1.8"},
       {:cachex, "~> 3.4"},
-      {:nostrum, "~> 0.5"},
+      {:nostrum, "~> 0.8.0"},
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.3"},
       {:plug, "~> 1.14"},

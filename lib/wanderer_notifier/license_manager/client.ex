@@ -1,45 +1,64 @@
 defmodule WandererNotifier.LicenseManager.Client do
   @moduledoc """
   Client for interacting with the License Manager API.
-  Provides functions for validating licenses.
+  Provides functions for validating licenses and bots.
   """
   require Logger
   alias WandererNotifier.Config
 
   # Define the behaviour callbacks
-  @callback validate_license(String.t()) :: {:ok, map()} | {:error, atom()}
+  @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
 
   @doc """
-  Validates a license key with the License Manager API.
+  Validates a bot with a license key using the License Manager API.
+  This endpoint handles both bot validation and license validation in a single call.
 
   ## Parameters
 
-  - `license_key`: The license key to validate (UUID format).
+  - `bot_api_token`: The API token for the bot.
+  - `license_key`: The license key to validate against.
 
   ## Returns
 
-  - `{:ok, response}`: If the license is valid.
-  - `{:error, reason}`: If the license is invalid or an error occurred.
+  - `{:ok, response}`: If the validation is successful.
+  - `{:error, reason}`: If the validation fails or an error occurred.
   """
-  def validate_license(license_key) do
-    url = "#{Config.license_manager_api_url()}/api/license/validate"
+  def validate_bot(bot_api_token, license_key) do
+    url = "#{Config.license_manager_api_url()}/api/validate_bot"
     Logger.info("License Manager API URL: #{url}")
+    Logger.debug("Using bot_api_token: #{String.slice(bot_api_token, 0, 8)}... (first 8 chars)")
+    Logger.debug("Using license_key: #{String.slice(license_key, 0, 8)}... (first 8 chars)")
 
-    # Set the license key as a Bearer token in the Authorization header
+    # Set the bot API token as a Bearer token in the Authorization header
     headers = [
       {"Content-Type", "application/json"},
-      {"Authorization", "Bearer #{license_key}"}
+      {"Accept", "application/json"},
+      {"Authorization", "Bearer #{bot_api_token}"}
     ]
 
-    Logger.debug("Sending HTTP request to License Manager API...")
+    # Create the request body with the license key
+    body = Jason.encode!(%{
+      "license_key" => license_key
+    })
 
-    case HTTPoison.get(url, headers) do
+    Logger.debug("Sending HTTP request to License Manager API for bot validation...")
+    Logger.debug("Request headers: #{inspect(headers, pretty: true)}")
+    Logger.debug("Request body: #{inspect(body, pretty: true)}")
+
+    case HTTPoison.post(url, body, headers) do
       {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} ->
         Logger.info("Received 200 OK response from License Manager API")
 
         case Jason.decode(response_body) do
           {:ok, decoded} ->
             Logger.debug("Successfully decoded JSON response")
+            # Check if the license is valid from the response
+            license_valid = decoded["license_valid"] || false
+            if license_valid do
+              Logger.info("License validation successful - License is valid")
+            else
+              Logger.warning("License validation failed - License is not valid")
+            end
             {:ok, decoded}
 
           {:error, error} ->
@@ -49,12 +68,21 @@ defmodule WandererNotifier.LicenseManager.Client do
         end
 
       {:ok, %HTTPoison.Response{status_code: 401}} ->
-        Logger.error("License Manager API: Invalid license key (401)")
-        {:error, :invalid_license}
+        Logger.error("License Manager API: Invalid bot API token (401)")
+        {:error, :invalid_bot_token}
+
+      {:ok, %HTTPoison.Response{status_code: 403}} ->
+        Logger.error("License Manager API: Bot is inactive or not associated with license (403)")
+        {:error, :bot_not_authorized}
 
       {:ok, %HTTPoison.Response{status_code: 404}} ->
-        Logger.error("License Manager API: License not found (404)")
-        {:error, :license_not_found}
+        Logger.error("License Manager API: Bot or license not found (404)")
+        {:error, :not_found}
+
+      {:ok, %HTTPoison.Response{status_code: 400, body: body}} ->
+        Logger.error("License Manager API: Bad request (400)")
+        Logger.debug("Error response body: #{inspect(body)}")
+        {:error, :bad_request}
 
       {:ok, %HTTPoison.Response{status_code: status_code, body: body}} ->
         Logger.error("License Manager API error: #{status_code}")

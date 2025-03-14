@@ -11,8 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     ca-certificates \
+    jq \
     vim \
-    nettools \
+    net-tools \
+    procps \
     # Optionally add any other tools you need, e.g. vim, wget...
     && curl -sL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y --no-install-recommends nodejs inotify-tools \

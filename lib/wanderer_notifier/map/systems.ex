@@ -8,11 +8,9 @@ defmodule WandererNotifier.Map.Systems do
   alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
+  alias WandererNotifier.Config.Timings
 
-  @systems_cache_ttl 10_000
-  @static_info_cache_ttl 86_400
-
-  def update_systems do
+  def update_systems(cached_systems \\ nil) do
     Logger.info("[update_systems] Starting systems update")
 
     with {:ok, systems_url} <- build_systems_url(),
@@ -22,26 +20,42 @@ defmodule WandererNotifier.Map.Systems do
       if fresh_systems == [] do
         Logger.warning("[update_systems] Received empty system list. Retaining existing cache.")
       else
-        cached_systems = CacheRepo.get("map:systems") || []
+        # Use provided cached_systems or fetch from cache
+        systems_from_cache = if cached_systems != nil, do: cached_systems, else: get_all_systems()
+        Logger.info("[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})")
 
-        if cached_systems != [] do
+        # Log cache details for debugging
+        Logger.debug("[update_systems] Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}")
+
+        if systems_from_cache != [] do
           new_systems =
             Enum.filter(fresh_systems, fn new_sys ->
-              not Enum.any?(cached_systems, fn cached ->
+              not Enum.any?(systems_from_cache, fn cached ->
                 cached["system_id"] == new_sys["system_id"]
               end)
             end)
 
-          Enum.each(new_systems, fn system ->
-            WandererNotifier.Discord.Notifier.send_new_system_notification(system)
-          end)
+          if new_systems != [] do
+            Logger.info("[update_systems] Found #{length(new_systems)} new systems to notify about")
+            Enum.each(new_systems, fn system ->
+              WandererNotifier.Discord.Notifier.send_new_system_notification(system)
+            end)
+          else
+            Logger.info("[update_systems] No new systems found since last update")
+          end
         else
           Logger.info(
             "[update_systems] No cached systems found; skipping new system notifications on startup."
           )
         end
 
-        CacheRepo.set("map:systems", fresh_systems, @systems_cache_ttl)
+        Logger.info("[update_systems] Updating systems cache with #{length(fresh_systems)} systems")
+        # Store each system individually with its system_id as the key
+        Enum.each(fresh_systems, fn system ->
+          CacheRepo.set("map:system:#{system["system_id"]}", system, Timings.systems_cache_ttl())
+        end)
+        # Also store the full list of systems for backward compatibility
+        CacheRepo.set("map:systems", fresh_systems, Timings.systems_cache_ttl())
       end
 
       {:ok, fresh_systems}
@@ -52,12 +66,62 @@ defmodule WandererNotifier.Map.Systems do
     end
   end
 
+  # Helper function to get all systems from the cache
+  defp get_all_systems do
+    case CacheRepo.get("map:systems") do
+      nil ->
+        []
+      systems when is_list(systems) ->
+        # Check if we have a list of system objects or just IDs
+        if length(systems) > 0 and is_map(List.first(systems)) do
+          # We have the full system objects
+          systems
+        else
+          # We have a list of system IDs, fetch each system
+          Enum.map(systems, fn system_id ->
+            case CacheRepo.get("map:system:#{system_id}") do
+              nil -> nil
+              system -> system
+            end
+          end)
+          |> Enum.filter(& &1)
+        end
+      _ ->
+        []
+    end
+  end
+
   defp build_systems_url do
+    Logger.debug("[build_systems_url] Building systems URL from map configuration")
+
     case validate_map_env() do
       {:ok, map_url} ->
-        {:ok, "#{map_url}/api/map/systems"}
+        # Extract the base URL (without any path segments)
+        uri = URI.parse(map_url)
+        base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
 
-      err ->
+        # Get the slug/map name from the path
+        slug = case uri.path do
+          nil -> ""
+          "/" -> ""
+          path ->
+            # Remove leading slash and get the first path segment
+            segments = path |> String.trim_leading("/") |> String.split("/")
+            List.first(segments, "")
+        end
+
+        # Construct the systems URL with the correct path
+        systems_url = if slug != "" do
+          "#{base_url}/api/map/systems?slug=#{slug}"
+        else
+          "#{base_url}/api/map/systems"
+        end
+
+        Logger.debug("[build_systems_url] Successfully built systems URL: #{systems_url}")
+        {:ok, systems_url}
+
+      {:error, reason} = err ->
+        Logger.error("[build_systems_url] Failed to build systems URL: #{inspect(reason)}")
         err
     end
   end
@@ -75,18 +139,25 @@ defmodule WandererNotifier.Map.Systems do
 
   defp decode_json(raw), do: Jason.decode(raw)
 
-  defp process_systems(%{"data" => systems_data}) when is_list(systems_data) do
+  defp process_systems(%{"data" => data}) when is_list(data) do
+    Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
+
+    # Filter for wormhole systems
     wormhole_systems =
-      systems_data
-      |> Enum.map(&fetch_wormhole_system/1)
+      Enum.map(data, &fetch_wormhole_system/1)
       |> Enum.filter(& &1)
 
-    # Return systems with consistent string keys: "system_id" and "system_name"
+    Logger.debug("[process_systems] Found #{length(wormhole_systems)} wormhole systems")
+
+    # Process the wormhole systems
     processed =
       Enum.map(wormhole_systems, fn sys ->
+        # Create a map with all the relevant fields
         %{
           "system_id" => sys.system_id,
-          "system_name" => sys.alias || "Solar System #{sys.system_id}"
+          "system_name" => sys.alias || "Solar System #{sys.system_id}",
+          "original_name" => sys.original_name,
+          "temporary_name" => sys.temporary_name
         }
       end)
 
@@ -97,14 +168,50 @@ defmodule WandererNotifier.Map.Systems do
 
   defp fetch_wormhole_system(item) do
     with system_id when is_binary(system_id) <- extract_system_id(item),
-         map_url <- Config.map_url(),
-         static_info_url = "#{map_url}/api/common//system-static-info?id=#{system_id}",
-         {:ok, ssi} <- get_or_fetch_system_static_info(static_info_url),
-         true <- qualifies_as_wormhole?(ssi) do
-      %{
-        system_id: system_id,
-        alias: item["temporary_name"] || item["TemporaryName"]
-      }
+         {:ok, map_url} <- validate_map_env() do
+      # Extract the base URL (without any path segments)
+      uri = URI.parse(map_url)
+      base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+
+      # Get the slug/map name from the path
+      slug = case uri.path do
+        nil -> ""
+        "/" -> ""
+        path ->
+          # Remove leading slash and get the first path segment
+          segments = path |> String.trim_leading("/") |> String.split("/")
+          List.first(segments, "")
+      end
+
+      # Construct the static info URL with the correct path and slug
+      static_info_url = if slug != "" do
+        "#{base_url}/api/common/system-static-info?id=#{system_id}&slug=#{slug}"
+      else
+        "#{base_url}/api/common/system-static-info?id=#{system_id}"
+      end
+
+      case get_or_fetch_system_static_info(static_info_url) do
+        {:ok, ssi} ->
+          if qualifies_as_wormhole?(ssi) do
+            # Extract all the relevant fields from the API response
+            original_name = item["original_name"] || item["OriginalName"]
+            temporary_name = item["temporary_name"] || item["TemporaryName"]
+
+            # Log the extracted fields for debugging
+            Logger.debug("[fetch_wormhole_system] Extracted fields for system_id=#{system_id}: original_name=#{inspect(original_name)}, temporary_name=#{inspect(temporary_name)}")
+
+            %{
+              system_id: system_id,
+              alias: temporary_name,
+              original_name: original_name,
+              temporary_name: temporary_name
+            }
+          else
+            nil
+          end
+        _ ->
+          nil
+      end
     else
       _ -> nil
     end
@@ -124,19 +231,38 @@ defmodule WandererNotifier.Map.Systems do
   end
 
   defp get_or_fetch_system_static_info(url) do
-    case CacheRepo.get(url) do
-      nil -> fetch_and_cache_system_info(url)
-      cached -> Jason.decode(cached)
+    # Extract system_id from the URL
+    system_id = extract_system_id_from_url(url)
+    cache_key = "static_info:#{system_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        # Cache miss, fetch and cache
+        fetch_and_cache_system_info(url, system_id)
+      cached when is_binary(cached) ->
+        # Valid cache hit
+        Jason.decode(cached)
+      _ ->
+        # Invalid cache value (nil or unexpected type)
+        Logger.warning("[Systems] Invalid cache value for #{cache_key}, fetching fresh data")
+        fetch_and_cache_system_info(url, system_id)
     end
   end
 
-  defp fetch_and_cache_system_info(url) do
+  defp extract_system_id_from_url(url) do
+    uri = URI.parse(url)
+    query = URI.decode_query(uri.query || "")
+    query["id"]
+  end
+
+  defp fetch_and_cache_system_info(url, system_id) do
     map_token = Config.map_token()
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
+    cache_key = "static_info:#{system_id}"
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
-        CacheRepo.set(url, body, @static_info_cache_ttl)
+        CacheRepo.set(cache_key, body, Timings.static_info_cache_ttl())
         Jason.decode(body)
 
       {:ok, %{status_code: status}} ->
@@ -148,12 +274,62 @@ defmodule WandererNotifier.Map.Systems do
   end
 
   defp validate_map_env do
-    map_url = Config.map_url()
+    map_url_with_name = Application.get_env(:wanderer_notifier, :map_url_with_name)
+    map_url_base = Application.get_env(:wanderer_notifier, :map_url)
+    map_name = Application.get_env(:wanderer_notifier, :map_name)
 
-    if map_url in [nil, ""] do
-      {:error, "map_url or map_name not configured"}
+    Logger.debug("[validate_map_env] Validating map configuration:")
+    Logger.debug("[validate_map_env] - map_url_with_name: #{inspect(map_url_with_name)}")
+    Logger.debug("[validate_map_env] - map_url_base: #{inspect(map_url_base)}")
+    Logger.debug("[validate_map_env] - map_name: #{inspect(map_name)}")
+
+    # Determine the final map URL to use
+    map_url = cond do
+      # If MAP_URL_WITH_NAME is set, use it directly
+      map_url_with_name && map_url_with_name != "" ->
+        Logger.debug("[validate_map_env] Using MAP_URL_WITH_NAME: #{map_url_with_name}")
+        map_url_with_name
+
+      # If both MAP_URL and MAP_NAME are set, combine them
+      map_url_base && map_url_base != "" && map_name && map_name != "" ->
+        url = "#{map_url_base}/#{map_name}"
+        Logger.debug("[validate_map_env] Using combined MAP_URL and MAP_NAME: #{url}")
+        url
+
+      # If only MAP_URL is set, use it directly
+      map_url_base && map_url_base != "" ->
+        Logger.debug("[validate_map_env] Using MAP_URL: #{map_url_base}")
+        map_url_base
+
+      # No valid URL configuration
+      true ->
+        Logger.error("[validate_map_env] Map URL is not configured")
+        Logger.error("[validate_map_env] Please set MAP_URL_WITH_NAME or both MAP_URL and MAP_NAME environment variables")
+        nil
+    end
+
+    # Validate the URL
+    if map_url do
+      uri = URI.parse(map_url)
+
+      cond do
+        # Check if the URL has a scheme (http:// or https://)
+        uri.scheme == nil ->
+          Logger.error("[validate_map_env] Map URL is missing scheme (http:// or https://): #{map_url}")
+          {:error, "Map URL is missing scheme"}
+
+        # Check if the URL has a host
+        uri.host == nil ->
+          Logger.error("[validate_map_env] Map URL is missing host: #{map_url}")
+          {:error, "Map URL is missing host"}
+
+        # URL is valid
+        true ->
+          Logger.debug("[validate_map_env] Map URL is valid: #{map_url}")
+          {:ok, map_url}
+      end
     else
-      {:ok, map_url}
+      {:error, "Map URL is not configured"}
     end
   end
 end

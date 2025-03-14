@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Integrated Documentation References
+
+- **Architecture:** Refer to @notes/architecture.md for the system design.
+- **Code Style:** Follow the guidelines in @notes/code_style_guide.md.
+- **Frontend:** See @notes/frontend_guidelines.md for component and styling best practices.
+- **Project Overview & Tasks:** Check @notes/project_overview.md, @notes/conversation_summary.md, and @notes/task_list.md.
+- **Directory Structure:** Use @notes/directory_structure.md to understand file organization.

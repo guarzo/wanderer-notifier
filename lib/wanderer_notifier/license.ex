@@ -7,9 +7,10 @@ defmodule WandererNotifier.License do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
+  alias WandererNotifier.Config.Timings
 
-  # Refresh license validation every 24 hours
-  @refresh_interval :timer.hours(24)
+  # Remove hardcoded interval
+  # @refresh_interval :timer.hours(24)
 
   # Define the behaviour callbacks
   @callback validate() :: boolean()
@@ -120,63 +121,64 @@ defmodule WandererNotifier.License do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :refresh, @refresh_interval)
+    Process.send_after(self(), :refresh, Timings.license_refresh_interval())
   end
 
   defp do_validate do
     license_key = Config.license_key()
-    bot_id = Config.bot_id()
-    
-    case LicenseClient.validate_license(license_key) do
-      {:ok, response} ->
-        Logger.info("License validation successful")
-        
-        # Check if the license is valid
-        license_valid = response["license_valid"] || false
-        
-        # Check if our bot ID is in the list of assigned bots
-        bot_assigned = is_bot_assigned(response, bot_id)
-        
-        if bot_assigned do
-          Logger.info("Bot is properly assigned to the license")
-        else
-          Logger.error("Bot is not assigned to this license")
-        end
-        
-        %{
-          valid: license_valid, 
-          bot_assigned: bot_assigned, 
-          details: response,
-          error: nil,
-          error_message: nil
-        }
-          
-      {:error, reason} ->
-        error_message = error_reason_to_message(reason)
-        Logger.error("License validation failed: #{error_message}")
-        %{
-          valid: false, 
-          bot_assigned: false, 
-          error: reason, 
-          error_message: error_message,
-          details: nil
-        }
+    bot_api_token = Config.bot_api_token()
+
+    if is_nil(bot_api_token) || bot_api_token == "" do
+      Logger.error("No bot API token configured")
+      %{
+        valid: false,
+        bot_assigned: false,
+        error: :no_bot_api_token,
+        error_message: "No bot API token configured",
+        details: nil
+      }
+    else
+      # Validate the bot with the license in a single call
+      case LicenseClient.validate_bot(bot_api_token, license_key) do
+        {:ok, response} ->
+          # Check if the license is valid from the response
+          license_valid = response["license_valid"] || false
+
+          if license_valid do
+            Logger.info("License and bot validation successful")
+          else
+            Logger.error("License validation failed - License is not valid")
+          end
+
+          %{
+            valid: license_valid,
+            bot_assigned: true, # If we got a successful response, the bot is assigned
+            details: response,
+            error: nil,
+            error_message: nil
+          }
+
+        {:error, reason} ->
+          error_message = error_reason_to_message(reason)
+          Logger.error("License/bot validation failed: #{error_message}")
+          %{
+            valid: false,
+            bot_assigned: false,
+            error: reason,
+            error_message: error_message,
+            details: nil
+          }
+      end
     end
   end
-  
-  # Check if the bot ID is in the list of assigned bots
-  defp is_bot_assigned(%{"bots" => bots}, bot_id) when is_list(bots) and is_binary(bot_id) do
-    Enum.any?(bots, fn bot -> 
-      bot["id"] == bot_id && bot["is_active"] == true
-    end)
-  end
-  
-  defp is_bot_assigned(_, _), do: false
-  
+
   # Convert error reasons to user-friendly messages
-  defp error_reason_to_message(:license_not_found), do: "License not found"
+  defp error_reason_to_message(:invalid_bot_token), do: "Invalid bot API token"
+  defp error_reason_to_message(:bot_not_authorized), do: "Bot is not authorized for this license"
+  defp error_reason_to_message(:not_found), do: "Bot or license not found"
+  defp error_reason_to_message(:bad_request), do: "Bad request to license server"
   defp error_reason_to_message(:request_failed), do: "Failed to connect to license server"
   defp error_reason_to_message(:invalid_response), do: "Invalid response from license server"
   defp error_reason_to_message(:api_error), do: "License API error"
-  defp error_reason_to_message(_), do: "Unknown error during license validation"
+  defp error_reason_to_message(reason), do: "Unknown error: #{inspect(reason)}"
 end

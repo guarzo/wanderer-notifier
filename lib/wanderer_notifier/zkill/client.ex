@@ -75,4 +75,61 @@ defmodule WandererNotifier.ZKill.Client do
         {:error, :unhandled_response}
     end
   end
+
+  @doc """
+  Retrieves recent kills from zKillboard.
+
+  ## Parameters
+
+  - `limit`: The maximum number of kills to retrieve (default: 10)
+
+  ## Returns
+
+  - `{:ok, kills}`: A list of recent kills
+  - `{:error, reason}`: If an error occurred
+  """
+  def get_recent_kills(limit \\ 10) do
+    url = "https://zkillboard.com/api/kills/"
+
+    headers = [
+      {"User-Agent", @user_agent}
+    ]
+
+    # Centralized building of cURL command (in Http.Client now):
+    curl_example = HttpClient.build_curl_command("GET", url, headers)
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, parsed} when is_list(parsed) ->
+            # Take only the requested number of kills
+            result = Enum.take(parsed, limit)
+            {:ok, result}
+
+          {:ok, _} ->
+            Logger.warning("""
+            [ZKill] Warning: unexpected response format from zKill for recent kills.
+            Sample cURL to reproduce:
+            #{curl_example}
+            """)
+            {:error, :unexpected_response_format}
+
+          {:error, decode_err} ->
+            Logger.error("""
+            [ZKill] JSON decode error for recent kills: #{inspect(decode_err)}
+            Sample cURL to reproduce:
+            #{curl_example}
+            """)
+            {:error, :json_error}
+        end
+
+      {:ok, %{status_code: status}} ->
+        Logger.error("[ZKill] HTTP error #{status} when fetching recent kills")
+        {:error, {:http_error, status}}
+
+      {:error, http_err} ->
+        Logger.error("[ZKill] HTTP request error when fetching recent kills: #{inspect(http_err)}")
+        {:error, {:request_error, http_err}}
+    end
+  end
 end

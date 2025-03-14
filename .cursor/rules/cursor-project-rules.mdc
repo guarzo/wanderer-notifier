@@ -1,0 +1,62 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Project Rules
+
+## Context Initialization
+- **Always Read:**  
+  - `.notes/project_overview.md` and `.notes/task_list.md` at the start of new features.
+  - `.notes/conversation_summary.md` for historical context and decisions.
+  - `.notes/code_style_guide.md`, `.notes/frontend_guidelines.md`, and `.notes/directory_structure.md` for project-specific context.
+
+## Documentation Reference Protocol
+- **When to Reference:**  
+  - Use `.notes/project_overview.md` for new features and scope clarification.
+  - Consult `.notes/architecture.md` for design decisions.
+  - Review `.notes/task_list.md` before starting tasks.
+  - Refer to `.notes/conversation_summary.md` for previous decisions.
+  - Use `.notes/directory_structure.md` for navigating and planning file additions.
+- **Updates:**  
+  - Always update conversation summaries after significant decisions.
+
+## Operational Protocol
+- **Task Approach:**  
+  - Break tasks into MECE components; outline pseudocode before implementation.
+  - Confirm the approach before coding.
+- **Code Changes:**  
+  - Preserve existing functionality; maintain type safety and DRY principles.
+  - Avoid leaving TODOs or placeholders.
+- **Development Environment:**  
+  - Do not manually run build commands; rely on the automatic watcher.
+
+## Technology-Specific Guidelines
+- **Backend (Elixir/Phoenix):**  
+  - Write idiomatic code, use contexts/Ash domains, and maintain supervision trees.
+- **Frontend (React/Next.js):**  
+  - Use functional components with TypeScript; follow accessibility and responsive design best practices.
+  - Use PrimeReact for UI components and SCSS modules for styles.
+- **UI/UX:**  
+  - Implement responsive design and proper z-index hierarchy for overlays.
+
+## Safety Requirements
+- **Type Safety & Error Handling:**  
+  - Never break type safety and always implement robust error handling.
+- **Security:**  
+  - Use environment variables for sensitive data and enforce proper authentication.
+- **Global Changes:**  
+  - Request explicit permission before making global styling changes.
+  - Test changes in isolation and document them.
+
+## Directory Structure
+- Use `.notes/directory_structure.md` when planning new features.
+
+## Priorities & Modes
+- **Priorities:** Use .notes/ as the primary source of truth.
+- **Modes:**  
+  - Base Mode for routine tasks.
+  - Enhanced Mode for complex changes requiring deeper analysis.
+- **Project Directives:**  
+  - Project Name: wanderer  
+  - AI First: true

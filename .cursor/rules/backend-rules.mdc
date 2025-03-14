@@ -1,0 +1,28 @@
+---
+description: 
+globs: *ex,*exs
+alwaysApply: false
+---
+# Backend (Elixir/Phoenix/Ash) Guidelines
+
+## Code Style & Structure
+- Write concise, idiomatic Elixir code that leverages functional programming and immutability.
+- Use recursion or higher-order functions instead of imperative loops.
+- Use descriptive names: Modules in PascalCase and functions/variables in snake_case.
+- Keep controllers thin; delegate business logic to contexts or Ash domains.
+
+## Framework Best Practices
+- Leverage Ash Framework to eliminate boilerplate CRUD code.
+- Define resources, actions, and validations in Ash to focus on business logic.
+- Use Ecto’s query and changeset DSL (via Ash) effectively; preload associations to avoid N+1 queries.
+- Embrace OTP principles with proper supervision trees and a “let it crash” philosophy.
+
+## Error Handling & Security
+- Use changesets for validation and provide clear error messages.
+- Handle errors gracefully and log details for debugging.
+- Validate and sanitize all inputs to prevent vulnerabilities (e.g., SQL injection, XSS).
+
+## Documentation
+- Use @moduledoc and @doc for module and function documentation.
+- Include @spec types for public functions.
+- Follow Phoenix and Ash conventions for project structure and file organization.

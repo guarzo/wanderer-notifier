@@ -12,4 +12,10 @@ defmodule WandererNotifier.Service.Maintenance do
   def do_periodic_checks(state) do
     Scheduler.do_periodic_checks(state)
   end
+
+  @spec do_initial_checks(map()) :: map()
+  def do_initial_checks(state) do
+    Logger.info("[Maintenance] Running initial startup checks")
+    Scheduler.do_initial_checks(state)
+  end
 end
