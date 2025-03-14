@@ -6,6 +6,7 @@ defmodule WandererNotifier.Discord.Notifier do
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
   alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   # Use a runtime environment check instead of compile-time
   defp env do
@@ -324,23 +325,23 @@ defmodule WandererNotifier.Discord.Notifier do
       # Try to get from cache first
       cache_key = "corporation_name:#{corporation_id}"
       
-      case CacheHelpers.get(cache_key) do
-        {:ok, name} when is_binary(name) and name != "" ->
-          Logger.debug("CHARACTER NOTIFICATION: Found corporation name in cache: #{name}")
+      case CacheRepo.get(cache_key) do
+        name when is_binary(name) and name != "" ->
+          Logger.debug("Found corporation name in cache: #{name}")
           name
           
         _ ->
           # If not in cache, fetch from ESI and cache the result
-          Logger.debug("CHARACTER NOTIFICATION: Fetching corporation name from ESI for ID: #{corporation_id}")
+          Logger.debug("Fetching corporation name from ESI for ID: #{corporation_id}")
           case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
             {:ok, %{"name" => corp_name}} ->
-              Logger.debug("CHARACTER NOTIFICATION: Found corporation name: #{corp_name}")
+              Logger.debug("Found corporation name: #{corp_name}")
               # Cache the result for future use (24 hours TTL)
-              CacheHelpers.put(cache_key, corp_name, ttl: :timer.hours(24))
+              CacheRepo.set(cache_key, corp_name, :timer.hours(24) |> div(1000))
               corp_name
               
-            error ->
-              Logger.debug("CHARACTER NOTIFICATION: Failed to get corporation name: #{inspect(error)}")
+            _error ->
+              Logger.debug("Failed to get corporation name for ID: #{corporation_id}")
               "Unknown Corporation"
           end
       end
@@ -410,27 +411,13 @@ defmodule WandererNotifier.Discord.Notifier do
 
       {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
         Logger.error("Discord API request failed with status #{status}")
--       Logger.error("Discord API error response: #{inspect(body)}")
-+       Logger.error("Discord API error response: Elided for security. Enable debug logs for details.")
+        Logger.error("Discord API error response: Elided for security. Enable debug logs for details.")
         {:error, body}
 
       {:error, err} ->
         Logger.error("Discord API request error: #{inspect(err)}")
         {:error, err}
     end
-  end
-
-  # Conditionally add a field.
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  # Adds the author block.
-  defp put_author(embed, author_name, url, nil) do
-    Map.put(embed, "author", %{"name" => author_name, "url" => url})
-  end
-
-  defp put_author(embed, author_name, url, author_icon_url) do
-    Map.put(embed, "author", %{"name" => author_name, "url" => url, "icon_url" => author_icon_url})
   end
 
   # Recursively normalize keys in a map to strings.
@@ -509,10 +496,7 @@ defmodule WandererNotifier.Discord.Notifier do
       case Map.get(entity, "character_name") do
         nil ->
           if is_valid_id?(character_id) do
-            case WandererNotifier.ESI.Service.get_character_info(character_id) do
-              {:ok, %{"name" => character_name}} -> character_name
-              _ -> "Character #{character_id}"
-            end
+            get_character_name_from_id(character_id)
           else
             "Unknown Character"
           end
@@ -530,10 +514,7 @@ defmodule WandererNotifier.Discord.Notifier do
       case Map.get(entity, "ship_name") do
         nil ->
           if is_valid_id?(ship_type_id) do
-            case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
-              {:ok, %{"name" => ship_name}} -> ship_name
-              _ -> "Ship #{ship_type_id}"
-            end
+            get_ship_type_name_from_id(ship_type_id)
           else
             "Unknown Ship"
           end
@@ -551,6 +532,70 @@ defmodule WandererNotifier.Discord.Notifier do
         end
 
     %{id: character_id || "unknown", name: name, corp: corp, ship: ship, zkill_url: zkill_url}
+  end
+
+  # Get character name from ID with caching
+  defp get_character_name_from_id(character_id) do
+    if not is_valid_id?(character_id) do
+      "Unknown Character"
+    else
+      # Try to get from cache first
+      cache_key = "character_name:#{character_id}"
+      
+      case CacheRepo.get(cache_key) do
+        name when is_binary(name) and name != "" ->
+          Logger.debug("Found character name in cache: #{name}")
+          name
+          
+        _ ->
+          # If not in cache, fetch from ESI and cache the result
+          Logger.debug("Fetching character name from ESI for ID: #{character_id}")
+          case WandererNotifier.ESI.Service.get_character_info(character_id) do
+            {:ok, %{"name" => character_name}} ->
+              Logger.debug("Found character name: #{character_name}")
+              # Cache the result for future use (24 hours TTL)
+              CacheRepo.set(cache_key, character_name, :timer.hours(24) |> div(1000))
+              character_name
+              
+            _ ->
+              fallback = "Character #{character_id}"
+              Logger.debug("Failed to get character name, using fallback: #{fallback}")
+              fallback
+          end
+      end
+    end
+  end
+
+  # Get ship type name from ID with caching
+  defp get_ship_type_name_from_id(ship_type_id) do
+    if not is_valid_id?(ship_type_id) do
+      "Unknown Ship"
+    else
+      # Try to get from cache first
+      cache_key = "ship_type_name:#{ship_type_id}"
+      
+      case CacheRepo.get(cache_key) do
+        name when is_binary(name) and name != "" ->
+          Logger.debug("Found ship type name in cache: #{name}")
+          name
+          
+        _ ->
+          # If not in cache, fetch from ESI and cache the result
+          Logger.debug("Fetching ship type name from ESI for ID: #{ship_type_id}")
+          case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+            {:ok, %{"name" => ship_name}} ->
+              Logger.debug("Found ship type name: #{ship_name}")
+              # Cache the result for future use (7 days TTL - ship types change less frequently)
+              CacheRepo.set(cache_key, ship_name, :timer.hours(24 * 7) |> div(1000))
+              ship_name
+              
+            _ ->
+              fallback = "Ship #{ship_type_id}"
+              Logger.debug("Failed to get ship type name, using fallback: #{fallback}")
+              fallback
+          end
+      end
+    end
   end
 
   # Helper function to check if an ID is valid for API calls
@@ -579,14 +624,43 @@ defmodule WandererNotifier.Discord.Notifier do
                to_string(solar_system_id)
            end) do
         nil ->
-          case WandererNotifier.ESI.Service.get_solar_system_name(solar_system_id) do
-            {:ok, %{"name" => name}} -> name
-            _ -> "Solar System #{solar_system_id}"
-          end
+          get_solar_system_name_from_id(solar_system_id)
 
         system ->
           Map.get(system, "system_name") || Map.get(system, :alias) ||
             "Solar System #{solar_system_id}"
+      end
+    end
+  end
+
+  # Get solar system name from ID with caching
+  defp get_solar_system_name_from_id(solar_system_id) do
+    if not is_valid_id?(solar_system_id) do
+      "Unknown System"
+    else
+      # Try to get from cache first
+      cache_key = "solar_system_name:#{solar_system_id}"
+      
+      case CacheRepo.get(cache_key) do
+        name when is_binary(name) and name != "" ->
+          Logger.debug("Found solar system name in cache: #{name}")
+          name
+          
+        _ ->
+          # If not in cache, fetch from ESI and cache the result
+          Logger.debug("Fetching solar system name from ESI for ID: #{solar_system_id}")
+          case WandererNotifier.ESI.Service.get_solar_system_name(solar_system_id) do
+            {:ok, %{"name" => name}} ->
+              Logger.debug("Found solar system name: #{name}")
+              # Cache the result for future use (7 days TTL - solar systems change very rarely)
+              CacheRepo.set(cache_key, name, :timer.hours(24 * 7) |> div(1000))
+              name
+              
+            _ ->
+              fallback = "Solar System #{solar_system_id}"
+              Logger.debug("Failed to get solar system name, using fallback: #{fallback}")
+              fallback
+          end
       end
     end
   end

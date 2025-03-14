@@ -1,16 +1,15 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 language: "en-US"
-early_access: true  # Use stable features of CodeRabbit
+early_access: true  
 reviews:
   profile: "assertive"
-  request_changes_workflow: true  # Suggestions as comments, not formal change requests
+  request_changes_workflow: true 
   high_level_summary: true
-  poem: true                      # Disable playful poems in reviews
-  review_status: true              # Include a status (approved/changes requested) summary
-  collapse_walkthrough: true       # Collapse detailed code walkthrough by default for brevity
-
-collapse_walkthrough: true       # Collapse detailed code walkthrough by default for brevity
+  poem: true                      
+  review_status: true              
+  collapse_walkthrough: false      
+collapse_walkthrough: false     
 reviews:
   path_filters:
     - "!node_modules/**"   # Ignore dependencies
