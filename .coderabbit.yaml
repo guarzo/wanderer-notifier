@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+early_access: true  # Use stable features of CodeRabbit
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true  # Suggestions as comments, not formal change requests
+  high_level_summary: true
+  poem: true                      # Disable playful poems in reviews
+  review_status: true              # Include a status (approved/changes requested) summary
+  collapse_walkthrough: true       # Collapse detailed code walkthrough by default for brevity
+
+  path_filters:
+    - "!node_modules/**"   # Ignore dependencies
+    - "!dist/**"           # Ignore build output
+    - "!**/*.min.js"       # Ignore minified files
+    - "!**/*.bundle.js"    # Ignore bundled assets
+
+  path_instructions:
+    # Global project guidelines (apply to all files)
+    - path: "**/*"
+      instructions: |
+        **General Code Quality** – Ensure the code follows global best practices:
+        - Keep functions and modules small and focused (single responsibility).
+        - Use consistent naming conventions and meaningful identifiers for clarity.
+        - Avoid duplicate code – refactor common logic into reusable functions.
+        - Maintain code readability (proper indentation, avoid deep nesting of code).
+        - Write comments where necessary to explain intent, but keep code self-explanatory.
+        - Use early exit strategy, avoid else
+
+
+    # Backend-specific guidelines (server-side code)
+    - path: "backend/**"
+      instructions: |
+        **Backend Best Practices** – In addition to general guidelines, check that:
+        - Code is structured in a modular, layered way (e.g. separation of concerns between controllers, services, database/repository layers). Each module or function has a single clear purpose.
+        - All potential error cases are handled gracefully. Use try/catch or error-handling middleware to catch exceptions, and log errors with enough context for debugging. No swallowed exceptions.
+        - The code follows solid architectural principles (e.g. SOLID design). It should be easy to maintain and extend (think of future developers reading this code).
+        - Input validation and security checks are in place. Validate incoming data and reject or sanitize bad inputs to prevent issues (like SQL injection or crashes). Ensure sensitive operations require proper authorization.
+
+  auto_review:
+    enabled: true        # Enable automatic AI review on pull requests
+    drafts: false        # Skip reviews on draft PRs (only review ready PRs)
+    base_branches: ["main", "develop"]  # Only run auto-reviews for PRs targeting these branches (adjust to your workflow)
+
+chat:
+  auto_reply: true  # Enable the AI to answer follow-up questions in PR comments
