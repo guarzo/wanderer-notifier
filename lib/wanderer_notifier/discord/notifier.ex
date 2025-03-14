@@ -375,7 +375,8 @@ defmodule WandererNotifier.Discord.Notifier do
 
       {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
         Logger.error("Discord API request failed with status #{status}")
-        Logger.error("Discord API error response: #{inspect(body)}")
+-       Logger.error("Discord API error response: #{inspect(body)}")
++       Logger.error("Discord API error response: Elided for security. Enable debug logs for details.")
         {:error, body}
 
       {:error, err} ->
