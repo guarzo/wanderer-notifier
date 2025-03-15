@@ -9,6 +9,7 @@ defmodule WandererNotifier.Map.Systems do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
     Logger.debug("[update_systems] Starting systems update")
@@ -38,7 +39,7 @@ defmodule WandererNotifier.Map.Systems do
           if new_systems != [] do
             Logger.info("[update_systems] Found #{length(new_systems)} new systems to notify about")
             Enum.each(new_systems, fn system ->
-              WandererNotifier.Discord.Notifier.send_new_system_notification(system)
+              send_notification(system)
             end)
           else
             Logger.debug("[update_systems] No new systems found since last update")
@@ -330,6 +331,15 @@ defmodule WandererNotifier.Map.Systems do
       end
     else
       {:error, "Map URL is not configured"}
+    end
+  end
+
+  # Send notification for new system
+  defp send_notification(system) do
+    if Config.system_notifications_enabled?() do
+      NotifierFactory.notify(:send_new_system_notification, [system])
+      # Increment the systems counter
+      WandererNotifier.Stats.increment(:systems)
     end
   end
 end

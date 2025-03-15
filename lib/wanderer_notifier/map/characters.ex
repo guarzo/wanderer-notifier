@@ -7,6 +7,8 @@ defmodule WandererNotifier.Map.Characters do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.NotifierFactory
+  alias WandererNotifier.Helpers.NotificationHelpers
 
   def update_tracked_characters(cached_characters \\ nil) do
     Logger.debug("[update_tracked_characters] Starting update of tracked characters")
@@ -38,7 +40,7 @@ defmodule WandererNotifier.Map.Characters do
             char_name = Map.get(character, "character_name", "Unknown")
             char_id = Map.get(character, "character_id", "Unknown")
             Logger.info("[update_tracked_characters] Sending notification for new character: #{char_name} (ID: #{char_id})")
-            WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
+            send_notification(character)
           end)
         else
           Logger.debug("[update_tracked_characters] No new characters found since last update")
@@ -166,25 +168,8 @@ defmodule WandererNotifier.Map.Characters do
         # Log the character info for debugging
         Logger.debug("[process_characters] Processing character: #{inspect(char_info, pretty: true)}")
 
-        # Extract the EVE ID - prioritize numeric IDs
-        eve_id = cond do
-          # First try to get the eve_id which should be the numeric EVE Online ID
-          is_binary(char_info["eve_id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["eve_id"]) ->
-            char_info["eve_id"]
-
-          # Then try the id field if it's numeric
-          is_binary(char_info["id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["id"]) ->
-            char_info["id"]
-
-          # Finally try character_id if it's numeric
-          is_binary(char_info["character_id"]) && WandererNotifier.Discord.Notifier.is_valid_numeric_id?(char_info["character_id"]) ->
-            char_info["character_id"]
-
-          # If none of the above, log an error and return nil
-          true ->
-            Logger.error("[process_characters] No valid numeric EVE ID found for character: #{inspect(char_info, pretty: true)}")
-            nil
-        end
+        # Extract the EVE ID using the helper
+        eve_id = NotificationHelpers.extract_character_id(char_info)
 
         # Skip characters without a valid EVE ID
         if is_nil(eve_id) do
@@ -340,6 +325,15 @@ defmodule WandererNotifier.Map.Characters do
       {:error, reason} = err ->
         Logger.error("[check_characters_endpoint_availability] Failed to build characters URL: #{inspect(reason)}")
         err
+    end
+  end
+
+  # Send notification for new character
+  defp send_notification(character) do
+    if Config.character_notifications_enabled?() do
+      NotifierFactory.notify(:send_new_tracked_character_notification, [character])
+      # Increment the character counter
+      WandererNotifier.Stats.increment(:characters)
     end
   end
 end

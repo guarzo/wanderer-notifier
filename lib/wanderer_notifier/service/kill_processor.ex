@@ -6,7 +6,7 @@ defmodule WandererNotifier.Service.KillProcessor do
   """
   require Logger
   alias WandererNotifier.ZKill.Service, as: ZKillService
-  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Config
   alias WandererNotifier.Features
   alias WandererNotifier.Helpers.CacheHelpers
@@ -243,9 +243,14 @@ defmodule WandererNotifier.Service.KillProcessor do
     Logger.info("KILL DETAILS: Victim: #{victim_name}, Ship: #{victim_ship}, System: #{system_name}")
 
     # Send the notification using the correct function
-    Notifier.send_enriched_kill_embed(kill_data, kill_id)
+    send_kill_notification(kill_data, kill_id)
+  end
 
-    # Update stats with the correct function
+  # Send the notification
+  defp send_kill_notification(kill_data, kill_id) do
+    Logger.info("Sending kill notification for kill ID: #{kill_id}")
+    NotifierFactory.notify(:send_enriched_kill_embed, [kill_data, kill_id])
+    # Increment the kill counter
     WandererNotifier.Stats.increment(:kills)
   end
 

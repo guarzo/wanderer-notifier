@@ -9,6 +9,10 @@ defmodule WandererNotifier.Slack.Notifier do
   """
   require Logger
   alias WandererNotifier.Http.Client, as: HttpClient
+  alias WandererNotifier.Helpers.NotificationHelpers
+
+  # Implement the NotifierBehaviour
+  @behaviour WandererNotifier.NotifierBehaviour
 
   @type attachment :: %{
           title: String.t(),
@@ -25,6 +29,7 @@ defmodule WandererNotifier.Slack.Notifier do
   @doc """
   Sends a simple text message to Slack.
   """
+  @impl WandererNotifier.NotifierBehaviour
   @spec send_message(String.t()) :: :ok | {:error, any()}
   def send_message(message) when is_binary(message) do
     payload = %{text: message}
@@ -53,72 +58,112 @@ defmodule WandererNotifier.Slack.Notifier do
   Sends a notification about a new tracked character to Slack.
   """
   def send_character_notification(character) when is_map(character) do
-    # Extract character ID - only accept numeric IDs
-    character_id = cond do
-      # Check top level character_id
-      is_binary(character["character_id"]) &&
-      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
-        character["character_id"]
-
-      # Check top level eve_id
-      is_binary(character["eve_id"]) &&
-      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
-        character["eve_id"]
-
-      # Check nested character object
-      is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
-      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["eve_id"]) ->
-        character["character"]["eve_id"]
-
-      is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
-      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["character_id"]) ->
-        character["character"]["character_id"]
-
-      is_map(character["character"]) && is_binary(character["character"]["id"]) &&
-      WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["id"]) ->
-        character["character"]["id"]
-
-      # No valid numeric ID found
-      true ->
-        Logger.error("No valid numeric EVE ID found for character: #{inspect(character, pretty: true)}")
-        nil
-    end
+    # Extract character ID using the helper
+    character_id = NotificationHelpers.extract_character_id(character)
 
     # If we don't have a valid EVE ID, log an error and return
     if is_nil(character_id) do
-      Logger.error("No valid EVE character ID found for character: #{inspect(character, pretty: true)}")
+      Logger.error("No valid EVE character ID found for character: #{inspect(character, pretty: true, limit: 500)}")
       Logger.error("This is a critical error - character tracking requires numeric EVE IDs")
       {:error, :invalid_character_id}
     else
-      # Extract character name using multiple possible keys
-      character_name = cond do
-        character["character_name"] != nil -> character["character_name"]
-        character["name"] != nil -> character["name"]
-        is_map(character["character"]) && character["character"]["name"] != nil ->
-          character["character"]["name"]
-        is_map(character["character"]) && character["character"]["character_name"] != nil ->
-          character["character"]["character_name"]
-        true -> "Character #{character_id}"
-      end
+      # Extract character name using the helper
+      character_name = NotificationHelpers.extract_character_name(character)
 
-      # Extract corporation name using multiple possible keys
-      corp_name = cond do
-        character["corporation_name"] != nil -> character["corporation_name"]
-        is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
-          character["character"]["corporation_name"]
-        true -> "Unknown Corporation"
-      end
+      # Extract corporation name using the helper
+      corporation_name = NotificationHelpers.extract_corporation_name(character)
 
       attachment = %{
         color: "#36a64f",
         title: "New Character Tracked",
-        text: "#{character_name} from #{corp_name} has been added to tracking.",
+        text: "#{character_name} from #{corporation_name} has been added to tracking.",
         footer: "Character ID: #{character_id}"
       }
 
       payload = %{attachments: [attachment]}
       send_payload(payload)
     end
+  end
+
+  @doc """
+  Sends a message with an embed.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_embed(title, description, _url \\ nil, _color \\ 0x00FF00) do
+    attachment = %{
+      title: title,
+      text: description,
+      color: "#36a64f",
+      ts: DateTime.utc_now() |> DateTime.to_unix()
+    }
+
+    payload = %{attachments: [attachment]}
+    send_payload(payload)
+  end
+
+  @doc """
+  Sends a notification about a new tracked character.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_new_tracked_character_notification(character) when is_map(character) do
+    send_character_notification(character)
+  end
+
+  @doc """
+  Sends a notification about a new system found.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_new_system_notification(system) when is_map(system) do
+    system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
+    system_name = Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
+
+    attachment = %{
+      color: "#36a64f",
+      title: "New System Tracked",
+      text: "#{system_name} has been added to tracking.",
+      footer: "System ID: #{system_id}"
+    }
+
+    payload = %{attachments: [attachment]}
+    send_payload(payload)
+  end
+
+  @doc """
+  Sends a rich embed message for an enriched killmail.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_enriched_kill_embed(enriched_kill, kill_id) do
+    # Extract victim information
+    victim_name = get_in(enriched_kill, ["victim", "character_name"]) || "Unknown"
+    victim_ship = get_in(enriched_kill, ["victim", "ship_type_name"]) || "Unknown Ship"
+    system_name = get_in(enriched_kill, ["solar_system_name"]) || "Unknown System"
+
+    # Extract kill value
+    kill_value = get_in(enriched_kill, ["zkb", "totalValue"]) || 0
+    formatted_value = :erlang.float_to_binary(kill_value, decimals: 2)
+
+    # Create the base attachment
+    attachment = %{
+      color: "#FF0000",
+      title: "Kill Notification",
+      title_link: "https://zkillboard.com/kill/#{kill_id}/",
+      text: "#{victim_name} lost a #{victim_ship} in #{system_name}\nValue: #{formatted_value} ISK",
+      footer: "Kill ID: #{kill_id}"
+    }
+
+    # Add security status if available
+    security_status = get_in(enriched_kill, ["solar_system", "security_status"])
+    attachment = if security_status do
+      formatted_security = NotificationHelpers.format_security_status(security_status)
+      Map.update(attachment, :text, "", fn text ->
+        "#{text}\nSecurity: #{formatted_security}"
+      end)
+    else
+      attachment
+    end
+
+    payload = %{attachments: [attachment]}
+    send_payload(payload)
   end
 
   @spec send_payload(map()) :: :ok | {:error, any()}

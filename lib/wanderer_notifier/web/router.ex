@@ -11,6 +11,8 @@ defmodule WandererNotifier.Web.Router do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Config
+  alias WandererNotifier.NotifierFactory
+  alias WandererNotifier.Helpers.NotificationHelpers
 
   plug(Plug.Logger)
 
@@ -344,7 +346,7 @@ defmodule WandererNotifier.Web.Router do
             {character_id, character_name} = extract_character_details(character)
 
             Logger.info("Using character #{character_name} (ID: #{character_id}) for test notification")
-            result = WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
+            result = NotifierFactory.notify(:send_new_tracked_character_notification, [character])
 
             case result do
               {:error, :invalid_character_id} ->
@@ -382,7 +384,7 @@ defmodule WandererNotifier.Web.Router do
             "Unknown System"
 
         Logger.info("Using system #{system_name} (ID: #{system_id}) for test notification")
-        WandererNotifier.Discord.Notifier.send_new_system_notification(system)
+        NotifierFactory.notify(:send_new_system_notification, [system])
 
         {:ok, system_id, system_name}
     end
@@ -394,11 +396,11 @@ defmodule WandererNotifier.Web.Router do
   defp valid_eve_id?(character) do
     cond do
       is_binary(character["character_id"]) and
-        WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
+        NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
         true
 
       is_binary(character["eve_id"]) and
-        WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
+        NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
         true
 
       is_map(character["character"]) ->
@@ -414,15 +416,15 @@ defmodule WandererNotifier.Web.Router do
     # we just do normal boolean checks in the function body:
     cond do
       (is_binary(nested_map["eve_id"]) and
-         WandererNotifier.Discord.Notifier.is_valid_numeric_id?(nested_map["eve_id"])) ->
+         NotificationHelpers.is_valid_numeric_id?(nested_map["eve_id"])) ->
         true
 
       (is_binary(nested_map["character_id"]) and
-         WandererNotifier.Discord.Notifier.is_valid_numeric_id?(nested_map["character_id"])) ->
+         NotificationHelpers.is_valid_numeric_id?(nested_map["character_id"])) ->
         true
 
       (is_binary(nested_map["id"]) and
-         WandererNotifier.Discord.Notifier.is_valid_numeric_id?(nested_map["id"])) ->
+         NotificationHelpers.is_valid_numeric_id?(nested_map["id"])) ->
         true
 
       true ->
@@ -437,23 +439,23 @@ defmodule WandererNotifier.Web.Router do
     character_id =
       cond do
         is_binary(character["character_id"]) and
-          WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
           character["character_id"]
 
         is_binary(character["eve_id"]) and
-          WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["eve_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
           character["eve_id"]
 
         is_map(character["character"]) && is_binary(character["character"]["eve_id"]) and
-          WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["eve_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["character"]["eve_id"]) ->
           character["character"]["eve_id"]
 
         is_map(character["character"]) && is_binary(character["character"]["character_id"]) and
-          WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["character_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["character"]["character_id"]) ->
           character["character"]["character_id"]
 
         is_map(character["character"]) && is_binary(character["character"]["id"]) and
-          WandererNotifier.Discord.Notifier.is_valid_numeric_id?(character["character"]["id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["character"]["id"]) ->
           character["character"]["id"]
 
         true ->

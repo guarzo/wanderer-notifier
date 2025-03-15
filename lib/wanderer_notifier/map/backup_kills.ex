@@ -7,6 +7,7 @@ defmodule WandererNotifier.Map.BackupKills do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.NotifierFactory
 
   def check_backup_kills do
     case build_backup_url() do
@@ -102,7 +103,7 @@ defmodule WandererNotifier.Map.BackupKills do
 
         case WandererNotifier.ZKill.Service.get_enriched_killmail(kill_id) do
           {:ok, enriched_kill} ->
-            WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_kill, kill_id)
+            send_kill_notification(enriched_kill, kill_id)
             Logger.info("Processed backup kill #{kill_id}")
 
             WandererNotifier.Service.mark_as_processed(kill_id)
@@ -138,5 +139,13 @@ defmodule WandererNotifier.Map.BackupKills do
 
   defp get_tracked_systems do
     CacheHelpers.get_tracked_systems()
+  end
+
+  # Send notification for kill
+  defp send_kill_notification(enriched_kill, kill_id) do
+    Logger.info("Sending kill notification for kill ID: #{kill_id}")
+    NotifierFactory.notify(:send_enriched_kill_embed, [enriched_kill, kill_id])
+    # Increment the kill counter
+    WandererNotifier.Stats.increment(:kills)
   end
 end
