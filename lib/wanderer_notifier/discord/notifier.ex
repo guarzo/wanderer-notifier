@@ -152,6 +152,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
       # Add security status field if available
       security_status = Map.get(normalized, "security_status") || Map.get(normalized, "security")
+      embed_data = Map.put_new(embed_data, :fields, [])
       embed_data_with_security = if security_status do
         formatted_security = format_security_status(security_status)
         Map.update!(embed_data, :fields, fn fields ->
@@ -164,7 +165,6 @@ defmodule WandererNotifier.Discord.Notifier do
       else
         embed_data
       end
-
       # Send notification with license check
       send_notification_with_license_check(plain_text, embed_data_with_security)
     end
