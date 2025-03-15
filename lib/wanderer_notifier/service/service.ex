@@ -56,7 +56,7 @@ defmodule WandererNotifier.Service do
 
     state = start_zkill_ws(state)
     # Send one startup notification to Discord.
-    Notifier.send_message("WandererNotifier Service started. Listening for kill notifications.")
+    Notifier.send_message("WandererNotifier Service started. Listening for notifications.")
 
     # Run initial maintenance tasks immediately
     Logger.info("Running initial maintenance tasks at startup...")

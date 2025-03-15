@@ -3,6 +3,23 @@ import Config
 # Set environment based on MIX_ENV at compile time
 config :wanderer_notifier, env: config_env()
 
+# Configure MIME types
+config :mime, :types, %{
+  "text/html" => ["html", "htm"],
+  "text/css" => ["css"],
+  "application/javascript" => ["js"],
+  "text/javascript" => ["mjs"],
+  "application/json" => ["json"],
+  "image/png" => ["png"],
+  "image/jpeg" => ["jpg", "jpeg"],
+  "image/svg+xml" => ["svg"]
+}
+
+# Configure MIME extensions preferences
+config :mime, :extensions, %{
+  "mjs" => "text/javascript"
+}
+
 # Configure the logger
 config :logger,
   level: :info,
