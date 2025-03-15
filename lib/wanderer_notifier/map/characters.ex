@@ -7,12 +7,14 @@ defmodule WandererNotifier.Map.Characters do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.NotifierFactory
+  alias WandererNotifier.Helpers.NotificationHelpers
 
   def update_tracked_characters(cached_characters \\ nil) do
-    Logger.info("[update_tracked_characters] Starting update of tracked characters")
+    Logger.debug("[update_tracked_characters] Starting update of tracked characters")
 
     with {:ok, chars_url} <- build_characters_url(),
-         _ <- Logger.info("[update_tracked_characters] Characters URL built: #{chars_url}"),
+         _ <- Logger.debug("[update_tracked_characters] Characters URL built: #{chars_url}"),
          {:ok, body} <- fetch_characters_body(chars_url),
          _ <- Logger.debug("[update_tracked_characters] Received response body: #{String.slice(body, 0, 100)}..."),
          {:ok, json} <- decode_json(body),
@@ -21,7 +23,7 @@ defmodule WandererNotifier.Map.Characters do
 
       # Get the cached characters and log details
       characters_from_cache = if cached_characters != nil, do: cached_characters, else: CacheRepo.get("map:characters") || []
-      Logger.info("[update_tracked_characters] Found #{length(tracked)} tracked characters (previously had #{length(characters_from_cache)})")
+      Logger.debug("[update_tracked_characters] Found #{length(tracked)} tracked characters (previously had #{length(characters_from_cache)})")
 
       if characters_from_cache != [] do
         new_tracked =
@@ -38,18 +40,18 @@ defmodule WandererNotifier.Map.Characters do
             char_name = Map.get(character, "character_name", "Unknown")
             char_id = Map.get(character, "character_id", "Unknown")
             Logger.info("[update_tracked_characters] Sending notification for new character: #{char_name} (ID: #{char_id})")
-            WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
+            send_notification(character)
           end)
         else
-          Logger.info("[update_tracked_characters] No new characters found since last update")
+          Logger.debug("[update_tracked_characters] No new characters found since last update")
         end
       else
-        Logger.info(
+        Logger.debug(
           "[update_tracked_characters] No cached characters found; skipping notifications on startup."
         )
       end
 
-      Logger.info("[update_tracked_characters] Updating characters cache with #{length(tracked)} characters")
+      Logger.debug("[update_tracked_characters] Updating characters cache with #{length(tracked)} characters")
       CacheRepo.set("map:characters", tracked, Timings.characters_cache_ttl())
 
       {:ok, tracked}
@@ -166,25 +168,43 @@ defmodule WandererNotifier.Map.Characters do
         # Log the character info for debugging
         Logger.debug("[process_characters] Processing character: #{inspect(char_info, pretty: true)}")
 
-        # Create a map with the necessary fields
-        character_map = %{
-          "character_id" => char_info["id"],
-          "eve_id" => char_info["eve_id"],
-          "character_name" => char_info["name"],
-          "corporation_id" => char_info["corporation_id"],
-          "alliance_id" => char_info["alliance_id"]
-        }
+        # Extract the EVE ID using the helper
+        eve_id = NotificationHelpers.extract_character_id(char_info)
 
-        # Add corporation_name if available
-        character_map = if char_info["corporation_name"] do
-          Logger.debug("[process_characters] Found corporation_name in data: #{char_info["corporation_name"]}")
-          Map.put(character_map, "corporation_name", char_info["corporation_name"])
+        # Skip characters without a valid EVE ID
+        if is_nil(eve_id) do
+          Logger.warning("[process_characters] Skipping character without valid EVE ID: #{inspect(char_info, pretty: true)}")
+          nil
         else
+          # Create a map with the necessary fields, ensuring we preserve the original structure
+          # but also add flattened fields for easier access
+          character_map = %{
+            # Store the original character data
+            "character" => char_info,
+
+            # Add flattened fields for easier access - use only the numeric EVE ID
+            "character_id" => eve_id,
+            "eve_id" => eve_id,
+            "character_name" => char_info["name"] || char_info["character_name"],
+            "corporation_id" => char_info["corporation_id"],
+            "alliance_id" => char_info["alliance_id"]
+          }
+
+          # Add corporation_name if available
+          character_map = if char_info["corporation_name"] do
+            Logger.debug("[process_characters] Found corporation_name in data: #{char_info["corporation_name"]}")
+            Map.put(character_map, "corporation_name", char_info["corporation_name"])
+          else
+            character_map
+          end
+
+          # Log the final character map for debugging
+          Logger.debug("[process_characters] Final character map: #{inspect(character_map, pretty: true)}")
+
           character_map
         end
-
-        character_map
       end)
+      |> Enum.filter(&(&1 != nil)) # Remove nil entries (characters without valid EVE IDs)
 
     {:ok, tracked}
   end
@@ -256,11 +276,8 @@ defmodule WandererNotifier.Map.Characters do
   This can be used to diagnose issues with the characters API.
   """
   def check_characters_endpoint_availability do
-    Logger.info("[check_characters_endpoint_availability] Testing characters endpoint availability")
-
     with {:ok, chars_url} <- build_characters_url() do
       map_token = Config.map_token()
-
       headers =
         if map_token do
           [{"Authorization", "Bearer " <> map_token}]
@@ -269,12 +286,12 @@ defmodule WandererNotifier.Map.Characters do
         end
 
       # First try a HEAD request to check if the endpoint exists
-      Logger.info("[check_characters_endpoint_availability] Making HEAD request to: #{chars_url}")
+      Logger.debug("[check_characters_endpoint_availability] Making HEAD request to: #{chars_url}")
       head_result = HttpClient.request("HEAD", chars_url, headers)
 
       case head_result do
         {:ok, %{status_code: status}} when status in 200..299 ->
-          Logger.info("[check_characters_endpoint_availability] Characters endpoint is available (status: #{status})")
+          Logger.debug("[check_characters_endpoint_availability] Characters endpoint is available (status: #{status})")
           {:ok, "Characters endpoint is available"}
 
         {:ok, %{status_code: 404}} ->
@@ -284,12 +301,12 @@ defmodule WandererNotifier.Map.Characters do
           # Try to get the API root to see what endpoints are available
           uri = URI.parse(chars_url)
           api_root_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}/api"
-          Logger.info("[check_characters_endpoint_availability] Checking API root at: #{api_root_url}")
+          Logger.debug("[check_characters_endpoint_availability] Checking API root at: #{api_root_url}")
 
           case HttpClient.request("GET", api_root_url, headers) do
             {:ok, %{status_code: 200, body: body}} ->
-              Logger.info("[check_characters_endpoint_availability] API root is available")
-              Logger.info("[check_characters_endpoint_availability] API response: #{body}")
+              Logger.debug("[check_characters_endpoint_availability] API root is available")
+              Logger.debug("[check_characters_endpoint_availability] API response: #{body}")
               {:error, "Characters endpoint not found, but API root is available"}
 
             _ ->
@@ -308,6 +325,15 @@ defmodule WandererNotifier.Map.Characters do
       {:error, reason} = err ->
         Logger.error("[check_characters_endpoint_availability] Failed to build characters URL: #{inspect(reason)}")
         err
+    end
+  end
+
+  # Send notification for new character
+  defp send_notification(character) do
+    if Config.character_notifications_enabled?() do
+      NotifierFactory.notify(:send_new_tracked_character_notification, [character])
+      # Increment the character counter
+      WandererNotifier.Stats.increment(:characters)
     end
   end
 end

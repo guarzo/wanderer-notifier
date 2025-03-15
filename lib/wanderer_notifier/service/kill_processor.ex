@@ -6,7 +6,7 @@ defmodule WandererNotifier.Service.KillProcessor do
   """
   require Logger
   alias WandererNotifier.ZKill.Service, as: ZKillService
-  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Config
   alias WandererNotifier.Features
   alias WandererNotifier.Helpers.CacheHelpers
@@ -35,7 +35,7 @@ defmodule WandererNotifier.Service.KillProcessor do
     system_id = Map.get(decoded_message, "solar_system_id")
 
     # Log the incoming kill data
-    Logger.info("Processing kill_id=#{kill_id} in system_id=#{system_id}")
+    Logger.debug("Processing kill_id=#{kill_id} in system_id=#{system_id}")
 
     # Store this kill in our recent kills list
     if kill_id do
@@ -101,7 +101,7 @@ defmodule WandererNotifier.Service.KillProcessor do
 
       # Otherwise, ignore the kill
       true ->
-        Logger.info("NOTIFICATION DECISION: Kill #{kill_id} ignored (not from tracked system or involving tracked character)")
+        Logger.debug("NOTIFICATION DECISION: Kill #{kill_id} ignored (not from tracked system or involving tracked character)")
         state
     end
   end
@@ -131,7 +131,7 @@ defmodule WandererNotifier.Service.KillProcessor do
     processed_kill_ids = Map.get(state, :processed_kill_ids, %{})
 
     if Map.has_key?(processed_kill_ids, kill_id) do
-      Logger.info("Kill mail #{kill_id} already processed, skipping.")
+      Logger.debug("Kill mail #{kill_id} already processed, skipping.")
       state
     else
       do_enrich_and_notify(kill_id, enriched_kill)
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Service.KillProcessor do
   end
 
   defp do_enrich_and_notify(kill_id, enriched_kill) do
-    Logger.info("Starting notification process for kill_id=#{kill_id}")
+    Logger.debug("Starting notification process for kill_id=#{kill_id}")
 
     # Log key information about the kill
     victim_name = get_in(enriched_kill, ["victim", "character_name"]) || "Unknown"
@@ -157,9 +157,9 @@ defmodule WandererNotifier.Service.KillProcessor do
     Logger.debug("Enriched killmail for kill #{kill_id}: #{inspect(enriched_kill, limit: 5000)}")
 
     # Send the notification using our improved notify_kill function
-    Logger.info("Sending Discord notification for kill_id=#{kill_id}")
+    Logger.debug("Sending Discord notification for kill_id=#{kill_id}")
     notify_kill(enriched_kill, kill_id)
-    Logger.info("Successfully sent Discord notification for kill_id=#{kill_id}")
+    Logger.debug("Successfully sent Discord notification for kill_id=#{kill_id}")
   end
 
   defp kill_in_tracked_system?(system_id) do
@@ -233,7 +233,7 @@ defmodule WandererNotifier.Service.KillProcessor do
 
   defp notify_kill(kill_data, kill_id) do
     # Add more detailed logging about the kill being notified
-    Logger.info("SENDING NOTIFICATION for kill_id=#{kill_id}")
+    Logger.debug("SENDING NOTIFICATION for kill_id=#{kill_id}")
 
     # Log some basic details about the kill
     victim_name = get_in(kill_data, ["victim", "character_name"]) || "Unknown"
@@ -243,9 +243,14 @@ defmodule WandererNotifier.Service.KillProcessor do
     Logger.info("KILL DETAILS: Victim: #{victim_name}, Ship: #{victim_ship}, System: #{system_name}")
 
     # Send the notification using the correct function
-    Notifier.send_enriched_kill_embed(kill_data, kill_id)
+    send_kill_notification(kill_data, kill_id)
+  end
 
-    # Update stats with the correct function
+  # Send the notification
+  defp send_kill_notification(kill_data, kill_id) do
+    Logger.info("Sending kill notification for kill ID: #{kill_id}")
+    NotifierFactory.notify(:send_enriched_kill_embed, [kill_data, kill_id])
+    # Increment the kill counter
     WandererNotifier.Stats.increment(:kills)
   end
 
@@ -258,7 +263,7 @@ defmodule WandererNotifier.Service.KillProcessor do
 
     # Get the most recent kill from our stored list
     recent_kills = Process.get(@recent_kills_key, [])
-    Logger.info("TEST NOTIFICATION: Found #{length(recent_kills)} recent kills in memory")
+    Logger.debug("TEST NOTIFICATION: Found #{length(recent_kills)} recent kills in memory")
 
     case get_most_recent_kill() do
       nil ->
@@ -269,16 +274,16 @@ defmodule WandererNotifier.Service.KillProcessor do
         kill_id = Map.get(mock_kill, "killmail_id")
         system_id = Map.get(mock_kill, "solar_system_id")
 
-        Logger.info("TEST NOTIFICATION: Created mock kill_id=#{kill_id} in system_id=#{system_id} for test notification")
+        Logger.debug("TEST NOTIFICATION: Created mock kill_id=#{kill_id} in system_id=#{system_id} for test notification")
 
         # Log some basic information about the mock kill
         victim_name = get_in(mock_kill, ["victim", "character_name"])
         victim_ship = get_in(mock_kill, ["victim", "ship_type_name"])
 
-        Logger.info("TEST NOTIFICATION: Mock kill details - Victim: #{victim_name} lost a #{victim_ship}")
+        Logger.debug("TEST NOTIFICATION: Mock kill details - Victim: #{victim_name} lost a #{victim_ship}")
 
         # Send the notification directly
-        Logger.info("TEST NOTIFICATION: Sending Discord notification for mock test kill")
+        Logger.debug("TEST NOTIFICATION: Sending Discord notification for mock test kill")
         notify_kill(mock_kill, kill_id)
         Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for mock test kill")
 
@@ -289,24 +294,24 @@ defmodule WandererNotifier.Service.KillProcessor do
         system_id = Map.get(kill, "solar_system_id")
 
         if kill_id do
-          Logger.info("TEST NOTIFICATION: Using kill_id=#{kill_id} in system_id=#{system_id} for test notification")
+          Logger.debug("TEST NOTIFICATION: Using kill_id=#{kill_id} in system_id=#{system_id} for test notification")
 
           # Log some basic information about the kill
           victim_id = get_in(kill, ["victim", "character_id"])
           victim_name = get_in(kill, ["victim", "character_name"]) || "Unknown"
 
-          Logger.info("TEST NOTIFICATION: Kill details - Victim: #{victim_name} (ID: #{victim_id})")
+          Logger.debug("TEST NOTIFICATION: Kill details - Victim: #{victim_name} (ID: #{victim_id})")
 
           # For test notifications, we'll bypass the normal notification criteria
           # and directly enrich and send the notification
-          Logger.info("TEST NOTIFICATION: Bypassing normal notification criteria for test")
+          Logger.debug("TEST NOTIFICATION: Bypassing normal notification criteria for test")
 
           case ZKillService.get_enriched_killmail(kill_id) do
             {:ok, enriched_kill} ->
-              Logger.info("TEST NOTIFICATION: Successfully enriched kill_id=#{kill_id}")
+              Logger.debug("TEST NOTIFICATION: Successfully enriched kill_id=#{kill_id}")
 
               # Send the notification directly
-              Logger.info("TEST NOTIFICATION: Sending Discord notification for test kill")
+              Logger.debug("TEST NOTIFICATION: Sending Discord notification for test kill")
               notify_kill(enriched_kill, kill_id)
               Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for test kill")
 
@@ -374,5 +379,12 @@ defmodule WandererNotifier.Service.KillProcessor do
         }
       ]
     }
+  end
+
+  # Get the most recent kills
+  def get_recent_kills do
+    recent_kills = Process.get(@recent_kills_key, [])
+    Logger.info("Returning #{length(recent_kills)} recent kills")
+    recent_kills
   end
 end

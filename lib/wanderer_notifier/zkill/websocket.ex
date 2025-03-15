@@ -123,7 +123,7 @@ defmodule WandererNotifier.ZKill.Websocket do
             if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
               # Forward the message to the parent process for processing
               send(state.parent, {:zkill_message, raw_msg})
-              Logger.info("Forwarded kill message with ID #{killmail_id} to parent process for processing")
+              Logger.debug("Forwarded kill message with ID #{killmail_id} to parent process for processing")
             else
               # If parent process is not available, process directly
               Logger.warning("Parent process not available, processing kill directly")
@@ -140,7 +140,7 @@ defmodule WandererNotifier.ZKill.Websocket do
             # Forward the message to the parent process
             if Map.has_key?(state, :parent) and is_pid(state.parent) and Process.alive?(state.parent) do
               send(state.parent, {:zkill_message, raw_msg})
-              Logger.info("Forwarded kill message with ID #{kill_id} to parent process for processing")
+              Logger.debug("Forwarded kill message with ID #{kill_id} to parent process for processing")
             end
 
           {:ok, %{"killmail_id" => _} = data} ->

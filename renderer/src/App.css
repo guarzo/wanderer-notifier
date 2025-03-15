@@ -1,0 +1,14 @@
+/* src/App.css */
+/*
+  The styles below are optional.
+  If you'd like a fully Tailwind-based approach,
+  you can remove this file entirely or keep
+  any keyframes or brand-specific overrides here.
+*/
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}

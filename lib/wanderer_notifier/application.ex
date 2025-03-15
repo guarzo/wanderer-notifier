@@ -6,7 +6,7 @@ defmodule WandererNotifier.Application do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
 
   @impl true
@@ -19,7 +19,11 @@ defmodule WandererNotifier.Application do
     # Start ExSync in development mode
     if env == :dev do
       Logger.info("Starting ExSync for hot code reloading")
-      {:ok, _} = Application.ensure_all_started(:exsync)
+      # Handle the case where ExSync is not available
+      case Application.ensure_all_started(:exsync) do
+        {:ok, _} -> Logger.info("ExSync started successfully")
+        {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
+      end
     end
 
     # Set the environment in the application configuration
@@ -88,8 +92,8 @@ defmodule WandererNotifier.Application do
 
   # This is not part of the Application behaviour, but we handle it for the test notification
   def handle_info(:send_test_notification, _state) do
-    Logger.info("Sending test notification to Discord...")
-    Notifier.send_message("Test notification from WandererNotifier. If you see this, notifications are working!")
+    Logger.info("Sending test notification...")
+    NotifierFactory.notify(:send_message, ["Test notification from WandererNotifier. If you see this, notifications are working!"])
     {:noreply, nil}
   end
 
@@ -137,5 +141,14 @@ defmodule WandererNotifier.Application do
 
   defp get_tracked_systems do
     CacheHelpers.get_tracked_systems()
+  end
+
+  @doc """
+  Called when a file is changed and code is reloaded in development.
+  This replaces the functionality in DevCallbacks.
+  """
+  def reload(modules) do
+    Logger.info("Reloaded modules: #{inspect(modules)}")
+    :ok
   end
 end

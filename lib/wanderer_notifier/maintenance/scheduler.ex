@@ -19,7 +19,7 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   @spec do_periodic_checks(state()) :: state()
   def do_periodic_checks(state) do
     now = :os.system_time(:second)
-    Logger.info("[Maintenance] Starting periodic checks at time #{now}")
+    Logger.debug("[Maintenance] Starting periodic checks at time #{now}")
 
     new_state = state
     |> maybe_send_status(now)
@@ -37,7 +37,7 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   defp maybe_send_status(state, now) do
     if now - (state.last_status_time || 0) > Timings.status_update_interval() do
       count = map_size(state.processed_kill_ids)
-      Logger.info("[Maintenance] Status update: Processed kills: #{count}")
+      Logger.debug("[Maintenance] Status update: Processed kills: #{count}")
       %{state | last_status_time: now}
     else
       state
@@ -47,11 +47,11 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   @spec maybe_update_systems(state(), integer()) :: state()
   defp maybe_update_systems(state, now) do
     if now - (state.last_systems_update || 0) > Timings.systems_update_interval() do
-      Logger.info("[Maintenance] Triggering update_systems")
+      Logger.debug("[Maintenance] Triggering update_systems")
 
       case WandererNotifier.Map.Client.update_systems() do
         {:ok, new_systems} ->
-          Logger.info(
+          Logger.debug(
             "[Maintenance] update_systems successful: found #{length(new_systems)} wormhole systems (previously had #{state.systems_count})"
           )
 
@@ -70,11 +70,11 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   @spec maybe_update_tracked_chars(state(), integer()) :: state()
   defp maybe_update_tracked_chars(state, now) do
     if now - (state.last_characters_update || 0) > Timings.character_update_interval() do
-      Logger.info("[Maintenance] Triggering update_tracked_characters")
+      Logger.debug("[Maintenance] Triggering update_tracked_characters")
 
       case WandererNotifier.Map.Client.update_tracked_characters() do
         {:ok, chars} ->
-          Logger.info(
+          Logger.debug(
             "[Maintenance] update_tracked_characters successful: found #{length(chars)} characters (previously had #{state.characters_count})"
           )
 
@@ -96,11 +96,11 @@ defmodule WandererNotifier.Maintenance.Scheduler do
 
     if uptime >= Timings.uptime_required_for_backup() and
          now - (state.last_backup_check || 0) > Timings.backup_kills_interval() do
-      Logger.info("[Maintenance] Triggering check_backup_kills")
+      Logger.debug("[Maintenance] Triggering check_backup_kills")
 
       case WandererNotifier.Map.Client.check_backup_kills() do
         {:ok, _msg} ->
-          Logger.info("[Maintenance] check_backup_kills successful")
+          Logger.debug("[Maintenance] check_backup_kills successful")
 
         {:error, err} ->
           Logger.error("[Maintenance] check_backup_kills failed: #{inspect(err)}")
@@ -118,7 +118,7 @@ defmodule WandererNotifier.Maintenance.Scheduler do
     Logger.info("[Maintenance] Starting initial checks at time #{now}")
 
     # Instead of clearing the cache, ensure it's initialized with empty arrays if not present
-    Logger.info("[Maintenance] Ensuring systems and characters cache is initialized")
+    Logger.debug("[Maintenance] Ensuring systems and characters cache is initialized")
     initialize_cache()
 
     # Run all checks in sequence
@@ -140,7 +140,7 @@ defmodule WandererNotifier.Maintenance.Scheduler do
     # Initialize systems cache if it doesn't exist or is empty
     systems = CacheRepo.get("map:systems")
     if systems == nil or (is_list(systems) and length(systems) == 0) do
-      Logger.info("[Maintenance] Initializing empty systems cache")
+      Logger.debug("[Maintenance] Initializing empty systems cache")
       CacheRepo.put("map:systems", [])
     else
       Logger.debug("[Maintenance] Systems cache already exists with #{length(systems)} systems")
@@ -149,7 +149,7 @@ defmodule WandererNotifier.Maintenance.Scheduler do
     # Initialize characters cache if it doesn't exist or is empty
     characters = CacheRepo.get("map:characters")
     if characters == nil or (is_list(characters) and length(characters) == 0) do
-      Logger.info("[Maintenance] Initializing empty characters cache")
+      Logger.debug("[Maintenance] Initializing empty characters cache")
       CacheRepo.put("map:characters", [])
     else
       Logger.debug("[Maintenance] Characters cache already exists with #{length(characters)} characters")
@@ -159,11 +159,11 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   # Force update systems regardless of last update time
   @spec force_update_systems(state(), integer()) :: state()
   defp force_update_systems(state, now) do
-    Logger.info("[Maintenance] Forcing update_systems")
+    Logger.debug("[Maintenance] Forcing update_systems")
 
     case WandererNotifier.Map.Client.update_systems() do
       {:ok, new_systems} ->
-        Logger.info(
+        Logger.debug(
           "[Maintenance] update_systems successful: found #{length(new_systems)} wormhole systems"
         )
 
@@ -179,11 +179,11 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   # Force update tracked characters regardless of last update time
   @spec force_update_tracked_chars(state(), integer()) :: state()
   defp force_update_tracked_chars(state, now) do
-    Logger.info("[Maintenance] Forcing update_tracked_characters")
+    Logger.debug("[Maintenance] Forcing update_tracked_characters")
 
     case WandererNotifier.Map.Client.update_tracked_characters() do
       {:ok, chars} ->
-        Logger.info(
+        Logger.debug(
           "[Maintenance] update_tracked_characters successful: found #{length(chars)} characters"
         )
 
@@ -202,10 +202,10 @@ defmodule WandererNotifier.Maintenance.Scheduler do
 
     # Get systems count
     systems = CacheRepo.get("map:systems") || []
-    Logger.info("[Maintenance] Cache count - Systems: #{length(systems)}")
+    Logger.debug("[Maintenance] Cache count - Systems: #{length(systems)}")
 
     # Get characters count
     characters = CacheRepo.get("map:characters") || []
-    Logger.info("[Maintenance] Cache count - Characters: #{length(characters)}")
+    Logger.debug("[Maintenance] Cache count - Characters: #{length(characters)}")
   end
 end

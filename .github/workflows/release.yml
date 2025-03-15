@@ -17,6 +17,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'renderer/package-lock.json'
+      - name: Build React application
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
+          # Ensure the static app directory exists
+          mkdir -p priv/static/app
+          # Copy the built React app to the static directory
+          cp -r renderer/dist/* priv/static/app/
+
       - name: Set up BEAM
         uses: erlef/setup-beam@v1
         with:

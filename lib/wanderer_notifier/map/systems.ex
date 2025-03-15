@@ -9,9 +9,10 @@ defmodule WandererNotifier.Map.Systems do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
-    Logger.info("[update_systems] Starting systems update")
+    Logger.debug("[update_systems] Starting systems update")
 
     with {:ok, systems_url} <- build_systems_url(),
          {:ok, body} <- fetch_get_body(systems_url),
@@ -22,7 +23,7 @@ defmodule WandererNotifier.Map.Systems do
       else
         # Use provided cached_systems or fetch from cache
         systems_from_cache = if cached_systems != nil, do: cached_systems, else: get_all_systems()
-        Logger.info("[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})")
+        Logger.debug("[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})")
 
         # Log cache details for debugging
         Logger.debug("[update_systems] Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}")
@@ -38,18 +39,18 @@ defmodule WandererNotifier.Map.Systems do
           if new_systems != [] do
             Logger.info("[update_systems] Found #{length(new_systems)} new systems to notify about")
             Enum.each(new_systems, fn system ->
-              WandererNotifier.Discord.Notifier.send_new_system_notification(system)
+              send_notification(system)
             end)
           else
-            Logger.info("[update_systems] No new systems found since last update")
+            Logger.debug("[update_systems] No new systems found since last update")
           end
         else
-          Logger.info(
+          Logger.debug(
             "[update_systems] No cached systems found; skipping new system notifications on startup."
           )
         end
 
-        Logger.info("[update_systems] Updating systems cache with #{length(fresh_systems)} systems")
+        Logger.debug("[update_systems] Updating systems cache with #{length(fresh_systems)} systems")
         # Store each system individually with its system_id as the key
         Enum.each(fresh_systems, fn system ->
           CacheRepo.set("map:system:#{system["system_id"]}", system, Timings.systems_cache_ttl())
@@ -330,6 +331,15 @@ defmodule WandererNotifier.Map.Systems do
       end
     else
       {:error, "Map URL is not configured"}
+    end
+  end
+
+  # Send notification for new system
+  defp send_notification(system) do
+    if Config.system_notifications_enabled?() do
+      NotifierFactory.notify(:send_new_system_notification, [system])
+      # Increment the systems counter
+      WandererNotifier.Stats.increment(:systems)
     end
   end
 end

@@ -6,11 +6,11 @@ defmodule WandererNotifier.Service do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Discord.Notifier
   alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Service.Maintenance
   alias WandererNotifier.Service.KillProcessor
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.NotifierFactory
 
   @zkill_ws_url "wss://zkillboard.com/websocket/"
 
@@ -56,7 +56,7 @@ defmodule WandererNotifier.Service do
 
     state = start_zkill_ws(state)
     # Send one startup notification to Discord.
-    Notifier.send_message("WandererNotifier Service started. Listening for kill notifications.")
+    NotifierFactory.notify(:send_message, ["WandererNotifier Service started. Listening for notifications."])
 
     # Run initial maintenance tasks immediately
     Logger.info("Running initial maintenance tasks at startup...")
@@ -160,7 +160,6 @@ defmodule WandererNotifier.Service do
   @impl true
   def terminate(_reason, state) do
     if state.ws_pid, do: Process.exit(state.ws_pid, :normal)
-    Notifier.close()
     :ok
   end
 
@@ -176,7 +175,7 @@ defmodule WandererNotifier.Service do
 
       {:error, reason} ->
         Logger.error("Failed to start websocket: #{inspect(reason)}")
-        Notifier.send_message("Failed to start websocket: #{inspect(reason)}")
+        NotifierFactory.notify(:send_message, ["Failed to start websocket: #{inspect(reason)}"])
         state
     end
   end
