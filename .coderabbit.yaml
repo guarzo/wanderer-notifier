@@ -9,8 +9,6 @@ reviews:
   poem: true                      
   review_status: true              
   collapse_walkthrough: false      
-collapse_walkthrough: false     
-reviews:
   path_filters:
     - "!node_modules/**"   # Ignore dependencies
     - "!dist/**"           # Ignore build output
