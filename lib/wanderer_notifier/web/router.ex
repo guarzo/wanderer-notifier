@@ -325,18 +325,22 @@ defmodule WandererNotifier.Web.Router do
         |> send_resp(200, Jason.encode!(%{success: true, message: "Test kill notification sent", kill_id: kill_id}))
 
       {:error, :no_kills_available} ->
-        %{
-          success: false,
-          message: "Failed to send test notification: No kills available",
-          details: "No recent kills found in cache or from zKillboard API."
-        }
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(404, Jason.encode!(%{
+             success: false,
+             message: "Failed to send test notification: No kills available",
+             details: "No recent kills found in cache or from zKillboard API."
+           }))
 
       {:error, :no_kill_id} ->
-        %{
-          success: false,
-          message: "Failed to send test notification: No kill ID found",
-          details: "The kill data did not contain a valid kill ID."
-        }
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(400, Jason.encode!(%{
+             success: false,
+             message: "Failed to send test notification: No kill ID found",
+             details: "The kill data did not contain a valid kill ID."
+           }))
 
       {:error, reason} ->
         conn
