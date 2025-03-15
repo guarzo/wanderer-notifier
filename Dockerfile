@@ -27,6 +27,9 @@ RUN chmod +x rel/overlays/env.sh
 # Copy templates
 COPY lib/wanderer_notifier/web/templates priv/templates
 
+# Copy static files (React app)
+COPY priv/static priv/static
+
 # Compile dependencies with Nostrum config
 RUN mix deps.compile
 

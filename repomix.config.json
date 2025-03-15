@@ -20,8 +20,10 @@
     "useGitignore": true,
     "useDefaultPatterns": true,
     "customPatterns": [
-      "additional-folder",
-      "**/*.log"
+      "priv/**/*",
+      "**/*.svg",
+      ".notes/**/*",
+      ".cursor/**/*"
     ]
   },
   "security": {

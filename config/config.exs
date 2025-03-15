@@ -36,6 +36,16 @@ config :logger, :console,
     error: :red
   ]
 
+# Module-specific log levels
+# This allows fine-grained control over logging
+config :logger, :module_levels, %{
+  "WandererNotifier.Service.KillProcessor" => :info,
+  "WandererNotifier.Maintenance.Scheduler" => :info,
+  "WandererNotifier.Map.Client" => :info,
+  "WandererNotifier.Map.Systems" => :info,
+  "WandererNotifier.Map.Characters" => :info
+}
+
 # Nostrum compile-time configuration
 config :nostrum,
   gateway_intents: [:guilds, :guild_messages],

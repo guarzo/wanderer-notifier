@@ -9,10 +9,10 @@ defmodule WandererNotifier.Map.Characters do
   alias WandererNotifier.Config.Timings
 
   def update_tracked_characters(cached_characters \\ nil) do
-    Logger.info("[update_tracked_characters] Starting update of tracked characters")
+    Logger.debug("[update_tracked_characters] Starting update of tracked characters")
 
     with {:ok, chars_url} <- build_characters_url(),
-         _ <- Logger.info("[update_tracked_characters] Characters URL built: #{chars_url}"),
+         _ <- Logger.debug("[update_tracked_characters] Characters URL built: #{chars_url}"),
          {:ok, body} <- fetch_characters_body(chars_url),
          _ <- Logger.debug("[update_tracked_characters] Received response body: #{String.slice(body, 0, 100)}..."),
          {:ok, json} <- decode_json(body),
@@ -21,7 +21,7 @@ defmodule WandererNotifier.Map.Characters do
 
       # Get the cached characters and log details
       characters_from_cache = if cached_characters != nil, do: cached_characters, else: CacheRepo.get("map:characters") || []
-      Logger.info("[update_tracked_characters] Found #{length(tracked)} tracked characters (previously had #{length(characters_from_cache)})")
+      Logger.debug("[update_tracked_characters] Found #{length(tracked)} tracked characters (previously had #{length(characters_from_cache)})")
 
       if characters_from_cache != [] do
         new_tracked =
@@ -41,15 +41,15 @@ defmodule WandererNotifier.Map.Characters do
             WandererNotifier.Discord.Notifier.send_new_tracked_character_notification(character)
           end)
         else
-          Logger.info("[update_tracked_characters] No new characters found since last update")
+          Logger.debug("[update_tracked_characters] No new characters found since last update")
         end
       else
-        Logger.info(
+        Logger.debug(
           "[update_tracked_characters] No cached characters found; skipping notifications on startup."
         )
       end
 
-      Logger.info("[update_tracked_characters] Updating characters cache with #{length(tracked)} characters")
+      Logger.debug("[update_tracked_characters] Updating characters cache with #{length(tracked)} characters")
       CacheRepo.set("map:characters", tracked, Timings.characters_cache_ttl())
 
       {:ok, tracked}
@@ -291,11 +291,8 @@ defmodule WandererNotifier.Map.Characters do
   This can be used to diagnose issues with the characters API.
   """
   def check_characters_endpoint_availability do
-    Logger.info("[check_characters_endpoint_availability] Testing characters endpoint availability")
-
     with {:ok, chars_url} <- build_characters_url() do
       map_token = Config.map_token()
-
       headers =
         if map_token do
           [{"Authorization", "Bearer " <> map_token}]
@@ -304,12 +301,12 @@ defmodule WandererNotifier.Map.Characters do
         end
 
       # First try a HEAD request to check if the endpoint exists
-      Logger.info("[check_characters_endpoint_availability] Making HEAD request to: #{chars_url}")
+      Logger.debug("[check_characters_endpoint_availability] Making HEAD request to: #{chars_url}")
       head_result = HttpClient.request("HEAD", chars_url, headers)
 
       case head_result do
         {:ok, %{status_code: status}} when status in 200..299 ->
-          Logger.info("[check_characters_endpoint_availability] Characters endpoint is available (status: #{status})")
+          Logger.debug("[check_characters_endpoint_availability] Characters endpoint is available (status: #{status})")
           {:ok, "Characters endpoint is available"}
 
         {:ok, %{status_code: 404}} ->
@@ -319,12 +316,12 @@ defmodule WandererNotifier.Map.Characters do
           # Try to get the API root to see what endpoints are available
           uri = URI.parse(chars_url)
           api_root_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}/api"
-          Logger.info("[check_characters_endpoint_availability] Checking API root at: #{api_root_url}")
+          Logger.debug("[check_characters_endpoint_availability] Checking API root at: #{api_root_url}")
 
           case HttpClient.request("GET", api_root_url, headers) do
             {:ok, %{status_code: 200, body: body}} ->
-              Logger.info("[check_characters_endpoint_availability] API root is available")
-              Logger.info("[check_characters_endpoint_availability] API response: #{body}")
+              Logger.debug("[check_characters_endpoint_availability] API root is available")
+              Logger.debug("[check_characters_endpoint_availability] API response: #{body}")
               {:error, "Characters endpoint not found, but API root is available"}
 
             _ ->

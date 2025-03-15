@@ -22,7 +22,7 @@ defmodule WandererNotifier.Map.Client do
         Systems.update_systems(current_systems)
       end
     else
-      Logger.info("System tracking disabled due to license restrictions")
+      Logger.debug("System tracking disabled due to license restrictions")
       {:error, :feature_disabled}
     end
   end
@@ -31,14 +31,14 @@ defmodule WandererNotifier.Map.Client do
     if Features.enabled?(:backup_kills_processing) do
       BackupKills.check_backup_kills()
     else
-      Logger.info("Backup kills processing disabled due to license restrictions")
+      Logger.debug("Backup kills processing disabled due to license restrictions")
       {:error, :feature_disabled}
     end
   end
 
   def update_tracked_characters(cached_characters \\ nil) do
     if Features.enabled?(:tracked_characters_notifications) do
-      Logger.info("[Map.Client] Character tracking is enabled, checking for tracked characters")
+      Logger.debug("[Map.Client] Character tracking is enabled, checking for tracked characters")
 
       # Use provided cached_characters if available, otherwise get from cache
       current_characters = cached_characters || CacheRepo.get("map:characters") || []
@@ -51,7 +51,7 @@ defmodule WandererNotifier.Map.Client do
         case Characters.check_characters_endpoint_availability() do
           {:ok, _} ->
             # Endpoint is available, proceed with update
-            Logger.info("[Map.Client] Characters endpoint is available, proceeding with update")
+            Logger.debug("[Map.Client] Characters endpoint is available, proceeding with update")
             Characters.update_tracked_characters(current_characters)
 
           {:error, reason} ->
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Map.Client do
         end
       end
     else
-      Logger.info("[Map.Client] Character tracking disabled due to license restrictions or configuration")
+      Logger.debug("[Map.Client] Character tracking disabled due to license restrictions or configuration")
       {:error, :feature_disabled}
     end
   end

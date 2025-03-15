@@ -32,5 +32,6 @@ config/*.secret.exs
 /tmp/
 
 # Don't ignore priv directory
+priv/static/app/**/*
 !/priv/
 !/priv/templates/
