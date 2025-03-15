@@ -30,7 +30,20 @@ defmodule WandererNotifier.License do
   Returns true if the license is valid, false otherwise.
   """
   def validate do
-    GenServer.call(__MODULE__, :validate)
+    try do
+      GenServer.call(__MODULE__, :validate, 5000)
+    rescue
+      e ->
+        Logger.error("Error in license validation: #{inspect(e)}")
+        %{valid: false, error_message: "License validation error: #{inspect(e)}"}
+    catch
+      :exit, {:timeout, _} ->
+        Logger.error("License validation timed out")
+        %{valid: false, error_message: "License validation timed out"}
+      type, reason ->
+        Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+        %{valid: false, error_message: "License validation error: #{inspect(reason)}"}
+    end
   end
 
   @doc """
@@ -69,8 +82,76 @@ defmodule WandererNotifier.License do
   end
 
   @impl true
-  def handle_call(:validate, _from, _state) do
-    new_state = do_validate()
+  def handle_call(:validate, _from, state) do
+    Logger.info("Validating license...")
+
+    # Get the license key from configuration
+    license_key = Config.license_key()
+
+    # Get the bot API token from configuration
+    bot_api_token = Config.bot_api_token()
+
+    # Get the license manager API URL from configuration
+    license_manager_url = Config.license_manager_api_url()
+
+    # Log the license manager URL
+    Logger.info("License Manager API URL: #{license_manager_url}")
+
+    # Validate the license with a timeout
+    validation_result =
+      try do
+        Task.await(Task.async(fn ->
+          LicenseClient.validate_license(license_key, bot_api_token)
+        end), 3000)
+      catch
+        :exit, {:timeout, _} ->
+          Logger.error("License validation HTTP request timed out")
+          {:error, "License validation timed out"}
+        type, reason ->
+          Logger.error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
+          {:error, "License validation error: #{inspect(reason)}"}
+      end
+
+    # Process the validation result
+    {valid, bot_assigned, details, error, error_message} =
+      case validation_result do
+        {:ok, %{"valid" => true, "bot_assigned" => true} = response} ->
+          Logger.info("License is valid and bot is assigned")
+          {true, true, response, nil, nil}
+
+        {:ok, %{"valid" => true, "bot_assigned" => false} = response} ->
+          Logger.warning("License is valid but bot is not assigned")
+          {true, false, response, :bot_not_assigned, "Bot is not assigned to this license"}
+
+        {:ok, %{"valid" => false} = response} ->
+          error_msg = response["message"] || "License is invalid"
+          Logger.error("License is invalid: #{error_msg}")
+          {false, false, response, :invalid_license, error_msg}
+
+        {:error, reason} ->
+          Logger.error("License validation failed: #{inspect(reason)}")
+          {false, false, %{}, :validation_failed, "License validation failed: #{inspect(reason)}"}
+
+        unexpected ->
+          Logger.error("Unexpected license validation result: #{inspect(unexpected)}")
+          {false, false, %{}, :unexpected_result, "Unexpected validation result"}
+      end
+
+    # Update the state with the validation result
+    new_state = %{
+      state |
+      valid: valid,
+      bot_assigned: bot_assigned,
+      details: details,
+      error: error,
+      error_message: error_message,
+      last_validated: :os.system_time(:second)
+    }
+
+    # Schedule the next validation
+    schedule_refresh()
+
+    # Return the validation result and the updated state
     {:reply, new_state, new_state}
   end
 

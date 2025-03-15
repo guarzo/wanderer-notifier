@@ -74,7 +74,9 @@ defmodule WandererNotifier.Application do
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
         Logger.info("Supervisor started successfully with PID: #{inspect(pid)}")
-        validate_license_and_bot_assignment()
+
+        # Schedule license validation to run asynchronously
+        Process.send_after(self(), :validate_license, 1000)
 
         # Check cache status after startup
         Process.send_after(self(), :check_cache_status, 2000)
@@ -88,6 +90,38 @@ defmodule WandererNotifier.Application do
         Logger.error("Failed to start supervisor: #{inspect(error)}")
         error
     end
+  end
+
+  # Handle license validation asynchronously
+  def handle_info(:validate_license, _state) do
+    try do
+      # Use a timeout to prevent blocking
+      case GenServer.call(WandererNotifier.License, :validate, 3000) do
+        license_status when is_map(license_status) ->
+          if license_status.valid do
+            Logger.info("License validation successful - License is valid")
+          else
+            error_message = license_status.error_message || "Unknown license error"
+            Logger.error("License validation failed: #{error_message}")
+            Logger.warning("The application will continue to run in limited mode")
+          end
+        _ ->
+          Logger.error("License validation returned unexpected result")
+      end
+    rescue
+      e ->
+        Logger.error("License validation error: #{inspect(e)}")
+        Logger.warning("The application will continue to run in limited mode")
+    catch
+      :exit, {:timeout, _} ->
+        Logger.error("License validation timed out")
+        Logger.warning("The application will continue to run in limited mode")
+      type, reason ->
+        Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+        Logger.warning("The application will continue to run in limited mode")
+    end
+
+    {:noreply, nil}
   end
 
   # This is not part of the Application behaviour, but we handle it for the test notification
