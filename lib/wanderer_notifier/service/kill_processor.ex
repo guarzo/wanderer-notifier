@@ -255,130 +255,208 @@ defmodule WandererNotifier.Service.KillProcessor do
   end
 
   @doc """
-  Manually triggers a test kill notification using the most recent kill from the websocket.
+  Manually triggers a test kill notification using a real kill from zKillboard.
   This is useful for testing Discord notifications.
   """
   def send_test_kill_notification do
     Logger.info("TEST NOTIFICATION: Manually triggering a test kill notification")
 
+    # Try to get a real kill from zKillboard
+    case WandererNotifier.ZKill.Service.get_recent_kills(20) do
+      {:ok, kills} when is_list(kills) and length(kills) > 0 ->
+        # Find a kill with a valid kill_id
+        kill_with_id = Enum.find(kills, fn kill ->
+          kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
+          kill_id != nil
+        end)
+
+        case kill_with_id do
+          nil ->
+            Logger.error("TEST NOTIFICATION: No kills with valid IDs found")
+            fallback_to_recent_kills()
+
+          kill ->
+            kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
+            Logger.debug("TEST NOTIFICATION: Using real kill_id=#{kill_id} from zKillboard API")
+
+            # Get the hash from the zkb data
+            zkb_data = Map.get(kill, "zkb")
+            hash = if zkb_data, do: Map.get(zkb_data, "hash"), else: nil
+
+            if hash do
+              # Directly fetch the ESI data for this kill
+              case WandererNotifier.ESI.Service.get_esi_kill_mail(kill_id, hash) do
+                {:ok, esi_data} ->
+                  # Combine the zkb and ESI data
+                  enriched_kill = Map.merge(kill, esi_data)
+
+                  # Add solar system name
+                  system_id = Map.get(enriched_kill, "solar_system_id")
+                  enriched_kill = if system_id do
+                    case WandererNotifier.ESI.Service.get_solar_system_name(system_id) do
+                      {:ok, system_data} ->
+                        system_name = Map.get(system_data, "name", "Unknown System")
+                        Map.put(enriched_kill, "solar_system_name", system_name)
+                      _ ->
+                        enriched_kill
+                    end
+                  else
+                    enriched_kill
+                  end
+
+                  # Enrich victim data with names
+                  victim = Map.get(enriched_kill, "victim", %{})
+                  victim = if victim do
+                    # Get character name
+                    character_id = Map.get(victim, "character_id")
+                    victim = if character_id do
+                      case WandererNotifier.ESI.Service.get_character_info(character_id) do
+                        {:ok, char_data} ->
+                          char_name = Map.get(char_data, "name", "Unknown Pilot")
+                          Map.put(victim, "character_name", char_name)
+                        _ ->
+                          victim
+                      end
+                    else
+                      victim
+                    end
+
+                    # Get corporation name
+                    corporation_id = Map.get(victim, "corporation_id")
+                    victim = if corporation_id do
+                      case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+                        {:ok, corp_data} ->
+                          corp_name = Map.get(corp_data, "name", "Unknown Corp")
+                          Map.put(victim, "corporation_name", corp_name)
+                        _ ->
+                          victim
+                      end
+                    else
+                      victim
+                    end
+
+                    # Get ship type name
+                    ship_type_id = Map.get(victim, "ship_type_id")
+                    victim = if ship_type_id do
+                      case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+                        {:ok, ship_data} ->
+                          ship_name = Map.get(ship_data, "name", "Unknown Ship")
+                          Map.put(victim, "ship_type_name", ship_name)
+                        _ ->
+                          victim
+                      end
+                    else
+                      victim
+                    end
+
+                    victim
+                  else
+                    victim
+                  end
+
+                  # Update the enriched kill with the enhanced victim data
+                  enriched_kill = Map.put(enriched_kill, "victim", victim)
+
+                  # Enrich attackers data with names
+                  attackers = Map.get(enriched_kill, "attackers", [])
+                  enriched_attackers = Enum.map(attackers, fn attacker ->
+                    # Get character name
+                    character_id = Map.get(attacker, "character_id")
+                    attacker = if character_id do
+                      case WandererNotifier.ESI.Service.get_character_info(character_id) do
+                        {:ok, char_data} ->
+                          char_name = Map.get(char_data, "name", "Unknown Pilot")
+                          Map.put(attacker, "character_name", char_name)
+                        _ ->
+                          attacker
+                      end
+                    else
+                      attacker
+                    end
+
+                    # Get ship type name
+                    ship_type_id = Map.get(attacker, "ship_type_id")
+                    attacker = if ship_type_id do
+                      case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+                        {:ok, ship_data} ->
+                          ship_name = Map.get(ship_data, "name", "Unknown Ship")
+                          Map.put(attacker, "ship_type_name", ship_name)
+                        _ ->
+                          attacker
+                      end
+                    else
+                      attacker
+                    end
+
+                    attacker
+                  end)
+
+                  # Update the enriched kill with the enhanced attackers data
+                  enriched_kill = Map.put(enriched_kill, "attackers", enriched_attackers)
+
+                  Logger.debug("TEST NOTIFICATION: Successfully enriched kill_id=#{kill_id}")
+                  Logger.debug("TEST NOTIFICATION: Kill data: #{inspect(enriched_kill, pretty: true, limit: 10000)}")
+
+                  # Send the notification directly
+                  Logger.debug("TEST NOTIFICATION: Sending Discord notification for test kill")
+                  notify_kill(enriched_kill, kill_id)
+                  Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for test kill")
+
+                  # Store this kill in our recent kills cache
+                  recent_kills = Process.get(@recent_kills_key, [])
+                  updated_kills = [enriched_kill | recent_kills] |> Enum.take(10)
+                  Process.put(@recent_kills_key, updated_kills)
+
+                  {:ok, kill_id}
+
+                {:error, err} ->
+                  Logger.error("TEST NOTIFICATION: Failed to get ESI data for kill #{kill_id}: #{inspect(err)}")
+                  fallback_to_recent_kills()
+              end
+            else
+              Logger.error("TEST NOTIFICATION: No hash found for kill_id=#{kill_id}")
+              fallback_to_recent_kills()
+            end
+        end
+
+      {:error, _reason} ->
+        Logger.error("TEST NOTIFICATION: Failed to fetch kills from zKillboard API")
+        fallback_to_recent_kills()
+
+      _ ->
+        Logger.error("TEST NOTIFICATION: No kills returned from zKillboard API")
+        fallback_to_recent_kills()
+    end
+  end
+
+  # Fallback to using recent kills from memory or creating a mock kill as last resort
+  defp fallback_to_recent_kills do
     # Get the most recent kill from our stored list
     recent_kills = Process.get(@recent_kills_key, [])
-    Logger.debug("TEST NOTIFICATION: Found #{length(recent_kills)} recent kills in memory")
+    Logger.debug("TEST NOTIFICATION: Falling back to #{length(recent_kills)} recent kills in memory")
 
     case get_most_recent_kill() do
       nil ->
-        Logger.info("TEST NOTIFICATION: No recent kills available, creating a mock kill for testing")
-
-        # Create a mock kill with basic data
-        mock_kill = create_mock_kill()
-        kill_id = Map.get(mock_kill, "killmail_id")
-        system_id = Map.get(mock_kill, "solar_system_id")
-
-        Logger.debug("TEST NOTIFICATION: Created mock kill_id=#{kill_id} in system_id=#{system_id} for test notification")
-
-        # Log some basic information about the mock kill
-        victim_name = get_in(mock_kill, ["victim", "character_name"])
-        victim_ship = get_in(mock_kill, ["victim", "ship_type_name"])
-
-        Logger.debug("TEST NOTIFICATION: Mock kill details - Victim: #{victim_name} lost a #{victim_ship}")
-
-        # Send the notification directly
-        Logger.debug("TEST NOTIFICATION: Sending Discord notification for mock test kill")
-        notify_kill(mock_kill, kill_id)
-        Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for mock test kill")
-
-        {:ok, kill_id}
+        Logger.error("TEST NOTIFICATION: No recent kills available, cannot create test notification")
+        {:error, :no_kills_available}
 
       kill ->
-        kill_id = Map.get(kill, "killmail_id")
-        system_id = Map.get(kill, "solar_system_id")
+        kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
 
         if kill_id do
-          Logger.debug("TEST NOTIFICATION: Using kill_id=#{kill_id} in system_id=#{system_id} for test notification")
+          Logger.debug("TEST NOTIFICATION: Using kill_id=#{kill_id} from memory for test notification")
 
-          # Log some basic information about the kill
-          victim_id = get_in(kill, ["victim", "character_id"])
-          victim_name = get_in(kill, ["victim", "character_name"]) || "Unknown"
+          # Send the notification directly
+          Logger.debug("TEST NOTIFICATION: Sending Discord notification for test kill")
+          notify_kill(kill, kill_id)
+          Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for test kill")
 
-          Logger.debug("TEST NOTIFICATION: Kill details - Victim: #{victim_name} (ID: #{victim_id})")
-
-          # For test notifications, we'll bypass the normal notification criteria
-          # and directly enrich and send the notification
-          Logger.debug("TEST NOTIFICATION: Bypassing normal notification criteria for test")
-
-          case ZKillService.get_enriched_killmail(kill_id) do
-            {:ok, enriched_kill} ->
-              Logger.debug("TEST NOTIFICATION: Successfully enriched kill_id=#{kill_id}")
-
-              # Send the notification directly
-              Logger.debug("TEST NOTIFICATION: Sending Discord notification for test kill")
-              notify_kill(enriched_kill, kill_id)
-              Logger.info("TEST NOTIFICATION: Successfully sent Discord notification for test kill")
-
-              {:ok, kill_id}
-
-            {:error, err} ->
-              Logger.error("TEST NOTIFICATION: Failed to enrich kill #{kill_id}: #{inspect(err)}")
-              {:error, :enrichment_failed}
-          end
+          {:ok, kill_id}
         else
           Logger.error("TEST NOTIFICATION: No kill_id found in recent kill data")
           {:error, :no_kill_id}
         end
     end
-  end
-
-  # Create a mock kill for testing when no real kills are available
-  defp create_mock_kill do
-    # Get a random system from tracked systems if available
-    tracked_systems = CacheHelpers.get_tracked_systems()
-    system = if length(tracked_systems) > 0 do
-      Enum.random(tracked_systems)
-    else
-      %{"system_id" => "30000142", "system_name" => "Jita"}
-    end
-
-    system_id = system["system_id"] || system[:system_id] || "30000142"
-    system_name = system["system_name"] || system[:alias] || "Jita"
-
-    # Generate a random kill ID for the test
-    kill_id = :rand.uniform(999_999_999)
-
-    # Create a mock kill with all the necessary fields for the notification
-    %{
-      "killmail_id" => kill_id,
-      "solar_system_id" => system_id,
-      "solar_system_name" => system_name,
-      "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "zkb" => %{
-        "totalValue" => :rand.uniform(1_000_000_000) / 1.0,
-        "points" => :rand.uniform(100),
-        "url" => "https://zkillboard.com/kill/#{kill_id}/"
-      },
-      "victim" => %{
-        "character_id" => "TEST#{:rand.uniform(10000)}",
-        "character_name" => "Test Victim",
-        "corporation_id" => "TEST#{:rand.uniform(10000)}",
-        "corporation_name" => "Test Corporation",
-        "alliance_id" => "TEST#{:rand.uniform(10000)}",
-        "alliance_name" => "Test Alliance",
-        "ship_type_id" => "TEST#{:rand.uniform(10000)}",
-        "ship_type_name" => "Test Ship"
-      },
-      "attackers" => [
-        %{
-          "character_id" => "TEST#{:rand.uniform(10000)}",
-          "character_name" => "Test Attacker",
-          "corporation_id" => "TEST#{:rand.uniform(10000)}",
-          "corporation_name" => "Test Attacker Corp",
-          "alliance_id" => "TEST#{:rand.uniform(10000)}",
-          "alliance_name" => "Test Attacker Alliance",
-          "ship_type_id" => "TEST#{:rand.uniform(10000)}",
-          "ship_type_name" => "Test Attacker Ship",
-          "final_blow" => true
-        }
-      ]
-    }
   end
 
   # Get the most recent kills

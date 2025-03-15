@@ -153,12 +153,18 @@ defmodule WandererNotifier.Map.Systems do
     # Process the wormhole systems
     processed =
       Enum.map(wormhole_systems, fn sys ->
+        # Get region information and statics if available
+        region_name = get_region_for_system(sys.system_id)
+        statics = get_statics_for_system(sys.system_id)
+
         # Create a map with all the relevant fields
         %{
           "system_id" => sys.system_id,
           "system_name" => sys.alias || "Solar System #{sys.system_id}",
           "original_name" => sys.original_name,
-          "temporary_name" => sys.temporary_name
+          "temporary_name" => sys.temporary_name,
+          "region_name" => region_name,
+          "statics" => statics
         }
       end)
 
@@ -340,6 +346,50 @@ defmodule WandererNotifier.Map.Systems do
       NotifierFactory.notify(:send_new_system_notification, [system])
       # Increment the systems counter
       WandererNotifier.Stats.increment(:systems)
+    end
+  end
+
+  # Helper to get region name for a system
+  defp get_region_for_system(system_id) do
+    # Try to get static info from cache
+    cache_key = "static_info:#{system_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        nil
+      cached when is_binary(cached) ->
+        case Jason.decode(cached) do
+          {:ok, data} ->
+            # Extract region information
+            _region_id = get_in(data, ["data", "region_id"])
+            region_name = get_in(data, ["data", "region_name"])
+
+            if region_name, do: region_name, else: nil
+          _ ->
+            nil
+        end
+      _ ->
+        nil
+    end
+  end
+
+  # Helper to get statics for a wormhole system
+  defp get_statics_for_system(system_id) do
+    # Try to get static info from cache
+    cache_key = "static_info:#{system_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        []
+      cached when is_binary(cached) ->
+        case Jason.decode(cached) do
+          {:ok, data} ->
+            get_in(data, ["data", "statics"]) || []
+          _ ->
+            []
+        end
+      _ ->
+        []
     end
   end
 end
