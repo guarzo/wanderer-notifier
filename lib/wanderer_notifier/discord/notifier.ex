@@ -849,35 +849,43 @@ defmodule WandererNotifier.Discord.Notifier do
     end
 
     # Add recent kills section if available
-    recent_kills = WandererNotifier.Service.KillProcessor.get_recent_kills()
+    system_kills =
+      if system_id do
+        case WandererNotifier.ZKill.Service.get_system_kills(system_id, 5) do
+          {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
+            Logger.info("Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard")
+            zkill_kills
 
-    # Filter kills for this system if possible
-    system_kills = if system_id do
-      Enum.filter(recent_kills, fn kill ->
-        kill_system_id = Map.get(kill, "solar_system_id") || Map.get(kill, :solar_system_id)
-        to_string(kill_system_id) == to_string(system_id)
-      end)
-    else
-      []
-    end
+          {:ok, []} ->
+            Logger.info("No recent kills found for system #{system_id} from zKillboard")
+            []
+
+          {:error, reason} ->
+            Logger.error("Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}")
+            []
+        end
+      else
+        []
+      end
 
     # Add up to 5 recent kills to the embed
     embed = if length(system_kills) > 0 do
-      # Take only the 5 most recent kills
-      recent_system_kills = Enum.take(system_kills, 5)
-
       # Format kills as a list
-      kills_text = Enum.map_join(recent_system_kills, "\n", fn kill ->
+      kills_text = Enum.map_join(system_kills, "\n", fn kill ->
         kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
 
-        # Extract victim data with better fallbacks
-        victim = Map.get(kill, "victim") || Map.get(kill, :victim) || %{}
-        victim_name = get_in(victim, ["character_name"]) ||
-                      get_in(victim, [:character_name]) ||
+        # For kills from zKillboard API, we need to extract data differently
+        # as they might not be fully enriched yet
+        victim_name = get_in(kill, ["victim", "character_name"]) ||
+                      get_in(kill, [:victim, :character_name]) ||
                       "Unknown Pilot"
 
-        ship_type = get_in(victim, ["ship_type_name"]) ||
-                    get_in(victim, [:ship_type_name]) ||
+        _ship_type_id = get_in(kill, ["victim", "ship_type_id"]) ||
+                       get_in(kill, [:victim, :ship_type_id])
+
+        # Try to get ship name, but this might require ESI lookup in the future
+        ship_type = get_in(kill, ["victim", "ship_type_name"]) ||
+                    get_in(kill, [:victim, :ship_type_name]) ||
                     "Unknown Ship"
 
         # Add kill value if available
@@ -916,7 +924,14 @@ defmodule WandererNotifier.Discord.Notifier do
 
       Map.put(embed, :fields, fields)
     else
-      embed
+      # If no kills were found, add a message indicating that
+      fields = embed.fields ++ [%{
+        name: "Recent Kills in System",
+        value: "No recent kills found for this system.",
+        inline: false
+      }]
+
+      Map.put(embed, :fields, fields)
     end
 
     # Send the embed

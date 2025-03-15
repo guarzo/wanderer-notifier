@@ -132,4 +132,66 @@ defmodule WandererNotifier.ZKill.Client do
         {:error, {:request_error, http_err}}
     end
   end
+
+  @doc """
+  Retrieves kills for a specific system from zKillboard.
+
+  ## Parameters
+
+  - `system_id`: The ID of the system to get kills for
+  - `limit`: The maximum number of kills to retrieve (default: 5)
+
+  ## Returns
+
+  - `{:ok, kills}`: A list of kills for the system
+  - `{:error, reason}`: If an error occurred
+  """
+  def get_system_kills(system_id, limit \\ 5) do
+    url = "https://zkillboard.com/api/systemID/#{system_id}/limit/#{limit}/"
+
+    headers = [
+      {"User-Agent", @user_agent}
+    ]
+
+    # Centralized building of cURL command (in Http.Client now):
+    curl_example = HttpClient.build_curl_command("GET", url, headers)
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, parsed} when is_list(parsed) ->
+            # Take only the requested number of kills
+            result = Enum.take(parsed, limit)
+            {:ok, result}
+
+          {:ok, []} ->
+            Logger.info("[ZKill] No kills found for system #{system_id}")
+            {:ok, []}
+
+          {:ok, _} ->
+            Logger.warning("""
+            [ZKill] Warning: unexpected response format from zKill for system #{system_id} kills.
+            Sample cURL to reproduce:
+            #{curl_example}
+            """)
+            {:error, :unexpected_response_format}
+
+          {:error, decode_err} ->
+            Logger.error("""
+            [ZKill] JSON decode error for system #{system_id} kills: #{inspect(decode_err)}
+            Sample cURL to reproduce:
+            #{curl_example}
+            """)
+            {:error, :json_error}
+        end
+
+      {:ok, %{status_code: status}} ->
+        Logger.error("[ZKill] HTTP error #{status} when fetching kills for system #{system_id}")
+        {:error, {:http_error, status}}
+
+      {:error, http_err} ->
+        Logger.error("[ZKill] HTTP request error when fetching kills for system #{system_id}: #{inspect(http_err)}")
+        {:error, {:request_error, http_err}}
+    end
+  end
 end
