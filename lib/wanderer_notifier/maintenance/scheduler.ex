@@ -119,16 +119,56 @@ defmodule WandererNotifier.Maintenance.Scheduler do
 
     # Instead of clearing the cache, ensure it's initialized with empty arrays if not present
     Logger.debug("[Maintenance] Ensuring systems and characters cache is initialized")
-    initialize_cache()
 
-    # Run all checks in sequence
+    # Wrap initialization in a try/rescue to prevent crashes
+    try do
+      initialize_cache()
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error initializing cache: #{inspect(e)}")
+        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+    end
+
+    # Run all checks in sequence with error handling for each step
     new_state = state
-    |> force_update_systems(now)
-    |> force_update_tracked_chars(now)
-    |> maybe_check_backup_kills(now)
+
+    # Update systems with error handling
+    new_state = try do
+      force_update_systems(new_state, now)
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error updating systems: #{inspect(e)}")
+        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        %{new_state | last_systems_update: now}
+    end
+
+    # Update characters with error handling
+    new_state = try do
+      force_update_tracked_chars(new_state, now)
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error updating characters: #{inspect(e)}")
+        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        %{new_state | last_characters_update: now}
+    end
+
+    # Check backup kills with error handling
+    new_state = try do
+      maybe_check_backup_kills(new_state, now)
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error checking backup kills: #{inspect(e)}")
+        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        %{new_state | last_backup_check: now}
+    end
 
     # Log cache counts after initial maintenance
-    log_cache_counts()
+    try do
+      log_cache_counts()
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error logging cache counts: #{inspect(e)}")
+    end
 
     new_state
   end

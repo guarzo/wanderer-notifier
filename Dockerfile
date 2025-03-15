@@ -46,7 +46,7 @@ RUN mix release
 FROM alpine:3.18.2 AS app
 
 # Install runtime dependencies
-RUN apk add --no-cache openssl ncurses-libs libstdc++ bash
+RUN apk add --no-cache openssl ncurses-libs libstdc++ bash wget
 
 WORKDIR /app
 
@@ -68,8 +68,8 @@ ENV PORT=8080 \
     CACHE_DIR=/app/data/cache
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD nc -z localhost $PORT || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:$PORT/health || exit 1
 
 EXPOSE $PORT
 

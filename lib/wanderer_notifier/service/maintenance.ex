@@ -16,6 +16,14 @@ defmodule WandererNotifier.Service.Maintenance do
   @spec do_initial_checks(map()) :: map()
   def do_initial_checks(state) do
     Logger.info("[Maintenance] Running initial startup checks")
-    Scheduler.do_initial_checks(state)
+    try do
+      Scheduler.do_initial_checks(state)
+    rescue
+      e ->
+        Logger.error("[Maintenance] Error during initial checks: #{inspect(e)}")
+        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        # Return the original state if checks fail
+        state
+    end
   end
 end

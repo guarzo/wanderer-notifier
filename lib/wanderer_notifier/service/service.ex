@@ -98,8 +98,19 @@ defmodule WandererNotifier.Service do
   @impl true
   def handle_info(:initial_maintenance, state) do
     Logger.info("Running initial maintenance tasks...")
-    # Force a full update of all systems and characters
-    new_state = Maintenance.do_initial_checks(state)
+
+    # Add error handling around maintenance tasks
+    new_state = try do
+      # Force a full update of all systems and characters
+      Maintenance.do_initial_checks(state)
+    rescue
+      e ->
+        Logger.error("Error during initial maintenance: #{inspect(e)}")
+        Logger.error("Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        # Return the original state if maintenance fails
+        state
+    end
+
     Logger.info("Initial maintenance tasks completed")
     {:noreply, new_state}
   end

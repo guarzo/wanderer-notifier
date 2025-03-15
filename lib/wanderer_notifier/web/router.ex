@@ -46,6 +46,36 @@ defmodule WandererNotifier.Web.Router do
   plug :dispatch
 
   #
+  # HEALTH CHECK ENDPOINT
+  #
+
+  get "/health" do
+    # Check if critical services are running
+    cache_available = case Cachex.stats(:wanderer_notifier_cache) do
+      {:ok, _stats} -> true
+      _ -> false
+    end
+
+    # Check if the service GenServer is alive
+    service_alive = case Process.whereis(WandererNotifier.Service) do
+      pid when is_pid(pid) -> Process.alive?(pid)
+      _ -> false
+    end
+
+    # If critical services are running, return 200 OK
+    if cache_available and service_alive do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{status: "ok", cache: cache_available, service: service_alive}))
+    else
+      # If any critical service is down, return 503 Service Unavailable
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(503, Jason.encode!(%{status: "error", cache: cache_available, service: service_alive}))
+    end
+  end
+
+  #
   # API ROUTES (JSON)
   #
 
