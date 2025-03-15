@@ -143,15 +143,49 @@ defmodule WandererNotifier.Map.Systems do
   defp process_systems(%{"data" => data}) when is_list(data) do
     Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
 
-    # Filter for wormhole systems
-    wormhole_systems =
-      Enum.map(data, &fetch_wormhole_system/1)
-      |> Enum.filter(& &1)
+    # Determine if we should process all systems or just wormhole systems
+    processed = if Config.track_all_systems?() do
+      # Process all systems
+      Logger.debug("[process_systems] TRACK_ALL_SYSTEMS=true, processing all systems")
 
-    Logger.debug("[process_systems] Found #{length(wormhole_systems)} wormhole systems")
+      Enum.map(data, fn item ->
+        system_id = extract_system_id(item)
 
-    # Process the wormhole systems
-    processed =
+        if system_id do
+          # Get region information and statics if available
+          region_name = get_region_for_system(system_id)
+          statics = get_statics_for_system(system_id)
+
+          # Extract names from the item
+          original_name = item["original_name"] || item["OriginalName"]
+          temporary_name = item["temporary_name"] || item["TemporaryName"]
+
+          # Create a map with all the relevant fields
+          %{
+            "system_id" => system_id,
+            "system_name" => temporary_name || "Solar System #{system_id}",
+            "original_name" => original_name,
+            "temporary_name" => temporary_name,
+            "region_name" => region_name,
+            "statics" => statics
+          }
+        else
+          nil
+        end
+      end)
+      |> Enum.filter(& &1) # Remove nil entries
+    else
+      # Original implementation - filter for wormhole systems only
+      Logger.debug("[process_systems] TRACK_ALL_SYSTEMS=false, processing only wormhole systems")
+
+      # Filter for wormhole systems
+      wormhole_systems =
+        Enum.map(data, &fetch_wormhole_system/1)
+        |> Enum.filter(& &1)
+
+      Logger.debug("[process_systems] Found #{length(wormhole_systems)} wormhole systems")
+
+      # Process the wormhole systems
       Enum.map(wormhole_systems, fn sys ->
         # Get region information and statics if available
         region_name = get_region_for_system(sys.system_id)
@@ -167,6 +201,9 @@ defmodule WandererNotifier.Map.Systems do
           "statics" => statics
         }
       end)
+    end
+
+    Logger.debug("[process_systems] Processed #{length(processed)} systems")
 
     {:ok, processed}
   end

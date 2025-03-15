@@ -223,4 +223,18 @@ defmodule WandererNotifier.Config do
         "#{scheme}://#{host}:#{port}"
     end
   end
+
+  @doc """
+  Returns whether all systems should be tracked.
+  By default, only specific systems are tracked unless explicitly enabled by setting
+  TRACK_ALL_SYSTEMS to "true" or "1".
+  """
+  def track_all_systems? do
+    case System.get_env("TRACK_ALL_SYSTEMS") do
+      "true" -> true
+      "1" -> true
+      nil -> false  # Default to false if not set
+      _ -> false    # Any other value is considered false
+    end
+  end
 end

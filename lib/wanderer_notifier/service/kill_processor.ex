@@ -163,23 +163,30 @@ defmodule WandererNotifier.Service.KillProcessor do
   end
 
   defp kill_in_tracked_system?(system_id) do
-    tracked_systems = CacheHelpers.get_tracked_systems()
-    tracked_ids = Enum.map(tracked_systems, fn s ->
-      # Handle both string and atom keys
-      system_id = Map.get(s, "system_id") || Map.get(s, :system_id) || ""
-      to_string(system_id)
-    end)
-    system_id_str = to_string(system_id)
-
-    is_tracked = system_id_str in tracked_ids
-
-    if is_tracked do
-      Logger.debug("Kill is in tracked system: #{system_id_str}")
+    # Check if all systems should be tracked based on environment variable
+    if Config.track_all_systems?() do
+      Logger.debug("All systems are being tracked (TRACK_ALL_SYSTEMS=true). System ID: #{system_id}")
+      true
     else
-      Logger.debug("Kill is not in tracked system: #{system_id_str}")
-    end
+      # Original implementation for tracking specific systems
+      tracked_systems = CacheHelpers.get_tracked_systems()
+      tracked_ids = Enum.map(tracked_systems, fn s ->
+        # Handle both string and atom keys
+        system_id = Map.get(s, "system_id") || Map.get(s, :system_id) || ""
+        to_string(system_id)
+      end)
+      system_id_str = to_string(system_id)
 
-    is_tracked
+      is_tracked = system_id_str in tracked_ids
+
+      if is_tracked do
+        Logger.debug("Kill is in tracked system: #{system_id_str}")
+      else
+        Logger.debug("Kill is not in tracked system: #{system_id_str}")
+      end
+
+      is_tracked
+    end
   end
 
   defp kill_includes_tracked_character?(kill_data) do
