@@ -36,4 +36,12 @@ defmodule WandererNotifier.ESI.Service do
   def get_solar_system_name(system_id, _opts \\ []) do
     Client.get_solar_system(system_id)
   end
+
+  @doc """
+  Fetches region info from ESI given a region_id.
+  Expects the response to include a "name" field.
+  """
+  def get_region_name(region_id, _opts \\ []) do
+    Client.get_region(region_id)
+  end
 end

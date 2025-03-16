@@ -188,6 +188,18 @@ defmodule WandererNotifier.Map.Systems do
               is_wormhole = qualifies_as_wormhole?(ssi)
               system_type = if is_wormhole, do: "wormhole", else: "non-wormhole"
 
+              # Extract additional fields from static info
+              static_info_data = get_in(ssi, ["data"]) || %{}
+              class_title = Map.get(static_info_data, "class_title")
+              effect_name = Map.get(static_info_data, "effect_name")
+              security = Map.get(static_info_data, "security")
+              is_shattered = Map.get(static_info_data, "is_shattered")
+              type_description = Map.get(static_info_data, "type_description")
+              system_class = Map.get(static_info_data, "system_class")
+              solar_system_name = Map.get(static_info_data, "solar_system_name")
+              constellation_name = Map.get(static_info_data, "constellation_name")
+              wandering = Map.get(static_info_data, "wandering")
+
               # Only include the system if it's a wormhole or if we're tracking all systems
               if is_wormhole or track_all_systems do
                 Logger.debug("[process_systems] Including #{system_type} system: #{system_id}")
@@ -195,12 +207,21 @@ defmodule WandererNotifier.Map.Systems do
                 # Create a map with all the relevant fields
                 %{
                   "system_id" => system_id,
-                  "system_name" => temporary_name || original_name || "Solar System #{system_id}",
+                  "system_name" => temporary_name || original_name || solar_system_name || "Solar System #{system_id}",
                   "original_name" => original_name,
                   "temporary_name" => temporary_name,
                   "region_name" => region_name,
                   "statics" => statics,
-                  "is_wormhole" => is_wormhole
+                  "is_wormhole" => is_wormhole,
+                  "class_title" => class_title,
+                  "effect_name" => effect_name,
+                  "security" => security,
+                  "is_shattered" => is_shattered,
+                  "type_description" => type_description,
+                  "system_class" => system_class,
+                  "constellation_name" => constellation_name,
+                  "wandering" => wandering,
+                  "data" => static_info_data  # Include the full data for reference
                 }
               else
                 Logger.debug("[process_systems] Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)")

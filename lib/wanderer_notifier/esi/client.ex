@@ -237,32 +237,74 @@ defmodule WandererNotifier.ESI.Client do
 
   @doc """
   Fetches solar system info from ESI.
-  Expects the response to include a "name" field.
   """
   def get_solar_system(system_id) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
     headers = default_headers()
     curl_example = HttpClient.build_curl_command("GET", url, headers)
 
+    Logger.debug("[ESI] Fetching solar system => #{url}")
+
     case HttpClient.request("GET", url, headers, "") do
       {:ok, %{status_code: 200, body: body}} ->
         case Jason.decode(body) do
-          {:ok, data} -> {:ok, data}
-          {:error, err} -> {:error, err}
+          {:ok, data} ->
+            {:ok, data}
+
+          {:error, decode_err} ->
+            Logger.error(
+              "[ESI] JSON decode error for system #{system_id}: #{inspect(decode_err)}. Curl: #{curl_example}"
+            )
+
+            {:error, decode_err}
         end
 
-      {:ok, %{status_code: status}} ->
+      {:ok, %{status_code: status, body: _body}} ->
         Logger.error(
-          "[ESI] Unexpected status #{status} for solar system #{system_id}. Curl: #{curl_example}"
+          "[ESI] Unexpected status #{status} for system #{system_id}. Curl: #{curl_example}"
         )
 
         {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
+        Logger.error("[ESI] Request error for system #{system_id}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Fetches region info from ESI.
+  """
+  def get_region(region_id) do
+    url = "#{@base_url}/universe/regions/#{region_id}/"
+    headers = default_headers()
+    curl_example = HttpClient.build_curl_command("GET", url, headers)
+
+    Logger.debug("[ESI] Fetching region => #{url}")
+
+    case HttpClient.request("GET", url, headers, "") do
+      {:ok, %{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, data} ->
+            {:ok, data}
+
+          {:error, decode_err} ->
+            Logger.error(
+              "[ESI] JSON decode error for region #{region_id}: #{inspect(decode_err)}. Curl: #{curl_example}"
+            )
+
+            {:error, decode_err}
+        end
+
+      {:ok, %{status_code: status, body: _body}} ->
         Logger.error(
-          "[ESI] HTTP error fetching solar system #{system_id}: #{inspect(reason)}. Curl: #{curl_example}"
+          "[ESI] Unexpected status #{status} for region #{region_id}. Curl: #{curl_example}"
         )
 
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        Logger.error("[ESI] Request error for region #{region_id}: #{inspect(reason)}")
         {:error, reason}
     end
   end

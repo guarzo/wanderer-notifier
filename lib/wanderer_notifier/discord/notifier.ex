@@ -12,6 +12,10 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # Default embed color (blue)
   @default_embed_color 0x3498DB
+  @wormhole_color 0x428BCA  # Blue for Pulsar
+  @highsec_color 0x5CB85C  # Green for highsec
+  @lowsec_color 0xE28A0D  # Yellow/orange for lowsec
+  @nullsec_color 0xD9534F  # Red for nullsec
 
   # Use a runtime environment check instead of compile-time
   defp env do
@@ -97,6 +101,7 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
+  @spec send_embed(any(), any()) :: :ok | {:error, any()}
   @doc """
   Sends a basic embed message to Discord.
   """
@@ -162,6 +167,8 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   def send_discord_embed(embed) do
     url = "#{@base_url}/#{channel_id()}/messages"
+    Logger.info("Sending Discord embed to URL: #{url}")
+    Logger.debug("Embed content: #{inspect(embed)}")
 
     headers = [
       {"Authorization", "Bot #{bot_token()}"},
@@ -174,12 +181,13 @@ defmodule WandererNotifier.Discord.Notifier do
 
     case Jason.encode(payload) do
       {:ok, json} ->
+        Logger.debug("Successfully encoded payload, size: #{byte_size(json)} bytes")
         case HttpClient.request("POST", url, headers, json) do
           {:ok, %{status_code: status}} when status in 200..299 ->
-            Logger.debug("Successfully sent Discord embed")
+            Logger.info("Successfully sent Discord embed, status: #{status}")
             :ok
           {:ok, %{status_code: status, body: body}} ->
-            Logger.error("Failed to send Discord embed: status=#{status}, body=#{body}")
+            Logger.error("Failed to send Discord embed: status=#{status}, body=#{inspect(body)}")
             {:error, "Discord API error: #{status}"}
           {:error, reason} ->
             Logger.error("Error sending Discord embed: #{inspect(reason)}")
@@ -326,7 +334,8 @@ defmodule WandererNotifier.Discord.Notifier do
                 {:ok, corp_data} ->
                   corp_name = Map.get(corp_data, "name", "Unknown Corp")
                   Map.put(victim, "corporation_name", corp_name)
-                _ -> victim
+                _ ->
+                  Map.put_new(victim, "corporation_name", "Unknown Corp")
               end
             else
               victim
@@ -519,11 +528,6 @@ defmodule WandererNotifier.Discord.Notifier do
       embed
     end
 
-    # Add security status field if available
-    security_status = get_in(enriched_kill, ["solar_system", "security_status"]) ||
-                      get_in(enriched_kill, [:solar_system, :security_status])
-    embed = NotificationHelpers.add_security_field(embed, security_status)
-
     # Send the embed
     send_discord_embed(embed)
   end
@@ -695,275 +699,304 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
-      # Enrich system data first
-      system = enrich_system_data(system)
-
-      # Extract system information
-      _system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-      system_name = Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
-      original_name = Map.get(system, "original_name") || Map.get(system, :original_name)
-
-      # Check license status
-      license_status = WandererNotifier.License.status()
-
-      if license_status.valid do
-        # Create and send rich embed
-        create_and_send_system_embed(system)
+      # Extract data from nested "data" field if present
+      system = if Map.has_key?(system, "data") && is_map(system["data"]) do
+        Map.merge(system, system["data"])
       else
-        # Create and send plain text message
-        Logger.info("License not valid, sending plain text system notification")
-        display_name = if original_name, do: original_name, else: system_name
-        message = "New System Mapped: #{display_name}."
-        send_message(message)
+        system
       end
+
+      # Create and send the system embed
+      create_and_send_system_embed(system)
     end
-  end
-
-  # Helper function to enrich system data
-  defp enrich_system_data(system) do
-    # Ensure system name is present
-    system = if Map.get(system, "system_name") || Map.get(system, :system_name) do
-      system
-    else
-      system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-      if system_id do
-        case WandererNotifier.ESI.Service.get_solar_system_name(system_id) do
-          {:ok, sys_data} ->
-            sys_name = Map.get(sys_data, "name", "Unknown System")
-            system = Map.put(system, "system_name", sys_name)
-
-            # Also try to get region info
-            region_id = Map.get(sys_data, "constellation", %{})["region_id"]
-            if region_id do
-              # Since there's no direct get_region_info function, we'll use a fallback
-              # and just store the region ID for now
-              region_name = "Region #{region_id}"
-              Map.put(system, "region_name", region_name)
-            else
-              system
-            end
-          _ ->
-            Map.put_new(system, "system_name", "Unknown System")
-        end
-      else
-        Map.put_new(system, "system_name", "Unknown System")
-      end
-    end
-
-    system
   end
 
   # Helper function to create and send system embed
   defp create_and_send_system_embed(system) do
-    # Extract system information
-    system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-    system_name = Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
-    _system_alias = Map.get(system, "alias") || Map.get(system, :alias)
-    temporary_name = Map.get(system, "temporary_name") || Map.get(system, :temporary_name)
-    original_name = Map.get(system, "original_name") || Map.get(system, :original_name)
-    security_status = Map.get(system, "security_status") || Map.get(system, :security_status)
-    region_name = Map.get(system, "region_name") || Map.get(system, :region_name)
-    statics = Map.get(system, "statics") || Map.get(system, :statics) || []
-
-    # Determine system type
-    system_type = determine_system_type(system)
-    is_wormhole = system_type == "Wormhole" || String.contains?(system_type, "Class") ||
-                  (original_name != nil && temporary_name != nil)
-
-    # Get system icon URL based on system type
-    icon_url = get_system_icon_url(system_type)
-
-    # Format system display name with proper linking
-    display_name = cond do
-      temporary_name && original_name ->
-        "[#{temporary_name} (#{original_name})](https://zkillboard.com/system/#{system_id}/)"
-      temporary_name ->
-        "[#{temporary_name}](https://zkillboard.com/system/#{system_id}/)"
-      original_name ->
-        "[#{original_name}](https://zkillboard.com/system/#{system_id}/)"
-      true ->
-        "[#{system_name}](https://zkillboard.com/system/#{system_id}/)"
+    # Extract data from nested "data" field if present
+    system = if Map.has_key?(system, "data") && is_map(system["data"]) do
+      Map.merge(system, system["data"])
+    else
+      system
     end
 
-    # Create the embed
-    embed = %{
-      title: "New System Mapped",
-      description: "A new system has been added to the map.",
-      color: @default_embed_color,
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-      thumbnail: %{
-        url: icon_url
-      },
-      fields: [
-        %{
-          name: "System",
-          value: display_name,
-          inline: true
-        }
-      ]
-    }
+    # Extract system information directly from the API response
+    system_id = Map.get(system, "solar_system_id") || Map.get(system, :solar_system_id)
+    system_name = Map.get(system, "solar_system_name") || Map.get(system, :solar_system_name) ||
+                  Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
 
-    # Add region field for non-wormhole systems or statics for wormhole systems
-    embed = cond do
-      is_wormhole && is_list(statics) && length(statics) > 0 ->
-        # Format statics as a comma-separated list for wormhole systems
-        statics_str = Enum.map_join(statics, ", ", fn static ->
-          cond do
-            is_map(static) && (static["name"] || static[:name]) ->
-              static["name"] || static[:name]
-            is_binary(static) ->
-              static
-            true ->
-              inspect(static)
+    # Get security status and type description directly
+    security = Map.get(system, "security") || Map.get(system, :security) ||
+               Map.get(system, "security_status") || Map.get(system, :security_status)
+    type_description = Map.get(system, "type_description") || Map.get(system, :type_description)
+
+    # If type_description isn't available, log an error and don't send the notification
+    if type_description == nil do
+      Logger.error("Cannot send system notification: type_description not available for system #{system_name} (ID: #{system_id})")
+      :error
+    else
+      # Get wormhole specific information
+      effect_name = Map.get(system, "effect_name") || Map.get(system, :effect_name)
+      is_shattered = Map.get(system, "is_shattered") || Map.get(system, :is_shattered)
+      statics = Map.get(system, "statics") || Map.get(system, :statics) || []
+
+      # Get region information
+      region_name = Map.get(system, "region_name") || Map.get(system, :region_name)
+
+      # Format security status for display
+      security_str = case security do
+        sec when is_binary(sec) -> sec
+        sec when is_float(sec) -> Float.to_string(sec)
+        _ -> ""
+      end
+
+      # Create title based on available information
+      title = if security_str != "" do
+        "New #{security_str} #{type_description} System Mapped"
+      else
+        "New #{type_description} System Mapped"
+      end
+
+      # Create description based on available information
+      description = if security_str != "" do
+        "A new #{security_str} #{type_description} system has been discovered and added to the map."
+      else
+        "A new #{type_description} system has been discovered and added to the map."
+      end
+
+      # Determine if this is a wormhole based on type_description
+      is_wormhole = String.contains?(type_description, "Class")
+
+      # Get system icon URL based on sun_type_id or system type
+      sun_type_id = Map.get(system, "sun_type_id") || Map.get(system, :sun_type_id)
+      icon_url = if sun_type_id do
+        "https://images.evetech.net/types/#{sun_type_id}/icon"
+      else
+        cond do
+          effect_name == "Pulsar" -> "https://images.evetech.net/types/30488/icon"
+          effect_name == "Magnetar" -> "https://images.evetech.net/types/30484/icon"
+          effect_name == "Wolf-Rayet Star" -> "https://images.evetech.net/types/30489/icon"
+          effect_name == "Black Hole" -> "https://images.evetech.net/types/30483/icon"
+          effect_name == "Cataclysmic Variable" -> "https://images.evetech.net/types/30486/icon"
+          effect_name == "Red Giant" -> "https://images.evetech.net/types/30485/icon"
+          String.contains?(type_description, "High-sec") -> "https://images.evetech.net/types/45041/icon"
+          String.contains?(type_description, "Low-sec") -> "https://images.evetech.net/types/45031/icon"
+          String.contains?(type_description, "Null-sec") -> "https://images.evetech.net/types/45033/icon"
+          true -> "https://images.evetech.net/types/3802/icon"
+        end
+      end
+
+      # Determine embed color based on system type
+      embed_color = cond do
+        String.contains?(type_description, "High-sec") -> @highsec_color
+        String.contains?(type_description, "Low-sec") -> @lowsec_color
+        String.contains?(type_description, "Null-sec") -> @nullsec_color
+        is_wormhole -> @wormhole_color
+        true -> @default_embed_color
+      end
+
+      # Format system display name with proper linking
+      display_name = "[#{system_name}](https://zkillboard.com/system/#{system_id}/)"
+
+      # Create the embed
+      embed = %{
+        title: title,
+        description: description,
+        color: embed_color,
+        timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+        thumbnail: %{
+          url: icon_url
+        },
+        fields: [
+          %{
+            name: "System",
+            value: display_name,
+            inline: true
+          }
+        ]
+      }
+
+      # Add shattered status if available
+      embed = if is_wormhole && is_shattered do
+        fields = embed.fields ++ [%{
+          name: "Shattered",
+          value: "Yes",
+          inline: true
+        }]
+        Map.put(embed, :fields, fields)
+      else
+        embed
+      end
+
+      # Add region field for non-wormhole systems or statics for wormhole systems
+      embed = cond do
+        is_wormhole && is_list(statics) && length(statics) > 0 ->
+          # Format statics as a comma-separated list for wormhole systems
+          statics_str = Enum.map_join(statics, ", ", fn static ->
+            cond do
+              is_map(static) && (static["name"] || static[:name]) ->
+                static["name"] || static[:name]
+              is_binary(static) ->
+                static
+              true ->
+                inspect(static)
+            end
+          end)
+          fields = embed.fields ++ [%{name: "Statics", value: statics_str, inline: true}]
+          Map.put(embed, :fields, fields)
+
+        region_name ->
+          # Link region name to Dotlan for all non-wormhole systems
+          encoded_region_name = URI.encode(region_name)
+          region_link = "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
+          fields = embed.fields ++ [%{name: "Region", value: region_link, inline: true}]
+          Map.put(embed, :fields, fields)
+
+        true ->
+          embed
+      end
+
+      # Add recent kills section if available
+      system_kills =
+        if system_id do
+          case WandererNotifier.ZKill.Service.get_system_kills(system_id, 5) do
+            {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
+              Logger.info("Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard")
+              zkill_kills
+
+            {:ok, []} ->
+              Logger.info("No recent kills found for system #{system_id} from zKillboard")
+              []
+
+            {:error, reason} ->
+              Logger.error("Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}")
+              []
+          end
+        else
+          []
+        end
+
+      # Add up to 5 recent kills to the embed
+      embed = if length(system_kills) > 0 do
+        # Format kills as a list
+        kills_text = Enum.map_join(system_kills, "\n", fn kill ->
+          # Extract the kill ID
+          kill_id = Map.get(kill, "killmail_id")
+
+          # For zKillboard API, we need to extract the hash and use ESI to get complete data
+          zkb = Map.get(kill, "zkb") || %{}
+          hash = Map.get(zkb, "hash")
+
+          # Only try to enrich if we have both kill_id and hash
+          enriched_kill = if kill_id && hash do
+            case WandererNotifier.ESI.Service.get_esi_kill_mail(kill_id, hash) do
+              {:ok, killmail_data} ->
+                # Merge the ESI killmail data with the zKillboard data
+                Map.merge(kill, killmail_data)
+              _ ->
+                # If ESI lookup fails, use the original kill data
+                kill
+            end
+          else
+            kill
+          end
+
+          # Now extract victim information using the same approach as in kill notifications
+          victim = Map.get(enriched_kill, "victim") || %{}
+
+          # Extract victim name with proper enrichment
+          victim_name = if Map.has_key?(victim, "character_id") do
+            character_id = Map.get(victim, "character_id")
+            case WandererNotifier.ESI.Service.get_character_info(character_id) do
+              {:ok, char_info} ->
+                Map.get(char_info, "name", "Unknown Pilot")
+              _ -> "Unknown Pilot"
+            end
+          else
+            "Unknown Pilot"
+          end
+
+          # Extract ship type with proper enrichment
+          ship_type = if Map.has_key?(victim, "ship_type_id") do
+            ship_type_id = Map.get(victim, "ship_type_id")
+            case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+              {:ok, ship_info} ->
+                Map.get(ship_info, "name", "Unknown Ship")
+              _ -> "Unknown Ship"
+            end
+          else
+            "Unknown Ship"
+          end
+
+          # Extract kill value from zkb data
+          zkb = Map.get(kill, "zkb") || %{}
+          kill_value = Map.get(zkb, "totalValue")
+
+          # Extract kill time and calculate time since kill
+          kill_time = Map.get(kill, "killmail_time") || Map.get(enriched_kill, "killmail_time")
+          time_ago = if kill_time do
+            case DateTime.from_iso8601(kill_time) do
+              {:ok, kill_datetime, _} ->
+                now = DateTime.utc_now()
+                diff_seconds = DateTime.diff(now, kill_datetime)
+
+                cond do
+                  diff_seconds < 60 -> "just now"
+                  diff_seconds < 3600 -> "#{div(diff_seconds, 60)}m ago"
+                  diff_seconds < 86400 -> "#{div(diff_seconds, 3600)}h ago"
+                  diff_seconds < 2592000 -> "#{div(diff_seconds, 86400)}d ago"
+                  true -> "#{div(diff_seconds, 2592000)}mo ago"
+                end
+              _ -> ""
+            end
+          else
+            ""
+          end
+
+          # Add time ago to the display if available
+          time_display = if time_ago != "", do: " (#{time_ago})", else: ""
+
+          value_text = if kill_value do
+            formatted_value =
+              cond do
+                kill_value < 1000 -> "<1k ISK"
+                kill_value < 1_000_000 -> "#{round(kill_value / 1000)}k ISK"
+                true -> "#{round(kill_value / 1_000_000)}M ISK"
+              end
+            " - #{formatted_value}"
+          else
+            ""
+          end
+
+          # Format the kill entry with link just on the character name
+          if victim_name == "Unknown Pilot" do
+            "#{ship_type}#{value_text}#{time_display}"
+          else
+            "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_type}#{value_text}#{time_display}"
           end
         end)
-        fields = embed.fields ++ [%{name: "Statics", value: statics_str, inline: true}]
+
+        # Add a field for recent kills
+        fields = embed.fields ++ [%{
+          name: "Recent Kills in System",
+          value: kills_text,
+          inline: false
+        }]
+
         Map.put(embed, :fields, fields)
-
-      region_name ->
-        # Link region name to Dotlan for all non-wormhole systems
-        # URL encode the region name to handle spaces and special characters
-        encoded_region_name = URI.encode(region_name)
-        region_link = "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
-        fields = embed.fields ++ [%{name: "Region", value: region_link, inline: true}]
-        Map.put(embed, :fields, fields)
-
-      is_wormhole ->
-        # For wormholes without statics information
-        fields = embed.fields ++ [%{name: "Statics", value: "Unknown", inline: true}]
-        Map.put(embed, :fields, fields)
-
-      true ->
-        # For non-wormholes without region information
-        fields = embed.fields ++ [%{name: "Region", value: "Unknown", inline: true}]
-        Map.put(embed, :fields, fields)
-    end
-
-    # Add security status field if available
-    embed = if security_status do
-      formatted_security = NotificationHelpers.format_security_status(security_status)
-      fields = embed.fields ++ [%{name: "Security", value: formatted_security, inline: true}]
-      Map.put(embed, :fields, fields)
-    else
-      embed
-    end
-
-    # Add recent kills section if available
-    system_kills =
-      if system_id do
-        case WandererNotifier.ZKill.Service.get_system_kills(system_id, 5) do
-          {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
-            Logger.info("Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard")
-            zkill_kills
-
-          {:ok, []} ->
-            Logger.info("No recent kills found for system #{system_id} from zKillboard")
-            []
-
-          {:error, reason} ->
-            Logger.error("Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}")
-            []
-        end
       else
-        []
+        # If no kills were found, add a message indicating that
+        fields = embed.fields ++ [%{
+          name: "Recent Kills in System",
+          value: "No recent kills found for this system.",
+          inline: false
+        }]
+
+        Map.put(embed, :fields, fields)
       end
 
-    # Add up to 5 recent kills to the embed
-    embed = if length(system_kills) > 0 do
-      # Format kills as a list
-      kills_text = Enum.map_join(system_kills, "\n", fn kill ->
-        kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
-
-        # For kills from zKillboard API, we need to extract data differently
-        # as they might not be fully enriched yet
-        victim_name = get_in(kill, ["victim", "character_name"]) ||
-                      get_in(kill, [:victim, :character_name]) ||
-                      "Unknown Pilot"
-
-        _ship_type_id = get_in(kill, ["victim", "ship_type_id"]) ||
-                       get_in(kill, [:victim, :ship_type_id])
-
-        # Try to get ship name, but this might require ESI lookup in the future
-        ship_type = get_in(kill, ["victim", "ship_type_name"]) ||
-                    get_in(kill, [:victim, :ship_type_name]) ||
-                    "Unknown Ship"
-
-        # Add kill value if available
-        kill_value = get_in(kill, ["zkb", "totalValue"]) ||
-                     get_in(kill, [:zkb, :totalValue])
-
-        value_text = if kill_value do
-          formatted_value =
-            cond do
-              kill_value < 1000 -> "<1k ISK"
-              kill_value < 1_000_000 -> "#{round(kill_value / 1000)}k ISK"
-              true -> "#{round(kill_value / 1_000_000)}M ISK"
-            end
-          " (#{formatted_value})"
-        else
-          ""
-        end
-
-        # Format the kill entry with link to zKillboard
-        "[#{victim_name} - #{ship_type}#{value_text}](https://zkillboard.com/kill/#{kill_id}/)"
-      end)
-
-      # If no kills have proper information, provide a fallback message
-      kills_text = if String.trim(kills_text) == "" do
-        "No detailed kill information available for this system yet."
-      else
-        kills_text
-      end
-
-      # Add a field for recent kills
-      fields = embed.fields ++ [%{
-        name: "Recent Kills in System",
-        value: kills_text,
-        inline: false
-      }]
-
-      Map.put(embed, :fields, fields)
-    else
-      # If no kills were found, add a message indicating that
-      fields = embed.fields ++ [%{
-        name: "Recent Kills in System",
-        value: "No recent kills found for this system.",
-        inline: false
-      }]
-
-      Map.put(embed, :fields, fields)
-    end
-
-    # Send the embed
-    send_discord_embed(embed)
-  end
-
-  # Helper to determine system type from system data
-  defp determine_system_type(system) do
-    # Check if the system is a wormhole based on the is_wormhole flag or other indicators
-    is_wormhole = Map.get(system, "is_wormhole") || Map.get(system, :is_wormhole) ||
-                  (Map.get(system, "statics") || Map.get(system, :statics) || []) != [] ||
-                  (Map.get(system, "original_name") != nil && Map.get(system, "temporary_name") != nil)
-
-    if is_wormhole do
-      "Wormhole"
-    else
-      "K-Space"
-    end
-  end
-
-  # Helper to get system icon URL based on system type
-  defp get_system_icon_url(system_type) do
-    # Use EVE Online official images that are publicly accessible
-    case system_type do
-      # Wormhole systems use the wormhole icon
-      "Wormhole" -> "https://images.evetech.net/types/30371/icon"  # Generic wormhole icon
-
-      # K-space systems use a star icon
-      "K-Space" -> "https://images.evetech.net/types/3802/icon"  # Star/sun icon
-
-      # Default fallback
-      _ -> "https://images.evetech.net/types/30371/icon"  # Generic space icon
+      # Send the embed
+      send_discord_embed(embed)
     end
   end
 

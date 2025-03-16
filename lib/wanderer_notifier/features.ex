@@ -16,7 +16,7 @@ defmodule WandererNotifier.Features do
       # Added these features to core to enable them even without a license
       :tracked_systems_notifications,
       :tracked_characters_notifications,
-      :backup_kills_processing
+      :system_tracking,
     ],
 
     # Standard features - require valid license

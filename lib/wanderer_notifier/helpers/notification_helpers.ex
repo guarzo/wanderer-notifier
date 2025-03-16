@@ -134,7 +134,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   ## Returns
   A formatted string with the security status
   """
-  @spec format_security_status(float()) :: String.t()
+  @spec format_security_status(float() | String.t()) :: String.t()
   def format_security_status(security_status) when is_number(security_status) do
     # Round to 1 decimal place
     rounded = Float.round(security_status, 1)
@@ -144,6 +144,14 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       rounded >= 0.5 -> "#{rounded} (High)"
       rounded > 0.0 -> "#{rounded} (Low)"
       true -> "#{rounded} (Null)"
+    end
+  end
+
+  def format_security_status(security_status) when is_binary(security_status) do
+    # Convert string to float and then format
+    case Float.parse(security_status) do
+      {value, _} -> format_security_status(value)
+      :error -> "Unknown"
     end
   end
 
