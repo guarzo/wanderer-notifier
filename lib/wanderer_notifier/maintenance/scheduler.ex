@@ -3,45 +3,24 @@ defmodule WandererNotifier.Maintenance.Scheduler do
   Schedules and coordinates periodic maintenance tasks.
   """
   require Logger
+  use GenServer
   alias WandererNotifier.Config.Timings
 
   @type state :: %{
-          last_status_time: integer() | nil,
+          service_start_time: integer(),
           last_systems_update: integer() | nil,
           last_characters_update: integer() | nil,
-          last_backup_check: integer() | nil,
-          service_start_time: integer(),
-          processed_kill_ids: map(),
           systems_count: integer(),
           characters_count: integer()
         }
 
-  @spec do_periodic_checks(state()) :: state()
-  def do_periodic_checks(state) do
+  @spec tick(state()) :: state()
+  def tick(state) do
     now = :os.system_time(:second)
-    Logger.debug("[Maintenance] Starting periodic checks at time #{now}")
 
-    new_state = state
-    |> maybe_send_status(now)
+    state
     |> maybe_update_systems(now)
-    |> maybe_update_tracked_chars(now)
-    |> maybe_check_backup_kills(now)
-
-    # Log cache counts after maintenance
-    log_cache_counts()
-
-    new_state
-  end
-
-  @spec maybe_send_status(state(), integer()) :: state()
-  defp maybe_send_status(state, now) do
-    if now - (state.last_status_time || 0) > Timings.status_update_interval() do
-      count = map_size(state.processed_kill_ids)
-      Logger.debug("[Maintenance] Status update: Processed kills: #{count}")
-      %{state | last_status_time: now}
-    else
-      state
-    end
+    |> maybe_update_characters(now)
   end
 
   @spec maybe_update_systems(state(), integer()) :: state()
@@ -67,8 +46,8 @@ defmodule WandererNotifier.Maintenance.Scheduler do
     end
   end
 
-  @spec maybe_update_tracked_chars(state(), integer()) :: state()
-  defp maybe_update_tracked_chars(state, now) do
+  @spec maybe_update_characters(state(), integer()) :: state()
+  defp maybe_update_characters(state, now) do
     if now - (state.last_characters_update || 0) > Timings.character_update_interval() do
       Logger.debug("[Maintenance] Triggering update_tracked_characters")
 
@@ -85,28 +64,6 @@ defmodule WandererNotifier.Maintenance.Scheduler do
           Logger.error("[Maintenance] update_tracked_characters failed: #{inspect(err)}")
           %{state | last_characters_update: now}
       end
-    else
-      state
-    end
-  end
-
-  @spec maybe_check_backup_kills(state(), integer()) :: state()
-  defp maybe_check_backup_kills(state, now) do
-    uptime = now - state.service_start_time
-
-    if uptime >= Timings.uptime_required_for_backup() and
-         now - (state.last_backup_check || 0) > Timings.backup_kills_interval() do
-      Logger.debug("[Maintenance] Triggering check_backup_kills")
-
-      case WandererNotifier.Map.Client.check_backup_kills() do
-        {:ok, _msg} ->
-          Logger.debug("[Maintenance] check_backup_kills successful")
-
-        {:error, err} ->
-          Logger.error("[Maintenance] check_backup_kills failed: #{inspect(err)}")
-      end
-
-      %{state | last_backup_check: now}
     else
       state
     end
@@ -150,16 +107,6 @@ defmodule WandererNotifier.Maintenance.Scheduler do
         Logger.error("[Maintenance] Error updating characters: #{inspect(e)}")
         Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
         %{new_state | last_characters_update: now}
-    end
-
-    # Check backup kills with error handling
-    new_state = try do
-      maybe_check_backup_kills(new_state, now)
-    rescue
-      e ->
-        Logger.error("[Maintenance] Error checking backup kills: #{inspect(e)}")
-        Logger.error("[Maintenance] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
-        %{new_state | last_backup_check: now}
     end
 
     # Log cache counts after initial maintenance
@@ -247,5 +194,23 @@ defmodule WandererNotifier.Maintenance.Scheduler do
     # Get characters count
     characters = CacheRepo.get("map:characters") || []
     Logger.debug("[Maintenance] Cache count - Characters: #{length(characters)}")
+  end
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_opts) do
+    # Initialize state
+    state = %{
+      service_start_time: :os.system_time(:second),
+      last_systems_update: nil,
+      last_characters_update: nil,
+      systems_count: 0,
+      characters_count: 0
+    }
+
+    {:ok, state}
   end
 end

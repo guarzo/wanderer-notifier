@@ -43,4 +43,22 @@ defmodule WandererNotifier.ZKill.Service do
   def get_recent_kills(limit \\ 10) do
     ZKillClient.get_recent_kills(limit)
   end
+
+  @doc """
+  Retrieves kills for a specific system from zKillboard.
+
+  ## Parameters
+
+  - `system_id`: The ID of the system to get kills for
+  - `limit`: The maximum number of kills to retrieve (default: 5)
+
+  ## Returns
+
+  - `{:ok, kills}`: A list of kills for the system
+  - `{:error, reason}`: If an error occurred
+  """
+  @spec get_system_kills(any(), integer()) :: {:ok, list(map())} | {:error, any()}
+  def get_system_kills(system_id, limit \\ 5) do
+    ZKillClient.get_system_kills(system_id, limit)
+  end
 end

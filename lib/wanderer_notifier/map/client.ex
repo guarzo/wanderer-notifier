@@ -5,23 +5,14 @@ defmodule WandererNotifier.Map.Client do
   require Logger
   alias WandererNotifier.Map.Systems
   alias WandererNotifier.Map.Characters
-  alias WandererNotifier.Map.BackupKills
   alias WandererNotifier.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   # A single function for each major operation:
-  def update_systems(cached_systems \\ nil) do
+  def update_systems do
     try do
-      if Features.enabled?(:tracked_systems_notifications) do
-        # Use provided cached_systems if available, otherwise get from cache
-        current_systems = cached_systems || CacheRepo.get("map:systems") || []
-
-        if Features.limit_reached?(:tracked_systems, length(current_systems)) do
-          Logger.warning("System tracking limit reached (#{length(current_systems)}). Upgrade license for more.")
-          {:error, :limit_reached}
-        else
-          Systems.update_systems(current_systems)
-        end
+      if Features.enabled?(:system_tracking) do
+        Systems.update_systems()
       else
         Logger.debug("System tracking disabled due to license restrictions")
         {:error, :feature_disabled}
@@ -34,17 +25,17 @@ defmodule WandererNotifier.Map.Client do
     end
   end
 
-  def check_backup_kills do
+  def update_systems_with_cache(cached_systems) do
     try do
-      if Features.enabled?(:backup_kills_processing) do
-        BackupKills.check_backup_kills()
+      if Features.enabled?(:system_tracking) do
+        Systems.update_systems(cached_systems)
       else
-        Logger.debug("Backup kills processing disabled due to license restrictions")
+        Logger.debug("System tracking disabled due to license restrictions")
         {:error, :feature_disabled}
       end
     rescue
       e ->
-        Logger.error("Error in check_backup_kills: #{inspect(e)}")
+        Logger.error("Error in update_systems_with_cache: #{inspect(e)}")
         Logger.error("Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
         {:error, {:exception, e}}
     end

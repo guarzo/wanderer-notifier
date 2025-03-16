@@ -7,7 +7,6 @@ defmodule WandererNotifier.Service do
   require Logger
 
   alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
-  alias WandererNotifier.Service.Maintenance
   alias WandererNotifier.Service.KillProcessor
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.NotifierFactory
@@ -24,7 +23,6 @@ defmodule WandererNotifier.Service do
       last_status_time: nil,
       service_start_time: nil,
       last_systems_update: nil,
-      last_backup_check: nil,
       last_characters_update: nil,
       systems_count: 0,
       characters_count: 0
@@ -50,7 +48,6 @@ defmodule WandererNotifier.Service do
       service_start_time: now,
       last_status_time: now,
       last_systems_update: now,
-      last_backup_check: now,
       last_characters_update: now
     }
 
@@ -89,9 +86,12 @@ defmodule WandererNotifier.Service do
 
   @impl true
   def handle_info(:maintenance, state) do
-    Logger.debug("Running periodic maintenance checks")
-    new_state = Maintenance.do_periodic_checks(state)
+    # Schedule the next maintenance check
     schedule_maintenance()
+
+    # Run maintenance checks
+    new_state = WandererNotifier.Maintenance.Scheduler.tick(state)
+
     {:noreply, new_state}
   end
 
@@ -102,7 +102,7 @@ defmodule WandererNotifier.Service do
     # Add error handling around maintenance tasks
     new_state = try do
       # Force a full update of all systems and characters
-      Maintenance.do_initial_checks(state)
+      WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
     rescue
       e ->
         Logger.error("Error during initial maintenance: #{inspect(e)}")
@@ -141,7 +141,7 @@ defmodule WandererNotifier.Service do
     Logger.warning("Received force_refresh_cache message. Refreshing critical data after cache recovery...")
 
     # Run maintenance tasks to repopulate the cache
-    new_state = Maintenance.do_initial_checks(state)
+    new_state = WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
 
     Logger.info("Cache refresh completed after recovery")
     {:noreply, new_state}

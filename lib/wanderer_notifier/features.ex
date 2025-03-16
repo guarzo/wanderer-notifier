@@ -16,7 +16,7 @@ defmodule WandererNotifier.Features do
       # Added these features to core to enable them even without a license
       :tracked_systems_notifications,
       :tracked_characters_notifications,
-      :backup_kills_processing
+      :system_tracking,
     ],
 
     # Standard features - require valid license
@@ -172,5 +172,17 @@ defmodule WandererNotifier.Features do
   """
   def tracked_characters_notifications_enabled? do
     enabled?(:tracked_characters_notifications)
+  end
+
+  @doc """
+  Convenience function to check if kill notifications are enabled.
+  """
+  def kill_notifications_enabled? do
+    case System.get_env("ENABLE_KILL_NOTIFICATIONS") do
+      "false" -> false
+      "0" -> false
+      nil -> true  # Default to true if not set
+      _ -> true    # Any other value is considered true
+    end
   end
 end

@@ -38,16 +38,6 @@ defmodule WandererNotifier.Config.Timings do
   """
   def character_update_interval, do: 30
 
-  @doc """
-  Interval for backup kills checks (30 minutes)
-  """
-  def backup_kills_interval, do: 1800
-
-  @doc """
-  Required uptime before starting backup kills checks (1 hour)
-  """
-  def uptime_required_for_backup, do: 3600
-
   # Cache check intervals (in milliseconds)
 
   @doc """

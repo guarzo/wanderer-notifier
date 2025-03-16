@@ -143,80 +143,121 @@ defmodule WandererNotifier.Map.Systems do
   defp process_systems(%{"data" => data}) when is_list(data) do
     Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
 
-    # Filter for wormhole systems
-    wormhole_systems =
-      Enum.map(data, &fetch_wormhole_system/1)
-      |> Enum.filter(& &1)
+    # Check if we should track all systems or just wormhole systems
+    track_all_systems = WandererNotifier.Config.track_all_systems?()
+    Logger.debug("[process_systems] TRACK_ALL_SYSTEMS=#{track_all_systems}")
 
-    Logger.debug("[process_systems] Found #{length(wormhole_systems)} wormhole systems")
-
-    # Process the wormhole systems
+    # Process systems from the map API
     processed =
-      Enum.map(wormhole_systems, fn sys ->
-        # Create a map with all the relevant fields
-        %{
-          "system_id" => sys.system_id,
-          "system_name" => sys.alias || "Solar System #{sys.system_id}",
-          "original_name" => sys.original_name,
-          "temporary_name" => sys.temporary_name
-        }
+      Enum.map(data, fn item ->
+        with system_id when is_binary(system_id) <- extract_system_id(item),
+             {:ok, map_url} <- validate_map_env() do
+          # Extract the base URL (without any path segments)
+          uri = URI.parse(map_url)
+          base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+
+          # Get the slug/map name from the path
+          slug = case uri.path do
+            nil -> ""
+            "/" -> ""
+            path ->
+              # Remove leading slash and get the first path segment
+              segments = path |> String.trim_leading("/") |> String.split("/")
+              List.first(segments, "")
+          end
+
+          # Construct the static info URL with the correct path and slug
+          static_info_url = if slug != "" do
+            "#{base_url}/api/common/system-static-info?id=#{system_id}&slug=#{slug}"
+          else
+            "#{base_url}/api/common/system-static-info?id=#{system_id}"
+          end
+
+          # Get system static info
+          case get_or_fetch_system_static_info(static_info_url) do
+            {:ok, ssi} ->
+              # Extract all the relevant fields from the API response
+              original_name = item["original_name"] || item["OriginalName"]
+              temporary_name = item["temporary_name"] || item["TemporaryName"]
+
+              # Get region information and statics
+              region_name = get_region_for_system(system_id)
+              statics = get_statics_for_system(system_id)
+
+              # Check if it's a wormhole system
+              is_wormhole = qualifies_as_wormhole?(ssi)
+              system_type = if is_wormhole, do: "wormhole", else: "non-wormhole"
+
+              # Extract additional fields from static info
+              static_info_data = get_in(ssi, ["data"]) || %{}
+              class_title = Map.get(static_info_data, "class_title")
+              effect_name = Map.get(static_info_data, "effect_name")
+              security = Map.get(static_info_data, "security")
+              is_shattered = Map.get(static_info_data, "is_shattered")
+              type_description = Map.get(static_info_data, "type_description")
+              system_class = Map.get(static_info_data, "system_class")
+              solar_system_name = Map.get(static_info_data, "solar_system_name")
+              constellation_name = Map.get(static_info_data, "constellation_name")
+              wandering = Map.get(static_info_data, "wandering")
+
+              # Only include the system if it's a wormhole or if we're tracking all systems
+              if is_wormhole or track_all_systems do
+                Logger.debug("[process_systems] Including #{system_type} system: #{system_id}")
+
+                # Create a map with all the relevant fields
+                %{
+                  "system_id" => system_id,
+                  "system_name" => temporary_name || original_name || solar_system_name || "Solar System #{system_id}",
+                  "original_name" => original_name,
+                  "temporary_name" => temporary_name,
+                  "region_name" => region_name,
+                  "statics" => statics,
+                  "is_wormhole" => is_wormhole,
+                  "class_title" => class_title,
+                  "effect_name" => effect_name,
+                  "security" => security,
+                  "is_shattered" => is_shattered,
+                  "type_description" => type_description,
+                  "system_class" => system_class,
+                  "constellation_name" => constellation_name,
+                  "wandering" => wandering,
+                  "data" => static_info_data  # Include the full data for reference
+                }
+              else
+                Logger.debug("[process_systems] Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)")
+                nil
+              end
+            _ ->
+              # If we can't get static info, include the system only if tracking all systems
+              if track_all_systems do
+                original_name = item["original_name"] || item["OriginalName"]
+                temporary_name = item["temporary_name"] || item["TemporaryName"]
+
+                Logger.debug("[process_systems] Including system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=true)")
+                %{
+                  "system_id" => system_id,
+                  "system_name" => temporary_name || original_name || "Solar System #{system_id}",
+                  "original_name" => original_name,
+                  "temporary_name" => temporary_name,
+                  "is_wormhole" => false  # Assume not a wormhole if we can't determine
+                }
+              else
+                Logger.debug("[process_systems] Skipping system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=false)")
+                nil
+              end
+          end
+        else
+          _ -> nil
+        end
       end)
+      |> Enum.filter(& &1) # Remove nil entries
+
+    Logger.debug("[process_systems] Processed #{length(processed)} systems after filtering")
 
     {:ok, processed}
   end
 
   defp process_systems(_), do: {:ok, []}
-
-  defp fetch_wormhole_system(item) do
-    with system_id when is_binary(system_id) <- extract_system_id(item),
-         {:ok, map_url} <- validate_map_env() do
-      # Extract the base URL (without any path segments)
-      uri = URI.parse(map_url)
-      base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-
-      # Get the slug/map name from the path
-      slug = case uri.path do
-        nil -> ""
-        "/" -> ""
-        path ->
-          # Remove leading slash and get the first path segment
-          segments = path |> String.trim_leading("/") |> String.split("/")
-          List.first(segments, "")
-      end
-
-      # Construct the static info URL with the correct path and slug
-      static_info_url = if slug != "" do
-        "#{base_url}/api/common/system-static-info?id=#{system_id}&slug=#{slug}"
-      else
-        "#{base_url}/api/common/system-static-info?id=#{system_id}"
-      end
-
-      case get_or_fetch_system_static_info(static_info_url) do
-        {:ok, ssi} ->
-          if qualifies_as_wormhole?(ssi) do
-            # Extract all the relevant fields from the API response
-            original_name = item["original_name"] || item["OriginalName"]
-            temporary_name = item["temporary_name"] || item["TemporaryName"]
-
-            # Log the extracted fields for debugging
-            Logger.debug("[fetch_wormhole_system] Extracted fields for system_id=#{system_id}: original_name=#{inspect(original_name)}, temporary_name=#{inspect(temporary_name)}")
-
-            %{
-              system_id: system_id,
-              alias: temporary_name,
-              original_name: original_name,
-              temporary_name: temporary_name
-            }
-          else
-            nil
-          end
-        _ ->
-          nil
-      end
-    else
-      _ -> nil
-    end
-  end
 
   defp extract_system_id(item) do
     case item["solar_system_id"] || item["SolarSystemID"] do
@@ -340,6 +381,50 @@ defmodule WandererNotifier.Map.Systems do
       NotifierFactory.notify(:send_new_system_notification, [system])
       # Increment the systems counter
       WandererNotifier.Stats.increment(:systems)
+    end
+  end
+
+  # Helper to get region name for a system
+  defp get_region_for_system(system_id) do
+    # Try to get static info from cache
+    cache_key = "static_info:#{system_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        nil
+      cached when is_binary(cached) ->
+        case Jason.decode(cached) do
+          {:ok, data} ->
+            # Extract region information
+            _region_id = get_in(data, ["data", "region_id"])
+            region_name = get_in(data, ["data", "region_name"])
+
+            if region_name, do: region_name, else: nil
+          _ ->
+            nil
+        end
+      _ ->
+        nil
+    end
+  end
+
+  # Helper to get statics for a wormhole system
+  defp get_statics_for_system(system_id) do
+    # Try to get static info from cache
+    cache_key = "static_info:#{system_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        []
+      cached when is_binary(cached) ->
+        case Jason.decode(cached) do
+          {:ok, data} ->
+            get_in(data, ["data", "statics"]) || []
+          _ ->
+            []
+        end
+      _ ->
+        []
     end
   end
 end
