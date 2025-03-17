@@ -711,7 +711,7 @@ defmodule WandererNotifier.Discord.Notifier do
             zkb = Map.get(kill, "zkb") || %{}
             hash = Map.get(zkb, "hash")
             enriched_kill =
-              if kill_id and hash do
+              if kill_id != nil and hash do
                 case WandererNotifier.ESI.Service.get_esi_kill_mail(kill_id, hash) do
                   {:ok, killmail_data} -> Map.merge(kill, killmail_data)
                   _ -> kill
