@@ -47,12 +47,6 @@ jobs:
           mix deps.get --only prod
           mix deps.compile
 
-          # Ensure templates directory exists
-          mkdir -p priv/templates
-
-          # Copy templates from lib to priv
-          cp -f lib/wanderer_notifier/web/templates/*.eex priv/templates/
-
           # Build the release
           mix release
 
