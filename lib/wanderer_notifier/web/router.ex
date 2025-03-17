@@ -46,6 +46,27 @@ defmodule WandererNotifier.Web.Router do
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
   plug :dispatch
 
+  # React app routes - these need to be before other routes to ensure proper SPA routing
+  get "/charts" do
+    conn
+    |> put_resp_header("content-type", "text/html; charset=utf-8")
+    |> send_file(200, "priv/static/app/index.html")
+  end
+
+  # Handle client-side routing for the React app
+  get "/charts/*path" do
+    conn
+    |> put_resp_header("content-type", "text/html; charset=utf-8")
+    |> send_file(200, "priv/static/app/index.html")
+  end
+
+  # Legacy TPS charts page - redirects to the new React dashboard
+  get "/tps-charts" do
+    conn
+    |> put_resp_header("content-type", "text/html; charset=utf-8")
+    |> send_file(200, "priv/templates/tps_charts.html.eex")
+  end
+
   #
   # HEALTH CHECK ENDPOINT
   #
@@ -88,62 +109,85 @@ defmodule WandererNotifier.Web.Router do
   #
 
   get "/api/status" do
-    license_status = License.status()
+    try do
+      license_status = License.status()
 
-    license_info = %{
-      valid: license_status[:valid],
-      bot_assigned: license_status[:bot_assigned],
-      details: license_status[:details],
-      error: license_status[:error],
-      error_message: license_status[:error_message]
-    }
-
-    stats = Stats.get_stats()
-    limits = Features.get_all_limits()
-    tracked_systems = get_tracked_systems()
-    tracked_characters = CacheRepo.get("map:characters") || []
-
-    usage = %{
-      tracked_systems: %{
-        current: length(tracked_systems),
-        limit: limits.tracked_systems,
-        percentage: calculate_percentage(length(tracked_systems), limits.tracked_systems)
-      },
-      tracked_characters: %{
-        current: length(tracked_characters),
-        limit: limits.tracked_characters,
-        percentage: calculate_percentage(length(tracked_characters), limits.tracked_characters)
-      },
-      notification_history: %{
-        limit: limits.notification_history
+      license_info = %{
+        valid: license_status[:valid],
+        bot_assigned: license_status[:bot_assigned],
+        details: license_status[:details],
+        error: license_status[:error],
+        error_message: license_status[:error_message]
       }
-    }
 
-    response = %{
-      stats: stats,
-      license: license_info,
-      features: %{
-        limits: limits,
-        usage: usage,
-        enabled: %{
-          basic_notifications: Features.enabled?(:basic_notifications),
-          tracked_systems_notifications: Features.enabled?(:tracked_systems_notifications),
-          tracked_characters_notifications: Features.enabled?(:tracked_characters_notifications),
-          backup_kills_processing: Features.enabled?(:backup_kills_processing),
-          web_dashboard_full: Features.enabled?(:web_dashboard_full),
-          advanced_statistics: Features.enabled?(:advanced_statistics)
+      stats = Stats.get_stats()
+      limits = Features.get_all_limits()
+
+      # Add error handling for tracked systems and characters
+      tracked_systems = try do
+        get_tracked_systems()
+      rescue
+        e ->
+          Logger.error("Error getting tracked systems: #{inspect(e)}")
+          []
+      end
+
+      tracked_characters = try do
+        CacheRepo.get("map:characters") || []
+      rescue
+        e ->
+          Logger.error("Error getting tracked characters: #{inspect(e)}")
+          []
+      end
+
+      usage = %{
+        tracked_systems: %{
+          current: length(tracked_systems),
+          limit: limits.tracked_systems,
+          percentage: calculate_percentage(length(tracked_systems), limits.tracked_systems)
         },
-        config: %{
-          character_tracking_enabled: Config.character_tracking_enabled?(),
-          character_notifications_enabled: Config.character_notifications_enabled?(),
-          system_notifications_enabled: Config.system_notifications_enabled?()
+        tracked_characters: %{
+          current: length(tracked_characters),
+          limit: limits.tracked_characters,
+          percentage: calculate_percentage(length(tracked_characters), limits.tracked_characters)
+        },
+        notification_history: %{
+          limit: limits.notification_history
         }
       }
-    }
 
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, Jason.encode!(response))
+      response = %{
+        stats: stats,
+        license: license_info,
+        features: %{
+          limits: limits,
+          usage: usage,
+          enabled: %{
+            basic_notifications: Features.enabled?(:basic_notifications),
+            tracked_systems_notifications: Features.enabled?(:tracked_systems_notifications),
+            tracked_characters_notifications: Features.enabled?(:tracked_characters_notifications),
+            backup_kills_processing: Features.enabled?(:backup_kills_processing),
+            web_dashboard_full: Features.enabled?(:web_dashboard_full),
+            advanced_statistics: Features.enabled?(:advanced_statistics)
+          },
+          config: %{
+            character_tracking_enabled: Config.character_tracking_enabled?(),
+            character_notifications_enabled: Config.character_notifications_enabled?(),
+            system_notifications_enabled: Config.system_notifications_enabled?()
+          }
+        }
+      }
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(response))
+    rescue
+      e ->
+        Logger.error("Error processing /api/status: #{inspect(e)}")
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{error: "Internal server error", details: inspect(e)}))
+    end
   end
 
   get "/api/test-notification" do

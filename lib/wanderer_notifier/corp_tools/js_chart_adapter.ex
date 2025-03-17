@@ -1,8 +1,10 @@
 defmodule WandererNotifier.CorpTools.JSChartAdapter do
   @moduledoc """
-  Adapts JavaScript chart configurations for use with quickcharts.io.
-  Converts the JavaScript chart configurations in priv/charts to Elixir maps
-  that can be used with the quickcharts.io API.
+  Adapter for generating charts using JavaScript chart configurations.
+
+  This adapter is responsible for generating charts based on JavaScript chart configurations
+  stored in the priv/charts directory. It is different from the TPSChartAdapter which
+  generates charts directly using the QuickChart API without JavaScript configurations.
   """
   require Logger
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient

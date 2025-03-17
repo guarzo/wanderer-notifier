@@ -1,6 +1,9 @@
 defmodule WandererNotifier.CorpTools.ChartScheduler do
   @moduledoc """
   Schedules and sends charts to Discord on a regular basis.
+
+  This scheduler is responsible for JavaScript-based charts using the JSChartAdapter.
+  It is different from the TPSChartScheduler which handles TPS (Time, Pilots, Ships) charts.
   """
   use GenServer
   require Logger

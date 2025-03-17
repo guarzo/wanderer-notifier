@@ -1,6 +1,9 @@
 defmodule WandererNotifier.Service.TPSChartScheduler do
   @moduledoc """
   Schedules TPS chart generation and sending to Discord.
+
+  This scheduler is responsible for TPS (Time, Pilots, Ships) charts using the TPSChartAdapter.
+  It is different from the ChartScheduler which handles JavaScript-based charts.
   """
   use GenServer
   require Logger

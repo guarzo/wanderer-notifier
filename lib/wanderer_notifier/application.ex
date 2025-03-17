@@ -248,6 +248,12 @@ defmodule WandererNotifier.Application do
   # Helper function to get the children list
   defp get_children do
     [
+      # Start the License Manager
+      {WandererNotifier.License, []},
+
+      # Start the Stats tracking service
+      {WandererNotifier.Stats, []},
+
       # Start the Cache Repository
       {CacheRepo, []},
 
