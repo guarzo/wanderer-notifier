@@ -91,6 +91,8 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
+    Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
+
     if env() == :test do
       if @verbose_logging, do: Logger.info("DISCORD MOCK EMBED: #{title} - #{description}")
       :ok
@@ -102,6 +104,7 @@ defmodule WandererNotifier.Discord.Notifier do
           build_embed_payload(title, description, url, color)
         end
 
+      Logger.info("Discord embed payload built, sending to Discord API")
       send_payload(payload)
     end
   end
@@ -796,13 +799,17 @@ defmodule WandererNotifier.Discord.Notifier do
     url = build_url()
     json_payload = Jason.encode!(payload)
 
+    Logger.info("Sending Discord API request to URL: #{url}")
+    Logger.debug("Discord API payload: #{inspect(payload, pretty: true)}")
+
     case HttpClient.request("POST", url, headers(), json_payload) do
       {:ok, %{status_code: status}} when status in 200..299 ->
+        Logger.info("Discord API request successful with status #{status}")
         :ok
 
       {:ok, %{status_code: status, body: body}} ->
         Logger.error("Discord API request failed with status #{status}")
-        Logger.error("Discord API error response: Elided for security. Enable debug logs for details.")
+        Logger.error("Discord API error response: #{body}")
         {:error, body}
 
       {:error, err} ->

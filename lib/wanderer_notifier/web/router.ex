@@ -13,6 +13,7 @@ defmodule WandererNotifier.Web.Router do
   alias WandererNotifier.Config
   alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Helpers.NotificationHelpers
+  alias WandererNotifier.Web.ChartController
 
   plug(Plug.Logger)
 
@@ -73,6 +74,35 @@ defmodule WandererNotifier.Web.Router do
       |> put_resp_content_type("application/json")
       |> send_resp(503, Jason.encode!(%{status: "error", cache: cache_available, service: service_alive}))
     end
+  end
+
+  #
+  # CHART ROUTES
+  #
+
+  # Chart dashboard
+  get "/charts" do
+    ChartController.index(conn)
+  end
+
+  # Generate chart
+  get "/charts/generate" do
+    ChartController.generate(conn)
+  end
+
+  # Send chart to Discord
+  post "/charts/send" do
+    ChartController.send_chart(conn)
+  end
+
+  # Get TPS data
+  get "/charts/tps-data" do
+    ChartController.tps_data(conn)
+  end
+
+  # Debug TPS data structure
+  get "/charts/debug-tps-structure" do
+    ChartController.debug_tps_structure(conn)
   end
 
   #

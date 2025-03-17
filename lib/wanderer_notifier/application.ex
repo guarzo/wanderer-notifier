@@ -9,6 +9,7 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
+  alias WandererNotifier.CorpTools.ChartScheduler
 
   @impl true
   def start(_type, _args) do
@@ -70,58 +71,21 @@ defmodule WandererNotifier.Application do
             Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
         end
       end)
+
+      # Add the chart scheduler to the children list if EVE Corp Tools API is configured
+      children = get_children()
+      children = children ++ [
+        # Start the chart scheduler
+        {ChartScheduler, [interval: get_chart_scheduler_interval()]}
+      ]
+
+      # Start the supervisor with the updated children list
+      Supervisor.start_link(children, strategy: :one_for_one, name: WandererNotifier.Supervisor)
     else
       Logger.warning("EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}")
-    end
 
-    # Log notification configuration
-    character_tracking_enabled = Config.character_tracking_enabled?()
-    character_notifications_enabled = Config.character_notifications_enabled?()
-    system_notifications_enabled = Config.system_notifications_enabled?()
-
-    Logger.info("Character tracking enabled: #{character_tracking_enabled}")
-    Logger.info("Character notifications enabled: #{character_notifications_enabled}")
-    Logger.info("System notifications enabled: #{system_notifications_enabled}")
-
-    # Start the license validation service first
-    children = [
-      # Start the Cache Repository
-      WandererNotifier.Cache.Repository,
-
-      # Start the License validation service
-      WandererNotifier.License,
-
-      # Start the Stats tracking service
-      WandererNotifier.Stats,
-
-      # Start the Web server
-      {Plug.Cowboy, scheme: :http, plug: WandererNotifier.Web.Router, options: [port: Config.web_port(), ip: {0, 0, 0, 0}]},
-
-      # Start the main service that handles ZKill websocket
-      {WandererNotifier.Service, []}
-    ]
-
-    Logger.info("Starting supervisor with #{length(children)} children...")
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-
-    case Supervisor.start_link(children, opts) do
-      {:ok, pid} ->
-        Logger.info("Supervisor started successfully with PID: #{inspect(pid)}")
-
-        # Schedule license validation to run asynchronously
-        Process.send_after(self(), :validate_license, 1000)
-
-        # Check cache status after startup
-        Process.send_after(self(), :check_cache_status, 2000)
-
-        # Send a test notification after a short delay
-        Process.send_after(self(), :send_test_notification, 5000)
-
-        {:ok, pid}
-
-      error ->
-        Logger.error("Failed to start supervisor: #{inspect(error)}")
-        error
+      # Start the supervisor with the default children list
+      Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
     end
   end
 
@@ -263,5 +227,33 @@ defmodule WandererNotifier.Application do
   def reload(modules) do
     Logger.info("Reloaded modules: #{inspect(modules)}")
     :ok
+  end
+
+  # Helper function to get the chart scheduler interval
+  defp get_chart_scheduler_interval do
+    # Default is 24 hours (in milliseconds)
+    default_interval = 24 * 60 * 60 * 1000
+
+    # Try to get the interval from the environment variable
+    case System.get_env("CHART_SCHEDULER_INTERVAL_MS") do
+      nil -> default_interval
+      value ->
+        case Integer.parse(value) do
+          {interval, _} when interval > 0 -> interval
+          _ -> default_interval
+        end
+    end
+  end
+
+  # Helper function to get the children list
+  defp get_children do
+    [
+      # Start the Cache Repository
+      {CacheRepo, []},
+
+      # Start the Web Server
+      {WandererNotifier.Web.Server, []}
+    ]
+    |> Enum.filter(& &1)
   end
 end
