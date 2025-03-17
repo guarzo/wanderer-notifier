@@ -257,6 +257,9 @@ defmodule WandererNotifier.Application do
       # Start the Cache Repository
       {CacheRepo, []},
 
+      # Start the main service (which starts the WebSocket)
+      {WandererNotifier.Service, []},
+
       # Start the Web Server
       {WandererNotifier.Web.Server, []}
     ]

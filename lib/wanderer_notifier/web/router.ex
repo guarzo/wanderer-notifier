@@ -46,15 +46,18 @@ defmodule WandererNotifier.Web.Router do
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
   plug :dispatch
 
+  # Forward chart requests to the ChartController
+  forward "/charts", to: ChartController
+
   # React app routes - these need to be before other routes to ensure proper SPA routing
-  get "/charts" do
+  get "/charts-dashboard" do
     conn
     |> put_resp_header("content-type", "text/html; charset=utf-8")
     |> send_file(200, "priv/static/app/index.html")
   end
 
   # Handle client-side routing for the React app
-  get "/charts/*path" do
+  get "/charts-dashboard/*path" do
     conn
     |> put_resp_header("content-type", "text/html; charset=utf-8")
     |> send_file(200, "priv/static/app/index.html")
@@ -96,13 +99,6 @@ defmodule WandererNotifier.Web.Router do
       |> send_resp(503, Jason.encode!(%{status: "error", cache: cache_available, service: service_alive}))
     end
   end
-
-  #
-  # CHART ROUTES
-  #
-
-  # Forward chart requests to the ChartController
-  forward "/charts", to: ChartController
 
   #
   # API ROUTES (JSON)

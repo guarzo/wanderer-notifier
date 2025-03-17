@@ -17,7 +17,7 @@ function App() {
                 <FaHome />
                 <span>Home</span>
               </Link>
-              <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
+              <Link to="/charts-dashboard" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                 <FaChartBar />
                 <span>Charts</span>
               </Link>
@@ -27,7 +27,7 @@ function App() {
         
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/charts" element={<ChartDashboard />} />
+          <Route path="/charts-dashboard" element={<ChartDashboard />} />
         </Routes>
       </div>
     </Router>

@@ -943,12 +943,57 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
         # Log the URL for debugging
         Logger.info("Sending chart to Discord: #{url}")
 
-        # Send the chart as an embed
-        notifier.send_embed(title, description, url)
+        # Check if URL is too long for Discord embed (Discord has a limit around 2000 characters)
+        url_length = String.length(url)
+
+        if url_length > 1000 do
+          # URL is too long, download the image and send as attachment instead
+          Logger.info("URL is too long (#{url_length} chars), sending as attachment instead")
+          send_chart_as_attachment(notifier, url, title, description)
+        else
+          # URL is acceptable length, send as embed
+          notifier.send_embed(title, description, url)
+        end
 
       {:error, reason} ->
         Logger.error("Failed to generate chart: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  # Helper function to download chart image and send as attachment
+  defp send_chart_as_attachment(notifier, url, title, description) do
+    # Create a temporary file for the image
+    temp_file = Path.join(System.tmp_dir(), "chart_#{:rand.uniform(1000000)}.png")
+
+    try do
+      # Download the image
+      case HTTPoison.get(url, [], [follow_redirect: true]) do
+        {:ok, %{status_code: 200, body: body}} ->
+          # Write the image to the temp file
+          File.write!(temp_file, body)
+
+          # Send the image as an attachment with the title and description
+          Logger.info("Sending chart as attachment: #{temp_file}")
+          notifier.send_file(temp_file, title, description)
+
+        {:ok, %{status_code: status_code}} ->
+          error_msg = "Failed to download chart image: HTTP status #{status_code}"
+          Logger.error(error_msg)
+          {:error, error_msg}
+
+        {:error, reason} ->
+          error_msg = "Failed to download chart image: #{inspect(reason)}"
+          Logger.error(error_msg)
+          {:error, error_msg}
+      end
+    rescue
+      e ->
+        Logger.error("Error sending chart as attachment: #{inspect(e)}")
+        {:error, "Error sending chart as attachment: #{inspect(e)}"}
+    after
+      # Clean up the temp file
+      File.rm(temp_file)
     end
   end
 

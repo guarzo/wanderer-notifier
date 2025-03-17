@@ -109,6 +109,85 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
+  @doc """
+  Sends a file as an attachment to Discord with an optional message.
+
+  ## Parameters
+    - file_path: Path to the file to send
+    - title: Title for the message (optional)
+    - description: Description for the message (optional)
+
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
+  """
+  def send_file(file_path, title \\ nil, description \\ nil) do
+    Logger.info("Discord.Notifier.send_file called with file: #{file_path}")
+
+    if env() == :test do
+      if @verbose_logging, do: Logger.info("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")
+      :ok
+    else
+      # Build the form data for the file upload
+      file_content = File.read!(file_path)
+      filename = Path.basename(file_path)
+
+      # Prepare the payload with content if title or description is provided
+      payload_json = if title || description do
+        content = case {title, description} do
+          {nil, nil} -> ""
+          {title, nil} -> title
+          {nil, description} -> description
+          {title, description} -> "#{title}\n#{description}"
+        end
+        Jason.encode!(%{"content" => content})
+      else
+        Jason.encode!(%{})
+      end
+
+      # Prepare the URL and headers
+      url = "#{@base_url}/#{channel_id()}/messages"
+
+      headers = [
+        {"Authorization", "Bot #{bot_token()}"},
+        {"User-Agent", "WandererNotifier/1.0"}
+      ]
+
+      # Use HTTPoison directly for multipart requests
+      boundary = "------------------------#{:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)}"
+
+      # Create multipart body manually
+      body = "--#{boundary}\r\n" <>
+             "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n" <>
+             "Content-Type: application/octet-stream\r\n\r\n" <>
+             file_content <>
+             "\r\n--#{boundary}\r\n" <>
+             "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n" <>
+             payload_json <>
+             "\r\n--#{boundary}--\r\n"
+
+      # Add content-type header with boundary
+      headers = [{"Content-Type", "multipart/form-data; boundary=#{boundary}"} | headers]
+
+      # Send the request
+      case HTTPoison.post(url, body, headers) do
+        {:ok, %{status_code: status_code, body: response_body}} when status_code in 200..299 ->
+          Logger.info("Successfully sent file to Discord")
+          :ok
+
+        {:ok, %{status_code: status_code, body: response_body}} ->
+          error_msg = "Failed to send file to Discord: HTTP #{status_code}, #{response_body}"
+          Logger.error(error_msg)
+          {:error, error_msg}
+
+        {:error, %HTTPoison.Error{reason: reason}} ->
+          error_msg = "Failed to send file to Discord: #{inspect(reason)}"
+          Logger.error(error_msg)
+          {:error, error_msg}
+      end
+    end
+  end
+
   defp process_test_embed(title, description, url, color) do
     recent_kills = WandererNotifier.Service.KillProcessor.get_recent_kills() || []
 
