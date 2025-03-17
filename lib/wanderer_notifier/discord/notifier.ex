@@ -19,9 +19,6 @@ defmodule WandererNotifier.Discord.Notifier do
   @base_url "https://discord.com/api/channels"
   @verbose_logging false  # Set to true to enable verbose logging
 
-  @callback send_message(String.t()) :: :ok | {:error, any()}
-  @callback send_embed(String.t(), String.t(), any(), integer()) :: :ok | {:error, any()}
-
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
   # Use runtime configuration so tests can override it
@@ -34,6 +31,12 @@ defmodule WandererNotifier.Discord.Notifier do
       "" when environment != :test -> raise error_msg
       value -> value
     end
+  end
+
+  # Helper function to handle test mode logging and response
+  defp handle_test_mode(log_message) do
+    if @verbose_logging, do: Logger.info(log_message)
+    :ok
   end
 
   defp channel_id,
@@ -51,6 +54,17 @@ defmodule WandererNotifier.Discord.Notifier do
     ]
   end
 
+  # -- HELPER FUNCTIONS --
+
+  # Retrieves a value from a map checking both string and atom keys.
+  # Tries each key in the provided list until a value is found.
+  @spec get_value(map(), [String.t()], any()) :: any()
+  defp get_value(map, keys, default) do
+    Enum.find_value(keys, default, fn key ->
+      Map.get(map, key) || Map.get(map, String.to_atom(key))
+    end)
+  end
+
   # -- MESSAGE SENDING --
 
   @doc """
@@ -59,8 +73,7 @@ defmodule WandererNotifier.Discord.Notifier do
   @impl WandererNotifier.NotifierBehaviour
   def send_message(message) when is_binary(message) do
     if env() == :test do
-      if @verbose_logging, do: Logger.info("DISCORD MOCK: #{message}")
-      :ok
+      handle_test_mode("DISCORD MOCK: #{message}")
     else
       payload =
         if String.contains?(message, "test kill notification") do
@@ -94,8 +107,7 @@ defmodule WandererNotifier.Discord.Notifier do
     Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
 
     if env() == :test do
-      if @verbose_logging, do: Logger.info("DISCORD MOCK EMBED: #{title} - #{description}")
-      :ok
+      handle_test_mode("DISCORD MOCK EMBED: #{title} - #{description}")
     else
       payload =
         if title == "Test Kill" do
@@ -106,85 +118,6 @@ defmodule WandererNotifier.Discord.Notifier do
 
       Logger.info("Discord embed payload built, sending to Discord API")
       send_payload(payload)
-    end
-  end
-
-  @doc """
-  Sends a file as an attachment to Discord with an optional message.
-
-  ## Parameters
-    - file_path: Path to the file to send
-    - title: Title for the message (optional)
-    - description: Description for the message (optional)
-
-  ## Returns
-    - :ok on success
-    - {:error, reason} on failure
-  """
-  def send_file(file_path, title \\ nil, description \\ nil) do
-    Logger.info("Discord.Notifier.send_file called with file: #{file_path}")
-
-    if env() == :test do
-      if @verbose_logging, do: Logger.info("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")
-      :ok
-    else
-      # Build the form data for the file upload
-      file_content = File.read!(file_path)
-      filename = Path.basename(file_path)
-
-      # Prepare the payload with content if title or description is provided
-      payload_json = if title || description do
-        content = case {title, description} do
-          {nil, nil} -> ""
-          {title, nil} -> title
-          {nil, description} -> description
-          {title, description} -> "#{title}\n#{description}"
-        end
-        Jason.encode!(%{"content" => content})
-      else
-        Jason.encode!(%{})
-      end
-
-      # Prepare the URL and headers
-      url = "#{@base_url}/#{channel_id()}/messages"
-
-      headers = [
-        {"Authorization", "Bot #{bot_token()}"},
-        {"User-Agent", "WandererNotifier/1.0"}
-      ]
-
-      # Use HTTPoison directly for multipart requests
-      boundary = "------------------------#{:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)}"
-
-      # Create multipart body manually
-      body = "--#{boundary}\r\n" <>
-             "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n" <>
-             "Content-Type: application/octet-stream\r\n\r\n" <>
-             file_content <>
-             "\r\n--#{boundary}\r\n" <>
-             "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n" <>
-             payload_json <>
-             "\r\n--#{boundary}--\r\n"
-
-      # Add content-type header with boundary
-      headers = [{"Content-Type", "multipart/form-data; boundary=#{boundary}"} | headers]
-
-      # Send the request
-      case HTTPoison.post(url, body, headers) do
-        {:ok, %{status_code: status_code, body: response_body}} when status_code in 200..299 ->
-          Logger.info("Successfully sent file to Discord")
-          :ok
-
-        {:ok, %{status_code: status_code, body: response_body}} ->
-          error_msg = "Failed to send file to Discord: HTTP #{status_code}, #{response_body}"
-          Logger.error(error_msg)
-          {:error, error_msg}
-
-        {:error, %HTTPoison.Error{reason: reason}} ->
-          error_msg = "Failed to send file to Discord: #{inspect(reason)}"
-          Logger.error(error_msg)
-          {:error, error_msg}
-      end
     end
   end
 
@@ -215,18 +148,6 @@ defmodule WandererNotifier.Discord.Notifier do
   # Inserts a key only if the value is not nil.
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  @doc """
-  Formats a timestamp string into a human-readable format.
-  """
-  def format_time(timestamp) when is_binary(timestamp) do
-    case DateTime.from_iso8601(timestamp) do
-      {:ok, datetime, _} -> DateTime.to_string(datetime)
-      _ -> timestamp
-    end
-  end
-
-  def format_time(_), do: "Unknown Time"
 
   @doc """
   Sends a Discord embed using the Discord API.
@@ -262,8 +183,7 @@ defmodule WandererNotifier.Discord.Notifier do
   @impl WandererNotifier.NotifierBehaviour
   def send_enriched_kill_embed(enriched_kill, kill_id) do
     if env() == :test do
-      Logger.info("TEST MODE: Would send enriched kill embed for kill_id=#{kill_id}")
-      :ok
+      handle_test_mode("TEST MODE: Would send enriched kill embed for kill_id=#{kill_id}")
     else
       enriched_kill = fully_enrich_kill_data(enriched_kill)
       victim = Map.get(enriched_kill, "victim") || %{}
@@ -278,13 +198,6 @@ defmodule WandererNotifier.Discord.Notifier do
         send_message("Kill Alert: #{victim_name} lost a #{victim_ship} in #{system_name}.")
       end
     end
-  end
-
-  # Retrieves a value from a map checking both string and atom keys.
-  defp get_value(map, keys, default) do
-    Enum.find_value(keys, default, fn key ->
-      Map.get(map, key) || Map.get(map, String.to_atom(key))
-    end)
   end
 
   # -- ENRICHMENT FUNCTIONS --
@@ -516,8 +429,7 @@ defmodule WandererNotifier.Discord.Notifier do
   def send_new_tracked_character_notification(character) when is_map(character) do
     if env() == :test do
       character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
-      if @verbose_logging, do: Logger.info("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
-      :ok
+      handle_test_mode("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
     else
       try do
         WandererNotifier.Stats.increment(:characters)
@@ -613,8 +525,7 @@ defmodule WandererNotifier.Discord.Notifier do
   def send_new_system_notification(system) when is_map(system) do
     if env() == :test do
       system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-      if @verbose_logging, do: Logger.info("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
-      :ok
+      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     else
       try do
         WandererNotifier.Stats.increment(:systems)
@@ -622,24 +533,22 @@ defmodule WandererNotifier.Discord.Notifier do
         _ -> :ok
       end
 
-      system =
-        if Map.has_key?(system, "data") and is_map(system["data"]) do
-          Map.merge(system, system["data"])
-        else
-          system
-        end
-
+      system = normalize_system_data(system)
       create_and_send_system_embed(system)
     end
   end
 
+  # Helper function to normalize system data by merging nested data if present
+  defp normalize_system_data(system) do
+    if Map.has_key?(system, "data") and is_map(system["data"]) do
+      Map.merge(system, system["data"])
+    else
+      system
+    end
+  end
+
   defp create_and_send_system_embed(system) do
-    system =
-      if Map.has_key?(system, "data") and is_map(system["data"]) do
-        Map.merge(system, system["data"])
-      else
-        system
-      end
+    system = normalize_system_data(system)
 
     system_id =
       Map.get(system, "solar_system_id") ||
@@ -651,12 +560,6 @@ defmodule WandererNotifier.Discord.Notifier do
         Map.get(system, "system_name") ||
         Map.get(system, :system_name) ||
         "Unknown System"
-
-    security =
-      Map.get(system, "security") ||
-        Map.get(system, :security) ||
-        Map.get(system, "security_status") ||
-        Map.get(system, :security_status)
 
     type_description =
       Map.get(system, "type_description") ||
@@ -671,26 +574,11 @@ defmodule WandererNotifier.Discord.Notifier do
       statics = Map.get(system, "statics") || Map.get(system, :statics) || []
       region_name = Map.get(system, "region_name") || Map.get(system, :region_name)
 
-      security_str =
-        case security do
-          sec when is_binary(sec) -> sec
-          sec when is_float(sec) -> Float.to_string(sec)
-          _ -> ""
-        end
-
-      title =
-        if security_str != "" do
-          "New #{security_str} #{type_description} System Mapped"
-        else
-          "New #{type_description} System Mapped"
-        end
+      title = "New #{type_description} System Mapped"
 
       description =
-        if security_str != "" do
-          "A new #{security_str} #{type_description} system has been discovered and added to the map."
-        else
-          "A new #{type_description} system has been discovered and added to the map."
-        end
+          "A #{type_description} system has been discovered and added to the map."
+
 
       is_wormhole = String.contains?(type_description, "Class")
       sun_type_id = Map.get(system, "sun_type_id") || Map.get(system, :sun_type_id)
@@ -898,37 +786,79 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   @doc """
-  Sends TPS (Time, Pilots, Ships) charts to Discord.
+  Sends a file as an attachment to Discord with an optional message.
 
-  Args:
-    - chart_type: The type of chart to send (:summary, :top_ships, :kill_activity, :character_performance, or :all)
+  ## Parameters
+    - file_path: Path to the file to send
+    - title: Title for the message (optional)
+    - description: Description for the message (optional)
 
-  Returns :ok on success, {:error, reason} on failure.
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
   """
-  def send_tps_charts(chart_type \\ :all) do
-    alias WandererNotifier.CorpTools.ChartAdapter
+  def send_file(file_path, title \\ nil, description \\ nil) do
+    Logger.info("Discord.Notifier.send_file called with file: #{file_path}")
 
     if env() == :test do
-      Logger.info("TEST MODE: Would send TPS charts to Discord")
-      :ok
+      handle_test_mode("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")
     else
-      case chart_type do
-        :all ->
-          ChartAdapter.test_send_all_charts()
+      # Build the form data for the file upload
+      file_content = File.read!(file_path)
+      filename = Path.basename(file_path)
+
+      # Prepare the payload with content if title or description is provided
+      payload_json = if title || description do
+        content = case {title, description} do
+          {nil, nil} -> ""
+          {title, nil} -> title
+          {nil, description} -> description
+          {title, description} -> "#{title}\n#{description}"
+        end
+        Jason.encode!(%{"content" => content})
+      else
+        Jason.encode!(%{})
+      end
+
+      # Prepare the URL and headers
+      url = "#{@base_url}/#{channel_id()}/messages"
+
+      headers = [
+        {"Authorization", "Bot #{bot_token()}"},
+        {"User-Agent", "WandererNotifier/1.0"}
+      ]
+
+      # Use HTTPoison directly for multipart requests
+      boundary = "------------------------#{:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)}"
+
+      # Create multipart body manually
+      body = "--#{boundary}\r\n" <>
+             "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n" <>
+             "Content-Type: application/octet-stream\r\n\r\n" <>
+             file_content <>
+             "\r\n--#{boundary}\r\n" <>
+             "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n" <>
+             payload_json <>
+             "\r\n--#{boundary}--\r\n"
+
+      # Add content-type header with boundary
+      headers = [{"Content-Type", "multipart/form-data; boundary=#{boundary}"} | headers]
+
+      # Send the request
+      case HTTPoison.post(url, body, headers) do
+        {:ok, %{status_code: status_code, body: _response_body}} when status_code in 200..299 ->
+          Logger.info("Successfully sent file to Discord")
           :ok
 
-        specific_type when specific_type in [:summary, :top_ships, :kill_activity, :character_performance] ->
-          {title, description} = case specific_type do
-            :summary -> {"Kill Summary", "Overview of kills and value for the last 12 months"}
-            :top_ships -> {"Top Ships Killed", "Most frequently killed ship types"}
-            :kill_activity -> {"Kill Activity Over Time", "Monthly kill activity trend"}
-            :character_performance -> {"Character Performance", "Performance metrics by character"}
-          end
+        {:ok, %{status_code: status_code, body: response_body}} ->
+          error_msg = "Failed to send file to Discord: HTTP #{status_code}, #{response_body}"
+          Logger.error(error_msg)
+          {:error, error_msg}
 
-          ChartAdapter.send_chart_to_discord(specific_type, title, description)
-
-        _ ->
-          {:error, "Invalid chart type"}
+        {:error, %HTTPoison.Error{reason: reason}} ->
+          error_msg = "Failed to send file to Discord: #{inspect(reason)}"
+          Logger.error(error_msg)
+          {:error, error_msg}
       end
     end
   end
