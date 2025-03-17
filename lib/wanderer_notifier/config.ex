@@ -29,6 +29,56 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
+  Returns the EVE Corp Tools API URL from the environment.
+  """
+  def corp_tools_api_url do
+    Application.get_env(:wanderer_notifier, :corp_tools_api_url)
+  end
+
+  @doc """
+  Returns the EVE Corp Tools API token from the environment.
+  """
+  def corp_tools_api_token do
+    Application.get_env(:wanderer_notifier, :corp_tools_api_token)
+  end
+
+  @doc """
+  Returns whether charts functionality is enabled.
+  Defaults to false if not specified.
+  """
+  def charts_enabled? do
+    case System.get_env("ENABLE_CHARTS") do
+      "true" -> true
+      "1" -> true
+      _ -> false
+    end
+  end
+
+  @doc """
+  Returns whether corp tools functionality is enabled.
+  Defaults to false if not specified.
+  """
+  def corp_tools_enabled? do
+    case System.get_env("ENABLE_CORP_TOOLS") do
+      "true" -> true
+      "1" -> true
+      _ -> charts_enabled?() # Fallback to charts_enabled for backward compatibility
+    end
+  end
+
+  @doc """
+  Returns whether map tools functionality is enabled.
+  Defaults to false if not specified.
+  """
+  def map_tools_enabled? do
+    case System.get_env("ENABLE_MAP_TOOLS") do
+      "true" -> true
+      "1" -> true
+      _ -> false
+    end
+  end
+
+  @doc """
   Returns the map URL from the environment.
   If MAP_URL_WITH_NAME is set, it will be used.
   Otherwise, it will construct the URL from MAP_URL and MAP_NAME.
@@ -54,6 +104,13 @@ defmodule WandererNotifier.Config do
   """
   def map_token do
     Application.get_env(:wanderer_notifier, :map_token)
+  end
+
+  @doc """
+  Returns the map CSRF token from the environment.
+  """
+  def map_csrf_token do
+    Application.get_env(:wanderer_notifier, :map_csrf_token)
   end
 
   @doc """
