@@ -812,18 +812,6 @@ defmodule WandererNotifier.CorpTools.ChartAdapter do
     end
   end
 
-  # Helper function to format ISK values
-  defp format_isk_value(value) when is_float(value) or is_integer(value) do
-    cond do
-      value < 1000 -> "<1k ISK"
-      value < 1_000_000 -> "#{round(value / 1000)}k ISK"
-      value < 1_000_000_000 -> "#{round(value / 1_000_000)}M ISK"
-      true -> "#{Float.round(value / 1_000_000_000, 2)}B ISK"
-    end
-  end
-
-  defp format_isk_value(_), do: "0 ISK"
-
   @doc """
   Generates a chart URL for top systems from TPS data.
   Uses the existing top_systems chart configuration.

@@ -1059,4 +1059,18 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
         {:error, reason}
     end
   end
+
+  @doc """
+  Generates a chart based on the provided type.
+
+  Returns {:ok, url} on success, {:error, reason} on failure.
+  """
+  def generate_chart(chart_type) do
+    case chart_type do
+      :damage_final_blows -> generate_damage_final_blows_chart()
+      :combined_losses -> generate_combined_losses_chart()
+      :kill_activity -> generate_kill_activity_chart()
+      _ -> {:error, "Invalid chart type"}
+    end
+  end
 end

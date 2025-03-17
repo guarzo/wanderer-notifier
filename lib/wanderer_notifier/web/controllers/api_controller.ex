@@ -5,7 +5,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   use Plug.Router
   require Logger
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
-  alias WandererNotifier.CorpTools.ChartGenerator
   alias WandererNotifier.CorpTools.TPSChartAdapter
 
   plug :match

@@ -72,7 +72,7 @@ defmodule WandererNotifier.CorpTools.ChartScheduler do
     case CorpToolsClient.get_tps_data() do
       {:ok, _data} ->
         # Send all charts
-        results = send_charts()
+        _results = send_charts()
 
         # Update state with last sent timestamp
         {:noreply, %{state | last_sent: DateTime.utc_now()}}
@@ -100,14 +100,15 @@ defmodule WandererNotifier.CorpTools.ChartScheduler do
 
   @impl true
   def handle_info(:send_charts, state) do
-    # Send all charts
-    send_charts()
+    Logger.info("Sending charts to Discord...")
 
-    # Schedule next sending
+    # Send charts
+    _results = send_charts()
+
+    # Schedule next run
     schedule_charts(state.interval)
 
-    # Update state with last sent timestamp
-    {:noreply, %{state | last_sent: DateTime.utc_now()}}
+    {:noreply, state}
   end
 
   # Helper Functions
