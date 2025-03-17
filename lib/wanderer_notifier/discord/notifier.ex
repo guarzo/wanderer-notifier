@@ -810,4 +810,40 @@ defmodule WandererNotifier.Discord.Notifier do
         {:error, err}
     end
   end
+
+  @doc """
+  Sends TPS (Time, Pilots, Ships) charts to Discord.
+
+  Args:
+    - chart_type: The type of chart to send (:summary, :top_ships, :kill_activity, :character_performance, or :all)
+
+  Returns :ok on success, {:error, reason} on failure.
+  """
+  def send_tps_charts(chart_type \\ :all) do
+    alias WandererNotifier.CorpTools.ChartAdapter
+
+    if env() == :test do
+      Logger.info("TEST MODE: Would send TPS charts to Discord")
+      :ok
+    else
+      case chart_type do
+        :all ->
+          ChartAdapter.test_send_all_charts()
+          :ok
+
+        specific_type when specific_type in [:summary, :top_ships, :kill_activity, :character_performance] ->
+          {title, description} = case specific_type do
+            :summary -> {"Kill Summary", "Overview of kills and value for the last 12 months"}
+            :top_ships -> {"Top Ships Killed", "Most frequently killed ship types"}
+            :kill_activity -> {"Kill Activity Over Time", "Monthly kill activity trend"}
+            :character_performance -> {"Character Performance", "Performance metrics by character"}
+          end
+
+          ChartAdapter.send_chart_to_discord(specific_type, title, description)
+
+        _ ->
+          {:error, "Invalid chart type"}
+      end
+    end
+  end
 end

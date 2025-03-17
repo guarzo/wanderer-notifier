@@ -29,6 +29,20 @@ defmodule WandererNotifier.Config do
   end
 
   @doc """
+  Returns the EVE Corp Tools API URL from the environment.
+  """
+  def corp_tools_api_url do
+    Application.get_env(:wanderer_notifier, :corp_tools_api_url)
+  end
+
+  @doc """
+  Returns the EVE Corp Tools API token from the environment.
+  """
+  def corp_tools_api_token do
+    Application.get_env(:wanderer_notifier, :corp_tools_api_token)
+  end
+
+  @doc """
   Returns the map URL from the environment.
   If MAP_URL_WITH_NAME is set, it will be used.
   Otherwise, it will construct the URL from MAP_URL and MAP_NAME.

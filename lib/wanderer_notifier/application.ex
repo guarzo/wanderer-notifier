@@ -8,6 +8,7 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
 
   @impl true
   def start(_type, _args) do
@@ -40,6 +41,38 @@ defmodule WandererNotifier.Application do
     Logger.info("License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}")
     Logger.info("License Manager URL: #{license_manager_url || "Not configured"}")
     Logger.info("Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}")
+
+    # Check EVE Corp Tools API configuration
+    corp_tools_api_url = Config.corp_tools_api_url()
+    corp_tools_api_token = Config.corp_tools_api_token()
+
+    if corp_tools_api_url && corp_tools_api_token do
+      Logger.info("EVE Corp Tools API URL: #{corp_tools_api_url}")
+      Logger.info("EVE Corp Tools API Token configured: Yes")
+
+      # Perform health check
+      Task.start(fn ->
+        # Add a small delay to ensure the application is fully started
+        Process.sleep(2000)
+
+        case CorpToolsClient.health_check() do
+          :ok ->
+            Logger.info("EVE Corp Tools API health check passed")
+            # Schedule periodic health checks
+            schedule_corp_tools_health_check()
+          {:error, :connection_refused} ->
+            Logger.warning("EVE Corp Tools API connection refused. Will retry in 30 seconds.")
+            # Schedule a retry after 30 seconds
+            Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
+          {:error, reason} ->
+            Logger.error("EVE Corp Tools API health check failed: #{inspect(reason)}")
+            # Schedule a retry after 60 seconds
+            Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
+        end
+      end)
+    else
+      Logger.warning("EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}")
+    end
 
     # Log notification configuration
     character_tracking_enabled = Config.character_tracking_enabled?()
@@ -152,6 +185,52 @@ defmodule WandererNotifier.Application do
     Logger.info("Cache status - Characters: #{length(characters)}")
 
     {:noreply, nil}
+  end
+
+  # Handle retry for EVE Corp Tools API health check
+  def handle_info(:retry_corp_tools_health_check, _state) do
+    Logger.info("Retrying EVE Corp Tools API health check...")
+
+    case CorpToolsClient.health_check() do
+      :ok ->
+        Logger.info("EVE Corp Tools API health check passed on retry")
+        # Schedule periodic health checks
+        schedule_corp_tools_health_check()
+      {:error, :connection_refused} ->
+        Logger.warning("EVE Corp Tools API connection still refused. Will retry in 60 seconds.")
+        # Schedule another retry after 60 seconds
+        Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
+      {:error, reason} ->
+        Logger.error("EVE Corp Tools API health check failed on retry: #{inspect(reason)}")
+        # Schedule another retry after 120 seconds
+        Process.send_after(self(), :retry_corp_tools_health_check, 120_000)
+    end
+
+    {:noreply, nil}
+  end
+
+  # Handle periodic health check for EVE Corp Tools API
+  def handle_info(:corp_tools_health_check, _state) do
+    Logger.debug("Performing periodic EVE Corp Tools API health check...")
+
+    case CorpToolsClient.health_check() do
+      :ok ->
+        Logger.debug("Periodic EVE Corp Tools API health check passed")
+        # Schedule the next health check
+        schedule_corp_tools_health_check()
+      {:error, reason} ->
+        Logger.warning("Periodic EVE Corp Tools API health check failed: #{inspect(reason)}")
+        # Schedule a retry sooner
+        Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
+    end
+
+    {:noreply, nil}
+  end
+
+  # Schedule periodic health checks for EVE Corp Tools API
+  defp schedule_corp_tools_health_check do
+    # Schedule a health check every 5 minutes
+    Process.send_after(self(), :corp_tools_health_check, 5 * 60 * 1000)
   end
 
   @doc """

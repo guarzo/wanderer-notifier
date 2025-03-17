@@ -34,6 +34,11 @@ config :wanderer_notifier,
   map_url_with_name: System.get_env("MAP_URL_WITH_NAME"),
   map_token: System.get_env("MAP_TOKEN")
 
+# EVE Corp Tools API Configuration
+config :wanderer_notifier,
+  corp_tools_api_url: System.get_env("CORP_TOOLS_API_URL"),
+  corp_tools_api_token: System.get_env("CORP_TOOLS_API_TOKEN")
+
 # License Configuration
 config :wanderer_notifier,
   license_key: System.get_env("LICENSE_KEY"),
