@@ -33,40 +33,71 @@ defmodule WandererNotifier.CorpTools.Client do
 
   @doc """
   Performs a health check on the EVE Corp Tools API.
-  Returns :ok if the API is operational, {:error, reason} otherwise.
+  Returns :ok if the API is operational or if corp tools is disabled, {:error, reason} otherwise.
   """
   def health_check do
-    url = "#{Config.corp_tools_api_url()}/health"
-    headers = [
-      {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
-      {"Content-Type", "application/json"}
-    ]
+    # Skip the health check if corp tools is disabled
+    unless WandererNotifier.Config.corp_tools_enabled?() do
+      :ok
+    else
+      url = "#{WandererNotifier.Config.corp_tools_api_url()}/health"
+      headers = [
+        {"Authorization", "Bearer #{WandererNotifier.Config.corp_tools_api_token()}"},
+        {"Content-Type", "application/json"}
+      ]
 
-    Logger.info("Performing health check for EVE Corp Tools API at #{url}")
+      case HttpClient.request("GET", url, headers, "", max_retries: 1, follow_redirects: true) do
+        {:ok, %{status_code: status, body: body}} when status in 200..299 ->
+          case Jason.decode(body) do
+            {:ok, %{"status" => "ok"}} ->
+              :ok
+            {:ok, response} ->
+              Logger.error("EVE Corp Tools API health check failed: #{inspect(response)}")
+              {:error, "Invalid health check response"}
+            {:error, error} ->
+              Logger.error("Failed to parse EVE Corp Tools API health check response: #{inspect(error)}")
+              {:error, "Failed to parse response"}
+          end
+        # Log redirects but don't treat them as errors
+        {:ok, %HTTPoison.MaybeRedirect{status_code: status, redirect_url: redirect_url}} when status in [301, 302, 307, 308] ->
+          Logger.warning("EVE Corp Tools API health check redirected to #{redirect_url}")
 
-    case HttpClient.request("GET", url, headers, "", max_retries: 1) do
-      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        case Jason.decode(body) do
-          {:ok, %{"status" => "ok"}} ->
-            Logger.info("EVE Corp Tools API health check successful")
-            :ok
-          {:ok, response} ->
-            Logger.error("EVE Corp Tools API health check failed: #{inspect(response)}")
-            {:error, "Invalid health check response"}
-          {:error, error} ->
-            Logger.error("Failed to parse EVE Corp Tools API health check response: #{inspect(error)}")
-            {:error, "Failed to parse response"}
-        end
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.error("EVE Corp Tools API health check failed with status #{status}: #{body}")
-        {:error, "API returned status #{status}"}
-      {:error, %HTTPoison.Error{reason: :econnrefused}} ->
-        Logger.warning("EVE Corp Tools API connection refused. The service might be running on a different host or port.")
-        Logger.info("If the service is running on your host machine, use 'host.docker.internal' instead of 'localhost' in CORP_TOOLS_API_URL")
-        {:error, :connection_refused}
-      {:error, reason} ->
-        Logger.error("EVE Corp Tools API health check request failed: #{inspect(reason)}")
-        {:error, reason}
+          # Follow the redirect manually and check the health at the new URL
+          redirect_headers = [
+            {"Authorization", "Bearer #{WandererNotifier.Config.corp_tools_api_token()}"},
+            {"Content-Type", "application/json"}
+          ]
+
+          case HttpClient.request("GET", redirect_url, redirect_headers, "", max_retries: 1) do
+            {:ok, %{status_code: redirect_status, body: redirect_body}} when redirect_status in 200..299 ->
+              case Jason.decode(redirect_body) do
+                {:ok, %{"status" => "ok"}} ->
+                  :ok
+                {:ok, redirect_response} ->
+                  Logger.error("EVE Corp Tools API health check failed after redirect: #{inspect(redirect_response)}")
+                  {:error, "Invalid health check response after redirect"}
+                {:error, redirect_error} ->
+                  Logger.error("Failed to parse EVE Corp Tools API health check response after redirect: #{inspect(redirect_error)}")
+                  {:error, "Failed to parse response after redirect"}
+              end
+            {:ok, %{status_code: redirect_status, body: redirect_body}} ->
+              Logger.error("EVE Corp Tools API health check failed after redirect with status #{redirect_status}: #{redirect_body}")
+              {:error, "API returned status #{redirect_status} after redirect"}
+            {:error, redirect_reason} ->
+              Logger.error("EVE Corp Tools API health check request failed after redirect: #{inspect(redirect_reason)}")
+              {:error, redirect_reason}
+          end
+        {:ok, %{status_code: status, body: body}} ->
+          Logger.error("EVE Corp Tools API health check failed with status #{status}: #{body}")
+          {:error, "API returned status #{status}"}
+        {:error, %HTTPoison.Error{reason: :econnrefused}} ->
+          Logger.warning("EVE Corp Tools API connection refused. The service might be running on a different host or port.")
+          Logger.info("If the service is running on your host machine, use 'host.docker.internal' instead of 'localhost' in CORP_TOOLS_API_URL")
+          {:error, :connection_refused}
+        {:error, reason} ->
+          Logger.error("EVE Corp Tools API health check request failed: #{inspect(reason)}")
+          {:error, reason}
+      end
     end
   end
 

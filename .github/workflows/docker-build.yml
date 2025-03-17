@@ -35,7 +35,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag }}
+          tags: |
+            guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag }}
+            guarzo/wanderer-notifier:latest
 
       - name: Create and push Git tag
         env:

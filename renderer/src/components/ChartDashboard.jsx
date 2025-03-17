@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FaSync, FaDiscord, FaChartBar, FaExclamationTriangle, FaCircleNotch } from 'react-icons/fa';
+import { FaSync, FaDiscord, FaChartBar, FaExclamationTriangle, FaCircleNotch, FaUsers } from 'react-icons/fa';
+import ChartCard from './ChartCard';
+import ActivityTable from './ActivityTable';
 
 export default function ChartDashboard() {
   const [charts, setCharts] = useState({
@@ -10,9 +12,28 @@ export default function ChartDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusMessages, setStatusMessages] = useState({});
+  const [activeTab, setActiveTab] = useState('charts');
 
   useEffect(() => {
-    loadCharts();
+    // Check if the API is available
+    fetch('/charts/config')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (!data.corp_tools_enabled) {
+          throw new Error('Corp Tools functionality is not enabled');
+        }
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('Error connecting to API:', error);
+        setError(error.message);
+        setLoading(false);
+      });
   }, []);
 
   async function loadCharts() {
@@ -116,6 +137,35 @@ export default function ChartDashboard() {
     window.open('/charts/debug-tps-structure', '_blank');
   }
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'charts':
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <ChartCard
+              title="Damage & Final Blows"
+              description="Top pilots by damage done and final blows"
+              chartType="damage_final_blows"
+            />
+            <ChartCard
+              title="Combined Losses"
+              description="Top pilots by combined ship and pod losses"
+              chartType="combined_losses"
+            />
+            <ChartCard
+              title="Kill Activity"
+              description="Kill activity over time"
+              chartType="kill_activity"
+            />
+          </div>
+        );
+      case 'activity':
+        return <ActivityTable />;
+      default:
+        return <div>Select a tab to view content</div>;
+    }
+  };
+
   if (loading && !Object.values(charts).some(chart => chart)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -125,183 +175,61 @@ export default function ChartDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold text-indigo-400 flex items-center space-x-2 mb-4 sm:mb-0">
-            <FaChartBar />
-            <span>EVE Corp Tools Charts</span>
-          </h1>
-          <div className="flex space-x-3">
-            <button 
-              onClick={loadCharts}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2"
-            >
-              <FaSync className={loading ? "animate-spin" : ""} />
-              <span>Refresh Charts</span>
-            </button>
-            <button 
-              onClick={debugTpsStructure}
-              className="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors"
-            >
-              Debug TPS Structure
-            </button>
-          </div>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-900 border border-red-700 text-white p-4 rounded-md mb-6 flex items-center space-x-2">
-            <FaExclamationTriangle className="text-red-400" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Damage and Final Blows Chart */}
-          <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-            <div className="p-4 border-b border-gray-700">
-              <h2 className="text-xl font-semibold text-indigo-300">Damage and Final Blows</h2>
-              <p className="text-gray-400 text-sm mt-1">Top 20 characters by damage done and final blows</p>
-            </div>
-            <div className="p-4">
-              {charts.damage_final_blows ? (
-                <img 
-                  src={charts.damage_final_blows} 
-                  alt="Damage and Final Blows Chart" 
-                  className="w-full h-auto rounded"
-                />
-              ) : (
-                <div className="bg-gray-700 rounded-md h-64 flex items-center justify-center">
-                  {loading ? (
-                    <FaCircleNotch className="h-8 w-8 text-indigo-400 animate-spin" />
-                  ) : (
-                    <span className="text-gray-400">No chart available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-700">
-              <button 
-                onClick={() => sendToDiscord('damage_final_blows')}
-                disabled={!charts.damage_final_blows || statusMessages.damage_final_blows?.loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <FaDiscord />
-                <span>Send to Discord</span>
-              </button>
-              
-              {statusMessages.damage_final_blows?.success && (
-                <div className="mt-2 text-green-400 text-sm">
-                  {statusMessages.damage_final_blows.success}
-                </div>
-              )}
-              
-              {statusMessages.damage_final_blows?.error && (
-                <div className="mt-2 text-red-400 text-sm">
-                  {statusMessages.damage_final_blows.error}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Combined Losses Chart */}
-          <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-            <div className="p-4 border-b border-gray-700">
-              <h2 className="text-xl font-semibold text-indigo-300">Combined Losses</h2>
-              <p className="text-gray-400 text-sm mt-1">Top 10 characters by losses value and count</p>
-            </div>
-            <div className="p-4">
-              {charts.combined_losses ? (
-                <img 
-                  src={charts.combined_losses} 
-                  alt="Combined Losses Chart" 
-                  className="w-full h-auto rounded"
-                />
-              ) : (
-                <div className="bg-gray-700 rounded-md h-64 flex items-center justify-center">
-                  {loading ? (
-                    <FaCircleNotch className="h-8 w-8 text-indigo-400 animate-spin" />
-                  ) : (
-                    <span className="text-gray-400">No chart available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-700">
-              <button 
-                onClick={() => sendToDiscord('combined_losses')}
-                disabled={!charts.combined_losses || statusMessages.combined_losses?.loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <FaDiscord />
-                <span>Send to Discord</span>
-              </button>
-              
-              {statusMessages.combined_losses?.success && (
-                <div className="mt-2 text-green-400 text-sm">
-                  {statusMessages.combined_losses.success}
-                </div>
-              )}
-              
-              {statusMessages.combined_losses?.error && (
-                <div className="mt-2 text-red-400 text-sm">
-                  {statusMessages.combined_losses.error}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Kill Activity Chart */}
-          <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg lg:col-span-2">
-            <div className="p-4 border-b border-gray-700">
-              <h2 className="text-xl font-semibold text-indigo-300">Kill Activity Over Time</h2>
-              <p className="text-gray-400 text-sm mt-1">Kill activity trend over time</p>
-            </div>
-            <div className="p-4">
-              {charts.kill_activity ? (
-                <img 
-                  src={charts.kill_activity} 
-                  alt="Kill Activity Chart" 
-                  className="w-full h-auto rounded"
-                />
-              ) : (
-                <div className="bg-gray-700 rounded-md h-64 flex items-center justify-center">
-                  {loading ? (
-                    <FaCircleNotch className="h-8 w-8 text-indigo-400 animate-spin" />
-                  ) : (
-                    <span className="text-gray-400">No chart available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-700">
-              <button 
-                onClick={() => sendToDiscord('kill_activity')}
-                disabled={!charts.kill_activity || statusMessages.kill_activity?.loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <FaDiscord />
-                <span>Send to Discord</span>
-              </button>
-              
-              {statusMessages.kill_activity?.success && (
-                <div className="mt-2 text-green-400 text-sm">
-                  {statusMessages.kill_activity.success}
-                </div>
-              )}
-              
-              {statusMessages.kill_activity?.error && (
-                <div className="mt-2 text-red-400 text-sm">
-                  {statusMessages.kill_activity.error}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">Corp Tools Dashboard</h1>
+        <p className="text-gray-600">
+          View and manage EVE Online corporation analytics and tools
+        </p>
       </div>
+
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <ul className="flex flex-wrap -mb-px">
+          <li className="mr-2">
+            <button
+              className={`inline-flex items-center py-4 px-4 text-sm font-medium text-center border-b-2 ${
+                activeTab === 'charts'
+                  ? 'text-blue-600 border-blue-600'
+                  : 'text-gray-500 border-transparent hover:text-gray-600 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab('charts')}
+            >
+              <FaChartBar className="mr-2" />
+              Charts
+            </button>
+          </li>
+          <li className="mr-2">
+            <button
+              className={`inline-flex items-center py-4 px-4 text-sm font-medium text-center border-b-2 ${
+                activeTab === 'activity'
+                  ? 'text-blue-600 border-blue-600'
+                  : 'text-gray-500 border-transparent hover:text-gray-600 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab('activity')}
+            >
+              <FaUsers className="mr-2" />
+              Activity
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
+          <div className="flex items-center">
+            <FaExclamationTriangle className="mr-2" />
+            <p>Error loading data: {error}</p>
+          </div>
+          <p className="mt-2 text-sm">Please check your connection and try again.</p>
+        </div>
+      ) : (
+        renderTabContent()
+      )}
     </div>
   );
 } 

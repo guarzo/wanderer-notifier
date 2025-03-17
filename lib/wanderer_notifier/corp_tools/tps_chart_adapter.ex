@@ -4,12 +4,7 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
   """
   require Logger
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
-
-  @quickcharts_url "https://quickchart.io/chart"
-  @chart_width 800
-  @chart_height 400
-  @chart_background_color "rgb(47, 49, 54)"  # Discord dark theme background
-  @chart_text_color "rgb(255, 255, 255)"     # White text for Discord dark theme
+  alias WandererNotifier.CorpTools.ChartHelpers
 
   @doc """
   Generates a chart URL for kills by ship type from TPS data.
@@ -31,71 +26,35 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
           # Extract labels (ship types) and data (kill counts)
           {labels, values} = Enum.unzip(sorted_data)
 
-          # Create chart configuration
-          chart_config = %{
-            type: "bar",
-            data: %{
-              labels: labels,
-              datasets: [
-                %{
-                  label: "Kills by Ship Type (Last 12 Months)",
-                  data: values,
-                  backgroundColor: "rgba(54, 162, 235, 0.8)",
-                  borderColor: "rgba(54, 162, 235, 1)",
-                  borderWidth: 1
-                }
-              ]
-            },
-            options: %{
-              responsive: true,
-              plugins: %{
-                title: %{
-                  display: true,
-                  text: "Top 10 Ship Types by Kills",
-                  color: @chart_text_color,
-                  font: %{
-                    size: 18
-                  }
-                },
-                legend: %{
-                  labels: %{
-                    color: @chart_text_color
-                  }
-                }
-              },
-              scales: %{
-                x: %{
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  }
-                },
-                y: %{
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  }
-                }
+          # Create chart data
+          chart_data = %{
+            labels: labels,
+            datasets: [
+              %{
+                label: "Kills by Ship Type (Last 12 Months)",
+                data: values,
+                backgroundColor: "rgba(54, 162, 235, 0.8)",
+                borderColor: "rgba(54, 162, 235, 1)",
+                borderWidth: 1
               }
-            },
-            backgroundColor: @chart_background_color
+            ]
           }
 
+          # Generate chart configuration using the helper
+          chart_config = ChartHelpers.generate_chart_config(
+            "Kills by Ship Type",
+            "bar",
+            chart_data
+          )
+
           # Generate chart URL
-          generate_chart_url(chart_config)
+          ChartHelpers.generate_chart_url(chart_config)
         else
-          {:error, "No ship type data available"}
+          ChartHelpers.create_no_data_chart("Kills by Ship Type")
         end
 
-      {:loading, _} ->
-        {:error, "TPS data is still loading"}
-
       {:error, reason} ->
-        {:error, reason}
+        {:error, "Failed to get TPS data: #{inspect(reason)}"}
     end
   end
 
@@ -122,70 +81,56 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
           {labels, values} = Enum.unzip(sorted_data)
 
           # Format month labels (e.g., "2023-01" to "Jan 2023")
-          formatted_labels = Enum.map(labels, &format_month_label/1)
+          formatted_labels = Enum.map(labels, &ChartHelpers.format_month_label/1)
 
-          # Create chart configuration
-          chart_config = %{
-            type: "line",
-            data: %{
-              labels: formatted_labels,
-              datasets: [
-                %{
-                  label: "Kills by Month",
-                  data: values,
-                  fill: false,
-                  backgroundColor: "rgba(75, 192, 192, 0.8)",
-                  borderColor: "rgba(75, 192, 192, 1)",
-                  tension: 0.1,
-                  pointBackgroundColor: "rgba(75, 192, 192, 1)",
-                  pointRadius: 5
-                }
-              ]
-            },
-            options: %{
-              responsive: true,
-              plugins: %{
-                title: %{
-                  display: true,
-                  text: "Kills by Month (Last 12 Months)",
-                  color: @chart_text_color,
-                  font: %{
-                    size: 18
-                  }
-                },
-                legend: %{
-                  labels: %{
-                    color: @chart_text_color
-                  }
-                }
-              },
-              scales: %{
-                x: %{
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  }
-                },
-                y: %{
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  },
-                  beginAtZero: true
-                }
+          # Create chart data
+          chart_data = %{
+            labels: formatted_labels,
+            datasets: [
+              %{
+                label: "Kills by Month",
+                data: values,
+                fill: false,
+                backgroundColor: "rgba(75, 192, 192, 0.8)",
+                borderColor: "rgba(75, 192, 192, 1)",
+                tension: 0.1,
+                pointBackgroundColor: "rgba(75, 192, 192, 1)",
+                pointRadius: 5
               }
-            },
-            backgroundColor: @chart_background_color
+            ]
           }
 
+          # Create chart configuration with custom options
+          options = %{
+            scales: %{
+              x: %{
+                title: %{
+                  display: true,
+                  text: "Month",
+                  color: "rgb(255, 255, 255)"
+                }
+              },
+              y: %{
+                title: %{
+                  display: true,
+                  text: "Kills",
+                  color: "rgb(255, 255, 255)"
+                }
+              }
+            }
+          }
+
+          chart_config = ChartHelpers.generate_chart_config(
+            "Kills by Month (Last 12 Months)",
+            "line",
+            chart_data,
+            options
+          )
+
           # Generate chart URL
-          generate_chart_url(chart_config)
+          ChartHelpers.generate_chart_url(chart_config)
         else
-          {:error, "No monthly data available"}
+          ChartHelpers.create_no_data_chart("Kills by Month")
         end
 
       {:loading, _} ->
@@ -217,7 +162,7 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
           {labels, values} = Enum.unzip(sorted_data)
 
           # Format month labels (e.g., "2023-01" to "Jan 2023")
-          formatted_labels = Enum.map(labels, &format_month_label/1)
+          formatted_labels = Enum.map(labels, &ChartHelpers.format_month_label/1)
 
           # Calculate average value per kill
           total_kills = Enum.sum(values)
@@ -226,103 +171,74 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
           # Calculate estimated value per month
           value_by_month = Enum.map(values, fn kills -> kills * avg_value_per_kill end)
 
-          # Create chart configuration
-          chart_config = %{
-            type: "bar",
-            data: %{
-              labels: formatted_labels,
-              datasets: [
-                %{
-                  label: "Kills",
-                  type: "bar",
-                  data: values,
-                  backgroundColor: "rgba(54, 162, 235, 0.8)",
-                  borderColor: "rgba(54, 162, 235, 1)",
-                  borderWidth: 1,
-                  yAxisID: "y"
-                },
-                %{
-                  label: "Estimated Value (Billions ISK)",
-                  type: "line",
-                  data: Enum.map(value_by_month, fn value -> value / 1_000_000_000 end),
-                  fill: false,
-                  backgroundColor: "rgba(255, 99, 132, 0.8)",
-                  borderColor: "rgba(255, 99, 132, 1)",
-                  borderWidth: 2,
-                  tension: 0.1,
-                  pointRadius: 4,
-                  yAxisID: "y1"
-                }
-              ]
-            },
-            options: %{
-              responsive: true,
-              plugins: %{
-                title: %{
-                  display: true,
-                  text: "Kills and Value Over Time",
-                  color: @chart_text_color,
-                  font: %{
-                    size: 18
-                  }
-                },
-                legend: %{
-                  labels: %{
-                    color: @chart_text_color
-                  }
-                }
+          # Create chart data
+          chart_data = %{
+            labels: formatted_labels,
+            datasets: [
+              %{
+                label: "Kills",
+                type: "bar",
+                data: values,
+                backgroundColor: "rgba(54, 162, 235, 0.8)",
+                borderColor: "rgba(54, 162, 235, 1)",
+                borderWidth: 1,
+                yAxisID: "y"
               },
-              scales: %{
-                x: %{
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  }
-                },
-                y: %{
-                  type: "linear",
-                  display: true,
-                  position: "left",
-                  title: %{
-                    display: true,
-                    text: "Kills",
-                    color: @chart_text_color
-                  },
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)"
-                  }
-                },
-                y1: %{
-                  type: "linear",
-                  display: true,
-                  position: "right",
-                  title: %{
-                    display: true,
-                    text: "Value (Billions ISK)",
-                    color: @chart_text_color
-                  },
-                  ticks: %{
-                    color: @chart_text_color
-                  },
-                  grid: %{
-                    color: "rgba(255, 255, 255, 0.1)",
-                    drawOnChartArea: false
-                  }
-                }
+              %{
+                label: "Estimated Value (Billions ISK)",
+                type: "line",
+                data: Enum.map(value_by_month, fn value -> value / 1_000_000_000 end),
+                fill: false,
+                backgroundColor: "rgba(255, 99, 132, 0.8)",
+                borderColor: "rgba(255, 99, 132, 1)",
+                borderWidth: 2,
+                tension: 0.1,
+                pointRadius: 4,
+                yAxisID: "y1"
               }
-            },
-            backgroundColor: @chart_background_color
+            ]
           }
 
+          # Create chart configuration with custom options for dual axes
+          options = %{
+            scales: %{
+              y: %{
+                type: "linear",
+                display: true,
+                position: "left",
+                title: %{
+                  display: true,
+                  text: "Kills",
+                  color: "rgb(255, 255, 255)"
+                }
+              },
+              y1: %{
+                type: "linear",
+                display: true,
+                position: "right",
+                title: %{
+                  display: true,
+                  text: "Value (Billions ISK)",
+                  color: "rgb(255, 255, 255)"
+                },
+                grid: %{
+                  drawOnChartArea: false
+                }
+              }
+            }
+          }
+
+          chart_config = ChartHelpers.generate_chart_config(
+            "Kills and Value Over Time",
+            "bar",
+            chart_data,
+            options
+          )
+
           # Generate chart URL
-          generate_chart_url(chart_config)
+          ChartHelpers.generate_chart_url(chart_config)
         else
-          {:error, "No monthly data available"}
+          ChartHelpers.create_no_data_chart("Kills and Value")
         end
 
       {:loading, _} ->
@@ -359,7 +275,7 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
   end
 
   @doc """
-  Sends a TPS chart to Discord as an embed.
+  Sends a chart to Discord as an embed.
 
   Args:
     - chart_type: The type of chart to generate (:kills_by_ship_type, :kills_by_month, or :total_kills_value)
@@ -369,13 +285,15 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
   Returns :ok on success, {:error, reason} on failure.
   """
   def send_chart_to_discord(chart_type, title, description) do
-    # Generate the chart URL based on the chart type
-    chart_result = case chart_type do
-      :kills_by_ship_type -> generate_kills_by_ship_type_chart()
-      :kills_by_month -> generate_kills_by_month_chart()
-      :total_kills_value -> generate_total_kills_value_chart()
-      _ -> {:error, "Invalid chart type"}
-    end
+    # Define chart generators map for dispatch
+    generators = %{
+      kills_by_ship_type: &generate_kills_by_ship_type_chart/0,
+      kills_by_month: &generate_kills_by_month_chart/0,
+      total_kills_value: &generate_total_kills_value_chart/0
+    }
+
+    # Use the shared dispatch helper
+    chart_result = ChartHelpers.dispatch_chart_generation(chart_type, generators)
 
     case chart_result do
       {:ok, url} ->
@@ -427,46 +345,19 @@ defmodule WandererNotifier.CorpTools.TPSChartAdapter do
     }
   end
 
-  # Helper function to format month labels
-  defp format_month_label(month_str) do
-    case String.split(month_str, "-") do
-      [year, month] ->
-        month_name = case month do
-          "01" -> "Jan"
-          "02" -> "Feb"
-          "03" -> "Mar"
-          "04" -> "Apr"
-          "05" -> "May"
-          "06" -> "Jun"
-          "07" -> "Jul"
-          "08" -> "Aug"
-          "09" -> "Sep"
-          "10" -> "Oct"
-          "11" -> "Nov"
-          "12" -> "Dec"
-          _ -> month
-        end
-        "#{month_name} #{year}"
-      _ -> month_str
-    end
-  end
-
-  # Helper function to generate chart URL
-  defp generate_chart_url(chart_config) do
-    # Convert chart configuration to JSON
-    case Jason.encode(chart_config) do
-      {:ok, json} ->
-        # URL encode the JSON
-        encoded_config = URI.encode_www_form(json)
-
-        # Construct the URL
-        url = "#{@quickcharts_url}?c=#{encoded_config}&w=#{@chart_width}&h=#{@chart_height}"
-
-        {:ok, url}
+  @doc """
+  Logs the TPS data structure for debugging purposes.
+  """
+  def debug_tps_data do
+    case CorpToolsClient.get_tps_data() do
+      {:ok, data} ->
+        # Use the shared helper for debugging TPS data
+        ChartHelpers.debug_tps_data_structure(data)
+        {:ok, data}
 
       {:error, reason} ->
-        Logger.error("Failed to encode chart configuration: #{inspect(reason)}")
-        {:error, "Failed to encode chart configuration"}
+        Logger.error("Failed to get TPS data: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 end

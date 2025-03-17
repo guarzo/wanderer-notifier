@@ -1,5 +1,7 @@
 import { format, parseISO } from 'date-fns';
 
+// Define common constants
+const FONT_FAMILY = 'Montserrat, sans-serif';
 
 export function validateChartDataArray(data, chartName) {
     if (!Array.isArray(data) || data.length === 0) {
@@ -9,41 +11,148 @@ export function validateChartDataArray(data, chartName) {
     return true;
 }
 
-export function getCommonOptions(titleText) {
-    return {
+export function getCommonOptions(titleText, additionalOptions = {}) {
+    // Base options
+    const baseOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
             title: {
-                display: false,
+                display: true,
                 text: titleText,
-                font: { size: 18, weight: 'bold' },
+                font: { 
+                    size: 18, 
+                    weight: 'bold',
+                    family: FONT_FAMILY
+                },
                 color: '#ffffff',
             },
             legend: {
-                labels: { color: '#ffffff' }
-            }
+                display: true,
+                position: 'top',
+                labels: { 
+                    color: '#ffffff',
+                    font: { 
+                        size: 12,
+                        family: FONT_FAMILY
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function (context) {
+                        const label = context.dataset.label || '';
+                        const value = context.raw;
+                        return `${label}: ${value.toLocaleString()}`;
+                    },
+                },
+                mode: 'index',
+                intersect: false,
+            },
         },
         scales: {
             x: {
-                ticks: { color: '#ffffff' },
+                type: 'category',
+                ticks: { 
+                    color: '#ffffff',
+                    font: {
+                        family: FONT_FAMILY
+                    }
+                },
                 grid: { display: false },
+                title: {
+                    display: true,
+                    text: 'Categories',
+                    color: '#ffffff',
+                    font: {
+                        size: 14,
+                        family: FONT_FAMILY,
+                        weight: 'bold',
+                    },
+                },
             },
             y: {
                 position: 'left',
-                ticks: { color: '#ffffff' },
-                grid: { display: false },
+                beginAtZero: true,
+                ticks: { 
+                    color: '#ffffff',
+                    font: {
+                        family: FONT_FAMILY
+                    }
+                },
+                grid: { color: '#444' },
+                title: {
+                    display: true,
+                    text: 'Values',
+                    color: '#ffffff',
+                    font: {
+                        size: 14,
+                        family: FONT_FAMILY,
+                        weight: 'bold',
+                    },
+                },
             },
             y1: {
                 position: 'right',
-                ticks: { color: '#ffffff' },
-                grid: { drawOnChartArea: false },
+                beginAtZero: true,
+                ticks: { 
+                    color: '#ffffff',
+                    font: {
+                        family: FONT_FAMILY
+                    }
+                },
+                grid: { display: false },
+                title: {
+                    display: true,
+                    text: 'Secondary Values',
+                    color: '#ffffff',
+                    font: {
+                        size: 14,
+                        family: FONT_FAMILY,
+                        weight: 'bold',
+                    },
+                },
             }
-        }
+        },
+        layout: {
+            padding: {
+                left: 10,
+                right: 10,
+                top: 10,
+                bottom: 10,
+            },
+        },
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
     };
+
+    // Deep merge the base options with any additional options
+    return deepMerge(baseOptions, additionalOptions);
 }
 
+// Helper function to deep merge objects
+function deepMerge(target, source) {
+    const output = Object.assign({}, target);
+    if (isObject(target) && isObject(source)) {
+        Object.keys(source).forEach(key => {
+            if (isObject(source[key])) {
+                if (!(key in target))
+                    Object.assign(output, { [key]: source[key] });
+                else
+                    output[key] = deepMerge(target[key], source[key]);
+            } else {
+                Object.assign(output, { [key]: source[key] });
+            }
+        });
+    }
+    return output;
+}
 
+function isObject(item) {
+    return (item && typeof item === 'object' && !Array.isArray(item));
+}
 
 const predefinedColors = [
     '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
@@ -67,7 +176,6 @@ export function getShipColor(shipName) {
     shipColorMap[shipName] = color;
     return color;
 }
-
 
 /**
  * Returns a color from a predefined palette based on the index.
@@ -140,7 +248,6 @@ export function truncateLabel(label, maxLength) {
     }
     return label;
 }
-
 
 export function validateOurShipsUsedData(data, chartName) {
     if (typeof data !== 'object' || data === null) {

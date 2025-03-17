@@ -1,5 +1,5 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.watch test.cover test.license test.license_manager test.bot_registration test.features test.config test.application test.mock format shell run deps.get deps.update
+.PHONY: compile clean test test.watch test.cover test.license test.license_manager test.bot_registration test.features test.config test.application test.mock format shell run deps.get deps.update build.npm
 
 # Build tasks
 compile:
@@ -49,6 +49,9 @@ shell:
 run:
 	@mix run
 
+build.npm: 
+	cd renderer && npm run build && cd ..
+
 # Dependency management
 deps.get:
 	@mix deps.get
@@ -56,4 +59,4 @@ deps.get:
 deps.update:
 	@mix deps.update --all
 
-s: clean compile shell
+s: clean compile build.npm shell

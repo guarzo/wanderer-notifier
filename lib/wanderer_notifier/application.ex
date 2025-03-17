@@ -48,8 +48,6 @@ defmodule WandererNotifier.Application do
     corp_tools_api_token = Config.corp_tools_api_token()
 
     if corp_tools_api_url && corp_tools_api_token do
-      Logger.info("EVE Corp Tools API URL: #{corp_tools_api_url}")
-      Logger.info("EVE Corp Tools API Token configured: Yes")
 
       # Perform health check
       Task.start(fn ->
@@ -58,7 +56,6 @@ defmodule WandererNotifier.Application do
 
         case CorpToolsClient.health_check() do
           :ok ->
-            Logger.info("EVE Corp Tools API health check passed")
             # Schedule periodic health checks
             schedule_corp_tools_health_check()
           {:error, :connection_refused} ->

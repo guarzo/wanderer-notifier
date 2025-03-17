@@ -8,6 +8,7 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
   """
   require Logger
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
+  alias WandererNotifier.CorpTools.ChartHelpers
 
   @quickcharts_url "https://quickchart.io/chart"
   @chart_width 800
@@ -37,96 +38,55 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
           damage_done = Enum.map(sorted_data, fn char -> Map.get(char, "DamageDone", 0) end)
           final_blows = Enum.map(sorted_data, fn char -> Map.get(char, "FinalBlows", 0) end)
 
-          # Create a simpler chart configuration that matches QuickChart's expected format
-          chart_config = %{
-            "type" => "bar",
-            "data" => %{
-              "labels" => labels,
-              "datasets" => [
-                %{
-                  "label" => "Damage Done",
-                  "data" => damage_done,
-                  "backgroundColor" => "rgba(255, 77, 77, 0.7)",
-                  "borderColor" => "rgba(255, 77, 77, 1)",
-                  "borderWidth" => 1,
-                  "yAxisID" => "y"
-                },
-                %{
-                  "label" => "Final Blows",
-                  "data" => final_blows,
-                  "backgroundColor" => "rgba(54, 162, 235, 0.7)",
-                  "borderColor" => "rgba(54, 162, 235, 1)",
-                  "borderWidth" => 1,
-                  "yAxisID" => "y1"
-                }
-              ]
-            },
-            "options" => %{
-              "responsive" => true,
-              "title" => %{
-                "display" => true,
-                "text" => "Top Damage Done and Final Blows",
-                "fontColor" => "white"
+          # Create chart data
+          chart_data = %{
+            labels: labels,
+            datasets: [
+              %{
+                label: "Damage Done",
+                data: damage_done,
+                backgroundColor: "rgba(255, 77, 77, 0.7)",
+                borderColor: "rgba(255, 77, 77, 1)",
+                borderWidth: 1,
+                yAxisID: "y"
               },
-              "scales" => %{
-                "yAxes" => [
-                  %{
-                    "id" => "y",
-                    "type" => "linear",
-                    "position" => "left",
-                    "ticks" => %{
-                      "beginAtZero" => true,
-                      "fontColor" => "white"
-                    },
-                    "scaleLabel" => %{
-                      "display" => true,
-                      "labelString" => "Damage Done",
-                      "fontColor" => "white"
-                    },
-                    "gridLines" => %{
-                      "color" => "rgba(255, 255, 255, 0.1)"
-                    }
-                  },
-                  %{
-                    "id" => "y1",
-                    "type" => "linear",
-                    "position" => "right",
-                    "ticks" => %{
-                      "beginAtZero" => true,
-                      "fontColor" => "white"
-                    },
-                    "scaleLabel" => %{
-                      "display" => true,
-                      "labelString" => "Final Blows",
-                      "fontColor" => "white"
-                    },
-                    "gridLines" => %{
-                      "display" => false
-                    }
-                  }
-                ],
-                "xAxes" => [
-                  %{
-                    "ticks" => %{
-                      "fontColor" => "white"
-                    },
-                    "gridLines" => %{
-                      "color" => "rgba(255, 255, 255, 0.1)"
-                    }
-                  }
-                ]
-              },
-              "legend" => %{
-                "labels" => %{
-                  "fontColor" => "white"
-                }
+              %{
+                label: "Final Blows",
+                data: final_blows,
+                backgroundColor: "rgba(54, 162, 235, 0.7)",
+                borderColor: "rgba(54, 162, 235, 1)",
+                borderWidth: 1,
+                yAxisID: "y1"
               }
-            },
-            "backgroundColor" => @chart_background_color
+            ]
           }
 
+          # Additional options specific to this chart
+          additional_options = %{
+            scales: %{
+              y: %{
+                title: %{
+                  text: "Damage Done"
+                }
+              },
+              y1: %{
+                title: %{
+                  text: "Final Blows"
+                }
+              }
+            }
+          }
+
+          # Generate chart configuration using the helper
+          chart_config = ChartHelpers.generate_chart_config(
+            "Damage Done & Final Blows",
+            "bar",
+            chart_data,
+            additional_options
+          )
+
           # Generate chart URL
-          generate_chart_url(chart_config)
+          ChartHelpers.generate_chart_url(chart_config)
         else
           Logger.warning("No character performance data available, generating fallback chart")
           generate_fallback_chart("Damage and Final Blows", "No character performance data available")
@@ -927,13 +887,8 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
   Returns :ok on success, {:error, reason} on failure.
   """
   def send_chart_to_discord(chart_type, title, description) do
-    # Generate the chart URL based on the chart type
-    chart_result = case chart_type do
-      :damage_final_blows -> generate_damage_final_blows_chart()
-      :combined_losses -> generate_combined_losses_chart()
-      :kill_activity -> generate_kill_activity_chart()
-      _ -> {:error, "Invalid chart type"}
-    end
+    # Use the generate_chart function which uses the shared dispatch helper
+    chart_result = generate_chart(chart_type)
 
     case chart_result do
       {:ok, url} ->
@@ -1044,61 +999,12 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
   def debug_tps_data_structure do
     case CorpToolsClient.get_tps_data() do
       {:ok, data} ->
-        # Log the top-level keys
-        Logger.info("TPS data top-level keys: #{inspect(Map.keys(data))}")
-
-        # Check for TimeFrames
-        time_frames = Map.get(data, "TimeFrames", [])
-        Logger.info("Found #{length(time_frames)} time frames")
-
-        if length(time_frames) > 0 do
-          # Log the structure of the first time frame
-          first_frame = List.first(time_frames)
-          Logger.info("First time frame keys: #{inspect(Map.keys(first_frame))}")
-
-          # Check for Charts
-          if Map.has_key?(first_frame, "Charts") do
-            charts = Map.get(first_frame, "Charts", [])
-            Logger.info("Found #{length(charts)} charts in first time frame")
-
-            # Log the IDs of all charts
-            chart_ids = Enum.map(charts, fn chart -> Map.get(chart, "ID", "unknown") end)
-            Logger.info("Chart IDs: #{inspect(chart_ids)}")
-
-            # Log the structure of the first chart
-            if length(charts) > 0 do
-              first_chart = List.first(charts)
-              Logger.info("First chart keys: #{inspect(Map.keys(first_chart))}")
-
-              # Check for Data
-              if Map.has_key?(first_chart, "Data") do
-                data_str = Map.get(first_chart, "Data", "[]")
-                sample_length = min(String.length(data_str), 200)
-                Logger.info("Data string sample (first #{sample_length} chars): #{String.slice(data_str, 0, sample_length)}")
-
-                # Try to parse the data
-                case Jason.decode(data_str) do
-                  {:ok, parsed_data} when is_list(parsed_data) ->
-                    Logger.info("Successfully parsed data with #{length(parsed_data)} entries")
-                    if length(parsed_data) > 0 do
-                      first_entry = List.first(parsed_data)
-                      Logger.info("First entry keys: #{inspect(Map.keys(first_entry))}")
-                    end
-                  {:ok, _} ->
-                    Logger.warning("Data is not a list")
-                  {:error, reason} ->
-                    Logger.error("Failed to parse data: #{inspect(reason)}")
-                end
-              end
-            end
-          end
-        end
-
-        # Return the data
+        # Use the shared helper for debugging TPS data
+        ChartHelpers.debug_tps_data_structure(data)
         {:ok, data}
 
       {:loading, message} ->
-        Logger.info("TPS data is still loading: #{message}")
+        Logger.debug("TPS data is still loading: #{message}")
         {:loading, message}
 
       {:error, reason} ->
@@ -1108,16 +1014,24 @@ defmodule WandererNotifier.CorpTools.JSChartAdapter do
   end
 
   @doc """
-  Generates a chart based on the provided type.
+  Generates a chart based on the specified chart type.
 
-  Returns {:ok, url} on success, {:error, reason} on failure.
+  ## Parameters
+    - chart_type: The type of chart to generate (:damage_final_blows, :combined_losses, or :kill_activity)
+
+  ## Returns
+    - {:ok, url} on success
+    - {:error, reason} on failure
   """
   def generate_chart(chart_type) do
-    case chart_type do
-      :damage_final_blows -> generate_damage_final_blows_chart()
-      :combined_losses -> generate_combined_losses_chart()
-      :kill_activity -> generate_kill_activity_chart()
-      _ -> {:error, "Invalid chart type"}
-    end
+    # Define chart generators map for dispatch
+    generators = %{
+      damage_final_blows: &generate_damage_final_blows_chart/0,
+      combined_losses: &generate_combined_losses_chart/0,
+      kill_activity: &generate_kill_activity_chart/0
+    }
+
+    # Use the shared dispatch helper
+    ChartHelpers.dispatch_chart_generation(chart_type, generators)
   end
 end
