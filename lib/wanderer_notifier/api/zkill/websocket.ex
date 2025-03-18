@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   use WebSockex
   require Logger
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Services.KillProcessor
+  alias WandererNotifier.Service.KillProcessor
 
   def start_link(parent, url) do
     WebSockex.start_link(url, __MODULE__, %{parent: parent, connected: false})

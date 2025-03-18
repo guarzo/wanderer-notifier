@@ -4,8 +4,8 @@ defmodule WandererNotifier.Api.Map.Client do
   Handles making HTTP requests to the map API endpoints.
   """
   require Logger
-  alias WandererNotifier.Services.SystemTracker, as: Systems
-  alias WandererNotifier.Services.CharTracker, as: Characters
+  alias WandererNotifier.SystemTracker, as: Systems
+  alias WandererNotifier.CharTracker, as: Characters
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Api.Http.Client, as: HttpClient

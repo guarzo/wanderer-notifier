@@ -6,7 +6,7 @@ defmodule WandererNotifier.Application do
   require Logger
 
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
@@ -259,10 +259,13 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
 
       # Start the Cache Repository
-      {CacheRepo, []},
+      {WandererNotifier.Data.Cache.Repository, []},
 
       # Start the main service (which starts the WebSocket)
-      {WandererNotifier.Services.Service, []},
+      {WandererNotifier.Service, []},
+
+      # Start the Maintenance service
+      {WandererNotifier.Maintenance, []},
 
       # Start the Web Server
       {WandererNotifier.Web.Server, []},
