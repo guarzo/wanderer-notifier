@@ -41,8 +41,8 @@ defmodule WandererNotifier.CorpTools.Client do
       :ok
     else
       url = "#{WandererNotifier.Config.corp_tools_api_url()}/health"
+      # Don't send Authorization header for health check
       headers = [
-        {"Authorization", "Bearer #{WandererNotifier.Config.corp_tools_api_token()}"},
         {"Content-Type", "application/json"}
       ]
 
@@ -63,8 +63,8 @@ defmodule WandererNotifier.CorpTools.Client do
           Logger.warning("EVE Corp Tools API health check redirected to #{redirect_url}")
 
           # Follow the redirect manually and check the health at the new URL
+          # Don't send Authorization header for health check redirect
           redirect_headers = [
-            {"Authorization", "Bearer #{WandererNotifier.Config.corp_tools_api_token()}"},
             {"Content-Type", "application/json"}
           ]
 
@@ -170,6 +170,34 @@ defmodule WandererNotifier.CorpTools.Client do
         # 206 Partial Content means data is still loading
         Logger.info("TPS data is still loading: #{body}")
         {:loading, body}
+      {:ok, %HTTPoison.MaybeRedirect{redirect_url: redirect_url}} ->
+        # Handle redirects manually
+        Logger.info("TPS data request redirected to #{redirect_url}, following...")
+
+        # Make sure we use the same headers including authorization for the redirect
+        case HttpClient.request("GET", redirect_url, headers) do
+          {:ok, %{status_code: 200, body: body}} ->
+            Logger.info("TPS data response received with status 200 after redirect")
+
+            case Jason.decode(body) do
+              {:ok, data} ->
+                Logger.info("Successfully retrieved TPS data after redirect")
+                {:ok, data}
+              {:error, error} ->
+                Logger.error("Failed to parse TPS data response after redirect: #{inspect(error)}")
+                {:error, "Failed to parse response"}
+            end
+          {:ok, %{status_code: 206, body: body}} ->
+            # 206 Partial Content means data is still loading
+            Logger.info("TPS data is still loading after redirect: #{body}")
+            {:loading, body}
+          {:ok, %{status_code: status, body: body}} ->
+            Logger.error("Failed to get TPS data after redirect with status #{status}: #{body}")
+            {:error, "API returned status #{status} after redirect"}
+          {:error, redirect_reason} ->
+            Logger.error("TPS data request failed after redirect: #{inspect(redirect_reason)}")
+            {:error, redirect_reason}
+        end
       {:ok, %{status_code: status, body: body}} ->
         Logger.error("Failed to get TPS data with status #{status}")
         Logger.error("Error response body: #{body}")
@@ -319,11 +347,11 @@ defmodule WandererNotifier.CorpTools.Client do
             Logger.error("Failed to parse character activity data response: #{inspect(error)}")
             {:error, "Failed to parse response"}
         end
-      
+
       {:ok, %HTTPoison.MaybeRedirect{redirect_url: redirect_url}} ->
         # Handle redirects manually
         Logger.info("Received redirect to #{redirect_url}, following...")
-        
+
         case HttpClient.request("GET", redirect_url, headers) do
           {:ok, %{status_code: status, body: body}} when status in 200..299 ->
             case Jason.decode(body) do
@@ -334,11 +362,11 @@ defmodule WandererNotifier.CorpTools.Client do
                 Logger.error("Failed to parse character activity data response after redirect: #{inspect(error)}")
                 {:error, "Failed to parse response"}
             end
-            
+
           {:ok, %{status_code: status, body: body}} ->
             Logger.error("Failed to fetch character activity data after redirect: HTTP #{status}, #{body}")
             {:error, "HTTP #{status}: #{body}"}
-            
+
           {:error, reason} ->
             Logger.error("Error fetching character activity data after redirect: #{inspect(reason)}")
             {:error, "Failed to fetch data after redirect: #{inspect(reason)}"}
@@ -346,7 +374,7 @@ defmodule WandererNotifier.CorpTools.Client do
       {:ok, %{status_code: status, body: body}} ->
         Logger.error("Failed to get character activity data with status #{status}: #{body}")
         {:error, "API returned status #{status}"}
-        
+
       {:error, %HTTPoison.Error{reason: :econnrefused}} ->
         Logger.warning("EVE Corp Tools API connection refused when fetching character activity data")
         {:error, :connection_refused}
