@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Service do
+defmodule WandererNotifier.Services.Service do
   @moduledoc """
   The main WandererNotifier service (GenServer).
   Coordinates periodic maintenance and kill processing.
@@ -30,7 +30,7 @@ defmodule WandererNotifier.Service do
   end
 
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: WandererNotifier.Service)
   end
 
   def stop do

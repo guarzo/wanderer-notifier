@@ -5,8 +5,8 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   use Plug.Router
   require Logger
   alias WandererNotifier.CorpTools.ActivityChartAdapter
-  alias WandererNotifier.Map.Client, as: MapClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Core.Config
 
   plug :match
   plug :dispatch

@@ -5,9 +5,9 @@ defmodule WandererNotifier.Web.Router do
   use Plug.Router
   require Logger
 
-  alias WandererNotifier.License
-  alias WandererNotifier.Stats
-  alias WandererNotifier.Features
+  alias WandererNotifier.Core.License
+  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Core.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Config
@@ -394,7 +394,7 @@ defmodule WandererNotifier.Web.Router do
   get "/api/revalidate-license" do
     Logger.info("License revalidation requested")
 
-    result = WandererNotifier.License.validate()
+    result = License.validate()
 
     response =
       case result do

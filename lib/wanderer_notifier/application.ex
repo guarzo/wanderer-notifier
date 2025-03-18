@@ -4,9 +4,10 @@ defmodule WandererNotifier.Application do
   """
   use Application
   require Logger
-  alias WandererNotifier.Config
+
+  alias WandererNotifier.Core.Config
   alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.NotifierFactory
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
   alias WandererNotifier.CorpTools.ChartScheduler
@@ -26,7 +27,7 @@ defmodule WandererNotifier.Application do
         {:ok, _} -> Logger.info("ExSync started successfully")
         {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
       end
-      
+
       # Start watchers for frontend asset rebuilding in development
       start_watchers()
     end
@@ -93,7 +94,7 @@ defmodule WandererNotifier.Application do
   def handle_info(:validate_license, _state) do
     try do
       # Use a timeout to prevent blocking
-      case GenServer.call(WandererNotifier.License, :validate, 3000) do
+      case GenServer.call(WandererNotifier.License, :status, 3000) do
         license_status when is_map(license_status) ->
           if license_status.valid do
             Logger.info("License validation successful - License is valid")
@@ -249,16 +250,19 @@ defmodule WandererNotifier.Application do
   defp get_children do
     [
       # Start the License Manager
+      {WandererNotifier.Core.License, []},
+
+      # Start the License proxy
       {WandererNotifier.License, []},
 
       # Start the Stats tracking service
-      {WandererNotifier.Stats, []},
+      {WandererNotifier.Core.Stats, []},
 
       # Start the Cache Repository
       {CacheRepo, []},
 
       # Start the main service (which starts the WebSocket)
-      {WandererNotifier.Service, []},
+      {WandererNotifier.Services.Service, []},
 
       # Start the Web Server
       {WandererNotifier.Web.Server, []},
@@ -267,7 +271,7 @@ defmodule WandererNotifier.Application do
       if Config.map_tools_enabled?() do
         # Get the chart scheduler interval
         interval = get_chart_scheduler_interval()
-        
+
         # Start the Activity Chart Scheduler
         {WandererNotifier.CorpTools.ActivityChartScheduler, [interval: interval]}
       end
@@ -278,31 +282,31 @@ defmodule WandererNotifier.Application do
   # Helper function to start watchers for frontend asset rebuilding
   defp start_watchers do
     watchers = Application.get_env(:wanderer_notifier, :watchers, [])
-    
+
     Enum.each(watchers, fn {cmd, args} ->
       Logger.info("Starting watcher: #{cmd} with args: #{inspect(args)}")
-      
+
       # Process each argument to extract cd path
       {cmd_args, cd_path} = extract_watcher_args(args)
-      
+
       cmd_str = to_string(cmd)
-      
+
       Logger.info("Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}")
-      
+
       Task.start(fn ->
         try do
           # Create options for System.cmd
           system_opts = []
           system_opts = if cd_path, do: [cd: cd_path] ++ system_opts, else: system_opts
-          
+
           # Add stdout redirection
           system_opts = [into: IO.stream(:stdio, :line)] ++ system_opts
-          
+
           Logger.info("Running command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(system_opts)}")
-          
+
           # Start the watcher with correctly formatted options
           {_output, status} = System.cmd(cmd_str, cmd_args, system_opts)
-          
+
           if status == 0 do
             Logger.info("Watcher #{cmd} completed successfully")
           else
@@ -316,7 +320,7 @@ defmodule WandererNotifier.Application do
       end)
     end)
   end
-  
+
   # Extract watcher args and cd path
   defp extract_watcher_args(args) do
     Enum.reduce(args, {[], nil}, fn arg, {acc_args, acc_cd} ->
