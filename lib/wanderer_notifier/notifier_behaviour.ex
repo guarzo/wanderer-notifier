@@ -33,4 +33,9 @@ defmodule WandererNotifier.NotifierBehaviour do
   Sends a rich embed message for an enriched killmail.
   """
   @callback send_enriched_kill_embed(enriched_kill :: map(), kill_id :: integer()) :: :ok | {:error, any()}
+
+  @doc """
+  Sends an embed with an image.
+  """
+  @callback send_image_embed(title :: String.t(), description :: String.t(), image_url :: String.t(), color :: integer()) :: :ok | {:error, any()}
 end

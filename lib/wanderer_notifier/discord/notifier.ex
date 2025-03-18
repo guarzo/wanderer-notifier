@@ -786,28 +786,28 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   # -- FILE SENDING --
-  
+
   @doc """
   Sends a file with an optional title and description.
-  
-  Implements the NotifierBehaviour callback, converts binary data to a file 
+
+  Implements the NotifierBehaviour callback, converts binary data to a file
   and sends it to Discord using the existing file upload functionality.
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil) do
     Logger.info("Discord.Notifier.send_file called with filename: #{filename}")
-    
+
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
       :ok
     else
       # Create a temporary file to hold the binary data
       temp_file = Path.join(System.tmp_dir!(), "#{:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)}-#{filename}")
-      
+
       try do
         # Write the file data to the temp file
         File.write!(temp_file, file_data)
-        
+
         # Use the existing file sending method
         send_file_path(temp_file, title, description)
       after
@@ -816,7 +816,7 @@ defmodule WandererNotifier.Discord.Notifier do
       end
     end
   end
-  
+
   # Rename the existing send_file function to send_file_path to avoid conflicts
   def send_file_path(file_path, title \\ nil, description \\ nil) do
     Logger.info("Discord.Notifier.send_file_path called with file: #{file_path}")
@@ -881,6 +881,32 @@ defmodule WandererNotifier.Discord.Notifier do
           Logger.error(error_msg)
           {:error, error_msg}
       end
+    end
+  end
+
+  @doc """
+  Sends an embed with an image to Discord.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_image_embed(title, description, image_url, color \\ @default_embed_color) do
+    Logger.info("Discord.Notifier.send_image_embed called with title: #{title}, image_url: #{image_url || "nil"}")
+
+    if env() == :test do
+      handle_test_mode("DISCORD MOCK IMAGE EMBED: #{title} - #{description} with image: #{image_url}")
+    else
+      embed = %{
+        "title" => title,
+        "description" => description,
+        "color" => color,
+        "image" => %{
+          "url" => image_url
+        }
+      }
+
+      payload = %{"embeds" => [embed]}
+
+      Logger.info("Discord image embed payload built, sending to Discord API")
+      send_payload(payload)
     end
   end
 end

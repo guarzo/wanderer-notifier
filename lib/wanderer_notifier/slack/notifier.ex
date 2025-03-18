@@ -177,15 +177,45 @@ defmodule WandererNotifier.Slack.Notifier do
     # we can't directly upload files. Instead, we'll send a message
     # saying a file would be uploaded.
     message_parts = [
-      if title, do: "*#{title}*", else: nil,
-      if description, do: description, else: nil,
+      if title do "*#{title}*" else nil end,
+      if description do description else nil end,
       "File: #{filename} (Slack webhook can't directly upload files)"
     ]
     |> Enum.filter(&(&1 != nil))
     |> Enum.join("\n")
-    
+
     # Send as a normal message
     send_message(message_parts)
+  end
+
+  @doc """
+  Sends an embed with an image to Slack.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_image_embed(title, description, image_url, _color \\ nil) do
+    blocks = [
+      %{
+        "type" => "section",
+        "text" => %{
+          "type" => "mrkdwn",
+          "text" => "*#{title}*\n#{description}"
+        }
+      },
+      %{
+        "type" => "image",
+        "image_url" => image_url,
+        "alt_text" => title
+      }
+    ]
+
+    payload = %{
+      "blocks" => blocks
+    }
+
+    case send_payload(payload) do
+      :ok -> :ok
+      error -> error
+    end
   end
 
   @spec send_payload(map()) :: :ok | {:error, any()}

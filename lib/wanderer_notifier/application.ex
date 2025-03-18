@@ -323,7 +323,7 @@ defmodule WandererNotifier.Application do
       case arg do
         {:cd, path} -> {acc_args, path}  # Found cd option
         arg when is_binary(arg) -> {acc_args ++ [arg], acc_cd}  # Normal string arg
-        arg -> {acc_args, acc_cd}  # Ignore any other types
+        _arg -> {acc_args, acc_cd}  # Ignore any other types
       end
     end)
   end

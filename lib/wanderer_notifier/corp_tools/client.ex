@@ -319,9 +319,34 @@ defmodule WandererNotifier.CorpTools.Client do
             Logger.error("Failed to parse character activity data response: #{inspect(error)}")
             {:error, "Failed to parse response"}
         end
+      
+      {:ok, %HTTPoison.MaybeRedirect{redirect_url: redirect_url}} ->
+        # Handle redirects manually
+        Logger.info("Received redirect to #{redirect_url}, following...")
+        
+        case HttpClient.request("GET", redirect_url, headers) do
+          {:ok, %{status_code: status, body: body}} when status in 200..299 ->
+            case Jason.decode(body) do
+              {:ok, data} ->
+                Logger.info("Successfully retrieved character activity data after redirect")
+                {:ok, data}
+              {:error, error} ->
+                Logger.error("Failed to parse character activity data response after redirect: #{inspect(error)}")
+                {:error, "Failed to parse response"}
+            end
+            
+          {:ok, %{status_code: status, body: body}} ->
+            Logger.error("Failed to fetch character activity data after redirect: HTTP #{status}, #{body}")
+            {:error, "HTTP #{status}: #{body}"}
+            
+          {:error, reason} ->
+            Logger.error("Error fetching character activity data after redirect: #{inspect(reason)}")
+            {:error, "Failed to fetch data after redirect: #{inspect(reason)}"}
+        end
       {:ok, %{status_code: status, body: body}} ->
         Logger.error("Failed to get character activity data with status #{status}: #{body}")
         {:error, "API returned status #{status}"}
+        
       {:error, %HTTPoison.Error{reason: :econnrefused}} ->
         Logger.warning("EVE Corp Tools API connection refused when fetching character activity data")
         {:error, :connection_refused}

@@ -8,7 +8,6 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
   alias WandererNotifier.Map.Client, as: MapClient
   alias WandererNotifier.CorpTools.ActivityChartAdapter
-  alias WandererNotifier.CorpTools.ActivityChartScheduler
   alias WandererNotifier.Config
   alias WandererNotifier.Web.Controllers.ActivityChartController
 
@@ -109,9 +108,24 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           :damage_final_blows -> JSChartAdapter.generate_chart(chart_type)
           :combined_losses -> JSChartAdapter.generate_chart(chart_type)
           :kill_activity -> JSChartAdapter.generate_chart(chart_type)
-          :activity_summary -> ActivityChartAdapter.generate_character_activity_chart()
-          :activity_timeline -> ActivityChartAdapter.generate_activity_timeline_chart()
-          :activity_distribution -> ActivityChartAdapter.generate_activity_distribution_chart()
+          :activity_summary ->
+            # Get activity data first
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.generate_activity_summary_chart(data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
+          :activity_timeline ->
+            # Get activity data first
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.generate_activity_timeline_chart(data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
+          :activity_distribution ->
+            # Get activity data first
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.generate_activity_distribution_chart(data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
         end
 
         case chart_result do
@@ -160,9 +174,24 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           :damage_final_blows -> JSChartAdapter.send_chart_to_discord(chart_type, title, description)
           :combined_losses -> JSChartAdapter.send_chart_to_discord(chart_type, title, description)
           :kill_activity -> JSChartAdapter.send_chart_to_discord(chart_type, title, description)
-          :activity_summary -> ActivityChartAdapter.send_chart_to_discord(chart_type, title, description)
-          :activity_timeline -> ActivityChartAdapter.send_chart_to_discord(chart_type, title, description)
-          :activity_distribution -> ActivityChartAdapter.send_chart_to_discord(chart_type, title, description)
+          :activity_summary ->
+            # Get activity data first for chart generation
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.send_chart_to_discord("activity_summary", data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
+          :activity_timeline ->
+            # Get activity data first for chart generation
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.send_chart_to_discord("activity_timeline", data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
+          :activity_distribution ->
+            # Get activity data first for chart generation
+            case MapClient.get_character_activity(Config.map_name()) do
+              {:ok, data} -> ActivityChartAdapter.send_chart_to_discord("activity_distribution", data["data"])
+              _ -> {:error, "Failed to get activity data"}
+            end
         end
 
         case result do
@@ -179,33 +208,56 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     end
   end
 
-  # Send all activity charts to Discord
-  get "/send-all-activity-charts" do
-    # Check if map tools functionality is enabled
-    if not Config.map_tools_enabled?() do
+  # Special route for sending all activity charts
+  get "/activity/send-all" do
+    Logger.info("Forwarding request to send all activity charts to Discord")
+
+    # Only allow this if map tools are enabled
+    if !Config.map_tools_enabled?() do
+      Logger.warning("Map tools are not enabled, cannot send activity charts")
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(404, Jason.encode!(%{status: "error", message: "Map Tools functionality is not enabled"}))
+      |> send_resp(404, Jason.encode!(%{status: "error", message: "Map tools are not enabled"}))
     else
-      # This route is kept for backward compatibility
-      # Forward to the activity controller's send-all endpoint
-      Logger.info("Forwarding send-all-activity-charts request to /charts/activity/send-all")
-      
-      # Trigger the activity chart scheduler through the adapter
-      results = ActivityChartAdapter.send_all_charts_to_discord()
-      
-      # Check if any chart was successfully sent
-      any_success = Enum.any?(Map.values(results), fn result -> result == :ok end)
-      
-      if any_success do
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", message: "Activity charts sent to Discord", results: inspect(results)}))
-      else
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to send any activity charts to Discord", results: inspect(results)}))
+      Logger.info("Forwarding request to activity controller send-all endpoint")
+
+      # Get character activity data
+      activity_data = case MapClient.get_character_activity(Config.map_name()) do
+        {:ok, data} ->
+          Logger.info("Successfully retrieved character activity data: #{inspect(data, limit: 500)}")
+          data
+        error ->
+          Logger.error("Failed to retrieve character activity data: #{inspect(error)}")
+          nil
       end
+
+      # Use the ActivityChartAdapter directly to send all charts
+      results = ActivityChartAdapter.send_all_charts_to_discord(activity_data)
+
+      # Format the results for proper JSON encoding
+      formatted_results = Enum.map(results, fn {chart_type, result} ->
+        case result do
+          {:ok, url, title} ->
+            %{chart_type: chart_type, status: "success", url: url, title: title}
+          {:error, reason} ->
+            %{chart_type: chart_type, status: "error", message: reason}
+          _ ->
+            %{chart_type: chart_type, status: "error", message: "Unknown result format"}
+        end
+      end)
+
+      # Check if any charts were sent successfully
+      success_count = Enum.count(formatted_results, fn result -> result.status == "success" end)
+
+      # Always return success as long as we got a response - a "no data" chart is still a success
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{
+        status: "ok",
+        success_count: success_count,
+        total_count: length(formatted_results),
+        results: formatted_results
+      }))
     end
   end
 
