@@ -1,5 +1,5 @@
 {
-  "name": "Elixir Dev Container",
+  "name": "Notifier Dev Container",
 
   // Build instructions (which Dockerfile, build context, etc.)
   "build": {
@@ -8,10 +8,16 @@
     // If you have Docker build args, they'd go under "args" here.
   },
 
-  // "runArgs" must be placed at the top level (same level as "build").
   "runArgs": [
-    "--add-host=host.docker.internal:host-gateway"
+    "--add-host=host.docker.internal:host-gateway",
+    "-v", "/var/run/docker.sock:/var/run/docker.sock"
   ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "networkArgs": ["--add-host=host.docker.internal:host-gateway"]
+    }
+  },
 
   // Add port forwarding configuration
   "forwardPorts": [4000],
@@ -20,13 +26,16 @@
   "remoteUser": "elixir",
   "updateRemoteUserUID": false,
 
-  "settings": {
-    "terminal.integrated.shell.linux": "/bin/bash"
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
   },
-
-  "extensions": [
-    "JakeBecker.elixir-ls"
-  ],
 
   "postCreateCommand": "mix deps.get"
 }

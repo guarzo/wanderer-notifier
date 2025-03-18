@@ -59,4 +59,28 @@ defmodule WandererNotifier.Discord.TestNotifier do
     Logger.info("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     :ok
   end
+
+  @doc """
+  Sends a file with an optional title and description.
+  In test environment, this just logs the information.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_file(filename, file_data, title \\ nil, description \\ nil) do
+    file_size = byte_size(file_data)
+    title_str = if title, do: title, else: "No title"
+    desc_str = if description, do: description, else: "No description"
+
+    Logger.info("DISCORD TEST FILE: #{filename} (#{file_size} bytes) - Title: #{title_str}, Description: #{desc_str}")
+    :ok
+  end
+
+  @doc """
+  Sends an embed with an image to Discord.
+  In test environment, this just logs the information.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_image_embed(title, description, image_url, _color \\ 0x00FF00) do
+    Logger.info("DISCORD TEST IMAGE EMBED: #{title} - #{description} with image: #{image_url}")
+    :ok
+  end
 end

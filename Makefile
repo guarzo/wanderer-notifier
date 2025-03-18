@@ -1,5 +1,5 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.watch test.cover test.license test.license_manager test.bot_registration test.features test.config test.application test.mock format shell run deps.get deps.update build.npm
+.PHONY: compile clean test test.watch test.cover test.license test.license_manager test.bot_registration test.features test.config test.application test.mock format shell run deps.get deps.update build.npm dev watch
 
 # Build tasks
 compile:
@@ -49,6 +49,13 @@ shell:
 run:
 	@mix run
 
+# Development commands with automatic asset rebuilding
+dev:
+	@iex -S mix
+
+watch:
+	@cd renderer && npm run watch && cd ..
+
 build.npm: 
 	cd renderer && npm run build && cd ..
 
@@ -59,4 +66,6 @@ deps.get:
 deps.update:
 	@mix deps.update --all
 
-s: clean compile build.npm shell
+# Original command with automatic asset rebuilding
+s: clean compile
+	@iex -S mix

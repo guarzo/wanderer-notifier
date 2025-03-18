@@ -19,20 +19,45 @@ defmodule WandererNotifier.CorpTools.ChartHelpers do
   Returns {:ok, url} on success, {:error, reason} on failure.
   """
   def generate_chart_url(chart_config) do
+    # Log the chart config structure for debugging
+    Logger.debug("Generating chart URL with config: #{inspect(chart_config, limit: 5000)}")
+    
     # Convert chart configuration to JSON
     case Jason.encode(chart_config) do
       {:ok, json} ->
-        # URL encode the JSON
-        encoded_config = URI.encode_www_form(json)
+        # URL encode the JSON - the percent encoding is causing issues
+        # Instead of regular form encoding, we need a more compatible encoding
+        encoded_config = 
+          json
+          |> URI.encode()
+          |> String.replace("%20", "+") # Spaces are better as + for QuickChart
 
         # Construct the URL
         url = "#{@quickcharts_url}?c=#{encoded_config}&w=#{@chart_width}&h=#{@chart_height}"
 
-        {:ok, url}
+        # Log the URL (truncated for brevity in logs)
+        url_length = String.length(url)
+        truncated_url = if url_length > 100, 
+          do: "#{String.slice(url, 0, 50)}...#{String.slice(url, -50, 50)} (length: #{url_length})",
+          else: url
+          
+        Logger.info("Generated chart URL: #{truncated_url}")
+        
+        # Validate the URL is properly formed
+        case URI.parse(url) do
+          %URI{scheme: nil} ->
+            Logger.error("Generated invalid chart URL without scheme")
+            {:error, "Invalid chart URL generated"}
+          %URI{host: nil} ->
+            Logger.error("Generated invalid chart URL without host")
+            {:error, "Invalid chart URL generated"}
+          _ ->
+            {:ok, url}
+        end
 
       {:error, reason} ->
         Logger.error("Failed to encode chart configuration: #{inspect(reason)}")
-        {:error, "Failed to encode chart configuration"}
+        {:error, "Failed to encode chart configuration: #{inspect(reason)}"}
     end
   end
 
@@ -106,40 +131,52 @@ defmodule WandererNotifier.CorpTools.ChartHelpers do
   Returns {:ok, url} with the chart URL.
   """
   def create_no_data_chart(title) do
+    # Use a simplified title that's less likely to cause encoding issues
+    simple_title = "No Data"
+    Logger.info("Creating 'No Data Available' chart for: #{title}")
+    
+    # Create a very minimal chart configuration
     chart_config = %{
       type: "bar",
       data: %{
-        labels: ["No Data Available"],
+        labels: ["No Data"],
         datasets: [
           %{
-            label: title,
+            label: "Value",
             data: [0],
-            backgroundColor: "rgba(54, 162, 235, 0.8)",
-            borderColor: "rgba(54, 162, 235, 1)",
-            borderWidth: 1
+            backgroundColor: "rgba(54, 162, 235, 0.8)"
           }
         ]
       },
       options: %{
-        responsive: true,
         plugins: %{
           title: %{
             display: true,
-            text: "#{title} - No Data Available",
-            color: @chart_text_color,
-            font: %{
-              size: 18
-            }
+            text: simple_title,
+            color: "rgb(255, 255, 255)"
           },
           legend: %{
             display: false
           }
         }
       },
-      backgroundColor: @chart_background_color
+      backgroundColor: "rgb(47, 49, 54)"
     }
-
-    generate_chart_url(chart_config)
+    
+    # Direct URL encoding approach as a fallback
+    case Jason.encode(chart_config) do
+      {:ok, json} ->
+        encoded_json = URI.encode(json)
+        url = "#{@quickcharts_url}?c=#{encoded_json}&w=#{@chart_width}&h=#{@chart_height}"
+        Logger.info("Created simple 'No Data' chart with direct encoding")
+        {:ok, url}
+      
+      {:error, reason} ->
+        Logger.error("Failed to encode 'No Data' chart: #{inspect(reason)}")
+        # Super simple fallback using a predefined chart
+        fallback_url = "#{@quickcharts_url}?c=%7B%22type%22%3A%22bar%22%2C%22data%22%3A%7B%22labels%22%3A%5B%22No%20Data%22%5D%2C%22datasets%22%3A%5B%7B%22label%22%3A%22Value%22%2C%22data%22%3A%5B0%5D%2C%22backgroundColor%22%3A%22blue%22%7D%5D%7D%7D"
+        {:ok, fallback_url}
+    end
   end
 
   @doc """

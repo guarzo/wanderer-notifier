@@ -26,6 +26,9 @@ defmodule WandererNotifier.Application do
         {:ok, _} -> Logger.info("ExSync started successfully")
         {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
       end
+      
+      # Start watchers for frontend asset rebuilding in development
+      start_watchers()
     end
 
     # Set the environment in the application configuration
@@ -258,8 +261,70 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Service, []},
 
       # Start the Web Server
-      {WandererNotifier.Web.Server, []}
+      {WandererNotifier.Web.Server, []},
+
+      # Start the Activity Chart Scheduler if map tools are enabled
+      if Config.map_tools_enabled?() do
+        # Get the chart scheduler interval
+        interval = get_chart_scheduler_interval()
+        
+        # Start the Activity Chart Scheduler
+        {WandererNotifier.CorpTools.ActivityChartScheduler, [interval: interval]}
+      end
     ]
     |> Enum.filter(& &1)
+  end
+
+  # Helper function to start watchers for frontend asset rebuilding
+  defp start_watchers do
+    watchers = Application.get_env(:wanderer_notifier, :watchers, [])
+    
+    Enum.each(watchers, fn {cmd, args} ->
+      Logger.info("Starting watcher: #{cmd} with args: #{inspect(args)}")
+      
+      # Process each argument to extract cd path
+      {cmd_args, cd_path} = extract_watcher_args(args)
+      
+      cmd_str = to_string(cmd)
+      
+      Logger.info("Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}")
+      
+      Task.start(fn ->
+        try do
+          # Create options for System.cmd
+          system_opts = []
+          system_opts = if cd_path, do: [cd: cd_path] ++ system_opts, else: system_opts
+          
+          # Add stdout redirection
+          system_opts = [into: IO.stream(:stdio, :line)] ++ system_opts
+          
+          Logger.info("Running command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(system_opts)}")
+          
+          # Start the watcher with correctly formatted options
+          {_output, status} = System.cmd(cmd_str, cmd_args, system_opts)
+          
+          if status == 0 do
+            Logger.info("Watcher #{cmd} completed successfully")
+          else
+            Logger.error("Watcher #{cmd} exited with status #{status}")
+          end
+        rescue
+          e ->
+            Logger.error("Error starting watcher: #{inspect(e)}")
+            Logger.error(Exception.format_stacktrace())
+        end
+      end)
+    end)
+  end
+  
+  # Extract watcher args and cd path
+  defp extract_watcher_args(args) do
+    Enum.reduce(args, {[], nil}, fn arg, {acc_args, acc_cd} ->
+      case arg do
+        {:cd, path} -> {acc_args, path}  # Found cd option
+        arg when is_binary(arg) -> {acc_args ++ [arg], acc_cd}  # Normal string arg
+        _arg -> {acc_args, acc_cd}  # Ignore any other types
+      end
+    end)
   end
 end
