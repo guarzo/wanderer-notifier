@@ -785,20 +785,41 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
+  # -- FILE SENDING --
+  
   @doc """
-  Sends a file as an attachment to Discord with an optional message.
-
-  ## Parameters
-    - file_path: Path to the file to send
-    - title: Title for the message (optional)
-    - description: Description for the message (optional)
-
-  ## Returns
-    - :ok on success
-    - {:error, reason} on failure
+  Sends a file with an optional title and description.
+  
+  Implements the NotifierBehaviour callback, converts binary data to a file 
+  and sends it to Discord using the existing file upload functionality.
   """
-  def send_file(file_path, title \\ nil, description \\ nil) do
-    Logger.info("Discord.Notifier.send_file called with file: #{file_path}")
+  @impl WandererNotifier.NotifierBehaviour
+  def send_file(filename, file_data, title \\ nil, description \\ nil) do
+    Logger.info("Discord.Notifier.send_file called with filename: #{filename}")
+    
+    if env() == :test do
+      handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
+      :ok
+    else
+      # Create a temporary file to hold the binary data
+      temp_file = Path.join(System.tmp_dir!(), "#{:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)}-#{filename}")
+      
+      try do
+        # Write the file data to the temp file
+        File.write!(temp_file, file_data)
+        
+        # Use the existing file sending method
+        send_file_path(temp_file, title, description)
+      after
+        # Clean up the temp file
+        File.rm(temp_file)
+      end
+    end
+  end
+  
+  # Rename the existing send_file function to send_file_path to avoid conflicts
+  def send_file_path(file_path, title \\ nil, description \\ nil) do
+    Logger.info("Discord.Notifier.send_file_path called with file: #{file_path}")
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")

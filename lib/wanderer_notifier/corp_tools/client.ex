@@ -295,4 +295,39 @@ defmodule WandererNotifier.CorpTools.Client do
         {:error, reason}
     end
   end
+
+  @doc """
+  Retrieves character activity data from the EVE Corp Tools API.
+  Returns {:ok, data} on success, {:error, reason} on failure.
+  """
+  def get_activity_data do
+    url = "#{Config.corp_tools_api_url()}/activity"
+    headers = [
+      {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
+      {"Content-Type", "application/json"}
+    ]
+
+    Logger.info("Fetching character activity data from EVE Corp Tools API")
+
+    case HttpClient.request("GET", url, headers) do
+      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
+        case Jason.decode(body) do
+          {:ok, data} ->
+            Logger.info("Successfully retrieved character activity data")
+            {:ok, data}
+          {:error, error} ->
+            Logger.error("Failed to parse character activity data response: #{inspect(error)}")
+            {:error, "Failed to parse response"}
+        end
+      {:ok, %{status_code: status, body: body}} ->
+        Logger.error("Failed to get character activity data with status #{status}: #{body}")
+        {:error, "API returned status #{status}"}
+      {:error, %HTTPoison.Error{reason: :econnrefused}} ->
+        Logger.warning("EVE Corp Tools API connection refused when fetching character activity data")
+        {:error, :connection_refused}
+      {:error, reason} ->
+        Logger.error("Character activity data request failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
 end

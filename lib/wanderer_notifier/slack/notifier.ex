@@ -166,6 +166,28 @@ defmodule WandererNotifier.Slack.Notifier do
     send_payload(payload)
   end
 
+  @doc """
+  Sends a file with an optional title and description.
+  Not fully implemented for Slack as we don't have a proper Slack API client.
+  Falls back to sending as a text message with a link.
+  """
+  @impl WandererNotifier.NotifierBehaviour
+  def send_file(filename, _file_data, title \\ nil, description \\ nil) do
+    # Since we only have webhook access and not full Slack API access,
+    # we can't directly upload files. Instead, we'll send a message
+    # saying a file would be uploaded.
+    message_parts = [
+      if title, do: "*#{title}*", else: nil,
+      if description, do: description, else: nil,
+      "File: #{filename} (Slack webhook can't directly upload files)"
+    ]
+    |> Enum.filter(&(&1 != nil))
+    |> Enum.join("\n")
+    
+    # Send as a normal message
+    send_message(message_parts)
+  end
+
   @spec send_payload(map()) :: :ok | {:error, any()}
   defp send_payload(payload) do
     url = webhook_url()

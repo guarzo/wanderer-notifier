@@ -150,6 +150,10 @@ This project includes a development container configuration for VS Code:
 3. When prompted, reopen the project in the container. The container is configured using the included `devcontainer.json` and `Dockerfile`.
 4. The container automatically runs `mix deps.get` upon setup.
 
+### Frontend Development
+
+For information about frontend development, including the automatic asset building system with Vite, see the [Frontend Development Guide](FRONTEND_DEV.md).
+
 ### Makefile Commands
 
 The Makefile provides shortcuts for common tasks:
