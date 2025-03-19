@@ -382,7 +382,7 @@ defmodule WandererNotifier.Web.Router do
   get "/api/check-characters-endpoint" do
     Logger.info("Characters endpoint check requested")
 
-    result = WandererNotifier.Map.Characters.check_characters_endpoint_availability()
+    result = WandererNotifier.Api.Map.Characters.check_characters_endpoint_availability()
 
     response =
       case result do
@@ -544,7 +544,12 @@ defmodule WandererNotifier.Web.Router do
   #
   defp send_test_character_notification do
     Logger.info("TEST NOTIFICATION: Manually triggering a test character notification")
-    tracked_characters = CacheRepo.get("map:characters") || []
+
+    # Use CacheHelpers for consistency
+    tracked_characters = CacheHelpers.get_tracked_characters()
+
+    # Add additional debug logging
+    Logger.debug("Fetched tracked characters from cache: #{inspect(tracked_characters)}")
     Logger.info("Found #{length(tracked_characters)} tracked characters")
 
     case tracked_characters do
@@ -554,6 +559,7 @@ defmodule WandererNotifier.Web.Router do
 
       characters ->
         valid_chars = Enum.filter(characters, &valid_eve_id?/1)
+        Logger.debug("Valid characters: #{length(valid_chars)} out of #{length(characters)}")
 
         case valid_chars do
           [] ->

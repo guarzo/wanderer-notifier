@@ -127,4 +127,4 @@ Your notifier is now up and running, delivering alerts to your Discord channel a
 - **Web Dashboard:** Access system status and notification statistics via the built-in web interface
 - **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
 
-[Learn more about notification types](./notifications.html) | [See subscription options](./license.html) | [View on GitHub](https://github.com/yourusername/wanderer-notifier) 
+[Learn more about notification types](./notifications.html) [View on GitHub](https://github.com/yourusername/wanderer-notifier) 

@@ -86,10 +86,23 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       Logger.info("Updating characters (force=#{force})...")
 
       cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
+      Logger.debug("Retrieved cached characters before update: #{inspect(cached_characters)}")
 
       case MapClient.update_tracked_characters(cached_characters) do
         {:ok, characters} ->
           Logger.info("Characters updated: #{length(characters)} characters found")
+          # Verify the characters were actually stored in cache
+          updated_cache = CacheRepo.get("map:characters")
+          Logger.debug("Post-update cache verification - map:characters contains: #{inspect(updated_cache)}")
+
+          if updated_cache == nil || updated_cache == [] do
+            Logger.warning("Characters were updated but cache appears empty. Forcing manual cache update.")
+            CacheRepo.set("map:characters", characters, WandererNotifier.Config.Timings.characters_cache_ttl())
+            # Double-check the cache again
+            final_cache = CacheRepo.get("map:characters")
+            Logger.debug("After manual cache update - map:characters contains: #{inspect(final_cache)}")
+          end
+
           %{state | last_characters_update: now, characters_count: length(characters)}
 
         {:error, reason} ->

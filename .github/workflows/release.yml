@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # required for getting commit SHA
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -50,6 +52,12 @@ jobs:
           # Build the release
           mix release
 
+      - name: Compute short SHA
+        id: sha
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Debug Dockerfile
         run: |
           echo "Current directory: $(pwd)"
@@ -59,15 +67,16 @@ jobs:
           cat Dockerfile
 
       - name: Build Docker image
-        env:
-          WANDERER_PRODUCTION_BOT_TOKEN: ${{ secrets.PRODUCTION_BOT_TOKEN }}
-        run: |
-          docker build \
-            --build-arg WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN}" \
-            -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }} .
-          docker build \
-            --build-arg WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN}" \
-            -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_$(git rev-parse --short HEAD) .
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          load: true
+          build-args: |
+            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
+          tags: |
+            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
+            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -78,4 +87,4 @@ jobs:
       - name: Push Docker image
         run: |
           docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
-          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_$(git rev-parse --short HEAD)
+          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}

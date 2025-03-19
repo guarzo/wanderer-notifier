@@ -15,12 +15,8 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
       type: :activity_summary,
       title: "Character Activity",
       description: "Top 5 most active characters showing connections, passages, and signatures"
-    },
-    %{
-      type: :activity_timeline,
-      title: "Activity Over Time",
-      description: "Trends of connections, passages, and signatures over time"
     }
+    # Timeline and distribution charts removed
   ]
 
   # Client API
@@ -53,8 +49,15 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Get interval from options or use default
     interval = Keyword.get(opts, :interval, @default_interval)
 
-    # Schedule first chart sending
-    schedule_charts(interval)
+    Logger.info("Initializing Activity Chart Scheduler...")
+
+    # Schedule first chart sending only if map tools are enabled
+    if WandererNotifier.Config.map_tools_enabled?() do
+      schedule_charts(interval)
+      Logger.info("Activity Chart Scheduler initialized and scheduled")
+    else
+      Logger.info("Activity Chart Scheduler initialized but not scheduled (Map Tools disabled)")
+    end
 
     # Initial state
     {:ok, %{interval: interval, last_sent: nil}}
@@ -62,11 +65,17 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
   @impl true
   def handle_cast(:send_all_charts, state) do
-    # Send all charts
-    _results = send_charts()
+    # Send all charts only if map tools are enabled
+    if WandererNotifier.Config.map_tools_enabled?() do
+      # Send all charts
+      _results = send_charts()
 
-    # Update state with last sent timestamp
-    {:noreply, %{state | last_sent: DateTime.utc_now()}}
+      # Update state with last sent timestamp
+      {:noreply, %{state | last_sent: DateTime.utc_now()}}
+    else
+      Logger.info("Skipping manually triggered Activity Charts (Map Tools disabled)")
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -74,29 +83,45 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Update interval in state
     new_state = %{state | interval: interval_ms}
 
-    # Reschedule with new interval
-    schedule_charts(interval_ms)
+    # Reschedule with new interval only if map tools are enabled
+    if WandererNotifier.Config.map_tools_enabled?() do
+      schedule_charts(interval_ms)
+    else
+      Logger.info("Not rescheduling Activity Charts (Map Tools disabled)")
+    end
 
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_info(:send_charts, state) do
-    Logger.info("Sending activity charts to Discord...")
+    # Send charts only if map tools are enabled
+    if WandererNotifier.Config.map_tools_enabled?() do
+      Logger.info("Sending activity charts to Discord...")
 
-    # Send charts
-    _results = send_charts()
+      # Send charts
+      _results = send_charts()
 
-    # Schedule next run
-    schedule_charts(state.interval)
+      # Schedule next run
+      schedule_charts(state.interval)
 
-    {:noreply, %{state | last_sent: DateTime.utc_now()}}
+      {:noreply, %{state | last_sent: DateTime.utc_now()}}
+    else
+      Logger.info("Skipping scheduled Activity Charts (Map Tools disabled)")
+      {:noreply, state}
+    end
   end
 
   # Helper Functions
 
   defp schedule_charts(interval) do
-    Process.send_after(self(), :send_charts, interval)
+    # Only schedule if map tools are enabled
+    if WandererNotifier.Config.map_tools_enabled?() do
+      Process.send_after(self(), :send_charts, interval)
+      Logger.debug("Scheduled next activity chart run in #{interval / 1000 / 60} minutes")
+    else
+      Logger.info("Not scheduling Activity Charts (Map Tools disabled)")
+    end
   end
 
   defp send_charts do

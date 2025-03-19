@@ -600,11 +600,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     # Chart types and their descriptions
     charts = [
       {"activity_summary", "Character Activity Summary",
-       "Top characters by connections, passages, and signatures"},
-      {"activity_timeline", "Activity Over Time",
-       "Timeline of connections, passages, and signatures over time"},
-      {"activity_distribution", "Activity Distribution",
-       "Distribution of connections, passages, and signatures"}
+       "Top characters by connections, passages, and signatures"}
+      # Timeline and distribution charts removed
     ]
 
     # Send each chart and collect results

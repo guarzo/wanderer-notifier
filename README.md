@@ -184,8 +184,6 @@ All configuration is managed through environment variables in the `.env` file. A
 
 3. **License Configuration**
    - `LICENSE_KEY`: Your license key for accessing premium features
-   - `BOT_API_TOKEN`: API token for your bot to validate with the license server (only needed for development; in production, a constant value is used)
-   - `LICENSE_MANAGER_API_URL`: URL of the license manager API (optional, defaults to production URL)
 
 4. **External Services**
    - `ZKILL_BASE_URL`: zKillboard API endpoint

@@ -57,7 +57,7 @@ defmodule WandererNotifier.Application do
     corp_tools_api_url = Config.corp_tools_api_url()
     corp_tools_api_token = Config.corp_tools_api_token()
 
-    if corp_tools_api_url && corp_tools_api_token do
+    if corp_tools_api_url && corp_tools_api_token && Config.corp_tools_enabled?() do
       # Perform health check
       Task.start(fn ->
         # Add a small delay to ensure the application is fully started
@@ -93,9 +93,13 @@ defmodule WandererNotifier.Application do
       # Start the supervisor with the updated children list
       Supervisor.start_link(children, strategy: :one_for_one, name: WandererNotifier.Supervisor)
     else
-      Logger.warning(
-        "EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}"
-      )
+      if !Config.corp_tools_enabled?() do
+        Logger.info("Corp Tools functionality is disabled, skipping TPS Chart Scheduler")
+      else
+        Logger.warning(
+          "EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}"
+        )
+      end
 
       # Start the supervisor with the default children list
       Supervisor.start_link(get_children(),
@@ -304,6 +308,9 @@ defmodule WandererNotifier.Application do
 
         # Start the Activity Chart Scheduler
         {WandererNotifier.Api.Map.ActivityChartScheduler, [interval: interval]}
+      else
+        Logger.info("Map Tools functionality is disabled, skipping Activity Chart Scheduler")
+        nil
       end
     ]
     |> Enum.filter(& &1)

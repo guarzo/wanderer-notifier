@@ -140,24 +140,28 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp parse_characters_response(body) do
+    Logger.debug("[parse_characters_response] Raw body: #{body}")
     case Jason.decode(body) do
       {:ok, data} ->
+        Logger.debug("[parse_characters_response] Decoded data: #{inspect(data)}")
         case data do
           %{"data" => characters} when is_list(characters) ->
             # API returns a "data" array containing character objects with nested "character" data
             Logger.debug(
               "[parse_characters_response] Parsed characters from data array: #{length(characters)}"
             )
+            Logger.debug("[parse_characters_response] First raw character: #{inspect(List.first(characters))}")
 
             # Transform the characters to match the expected format for the rest of the application
             transformed_characters =
               Enum.map(characters, fn char ->
                 # Extract the character data from the nested structure
                 character_data = Map.get(char, "character", %{})
+                Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
 
                 # Create a standardized format for the character
-                %{
-                  "characterID" => Map.get(character_data, "eve_id"),
+                transformed = %{
+                  "character_id" => Map.get(character_data, "eve_id"),
                   "name" => Map.get(character_data, "name"),
                   "corporationID" => Map.get(character_data, "corporation_id"),
                   # Using ticker as name
@@ -168,8 +172,12 @@ defmodule WandererNotifier.Api.Map.Characters do
                 }
                 |> Enum.filter(fn {_, v} -> v != nil end)
                 |> Map.new()
+
+                Logger.debug("[parse_characters_response] Transformed character: #{inspect(transformed)}")
+                transformed
               end)
 
+            Logger.debug("[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}")
             {:ok, transformed_characters}
 
           characters when is_list(characters) ->
@@ -180,7 +188,7 @@ defmodule WandererNotifier.Api.Map.Characters do
             transformed_characters =
               Enum.map(characters, fn char ->
                 %{
-                  "characterID" => Map.get(char, "id"),
+                  "character_id" => Map.get(char, "id"),
                   "name" => Map.get(char, "name"),
                   "corporationID" => Map.get(char, "corporation_id"),
                   "corporationName" => Map.get(char, "corporation_name"),
@@ -219,7 +227,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp update_cache(new_characters, _cached_characters) do
-    CacheRepo.set("tracked_characters", new_characters, Timings.characters_cache_ttl())
+    CacheRepo.set("map:characters", new_characters, Timings.characters_cache_ttl())
     {:ok, new_characters}
   end
 
@@ -238,8 +246,9 @@ defmodule WandererNotifier.Api.Map.Characters do
         else
           new_chars
           |> Enum.filter(fn char ->
+            char_id = Map.get(char, "character_id")
             !Enum.any?(cached_chars, fn c ->
-              Map.get(c, "characterID") == Map.get(char, "characterID")
+              Map.get(c, "character_id") == char_id
             end)
           end)
         end

@@ -37,6 +37,12 @@ defmodule WandererNotifier.Notifiers.Factory do
   @spec notify(atom(), list()) :: :ok | {:error, any()}
   def notify(function, args) do
     notifier = get_notifier()
+
+    # Add debug logging for character notifications
+    if function == :send_new_tracked_character_notification do
+      Logger.debug("Sending character notification with: #{inspect(args)}")
+    end
+
     apply(notifier, function, args)
   end
 

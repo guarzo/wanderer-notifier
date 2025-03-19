@@ -39,6 +39,10 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   Gets all tracked characters from the cache.
   """
   def get_tracked_characters do
-    CacheRepo.get("map:characters") || []
+    characters = CacheRepo.get("map:characters")
+    require Logger
+    Logger.debug("CacheHelpers.get_tracked_characters: Retrieved #{inspect(length(characters || []))} characters from cache")
+    Logger.debug("CacheHelpers.get_tracked_characters: Raw data: #{inspect(characters)}")
+    characters || []
   end
 end
