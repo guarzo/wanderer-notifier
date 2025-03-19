@@ -20,16 +20,28 @@ defmodule WandererNotifier.Web.Server do
   # Server Implementation
 
   @impl true
-  def init(opts) do
-    port = Keyword.get(opts, :port, @default_port)
-    
+  def init(_opts) do
+    # Read port from config or env, using explicit PORT in environment
+    port =
+      System.get_env("PORT")
+      |> case do
+        nil ->
+          WandererNotifier.Core.Config.web_port() || @default_port
+
+        str_port ->
+          case Integer.parse(str_port) do
+            {num, _} -> num
+            :error -> @default_port
+          end
+      end
+
     Logger.info("Starting web server on port #{port}...")
-    
+
     case start_server(port) do
       {:ok, pid} ->
         Logger.info("Web server started successfully on port #{port}")
         {:ok, %{server_pid: pid, port: port}}
-        
+
       {:error, reason} ->
         Logger.error("Failed to start web server: #{inspect(reason)}")
         {:stop, reason}
@@ -39,17 +51,17 @@ defmodule WandererNotifier.Web.Server do
   @impl true
   def terminate(_reason, %{server_pid: pid}) do
     Logger.info("Stopping web server...")
-    
+
     if Process.alive?(pid) do
       Process.exit(pid, :normal)
     end
-    
+
     :ok
   end
 
   # Helper functions
 
   defp start_server(port) do
-    Plug.Cowboy.http(Router, [], port: port)
+    Plug.Cowboy.http(Router, [], port: port, ip: {0, 0, 0, 0})
   end
-end 
+end

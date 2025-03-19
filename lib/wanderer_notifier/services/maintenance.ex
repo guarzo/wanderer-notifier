@@ -15,14 +15,19 @@ defmodule WandererNotifier.Services.Maintenance do
   def init(_opts) do
     # Schedule the first tick
     schedule_tick()
-    # Initialize state
-    state = Scheduler.do_initial_checks(%{
-      service_start_time: :os.system_time(:second),
-      last_systems_update: nil,
-      last_characters_update: nil,
-      systems_count: 0,
-      characters_count: 0
-    })
+    # Initialize state with the current timestamp
+    current_time = :os.system_time(:second)
+
+    state =
+      Scheduler.do_initial_checks(%{
+        service_start_time: current_time,
+        last_systems_update: current_time,
+        last_characters_update: current_time,
+        last_status_time: current_time,
+        systems_count: 0,
+        characters_count: 0
+      })
+
     {:ok, state}
   end
 

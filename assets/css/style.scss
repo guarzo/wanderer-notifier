@@ -1,0 +1,98 @@
+@import "{{ site.theme }}";
+
+/* Custom styles */
+.main-nav {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.main-content {
+  max-width: 64rem;
+  padding: 2rem 6rem;
+  margin: 0 auto;
+  font-size: 1.1rem;
+}
+
+.page-header {
+  background-color: #24292e;
+  background-image: linear-gradient(120deg, #24292e, #0366d6);
+}
+
+@media screen and (max-width: 42em) {
+  .main-content {
+    padding: 2rem 1rem;
+  }
+}
+
+/* Image styles */
+.main-content img {
+  max-width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px;
+  display: block;
+  margin: 1rem auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+/* Table styles */
+.main-content table {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-collapse: collapse;
+}
+
+.main-content table th, 
+.main-content table td {
+  padding: 0.75rem;
+  vertical-align: top;
+  border: 1px solid #dee2e6;
+}
+
+.main-content table th {
+  background-color: #f8f9fa;
+}
+
+/* Feature list styling */
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.feature-card {
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 1.5rem;
+  background-color: #f6f8fa;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.5rem;
+}
+
+/* Code block styles */
+.main-content pre {
+  background-color: #f6f8fa;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.main-content code {
+  background-color: #f6f8fa;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+} 

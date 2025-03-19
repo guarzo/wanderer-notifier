@@ -58,37 +58,73 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   defp handle_killmail(killmail, state) do
-    # TODO: Refactor into a cleaner implementation as part of the core reorg
+    # Extract the kill ID if available
     kill_id = get_in(killmail, ["killID"])
 
-    # Check if this kill has already been processed
-    if kill_id && Map.has_key?(state.processed_kill_ids, kill_id) do
-      Logger.debug("Kill #{kill_id} already processed, skipping")
-      state
-    else
-      # Process the kill
-      try do
-        # Store each kill in memory - we'll limit to the last 50 kills
-        update_recent_kills(killmail)
+    # Check if this kill has already been processed or if kill_id is missing
+    cond do
+      is_nil(kill_id) ->
+        Logger.warning("Received killmail without kill ID: #{inspect(killmail)}")
+        state
 
-        if Features.enabled?(:backup_kills_processing) do
-          # Simulate enrichment and notification for now
-          Logger.info("Would enrich and notify about kill #{kill_id}")
+      Map.has_key?(state.processed_kill_ids, kill_id) ->
+        Logger.debug("Kill #{kill_id} already processed, skipping")
+        state
 
-          # Return the state with the kill marked as processed
-          Map.update(state, :processed_kill_ids, %{kill_id => :os.system_time(:second)}, fn ids ->
-            Map.put(ids, kill_id, :os.system_time(:second))
-          end)
-        else
-          Logger.debug("Backup kills processing disabled, not enriching kill #{kill_id}")
-          state
-        end
-      rescue
-        e ->
-          Logger.error("Error processing killmail: #{inspect(e)}")
-          Logger.error("Killmail: #{inspect(killmail)}")
+      true ->
+        # Process the kill
+        process_new_kill(killmail, kill_id, state)
+    end
+  end
+
+  defp process_new_kill(killmail, kill_id, state) do
+    # Store each kill in memory - we'll limit to the last 50 kills
+    update_recent_kills(killmail)
+
+    # Only continue with processing if feature is enabled
+    if Features.enabled?(:backup_kills_processing) do
+      with :ok <- validate_killmail(killmail),
+           :ok <- enrich_and_notify(kill_id) do
+        # Return the state with the kill marked as processed
+        Map.update(state, :processed_kill_ids, %{kill_id => :os.system_time(:second)}, fn ids ->
+          Map.put(ids, kill_id, :os.system_time(:second))
+        end)
+      else
+        {:error, reason} ->
+          Logger.error("Error processing kill #{kill_id}: #{reason}")
+          Logger.debug("Problematic killmail: #{inspect(killmail)}")
           state
       end
+    else
+      Logger.debug("Backup kills processing disabled, not enriching kill #{kill_id}")
+      state
+    end
+  end
+
+  # Validate kill data structure
+  defp validate_killmail(killmail) do
+    cond do
+      not is_map(killmail) ->
+        {:error, "Killmail is not a map"}
+
+      is_nil(get_in(killmail, ["killID"])) ->
+        {:error, "Killmail has no killID"}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Simulate enrichment and notification
+  defp enrich_and_notify(kill_id) do
+    try do
+      # This would be the real enrichment and notification logic
+      Logger.info("Would enrich and notify about kill #{kill_id}")
+      :ok
+    rescue
+      e ->
+        Logger.error("Exception during enrichment: #{Exception.message(e)}")
+        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
     end
   end
 

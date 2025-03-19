@@ -18,25 +18,30 @@ defmodule WandererNotifier.LicenseManager.ClientTest do
     test "returns {:ok, response} when the license is valid" do
       license_key = "valid-license-key"
       expected_url = "https://api.example.com/api/licenses/validate"
+
       expected_headers = [
         {"Content-Type", "application/json"}
       ]
-      expected_body = Jason.encode!(%{
-        license_key: license_key,
-        bot_token: "test-bot-token",
-        bot_type: "wanderer_notifier"
-      })
+
+      expected_body =
+        Jason.encode!(%{
+          license_key: license_key,
+          bot_token: "test-bot-token",
+          bot_type: "wanderer_notifier"
+        })
 
       # Mock the HTTP response
       expect(HTTPoison, :post, fn ^expected_url, ^expected_body, ^expected_headers ->
-        {:ok, %HTTPoison.Response{
-          status_code: 200,
-          body: Jason.encode!(%{
-            "valid" => true,
-            "features" => ["feature1", "feature2"],
-            "tier" => "premium"
-          })
-        }}
+        {:ok,
+         %HTTPoison.Response{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "valid" => true,
+               "features" => ["feature1", "feature2"],
+               "tier" => "premium"
+             })
+         }}
       end)
 
       assert {:ok, response} = Client.validate_license(license_key)

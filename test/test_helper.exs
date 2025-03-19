@@ -53,7 +53,10 @@ defmodule WandererNotifier.NotifierStub do
 end
 
 # Define mocks for dependency injection
-Mox.defmock(WandererNotifier.LicenseManager.ClientMock, for: WandererNotifier.LicenseManager.Client)
+Mox.defmock(WandererNotifier.LicenseManager.ClientMock,
+  for: WandererNotifier.LicenseManager.Client
+)
+
 Mox.defmock(WandererNotifier.LicenseMock, for: WandererNotifier.License)
 Mox.defmock(WandererNotifier.NotifierMock, for: WandererNotifier.NotifierBehaviour)
 
@@ -72,7 +75,12 @@ Application.put_env(:wanderer_notifier, :discord, %{
 # Set up mocks for dependency injection
 Application.put_env(:wanderer_notifier, :license_client, WandererNotifier.LicenseMock)
 Application.put_env(:wanderer_notifier, :notifier, WandererNotifier.NotifierMock)
-Application.put_env(:wanderer_notifier, :license_manager_client, WandererNotifier.LicenseManager.ClientMock)
+
+Application.put_env(
+  :wanderer_notifier,
+  :license_manager_client,
+  WandererNotifier.LicenseManager.ClientMock
+)
 
 # Set up default stubs for mocks
 Mox.stub_with(WandererNotifier.LicenseMock, WandererNotifier.LicenseStub)

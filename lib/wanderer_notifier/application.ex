@@ -9,8 +9,8 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
-  alias WandererNotifier.CorpTools.ChartScheduler
+  alias WandererNotifier.CorpTools.CorpToolsClient
+  alias WandererNotifier.TPSChartScheduler
 
   @impl true
   def start(_type, _args) do
@@ -43,16 +43,21 @@ defmodule WandererNotifier.Application do
     license_manager_url = Config.license_manager_api_url()
     # Bot API token is determined by the environment
 
-    Logger.info("License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}")
+    Logger.info(
+      "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
+    )
+
     Logger.info("License Manager URL: #{license_manager_url || "Not configured"}")
-    Logger.info("Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}")
+
+    Logger.info(
+      "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
+    )
 
     # Check EVE Corp Tools API configuration
     corp_tools_api_url = Config.corp_tools_api_url()
     corp_tools_api_token = Config.corp_tools_api_token()
 
     if corp_tools_api_url && corp_tools_api_token do
-
       # Perform health check
       Task.start(fn ->
         # Add a small delay to ensure the application is fully started
@@ -62,10 +67,12 @@ defmodule WandererNotifier.Application do
           :ok ->
             # Schedule periodic health checks
             schedule_corp_tools_health_check()
+
           {:error, :connection_refused} ->
             Logger.warning("EVE Corp Tools API connection refused. Will retry in 30 seconds.")
             # Schedule a retry after 30 seconds
             Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
+
           {:error, reason} ->
             Logger.error("EVE Corp Tools API health check failed: #{inspect(reason)}")
             # Schedule a retry after 60 seconds
@@ -75,18 +82,26 @@ defmodule WandererNotifier.Application do
 
       # Add the chart scheduler to the children list if EVE Corp Tools API is configured
       children = get_children()
-      children = children ++ [
-        # Start the chart scheduler
-        {ChartScheduler, [interval: get_chart_scheduler_interval()]}
-      ]
+
+      children =
+        children ++
+          [
+            # Start the chart scheduler
+            {TPSChartScheduler, [interval: get_chart_scheduler_interval()]}
+          ]
 
       # Start the supervisor with the updated children list
       Supervisor.start_link(children, strategy: :one_for_one, name: WandererNotifier.Supervisor)
     else
-      Logger.warning("EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}")
+      Logger.warning(
+        "EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}"
+      )
 
       # Start the supervisor with the default children list
-      Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
+      Supervisor.start_link(get_children(),
+        strategy: :one_for_one,
+        name: WandererNotifier.Supervisor
+      )
     end
   end
 
@@ -103,6 +118,7 @@ defmodule WandererNotifier.Application do
             Logger.error("License validation failed: #{error_message}")
             Logger.warning("The application will continue to run in limited mode")
           end
+
         _ ->
           Logger.error("License validation returned unexpected result")
       end
@@ -114,6 +130,7 @@ defmodule WandererNotifier.Application do
       :exit, {:timeout, _} ->
         Logger.error("License validation timed out")
         Logger.warning("The application will continue to run in limited mode")
+
       type, reason ->
         Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
         Logger.warning("The application will continue to run in limited mode")
@@ -125,7 +142,11 @@ defmodule WandererNotifier.Application do
   # This is not part of the Application behaviour, but we handle it for the test notification
   def handle_info(:send_test_notification, _state) do
     Logger.info("Sending test notification...")
-    NotifierFactory.notify(:send_message, ["Test notification from WandererNotifier. If you see this, notifications are working!"])
+
+    NotifierFactory.notify(:send_message, [
+      "Test notification from WandererNotifier. If you see this, notifications are working!"
+    ])
+
     {:noreply, nil}
   end
 
@@ -134,10 +155,11 @@ defmodule WandererNotifier.Application do
     Logger.info("Checking cache status...")
 
     # Check if cache is available
-    cache_available = case Cachex.stats(:wanderer_notifier_cache) do
-      {:ok, _stats} -> true
-      _ -> false
-    end
+    cache_available =
+      case Cachex.stats(:wanderer_notifier_cache) do
+        {:ok, _stats} -> true
+        _ -> false
+      end
 
     Logger.info("Cache available: #{cache_available}")
 
@@ -161,10 +183,12 @@ defmodule WandererNotifier.Application do
         Logger.info("EVE Corp Tools API health check passed on retry")
         # Schedule periodic health checks
         schedule_corp_tools_health_check()
+
       {:error, :connection_refused} ->
         Logger.warning("EVE Corp Tools API connection still refused. Will retry in 60 seconds.")
         # Schedule another retry after 60 seconds
         Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
+
       {:error, reason} ->
         Logger.error("EVE Corp Tools API health check failed on retry: #{inspect(reason)}")
         # Schedule another retry after 120 seconds
@@ -183,6 +207,7 @@ defmodule WandererNotifier.Application do
         Logger.debug("Periodic EVE Corp Tools API health check passed")
         # Schedule the next health check
         schedule_corp_tools_health_check()
+
       {:error, reason} ->
         Logger.warning("Periodic EVE Corp Tools API health check failed: #{inspect(reason)}")
         # Schedule a retry sooner
@@ -237,7 +262,9 @@ defmodule WandererNotifier.Application do
 
     # Try to get the interval from the environment variable
     case System.get_env("CHART_SCHEDULER_INTERVAL_MS") do
-      nil -> default_interval
+      nil ->
+        default_interval
+
       value ->
         case Integer.parse(value) do
           {interval, _} when interval > 0 -> interval
@@ -276,7 +303,7 @@ defmodule WandererNotifier.Application do
         interval = get_chart_scheduler_interval()
 
         # Start the Activity Chart Scheduler
-        {WandererNotifier.CorpTools.ActivityChartScheduler, [interval: interval]}
+        {WandererNotifier.Api.Map.ActivityChartScheduler, [interval: interval]}
       end
     ]
     |> Enum.filter(& &1)
@@ -294,7 +321,9 @@ defmodule WandererNotifier.Application do
 
       cmd_str = to_string(cmd)
 
-      Logger.info("Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}")
+      Logger.info(
+        "Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
+      )
 
       Task.start(fn ->
         try do
@@ -305,7 +334,9 @@ defmodule WandererNotifier.Application do
           # Add stdout redirection
           system_opts = [into: IO.stream(:stdio, :line)] ++ system_opts
 
-          Logger.info("Running command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(system_opts)}")
+          Logger.info(
+            "Running command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(system_opts)}"
+          )
 
           # Start the watcher with correctly formatted options
           {_output, status} = System.cmd(cmd_str, cmd_args, system_opts)
@@ -328,9 +359,12 @@ defmodule WandererNotifier.Application do
   defp extract_watcher_args(args) do
     Enum.reduce(args, {[], nil}, fn arg, {acc_args, acc_cd} ->
       case arg do
-        {:cd, path} -> {acc_args, path}  # Found cd option
-        arg when is_binary(arg) -> {acc_args ++ [arg], acc_cd}  # Normal string arg
-        _arg -> {acc_args, acc_cd}  # Ignore any other types
+        # Found cd option
+        {:cd, path} -> {acc_args, path}
+        # Normal string arg
+        arg when is_binary(arg) -> {acc_args ++ [arg], acc_cd}
+        # Ignore any other types
+        _arg -> {acc_args, acc_cd}
       end
     end)
   end

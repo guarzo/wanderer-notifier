@@ -1,19 +1,15 @@
 defmodule WandererNotifier.API do
   @moduledoc """
-  A context module for interacting with external APIs used by WandererNotifier.
-
-  This module provides functions to:
-    - Retrieve an enriched killmail by merging data from zKill and ESI.
-    - Retrieve character, corporation, alliance, and ship type information from ESI.
-    - Search for inventory types via ESI.
-    - Retrieve solar system information from ESI.
+  Proxy module for WandererNotifier.Api namespaced modules.
+  Delegates API calls to the appropriate implementation modules.
   """
 
-  alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.ZKill.Service, as: ZKillService
+  alias WandererNotifier.Api.ZKill.Service, as: ZKillService
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
 
   @doc """
   Retrieves an enriched killmail by merging data from zKill and ESI.
+  Delegates to WandererNotifier.Api.ZKill.Service.get_enriched_killmail/1.
 
   ## Examples
 
@@ -29,90 +25,96 @@ defmodule WandererNotifier.API do
 
   @doc """
   Retrieves character information from ESI given an Eve ID.
+  Delegates to WandererNotifier.Api.ESI.Service.get_character_info/1.
 
   ## Examples
 
       iex> WandererNotifier.API.get_character_info(987654)
-      {:ok, %{"eve_id" => 987654, "name" => "Some Character", ...}}
+      {:ok, %{"name" => "Character Name", "corporation_id" => 123, ...}}
 
   Returns `{:ok, character_info}` on success, or `{:error, reason}` on failure.
   """
-  @spec get_character_info(integer() | String.t()) :: {:ok, map()} | {:error, any()}
-  def get_character_info(eve_id) do
-    ESIService.get_character_info(eve_id)
+  @spec get_character_info(integer()) :: {:ok, map()} | {:error, any()}
+  def get_character_info(character_id) do
+    ESIService.get_character_info(character_id)
   end
 
   @doc """
-  Retrieves corporation information from ESI given an Eve ID.
+  Retrieves corporation information from ESI given a corporation ID.
+  Delegates to WandererNotifier.Api.ESI.Service.get_corporation_info/1.
 
   ## Examples
 
       iex> WandererNotifier.API.get_corporation_info(123)
-      {:ok, %{"eve_id" => 123, "name" => "Some Corporation", ...}}
+      {:ok, %{"name" => "Corporation Name", "ticker" => "CORP", ...}}
 
   Returns `{:ok, corporation_info}` on success, or `{:error, reason}` on failure.
   """
-  @spec get_corporation_info(integer() | String.t()) :: {:ok, map()} | {:error, any()}
-  def get_corporation_info(eve_id) do
-    ESIService.get_corporation_info(eve_id)
+  @spec get_corporation_info(integer()) :: {:ok, map()} | {:error, any()}
+  def get_corporation_info(corporation_id) do
+    ESIService.get_corporation_info(corporation_id)
   end
 
   @doc """
-  Retrieves alliance information from ESI given an Eve ID.
+  Retrieves alliance information from ESI given an alliance ID.
+  Delegates to WandererNotifier.Api.ESI.Service.get_alliance_info/1.
 
   ## Examples
 
       iex> WandererNotifier.API.get_alliance_info(456)
-      {:ok, %{"eve_id" => 456, "name" => "Some Alliance", ...}}
+      {:ok, %{"name" => "Alliance Name", "ticker" => "ALLY", ...}}
 
   Returns `{:ok, alliance_info}` on success, or `{:error, reason}` on failure.
   """
-  @spec get_alliance_info(integer() | String.t()) :: {:ok, map()} | {:error, any()}
-  def get_alliance_info(eve_id) do
-    ESIService.get_alliance_info(eve_id)
+  @spec get_alliance_info(integer()) :: {:ok, map()} | {:error, any()}
+  def get_alliance_info(alliance_id) do
+    ESIService.get_alliance_info(alliance_id)
   end
 
   @doc """
-  Retrieves the ship type name from ESI given a ship type ID.
+  Retrieves ship type name from ESI given a type ID.
+  Delegates to WandererNotifier.Api.ESI.Service.get_ship_type_name/1.
 
   ## Examples
 
       iex> WandererNotifier.API.get_ship_type_name(300)
-      {:ok, %{"name" => "Battleship", ...}}
+      {:ok, "Titan"}
 
-  Returns `{:ok, ship_type_info}` on success, or `{:error, reason}` on failure.
+  Returns `{:ok, type_name}` on success, or `{:error, reason}` on failure.
   """
-  @spec get_ship_type_name(integer() | String.t()) :: {:ok, map()} | {:error, any()}
-  def get_ship_type_name(ship_type_id) do
-    ESIService.get_ship_type_name(ship_type_id)
+  @spec get_ship_type_name(integer()) :: {:ok, String.t()} | {:error, any()}
+  def get_ship_type_name(type_id) do
+    ESIService.get_ship_type_name(type_id)
   end
 
   @doc """
-  Searches for inventory types via ESI using a search query.
+  Searches for inventory types by name.
+  Delegates to WandererNotifier.Api.ESI.Service.search_inventory_type/1.
 
   ## Examples
 
       iex> WandererNotifier.API.search_inventory_type("Tritanium")
-      {:ok, %{"inventory_type" => [34, 35, ...]}}
+      {:ok, [34]}
 
-  Returns `{:ok, result}` on success, or `{:error, reason}` on failure.
+  Returns `{:ok, [type_id]}` on success, or `{:error, reason}` on failure.
   """
-  @spec search_inventory_type(String.t(), boolean()) :: {:ok, map()} | {:error, any()}
-  def search_inventory_type(query, strict \\ true) do
-    ESIService.search_inventory_type(query, strict)
+  @spec search_inventory_type(String.t()) :: {:ok, [integer()]} | {:error, any()}
+  def search_inventory_type(name) do
+    ESIService.search_inventory_type(name)
   end
 
   @doc """
-  Retrieves solar system information from ESI given a solar system ID.
+  Retrieves solar system name from ESI given a system ID.
+  Delegates to WandererNotifier.Api.ESI.Service.get_solar_system_name/1.
 
   ## Examples
 
       iex> WandererNotifier.API.get_solar_system_name(30000142)
-      {:ok, %{"name" => "Jita", ...}}
+      {:ok, "Jita"}
 
-  Returns `{:ok, solar_system_info}` on success, or `{:error, reason}` on failure.
+  Returns `{:ok, system_name}` on success, or `{:error, reason}` on failure.
   """
-  @spec get_solar_system_name(integer() | String.t()) :: {:ok, map()} | {:error, any()}
+  @spec get_solar_system_name(integer()) :: {:ok, String.t()} | {:error, any()}
   def get_solar_system_name(system_id) do
     ESIService.get_solar_system_name(system_id)
   end

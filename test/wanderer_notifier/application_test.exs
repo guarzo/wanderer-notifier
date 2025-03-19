@@ -11,7 +11,13 @@ defmodule WandererNotifier.ApplicationTest do
   setup do
     # Reset environment variables before each test
     Application.put_env(:wanderer_notifier, :license_key, "test_license_key")
-    Application.put_env(:wanderer_notifier, :license_manager_api_url, "https://test.license.manager")
+
+    Application.put_env(
+      :wanderer_notifier,
+      :license_manager_api_url,
+      "https://test.license.manager"
+    )
+
     Application.put_env(:wanderer_notifier, :bot_registration_token, "test_bot_token")
 
     # Make sure we're using our mocks

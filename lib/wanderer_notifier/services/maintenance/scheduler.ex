@@ -21,18 +21,20 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     Logger.debug("Running maintenance tick at #{DateTime.from_unix!(now)}")
 
     # Update systems if needed (every 5 minutes)
-    new_state = if now - state.last_systems_update > 300 do
-      update_systems(state, now)
-    else
-      state
-    end
+    new_state =
+      if now - state.last_systems_update > 300 do
+        update_systems(state, now)
+      else
+        state
+      end
 
     # Update characters if needed (every 10 minutes)
-    new_state = if now - new_state.last_characters_update > 600 do
-      update_characters(new_state, now)
-    else
-      new_state
-    end
+    new_state =
+      if now - new_state.last_characters_update > 600 do
+        update_characters(new_state, now)
+      else
+        new_state
+      end
 
     # Log status
     if now - state.last_status_time > 3600 do
@@ -61,6 +63,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       Logger.info("Updating systems (force=#{force})...")
 
       cached_systems = if force, do: nil, else: CacheHelpers.get_tracked_systems()
+
       case MapClient.update_systems_with_cache(cached_systems) do
         {:ok, systems} ->
           Logger.info("Systems updated: #{length(systems)} systems found")
@@ -83,6 +86,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       Logger.info("Updating characters (force=#{force})...")
 
       cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
+
       case MapClient.update_tracked_characters(cached_characters) do
         {:ok, characters} ->
           Logger.info("Characters updated: #{length(characters)} characters found")

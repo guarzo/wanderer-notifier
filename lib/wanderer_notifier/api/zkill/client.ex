@@ -28,7 +28,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     Logger.debug("[ZKill] Fetching killmail #{kill_id}")
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, %{status_code: 200, body: body}} = response ->
         # zKill sometimes returns just "true" or "false" as bare JSON
         case Jason.decode(body) do
@@ -63,7 +63,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     Logger.debug("[ZKill] Fetching recent kills (limit: #{limit})")
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, parsed} when is_list(parsed) ->
@@ -105,13 +105,17 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     Logger.info("[ZKill] Requesting system kills for #{system_id} (limit: #{limit})")
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)
-            Logger.info("[ZKill] Successfully parsed #{length(result)} kills for system #{system_id}")
+
+            Logger.info(
+              "[ZKill] Successfully parsed #{length(result)} kills for system #{system_id}"
+            )
+
             {:ok, result}
 
           {:ok, []} ->
@@ -119,7 +123,10 @@ defmodule WandererNotifier.Api.ZKill.Client do
             {:ok, []}
 
           {:ok, other} ->
-            Logger.warning("[ZKill] Unexpected response format from zKill for system #{system_id} kills")
+            Logger.warning(
+              "[ZKill] Unexpected response format from zKill for system #{system_id} kills"
+            )
+
             Logger.warning("[ZKill] Response keys: #{inspect(other |> Map.keys())}")
             {:error, :unexpected_response_format}
 

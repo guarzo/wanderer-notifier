@@ -4,19 +4,22 @@ defmodule WandererNotifier.Data.System do
   Contains information about tracked systems from the map.
   """
 
+  alias WandererNotifier.Data.DateTimeUtil
+  alias WandererNotifier.Data.MapUtil
+
   @type t :: %__MODULE__{
-    system_id: String.t() | integer(),
-    system_name: String.t(),
-    security_status: float() | nil,
-    region_id: String.t() | integer() | nil,
-    region_name: String.t() | nil,
-    constellation_id: String.t() | integer() | nil,
-    constellation_name: String.t() | nil,
-    effect: String.t() | nil,
-    type: String.t() | nil,
-    tracked: boolean(),
-    tracked_since: DateTime.t() | nil
-  }
+          system_id: String.t() | integer(),
+          system_name: String.t(),
+          security_status: float() | nil,
+          region_id: String.t() | integer() | nil,
+          region_name: String.t() | nil,
+          constellation_id: String.t() | integer() | nil,
+          constellation_name: String.t() | nil,
+          effect: String.t() | nil,
+          type: String.t() | nil,
+          tracked: boolean(),
+          tracked_since: DateTime.t() | nil
+        }
 
   defstruct [
     :system_id,
@@ -40,34 +43,29 @@ defmodule WandererNotifier.Data.System do
   end
 
   @doc """
-  Converts a system map with string keys to a proper System struct.
+  Converts a map with string or atom keys into a System struct.
   """
+  @spec from_map(map()) :: t()
   def from_map(map) when is_map(map) do
-    attrs = %{
-      system_id: map["system_id"] || map[:system_id],
-      system_name: map["system_name"] || map[:system_name],
-      security_status: map["security_status"] || map[:security_status],
-      region_id: map["region_id"] || map[:region_id],
-      region_name: map["region_name"] || map[:region_name],
-      constellation_id: map["constellation_id"] || map[:constellation_id],
-      constellation_name: map["constellation_name"] || map[:constellation_name],
-      effect: map["effect"] || map[:effect],
-      type: map["type"] || map[:type],
-      tracked: map["tracked"] || map[:tracked] || false,
-      tracked_since: parse_datetime(map["tracked_since"] || map[:tracked_since])
+    %__MODULE__{
+      system_id: MapUtil.get_value(map, ["system_id", :system_id]),
+      system_name: MapUtil.get_value(map, ["system_name", :system_name]),
+      security_status: MapUtil.get_value(map, ["security_status", :security_status]),
+      region_id: MapUtil.get_value(map, ["region_id", :region_id]),
+      region_name: MapUtil.get_value(map, ["region_name", :region_name]),
+      constellation_id: MapUtil.get_value(map, ["constellation_id", :constellation_id]),
+      constellation_name: MapUtil.get_value(map, ["constellation_name", :constellation_name]),
+      effect: MapUtil.get_value(map, ["effect", :effect]),
+      type: MapUtil.get_value(map, ["type", :type]),
+      tracked: MapUtil.get_value(map, ["tracked", :tracked]) || false,
+      tracked_since: parse_datetime(MapUtil.get_value(map, ["tracked_since", :tracked_since]))
     }
-
-    struct(__MODULE__, attrs)
   end
 
-  # Helper to safely parse ISO 8601 datetime strings or pass through DateTime objects
-  defp parse_datetime(nil), do: nil
-  defp parse_datetime(%DateTime{} = dt), do: dt
-  defp parse_datetime(datetime_string) when is_binary(datetime_string) do
-    case DateTime.from_iso8601(datetime_string) do
-      {:ok, datetime, _} -> datetime
-      _ -> nil
-    end
-  end
-  defp parse_datetime(_), do: nil
+  @doc """
+  Safely parses an ISO 8601 datetime string into a DateTime struct.
+  Returns nil if the input is nil or invalid.
+  """
+  @spec parse_datetime(String.t() | DateTime.t() | nil) :: DateTime.t() | nil
+  defdelegate parse_datetime(datetime), to: DateTimeUtil
 end

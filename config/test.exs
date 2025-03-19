@@ -12,7 +12,7 @@ config :wanderer_notifier,
 config :wanderer_notifier, :discord_notifier, WandererNotifier.Discord.TestNotifier
 
 # Configure the HTTP client to use a mock
-config :wanderer_notifier, :http_client, WandererNotifier.Http.ClientMock
+config :wanderer_notifier, :http_client, WandererNotifier.Api.Http.ClientMock
 
 # Configure logger for testing
 config :logger,
@@ -20,5 +20,4 @@ config :logger,
   backends: [:console]
 
 # Reduce log noise during tests
-config :logger, :console,
-  format: "[$level] $message\n"
+config :logger, :console, format: "[$level] $message\n"

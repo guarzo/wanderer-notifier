@@ -4,17 +4,20 @@ defmodule WandererNotifier.Data.Character do
   Contains information about tracked characters from the map.
   """
 
+  alias WandererNotifier.Data.DateTimeUtil
+  alias WandererNotifier.Data.MapUtil
+
   @type t :: %__MODULE__{
-    character_id: String.t() | integer(),
-    character_name: String.t(),
-    corporation_id: String.t() | integer() | nil,
-    corporation_name: String.t() | nil,
-    alliance_id: String.t() | integer() | nil,
-    alliance_name: String.t() | nil,
-    tracked: boolean(),
-    tracked_since: DateTime.t() | nil,
-    last_seen: DateTime.t() | nil
-  }
+          character_id: String.t() | integer(),
+          character_name: String.t(),
+          corporation_id: String.t() | integer() | nil,
+          corporation_name: String.t() | nil,
+          alliance_id: String.t() | integer() | nil,
+          alliance_name: String.t() | nil,
+          tracked: boolean(),
+          tracked_since: DateTime.t() | nil,
+          last_seen: DateTime.t() | nil
+        }
 
   defstruct [
     :character_id,
@@ -38,30 +41,25 @@ defmodule WandererNotifier.Data.Character do
   @doc """
   Converts a character map with string keys to a proper Character struct.
   """
+  @spec from_map(map()) :: t()
   def from_map(map) when is_map(map) do
-    attrs = %{
-      character_id: map["character_id"] || map[:character_id],
-      character_name: map["character_name"] || map[:character_name],
-      corporation_id: map["corporation_id"] || map[:corporation_id],
-      corporation_name: map["corporation_name"] || map[:corporation_name],
-      alliance_id: map["alliance_id"] || map[:alliance_id],
-      alliance_name: map["alliance_name"] || map[:alliance_name],
-      tracked: map["tracked"] || map[:tracked] || false,
-      tracked_since: parse_datetime(map["tracked_since"] || map[:tracked_since]),
-      last_seen: parse_datetime(map["last_seen"] || map[:last_seen])
+    %__MODULE__{
+      character_id: MapUtil.get_value(map, ["character_id", :character_id]),
+      character_name: MapUtil.get_value(map, ["character_name", "name", :character_name, :name]),
+      corporation_id: MapUtil.get_value(map, ["corporation_id", :corporation_id]),
+      corporation_name: MapUtil.get_value(map, ["corporation_name", :corporation_name]),
+      alliance_id: MapUtil.get_value(map, ["alliance_id", :alliance_id]),
+      alliance_name: MapUtil.get_value(map, ["alliance_name", :alliance_name]),
+      tracked: MapUtil.get_value(map, ["tracked", :tracked]) || false,
+      tracked_since: parse_datetime(MapUtil.get_value(map, ["tracked_since", :tracked_since])),
+      last_seen: parse_datetime(MapUtil.get_value(map, ["last_seen", :last_seen]))
     }
-
-    struct(__MODULE__, attrs)
   end
 
-  # Helper to safely parse ISO 8601 datetime strings or pass through DateTime objects
-  defp parse_datetime(nil), do: nil
-  defp parse_datetime(%DateTime{} = dt), do: dt
-  defp parse_datetime(datetime_string) when is_binary(datetime_string) do
-    case DateTime.from_iso8601(datetime_string) do
-      {:ok, datetime, _} -> datetime
-      _ -> nil
-    end
-  end
-  defp parse_datetime(_), do: nil
+  @doc """
+  Safely parses an ISO 8601 datetime string into a DateTime struct.
+  Returns nil if the input is nil or invalid.
+  """
+  @spec parse_datetime(String.t() | DateTime.t() | nil) :: DateTime.t() | nil
+  defdelegate parse_datetime(datetime), to: DateTimeUtil
 end

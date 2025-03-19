@@ -58,7 +58,10 @@ defmodule WandererNotifier.Notifiers.Slack do
 
     # If we don't have a valid EVE ID, log an error and return
     if is_nil(character_id) do
-      Logger.error("No valid EVE character ID found for character: #{inspect(character, pretty: true, limit: 500)}")
+      Logger.error(
+        "No valid EVE character ID found for character: #{inspect(character, pretty: true, limit: 500)}"
+      )
+
       Logger.error("This is a critical error - character tracking requires numeric EVE IDs")
       {:error, :invalid_character_id}
     else
@@ -110,7 +113,9 @@ defmodule WandererNotifier.Notifiers.Slack do
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) when is_map(system) do
     system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-    system_name = Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
+
+    system_name =
+      Map.get(system, "system_name") || Map.get(system, :system_name) || "Unknown System"
 
     attachment = %{
       color: "#36a64f",
@@ -142,20 +147,24 @@ defmodule WandererNotifier.Notifiers.Slack do
       color: "#FF0000",
       title: "Kill Notification",
       title_link: "https://zkillboard.com/kill/#{kill_id}/",
-      text: "#{victim_name} lost a #{victim_ship} in #{system_name}\nValue: #{formatted_value} ISK",
+      text:
+        "#{victim_name} lost a #{victim_ship} in #{system_name}\nValue: #{formatted_value} ISK",
       footer: "Kill ID: #{kill_id}"
     }
 
     # Add security status if available
     security_status = get_in(enriched_kill, ["solar_system", "security_status"])
-    attachment = if security_status do
-      formatted_security = NotificationHelpers.format_security_status(security_status)
-      Map.update(attachment, :text, "", fn text ->
-        "#{text}\nSecurity: #{formatted_security}"
-      end)
-    else
-      attachment
-    end
+
+    attachment =
+      if security_status do
+        formatted_security = NotificationHelpers.format_security_status(security_status)
+
+        Map.update(attachment, :text, "", fn text ->
+          "#{text}\nSecurity: #{formatted_security}"
+        end)
+      else
+        attachment
+      end
 
     payload = %{attachments: [attachment]}
     send_payload(payload)
@@ -171,13 +180,22 @@ defmodule WandererNotifier.Notifiers.Slack do
     # Since we only have webhook access and not full Slack API access,
     # we can't directly upload files. Instead, we'll send a message
     # saying a file would be uploaded.
-    message_parts = [
-      if title do "*#{title}*" else nil end,
-      if description do description else nil end,
-      "File: #{filename} (Slack webhook can't directly upload files)"
-    ]
-    |> Enum.filter(&(&1 != nil))
-    |> Enum.join("\n")
+    message_parts =
+      [
+        if title do
+          "*#{title}*"
+        else
+          nil
+        end,
+        if description do
+          description
+        else
+          nil
+        end,
+        "File: #{filename} (Slack webhook can't directly upload files)"
+      ]
+      |> Enum.filter(&(&1 != nil))
+      |> Enum.join("\n")
 
     # Send as a normal message
     send_message(message_parts)
@@ -216,25 +234,31 @@ defmodule WandererNotifier.Notifiers.Slack do
   @spec send_payload(map()) :: :ok | {:error, any()}
   defp send_payload(payload) do
     url = webhook_url()
+
     if is_nil(url) || url == "" do
       Logger.error(
         "Slack webhook URL not configured. Please set :slack_webhook_url in your configuration."
       )
+
       {:error, :webhook_not_configured}
     else
       case Jason.encode(payload) do
         {:ok, json} ->
           headers = [{"Content-Type", "application/json"}]
+
           case HttpClient.request("POST", url, headers, json) do
             {:ok, %{status_code: status}} when status in 200..299 ->
               :ok
+
             {:ok, response} ->
               Logger.error("Failed to send Slack notification: #{inspect(response)}")
               {:error, response}
+
             {:error, reason} ->
               Logger.error("Error sending Slack notification: #{inspect(reason)}")
               {:error, reason}
           end
+
         {:error, reason} ->
           Logger.error("Failed to encode Slack payload: #{inspect(reason)}")
           {:error, reason}

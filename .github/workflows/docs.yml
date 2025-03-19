@@ -1,0 +1,70 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.md'
+      - 'notifications.md'
+      - 'license.md'
+      - '_layouts/**'
+      - 'assets/**'
+      - '_config.yml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v3
+
+      - name: Create Image Directories
+        run: |
+          mkdir -p assets/images
+
+      # Copy placeholder images if real ones don't exist
+      # In a real scenario, you would have actual images in your repo
+      - name: Copy Placeholder Images
+        run: |
+          if [ ! -f "assets/images/paid-kill.png" ]; then
+            echo "Creating placeholder for paid-kill.png"
+            convert -size 600x400 canvas:lightblue -font Arial -pointsize 20 -fill black -annotate +30+30 "Licensed Kill Notification Example" assets/images/paid-kill.png
+          fi
+          
+          if [ ! -f "assets/images/free-kill.png" ]; then
+            echo "Creating placeholder for free-kill.png"
+            convert -size 600x150 canvas:lightgray -font Arial -pointsize 20 -fill black -annotate +30+30 "Free Kill Notification Example" assets/images/free-kill.png
+          fi
+          
+          if [ ! -f "assets/images/paid-character.png" ]; then
+            echo "Creating placeholder for paid-character.png"
+            convert -size 600x300 canvas:lightgreen -font Arial -pointsize 20 -fill black -annotate +30+30 "Licensed Character Notification Example" assets/images/paid-character.png
+          fi
+          
+          if [ ! -f "assets/images/free-character.png" ]; then
+            echo "Creating placeholder for free-character.png"
+            convert -size 600x100 canvas:lightgray -font Arial -pointsize 20 -fill black -annotate +30+30 "Free Character Notification Example" assets/images/free-character.png
+          fi
+          
+          if [ ! -f "assets/images/paid-system.png" ]; then
+            echo "Creating placeholder for paid-system.png"
+            convert -size 600x300 canvas:orange -font Arial -pointsize 20 -fill black -annotate +30+30 "Licensed System Notification Example" assets/images/paid-system.png
+          fi
+          
+          if [ ! -f "assets/images/free-system.png" ]; then
+            echo "Creating placeholder for free-system.png"
+            convert -size 600x100 canvas:lightgray -font Arial -pointsize 20 -fill black -annotate +30+30 "Free System Notification Example" assets/images/free-system.png
+          fi
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: .
+          branch: gh-pages
+          clean: true 

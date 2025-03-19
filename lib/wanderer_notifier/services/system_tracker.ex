@@ -22,10 +22,15 @@ defmodule WandererNotifier.Services.SystemTracker do
       else
         # Use provided cached_systems or fetch from cache
         systems_from_cache = if cached_systems != nil, do: cached_systems, else: get_all_systems()
-        Logger.debug("[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})")
+
+        Logger.debug(
+          "[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})"
+        )
 
         # Log cache details for debugging
-        Logger.debug("[update_systems] Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}")
+        Logger.debug(
+          "[update_systems] Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}"
+        )
 
         if systems_from_cache != [] do
           new_systems =
@@ -36,7 +41,10 @@ defmodule WandererNotifier.Services.SystemTracker do
             end)
 
           if new_systems != [] do
-            Logger.info("[update_systems] Found #{length(new_systems)} new systems to notify about")
+            Logger.info(
+              "[update_systems] Found #{length(new_systems)} new systems to notify about"
+            )
+
             Enum.each(new_systems, fn system ->
               send_notification(system)
             end)
@@ -49,11 +57,19 @@ defmodule WandererNotifier.Services.SystemTracker do
           )
         end
 
-        Logger.debug("[update_systems] Updating systems cache with #{length(fresh_systems)} systems")
+        Logger.debug(
+          "[update_systems] Updating systems cache with #{length(fresh_systems)} systems"
+        )
+
         # Store each system individually with its system_id as the key
         Enum.each(fresh_systems, fn system ->
           CacheRepo.set("map:system:#{system["system_id"]}", system, Config.systems_cache_ttl())
         end)
+
+        # Cache just the system IDs for faster lookups
+        system_ids = Enum.map(fresh_systems, & &1["system_id"])
+        CacheRepo.set("map:system_ids", system_ids, Config.systems_cache_ttl())
+
         # Also store the full list of systems for backward compatibility
         CacheRepo.set("map:systems", fresh_systems, Config.systems_cache_ttl())
       end
@@ -68,54 +84,113 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Helper function to get all systems from the cache
   defp get_all_systems do
-    case CacheRepo.get("map:systems") do
-      nil ->
-        []
-      systems when is_list(systems) ->
-        # Check if we have a list of system objects or just IDs
-        if length(systems) > 0 and is_map(List.first(systems)) do
-          # We have the full system objects
-          systems
-        else
-          # We have a list of system IDs, fetch each system
-          Enum.map(systems, fn system_id ->
-            case CacheRepo.get("map:system:#{system_id}") do
-              nil -> nil
-              system -> system
+    # Try to get the cached system IDs first (faster lookup)
+    system_ids = CacheRepo.get("map:system_ids")
+
+    cond do
+      # If we have cached system IDs, use them to fetch systems efficiently with batch get
+      is_list(system_ids) and length(system_ids) > 0 ->
+        Logger.debug(
+          "[get_all_systems] Using #{length(system_ids)} cached system IDs for batch lookup"
+        )
+
+        # Construct cache keys for all system IDs
+        cache_keys = Enum.map(system_ids, &"map:system:#{&1}")
+
+        # Use batch get to fetch all systems at once
+        systems_map = WandererNotifier.Data.Cache.Repository.get_many(cache_keys)
+
+        # Filter out any nil values and return the list of systems
+        cache_keys
+        |> Enum.map(fn key -> systems_map[key] end)
+        |> Enum.filter(& &1)
+
+      # Fallback to the full systems list
+      true ->
+        case CacheRepo.get("map:systems") do
+          nil ->
+            []
+
+          systems when is_list(systems) ->
+            # Check if we have a list of system objects or just IDs
+            if length(systems) > 0 and is_map(List.first(systems)) do
+              # We have the full system objects
+              systems
+            else
+              # We have a list of system IDs, use batch get for better performance
+              cache_keys = Enum.map(systems, &"map:system:#{&1}")
+              systems_map = WandererNotifier.Data.Cache.Repository.get_many(cache_keys)
+
+              cache_keys
+              |> Enum.map(fn key -> systems_map[key] end)
+              |> Enum.filter(& &1)
             end
-          end)
-          |> Enum.filter(& &1)
+
+          _ ->
+            []
         end
-      _ ->
-        []
     end
   end
 
   defp build_systems_url do
     Logger.debug("[build_systems_url] Building systems URL from map configuration")
 
+    # Check if the URL has already been cached in the process dictionary
+    cached = Process.get(:systems_url_cache)
+
+    if cached != nil do
+      {url, cached_env_result} = cached
+
+      # Get the current environment state
+      current_env_result = validate_map_env()
+
+      # Compare the cached and current environment results
+      if current_env_result == cached_env_result do
+        Logger.debug("[build_systems_url] Using cached systems URL: #{url}")
+        {:ok, url}
+      else
+        # Environment changed, rebuild URL
+        build_and_cache_url()
+      end
+    else
+      # No cached URL, build it
+      build_and_cache_url()
+    end
+  end
+
+  # Helper to build and cache the URL
+  defp build_and_cache_url do
     case validate_map_env() do
-      {:ok, map_url} ->
+      {:ok, map_url} = env_result ->
         # Extract the base URL (without any path segments)
         uri = URI.parse(map_url)
         base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
 
         # Get the slug/map name from the path
-        slug = case uri.path do
-          nil -> ""
-          "/" -> ""
-          path ->
-            # Remove leading slash and get the first path segment
-            segments = path |> String.trim_leading("/") |> String.split("/")
-            List.first(segments, "")
-        end
+        slug =
+          case uri.path do
+            nil ->
+              ""
+
+            "/" ->
+              ""
+
+            path ->
+              # Remove leading slash and get the first path segment
+              segments = path |> String.trim_leading("/") |> String.split("/")
+              List.first(segments, "")
+          end
 
         # Construct the systems URL with the correct path
-        systems_url = if slug != "" do
-          "#{base_url}/api/map/systems?slug=#{slug}"
-        else
-          "#{base_url}/api/map/systems"
-        end
+        systems_url =
+          if slug != "" do
+            "#{base_url}/api/map/systems?slug=#{slug}"
+          else
+            "#{base_url}/api/map/systems"
+          end
+
+        # Cache the result with the current environment state
+        Process.put(:systems_url_cache, {systems_url, env_result})
 
         Logger.debug("[build_systems_url] Successfully built systems URL: #{systems_url}")
         {:ok, systems_url}
@@ -131,8 +206,9 @@ defmodule WandererNotifier.Services.SystemTracker do
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
     label = "SystemTracker"
 
-    HttpClient.get(url, headers, [label: label])
-    |> HttpClient.handle_response(false) # Don't parse JSON, we'll do that separately
+    HttpClient.get(url, headers, label: label)
+    # Don't parse JSON, we'll do that separately
+    |> HttpClient.handle_response(false)
   end
 
   defp decode_json(raw), do: Jason.decode(raw)
@@ -154,21 +230,27 @@ defmodule WandererNotifier.Services.SystemTracker do
           base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
 
           # Get the slug/map name from the path
-          slug = case uri.path do
-            nil -> ""
-            "/" -> ""
-            path ->
-              # Remove leading slash and get the first path segment
-              segments = path |> String.trim_leading("/") |> String.split("/")
-              List.first(segments, "")
-          end
+          slug =
+            case uri.path do
+              nil ->
+                ""
+
+              "/" ->
+                ""
+
+              path ->
+                # Remove leading slash and get the first path segment
+                segments = path |> String.trim_leading("/") |> String.split("/")
+                List.first(segments, "")
+            end
 
           # Construct the static info URL with the correct path and slug
-          static_info_url = if slug != "" do
-            "#{base_url}/api/common/system-static-info?id=#{system_id}&slug=#{slug}"
-          else
-            "#{base_url}/api/common/system-static-info?id=#{system_id}"
-          end
+          static_info_url =
+            if slug != "" do
+              "#{base_url}/api/common/system-static-info?id=#{system_id}&slug=#{slug}"
+            else
+              "#{base_url}/api/common/system-static-info?id=#{system_id}"
+            end
 
           # Get system static info
           case get_or_fetch_system_static_info(static_info_url) do
@@ -204,7 +286,9 @@ defmodule WandererNotifier.Services.SystemTracker do
                 # Create a map with all the relevant fields
                 %{
                   "system_id" => system_id,
-                  "system_name" => temporary_name || original_name || solar_system_name || "Solar System #{system_id}",
+                  "system_name" =>
+                    temporary_name || original_name || solar_system_name ||
+                      "Solar System #{system_id}",
                   "original_name" => original_name,
                   "temporary_name" => temporary_name,
                   "region_name" => region_name,
@@ -218,28 +302,40 @@ defmodule WandererNotifier.Services.SystemTracker do
                   "system_class" => system_class,
                   "constellation_name" => constellation_name,
                   "wandering" => wandering,
-                  "data" => static_info_data  # Include the full data for reference
+                  # Include the full data for reference
+                  "data" => static_info_data
                 }
               else
-                Logger.debug("[process_systems] Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)")
+                Logger.debug(
+                  "[process_systems] Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)"
+                )
+
                 nil
               end
+
             _ ->
               # If we can't get static info, include the system only if tracking all systems
               if track_all_systems do
                 original_name = item["original_name"] || item["OriginalName"]
                 temporary_name = item["temporary_name"] || item["TemporaryName"]
 
-                Logger.debug("[process_systems] Including system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=true)")
+                Logger.debug(
+                  "[process_systems] Including system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=true)"
+                )
+
                 %{
                   "system_id" => system_id,
                   "system_name" => temporary_name || original_name || "Solar System #{system_id}",
                   "original_name" => original_name,
                   "temporary_name" => temporary_name,
-                  "is_wormhole" => false  # Assume not a wormhole if we can't determine
+                  # Assume not a wormhole if we can't determine
+                  "is_wormhole" => false
                 }
               else
-                Logger.debug("[process_systems] Skipping system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=false)")
+                Logger.debug(
+                  "[process_systems] Skipping system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=false)"
+                )
+
                 nil
               end
           end
@@ -247,7 +343,8 @@ defmodule WandererNotifier.Services.SystemTracker do
           _ -> nil
         end
       end)
-      |> Enum.filter(& &1) # Remove nil entries
+      # Remove nil entries
+      |> Enum.filter(& &1)
 
     Logger.debug("[process_systems] Processed #{length(processed)} systems after filtering")
 
@@ -278,9 +375,11 @@ defmodule WandererNotifier.Services.SystemTracker do
       nil ->
         # Cache miss, fetch and cache
         fetch_and_cache_system_info(url, system_id)
+
       cached when is_binary(cached) ->
         # Valid cache hit
         Jason.decode(cached)
+
       _ ->
         # Invalid cache value (nil or unexpected type)
         Logger.warning("[Systems] Invalid cache value for #{cache_key}, fetching fresh data")
@@ -323,29 +422,34 @@ defmodule WandererNotifier.Services.SystemTracker do
     Logger.debug("[validate_map_env] - map_name: #{inspect(map_name)}")
 
     # Determine the final map URL to use
-    map_url = cond do
-      # If MAP_URL_WITH_NAME is set, use it directly
-      map_url_with_name && map_url_with_name != "" ->
-        Logger.debug("[validate_map_env] Using MAP_URL_WITH_NAME: #{map_url_with_name}")
-        map_url_with_name
+    map_url =
+      cond do
+        # If MAP_URL_WITH_NAME is set, use it directly
+        map_url_with_name && map_url_with_name != "" ->
+          Logger.debug("[validate_map_env] Using MAP_URL_WITH_NAME: #{map_url_with_name}")
+          map_url_with_name
 
-      # If both MAP_URL and MAP_NAME are set, combine them
-      map_url_base && map_url_base != "" && map_name && map_name != "" ->
-        url = "#{map_url_base}/#{map_name}"
-        Logger.debug("[validate_map_env] Using combined MAP_URL and MAP_NAME: #{url}")
-        url
+        # If both MAP_URL and MAP_NAME are set, combine them
+        map_url_base && map_url_base != "" && map_name && map_name != "" ->
+          url = "#{map_url_base}/#{map_name}"
+          Logger.debug("[validate_map_env] Using combined MAP_URL and MAP_NAME: #{url}")
+          url
 
-      # If only MAP_URL is set, use it directly
-      map_url_base && map_url_base != "" ->
-        Logger.debug("[validate_map_env] Using MAP_URL: #{map_url_base}")
-        map_url_base
+        # If only MAP_URL is set, use it directly
+        map_url_base && map_url_base != "" ->
+          Logger.debug("[validate_map_env] Using MAP_URL: #{map_url_base}")
+          map_url_base
 
-      # No valid URL configuration
-      true ->
-        Logger.error("[validate_map_env] Map URL is not configured")
-        Logger.error("[validate_map_env] Please set MAP_URL_WITH_NAME or both MAP_URL and MAP_NAME environment variables")
-        nil
-    end
+        # No valid URL configuration
+        true ->
+          Logger.error("[validate_map_env] Map URL is not configured")
+
+          Logger.error(
+            "[validate_map_env] Please set MAP_URL_WITH_NAME or both MAP_URL and MAP_NAME environment variables"
+          )
+
+          nil
+      end
 
     # Validate the URL
     if map_url do
@@ -354,7 +458,10 @@ defmodule WandererNotifier.Services.SystemTracker do
       cond do
         # Check if the URL has a scheme (http:// or https://)
         uri.scheme == nil ->
-          Logger.error("[validate_map_env] Map URL is missing scheme (http:// or https://): #{map_url}")
+          Logger.error(
+            "[validate_map_env] Map URL is missing scheme (http:// or https://): #{map_url}"
+          )
+
           {:error, "Map URL is missing scheme"}
 
         # Check if the URL has a host
@@ -389,6 +496,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     case CacheRepo.get(cache_key) do
       nil ->
         nil
+
       cached when is_binary(cached) ->
         case Jason.decode(cached) do
           {:ok, data} ->
@@ -397,9 +505,11 @@ defmodule WandererNotifier.Services.SystemTracker do
             region_name = get_in(data, ["data", "region_name"])
 
             if region_name, do: region_name, else: nil
+
           _ ->
             nil
         end
+
       _ ->
         nil
     end
@@ -413,13 +523,16 @@ defmodule WandererNotifier.Services.SystemTracker do
     case CacheRepo.get(cache_key) do
       nil ->
         []
+
       cached when is_binary(cached) ->
         case Jason.decode(cached) do
           {:ok, data} ->
             get_in(data, ["data", "statics"]) || []
+
           _ ->
             []
         end
+
       _ ->
         []
     end

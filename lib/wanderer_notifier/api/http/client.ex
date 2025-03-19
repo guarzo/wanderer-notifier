@@ -6,17 +6,33 @@ defmodule WandererNotifier.Api.Http.Client do
   require Logger
 
   @default_max_retries 3
-  @default_initial_backoff 500  # milliseconds
-  @default_max_backoff 5000     # milliseconds
-  @default_timeout 10000        # milliseconds (10 seconds)
+  # milliseconds
+  @default_initial_backoff 500
+  # milliseconds
+  @default_max_backoff 5000
+  # milliseconds (10 seconds)
+  @default_timeout 10000
 
   # Errors that are considered transient and can be retried
-  @transient_errors [:timeout, :connect_timeout, :econnrefused, :closed, :enetunreach, :system_limit]
+  @transient_errors [
+    :timeout,
+    :connect_timeout,
+    :econnrefused,
+    :closed,
+    :enetunreach,
+    :system_limit
+  ]
 
   @doc """
   Makes a GET request to the specified URL.
 
+  ## Parameters
+    - `url` - The URL to send the request to
+    - `headers` - List of HTTP headers
+    - `opts` - Options for the request
+
   ## Options
+    - `:query` - Map of query parameters to be appended to the URL
     - Same as `request/5`
 
   ## Returns
@@ -24,7 +40,26 @@ defmodule WandererNotifier.Api.Http.Client do
     - `{:error, reason}` on failure
   """
   def get(url, headers \\ [], opts \\ []) do
-    request("GET", url, headers, "", opts)
+    url_with_query =
+      case Keyword.get(opts, :query) do
+        nil ->
+          url
+
+        query when is_map(query) ->
+          # Build the query string from the map
+          query_string = URI.encode_query(query)
+
+          if String.contains?(url, "?") do
+            "#{url}&#{query_string}"
+          else
+            "#{url}?#{query_string}"
+          end
+
+        _ ->
+          url
+      end
+
+    request("GET", url_with_query, headers, "", opts)
   end
 
   @doc """
@@ -69,9 +104,20 @@ defmodule WandererNotifier.Api.Http.Client do
     end
 
     # Asynchronously handle the request with retries
-    task = Task.async(fn ->
-      do_request_with_retry(method, url, headers, body, max_retries, initial_backoff, 0, label, timeout)
-    end)
+    task =
+      Task.async(fn ->
+        do_request_with_retry(
+          method,
+          url,
+          headers,
+          body,
+          max_retries,
+          initial_backoff,
+          0,
+          label,
+          timeout
+        )
+      end)
 
     # Wait for the result with timeout
     try do
@@ -85,7 +131,17 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   # Execute the request with retry logic
-  defp do_request_with_retry(method, url, headers, body, max_retries, backoff, retry_count, label, timeout) do
+  defp do_request_with_retry(
+         method,
+         url,
+         headers,
+         body,
+         max_retries,
+         backoff,
+         retry_count,
+         label,
+         timeout
+       ) do
     options = [
       hackney: [
         follow_redirect: true,
@@ -102,11 +158,12 @@ defmodule WandererNotifier.Api.Http.Client do
         Logger.debug("HTTP #{method_str} [#{label}] => status #{status_code}")
 
         # Return a consistent response format
-        {:ok, %{
-          status_code: response.status_code,
-          body: response.body,
-          headers: response.headers
-        }}
+        {:ok,
+         %{
+           status_code: response.status_code,
+           body: response.body,
+           headers: response.headers
+         }}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
         # Determine if we should retry
@@ -121,16 +178,31 @@ defmodule WandererNotifier.Api.Http.Client do
           )
 
           :timer.sleep(actual_backoff)
-          do_request_with_retry(method, url, headers, body, max_retries, backoff, retry_count + 1, label, timeout)
+
+          do_request_with_retry(
+            method,
+            url,
+            headers,
+            body,
+            max_retries,
+            backoff,
+            retry_count + 1,
+            label,
+            timeout
+          )
         else
           log_level = if retry_count > 0, do: :error, else: :warning
-          logger_fn = case log_level do
-            :error -> &Logger.error/1
-            :warning -> &Logger.warning/1
-            _ -> &Logger.debug/1
-          end
 
-          logger_fn.("HTTP #{method_str} [#{label}] failed#{if retry_count > 0, do: " after #{retry_count + 1} attempts", else: ""}: #{inspect(reason)}")
+          logger_fn =
+            case log_level do
+              :error -> &Logger.error/1
+              :warning -> &Logger.warning/1
+              _ -> &Logger.debug/1
+            end
+
+          logger_fn.(
+            "HTTP #{method_str} [#{label}] failed#{if retry_count > 0, do: " after #{retry_count + 1} attempts", else: ""}: #{inspect(reason)}"
+          )
 
           # Consider all HTTP errors as recoverable for the caller
           {:error, reason}
@@ -153,14 +225,17 @@ defmodule WandererNotifier.Api.Http.Client do
     headers_str = Enum.map_join(headers, "\n  ", fn {k, v} -> "#{k}: #{v}" end)
 
     # Truncate and sanitize body for logging
-    body_str = cond do
-      is_binary(body) and byte_size(body) > 1000 ->
-        "#{String.slice(body, 0..999)}... [truncated, #{byte_size(body)} bytes total]"
-      is_binary(body) ->
-        body
-      true ->
-        inspect(body)
-    end
+    body_str =
+      cond do
+        is_binary(body) and byte_size(body) > 1000 ->
+          "#{String.slice(body, 0..999)}... [truncated, #{byte_size(body)} bytes total]"
+
+        is_binary(body) ->
+          body
+
+        true ->
+          inspect(body)
+      end
 
     Logger.debug("""
     HTTP Request:
@@ -191,6 +266,7 @@ defmodule WandererNotifier.Api.Http.Client do
 
   @doc """
   Handles response status codes appropriately, converting them to meaningful atoms.
+  This is a convenience wrapper around WandererNotifier.Api.Http.ResponseHandler.
 
   ## Examples:
     - 200-299: {:ok, parsed_body}
@@ -203,28 +279,51 @@ defmodule WandererNotifier.Api.Http.Client do
   """
   def handle_response(response, decode_json \\ true)
 
-  def handle_response({:ok, %{status_code: status, body: body}}, decode_json) do
-    case status do
-      code when code in 200..299 ->
-        if decode_json do
-          case Jason.decode(body) do
-            {:ok, parsed} -> {:ok, parsed}
-            {:error, _reason} -> {:error, :invalid_json}
+  def handle_response(response = {:ok, %{status_code: status, body: body}}, decode_json) do
+    # Log curl command example for debugging when needed
+    curl_example =
+      case response do
+        {:ok, %{request: %{method: method, url: url, headers: headers, body: body}}} ->
+          build_curl_command(method, url, headers, body)
+
+        _ ->
+          "n/a"
+      end
+
+    if decode_json and status in 200..299 do
+      # Forward to ResponseHandler which can handle JSON responses consistently
+      WandererNotifier.Api.Http.ResponseHandler.handle_response(response, curl_example)
+    else
+      # Handle non-JSON responses or errors in this module
+      case status do
+        code when code in 200..299 ->
+          if decode_json do
+            case Jason.decode(body) do
+              {:ok, parsed} -> {:ok, parsed}
+              {:error, _reason} -> {:error, :invalid_json}
+            end
+          else
+            {:ok, body}
           end
-        else
-          {:ok, body}
-        end
 
-      401 -> {:error, :unauthorized}
-      403 -> {:error, :forbidden}
-      404 -> {:error, :not_found}
-      429 -> {:error, :rate_limited}
+        401 ->
+          {:error, :unauthorized}
 
-      code when code in 500..599 ->
-        {:error, :server_error}
+        403 ->
+          {:error, :forbidden}
 
-      _ ->
-        {:error, {:unexpected_status, status}}
+        404 ->
+          {:error, :not_found}
+
+        429 ->
+          {:error, :rate_limited}
+
+        code when code in 500..599 ->
+          {:error, :server_error}
+
+        _ ->
+          {:error, {:unexpected_status, status}}
+      end
     end
   end
 

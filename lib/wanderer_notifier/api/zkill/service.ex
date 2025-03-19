@@ -9,10 +9,22 @@ defmodule WandererNotifier.Api.ZKill.Service do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail
 
+  @type kill_id :: String.t() | integer()
+  @type system_id :: String.t() | integer()
+
   @doc """
   Retrieves an enriched killmail by merging data from zKill and ESI.
+
+  ## Parameters
+
+  - `kill_id`: The ID of the kill to retrieve (string or integer)
+
+  ## Returns
+
+  - `{:ok, Killmail.t()}`: A successfully enriched killmail
+  - `{:error, reason}`: If an error occurred
   """
-  @spec get_enriched_killmail(any()) :: {:ok, Killmail.t()} | {:error, any()}
+  @spec get_enriched_killmail(kill_id()) :: {:ok, Killmail.t()} | {:error, any()}
   def get_enriched_killmail(kill_id) do
     with {:ok, [partial | _]} <- ZKillClient.get_single_killmail(kill_id),
          %{"killmail_id" => kid, "zkb" => zkb_map} <- partial,
@@ -22,9 +34,28 @@ defmodule WandererNotifier.Api.ZKill.Service do
       enriched = %Killmail{killmail_id: kid, zkb: zkb_map, esi_data: esi_data}
       {:ok, enriched}
     else
+      {:error, reason} ->
+        Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
+        {:error, reason}
+
+      false ->
+        reason = "Missing or invalid hash in zKill data"
+        Logger.error("Failed to get enriched killmail for #{kill_id}: #{reason}")
+        {:error, reason}
+
+      %{} = incomplete_data ->
+        reason = "Incomplete kill data, missing required fields"
+
+        Logger.error(
+          "Failed to get enriched killmail for #{kill_id}: #{reason}, data: #{inspect(incomplete_data)}"
+        )
+
+        {:error, reason}
+
       error ->
-        Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(error)}")
-        error
+        reason = "Unexpected error: #{inspect(error)}"
+        Logger.error("Failed to get enriched killmail for #{kill_id}: #{reason}")
+        {:error, reason}
     end
   end
 
@@ -50,7 +81,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
 
   ## Parameters
 
-  - `system_id`: The ID of the system to get kills for
+  - `system_id`: The ID of the system to get kills for (string or integer)
   - `limit`: The maximum number of kills to retrieve (default: 5)
 
   ## Returns
@@ -58,7 +89,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
   - `{:ok, kills}`: A list of kills for the system
   - `{:error, reason}`: If an error occurred
   """
-  @spec get_system_kills(any(), integer()) :: {:ok, list(map())} | {:error, any()}
+  @spec get_system_kills(system_id(), integer()) :: {:ok, list(map())} | {:error, any()}
   def get_system_kills(system_id, limit \\ 5) do
     ZKillClient.get_system_kills(system_id, limit)
   end

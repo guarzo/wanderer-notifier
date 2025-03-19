@@ -4,11 +4,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
-  alias WandererNotifier.CorpTools.TPSChartAdapter
+  alias WandererNotifier.CorpTools.CorpToolsClient
+  alias WandererNotifier.ChartService.TPSChartAdapter
 
-  plug :match
-  plug :dispatch
+  plug(:match)
+  plug(:dispatch)
 
   # Health check endpoint
   get "/health" do
@@ -23,11 +23,22 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       :ok ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", message: "EVE Corp Tools API is operational"}))
+        |> send_resp(
+          200,
+          Jason.encode!(%{status: "ok", message: "EVE Corp Tools API is operational"})
+        )
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "EVE Corp Tools API health check failed", reason: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "EVE Corp Tools API health check failed",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 
@@ -38,28 +49,72 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(data))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to get tracked entities", reason: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to get tracked entities",
+            reason: inspect(reason)
+          })
+        )
+    end
+  end
+
+  # Get optimized TPS data for charts from EVE Corp Tools API
+  get "/corp-tools/recent-tps-data" do
+    case CorpToolsClient.get_recent_tps_data() do
+      {:ok, data} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(data))
+
+      {:loading, message} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
+
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to get recent TPS data",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 
   # Get TPS data from EVE Corp Tools API
   get "/corp-tools/tps-data" do
-    case CorpToolsClient.get_tps_data() do
+    case CorpToolsClient.get_recent_tps_data() do
       {:ok, data} ->
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(data))
+
       {:loading, message} ->
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to get TPS data", reason: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to get TPS data",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 
@@ -70,10 +125,18 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(%{status: "ok", message: "TPS data refresh triggered"}))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to trigger TPS data refresh", reason: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to trigger TPS data refresh",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 
@@ -86,10 +149,18 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(data))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to appraise loot", reason: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to appraise loot",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 
@@ -100,10 +171,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
+        )
     end
   end
 
@@ -114,10 +189,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
+        )
     end
   end
 
@@ -128,10 +207,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
+        )
     end
   end
 
@@ -146,45 +229,64 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     else
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to generate any charts"}))
+      |> send_resp(
+        500,
+        Jason.encode!(%{status: "error", message: "Failed to generate any charts"})
+      )
     end
   end
 
   # Send a specific TPS chart to Discord
   get "/corp-tools/charts/send-to-discord/:chart_type" do
-    chart_type = case conn.params["chart_type"] do
-      "kills-by-ship-type" -> :kills_by_ship_type
-      "kills-by-month" -> :kills_by_month
-      "total-kills-value" -> :total_kills_value
-      _ -> :invalid
-    end
+    chart_type =
+      case conn.params["chart_type"] do
+        "kills-by-ship-type" -> :kills_by_ship_type
+        "kills-by-month" -> :kills_by_month
+        "total-kills-value" -> :total_kills_value
+        _ -> :invalid
+      end
 
     if chart_type == :invalid do
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
     else
-      title = case chart_type do
-        :kills_by_ship_type -> "Top Ship Types by Kills"
-        :kills_by_month -> "Kills by Month"
-        :total_kills_value -> "Kills and Value Over Time"
-      end
+      title =
+        case chart_type do
+          :kills_by_ship_type -> "Top Ship Types by Kills"
+          :kills_by_month -> "Kills by Month"
+          :total_kills_value -> "Kills and Value Over Time"
+        end
 
-      description = case chart_type do
-        :kills_by_ship_type -> "Shows the top 10 ship types used in kills over the last 12 months"
-        :kills_by_month -> "Shows the number of kills per month over the last 12 months"
-        :total_kills_value -> "Shows the number of kills and estimated value over time"
-      end
+      description =
+        case chart_type do
+          :kills_by_ship_type ->
+            "Shows the top 10 ship types used in kills over the last 12 months"
+
+          :kills_by_month ->
+            "Shows the number of kills per month over the last 12 months"
+
+          :total_kills_value ->
+            "Shows the number of kills and estimated value over time"
+        end
 
       case TPSChartAdapter.send_chart_to_discord(chart_type, title, description) do
         :ok ->
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(200, Jason.encode!(%{status: "ok", message: "Chart sent to Discord"}))
+
         {:error, reason} ->
           conn
           |> put_resp_content_type("application/json")
-          |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to send chart to Discord", reason: reason}))
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send chart to Discord",
+              reason: reason
+            })
+          )
       end
     end
   end
@@ -199,18 +301,28 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     if any_success do
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(%{status: "ok", message: "Charts sent to Discord", results: results}))
+      |> send_resp(
+        200,
+        Jason.encode!(%{status: "ok", message: "Charts sent to Discord", results: results})
+      )
     else
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(500, Jason.encode!(%{status: "error", message: "Failed to send any charts to Discord", results: results}))
+      |> send_resp(
+        500,
+        Jason.encode!(%{
+          status: "error",
+          message: "Failed to send any charts to Discord",
+          results: results
+        })
+      )
     end
   end
 
   # Trigger the TPS chart scheduler manually
   get "/corp-tools/charts/trigger-scheduler" do
-    if Process.whereis(WandererNotifier.Service.TPSChartScheduler) do
-      WandererNotifier.Service.TPSChartScheduler.send_charts_now()
+    if Process.whereis(WandererNotifier.TPSChartScheduler) do
+      WandererNotifier.TPSChartScheduler.send_charts_now()
 
       conn
       |> put_resp_content_type("application/json")
@@ -218,7 +330,53 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     else
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(500, Jason.encode!(%{status: "error", message: "TPS chart scheduler not running"}))
+      |> send_resp(
+        500,
+        Jason.encode!(%{status: "error", message: "TPS chart scheduler not running"})
+      )
+    end
+  end
+
+  # Debug endpoint to check TPS data structure
+  get "/debug-tps-data" do
+    case CorpToolsClient.get_recent_tps_data() do
+      {:ok, data} ->
+        # Return the data structure with additional metadata
+        debug_info = %{
+          status: "ok",
+          has_data: not Enum.empty?(Map.keys(data)),
+          keys: Map.keys(data),
+          ship_types_count:
+            if(Map.has_key?(data, "KillsByShipType"),
+              do: map_size(data["KillsByShipType"]),
+              else: 0
+            ),
+          months_count:
+            if(Map.has_key?(data, "KillsByMonth"), do: map_size(data["KillsByMonth"]), else: 0),
+          total_value: Map.get(data, "TotalValue"),
+          raw_data: data
+        }
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(debug_info))
+
+      {:loading, message} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
+
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            status: "error",
+            message: "Failed to get TPS data",
+            reason: inspect(reason)
+          })
+        )
     end
   end
 

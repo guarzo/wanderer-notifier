@@ -40,6 +40,7 @@ defmodule WandererNotifier.Core.License do
       :exit, {:timeout, _} ->
         Logger.error("License validation timed out")
         %{valid: false, error_message: "License validation timed out"}
+
       type, reason ->
         Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
         %{valid: false, error_message: "License validation error: #{inspect(reason)}"}
@@ -100,13 +101,17 @@ defmodule WandererNotifier.Core.License do
     # Validate the license with a timeout
     validation_result =
       try do
-        Task.await(Task.async(fn ->
-          LicenseClient.validate_license(license_key, bot_api_token)
-        end), 3000)
+        Task.await(
+          Task.async(fn ->
+            LicenseClient.validate_license(license_key, bot_api_token)
+          end),
+          3000
+        )
       catch
         :exit, {:timeout, _} ->
           Logger.error("License validation HTTP request timed out")
           {:error, "License validation timed out"}
+
         type, reason ->
           Logger.error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
           {:error, "License validation error: #{inspect(reason)}"}
@@ -139,13 +144,13 @@ defmodule WandererNotifier.Core.License do
 
     # Update the state with the validation result
     new_state = %{
-      state |
-      valid: valid,
-      bot_assigned: bot_assigned,
-      details: details,
-      error: error,
-      error_message: error_message,
-      last_validated: :os.system_time(:second)
+      state
+      | valid: valid,
+        bot_assigned: bot_assigned,
+        details: details,
+        error: error,
+        error_message: error_message,
+        last_validated: :os.system_time(:second)
     }
 
     # Schedule the next validation
@@ -166,7 +171,11 @@ defmodule WandererNotifier.Core.License do
       case state do
         %{valid: true, details: %{features: features}} when is_list(features) ->
           enabled = Enum.member?(features, to_string(feature))
-          Logger.debug("Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}")
+
+          Logger.debug(
+            "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
+          )
+
           enabled
 
         _ ->
@@ -183,7 +192,11 @@ defmodule WandererNotifier.Core.License do
       case state do
         %{valid: true, details: %{tier: tier}} ->
           premium = tier in ["premium", "enterprise"]
-          Logger.debug("Premium check: #{if premium, do: "premium", else: "not premium"} (tier: #{tier})")
+
+          Logger.debug(
+            "Premium check: #{if premium, do: "premium", else: "not premium"} (tier: #{tier})"
+          )
+
           premium
 
         _ ->
@@ -211,6 +224,7 @@ defmodule WandererNotifier.Core.License do
 
     if is_nil(bot_api_token) || bot_api_token == "" do
       Logger.error("No bot API token configured")
+
       %{
         valid: false,
         bot_assigned: false,
@@ -233,7 +247,8 @@ defmodule WandererNotifier.Core.License do
 
           %{
             valid: license_valid,
-            bot_assigned: true, # If we got a successful response, the bot is assigned
+            # If we got a successful response, the bot is assigned
+            bot_assigned: true,
             details: response,
             error: nil,
             error_message: nil
@@ -242,6 +257,7 @@ defmodule WandererNotifier.Core.License do
         {:error, reason} ->
           error_message = error_reason_to_message(reason)
           Logger.error("License/bot validation failed: #{error_message}")
+
           %{
             valid: false,
             bot_assigned: false,

@@ -12,12 +12,22 @@ defmodule WandererNotifier.Notifiers.Behaviour do
   @doc """
   Sends a message with an embed.
   """
-  @callback send_embed(title :: String.t(), description :: String.t(), url :: String.t() | nil, color :: integer()) :: :ok | {:error, any()}
+  @callback send_embed(
+              title :: String.t(),
+              description :: String.t(),
+              url :: String.t() | nil,
+              color :: integer()
+            ) :: :ok | {:error, any()}
 
   @doc """
   Sends a file with an optional title and description.
   """
-  @callback send_file(filename :: String.t(), file_data :: binary(), title :: String.t() | nil, description :: String.t() | nil) :: :ok | {:error, any()}
+  @callback send_file(
+              filename :: String.t(),
+              file_data :: binary(),
+              title :: String.t() | nil,
+              description :: String.t() | nil
+            ) :: :ok | {:error, any()}
 
   @doc """
   Sends a notification about a new tracked character.
@@ -32,10 +42,16 @@ defmodule WandererNotifier.Notifiers.Behaviour do
   @doc """
   Sends a rich embed message for an enriched killmail.
   """
-  @callback send_enriched_kill_embed(enriched_kill :: map(), kill_id :: integer()) :: :ok | {:error, any()}
+  @callback send_enriched_kill_embed(enriched_kill :: map(), kill_id :: integer()) ::
+              :ok | {:error, any()}
 
   @doc """
   Sends an embed with an image.
   """
-  @callback send_image_embed(title :: String.t(), description :: String.t(), image_url :: String.t(), color :: integer()) :: :ok | {:error, any()}
+  @callback send_image_embed(
+              title :: String.t(),
+              description :: String.t(),
+              image_url :: String.t(),
+              color :: integer()
+            ) :: :ok | {:error, any()}
 end

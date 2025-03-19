@@ -36,12 +36,13 @@ defmodule WandererNotifier.TestHelpers do
   - `tier`: The license tier (default: "premium").
   """
   def valid_license_response(features \\ ["feature1", "feature2"], tier \\ "premium") do
-    {:ok, %{
-      "valid" => true,
-      "features" => features,
-      "tier" => tier,
-      "expires_at" => "2099-12-31T23:59:59Z"
-    }}
+    {:ok,
+     %{
+       "valid" => true,
+       "features" => features,
+       "tier" => tier,
+       "expires_at" => "2099-12-31T23:59:59Z"
+     }}
   end
 
   @doc """

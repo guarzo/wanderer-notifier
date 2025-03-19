@@ -3,13 +3,15 @@ defmodule WandererNotifier.CorpTools.ChartGenerator do
   Generates charts from EVE Corp Tools TPS data using quickcharts.io.
   """
   require Logger
-  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
+  alias WandererNotifier.CorpTools.CorpToolsClient
 
   @quickcharts_url "https://quickchart.io/chart"
   @chart_width 800
   @chart_height 400
-  @chart_background_color "rgb(47, 49, 54)"  # Discord dark theme background
-  @chart_text_color "rgb(255, 255, 255)"     # White text for Discord dark theme
+  # Discord dark theme background
+  @chart_background_color "rgb(47, 49, 54)"
+  # White text for Discord dark theme
+  @chart_text_color "rgb(255, 255, 255)"
 
   @doc """
   Generates a chart URL for kills by ship type from TPS data.
@@ -288,23 +290,27 @@ defmodule WandererNotifier.CorpTools.ChartGenerator do
   defp format_month_label(month_str) do
     case String.split(month_str, "-") do
       [year, month] ->
-        month_name = case month do
-          "01" -> "Jan"
-          "02" -> "Feb"
-          "03" -> "Mar"
-          "04" -> "Apr"
-          "05" -> "May"
-          "06" -> "Jun"
-          "07" -> "Jul"
-          "08" -> "Aug"
-          "09" -> "Sep"
-          "10" -> "Oct"
-          "11" -> "Nov"
-          "12" -> "Dec"
-          _ -> month
-        end
+        month_name =
+          case month do
+            "01" -> "Jan"
+            "02" -> "Feb"
+            "03" -> "Mar"
+            "04" -> "Apr"
+            "05" -> "May"
+            "06" -> "Jun"
+            "07" -> "Jul"
+            "08" -> "Aug"
+            "09" -> "Sep"
+            "10" -> "Oct"
+            "11" -> "Nov"
+            "12" -> "Dec"
+            _ -> month
+          end
+
         "#{month_name} #{year}"
-      _ -> month_str
+
+      _ ->
+        month_str
     end
   end
 
@@ -339,12 +345,13 @@ defmodule WandererNotifier.CorpTools.ChartGenerator do
   """
   def send_chart_to_discord(chart_type, title, description) do
     # Generate the chart URL based on the chart type
-    chart_result = case chart_type do
-      :ship_type -> generate_kills_by_ship_type_chart()
-      :monthly -> generate_kills_by_month_chart()
-      :pie -> generate_ship_type_pie_chart()
-      _ -> {:error, "Invalid chart type"}
-    end
+    chart_result =
+      case chart_type do
+        :ship_type -> generate_kills_by_ship_type_chart()
+        :monthly -> generate_kills_by_month_chart()
+        :pie -> generate_ship_type_pie_chart()
+        _ -> {:error, "Invalid chart type"}
+      end
 
     case chart_result do
       {:ok, url} ->
@@ -372,25 +379,28 @@ defmodule WandererNotifier.CorpTools.ChartGenerator do
     Logger.info("Testing chart generation and sending to Discord")
 
     # Send ship type bar chart
-    ship_type_result = send_chart_to_discord(
-      :ship_type,
-      "Ship Type Analysis",
-      "Top 10 ship types used in kills over the last 12 months"
-    )
+    ship_type_result =
+      send_chart_to_discord(
+        :ship_type,
+        "Ship Type Analysis",
+        "Top 10 ship types used in kills over the last 12 months"
+      )
 
     # Send monthly kills line chart
-    monthly_result = send_chart_to_discord(
-      :monthly,
-      "Monthly Kill Activity",
-      "Kill activity trend over the last 12 months"
-    )
+    monthly_result =
+      send_chart_to_discord(
+        :monthly,
+        "Monthly Kill Activity",
+        "Kill activity trend over the last 12 months"
+      )
 
     # Send ship type pie chart
-    pie_result = send_chart_to_discord(
-      :pie,
-      "Ship Type Distribution",
-      "Distribution of top 8 ship types used in kills"
-    )
+    pie_result =
+      send_chart_to_discord(
+        :pie,
+        "Ship Type Distribution",
+        "Distribution of top 8 ship types used in kills"
+      )
 
     # Return results
     %{

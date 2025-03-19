@@ -8,15 +8,15 @@ defmodule WandererNotifier.Services.TPSChartScheduler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.CorpTools.TPSChartAdapter
-  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
+  alias WandererNotifier.ChartService.TPSChartAdapter
+  alias WandererNotifier.CorpTools.CorpToolsClient
 
   # Default schedule: Send charts once a day at 12:00 UTC
   @default_schedule_hour 12
   @default_schedule_minute 0
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: WandererNotifier.Service.TPSChartScheduler)
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: WandererNotifier.TPSChartScheduler)
   end
 
   @impl true
@@ -47,6 +47,7 @@ defmodule WandererNotifier.Services.TPSChartScheduler do
           case result do
             :ok ->
               Logger.info("Successfully sent #{chart_type} chart to Discord")
+
             {:error, reason} ->
               Logger.error("Failed to send #{chart_type} chart to Discord: #{inspect(reason)}")
           end
@@ -67,8 +68,15 @@ defmodule WandererNotifier.Services.TPSChartScheduler do
     now = DateTime.utc_now()
 
     # Get the configured schedule time (hour and minute)
-    hour = Application.get_env(:wanderer_notifier, :tps_chart_schedule_hour, @default_schedule_hour)
-    minute = Application.get_env(:wanderer_notifier, :tps_chart_schedule_minute, @default_schedule_minute)
+    hour =
+      Application.get_env(:wanderer_notifier, :tps_chart_schedule_hour, @default_schedule_hour)
+
+    minute =
+      Application.get_env(
+        :wanderer_notifier,
+        :tps_chart_schedule_minute,
+        @default_schedule_minute
+      )
 
     # Calculate the next run time
     next_run = calculate_next_run(now, hour, minute)
@@ -76,7 +84,9 @@ defmodule WandererNotifier.Services.TPSChartScheduler do
     # Calculate milliseconds until next run
     milliseconds_until_next_run = DateTime.diff(next_run, now, :millisecond)
 
-    Logger.info("Scheduled next TPS chart run at #{DateTime.to_string(next_run)} (in #{div(milliseconds_until_next_run, 60000)} minutes)")
+    Logger.info(
+      "Scheduled next TPS chart run at #{DateTime.to_string(next_run)} (in #{div(milliseconds_until_next_run, 60000)} minutes)"
+    )
 
     # Schedule the next run
     Process.send_after(self(), :send_charts, milliseconds_until_next_run)

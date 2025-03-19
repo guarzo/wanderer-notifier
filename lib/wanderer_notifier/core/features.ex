@@ -16,7 +16,7 @@ defmodule WandererNotifier.Core.Features do
       # Added these features to core to enable them even without a license
       :tracked_systems_notifications,
       :tracked_characters_notifications,
-      :system_tracking,
+      :system_tracking
     ],
 
     # Standard features - require valid license
@@ -35,16 +35,22 @@ defmodule WandererNotifier.Core.Features do
 
   # Maximum limits for free/invalid license
   @free_limits %{
-    tracked_systems: nil,  # Changed from 10 to nil (unlimited)
-    tracked_characters: nil,  # Changed from 20 to nil (unlimited)
-    notification_history: 24 # hours
+    # Changed from 10 to nil (unlimited)
+    tracked_systems: nil,
+    # Changed from 20 to nil (unlimited)
+    tracked_characters: nil,
+    # hours
+    notification_history: 24
   }
 
   # Maximum limits for standard license
   @standard_limits %{
-    tracked_systems: nil, # unlimited
-    tracked_characters: nil, # unlimited
-    notification_history: 72 # hours
+    # unlimited
+    tracked_systems: nil,
+    # unlimited
+    tracked_characters: nil,
+    # hours
+    notification_history: 72
   }
 
   @doc """
@@ -54,21 +60,31 @@ defmodule WandererNotifier.Core.Features do
     # Special case for character tracking - check if it's explicitly enabled in config
     cond do
       feature == :tracked_characters_notifications ->
-        character_tracking_config_enabled? = WandererNotifier.Core.Config.character_tracking_enabled?()
-        character_notifications_enabled? = WandererNotifier.Core.Config.character_notifications_enabled?()
+        character_tracking_config_enabled? =
+          WandererNotifier.Core.Config.character_tracking_enabled?()
+
+        character_notifications_enabled? =
+          WandererNotifier.Core.Config.character_notifications_enabled?()
 
         if not character_tracking_config_enabled? or not character_notifications_enabled? do
-          Logger.debug("[Features] Character tracking or notifications are explicitly disabled in configuration")
+          Logger.debug(
+            "[Features] Character tracking or notifications are explicitly disabled in configuration"
+          )
+
           false
         else
           # If enabled in config, continue with normal license check
-          Logger.debug("[Features] Character tracking and notifications are enabled (default), checking license")
+          Logger.debug(
+            "[Features] Character tracking and notifications are enabled (default), checking license"
+          )
+
           check_license_for_feature(feature)
         end
 
       # Special case for system tracking notifications - check if it's explicitly enabled in config
       feature == :tracked_systems_notifications ->
-        system_notifications_enabled? = WandererNotifier.Core.Config.system_notifications_enabled?()
+        system_notifications_enabled? =
+          WandererNotifier.Core.Config.system_notifications_enabled?()
 
         if not system_notifications_enabled? do
           Logger.debug("[Features] System notifications are explicitly disabled in configuration")
@@ -181,8 +197,10 @@ defmodule WandererNotifier.Core.Features do
     case System.get_env("ENABLE_KILL_NOTIFICATIONS") do
       "false" -> false
       "0" -> false
-      nil -> true  # Default to true if not set
-      _ -> true    # Any other value is considered true
+      # Default to true if not set
+      nil -> true
+      # Any other value is considered true
+      _ -> true
     end
   end
 

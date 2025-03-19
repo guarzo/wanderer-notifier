@@ -18,7 +18,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         HttpClient.handle_response(response)
 
@@ -36,7 +36,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
@@ -57,7 +57,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
@@ -78,7 +78,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, [label: label]) do
+    case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
@@ -99,7 +99,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, [label: label])
+    HttpClient.get(url, headers, label: label)
     |> HttpClient.handle_response()
   end
 
@@ -121,7 +121,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     Logger.debug("[ESI] Searching inventory_type with query #{query} (strict=#{strict})")
 
-    HttpClient.get(url, headers, [label: label])
+    HttpClient.get(url, headers, label: label)
     |> HttpClient.handle_response()
   end
 
@@ -136,7 +136,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     Logger.debug("[ESI] Fetching solar system #{system_id}")
 
-    HttpClient.get(url, headers, [label: label])
+    HttpClient.get(url, headers, label: label)
     |> HttpClient.handle_response()
   end
 
@@ -151,7 +151,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     Logger.debug("[ESI] Fetching region #{region_id}")
 
-    HttpClient.get(url, headers, [label: label])
+    HttpClient.get(url, headers, label: label)
     |> HttpClient.handle_response()
   end
 

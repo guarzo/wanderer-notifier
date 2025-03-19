@@ -3,7 +3,7 @@ defmodule WandererNotifier.CorpTools.TPSDataInspector do
   Utility module to inspect and debug the TPS data structure.
   """
   require Logger
-  alias WandererNotifier.CorpTools.Client, as: CorpToolsClient
+  alias WandererNotifier.CorpTools.CorpToolsClient
 
   @doc """
   Inspects the TPS data structure and logs the keys and sample data.
@@ -25,9 +25,11 @@ defmodule WandererNotifier.CorpTools.TPSDataInspector do
         end)
 
         {:ok, data}
+
       {:loading, message} ->
         Logger.info("TPS data is still loading: #{message}")
         {:loading, message}
+
       {:error, reason} ->
         Logger.error("Failed to get TPS data: #{inspect(reason)}")
         {:error, reason}
@@ -91,9 +93,11 @@ defmodule WandererNotifier.CorpTools.TPSDataInspector do
         Logger.info("Deep inspecting TPS data (max depth: #{max_depth})")
         deep_inspect(data, "root", 0, max_depth)
         {:ok, data}
+
       {:loading, message} ->
         Logger.info("TPS data is still loading: #{message}")
         {:loading, message}
+
       {:error, reason} ->
         Logger.error("Failed to get TPS data: #{inspect(reason)}")
         {:error, reason}

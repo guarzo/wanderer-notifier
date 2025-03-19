@@ -6,8 +6,8 @@ defmodule WandererNotifier.Services.Service do
   use GenServer
   require Logger
 
-  alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
-  alias WandererNotifier.Service.KillProcessor
+  alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.KillProcessor
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.NotifierFactory
 
@@ -53,11 +53,14 @@ defmodule WandererNotifier.Services.Service do
 
     state = start_zkill_ws(state)
     # Send one startup notification to Discord.
-    NotifierFactory.notify(:send_message, ["WandererNotifier Service started. Listening for notifications."])
+    NotifierFactory.notify(:send_message, [
+      "WandererNotifier Service started. Listening for notifications."
+    ])
 
     # Run initial maintenance tasks immediately
     Logger.info("Running initial maintenance tasks at startup...")
-    Process.send_after(self(), :initial_maintenance, 5000)  # Run after 5 seconds to allow system to initialize
+    # Run after 5 seconds to allow system to initialize
+    Process.send_after(self(), :initial_maintenance, 5000)
 
     # Schedule regular maintenance
     schedule_maintenance()
@@ -100,16 +103,17 @@ defmodule WandererNotifier.Services.Service do
     Logger.info("Running initial maintenance tasks...")
 
     # Add error handling around maintenance tasks
-    new_state = try do
-      # Force a full update of all systems and characters
-      WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
-    rescue
-      e ->
-        Logger.error("Error during initial maintenance: #{inspect(e)}")
-        Logger.error("Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
-        # Return the original state if maintenance fails
-        state
-    end
+    new_state =
+      try do
+        # Force a full update of all systems and characters
+        WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
+      rescue
+        e ->
+          Logger.error("Error during initial maintenance: #{inspect(e)}")
+          Logger.error("Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+          # Return the original state if maintenance fails
+          state
+      end
 
     Logger.info("Initial maintenance tasks completed")
     {:noreply, new_state}
@@ -124,7 +128,10 @@ defmodule WandererNotifier.Services.Service do
 
   @impl true
   def handle_info(:ws_disconnected, state) do
-    Logger.warning("Websocket disconnected, scheduling reconnect in #{Timings.reconnect_delay()}ms")
+    Logger.warning(
+      "Websocket disconnected, scheduling reconnect in #{Timings.reconnect_delay()}ms"
+    )
+
     Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
     {:noreply, state}
   end
@@ -138,7 +145,9 @@ defmodule WandererNotifier.Services.Service do
 
   @impl true
   def handle_info(:force_refresh_cache, state) do
-    Logger.warning("Received force_refresh_cache message. Refreshing critical data after cache recovery...")
+    Logger.warning(
+      "Received force_refresh_cache message. Refreshing critical data after cache recovery..."
+    )
 
     # Run maintenance tasks to repopulate the cache
     new_state = WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
@@ -160,7 +169,10 @@ defmodule WandererNotifier.Services.Service do
 
     # Check if the crashed process is the ZKill websocket
     if pid == state.ws_pid do
-      Logger.warning("ZKill websocket crashed. Scheduling reconnect in #{Timings.reconnect_delay()}ms")
+      Logger.warning(
+        "ZKill websocket crashed. Scheduling reconnect in #{Timings.reconnect_delay()}ms"
+      )
+
       Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
       {:noreply, %{state | ws_pid: nil}}
     else

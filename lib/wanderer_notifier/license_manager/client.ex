@@ -45,21 +45,23 @@ defmodule WandererNotifier.LicenseManager.Client do
     Logger.debug("Sending HTTP request to License Manager API for bot validation...")
 
     # Use our improved HTTP client
-    case HttpClient.post_json(url, body, headers, [
-      label: "LicenseManager.validate_bot",
-      debug: true,
-      timeout: 5000
-    ]) do
+    case HttpClient.post_json(url, body, headers,
+           label: "LicenseManager.validate_bot",
+           debug: true,
+           timeout: 5000
+         ) do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, decoded} ->
             # Check if the license is valid from the response
             license_valid = decoded["license_valid"] || false
+
             if license_valid do
               Logger.info("License validation successful - License is valid")
             else
               Logger.warning("License validation failed - License is not valid")
             end
+
             {:ok, decoded}
 
           {:error, :unauthorized} ->
@@ -67,7 +69,10 @@ defmodule WandererNotifier.LicenseManager.Client do
             {:error, :invalid_bot_token}
 
           {:error, :forbidden} ->
-            Logger.error("License Manager API: Bot is inactive or not associated with license (403)")
+            Logger.error(
+              "License Manager API: Bot is inactive or not associated with license (403)"
+            )
+
             {:error, :bot_not_authorized}
 
           {:error, :not_found} ->
@@ -123,12 +128,12 @@ defmodule WandererNotifier.LicenseManager.Client do
 
     # Use a shorter timeout for the HTTP request
     try do
-      case HttpClient.post_json(url, body, headers, [
-        label: "LicenseManager.validate_license",
-        timeout: 2500,
-        max_retries: 1,
-        debug: true
-      ]) do
+      case HttpClient.post_json(url, body, headers,
+             label: "LicenseManager.validate_license",
+             timeout: 2500,
+             max_retries: 1,
+             debug: true
+           ) do
         {:ok, _} = response ->
           case HttpClient.handle_response(response) do
             {:ok, decoded} ->
@@ -138,9 +143,13 @@ defmodule WandererNotifier.LicenseManager.Client do
 
               if valid do
                 if bot_assigned do
-                  Logger.info("License validation successful - License is valid and bot is assigned")
+                  Logger.info(
+                    "License validation successful - License is valid and bot is assigned"
+                  )
                 else
-                  Logger.warning("License validation partial - License is valid but bot is not assigned")
+                  Logger.warning(
+                    "License validation partial - License is valid but bot is not assigned"
+                  )
                 end
               else
                 Logger.warning("License validation failed - License is not valid")
@@ -153,7 +162,10 @@ defmodule WandererNotifier.LicenseManager.Client do
               {:error, "Invalid bot API token"}
 
             {:error, :forbidden} ->
-              Logger.error("License Manager API: Bot is inactive or not associated with license (403)")
+              Logger.error(
+                "License Manager API: Bot is inactive or not associated with license (403)"
+              )
+
               {:error, "Bot not authorized"}
 
             {:error, :not_found} ->

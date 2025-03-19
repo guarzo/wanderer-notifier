@@ -22,7 +22,7 @@ alwaysApply: true
 
 ## Documentation & Communication
 - Keep comprehensive documentation and update it regularly.
-- Store all project documentation in the `.notes/` directory.
+- Store all project documentation in the `notes/` directory.
 - Maintain a changelog for significant updates.
 
 ## Testing & Validation
