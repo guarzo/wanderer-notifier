@@ -1,4 +1,18 @@
-# Build stage
+# Frontend build stage
+FROM node:16-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy frontend source code
+COPY renderer ./
+
+# Install dependencies
+RUN npm ci
+
+# Build the frontend
+RUN npm run build
+
+# Elixir build stage
 FROM elixir:1.14.5-alpine AS builder
 
 # Install build dependencies
@@ -24,8 +38,11 @@ COPY config config
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
-# Copy static files (React app)
-COPY priv/static priv/static
+# Create directory for static files
+RUN mkdir -p priv/static/app
+
+# Copy the built frontend assets from the frontend-builder stage
+COPY --from=frontend-builder /app/dist/* priv/static/app/
 
 # Compile dependencies with Nostrum config
 RUN mix deps.compile
@@ -59,7 +76,7 @@ RUN chown -R wanderer:wanderer /app
 USER wanderer
 
 # Set default environment variables (can be overridden)
-ENV PORT=8080 \
+ENV PORT=4000 \
     HOST=0.0.0.0 \
     MIX_ENV=prod \
     CACHE_DIR=/app/data/cache
