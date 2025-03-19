@@ -1,6 +1,10 @@
 # Build stage
 FROM elixir:1.14.5-alpine AS builder
 
+# Accept build arguments
+ARG WANDERER_PRODUCTION_BOT_TOKEN
+ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+
 # Install build dependencies
 RUN apk add --no-cache build-base git
 
@@ -41,6 +45,10 @@ RUN mix release
 
 # Run stage
 FROM alpine:3.18.2 AS app
+
+# Pass build arguments to runtime
+ARG WANDERER_PRODUCTION_BOT_TOKEN
+ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
 
 # Install runtime dependencies
 RUN apk add --no-cache openssl ncurses-libs libstdc++ bash wget

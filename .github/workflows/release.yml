@@ -59,9 +59,15 @@ jobs:
           cat Dockerfile
 
       - name: Build Docker image
+        env:
+          WANDERER_PRODUCTION_BOT_TOKEN: ${{ secrets.PRODUCTION_BOT_TOKEN }}
         run: |
-          docker build -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }} .
-          docker build -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_$(git rev-parse --short HEAD) .
+          docker build \
+            --build-arg WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN}" \
+            -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }} .
+          docker build \
+            --build-arg WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN}" \
+            -t guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_$(git rev-parse --short HEAD) .
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
