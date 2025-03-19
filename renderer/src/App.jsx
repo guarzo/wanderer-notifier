@@ -4,7 +4,8 @@ import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-ro
 import Dashboard from "./components/Dashboard";
 import ChartDashboard from "./components/ChartDashboard";
 import MapToolsDashboard from "./components/MapToolsDashboard";
-import { FaChartBar, FaHome, FaMap } from "react-icons/fa";
+import DebugDashboard from "./components/DebugDashboard";
+import { FaChartBar, FaHome, FaMap, FaBug } from "react-icons/fa";
 
 function App() {
   const [corpToolsEnabled, setCorpToolsEnabled] = useState(false);
@@ -45,36 +46,22 @@ function App() {
                 <FaHome />
                 <span>Home</span>
               </Link>
-              {corpToolsEnabled && (
-                <Link to="/corp-tools" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
-                  <FaChartBar />
-                  <span>Corp Tools</span>
-                </Link>
-              )}
-              {mapToolsEnabled && (
-                <Link to="/map-tools" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
-                  <FaMap />
-                  <span>Map Tools</span>
-                </Link>
-              )}
+              <Link to="/debug" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
+                <FaBug />
+                <span>Debug</span>
+              </Link>
             </div>
           </div>
         </nav>
         
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          {corpToolsEnabled ? (
-            <Route path="/corp-tools" element={<ChartDashboard />} />
-          ) : (
-            <Route path="/corp-tools" element={<Navigate to="/" replace />} />
-          )}
-          {mapToolsEnabled ? (
-            <Route path="/map-tools" element={<MapToolsDashboard />} />
-          ) : (
-            <Route path="/map-tools" element={<Navigate to="/" replace />} />
-          )}
-          {/* Legacy route for backward compatibility */}
-          <Route path="/charts-dashboard" element={<Navigate to={corpToolsEnabled ? "/corp-tools" : "/"} replace />} />
+          <Route path="/debug" element={<DebugDashboard />} />
+          
+          {/* Legacy routes for backward compatibility */}
+          <Route path="/corp-tools" element={<Navigate to="/debug" replace />} />
+          <Route path="/map-tools" element={<Navigate to="/debug" replace />} />
+          <Route path="/charts-dashboard" element={<Navigate to="/debug" replace />} />
         </Routes>
       </div>
     </Router>
