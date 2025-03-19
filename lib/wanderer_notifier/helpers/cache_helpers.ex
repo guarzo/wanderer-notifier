@@ -13,6 +13,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     case CacheRepo.get("map:systems") do
       nil ->
         []
+
       systems when is_list(systems) ->
         # Check if we have a list of system objects or just IDs
         if length(systems) > 0 and is_map(List.first(systems)) do
@@ -28,6 +29,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
           end)
           |> Enum.filter(& &1)
         end
+
       _ ->
         []
     end

@@ -41,9 +41,14 @@ config :logger, :console,
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
   "WandererNotifier.Maintenance.Scheduler" => :info,
-  "WandererNotifier.Map.Client" => :info,
-  "WandererNotifier.Map.Systems" => :info,
-  "WandererNotifier.Map.Characters" => :info
+  "WandererNotifier.Config" => :info,
+  "WandererNotifier.Config.Timings" => :info,
+  "WandererNotifier.Api.Map.Client" => :info,
+  "WandererNotifier.Api.Map.Systems" => :info,
+  "WandererNotifier.Api.Map.Characters" => :info,
+  "WandererNotifier.Notifiers.Discord" => :info,
+  "WandererNotifier.Api.ZKill.Websocket" => :info,
+  "WandererNotifier.KillProcessor" => :info
 }
 
 # Nostrum compile-time configuration
@@ -52,8 +57,10 @@ config :nostrum,
   num_shards: :auto,
   request_guild_members: false,
   caches: [
-    :guilds,  # Required cache
-    :guild_channels  # Required cache
+    # Required cache
+    :guilds,
+    # Required cache
+    :guild_channels
   ]
 
 # Add backoff configuration to help with rate limiting
@@ -62,15 +69,6 @@ config :nostrum, :gateway,
     initial: 1000,
     max: 120_000
   ]
-
-# Configure cache directory
-config :wanderer_notifier, :cache_dir, System.get_env("CACHE_DIR", "/app/data/cache")
-
-# Configure public URL for assets
-config :wanderer_notifier, :public_url, System.get_env("PUBLIC_URL")
-config :wanderer_notifier, :host, System.get_env("HOST", "localhost")
-config :wanderer_notifier, :port, String.to_integer(System.get_env("PORT", "4000"))
-config :wanderer_notifier, :scheme, System.get_env("SCHEME", "http")
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

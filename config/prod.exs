@@ -9,9 +9,11 @@ config :logger,
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :warning,
   "WandererNotifier.Maintenance.Scheduler" => :warning,
-  "WandererNotifier.Map.Client" => :warning,
-  "WandererNotifier.Map.Systems" => :warning,
-  "WandererNotifier.Map.Characters" => :warning
+  "WandererNotifier.Api.Map.Client" => :warning,
+  "WandererNotifier.Api.Map.Systems" => :warning,
+  "WandererNotifier.Api.Map.Characters" => :warning,
+  "WandererNotifier.Web.Router" => :warning,
+  "WandererNotifier.KillProcessor" => :warning
 }
 
 # Runtime configuration should be in runtime.exs

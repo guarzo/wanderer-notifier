@@ -16,5 +16,4 @@ config :wanderer_notifier,
 config :logger, level: :info
 
 # Include more metadata in development logs
-config :logger, :console,
-  format: "$time [$level] $message\n"
+config :logger, :console, format: "$time [$level] $message\n"

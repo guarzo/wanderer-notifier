@@ -70,7 +70,10 @@ defmodule WandererNotifier.Discord.TestNotifier do
     title_str = if title, do: title, else: "No title"
     desc_str = if description, do: description, else: "No description"
 
-    Logger.info("DISCORD TEST FILE: #{filename} (#{file_size} bytes) - Title: #{title_str}, Description: #{desc_str}")
+    Logger.info(
+      "DISCORD TEST FILE: #{filename} (#{file_size} bytes) - Title: #{title_str}, Description: #{desc_str}"
+    )
+
     :ok
   end
 

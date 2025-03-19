@@ -5,9 +5,9 @@ defmodule WandererNotifier.Web.Router do
   use Plug.Router
   require Logger
 
-  alias WandererNotifier.License
-  alias WandererNotifier.Stats
-  alias WandererNotifier.Features
+  alias WandererNotifier.Core.License
+  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Core.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Config
@@ -18,36 +18,38 @@ defmodule WandererNotifier.Web.Router do
   plug(Plug.Logger)
 
   # Serve JavaScript and CSS files with correct MIME types
-  plug Plug.Static,
+  plug(Plug.Static,
     at: "/assets",
     from: {:wanderer_notifier, "priv/static/app/assets"},
     headers: %{
       "access-control-allow-origin" => "*",
       "cache-control" => "public, max-age=0"
     }
+  )
 
-  # Serve static assets directly
-  plug Plug.Static,
+  # Serve static assets directly from app directory without filename restrictions
+  plug(Plug.Static,
     at: "/",
     from: {:wanderer_notifier, "priv/static/app"},
-    only: ~w(index.html vite.svg favicon.ico test.html),
     headers: %{
       "access-control-allow-origin" => "*",
       "cache-control" => "public, max-age=0"
     }
+  )
 
-  # Serve your React build from priv/static/app if desired
-  plug Plug.Static,
+  # Serve additional static files
+  plug(Plug.Static,
     at: "/",
     from: :wanderer_notifier,
     only: ~w(app images css js favicon.ico robots.txt)
+  )
 
-  plug :match
+  plug(:match)
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
-  plug :dispatch
+  plug(:dispatch)
 
   # Forward chart requests to the ChartController
-  forward "/charts", to: ChartController
+  forward("/charts", to: ChartController)
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
   get "/corp-tools" do
@@ -130,8 +132,8 @@ defmodule WandererNotifier.Web.Router do
   get "/tps-charts" do
     if Config.corp_tools_enabled?() do
       conn
-      |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/templates/tps_charts.html.eex")
+      |> put_resp_header("location", "/corp-tools")
+      |> send_resp(301, "Redirecting to /corp-tools")
     else
       conn
       |> put_resp_content_type("text/html")
@@ -145,27 +147,35 @@ defmodule WandererNotifier.Web.Router do
 
   get "/health" do
     # Check if critical services are running
-    cache_available = case Cachex.stats(:wanderer_notifier_cache) do
-      {:ok, _stats} -> true
-      _ -> false
-    end
+    cache_available =
+      case Cachex.stats(:wanderer_notifier_cache) do
+        {:ok, _stats} -> true
+        _ -> false
+      end
 
     # Check if the service GenServer is alive
-    service_alive = case Process.whereis(WandererNotifier.Service) do
-      pid when is_pid(pid) -> Process.alive?(pid)
-      _ -> false
-    end
+    service_alive =
+      case Process.whereis(WandererNotifier.Service) do
+        pid when is_pid(pid) -> Process.alive?(pid)
+        _ -> false
+      end
 
     # If critical services are running, return 200 OK
     if cache_available and service_alive do
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(%{status: "ok", cache: cache_available, service: service_alive}))
+      |> send_resp(
+        200,
+        Jason.encode!(%{status: "ok", cache: cache_available, service: service_alive})
+      )
     else
       # If any critical service is down, return 503 Service Unavailable
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(503, Jason.encode!(%{status: "error", cache: cache_available, service: service_alive}))
+      |> send_resp(
+        503,
+        Jason.encode!(%{status: "error", cache: cache_available, service: service_alive})
+      )
     end
   end
 
@@ -189,21 +199,23 @@ defmodule WandererNotifier.Web.Router do
       limits = Features.get_all_limits()
 
       # Add error handling for tracked systems and characters
-      tracked_systems = try do
-        get_tracked_systems()
-      rescue
-        e ->
-          Logger.error("Error getting tracked systems: #{inspect(e)}")
-          []
-      end
+      tracked_systems =
+        try do
+          get_tracked_systems()
+        rescue
+          e ->
+            Logger.error("Error getting tracked systems: #{inspect(e)}")
+            []
+        end
 
-      tracked_characters = try do
-        CacheRepo.get("map:characters") || []
-      rescue
-        e ->
-          Logger.error("Error getting tracked characters: #{inspect(e)}")
-          []
-      end
+      tracked_characters =
+        try do
+          CacheRepo.get("map:characters") || []
+        rescue
+          e ->
+            Logger.error("Error getting tracked characters: #{inspect(e)}")
+            []
+        end
 
       usage = %{
         tracked_systems: %{
@@ -230,7 +242,8 @@ defmodule WandererNotifier.Web.Router do
           enabled: %{
             basic_notifications: Features.enabled?(:basic_notifications),
             tracked_systems_notifications: Features.enabled?(:tracked_systems_notifications),
-            tracked_characters_notifications: Features.enabled?(:tracked_characters_notifications),
+            tracked_characters_notifications:
+              Features.enabled?(:tracked_characters_notifications),
             backup_kills_processing: Features.enabled?(:backup_kills_processing),
             web_dashboard_full: Features.enabled?(:web_dashboard_full),
             advanced_statistics: Features.enabled?(:advanced_statistics)
@@ -249,6 +262,7 @@ defmodule WandererNotifier.Web.Router do
     rescue
       e ->
         Logger.error("Error processing /api/status: #{inspect(e)}")
+
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(500, Jason.encode!(%{error: "Internal server error", details: inspect(e)}))
@@ -258,7 +272,7 @@ defmodule WandererNotifier.Web.Router do
   get "/api/test-notification" do
     Logger.info("Test notification endpoint called")
 
-    result = WandererNotifier.Service.KillProcessor.send_test_kill_notification()
+    result = WandererNotifier.KillProcessor.send_test_kill_notification()
 
     response =
       case result do
@@ -306,7 +320,8 @@ defmodule WandererNotifier.Web.Router do
         {:ok, character_id, character_name} ->
           %{
             success: true,
-            message: "Test character notification sent for #{character_name} (ID: #{character_id})",
+            message:
+              "Test character notification sent for #{character_name} (ID: #{character_id})",
             details: "Check your Discord for the message."
           }
 
@@ -394,7 +409,7 @@ defmodule WandererNotifier.Web.Router do
   get "/api/revalidate-license" do
     Logger.info("License revalidation requested")
 
-    result = WandererNotifier.License.validate()
+    result = License.validate()
 
     response =
       case result do
@@ -421,7 +436,7 @@ defmodule WandererNotifier.Web.Router do
   get "/api/recent-kills" do
     Logger.info("Recent kills endpoint called")
 
-    recent_kills = WandererNotifier.Service.KillProcessor.get_recent_kills()
+    recent_kills = WandererNotifier.KillProcessor.get_recent_kills()
 
     response = %{
       success: true,
@@ -435,34 +450,54 @@ defmodule WandererNotifier.Web.Router do
 
   # Handle test kill notification
   post "/api/test-kill" do
-    case WandererNotifier.Service.KillProcessor.send_test_kill_notification() do
+    case WandererNotifier.KillProcessor.send_test_kill_notification() do
       {:ok, kill_id} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{success: true, message: "Test kill notification sent", kill_id: kill_id}))
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            success: true,
+            message: "Test kill notification sent",
+            kill_id: kill_id
+          })
+        )
 
       {:error, :no_kills_available} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(404, Jason.encode!(%{
-             success: false,
-             message: "Failed to send test notification: No kills available",
-             details: "No recent kills found in cache or from zKillboard API."
-           }))
+        |> send_resp(
+          404,
+          Jason.encode!(%{
+            success: false,
+            message: "Failed to send test notification: No kills available",
+            details: "No recent kills found in cache or from zKillboard API."
+          })
+        )
 
       {:error, :no_kill_id} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(%{
-             success: false,
-             message: "Failed to send test notification: No kill ID found",
-             details: "The kill data did not contain a valid kill ID."
-           }))
+        |> send_resp(
+          400,
+          Jason.encode!(%{
+            success: false,
+            message: "Failed to send test notification: No kill ID found",
+            details: "The kill data did not contain a valid kill ID."
+          })
+        )
 
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{success: false, message: "Failed to send test notification", error: inspect(reason)}))
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            success: false,
+            message: "Failed to send test notification",
+            error: inspect(reason)
+          })
+        )
     end
   end
 
@@ -482,6 +517,7 @@ defmodule WandererNotifier.Web.Router do
       |> Plug.Conn.send_file(200, index_path)
     else
       Logger.error("Index file not found at: #{index_path}")
+
       conn
       |> put_resp_content_type("text/plain")
       |> send_resp(404, "Not found: #{conn.request_path}")
@@ -493,7 +529,10 @@ defmodule WandererNotifier.Web.Router do
   #
 
   defp calculate_percentage(_current, limit) when is_nil(limit), do: nil
-  defp calculate_percentage(current, limit) when limit > 0, do: min(100, round(current / limit * 100))
+
+  defp calculate_percentage(current, limit) when limit > 0,
+    do: min(100, round(current / limit * 100))
+
   defp calculate_percentage(_, _), do: 0
 
   defp get_tracked_systems do
@@ -525,7 +564,10 @@ defmodule WandererNotifier.Web.Router do
             character = Enum.random(valid_list)
             {character_id, character_name} = extract_character_details(character)
 
-            Logger.info("Using character #{character_name} (ID: #{character_id}) for test notification")
+            Logger.info(
+              "Using character #{character_name} (ID: #{character_id}) for test notification"
+            )
+
             result = NotifierFactory.notify(:send_new_tracked_character_notification, [character])
 
             case result do
@@ -557,6 +599,7 @@ defmodule WandererNotifier.Web.Router do
       systems ->
         system = Enum.random(systems)
         system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
+
         system_name =
           Map.get(system, "system_name") ||
             Map.get(system, :alias) ||
@@ -576,11 +619,11 @@ defmodule WandererNotifier.Web.Router do
   defp valid_eve_id?(character) do
     cond do
       is_binary(character["character_id"]) and
-        NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
         true
 
       is_binary(character["eve_id"]) and
-        NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
+          NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
         true
 
       is_map(character["character"]) ->
@@ -595,16 +638,16 @@ defmodule WandererNotifier.Web.Router do
     # Because we can't call external functions in a guard,
     # we just do normal boolean checks in the function body:
     cond do
-      (is_binary(nested_map["eve_id"]) and
-         NotificationHelpers.is_valid_numeric_id?(nested_map["eve_id"])) ->
+      is_binary(nested_map["eve_id"]) and
+          NotificationHelpers.is_valid_numeric_id?(nested_map["eve_id"]) ->
         true
 
-      (is_binary(nested_map["character_id"]) and
-         NotificationHelpers.is_valid_numeric_id?(nested_map["character_id"])) ->
+      is_binary(nested_map["character_id"]) and
+          NotificationHelpers.is_valid_numeric_id?(nested_map["character_id"]) ->
         true
 
-      (is_binary(nested_map["id"]) and
-         NotificationHelpers.is_valid_numeric_id?(nested_map["id"])) ->
+      is_binary(nested_map["id"]) and
+          NotificationHelpers.is_valid_numeric_id?(nested_map["id"]) ->
         true
 
       true ->
@@ -619,23 +662,23 @@ defmodule WandererNotifier.Web.Router do
     character_id =
       cond do
         is_binary(character["character_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
+            NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
           character["character_id"]
 
         is_binary(character["eve_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
+            NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
           character["eve_id"]
 
-        is_map(character["character"]) && is_binary(character["character"]["eve_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["character"]["eve_id"]) ->
+        (is_map(character["character"]) && is_binary(character["character"]["eve_id"])) and
+            NotificationHelpers.is_valid_numeric_id?(character["character"]["eve_id"]) ->
           character["character"]["eve_id"]
 
-        is_map(character["character"]) && is_binary(character["character"]["character_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["character"]["character_id"]) ->
+        (is_map(character["character"]) && is_binary(character["character"]["character_id"])) and
+            NotificationHelpers.is_valid_numeric_id?(character["character"]["character_id"]) ->
           character["character"]["character_id"]
 
-        is_map(character["character"]) && is_binary(character["character"]["id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["character"]["id"]) ->
+        (is_map(character["character"]) && is_binary(character["character"]["id"])) and
+            NotificationHelpers.is_valid_numeric_id?(character["character"]["id"]) ->
           character["character"]["id"]
 
         true ->

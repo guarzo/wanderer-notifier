@@ -24,10 +24,11 @@ reviews:
         **General Code Quality** – Ensure the code follows global best practices:
         - Keep functions and modules small and focused (single responsibility).
         - Use consistent naming conventions and meaningful identifiers for clarity.
+        - Look for unused code or files that can be removed
         - Avoid duplicate code – refactor common logic into reusable functions.
         - Maintain code readability (proper indentation, avoid deep nesting of code).
         - Write comments where necessary to explain intent, but keep code self-explanatory.
-        - Use early exit strategy, avoid else
+        - Use early exit strategy, avoid else use pattern matching
 
   auto_review:
     enabled: true        # Enable automatic AI review on pull requests

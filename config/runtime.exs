@@ -48,3 +48,15 @@ config :wanderer_notifier,
 # Web server configuration
 config :wanderer_notifier,
   web_port: String.to_integer(System.get_env("PORT") || "4000")
+
+# Configure cache directory
+config :wanderer_notifier, :cache_dir, System.get_env("CACHE_DIR", "/app/data/cache")
+
+# Configure public URL for assets
+config :wanderer_notifier, :public_url, System.get_env("PUBLIC_URL")
+
+config :wanderer_notifier, :host, System.get_env("HOST", "localhost")
+
+config :wanderer_notifier, :port, String.to_integer(System.get_env("PORT", "4000"))
+
+config :wanderer_notifier, :scheme, System.get_env("SCHEME", "http")

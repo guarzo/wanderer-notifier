@@ -20,8 +20,12 @@ defmodule WandererNotifier.Cache.Repository do
     case File.mkdir_p(cache_dir) do
       :ok ->
         Logger.info("Using cache directory: #{cache_dir}")
+
       {:error, reason} ->
-        Logger.warning("Failed to create cache directory at #{cache_dir}: #{inspect(reason)}. Falling back to temporary directory.")
+        Logger.warning(
+          "Failed to create cache directory at #{cache_dir}: #{inspect(reason)}. Falling back to temporary directory."
+        )
+
         # Fall back to a temporary directory that should be writable
         cache_dir = System.tmp_dir!() |> Path.join("wanderer_notifier_cache")
         File.mkdir_p!(cache_dir)
@@ -63,7 +67,8 @@ defmodule WandererNotifier.Cache.Repository do
 
     cond do
       # Check if we're in a dev container
-      String.contains?(File.cwd!(), "dev-container") or String.contains?(File.cwd!(), "workspaces") ->
+      String.contains?(File.cwd!(), "dev-container") or
+          String.contains?(File.cwd!(), "workspaces") ->
         # Use a directory in the current workspace
         Path.join(File.cwd!(), "tmp/cache")
 
@@ -93,14 +98,23 @@ defmodule WandererNotifier.Cache.Repository do
   def init([cache_dir]) do
     # Schedule the first cache check
     schedule_cache_check()
-    {:ok, %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: cache_dir}}
+
+    {:ok,
+     %{
+       last_systems_count: 0,
+       last_characters_count: 0,
+       consecutive_failures: 0,
+       cache_dir: cache_dir
+     }}
   end
 
   # Fallback for when no cache_dir is passed (for backward compatibility)
   @impl true
   def init(_) do
     schedule_cache_check()
-    {:ok, %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: nil}}
+
+    {:ok,
+     %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: nil}}
   end
 
   # Handle cache check message
@@ -119,17 +133,22 @@ defmodule WandererNotifier.Cache.Repository do
 
     # Log changes in counts
     if systems_count != state.last_systems_count do
-      Logger.info("[CacheRepo] Systems count changed: #{state.last_systems_count} -> #{systems_count}")
+      Logger.info(
+        "[CacheRepo] Systems count changed: #{state.last_systems_count} -> #{systems_count}"
+      )
     end
 
     if characters_count != state.last_characters_count do
-      Logger.info("[CacheRepo] Characters count changed: #{state.last_characters_count} -> #{characters_count}")
+      Logger.info(
+        "[CacheRepo] Characters count changed: #{state.last_characters_count} -> #{characters_count}"
+      )
     end
 
     # Schedule the next check
     schedule_cache_check()
 
-    {:noreply, %{state | last_systems_count: systems_count, last_characters_count: characters_count}}
+    {:noreply,
+     %{state | last_systems_count: systems_count, last_characters_count: characters_count}}
   end
 
   defp schedule_cache_check do
@@ -158,6 +177,7 @@ defmodule WandererNotifier.Cache.Repository do
         {:ok, value} when not is_nil(value) ->
           Logger.debug("[CacheRepo] Cache hit for key: #{key}, found #{length_of(value)} items")
           value
+
         {:ok, nil} ->
           # Treat nil value as a cache miss and return nil
           # Special handling for map:systems and map:characters keys
@@ -173,11 +193,14 @@ defmodule WandererNotifier.Cache.Repository do
             else
               Logger.debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
             end
+
             nil
           end
+
         {:error, error} ->
           Logger.error("[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}")
           nil
+
         _ ->
           Logger.debug("[CacheRepo] Cache miss for key: #{key}")
           nil
@@ -190,7 +213,9 @@ defmodule WandererNotifier.Cache.Repository do
   """
   def set(key, value, ttl) do
     retry_with_backoff(fn ->
-      Logger.debug("[CacheRepo] Setting value for key: #{key} with TTL: #{ttl}, storing #{length_of(value)} items")
+      Logger.debug(
+        "[CacheRepo] Setting value for key: #{key} with TTL: #{ttl}, storing #{length_of(value)} items"
+      )
 
       # Convert TTL from seconds to milliseconds for Cachex
       ttl_ms = ttl * 1000
@@ -206,8 +231,12 @@ defmodule WandererNotifier.Cache.Repository do
 
           Logger.debug("[CacheRepo] Successfully set cache for key: #{key}")
           {:ok, true}
+
         _ ->
-          Logger.error("[CacheRepo] Failed to set cache for key: #{key}, result: #{inspect(result)}")
+          Logger.error(
+            "[CacheRepo] Failed to set cache for key: #{key}, result: #{inspect(result)}"
+          )
+
           {:error, result}
       end
     end)
@@ -218,14 +247,22 @@ defmodule WandererNotifier.Cache.Repository do
   """
   def put(key, value) do
     retry_with_backoff(fn ->
-      Logger.debug("[CacheRepo] Putting value for key: #{key} without TTL, storing #{length_of(value)} items")
+      Logger.debug(
+        "[CacheRepo] Putting value for key: #{key} without TTL, storing #{length_of(value)} items"
+      )
+
       result = Cachex.put(@cache_name, key, value)
+
       case result do
         {:ok, true} ->
           Logger.debug("[CacheRepo] Successfully put cache for key: #{key}")
           {:ok, true}
+
         _ ->
-          Logger.error("[CacheRepo] Failed to put cache for key: #{key}, result: #{inspect(result)}")
+          Logger.error(
+            "[CacheRepo] Failed to put cache for key: #{key}, result: #{inspect(result)}"
+          )
+
           {:error, result}
       end
     end)
@@ -283,6 +320,7 @@ defmodule WandererNotifier.Cache.Repository do
     rescue
       e ->
         Logger.error("[CacheRepo] Error in cache operation: #{inspect(e)}")
+
         if retries <= 0 do
           Logger.error("[CacheRepo] Max retries reached, giving up")
           {:error, e}
@@ -294,6 +332,7 @@ defmodule WandererNotifier.Cache.Repository do
     catch
       :exit, reason ->
         Logger.error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
+
         if retries <= 0 do
           Logger.error("[CacheRepo] Max retries reached, giving up")
           {:error, reason}
@@ -302,6 +341,7 @@ defmodule WandererNotifier.Cache.Repository do
           Process.sleep(Timings.retry_delay())
           retry_with_backoff(fun, retries - 1)
         end
+
       result ->
         result
     end

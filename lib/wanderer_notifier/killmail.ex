@@ -1,7 +1,10 @@
 defmodule WandererNotifier.Killmail do
   @moduledoc """
-  Represents an enriched killmail with both zKill and ESI data.
+  Proxy module for WandererNotifier.Data.Killmail.
+  This module delegates all functionality to WandererNotifier.Data.Killmail.
   """
+
+  # Re-exporting the struct definition for backward compatibility
   @enforce_keys [:killmail_id, :zkb]
   defstruct [:killmail_id, :zkb, :esi_data]
 
@@ -11,88 +14,72 @@ defmodule WandererNotifier.Killmail do
           esi_data: map() | nil
         }
 
-  @doc """
-  Implements the Access behaviour to allow accessing the struct like a map.
-  This enables syntax like killmail["victim"] to work.
-  """
+  # Implementing Access behaviour by delegating to Data.Killmail
   @behaviour Access
 
   @impl Access
   def fetch(killmail, key) do
-    case key do
-      "killmail_id" -> {:ok, killmail.killmail_id}
-      "zkb" -> {:ok, killmail.zkb}
-      "esi_data" -> {:ok, killmail.esi_data}
-      "victim" ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, "victim")
-        else
-          :error
-        end
-      "attackers" ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, "attackers")
-        else
-          :error
-        end
-      _ ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, key)
-        else
-          :error
-        end
-    end
-  end
-
-  @doc """
-  Helper function to get a value from the killmail.
-  Not part of the Access behaviour but useful for convenience.
-  """
-  def get(killmail, key, default \\ nil) do
-    case fetch(killmail, key) do
-      {:ok, value} -> value
-      :error -> default
-    end
+    # Convert to Data.Killmail struct if needed
+    data_killmail = convert_to_data_killmail(killmail)
+    WandererNotifier.Data.Killmail.fetch(data_killmail, key)
   end
 
   @impl Access
   def get_and_update(killmail, key, fun) do
-    current_value = get(killmail, key)
-    {get_value, new_value} = fun.(current_value)
+    # Convert to Data.Killmail struct if needed
+    data_killmail = convert_to_data_killmail(killmail)
 
-    new_killmail = case key do
-      "killmail_id" -> %{killmail | killmail_id: new_value}
-      "zkb" -> %{killmail | zkb: new_value}
-      "esi_data" -> %{killmail | esi_data: new_value}
-      _ ->
-        if killmail.esi_data do
-          new_esi_data = Map.put(killmail.esi_data, key, new_value)
-          %{killmail | esi_data: new_esi_data}
-        else
-          killmail
-        end
-    end
+    {value, updated_data_killmail} =
+      WandererNotifier.Data.Killmail.get_and_update(data_killmail, key, fun)
 
-    {get_value, new_killmail}
+    # Convert back to original struct type
+    updated_killmail = convert_from_data_killmail(updated_data_killmail)
+    {value, updated_killmail}
   end
 
   @impl Access
   def pop(killmail, key) do
-    value = get(killmail, key)
-
-    new_killmail = case key do
-      "killmail_id" -> %{killmail | killmail_id: nil}
-      "zkb" -> %{killmail | zkb: nil}
-      "esi_data" -> %{killmail | esi_data: nil}
-      _ ->
-        if killmail.esi_data do
-          new_esi_data = Map.delete(killmail.esi_data, key)
-          %{killmail | esi_data: new_esi_data}
-        else
-          killmail
-        end
-    end
-
-    {value, new_killmail}
+    # Convert to Data.Killmail struct if needed
+    data_killmail = convert_to_data_killmail(killmail)
+    {value, updated_data_killmail} = WandererNotifier.Data.Killmail.pop(data_killmail, key)
+    # Convert back to original struct type
+    updated_killmail = convert_from_data_killmail(updated_data_killmail)
+    {value, updated_killmail}
   end
+
+  # Helper functions for struct conversion
+  defp convert_to_data_killmail(%__MODULE__{} = killmail) do
+    # If it's already our struct, convert it to Data.Killmail struct
+    %WandererNotifier.Data.Killmail{
+      killmail_id: killmail.killmail_id,
+      zkb: killmail.zkb,
+      esi_data: killmail.esi_data
+    }
+  end
+
+  defp convert_to_data_killmail(other) do
+    # If it's already a Data.Killmail struct or something else, return as is
+    other
+  end
+
+  defp convert_from_data_killmail(%WandererNotifier.Data.Killmail{} = killmail) do
+    # Convert Data.Killmail struct back to our struct
+    %__MODULE__{
+      killmail_id: killmail.killmail_id,
+      zkb: killmail.zkb,
+      esi_data: killmail.esi_data
+    }
+  end
+
+  defp convert_from_data_killmail(other) do
+    # If it's not a Data.Killmail struct, return as is
+    other
+  end
+
+  # Delegate all other functions to WandererNotifier.Data.Killmail
+  defdelegate new(killmail_id, zkb, esi_data \\ nil), to: WandererNotifier.Data.Killmail
+  defdelegate from_map(map), to: WandererNotifier.Data.Killmail
+  defdelegate get_victim(killmail), to: WandererNotifier.Data.Killmail
+  defdelegate get_attacker(killmail), to: WandererNotifier.Data.Killmail
+  defdelegate get_system_id(killmail), to: WandererNotifier.Data.Killmail
 end
