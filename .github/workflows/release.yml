@@ -1,0 +1,90 @@
+name: Official Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version tag'
+        required: false
+        default: 'v1'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # required for getting commit SHA
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'renderer/package-lock.json'
+      - name: Build React application
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
+          # Ensure the static app directory exists
+          mkdir -p priv/static/app
+          # Copy the built React app to the static directory
+          cp -r renderer/dist/* priv/static/app/
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.14.5'
+          otp-version: '25.0'
+
+      - name: Install dependencies and build release
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
+          mix deps.compile
+
+          # Build the release
+          mix release
+
+      - name: Compute short SHA
+        id: sha
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Debug Dockerfile
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing files in current directory:"
+          ls -la
+          echo "Dockerfile content:"
+          cat Dockerfile
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          load: true
+          build-args: |
+            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
+          tags: |
+            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
+            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Push Docker image
+        run: |
+          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
+          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}

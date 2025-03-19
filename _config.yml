@@ -1,0 +1,29 @@
+title: Wanderer Notifier
+description: Get real-time EVE Online notifications directly to your Discord channel
+remote_theme: pages-themes/cayman@v0.2.0
+plugins:
+- jekyll-remote-theme
+- jekyll-seo-tag
+
+# GitHub information
+github:
+  repository_url: https://github.com/guarzo/wanderer-notifier
+  is_project_page: true
+  owner_name: guarzo
+  owner_url: https://github.com/guarzo
+# Additional metadata
+author: Guarzo
+lang: en
+show_downloads: true
+google_analytics: # add your tracking ID here if needed
+
+# Navigation
+navigation:
+  - name: Home
+    link: /
+  - name: Notifications
+    link: /notifications.html
+  - name: License
+    link: /license.html
+  - name: GitHub
+    link: https://github.com/guarzo/wanderer-notifier 

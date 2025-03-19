@@ -1,0 +1,38 @@
+services:
+  wanderer_notifier:
+    image: guarzo/wanderer-notifier:latest
+    container_name: wanderer_notifier
+    restart: unless-stopped
+    environment:
+      # Required Configuration
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
+      - MAP_TOKEN=${MAP_TOKEN}
+      - LICENSE_KEY=${LICENSE_KEY}
+      - PORT=${PORT:-4000}
+      # - HOST=${HOST:-0.0.0.0}
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
+    volumes:
+      - wanderer_data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-4000}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  wanderer_data: 

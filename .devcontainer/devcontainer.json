@@ -1,0 +1,41 @@
+{
+  "name": "Notifier Dev Container",
+
+  // Build instructions (which Dockerfile, build context, etc.)
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile"
+    // If you have Docker build args, they'd go under "args" here.
+  },
+
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway",
+    "-v", "/var/run/docker.sock:/var/run/docker.sock"
+  ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "networkArgs": ["--add-host=host.docker.internal:host-gateway"]
+    }
+  },
+
+  // Add port forwarding configuration
+  "forwardPorts": [4000, 4111],
+
+  // Uncomment to connect as a non-root user. See https://aka.ms/vscode-remote/containers/non-root.
+  "remoteUser": "elixir",
+  "updateRemoteUserUID": false,
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
+  },
+
+  "postCreateCommand": "mix deps.get"
+}
