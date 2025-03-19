@@ -6,30 +6,49 @@ description: Get real-time EVE Online notifications directly to your Discord cha
 
 # Wanderer Notifier
 
-Wanderer Notifier delivers real-time alerts directly to your Discord channel, so you never miss critical in-game events. Whether it's a significant kill event, a new tracked character, or a newly discovered system, our notifier keeps you informed with rich, detailed notifications.
+Wanderer Notifier delivers real-time alerts directly to your Discord channel, ensuring you never miss critical in-game events. Whether it's a significant kill, a newly tracked character, or a fresh system discovery, our notifier keeps you informed with rich, detailed notifications.
 
-## Features
+In the fast-paced universe of EVE Online, timely information can mean the difference between success and failure. When a hostile fleet enters your territory, when a high-value target appears in your hunting grounds, or when a new wormhole connection opens up valuable opportunities - knowing immediately gives you the edge. Wanderer Notifier bridges this information gap, bringing critical intel directly to your Discord where your team is already coordinating.
 
-- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
-- **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process only kills from systems you care about
-- **Periodic Maintenance:** Automatically updates system data and processes backup kills
-- **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
-- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
+## Prerequisites
+
+Before setting up Wanderer Notifier, ensure you have the following:
+
+- A Discord server where you have administrator permissions
+- Docker and Docker Compose installed on your system
+- Basic knowledge of terminal/command line operations
+- Your Wanderer map URL and API token
+- A Discord bot token (see our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561))
 
 ## How to Get Started
 
-### 1. Download the Docker Image
+There are two ways to install Wanderer Notifier: a **Quick Install** option using a one-liner, or a **Manual Setup** for those who prefer step-by-step control.
 
-Pull the latest Wanderer Notifier image by running:
+### Quick Install Option
+
+For a streamlined installation that creates the necessary directory and files automatically, run:
 
 ```bash
-docker pull guarzo/wanderer-notifier:v1
+curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
 ```
 
-### 2. Configure Your Environment
+Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container.
 
-Create a `.env` file in your working directory with the following content. Replace the placeholder values with your actual credentials and settings:
+### Manual Setup
+
+If you'd rather set up everything manually, follow these steps:
+
+#### 1. Download the Docker Image
+
+Pull the latest Docker image:
+
+```bash
+docker pull guarzo/wanderer-notifier:latest
+```
+
+#### 2. Configure Your Environment
+
+Create a `.env` file in your working directory with the following content. Replace the placeholder values with your actual credentials:
 
 ```dotenv
 # Required Configuration
@@ -38,26 +57,23 @@ DISCORD_CHANNEL_ID=your_discord_channel_id
 MAP_URL_WITH_NAME="https://wanderer.ltd/<yourmap>"
 MAP_TOKEN=your_map_api_token
 
-# License Configuration (for enhanced features)
-LICENSE_KEY=your_license_key
-
-# Environment Configuration
-MIX_ENV=prod
-
-# Web Server Configuration (defaults shown)
-PORT=4000
-HOST=0.0.0.0
+# Map Subscription Configuration (for enhanced features)
+# Note: Premium features are enabled with your map subscription
+LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 
 # Notification Control (all enabled by default)
 # ENABLE_KILL_NOTIFICATIONS=true
 # ENABLE_CHARACTER_TRACKING=true
 # ENABLE_CHARACTER_NOTIFICATIONS=true
 # ENABLE_SYSTEM_NOTIFICATIONS=true
+# TRACK_ALL_SYSTEMS=false
 ```
 
-### 3. Run Using Docker Compose
+> **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
 
-Create a `docker-compose.yml` file with the configuration below:
+#### 3. Create the Docker Compose Configuration
+
+Create a file named `docker-compose.yml` with the following content:
 
 ```yaml
 services:
@@ -66,29 +82,17 @@ services:
     container_name: wanderer_notifier
     restart: unless-stopped
     environment:
-      # Environment setting
-      - MIX_ENV=prod
-      
-      # Discord Configuration
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      
-      # Map Configuration
       - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
       - MAP_TOKEN=${MAP_TOKEN}
-      
-      # License Configuration
       - LICENSE_KEY=${LICENSE_KEY}
-      
-      # Application Configuration
-      - PORT=${PORT:-4000}
-      - HOST=${HOST:-0.0.0.0}
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - 4000:4000
     volumes:
       - wanderer_data:/app/data
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "${PORT:-4000}"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-4000}/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -103,12 +107,24 @@ volumes:
   wanderer_data:
 ```
 
-Start the service by executing:
+#### 4. Run It
+
+Start the service with Docker Compose:
 
 ```bash
 docker-compose up -d
 ```
 
-Your notifier is now up and running—delivering alerts to your Discord channel automatically!
+Your notifier is now up and running, delivering alerts to your Discord channel automatically!
 
-[Learn more about notification types](./notifications.html) | [See license comparison](./license.html) | [View on GitHub](https://github.com/guarzo/wanderer-notifier) 
+## Features
+
+- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
+- **Data Enrichment:** Retrieves detailed killmail information from ESI
+- **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process only kills from systems you care about
+- **Periodic Maintenance:** Automatically updates system data and processes backup kills
+- **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
+- **Web Dashboard:** Access system status and notification statistics via the built-in web interface
+- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
+
+[Learn more about notification types](./notifications.html) | [See subscription options](./license.html) | [View on GitHub](https://github.com/yourusername/wanderer-notifier) 

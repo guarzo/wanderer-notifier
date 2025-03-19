@@ -1,7 +1,7 @@
 %{
   title: "Get Real-Time Notifications with Wanderer Notifier",
   author: "Wanderer Team",
-  cover_image_uri: "/images/news/03-10-bots/bot.svg",
+  cover_image_uri: "/images/news/03-18-bots/dashboard.png",
   tags: ~w(notifier discord notifications docker user-guide),
   description: "Download and run Wanderer Notifier to receive real-time notifications in your Discord channel. Learn how to get started with our Docker image and discover the different alerts you'll receive."
 }
@@ -10,21 +10,69 @@
 
 # Get Real-Time Notifications with Wanderer Notifier
 
-Wanderer Notifier delivers real-time alerts directly to your Discord channel, so you never miss critical in-game events. Whether it's a significant kill event, a new tracked character, or a newly discovered system, our notifier keeps you informed with rich, detailed notifications.
+Wanderer Notifier delivers real-time alerts directly to your Discord channel, ensuring you never miss critical in-game events. Whether it's a significant kill, a newly tracked character, or a fresh system discovery, our notifier keeps you informed with rich, detailed notifications.
+
+In the fast-paced universe of EVE Online, timely information can mean the difference between success and failure. When a hostile fleet enters your territory, when a high-value target appears in your hunting grounds, or when a new wormhole connection opens up valuable opportunities - knowing immediately gives you the edge. Wanderer Notifier bridges this information gap, bringing critical intel directly to your Discord where your team is already coordinating.
+
+## Table of Contents
+- [Prerequisites](#prerequisites)
+- [How to Get Started](#how-to-get-started)
+  - [Quick Install Option](#quick-install-option)
+  - [Manual Setup](#manual-setup)
+- [Notification Types](#notification-types)
+  - [Kill Notifications](#kill-notifications)
+  - [Character Tracking Notifications](#character-tracking-notifications)
+  - [System Notifications](#system-notifications)
+- [Map Subscription Features & Limitations](#map-subscription-features--limitations)
+  - [Free Version Features](#free-version-features)
+  - [Premium Map Subscription Enhancements](#premium-map-subscription-enhancements)
+  - [How to Subscribe](#how-to-subscribe)
+  - [Feature Comparison](#feature-comparison)
+- [Web Dashboard](#web-dashboard)
+- [Configuration Options](#configuration-options)
+- [Troubleshooting](#troubleshooting)
+- [Updating Wanderer Notifier](#updating-wanderer-notifier)
+- [Conclusion](#conclusion)
+
+## Prerequisites
+
+Before setting up Wanderer Notifier, ensure you have the following:
+
+- A Discord server where you have administrator permissions
+- Docker and Docker Compose installed on your system
+- Basic knowledge of terminal/command line operations
+- Your Wanderer map URL and API token
+- A Discord bot token (see our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561))
 
 ## How to Get Started
 
-### 1. Download the Docker Image
+There are two ways to install Wanderer Notifier: a **Quick Install** option using a one-liner, or a **Manual Setup** for those who prefer step-by-step control.
 
-Pull the latest Wanderer Notifier image by running:
+### Quick Install Option
+
+For a streamlined installation that creates the necessary directory and files automatically, run:
+
+```bash
+curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
+```
+
+Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then proceed to [Step 4](#4-run-it).
+
+### Manual Setup
+
+If you'd rather set up everything manually, follow these steps:
+
+#### 1. Download the Docker Image
+
+Pull the latest Docker image:
 
 ```bash
 docker pull guarzo/wanderer-notifier:latest
 ```
 
-### 2. Configure Your Environment
+#### 2. Configure Your Environment
 
-Create a `.env` file in your working directory with the following content. Replace the placeholder values with your actual credentials and settings:
+Create a `.env` file in your working directory with the following content. Replace the placeholder values with your actual credentials:
 
 ```dotenv
 # Required Configuration
@@ -33,26 +81,23 @@ DISCORD_CHANNEL_ID=your_discord_channel_id
 MAP_URL_WITH_NAME="https://wanderer.ltd/<yourmap>"
 MAP_TOKEN=your_map_api_token
 
-# License Configuration (for enhanced features)
-LICENSE_KEY=your_license_key
-
-# Environment Configuration
-MIX_ENV=prod
-
-# Web Server Configuration (defaults shown)
-PORT=4000
-HOST=0.0.0.0
+# Map Subscription Configuration (for enhanced features)
+# Note: Premium features are enabled with your map subscription
+LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 
 # Notification Control (all enabled by default)
 # ENABLE_KILL_NOTIFICATIONS=true
 # ENABLE_CHARACTER_TRACKING=true
 # ENABLE_CHARACTER_NOTIFICATIONS=true
 # ENABLE_SYSTEM_NOTIFICATIONS=true
+# TRACK_ALL_SYSTEMS=false
 ```
 
-### 3. Run Using Docker Compose
+> **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
 
-Create a `docker-compose.yml` file with the configuration below:
+#### 3. Create the Docker Compose Configuration
+
+Create a file named `docker-compose.yml` with the following content:
 
 ```yaml
 services:
@@ -61,30 +106,17 @@ services:
     container_name: wanderer_notifier
     restart: unless-stopped
     environment:
-      # Environment setting
-      - MIX_ENV=prod
-      
-      # Discord Configuration
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      
-      # Map Configuration
       - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
       - MAP_TOKEN=${MAP_TOKEN}
-      
-      # License Configuration
       - LICENSE_KEY=${LICENSE_KEY}
-      - LICENSE_MANAGER_API_URL=${LICENSE_MANAGER_API_URL}
-      
-      # Application Configuration
-      - PORT=${PORT:-4000}
-      - HOST=${HOST:-0.0.0.0}
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - 4000:4000
     volumes:
       - wanderer_data:/app/data
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "${PORT:-4000}"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-4000}/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -99,149 +131,236 @@ volumes:
   wanderer_data:
 ```
 
-Start the service by executing:
+> **Note:** If you used the quick install option, these files have already been created for you.
+
+#### 4. Run It
+
+Start the service with Docker Compose:
 
 ```bash
 docker-compose up -d
 ```
 
-Your notifier is now up and running—delivering alerts to your Discord channel automatically!
+Your notifier is now up and running, delivering alerts to your Discord channel automatically!
 
 ---
 
 ## Notification Types
 
-Wanderer Notifier provides three main types of notifications, each with different presentation based on your license status:
+Wanderer Notifier supports three main notification types, each tailored based on your map subscription status.
 
 ### Kill Notifications
 
 When a kill occurs in a tracked system or involves a tracked character:
 
-- **With License**: Rich embed format with:
+- **With Premium Map Subscription:**  
+  Receives a rich embed that includes:
   - Ship thumbnail image
-  - Detailed information about victim and attacker
+  - Detailed information about both victim and attacker
   - Links to zKillboard profiles
   - Ship type details
   - ISK value of the kill
   - Corporation logos
+  - A clickable link on the final blow character to zKillboard
 
-![Licensed Kill Notification Example](/images/news/03-10-bots/paid-kill.png)
+  ![Premium Kill Notification Example](/images/news/03-18-bots/paid-kill.png)
 
-- **Without License**: Basic text notification with essential information:
-  - System name
+- **With Free Map:**  
+  Displays a basic text notification containing:
   - Victim name
   - Ship type lost
+  - System name
 
-![Free Kill Notification Example](/images/news/03-10-bots/free-kill.png)
+  ![Free Kill Notification Example](/images/news/03-18-bots/free-kill.png)
 
 ### Character Tracking Notifications
 
 When a new character is added to your tracked list:
 
-- **With License**: Rich embed with:
+- **With Premium Map Subscription:**  
+  You get a rich embed featuring:
   - Character portrait
   - Corporation details
-  - Direct link to zKillboard profile
+  - Direct link to the zKillboard profile
   - Formatted timestamp
 
-![Licensed Character Notification Example](/images/news/03-10-bots/paid-character.png)
+  ![Premium Character Notification Example](/images/news/03-18-bots/paid-character.png)
 
-- **Without License**: Simple text notification with character name
+- **With Free Map:**  
+  Receives a simple text notification that includes:
+  - Character name
+  - Corporation name (if available)
 
-![Free Character Notification Example](/images/news/03-10-bots/free-character.png)
+  ![Free Character Notification Example](/images/news/03-18-bots/free-character.png)
 
 ### System Notifications
 
 When a new system is discovered or added to your map:
 
-- **With License**: Rich embed with:
-  - System name (including any aliases/temporary names)
-  - Link to zKillboard for the system
-  - Formatted timestamp
+- **With Premium Map Subscription:**  
+  Shows a rich embed with:
+  - System name (including aliases/temporary names)
+  - System type icon
+  - Region information or wormhole statics
+  - Security status
+  - Recent kills in the system
+  - Links to zKillboard and Dotlan
 
-![Licensed System Notification Example](/images/news/03-10-bots/paid-system.png)
+  ![Premium System Notification Example](/images/news/03-18-bots/paid-system.png)
 
-- **Without License**: Basic text notification with system name
+- **With Free Map:**  
+  Provides a basic text notification including:
+  - Original system name (for wormholes)
+  - System name (for k-space)
 
-![Free System Notification Example](/images/news/03-10-bots/free-system.png)
+  ![Free System Notification Example](/images/news/03-18-bots/free-system.png)
 
 ---
 
-## License Features & Limitations
+## Map Subscription Features & Limitations
 
-Wanderer Notifier now offers more functionality in the free version while still providing enhanced features with a valid license.
+Wanderer Notifier offers enhanced functionality with a premium map subscription while still providing robust features for free maps.
 
 ### Free Version Features
 
-- **All Core Notifications**: Track systems and characters with basic notifications
-- **Basic Web Dashboard**: View system status and license information
-- **Unlimited Tracking**: No limits on the number of systems and characters you can track
-- **Notification History**: 24-hour notification history retention
+- **Core Notifications:** Basic text notifications for systems and characters.
+- **Web Dashboard:** View system status and subscription information.
+- **Unlimited Tracking:** Track an unlimited number of systems and characters.
+- **Notification History:** 24-hour retention of notification history.
 
-### Licensed Version Enhancements
+### Premium Map Subscription Enhancements
 
-- **Rich Notifications**: Visually appealing embeds with images, links, and detailed information
-- **Extended History**: 72-hour notification history retention
-- **Full Web Dashboard**: Access to detailed statistics and visualization tools
+- **Rich Notifications:** Enhanced embeds with images, links, and detailed data.
+- **Interactive Elements:** Clickable links to zKillboard profiles and additional resources.
+- **Enhanced System Information:** Comprehensive data including region details, security status, and wormhole statics.
+- **Recent Activity:** Access to recent kill data in newly mapped systems.
+- **Upcoming Features:** Daily reporting on tracked character activity, structure notifications, ACL notifications, and Slack notifications.
+
+### How to Subscribe
+
+To unlock the enhanced features of Wanderer Notifier:
+
+1. Visit our [Map Subscriptions page](/map-subscriptions) to learn about subscription options
+2. Subscribe to any premium map tier to receive your map subscription key
+3. Add your map subscription key to the LICENSE_KEY field in your `.env` file
+4. Restart the notifier to apply your subscription benefits
+
+For more details on map subscription tiers and pricing, see our [complete guide to map subscriptions](/map-subscriptions).
 
 ### Feature Comparison
 
-| Feature | Free Version | Licensed Version |
-|---------|-------------|-----------------|
-| System Tracking | Unlimited | Unlimited |
-| Character Tracking | Unlimited | Unlimited |
-| Notification Format | Basic Text | Rich Embeds |
-| Notification History | 24 hours | 72 hours |
-
+| Feature                  | Free Map | Premium Map Subscription |
+|--------------------------|----------|--------------------------|
+| Kill Tracking            | Unlimited| Unlimited                |
+| System Tracking          | Unlimited| Unlimited                |
+| Character Tracking       | Unlimited| Unlimited                |
+| Notification Format      | Basic Text| Rich Embeds             |
 
 ---
 
 ## Web Dashboard
 
-Wanderer Notifier includes a web dashboard that provides insights into your notification system:
+Wanderer Notifier includes a web dashboard that provides real-time insights into your notification system:
 
-1. Access the dashboard at `http://your-server-ip:8080`
-2. View system status, license information, and notification statistics
-3. Monitor resource usage and feature availability
+- **Access:** Visit `http://localhost:4000` to view the dashboard.
+- **System Status:** Monitor system details, subscription information, and notification statistics.
+- **Resource Monitoring:** Keep an eye on resource usage and feature availability.
+- **Notification Testing:** Test notifications directly from the dashboard.
 
-The dashboard automatically refreshes every 30 seconds to provide up-to-date information. Licensed users gain access to additional dashboard features including detailed statistics and visualization tools.
+Premium map subscribers also gain access to detailed statistics and advanced visualization tools.
+
+![Dashboard](/images/news/03-18-bots/dashboard.png)
 
 ---
 
 ## Configuration Options
 
-Wanderer Notifier offers several configuration options to customize your notification experience:
+Customize your notification experience with several configuration options available through environment variables.
 
-### Notification Control
+### Notification Control Variables
 
-You can enable or disable specific notification types using these environment variables:
+- **ENABLE_KILL_NOTIFICATIONS:** Enable/disable kill notifications (default: true).
+- **ENABLE_CHARACTER_TRACKING:** Enable/disable character tracking (default: true).
+- **ENABLE_CHARACTER_NOTIFICATIONS:** Enable/disable notifications when new characters are added (default: true).
+- **ENABLE_SYSTEM_NOTIFICATIONS:** Enable/disable system notifications (default: true).
 
-- **ENABLE_KILL_NOTIFICATIONS**: Enable/disable kill notifications (default: true)
-- **ENABLE_CHARACTER_TRACKING**: Enable/disable the tracking of characters (default: true)
-- **ENABLE_CHARACTER_NOTIFICATIONS**: Enable/disable notifications when new characters are added (default: true)
-- **ENABLE_SYSTEM_NOTIFICATIONS**: Enable/disable notifications when new systems are added (default: true)
+> **Note:**  
+> - **Character Tracking:** Determines whether the application monitors characters.  
+> - **Character Notifications:** Controls whether you receive Discord alerts when new characters are added.
 
-The difference between character tracking and character notifications:
-- **Character Tracking**: Controls whether the application monitors characters at all
-- **Character Notifications**: Controls whether you receive Discord alerts when new characters are added to tracking
-
-To disable any notification type, set the corresponding variable to `false` or `0` in your `.env` file:
+To disable a notification type, set the corresponding variable to `false` or `0` in your `.env` file:
 
 ```dotenv
-# Example: Disable kill notifications but keep character and system notifications
+# Example: Disable kill notifications while keeping other notifications enabled
 ENABLE_KILL_NOTIFICATIONS=false
 ```
 
-These settings can be changed without restarting the application by updating your environment variables and reloading the configuration.
-
 ---
+
+## Troubleshooting
+
+If you encounter issues with Wanderer Notifier, here are solutions to common problems:
+
+### No Notifications Appearing
+
+1. **Check Bot Permissions:** Ensure your bot has the "Send Messages" and "Embed Links" permissions in the Discord channel.
+2. **Verify Channel ID:** Double-check your DISCORD_CHANNEL_ID in the .env file.
+3. **Check Container Logs:** Run `docker logs wanderer_notifier` to see if there are any error messages.
+4. **Test API Connection:** Visit `http://localhost:4000/health` to verify the service is running.
+
+### Connection Issues
+
+1. **Network Configuration:** Ensure port 4000 is not blocked by your firewall.
+2. **Docker Status:** Run `docker ps` to verify the container is running.
+3. **Restart Service:** Try `docker-compose restart` to refresh the connection.
+
+### Subscription Not Recognized
+
+1. **Check Map Token:** Ensure your MAP_TOKEN is correct and associated with your map.
+2. **Verify LICENSE_KEY:** Make sure you've entered the correct map subscription key in your .env file.
+3. **Verify Status:** Check the dashboard at `http://localhost:4000` to see subscription status.
+4. **Restart After Subscribing:** If you've recently subscribed, restart the notifier with `docker-compose restart`.
+
+For additional support, join our [Discord community](https://discord.gg/wanderer) or email support@wanderer.ltd.
+
+## Updating Wanderer Notifier
+
+To ensure you have the latest features and security updates, periodically update your Wanderer Notifier installation:
+
+### Automatic Updates
+
+The Docker image is configured to check for updates daily. To manually trigger an update:
+
+```bash
+# Navigate to your wanderer-notifier directory
+cd wanderer-notifier
+
+# Pull the latest image
+docker-compose pull
+
+# Restart the container with the new image
+docker-compose up -d
+```
+
+### Update Notifications
+
+When significant updates are available, you'll receive a notification in your Discord channel. These updates may include:
+
+- New notification types
+- Enhanced visualization features
+- Security improvements
+- Bug fixes
+
+### Preserving Your Configuration
+
+Updates preserve your existing configuration and data. Your `.env` file and tracked entities will remain intact through the update process.
 
 ## Conclusion
 
-Wanderer Notifier is designed to keep you informed of crucial in-game events with minimal hassle. The free version now provides unlimited tracking capabilities with basic notifications, while the licensed version enhances your experience with rich, detailed notifications and additional features.
+Wanderer Notifier is engineered to keep you informed of crucial in-game events effortlessly. The free version provides unlimited tracking with basic notifications, while premium map subscribers receive rich, detailed alerts with enhanced features.
 
-By downloading the Docker image, setting up your environment via a simple `.env` file, and running the service with Docker Compose, you'll receive timely notifications in your Discord channel—letting you focus on what matters most in your gameplay.
+By following either the quick install or manual setup process, you'll have the notifier running in no time—delivering real-time alerts directly to your Discord channel so you can focus on what matters most in your gameplay.
 
 For further support or questions, please contact the Wanderer Team.
 
-Stay vigilant and enjoy your real-time alerts! 
+Stay vigilant and enjoy your real-time alerts!

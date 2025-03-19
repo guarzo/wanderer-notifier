@@ -61,6 +61,11 @@ jobs:
             echo "Creating placeholder for free-system.png"
             convert -size 600x100 canvas:lightgray -font Arial -pointsize 20 -fill black -annotate +30+30 "Free System Notification Example" assets/images/free-system.png
           fi
+          
+          if [ ! -f "assets/images/dashboard.png" ]; then
+            echo "Creating placeholder for dashboard.png"
+            convert -size 800x600 canvas:white -font Arial -pointsize 20 -fill black -annotate +30+30 "Wanderer Notifier Dashboard" assets/images/dashboard.png
+          fi
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4

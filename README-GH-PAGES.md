@@ -6,7 +6,7 @@ This branch contains the GitHub Pages documentation website for the Wanderer Not
 
 - `index.md`: Main landing page
 - `notifications.md`: Details about notification types
-- `license.md`: License comparison and features
+- `license.md`: Map subscription comparison and features
 - `_layouts/default.html`: Custom layout template
 - `assets/css/style.scss`: Custom styling
 - `assets/images/`: Screenshots and images
@@ -35,4 +35,5 @@ The following image placeholders need to be replaced with actual screenshots:
 - `assets/images/paid-character.png`: Licensed character notification example
 - `assets/images/free-character.png`: Free character notification example
 - `assets/images/paid-system.png`: Licensed system notification example
-- `assets/images/free-system.png`: Free system notification example 
+- `assets/images/free-system.png`: Free system notification example
+- `assets/images/dashboard.png`: Wanderer Notifier dashboard 
