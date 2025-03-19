@@ -14,7 +14,7 @@ github:
 # Additional metadata
 author: Guarzo
 lang: en
-show_downloads: true
+show_downloads: false
 google_analytics: # add your tracking ID here if needed
 
 # Navigation
@@ -23,7 +23,7 @@ navigation:
     link: /
   - name: Notifications
     link: /notifications.html
-  - name: License
-    link: /license.html
+  - name: Wanderer
+    link: https://wanderer.ltd/
   - name: GitHub
     link: https://github.com/guarzo/wanderer-notifier 
