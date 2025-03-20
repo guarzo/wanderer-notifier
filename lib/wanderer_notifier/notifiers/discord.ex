@@ -4,10 +4,10 @@ defmodule WandererNotifier.Notifiers.Discord do
   Handles formatting and sending notifications to Discord.
   """
   require Logger
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.License
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Notifiers.Formatter
 
@@ -1033,145 +1033,242 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Adds recent kills information to a system notification embed
   defp add_recent_kills_to_embed(embed, system) do
-    system_id =
-      Map.get(system, "solar_system_id") ||
-        Map.get(system, :solar_system_id) ||
-        Map.get(system, "system_id") ||
-        Map.get(system, :system_id)
+    # Log the entire system object for debugging
+    Logger.info("[Discord.add_recent_kills] System keys: #{inspect(Map.keys(system))}")
 
-    if system_id do
+    # First try to get recent_kills that we've already loaded
+    recent_kills = Map.get(system, "recent_kills")
+
+    # Log what we found for recent_kills
+    Logger.info("[Discord.add_recent_kills] Recent kills found: #{inspect(recent_kills != nil)}")
+
+    if recent_kills != nil do
+      Logger.info("[Discord.add_recent_kills] Recent kills count: #{length(recent_kills)}")
+    end
+
+    if is_list(recent_kills) && length(recent_kills) > 0 do
       Logger.info(
-        "[Discord.send_system_activity] Sending recent system activity: System ID #{system_id}"
+        "[Discord.add_recent_kills] Using #{length(recent_kills)} preloaded recent kills. First kill ID: #{inspect(Map.get(List.first(recent_kills), "killmail_id"))}"
       )
 
-      case WandererNotifier.Api.ZKill.Service.get_system_kills(system_id, 5) do
-        {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
-          Logger.info(
-            "Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard"
-          )
-
-          kills_text =
-            Enum.map_join(zkill_kills, "\n", fn kill ->
-              kill_id = Map.get(kill, "killmail_id")
-              zkb = Map.get(kill, "zkb") || %{}
-              hash = Map.get(zkb, "hash")
-
-              enriched_kill =
-                if kill_id != nil and hash do
-                  case ESIService.get_esi_kill_mail(kill_id, hash) do
-                    {:ok, killmail_data} -> Map.merge(kill, killmail_data)
-                    _ -> kill
-                  end
-                else
-                  kill
-                end
-
-              victim = Map.get(enriched_kill, "victim") || %{}
-
-              victim_name =
-                if Map.has_key?(victim, "character_id") do
-                  character_id = Map.get(victim, "character_id")
-
-                  case ESIService.get_character_info(character_id) do
-                    {:ok, char_info} -> Map.get(char_info, "name", "Unknown Pilot")
-                    _ -> "Unknown Pilot"
-                  end
-                else
-                  "Unknown Pilot"
-                end
-
-              ship_type =
-                if Map.has_key?(victim, "ship_type_id") do
-                  ship_type_id = Map.get(victim, "ship_type_id")
-
-                  case ESIService.get_ship_type_name(ship_type_id) do
-                    {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
-                    _ -> "Unknown Ship"
-                  end
-                else
-                  "Unknown Ship"
-                end
-
-              zkb = Map.get(kill, "zkb") || %{}
-              kill_value = Map.get(zkb, "totalValue")
-
-              kill_time =
-                Map.get(kill, "killmail_time") || Map.get(enriched_kill, "killmail_time")
-
-              time_ago =
-                if kill_time do
-                  case DateTime.from_iso8601(kill_time) do
-                    {:ok, kill_datetime, _} ->
-                      diff_seconds = DateTime.diff(DateTime.utc_now(), kill_datetime)
-
-                      cond do
-                        diff_seconds < 60 -> "just now"
-                        diff_seconds < 3600 -> "#{div(diff_seconds, 60)}m ago"
-                        diff_seconds < 86400 -> "#{div(diff_seconds, 3600)}h ago"
-                        diff_seconds < 2_592_000 -> "#{div(diff_seconds, 86400)}d ago"
-                        true -> "#{div(diff_seconds, 2_592_000)}mo ago"
-                      end
-
-                    _ ->
-                      ""
-                  end
-                else
-                  ""
-                end
-
-              time_display = if time_ago != "", do: " (#{time_ago})", else: ""
-
-              value_text =
-                if kill_value do
-                  " - #{format_isk_value(kill_value)}"
-                else
-                  ""
-                end
-
-              if victim_name == "Unknown Pilot" do
-                "#{ship_type}#{value_text}#{time_display}"
-              else
-                "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_type}#{value_text}#{time_display}"
-              end
-            end)
-
-          # Add the kills field to the embed
-          fields = embed["fields"] || []
-
-          fields =
-            fields ++
-              [%{"name" => "Recent Kills in System", "value" => kills_text, "inline" => false}]
-
-          Map.put(embed, "fields", fields)
-
-        {:ok, []} ->
-          Logger.info("No recent kills found for system #{system_id} from zKillboard")
-
-          # Add a message about no kills
-          fields = embed["fields"] || []
-
-          fields =
-            fields ++
-              [
-                %{
-                  "name" => "Recent Kills in System",
-                  "value" => "No recent kills found for this system.",
-                  "inline" => false
-                }
-              ]
-
-          Map.put(embed, "fields", fields)
-
-        {:error, reason} ->
-          Logger.error(
-            "Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}"
-          )
-
-          embed
-      end
+      process_recent_kills(embed, recent_kills)
     else
-      embed
+      # Fallback to fetching kills directly if not already provided
+      # Try to get from the system struct if available
+      system_id =
+        Map.get(system, "solar_system_id") ||
+          Map.get(system, :solar_system_id) ||
+          Map.get(system, "system_id") ||
+          Map.get(system, :system_id) ||
+          get_in(system, ["system", "solar_system_id"])
+
+      if system_id do
+        Logger.info("[Discord.add_recent_kills] Trying direct API call for system: #{system_id}")
+
+        case WandererNotifier.Api.ZKill.Service.get_system_kills(system_id, 5) do
+          {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
+            Logger.info(
+              "[Discord.add_recent_kills] Direct API call found #{length(zkill_kills)} kills for system #{system_id}. First kill ID: #{inspect(Map.get(List.first(zkill_kills), "killmail_id"))}"
+            )
+
+            process_recent_kills(embed, zkill_kills)
+
+          {:ok, []} ->
+            Logger.info(
+              "[Discord.add_recent_kills] No recent kills found for system #{system_id} from zKillboard"
+            )
+
+            # Add a message about no kills
+            fields = embed["fields"] || []
+
+            fields =
+              fields ++
+                [
+                  %{
+                    "name" => "Recent Kills in System",
+                    "value" => "No recent kills found for this system.",
+                    "inline" => false
+                  }
+                ]
+
+            Map.put(embed, "fields", fields)
+
+          {:error, reason} ->
+            Logger.error(
+              "Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}"
+            )
+
+            embed
+        end
+      else
+        embed
+      end
     end
+  end
+
+  # Helper function to process recent kills and add them to the embed
+  defp process_recent_kills(embed, kills) do
+    Logger.info("[Discord.process_recent_kills] Processing #{length(kills)} kills")
+
+    kills_text =
+      Enum.map_join(kills, "\n", fn kill ->
+        kill_id = Map.get(kill, "killmail_id")
+        zkb = Map.get(kill, "zkb") || %{}
+        hash = Map.get(zkb, "hash")
+
+        Logger.info(
+          "[Discord.process_recent_kills] Processing kill ID: #{kill_id}, has hash: #{hash != nil}"
+        )
+
+        enriched_kill =
+          if kill_id != nil and hash do
+            Logger.info("[Discord.process_recent_kills] Calling ESI API for kill: #{kill_id}")
+
+            case ESIService.get_esi_kill_mail(kill_id, hash) do
+              {:ok, killmail_data} ->
+                Logger.info(
+                  "[Discord.process_recent_kills] Successfully enriched kill #{kill_id}"
+                )
+
+                Map.merge(kill, killmail_data)
+
+              {:error, reason} ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Failed to enrich kill #{kill_id}: #{inspect(reason)}"
+                )
+
+                kill
+
+              other ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Unexpected response from ESI: #{inspect(other)}"
+                )
+
+                kill
+            end
+          else
+            Logger.info(
+              "[Discord.process_recent_kills] Skipping ESI enrichment for kill #{kill_id} (missing data)"
+            )
+
+            kill
+          end
+
+        victim = Map.get(enriched_kill, "victim") || %{}
+
+        victim_name =
+          if Map.has_key?(victim, "character_id") do
+            character_id = Map.get(victim, "character_id")
+
+            Logger.info("[Discord.process_recent_kills] Looking up character ID: #{character_id}")
+
+            case ESIService.get_character_info(character_id) do
+              {:ok, char_info} ->
+                name = Map.get(char_info, "name", "Unknown Pilot")
+                Logger.info("[Discord.process_recent_kills] Found character name: #{name}")
+                name
+
+              {:error, reason} ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Failed to get character info: #{inspect(reason)}"
+                )
+
+                "Unknown Pilot"
+
+              _ ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Unexpected response from ESI character lookup"
+                )
+
+                "Unknown Pilot"
+            end
+          else
+            Logger.info("[Discord.process_recent_kills] No character_id in victim data")
+            "Unknown Pilot"
+          end
+
+        ship_type =
+          if Map.has_key?(victim, "ship_type_id") do
+            ship_type_id = Map.get(victim, "ship_type_id")
+
+            Logger.info("[Discord.process_recent_kills] Looking up ship type ID: #{ship_type_id}")
+
+            case ESIService.get_ship_type_name(ship_type_id) do
+              {:ok, ship_info} ->
+                name = Map.get(ship_info, "name", "Unknown Ship")
+                Logger.info("[Discord.process_recent_kills] Found ship name: #{name}")
+                name
+
+              {:error, reason} ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Failed to get ship info: #{inspect(reason)}"
+                )
+
+                "Unknown Ship"
+
+              _ ->
+                Logger.warning(
+                  "[Discord.process_recent_kills] Unexpected response from ESI ship lookup"
+                )
+
+                "Unknown Ship"
+            end
+          else
+            Logger.info("[Discord.process_recent_kills] No ship_type_id in victim data")
+            "Unknown Ship"
+          end
+
+        zkb = Map.get(kill, "zkb") || %{}
+        kill_value = Map.get(zkb, "totalValue")
+
+        kill_time =
+          Map.get(kill, "killmail_time") || Map.get(enriched_kill, "killmail_time")
+
+        time_ago =
+          if kill_time do
+            case DateTime.from_iso8601(kill_time) do
+              {:ok, kill_datetime, _} ->
+                diff_seconds = DateTime.diff(DateTime.utc_now(), kill_datetime)
+
+                cond do
+                  diff_seconds < 60 -> "just now"
+                  diff_seconds < 3600 -> "#{div(diff_seconds, 60)}m ago"
+                  diff_seconds < 86400 -> "#{div(diff_seconds, 3600)}h ago"
+                  diff_seconds < 2_592_000 -> "#{div(diff_seconds, 86400)}d ago"
+                  true -> "#{div(diff_seconds, 2_592_000)}mo ago"
+                end
+
+              _ ->
+                ""
+            end
+          else
+            ""
+          end
+
+        time_display = if time_ago != "", do: " (#{time_ago})", else: ""
+
+        value_text =
+          if kill_value do
+            " - #{format_isk_value(kill_value)}"
+          else
+            ""
+          end
+
+        if victim_name == "Unknown Pilot" do
+          "#{ship_type}#{value_text}#{time_display}"
+        else
+          "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_type}#{value_text}#{time_display}"
+        end
+      end)
+
+    # Add the kills field to the embed
+    fields = embed["fields"] || []
+
+    fields =
+      fields ++
+        [%{"name" => "Recent Kills in System", "value" => kills_text, "inline" => false}]
+
+    Map.put(embed, "fields", fields)
   end
 
   # -- HELPER FOR SENDING PAYLOAD --

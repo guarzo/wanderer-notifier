@@ -229,6 +229,26 @@ defmodule WandererNotifier.Notifiers.Formatter do
     system = normalize_system_data(system)
     Logger.info("Normalized system data: #{inspect(system, pretty: true, limit: 5000)}")
 
+    # Check if system contains a system object and log its contents
+    system_obj = Map.get(system, "system") || Map.get(system, :system)
+
+    if system_obj do
+      Logger.info("System object found with keys: #{inspect(Map.keys(system_obj))}")
+
+      if is_struct(system_obj) do
+        Logger.info(
+          "System object is a struct with original_name: #{system_obj.original_name}, temporary_name: #{inspect(system_obj.temporary_name)}"
+        )
+      else
+        orig = Map.get(system_obj, "original_name") || Map.get(system_obj, :original_name)
+        temp = Map.get(system_obj, "temporary_name") || Map.get(system_obj, :temporary_name)
+
+        Logger.info(
+          "System object is a map with original_name: #{inspect(orig)}, temporary_name: #{inspect(temp)}"
+        )
+      end
+    end
+
     # Get system ID from multiple possible locations
     system_id =
       Map.get(system, "solar_system_id") ||
@@ -270,12 +290,28 @@ defmodule WandererNotifier.Notifiers.Formatter do
         Map.get(system, :name) ||
         "Unknown System"
 
+    Logger.info(
+      "[Formatter] Name values - orig_name: #{inspect(orig_name)}, temp_name: #{inspect(temp_name)}, basic_name: #{inspect(basic_name)}"
+    )
+
     # Set the final system name, with preference for combination of temporary and original
     system_name =
       if temp_name && temp_name != "" && orig_name && orig_name != "" do
-        "#{temp_name} (#{orig_name})"
+        formatted_name = "#{temp_name} (#{orig_name})"
+
+        Logger.info(
+          "[Formatter] Using combined temporary_name and original_name: #{formatted_name}"
+        )
+
+        formatted_name
       else
-        basic_name
+        if orig_name && orig_name != "" do
+          Logger.info("[Formatter] Using just original_name: #{orig_name}")
+          orig_name
+        else
+          Logger.info("[Formatter] Falling back to basic_name: #{basic_name}")
+          basic_name
+        end
       end
 
     # Get type description from multiple possible locations
@@ -330,7 +366,7 @@ defmodule WandererNotifier.Notifiers.Formatter do
           []
 
       # Ensure statics is always a string for display
-      static_display =
+      _static_display =
         cond do
           is_binary(statics) && statics != "" -> statics
           is_list(statics) && length(statics) > 0 -> Enum.join(statics, ", ")

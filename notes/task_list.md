@@ -2,6 +2,12 @@
 
 ### Top Priority
 
+  - [ ] Validate each notification type from end to end
+    - [ ] Proper use of api, data, cache
+    - [ ] Document the field included in the notification, and their source
+    - [ ] Document the logic determining when and if the notification is sent
+  - [ ] Validate all scheduled tasks
+    - [ ] When do they run, what do they do
   - [x] Fix System Notification Format
      - [x] Include static information for wormhole systems in embedded messages
      - [x] Update plain text messages to include temporary name for wormhole systems

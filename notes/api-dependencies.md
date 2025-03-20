@@ -114,19 +114,20 @@ For `/api/map/characters?slug={slug_id}`:
 {
   "data": [
     {
+      "id": "cca87560-ca67-4a66-ace4-ed2957b24a43",
       "character": {
-        "name": "Character Name",
-        "eve_id": "12345"
+        "name": "Janissik",
+        "alliance_id": null,
+        "alliance_ticker": null,
+        "corporation_id": 98551135,
+        "corporation_ticker": "FLYSF",
+        "eve_id": "404850015"
       },
-      "location": {
-        "solar_system_id": 30000001,
-        "solar_system_name": "System Name"
-      },
-      "ship": {
-        "name": "Ship Name",
-        "type_id": 12345
-      },
-      "last_seen": "2023-01-01T00:00:00Z"
+      "inserted_at": "2025-01-01T01:25:29.811588Z",
+      "updated_at": "2025-01-01T01:25:29.811588Z",
+      "tracked": true,
+      "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+      "character_id": "c6bed9ad-12ba-4b1b-9ffa-49285d0f7b7e"
     }
   ]
 }

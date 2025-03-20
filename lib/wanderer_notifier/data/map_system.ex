@@ -27,6 +27,8 @@ defmodule WandererNotifier.Data.MapSystem do
           class_title: String.t() | nil,
           # System effect name (if any)
           effect_name: String.t() | nil,
+          # Name of the EVE region
+          region_name: String.t() | nil,
           # List of static wormhole types with destination info
           statics: list(map()),
           # Detailed information about static wormholes
@@ -44,6 +46,7 @@ defmodule WandererNotifier.Data.MapSystem do
     :locked,
     :class_title,
     :effect_name,
+    :region_name,
     :statics,
     :static_details,
     :system_type
@@ -76,10 +79,6 @@ defmodule WandererNotifier.Data.MapSystem do
       ArgumentError -> :error
     end
   end
-
-  # Helper to get a default class description based on system type
-  defp get_class_description(:wormhole), do: "Wormhole"
-  defp get_class_description(_), do: "K-Space"
 
   @doc """
   Implements the Access behaviour get method.
@@ -146,8 +145,19 @@ defmodule WandererNotifier.Data.MapSystem do
       id: map_response["id"],
       solar_system_id: solar_system_id,
       name: map_response["name"],
-      original_name: map_response["name"],
-      temporary_name: map_response["temporary_name"],
+      # Try to use explicit original_name if available, otherwise use name
+      original_name: map_response["original_name"] || map_response["name"],
+      # Only set temporary_name if it's different from the original_name
+      temporary_name:
+        if(
+          map_response["temporary_name"] &&
+            map_response["temporary_name"] !=
+              (map_response["original_name"] || map_response["name"])
+        ) do
+          map_response["temporary_name"]
+        else
+          nil
+        end,
       locked: map_response["locked"] || false,
       system_type: determine_system_type(solar_system_id),
       # Will be populated if system-static-info is called
@@ -157,7 +167,9 @@ defmodule WandererNotifier.Data.MapSystem do
       # Will be populated if system-static-info is called
       statics: [],
       # Will be populated if system-static-info is called
-      static_details: []
+      static_details: [],
+      # Will be populated if system-static-info is called
+      region_name: nil
     }
   end
 
@@ -182,6 +194,7 @@ defmodule WandererNotifier.Data.MapSystem do
       static_details = Map.get(static_info, "static_details", [])
       class_title = Map.get(static_info, "class_title")
       effect_name = Map.get(static_info, "effect_name")
+      region_name = Map.get(static_info, "region_name")
 
       # Update the system with additional information
       %__MODULE__{
@@ -189,7 +202,8 @@ defmodule WandererNotifier.Data.MapSystem do
         | class_title: class_title || system.class_title,
           effect_name: effect_name || system.effect_name,
           statics: statics,
-          static_details: static_details
+          static_details: static_details,
+          region_name: region_name || system.region_name
       }
     end
   end
@@ -239,23 +253,6 @@ defmodule WandererNotifier.Data.MapSystem do
   end
 
   # Private helper functions
-
-  # Format system name based on temporary_name and original_name
-  defp format_system_name(%{"temporary_name" => temp_name, "original_name" => orig_name})
-       when not is_nil(temp_name) and temp_name != "" and not is_nil(orig_name) do
-    "#{temp_name} (#{orig_name})"
-  end
-
-  defp format_system_name(%{"original_name" => orig_name})
-       when not is_nil(orig_name) and orig_name != "" do
-    orig_name
-  end
-
-  defp format_system_name(%{"name" => name}) when not is_nil(name) and name != "" do
-    name
-  end
-
-  defp format_system_name(_), do: "Unknown System"
 
   # Determine system type based on solar_system_id
   defp determine_system_type(id) when is_integer(id) and id >= 31_000_000 and id < 32_000_000,
