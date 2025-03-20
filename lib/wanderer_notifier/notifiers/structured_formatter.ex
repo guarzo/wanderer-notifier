@@ -103,6 +103,17 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   def format_kill_notification(%Killmail{} = killmail) do
     kill_id = killmail.killmail_id
 
+    # Log the structure of the killmail for debugging
+    Logger.debug("[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}")
+
+    # Check if we have all required fields
+    has_victim = Killmail.get_victim(killmail) != nil
+    has_system_name = Map.get(killmail.esi_data || %{}, "solar_system_name") != nil
+
+    Logger.debug(
+      "[StructuredFormatter] Killmail has_victim: #{has_victim}, has_system_name: #{has_system_name}"
+    )
+
     # Get victim information
     victim = Killmail.get_victim(killmail) || %{}
     victim_name = Map.get(victim, "character_name", "Unknown Pilot")
@@ -120,6 +131,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Kill time and system info
     kill_time = Map.get(killmail.esi_data || %{}, "killmail_time")
     system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
+
+    # Log the extracted values for debugging
+    Logger.debug("[StructuredFormatter] Extracted victim_name: #{victim_name}")
+    Logger.debug("[StructuredFormatter] Extracted victim_ship: #{victim_ship}")
+    Logger.debug("[StructuredFormatter] Extracted system_name: #{system_name}")
 
     # Attackers information
     attackers = Map.get(killmail.esi_data || %{}, "attackers", [])
@@ -334,17 +350,29 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     formatted_statics = format_statics_list(system.static_details || system.statics)
     Logger.debug("[StructuredFormatter] Formatted statics: #{inspect(formatted_statics)}")
 
-    # Build fields list
-    fields = [%{name: "System", value: display_name, inline: true}]
+    # Create a system name with zkillboard link
+    system_name_with_link =
+      if is_integer(system.solar_system_id) ||
+           (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error) do
+        # For numerical IDs, create a zkillboard link
+        system_id_str = to_string(system.solar_system_id)
 
-    # Add original name field if there's a temporary name to make it more visible
-    fields =
-      if system.temporary_name && system.temporary_name != "" && system.original_name &&
-           system.original_name != "" do
-        fields ++ [%{name: "Original Name", value: system.original_name, inline: true}]
+        # If the system has a temporary_name and original_name, include the original in parentheses
+        if system.temporary_name && system.temporary_name != "" && system.original_name &&
+             system.original_name != "" do
+          "[#{system.temporary_name} (#{system.original_name})](https://zkillboard.com/system/#{system_id_str}/)"
+        else
+          "[#{system.name}](https://zkillboard.com/system/#{system_id_str}/)"
+        end
       else
-        fields
+        # For non-numerical IDs (like temporary IDs), just show the display name without a link
+        display_name
       end
+
+    Logger.debug("[StructuredFormatter] System name with link: #{inspect(system_name_with_link)}")
+
+    # Build fields list
+    fields = [%{name: "System", value: system_name_with_link, inline: true}]
 
     # Add shattered field if applicable
     fields =

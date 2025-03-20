@@ -87,8 +87,8 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Enhanced logging to trace kill handling
     Logger.info("KILLMAIL TRACE: Handling potential killmail: #{inspect(Map.keys(killmail))}")
 
-    # Extract the kill ID if available - only use the correct field name
-    kill_id = get_in(killmail, ["killmail_id"])
+    # Extract the kill ID if available
+    kill_id = get_killmail_id(killmail)
     Logger.info("KILLMAIL TRACE: Extracted killmail_id: #{inspect(kill_id)}")
 
     # Check if this kill has already been processed or if kill_id is missing
@@ -102,14 +102,26 @@ defmodule WandererNotifier.Services.KillProcessor do
         state
 
       true ->
-        # Process the kill
+        # Process the kill - first convert to Killmail struct for consistent handling
         Logger.info("KILLMAIL TRACE: Processing new kill #{kill_id}")
-        process_new_kill(killmail, kill_id, state)
+
+        # Extract zkb data
+        zkb_data = Map.get(killmail, "zkb", %{})
+
+        # The rest is treated as ESI data, except for fields we know aren't ESI data
+        # This ensures we don't drop important data when organizing it
+        esi_data = Map.drop(killmail, ["zkb"])
+
+        # Create a Killmail struct - standardizing the data structure early
+        killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
+
+        # Now process the standardized data structure
+        process_new_kill(killmail_struct, kill_id, state)
     end
   end
 
-  defp process_new_kill(killmail, kill_id, state) do
-    # Store each kill in memory - we'll limit to the last 50 kills
+  defp process_new_kill(%Killmail{} = killmail, kill_id, state) do
+    # Store the kill in the cache - now we're passing a Killmail struct
     update_recent_kills(killmail)
 
     # Only continue with processing if feature is enabled
@@ -132,69 +144,33 @@ defmodule WandererNotifier.Services.KillProcessor do
     end
   end
 
-  # Validate kill data structure
-  defp validate_killmail(killmail) do
-    cond do
-      not is_map(killmail) ->
-        {:error, "Killmail is not a map"}
-
-      is_nil(get_in(killmail, ["killmail_id"])) ->
-        {:error, "Killmail has no killmail_id field"}
-
-      true ->
-        :ok
-    end
-  end
-
-  # Simulate enrichment and notification
-  defp enrich_and_notify(kill_id) do
-    try do
-      # This would be the real enrichment and notification logic
-      Logger.info("Would enrich and notify about kill #{kill_id}")
+  # Validate Killmail struct
+  defp validate_killmail(%Killmail{} = killmail) do
+    # Standardized validation for Killmail struct
+    if is_nil(killmail.killmail_id) do
+      {:error, "Killmail struct has no killmail_id field"}
+    else
       :ok
-    rescue
-      e ->
-        Logger.error("Exception during enrichment: #{Exception.message(e)}")
-        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
     end
   end
 
-  defp update_recent_kills(kill) do
+  defp update_recent_kills(%Killmail{} = killmail) do
     # Add enhanced logging to trace cache updates
-    Logger.info("CACHE TRACE: Storing kill in shared cache repository")
-    Logger.info("CACHE TRACE: Kill data keys: #{inspect(Map.keys(kill))}")
+    Logger.info("CACHE TRACE: Storing Killmail struct in shared cache repository")
 
-    # Make sure the kill has a killmail_id by ensuring it's properly structured
-    kill_with_id = ensure_kill_has_id(kill)
+    kill_id = killmail.killmail_id
 
-    # Verify ID was properly set
-    kill_id = get_killmail_id(kill_with_id)
+    # Store the individual kill by ID
+    individual_key = "#{@recent_kills_key}:#{kill_id}"
 
-    case kill_id do
-      nil ->
-        Logger.warning("CACHE TRACE: Failed to extract/set killmail_id on kill data")
-        # Can't store a kill without an ID
-        :error
+    # Store the Killmail struct directly - no need to convert again
+    CacheRepo.set(individual_key, killmail, @kill_ttl)
 
-      id ->
-        Logger.info("CACHE TRACE: Successfully extracted killmail_id: #{id}")
+    # Now update the list of recent kill IDs
+    update_recent_kill_ids(kill_id)
 
-        # Store the individual kill by ID
-        individual_key = "#{@recent_kills_key}:#{id}"
-
-        # Convert to a Killmail struct if we have the necessary data
-        # This ensures consistent data structure for retrieval
-        cache_data = try_create_killmail_struct(kill_with_id)
-
-        # Store in cache with TTL
-        CacheRepo.set(individual_key, cache_data, @kill_ttl)
-
-        # Now update the list of recent kill IDs
-        update_recent_kill_ids(id)
-
-        Logger.info("CACHE TRACE: Stored kill #{id} in shared cache repository")
-        :ok
-    end
+    Logger.info("CACHE TRACE: Stored kill #{kill_id} in shared cache repository")
+    :ok
   end
 
   # Update the list of recent kill IDs in the cache
@@ -218,43 +194,18 @@ defmodule WandererNotifier.Services.KillProcessor do
     )
   end
 
-  # Try to create a Killmail struct from the raw data
-  defp try_create_killmail_struct(kill_data) do
-    kill_id = get_killmail_id(kill_data)
-
-    if kill_id do
-      # Extract zkb data if available
-      zkb_data = Map.get(kill_data, "zkb") || %{}
-
-      # The rest is treated as ESI data
-      esi_data = Map.drop(kill_data, ["zkb"])
-
-      # Create a proper Killmail struct
-      try do
-        Killmail.new(kill_id, zkb_data, esi_data)
-      rescue
-        # If struct creation fails, just store the raw data
-        _ -> kill_data
-      end
-    else
-      # If no kill ID, just return the raw data
-      kill_data
+  # Simulate enrichment and notification
+  defp enrich_and_notify(kill_id) do
+    try do
+      # This would be the real enrichment and notification logic
+      Logger.info("Would enrich and notify about kill #{kill_id}")
+      :ok
+    rescue
+      e ->
+        Logger.error("Exception during enrichment: #{Exception.message(e)}")
+        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
     end
   end
-
-  # Ensure kill has the proper id fields for easy access
-  defp ensure_kill_has_id(kill) when is_map(kill) do
-    if Map.has_key?(kill, "killmail_id") || Map.has_key?(kill, :killmail_id) do
-      # Already has the right field
-      kill
-    else
-      # May need to extract id from various structures
-      kill_id = get_killmail_id(kill)
-      if kill_id, do: Map.put(kill, "killmail_id", kill_id), else: kill
-    end
-  end
-
-  defp ensure_kill_has_id(kill), do: kill
 
   @doc """
   Returns the list of recent kills from the shared cache repository.
@@ -301,7 +252,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   def send_test_kill_notification do
     Logger.info("Sending test kill notification...")
 
-    # Get recent kills or use sample data
+    # Get recent kills
     recent_kills = get_recent_kills()
 
     # Log what we're finding to debug the issue
@@ -314,130 +265,93 @@ defmodule WandererNotifier.Services.KillProcessor do
       # Check for Killmail struct
       is_struct = match?(%Killmail{}, first_kill)
       Logger.debug("First kill is Killmail struct? #{is_struct}")
-
-      if is_struct do
-        Logger.debug("Killmail struct ID: #{first_kill.killmail_id}")
-      else
-        # Regular map
-        Logger.debug("First kill has killmail_id? #{Map.has_key?(first_kill, "killmail_id")}")
-        Logger.debug("Keys in first kill: #{inspect(Map.keys(first_kill))}")
-      end
     end
 
-    cond do
-      recent_kills == [] ->
-        Logger.info("No recent kills available, using sample test data")
-        sample_kill = get_sample_kill()
-        kill_id = Map.get(sample_kill, "killmail_id")
+    if recent_kills == [] do
+      error_message = "No recent kills available for test notification"
+      Logger.error(error_message)
 
-        WandererNotifier.Notifiers.Factory.notify(:send_enriched_kill_embed, [
-          sample_kill,
+      # Notify the user through Discord
+      WandererNotifier.Notifiers.Factory.notify(
+        :send_message,
+        [
+          "Error: #{error_message} - No test notification sent. Please wait for some kills to be processed."
+        ]
+      )
+
+      {:error, error_message}
+    else
+      # Use the first kill - it should already be a Killmail struct
+      recent_kill = List.first(recent_kills)
+
+      kill_id =
+        if match?(%Killmail{}, recent_kill),
+          do: recent_kill.killmail_id,
+          else: get_killmail_id(recent_kill)
+
+      if kill_id do
+        # Log what we're using for testing clarity
+        Logger.info("Using REAL KILL DATA for test notification with kill_id: #{kill_id}")
+
+        # Ensure we're working with a Killmail struct
+        kill_data =
+          if match?(%Killmail{}, recent_kill),
+            do: recent_kill,
+            else: convert_to_killmail(recent_kill, kill_id)
+
+        # Log the kill data structure for debugging
+        Logger.info(
+          "Using Killmail struct with id=#{kill_data.killmail_id}, esi_data keys: #{inspect(Map.keys(kill_data.esi_data || %{}))}"
+        )
+
+        # Directly call the notifier to avoid translation layers
+        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(
+          kill_data,
           kill_id
-        ])
+        )
 
-        Logger.info("Test notification sent using SAMPLE DATA with kill_id: #{kill_id}")
         {:ok, kill_id}
+      else
+        error_message = "No valid killmail_id found in recent kill data"
+        Logger.error("#{error_message}: #{inspect(recent_kill)}")
 
-      true ->
-        recent_kill = List.first(recent_kills)
+        # Notify the user through Discord
+        WandererNotifier.Notifiers.Factory.notify(
+          :send_message,
+          ["Error: #{error_message} - No test notification sent."]
+        )
 
-        # Handle different data formats
-        {kill_data, kill_id} = extract_kill_data(recent_kill)
-
-        if kill_id do
-          # Log what we're using for testing clarity
-          Logger.info("Using REAL KILL DATA for test notification with kill_id: #{kill_id}")
-          # Send the actual notification
-          WandererNotifier.Notifiers.Factory.notify(:send_enriched_kill_embed, [
-            kill_data,
-            kill_id
-          ])
-
-          {:ok, kill_id}
-        else
-          Logger.error("No killmail_id found in recent kill data: #{inspect(recent_kill)}")
-          # Fallback to sample data if recent kill is malformed
-          sample_kill = get_sample_kill()
-          fallback_kill_id = Map.get(sample_kill, "killmail_id")
-
-          Logger.info(
-            "Falling back to SAMPLE DATA for test notification with kill_id: #{fallback_kill_id}"
-          )
-
-          WandererNotifier.Notifiers.Factory.notify(:send_enriched_kill_embed, [
-            sample_kill,
-            fallback_kill_id
-          ])
-
-          {:ok, fallback_kill_id}
-        end
+        {:error, error_message}
+      end
     end
   end
 
-  # Helper function to extract kill data from either a Killmail struct or a map
-  defp extract_kill_data(kill) do
-    cond do
-      # Case 1: It's a Killmail struct - return it directly
-      match?(%Killmail{}, kill) ->
-        {kill, kill.killmail_id}
+  # Helper function to convert a map to a Killmail struct
+  defp convert_to_killmail(kill_data, kill_id) when is_map(kill_data) do
+    # Extract zkb data if available
+    zkb_data = Map.get(kill_data, "zkb", %{})
 
-      # Case 2: It's a binary string (JSON)
-      is_binary(kill) ->
-        case Jason.decode(kill) do
-          {:ok, decoded} ->
-            kill_id = get_killmail_id(decoded)
-            # Try to convert to Killmail struct
-            if kill_id do
-              try do
-                # Extract zkb data if available
-                zkb = Map.get(decoded, "zkb", %{})
-                # The rest is treated as ESI data
-                esi_data = Map.drop(decoded, ["zkb"])
+    # The rest is treated as ESI data
+    esi_data = Map.drop(kill_data, ["zkb"])
 
-                # Create a proper Killmail struct
-                killmail = Killmail.new(kill_id, zkb, esi_data)
-                {killmail, kill_id}
-              rescue
-                e ->
-                  Logger.error("Error creating Killmail struct: #{inspect(e)}")
-                  {decoded, kill_id}
-              end
-            else
-              {decoded, kill_id}
-            end
+    # Add solar_system_name if we have solar_system_id but no name
+    esi_data =
+      if Map.has_key?(esi_data, "solar_system_id") && !Map.has_key?(esi_data, "solar_system_name") do
+        # We have a system_id but no name - we'll need to look it up when enriching
+        # Just preserve the id for now
+        esi_data
+      else
+        esi_data
+      end
 
-          _ ->
-            {kill, nil}
-        end
+    # Create a Killmail struct
+    Killmail.new(kill_id, zkb_data, esi_data)
+  end
 
-      # Case 3: It's a regular map
-      is_map(kill) ->
-        kill_id = get_killmail_id(kill)
-        # Try to convert to Killmail struct
-        if kill_id do
-          try do
-            # Extract zkb data if available
-            zkb = Map.get(kill, "zkb", %{})
-            # The rest is treated as ESI data
-            esi_data = Map.drop(kill, ["zkb"])
-
-            # Create a proper Killmail struct
-            killmail = Killmail.new(kill_id, zkb, esi_data)
-            {killmail, kill_id}
-          rescue
-            e ->
-              Logger.error("Error creating Killmail struct: #{inspect(e)}")
-              {kill, kill_id}
-          end
-        else
-          {kill, kill_id}
-        end
-
-      # Case 4: Unknown format
-      true ->
-        Logger.warning("Unknown kill data format: #{inspect(kill)}")
-        {kill, nil}
-    end
+  defp convert_to_killmail(kill_data, kill_id) do
+    # For non-map data, create a minimal struct
+    Logger.warning("Converting non-map data to Killmail struct: #{inspect(kill_data)}")
+    Killmail.new(kill_id, %{}, %{})
   end
 
   # Helper function to extract the killmail ID from different possible structures
@@ -476,81 +390,4 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   defp get_killmail_id(_), do: nil
-
-  # Returns a sample kill for testing purposes
-  defp get_sample_kill do
-    # Use pre-enriched data to avoid ESI lookups
-    # These are real IDs that exist in the game
-    %{
-      "killmail_id" => 12_345_678,
-      "killmail_time" => "2023-05-01T12:00:00Z",
-      # Jita
-      "solar_system_id" => 30_000_142,
-      "victim" => %{
-        # CCP character
-        "character_id" => 1_354_830_081,
-        "character_name" => "CCP Garthagk",
-        "corporation_id" => 98_356_193,
-        "corporation_name" => "C C P Alliance",
-        "alliance_id" => 434_243_723,
-        "alliance_name" => "C C P Alliance",
-        # Capsule
-        "ship_type_id" => 670,
-        "ship_name" => "Capsule",
-        "damage_taken" => 1000,
-        "position" => %{
-          "x" => 0.0,
-          "y" => 0.0,
-          "z" => 0.0
-        }
-      },
-      "attackers" => [
-        %{
-          # Another CCP character
-          "character_id" => 92_168_909,
-          "character_name" => "CCP Zoetrope",
-          "corporation_id" => 98_356_193,
-          "corporation_name" => "C C P Alliance",
-          "alliance_id" => 434_243_723,
-          "alliance_name" => "C C P Alliance",
-          # Triglavian ship
-          "ship_type_id" => 11567,
-          "ship_name" => "Drekavac",
-          "damage_done" => 1000,
-          "final_blow" => true
-        }
-      ],
-      "zkb" => %{
-        "locationID" => 30_000_142,
-        "hash" => "samplehash",
-        "fittedValue" => 100_000_000.00,
-        "totalValue" => 150_000_000.00,
-        "points" => 10,
-        "npc" => false,
-        "solo" => true,
-        "awox" => false
-      },
-      # Add pre-enriched information to prevent ESI lookups
-      "victim_info" => %{
-        "character_name" => "CCP Garthagk",
-        "corporation_name" => "C C P Alliance",
-        "alliance_name" => "C C P Alliance"
-      },
-      "attacker_info" => %{
-        "character_name" => "CCP Zoetrope",
-        "corporation_name" => "C C P Alliance",
-        "alliance_name" => "C C P Alliance"
-      },
-      "system_info" => %{
-        "name" => "Jita",
-        "security" => 0.9
-      },
-      "ship_info" => %{
-        "victim_ship" => "Capsule",
-        "attacker_ship" => "Drekavac"
-      },
-      # Add flags to skip ESI enrichment
-      "_skip_esi_enrichment" => true
-    }
-  end
 end
