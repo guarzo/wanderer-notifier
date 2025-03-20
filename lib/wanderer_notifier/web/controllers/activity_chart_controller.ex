@@ -5,8 +5,8 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   use Plug.Router
   require Logger
   alias WandererNotifier.ChartService.ActivityChartAdapter
-  alias WandererNotifier.Api.Map.Client, as: MapClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Api.Map.CharactersClient
+  alias WandererNotifier.Core.Config
 
   plug(:match)
   plug(:dispatch)
@@ -36,9 +36,9 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       |> put_resp_content_type("application/json")
       |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
     else
-      # Get activity data
+      # Get activity data using new CharactersClient
       activity_data =
-        case MapClient.get_character_activity(Config.map_name()) do
+        case CharactersClient.get_character_activity() do
           {:ok, data} ->
             Logger.info("Successfully retrieved activity data for chart generation")
             data
@@ -127,9 +127,9 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       |> put_resp_content_type("application/json")
       |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
     else
-      # Get activity data
+      # Get activity data using new CharactersClient
       activity_data =
-        case MapClient.get_character_activity(Config.map_name()) do
+        case CharactersClient.get_character_activity() do
           {:ok, data} ->
             Logger.info("Successfully retrieved activity data for sending chart")
             data
@@ -192,7 +192,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
     # Get character activity data
     activity_data =
-      case MapClient.get_character_activity(map_slug) do
+      case CharactersClient.get_character_activity() do
         {:ok, data} -> data
         _ -> nil
       end
@@ -248,7 +248,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     Logger.info("Character activity data request received")
 
     response =
-      case MapClient.get_character_activity(Config.map_name()) do
+      case CharactersClient.get_character_activity() do
         {:ok, data} ->
           # Log the full data structure to see what we're working with
           Logger.info("Successfully retrieved character activity data")
@@ -356,7 +356,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       if is_nil(activity_data) do
         Logger.info("Fetching character activity data from EVE Corp Tools API")
 
-        case MapClient.get_character_activity(Config.map_name()) do
+        case CharactersClient.get_character_activity() do
           {:ok, data} ->
             data
 

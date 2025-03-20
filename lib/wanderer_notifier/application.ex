@@ -10,7 +10,6 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.CorpTools.CorpToolsClient
-  alias WandererNotifier.TPSChartScheduler
 
   @impl true
   def start(_type, _args) do
@@ -43,13 +42,14 @@ defmodule WandererNotifier.Application do
     license_manager_url = Config.license_manager_api_url()
     # Bot API token is determined by the environment
 
-    Logger.info(
+    # Log at debug level since this is mostly informational
+    Logger.debug(
       "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
     )
 
-    Logger.info("License Manager URL: #{license_manager_url || "Not configured"}")
+    Logger.debug("License Manager URL: #{license_manager_url || "Not configured"}")
 
-    Logger.info(
+    Logger.debug(
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
     )
 
@@ -79,69 +79,12 @@ defmodule WandererNotifier.Application do
             Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
         end
       end)
-
-      # Add the chart scheduler to the children list if EVE Corp Tools API is configured
-      children = get_children()
-
-      children =
-        children ++
-          [
-            # Start the chart scheduler
-            {TPSChartScheduler, [interval: get_chart_scheduler_interval()]}
-          ]
-
-      # Start the supervisor with the updated children list
-      Supervisor.start_link(children, strategy: :one_for_one, name: WandererNotifier.Supervisor)
-    else
-      if !Config.corp_tools_enabled?() do
-        Logger.info("Corp Tools functionality is disabled, skipping TPS Chart Scheduler")
-      else
-        Logger.warning(
-          "EVE Corp Tools API not fully configured. URL: #{corp_tools_api_url || "Not set"}, Token: #{if corp_tools_api_token, do: "Set", else: "Not set"}"
-        )
-      end
-
-      # Start the supervisor with the default children list
-      Supervisor.start_link(get_children(),
-        strategy: :one_for_one,
-        name: WandererNotifier.Supervisor
-      )
-    end
-  end
-
-  # Handle license validation asynchronously
-  def handle_info(:validate_license, _state) do
-    try do
-      # Use a timeout to prevent blocking
-      case GenServer.call(WandererNotifier.License, :status, 3000) do
-        license_status when is_map(license_status) ->
-          if license_status.valid do
-            Logger.info("License validation successful - License is valid")
-          else
-            error_message = license_status.error_message || "Unknown license error"
-            Logger.error("License validation failed: #{error_message}")
-            Logger.warning("The application will continue to run in limited mode")
-          end
-
-        _ ->
-          Logger.error("License validation returned unexpected result")
-      end
-    rescue
-      e ->
-        Logger.error("License validation error: #{inspect(e)}")
-        Logger.warning("The application will continue to run in limited mode")
-    catch
-      :exit, {:timeout, _} ->
-        Logger.error("License validation timed out")
-        Logger.warning("The application will continue to run in limited mode")
-
-      type, reason ->
-        Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
-        Logger.warning("The application will continue to run in limited mode")
     end
 
-    {:noreply, nil}
+    # Start the supervisor with all children
+    Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
   end
+
 
   # This is not part of the Application behaviour, but we handle it for the test notification
   def handle_info(:send_test_notification, _state) do
@@ -156,7 +99,7 @@ defmodule WandererNotifier.Application do
 
   # Check cache status
   def handle_info(:check_cache_status, _state) do
-    Logger.info("Checking cache status...")
+    Logger.debug("Checking cache status...")
 
     # Check if cache is available
     cache_available =
@@ -165,26 +108,28 @@ defmodule WandererNotifier.Application do
         _ -> false
       end
 
-    Logger.info("Cache available: #{cache_available}")
+    # Only log at INFO level if there's a problem
+    if cache_available do
+      Logger.debug("Cache is available")
+    else
+      Logger.warning("Cache is NOT available")
+    end
 
     # Get systems count
     systems = get_tracked_systems()
-    Logger.info("Cache status - Systems: #{length(systems)}")
-
-    # Get characters count
     characters = CacheRepo.get("map:characters") || []
-    Logger.info("Cache status - Characters: #{length(characters)}")
+    Logger.debug("Cache status - Systems: #{length(systems)}, Characters: #{length(characters)}")
 
     {:noreply, nil}
   end
 
   # Handle retry for EVE Corp Tools API health check
   def handle_info(:retry_corp_tools_health_check, _state) do
-    Logger.info("Retrying EVE Corp Tools API health check...")
+    Logger.debug("Retrying EVE Corp Tools API health check...")
 
     case CorpToolsClient.health_check() do
       :ok ->
-        Logger.info("EVE Corp Tools API health check passed on retry")
+        Logger.debug("EVE Corp Tools API health check passed on retry")
         # Schedule periodic health checks
         schedule_corp_tools_health_check()
 
@@ -227,24 +172,6 @@ defmodule WandererNotifier.Application do
     Process.send_after(self(), :corp_tools_health_check, 5 * 60 * 1000)
   end
 
-  @doc """
-  Validates the license and bot assignment.
-  If the license is invalid, logs an error but allows the application to continue with limited functionality.
-  """
-  def validate_license_and_bot_assignment do
-    Logger.info("Starting license validation process...")
-    license_status = WandererNotifier.License.validate()
-
-    if license_status.valid do
-      Logger.info("License validation successful - License is valid")
-      :ok
-    else
-      error_message = license_status.error_message || "Unknown license error"
-      Logger.error("License validation failed: #{error_message}")
-      Logger.warning("The application will continue to run in limited mode")
-      :ok
-    end
-  end
 
   defp get_tracked_systems do
     CacheHelpers.get_tracked_systems()
@@ -259,32 +186,11 @@ defmodule WandererNotifier.Application do
     :ok
   end
 
-  # Helper function to get the chart scheduler interval
-  defp get_chart_scheduler_interval do
-    # Default is 24 hours (in milliseconds)
-    default_interval = 24 * 60 * 60 * 1000
-
-    # Try to get the interval from the environment variable
-    case System.get_env("CHART_SCHEDULER_INTERVAL_MS") do
-      nil ->
-        default_interval
-
-      value ->
-        case Integer.parse(value) do
-          {interval, _} when interval > 0 -> interval
-          _ -> default_interval
-        end
-    end
-  end
-
   # Helper function to get the children list
   defp get_children do
     [
       # Start the License Manager
       {WandererNotifier.Core.License, []},
-
-      # Start the License proxy
-      {WandererNotifier.License, []},
 
       # Start the Stats tracking service
       {WandererNotifier.Core.Stats, []},
@@ -292,28 +198,21 @@ defmodule WandererNotifier.Application do
       # Start the Cache Repository
       {WandererNotifier.Data.Cache.Repository, []},
 
+      # Start the Chart Service Manager (if enabled)
+      {WandererNotifier.ChartService.ChartServiceManager, []},
+
       # Start the main service (which starts the WebSocket)
-      {WandererNotifier.Service, []},
+      {WandererNotifier.Services.Service, []},
 
       # Start the Maintenance service
-      {WandererNotifier.Maintenance, []},
+      {WandererNotifier.Services.Maintenance, []},
 
       # Start the Web Server
       {WandererNotifier.Web.Server, []},
 
-      # Start the Activity Chart Scheduler if map tools are enabled
-      if Config.map_tools_enabled?() do
-        # Get the chart scheduler interval
-        interval = get_chart_scheduler_interval()
-
-        # Start the Activity Chart Scheduler
-        {WandererNotifier.Api.Map.ActivityChartScheduler, [interval: interval]}
-      else
-        Logger.info("Map Tools functionality is disabled, skipping Activity Chart Scheduler")
-        nil
-      end
+      # Start the Scheduler Supervisor
+      {WandererNotifier.Schedulers.Supervisor, []}
     ]
-    |> Enum.filter(& &1)
   end
 
   # Helper function to start watchers for frontend asset rebuilding

@@ -7,6 +7,7 @@ defmodule WandererNotifier.Discord.Notifier do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Core.Stats
 
   @behaviour WandererNotifier.NotifierBehaviour
 
@@ -102,7 +103,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_kill_notification(message) do
-    recent_kills = WandererNotifier.KillProcessor.get_recent_kills() || []
+    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
 
     if recent_kills != [] do
       recent_kill = List.first(recent_kills)
@@ -140,7 +141,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_embed(title, description, url, color) do
-    recent_kills = WandererNotifier.KillProcessor.get_recent_kills() || []
+    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
 
     if recent_kills != [] do
       recent_kill = List.first(recent_kills)
@@ -215,7 +216,7 @@ defmodule WandererNotifier.Discord.Notifier do
       victim_ship = get_value(victim, ["ship_type_name"], "Unknown Ship")
       system_name = Map.get(enriched_kill, "solar_system_name") || "Unknown System"
 
-      if WandererNotifier.License.status().valid do
+      if WandererNotifier.Core.License.status().valid do
         create_and_send_kill_embed(enriched_kill, kill_id, victim_name, victim_ship, system_name)
       else
         Logger.info(
@@ -231,20 +232,28 @@ defmodule WandererNotifier.Discord.Notifier do
 
   defp fully_enrich_kill_data(enriched_kill) do
     Logger.debug("Processing kill data: #{inspect(enriched_kill, pretty: true)}")
-
-    victim =
+    
+    # Skip enrichment if the flag is set (for test data)
+    if Map.get(enriched_kill, "_skip_esi_enrichment", false) do
+      Logger.info("Skipping ESI enrichment for test kill data")
+      # Return the kill data as-is since it should already be enriched
       enriched_kill
-      |> Map.get("victim", %{})
-      |> enrich_victim_data()
+    else
+      # Perform normal enrichment for real kill data
+      victim =
+        enriched_kill
+        |> Map.get("victim", %{})
+        |> enrich_victim_data()
 
-    attackers =
+      attackers =
+        enriched_kill
+        |> Map.get("attackers", [])
+        |> Enum.map(&enrich_attacker_data/1)
+
       enriched_kill
-      |> Map.get("attackers", [])
-      |> Enum.map(&enrich_attacker_data/1)
-
-    enriched_kill
-    |> Map.put("victim", victim)
-    |> Map.put("attackers", attackers)
+      |> Map.put("victim", victim)
+      |> Map.put("attackers", attackers)
+    end
   end
 
   defp enrich_victim_data(victim) do
@@ -498,7 +507,7 @@ defmodule WandererNotifier.Discord.Notifier do
       handle_test_mode("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
     else
       try do
-        WandererNotifier.Stats.increment(:characters)
+        Stats.increment(:characters)
       rescue
         _ -> :ok
       end
@@ -508,7 +517,7 @@ defmodule WandererNotifier.Discord.Notifier do
       character_name = NotificationHelpers.extract_character_name(character)
       corporation_name = NotificationHelpers.extract_corporation_name(character)
 
-      if WandererNotifier.License.status().valid do
+      if WandererNotifier.Core.License.status().valid do
         create_and_send_character_embed(character_id, character_name, corporation_name)
       else
         Logger.info("License not valid, sending plain text character notification")
@@ -615,7 +624,7 @@ defmodule WandererNotifier.Discord.Notifier do
       handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     else
       try do
-        WandererNotifier.Stats.increment(:systems)
+        Stats.increment(:systems)
       rescue
         _ -> :ok
       end

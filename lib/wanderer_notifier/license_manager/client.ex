@@ -53,16 +53,23 @@ defmodule WandererNotifier.LicenseManager.Client do
       {:ok, _} = response ->
         case HttpClient.handle_response(response) do
           {:ok, decoded} ->
+            # Additional logging for easier debugging
+            Logger.debug("Bot validation response: #{inspect(decoded)}")
+            
             # Check if the license is valid from the response
             license_valid = decoded["license_valid"] || false
+            message = decoded["message"]
 
             if license_valid do
-              Logger.info("License validation successful - License is valid")
+              Logger.info("License and bot validation successful - License is valid")
             else
-              Logger.warning("License validation failed - License is not valid")
+              error_msg = message || "License is not valid"
+              Logger.warning("License and bot validation failed - #{error_msg}")
             end
 
-            {:ok, decoded}
+            # Ensure the response contains both formats for compatibility
+            enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
+            {:ok, enhanced_response}
 
           {:error, :unauthorized} ->
             Logger.error("License Manager API: Invalid bot API token (401)")
@@ -137,25 +144,44 @@ defmodule WandererNotifier.LicenseManager.Client do
         {:ok, _} = response ->
           case HttpClient.handle_response(response) do
             {:ok, decoded} ->
-              # Check if the license is valid from the response
-              valid = decoded["valid"] || false
-              bot_assigned = decoded["bot_assigned"] || false
-
-              if valid do
-                if bot_assigned do
-                  Logger.info(
-                    "License validation successful - License is valid and bot is assigned"
-                  )
-                else
-                  Logger.warning(
-                    "License validation partial - License is valid but bot is not assigned"
-                  )
-                end
-              else
-                Logger.warning("License validation failed - License is not valid")
+              # Additional logging for easier debugging
+              Logger.debug("License validation response: #{inspect(decoded)}")
+              
+              # Check response structure and adapt to either {"valid": true/false} or {"license_valid": true/false} format
+              cond do
+                # Check for license_valid field (validate_bot endpoint format)
+                Map.has_key?(decoded, "license_valid") ->
+                  license_valid = decoded["license_valid"]
+                  if license_valid do
+                    Logger.info("License validation successful - License is valid")
+                  else
+                    error_msg = decoded["message"] || "License not valid"
+                    Logger.warning("License validation failed - #{error_msg}")
+                  end
+                  # Map to expected format for backward compatibility
+                  {:ok, Map.merge(decoded, %{"valid" => license_valid})}
+                  
+                # Check for valid field (validate_license endpoint format)
+                Map.has_key?(decoded, "valid") ->
+                  valid = decoded["valid"]
+                  bot_assigned = decoded["bot_assigned"] || false
+                  if valid do
+                    if bot_assigned do
+                      Logger.info("License validation successful - License is valid and bot is assigned")
+                    else
+                      Logger.warning("License validation partial - License is valid but bot is not assigned")
+                    end
+                  else
+                    error_msg = decoded["message"] || "License not valid"
+                    Logger.warning("License validation failed - #{error_msg}")
+                  end
+                  {:ok, decoded}
+                  
+                # Unknown response format
+                true ->
+                  Logger.warning("Unrecognized license validation response format: #{inspect(decoded)}")
+                  {:ok, Map.merge(decoded, %{"valid" => false, "message" => "Unrecognized response format"})}
               end
-
-              {:ok, decoded}
 
             {:error, :unauthorized} ->
               Logger.error("License Manager API: Invalid bot API token (401)")

@@ -7,9 +7,9 @@ defmodule WandererNotifier.Services.Service do
   require Logger
 
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
-  alias WandererNotifier.KillProcessor
-  alias WandererNotifier.Config.Timings
-  alias WandererNotifier.NotifierFactory
+  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Services.Maintenance.Scheduler, as: MaintenanceScheduler
 
   @zkill_ws_url "wss://zkillboard.com/websocket/"
 
@@ -53,7 +53,7 @@ defmodule WandererNotifier.Services.Service do
 
     state = start_zkill_ws(state)
     # Send one startup notification to Discord.
-    NotifierFactory.notify(:send_message, [
+    WandererNotifier.Notifiers.Factory.notify(:send_message, [
       "WandererNotifier Service started. Listening for notifications."
     ])
 
@@ -92,8 +92,8 @@ defmodule WandererNotifier.Services.Service do
     # Schedule the next maintenance check
     schedule_maintenance()
 
-    # Run maintenance checks
-    new_state = WandererNotifier.Maintenance.Scheduler.tick(state)
+    # Run maintenance checks using the aliased module
+    new_state = MaintenanceScheduler.tick(state)
 
     {:noreply, new_state}
   end
@@ -105,8 +105,8 @@ defmodule WandererNotifier.Services.Service do
     # Add error handling around maintenance tasks
     new_state =
       try do
-        # Force a full update of all systems and characters
-        WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
+        # Force a full update of all systems and characters using the aliased module
+        MaintenanceScheduler.do_initial_checks(state)
       rescue
         e ->
           Logger.error("Error during initial maintenance: #{inspect(e)}")
@@ -122,7 +122,7 @@ defmodule WandererNotifier.Services.Service do
   @impl true
   def handle_info({:zkill_message, message}, state) do
     Logger.debug("Received zkill message: #{message}")
-    new_state = KillProcessor.process_zkill_message(message, state)
+    new_state = WandererNotifier.Services.KillProcessor.process_zkill_message(message, state)
     {:noreply, new_state}
   end
 
@@ -149,8 +149,8 @@ defmodule WandererNotifier.Services.Service do
       "Received force_refresh_cache message. Refreshing critical data after cache recovery..."
     )
 
-    # Run maintenance tasks to repopulate the cache
-    new_state = WandererNotifier.Maintenance.Scheduler.do_initial_checks(state)
+    # Run maintenance tasks to repopulate the cache using the aliased module
+    new_state = MaintenanceScheduler.do_initial_checks(state)
 
     Logger.info("Cache refresh completed after recovery")
     {:noreply, new_state}

@@ -9,10 +9,70 @@ defmodule WandererNotifier.Core.Config do
   @zkill_base_url "https://zkillboard.com"
   @esi_base_url "https://esi.evetech.net/latest"
   @default_license_manager_url "https://lm.wanderer.ltd"
+  @default_chart_service_port 3001
+  @default_web_port 4000
 
   # Production bot API token - use environment variable or Application config
   # This should be set at runtime, not hardcoded
   @production_bot_token_env "WANDERER_PRODUCTION_BOT_TOKEN"
+
+  # Feature definitions with their environment variables
+  @features %{
+    general: %{
+      enabled_var: "ENABLE_NOTIFICATIONS",
+      channel_var: "DISCORD_CHANNEL_ID",
+      default_enabled: true,
+      description: "General notifications"
+    },
+    kill_notifications: %{
+      enabled_var: "ENABLE_KILL_NOTIFICATIONS",
+      channel_var: "DISCORD_KILL_CHANNEL_ID",
+      default_enabled: true,
+      description: "Kill notifications"
+    },
+    system_tracking: %{
+      enabled_var: "ENABLE_SYSTEM_NOTIFICATIONS",
+      channel_var: "DISCORD_SYSTEM_CHANNEL_ID",
+      default_enabled: true,
+      description: "System tracking notifications"
+    },
+    character_tracking: %{
+      enabled_var: "ENABLE_CHARACTER_NOTIFICATIONS",
+      channel_var: "DISCORD_CHARACTER_CHANNEL_ID",
+      default_enabled: true,
+      description: "Character tracking notifications"
+    },
+    corp_tools: %{
+      enabled_var: "ENABLE_CORP_TOOLS",
+      channel_var: "DISCORD_CORP_TOOLS_CHANNEL_ID",
+      default_enabled: false,
+      description: "Corporation tools integration"
+    },
+    map_tools: %{
+      enabled_var: "ENABLE_MAP_TOOLS",
+      channel_var: "DISCORD_MAP_TOOLS_CHANNEL_ID",
+      default_enabled: false,
+      description: "Map tools integration"
+    },
+    charts: %{
+      enabled_var: "ENABLE_CHARTS",
+      channel_var: "DISCORD_CHARTS_CHANNEL_ID",
+      default_enabled: false,
+      description: "Chart generation"
+    },
+    tps_charts: %{
+      enabled_var: "ENABLE_TPS_CHARTS",
+      channel_var: "DISCORD_TPS_CHARTS_CHANNEL_ID",
+      default_enabled: false,
+      description: "TPS charts generation and notifications"
+    },
+    activity_charts: %{
+      enabled_var: "ENABLE_ACTIVITY_CHARTS",
+      channel_var: "DISCORD_ACTIVITY_CHARTS_CHANNEL_ID",
+      default_enabled: false,
+      description: "Activity charts generation and notifications"
+    }
+  }
 
   @doc """
   Returns the Discord bot token from the environment.
@@ -22,10 +82,37 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns the Discord channel ID from the environment.
+  Returns the main Discord channel ID from the environment.
   """
   def discord_channel_id do
     Application.get_env(:wanderer_notifier, :discord_channel_id)
+  end
+  
+  @doc """
+  Returns the Discord channel ID for a specific feature.
+  Falls back to the main channel ID if a feature-specific channel isn't defined.
+  
+  ## Parameters
+    - feature: The feature to get the channel ID for (e.g., :kill_notifications)
+  """
+  def discord_channel_id_for(feature) when is_atom(feature) do
+    feature_config = Map.get(@features, feature)
+    
+    if feature_config do
+      channel_var = feature_config.channel_var
+      channel_id = System.get_env(channel_var)
+      
+      if is_binary(channel_id) && channel_id != "" do
+        channel_id
+      else
+        # Fall back to the main channel ID
+        discord_channel_id()
+      end
+    else
+      # Unknown feature, use the main channel
+      Logger.warning("Unknown feature #{feature} when looking up Discord channel ID")
+      discord_channel_id()
+    end
   end
 
   @doc """
@@ -41,41 +128,108 @@ defmodule WandererNotifier.Core.Config do
   def corp_tools_api_token do
     Application.get_env(:wanderer_notifier, :corp_tools_api_token)
   end
+  
+  @doc """
+  Returns whether a specific feature is enabled based on its environment variable.
+  
+  ## Parameters
+    - feature: The feature to check (atom matching a key in @features)
+  """
+  def feature_enabled?(feature) when is_atom(feature) do
+    feature_config = Map.get(@features, feature)
+    
+    if feature_config do
+      env_var = feature_config.enabled_var
+      default_enabled = feature_config.default_enabled
+      
+      case System.get_env(env_var) do
+        "true" -> true
+        "1" -> true
+        "false" -> false
+        "0" -> false
+        nil -> default_enabled
+        _ -> default_enabled
+      end
+    else
+      # Unknown feature, default to false for safety
+      Logger.warning("Unknown feature #{feature} when checking if enabled")
+      false
+    end
+  end
 
   @doc """
   Returns whether charts functionality is enabled.
-  Defaults to false if not specified.
+  Enabled if explicitly set to true or if corp_tools or map_tools are enabled.
   """
   def charts_enabled? do
-    case System.get_env("ENABLE_CHARTS") do
-      "true" -> true
-      "1" -> true
-      _ -> false
-    end
+    explicit_charts_enabled = feature_enabled?(:charts)
+    corp_tools_enabled = feature_enabled?(:corp_tools)
+    map_tools_enabled = feature_enabled?(:map_tools)
+    
+    explicit_charts_enabled || corp_tools_enabled || map_tools_enabled
   end
 
   @doc """
   Returns whether corp tools functionality is enabled.
-  Defaults to false if not specified.
   """
   def corp_tools_enabled? do
-    case System.get_env("ENABLE_CORP_TOOLS") do
-      "true" -> true
-      "1" -> true
-      # Fallback to charts_enabled for backward compatibility
-      _ -> charts_enabled?()
-    end
+    feature_enabled?(:corp_tools)
   end
 
   @doc """
   Returns whether map tools functionality is enabled.
-  Defaults to false if not specified.
   """
   def map_tools_enabled? do
-    case System.get_env("ENABLE_MAP_TOOLS") do
-      "true" -> true
-      "1" -> true
-      _ -> false
+    feature_enabled?(:map_tools)
+  end
+
+  @doc """
+  Returns whether kill notifications are enabled.
+  """
+  def kill_notifications_enabled? do
+    feature_enabled?(:kill_notifications)
+  end
+
+  @doc """
+  Returns whether system tracking notifications are enabled.
+  """
+  def system_notifications_enabled? do
+    feature_enabled?(:system_tracking)
+  end
+
+  @doc """
+  Returns whether character tracking notifications are enabled.
+  """
+  def character_notifications_enabled? do
+    feature_enabled?(:character_tracking)
+  end
+
+  @doc """
+  Returns whether TPS charts are enabled.
+  """
+  def tps_charts_enabled? do
+    feature_enabled?(:tps_charts) || corp_tools_enabled?()
+  end
+
+  @doc """
+  Returns whether activity charts are enabled.
+  """
+  def activity_charts_enabled? do
+    feature_enabled?(:activity_charts) || map_tools_enabled?()
+  end
+
+  @doc """
+  Returns the chart service port from the environment.
+  Defaults to 3001 if not specified.
+  """
+  def chart_service_port do
+    case System.get_env("CHART_SERVICE_PORT") do
+      nil -> @default_chart_service_port
+      port ->
+        case Integer.parse(port) do
+          {port_num, _} when port_num > 0 -> port_num
+          _ -> @default_chart_service_port
+        end
     end
   end
 
@@ -205,7 +359,15 @@ defmodule WandererNotifier.Core.Config do
   Returns the web server port from the environment or the default (4000).
   """
   def web_port do
-    Application.get_env(:wanderer_notifier, :web_port, 4000)
+    case System.get_env("PORT") do
+      nil -> 
+        Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
+      port ->
+        case Integer.parse(port) do
+          {port_num, _} when port_num > 0 -> port_num
+          _ -> Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
+        end
+    end
   end
 
   @doc """
@@ -277,50 +439,10 @@ defmodule WandererNotifier.Core.Config do
 
   @doc """
   Returns whether character tracking is enabled in the configuration.
-  By default, character tracking is enabled unless explicitly disabled by setting
-  ENABLE_CHARACTER_TRACKING to "false" or "0".
+  Alias for feature_enabled?(:character_tracking)
   """
   def character_tracking_enabled? do
-    case System.get_env("ENABLE_CHARACTER_TRACKING") do
-      "false" -> false
-      "0" -> false
-      # Default to true if not set
-      nil -> true
-      # Any other value is considered true
-      _ -> true
-    end
-  end
-
-  @doc """
-  Returns whether system tracking notifications are enabled in the configuration.
-  By default, system tracking notifications are enabled unless explicitly disabled by setting
-  ENABLE_SYSTEM_NOTIFICATIONS to "false" or "0".
-  """
-  def system_notifications_enabled? do
-    case System.get_env("ENABLE_SYSTEM_NOTIFICATIONS") do
-      "false" -> false
-      "0" -> false
-      # Default to true if not set
-      nil -> true
-      # Any other value is considered true
-      _ -> true
-    end
-  end
-
-  @doc """
-  Returns whether character tracking notifications are enabled in the configuration.
-  By default, character tracking notifications are enabled unless explicitly disabled by setting
-  ENABLE_CHARACTER_NOTIFICATIONS to "false" or "0".
-  """
-  def character_notifications_enabled? do
-    case System.get_env("ENABLE_CHARACTER_NOTIFICATIONS") do
-      "false" -> false
-      "0" -> false
-      # Default to true if not set
-      nil -> true
-      # Any other value is considered true
-      _ -> true
-    end
+    feature_enabled?(:character_tracking)
   end
 
   @doc """
@@ -345,8 +467,7 @@ defmodule WandererNotifier.Core.Config do
 
   @doc """
   Returns whether all systems should be tracked.
-  By default, only specific systems are tracked unless explicitly enabled by setting
-  TRACK_ALL_SYSTEMS to "true" or "1".
+  By default, only specific systems are tracked unless explicitly enabled.
   """
   def track_all_systems? do
     case System.get_env("TRACK_ALL_SYSTEMS") do
@@ -375,5 +496,32 @@ defmodule WandererNotifier.Core.Config do
   def static_info_cache_ttl do
     # 7 days in seconds
     7 * 86400
+  end
+  
+  @doc """
+  Returns a map with information about all defined features.
+  Useful for displaying feature status in the web dashboard.
+  """
+  def get_all_features do
+    Enum.reduce(@features, %{}, fn {feature_key, feature_config}, acc ->
+      display_name = feature_key
+        |> Atom.to_string()
+        |> String.replace("_", " ")
+        |> String.split
+        |> Enum.map(&String.capitalize/1)
+        |> Enum.join(" ")
+      
+      feature_data = %{
+        name: feature_key,
+        display_name: display_name,
+        description: feature_config.description,
+        enabled: feature_enabled?(feature_key),
+        enabled_var: feature_config.enabled_var,
+        channel_id: discord_channel_id_for(feature_key),
+        channel_var: feature_config.channel_var
+      }
+      
+      Map.put(acc, feature_key, feature_data)
+    end)
   end
 end

@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifiers.Behaviour do
   @doc """
   Sends a simple text message.
   """
-  @callback send_message(message :: String.t()) :: :ok | {:error, any()}
+  @callback send_message(message :: String.t(), feature :: atom() | nil) :: :ok | {:error, any()}
 
   @doc """
   Sends a message with an embed.
@@ -16,7 +16,8 @@ defmodule WandererNotifier.Notifiers.Behaviour do
               title :: String.t(),
               description :: String.t(),
               url :: String.t() | nil,
-              color :: integer()
+              color :: integer(),
+              feature :: atom() | nil
             ) :: :ok | {:error, any()}
 
   @doc """
@@ -26,7 +27,8 @@ defmodule WandererNotifier.Notifiers.Behaviour do
               filename :: String.t(),
               file_data :: binary(),
               title :: String.t() | nil,
-              description :: String.t() | nil
+              description :: String.t() | nil,
+              feature :: atom() | nil
             ) :: :ok | {:error, any()}
 
   @doc """
@@ -52,6 +54,7 @@ defmodule WandererNotifier.Notifiers.Behaviour do
               title :: String.t(),
               description :: String.t(),
               image_url :: String.t(),
-              color :: integer()
+              color :: integer(),
+              feature :: atom() | nil
             ) :: :ok | {:error, any()}
 end

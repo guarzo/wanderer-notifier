@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaCircleNotch, FaDiscord, FaExclamationTriangle } from 'react-icons/fa';
 
-function ChartCard({ title, description, chartType }) {
-  const [chartUrl, setChartUrl] = useState(null);
+function ChartCard({ title, description, chartType, chartUrl: propChartUrl }) {
+  const [chartUrl, setChartUrl] = useState(propChartUrl || null);
+  
+  // Update internal state when prop changes
+  useEffect(() => {
+    if (propChartUrl) {
+      setChartUrl(propChartUrl);
+    }
+  }, [propChartUrl]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -12,18 +19,45 @@ function ChartCard({ title, description, chartType }) {
     setLoading(true);
     setError(null);
     
-    fetch(`/charts/generate?type=${chartType}`)
+    // Map internal chart type to API chart type
+    const typeMapping = {
+      'kills_by_ship_type': 'damage_final_blows',
+      'kills_by_month': 'combined_losses',
+      'total_kills_value': 'kill_activity'
+    };
+    
+    const apiChartType = typeMapping[chartType] || chartType;
+    console.log(`Generating ${apiChartType} chart...`);
+    
+    // Use the correct charts/generate endpoint with the type parameter
+    fetch(`/charts/generate?type=${apiChartType}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        return response.json();
-      })
-      .then(data => {
-        if (data.status === 'ok' && data.chart_url) {
-          setChartUrl(data.chart_url);
+        
+        // Check if the response is a direct image
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('image/')) {
+          // For image responses, create a blob URL
+          return response.blob().then(blob => {
+            const imageUrl = URL.createObjectURL(blob);
+            return { directImage: true, imageUrl };
+          });
         } else {
-          throw new Error(data.message || 'Failed to generate chart');
+          // For JSON responses, parse as usual
+          return response.json();
+        }
+      })
+      .then(result => {
+        if (result.directImage) {
+          // Direct image response
+          setChartUrl(result.imageUrl);
+        } else if (result.status === 'ok' && result.chart_url) {
+          // JSON response with chart URL
+          setChartUrl(result.chart_url);
+        } else {
+          throw new Error(result.message || 'Failed to generate chart');
         }
       })
       .catch(error => {
@@ -40,7 +74,18 @@ function ChartCard({ title, description, chartType }) {
     setSuccess(null);
     setError(null);
     
-    fetch(`/charts/send-to-discord?type=${chartType}&title=${encodeURIComponent(title)}`)
+    // Map internal chart type to API chart type
+    const typeMapping = {
+      'kills_by_ship_type': 'damage_final_blows',
+      'kills_by_month': 'combined_losses',
+      'total_kills_value': 'kill_activity'
+    };
+    
+    const apiChartType = typeMapping[chartType] || chartType;
+    console.log(`Sending ${apiChartType} chart to Discord...`);
+    
+    // Use the correct endpoint for sending to discord
+    fetch(`/charts/send-to-discord?type=${apiChartType}&title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);

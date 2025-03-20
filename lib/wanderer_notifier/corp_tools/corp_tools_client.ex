@@ -9,9 +9,24 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Core.Config
+  
+  # Private helper to build consistent API URLs
+  defp build_api_url(endpoint) do
+    base_url = Config.corp_tools_api_url()
+    url = if String.ends_with?(base_url, "/service-api") do
+      "#{base_url}/#{endpoint}"
+    else
+      "#{base_url}/service-api/#{endpoint}"
+    end
+    
+    # Log the constructed URL (temporary for debugging)
+    Logger.info("Corp Tools API URL: #{url}")
+    
+    url
+  end
 
   @doc """
-  Test function to fetch and log TPS data.
+  Test function to fetch TPS data.
   Can be called from IEx console with:
 
   ```
@@ -19,21 +34,18 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   ```
   """
   def test_tps_data do
-    Logger.info("Testing TPS data API call")
-
     case get_tps_data() do
-      {:ok, data} ->
-        Logger.info("TPS data retrieved successfully")
-        Logger.info("Data structure: #{inspect(data, pretty: true, limit: 10000)}")
-        {:ok, data}
+      {:ok, _data} = result ->
+        Logger.debug("TPS data retrieved successfully")
+        result
 
-      {:loading, message} ->
-        Logger.info("TPS data is still loading: #{message}")
-        {:loading, message}
+      {:loading, _message} = result ->
+        Logger.debug("TPS data is still loading")
+        result
 
-      {:error, reason} ->
-        Logger.error("Failed to get TPS data: #{inspect(reason)}")
-        {:error, reason}
+      {:error, _reason} = result ->
+        Logger.debug("Failed to get TPS data")
+        result
     end
   end
 
@@ -46,7 +58,7 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
     if !Config.corp_tools_enabled?() do
       :ok
     else
-      url = "#{Config.corp_tools_api_url()}/health"
+      url = build_api_url("health")
       # Don't send Authorization header for health check
       headers = [
         {"Content-Type", "application/json"}
@@ -145,20 +157,20 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   Returns {:ok, data} on success, {:error, reason} on failure.
   """
   def get_tracked_entities do
-    url = "#{Config.corp_tools_api_url()}/tracked"
+    url = build_api_url("tracked")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
       {"Content-Type", "application/json"}
     ]
 
-    Logger.info("Fetching tracked entities from EVE Corp Tools API")
+    Logger.debug("Fetching tracked entities from EVE Corp Tools API")
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         case Jason.decode(body) do
           {:ok, data} ->
-            Logger.info("Successfully retrieved tracked entities: #{inspect(Map.keys(data))}")
+            Logger.debug("Successfully retrieved tracked entities")
             {:ok, data}
 
           {:error, error} ->
@@ -188,28 +200,26 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   in which case this function returns {:loading, message}.
   """
   def get_tps_data do
-    url = "#{Config.corp_tools_api_url()}/tps-data"
+    url = build_api_url("recent-tps-data")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
       {"Content-Type", "application/json"}
     ]
 
-    Logger.info("Fetching TPS data from EVE Corp Tools API")
+    Logger.debug("Fetching TPS data from EVE Corp Tools API")
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
-        Logger.info("TPS data response received with status 200")
-        Logger.debug("TPS data response body: #{body}")
+        Logger.debug("TPS data response received with status 200")
 
         case Jason.decode(body) do
           {:ok, data} ->
-            Logger.info("Successfully retrieved TPS data with keys: #{inspect(Map.keys(data))}")
+            Logger.debug("Successfully retrieved TPS data")
             {:ok, data}
 
           {:error, error} ->
             Logger.error("Failed to parse TPS data response: #{inspect(error)}")
-            Logger.error("Raw response body: #{body}")
             {:error, "Failed to parse response"}
         end
 
@@ -274,18 +284,18 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   Returns :ok on success, {:error, reason} on failure.
   """
   def refresh_tps_data do
-    url = "#{Config.corp_tools_api_url()}/refresh-tps"
+    url = build_api_url("refresh-tps")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
       {"Content-Type", "application/json"}
     ]
 
-    Logger.info("Triggering TPS data refresh on EVE Corp Tools API")
+    Logger.debug("Triggering TPS data refresh on EVE Corp Tools API")
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: status, body: _body}} when status in 200..299 ->
-        Logger.info("Successfully triggered TPS data refresh")
+        Logger.debug("Successfully triggered TPS data refresh")
         :ok
 
       {:ok, %{status_code: status, body: body}} ->
@@ -314,7 +324,7 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
     - {:error, reason} on failure
   """
   def appraise_loot(items) when is_binary(items) do
-    url = "#{Config.corp_tools_api_url()}/appraise-loot"
+    url = build_api_url("appraise-loot")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
@@ -350,7 +360,7 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   end
 
   @doc """
-  Test function to fetch and log tracked entities.
+  Test function to fetch tracked entities.
   Can be called from IEx console with:
 
   ```
@@ -358,39 +368,22 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   ```
   """
   def test_tracked_entities do
-    Logger.info("Testing tracked entities API call")
-
     case get_tracked_entities() do
-      {:ok, data} ->
-        Logger.info("Tracked entities retrieved successfully")
-
-        # Log counts of each entity type
+      {:ok, data} = result ->
+        # Just log counts of each entity type without detailed inspection
         alliances = Map.get(data, "alliances", [])
         corporations = Map.get(data, "corporations", [])
         characters = Map.get(data, "characters", [])
 
-        Logger.info(
-          "Entity counts: #{length(alliances)} alliances, #{length(corporations)} corporations, #{length(characters)} characters"
+        Logger.debug(
+          "Entities count: #{length(alliances)} alliances, #{length(corporations)} corporations, #{length(characters)} characters"
         )
 
-        # Log a sample of each type if available
-        if length(alliances) > 0 do
-          Logger.info("Sample alliance: #{inspect(Enum.at(alliances, 0), pretty: true)}")
-        end
+        result
 
-        if length(corporations) > 0 do
-          Logger.info("Sample corporation: #{inspect(Enum.at(corporations, 0), pretty: true)}")
-        end
-
-        if length(characters) > 0 do
-          Logger.info("Sample character: #{inspect(Enum.at(characters, 0), pretty: true)}")
-        end
-
-        {:ok, data}
-
-      {:error, reason} ->
-        Logger.error("Failed to get tracked entities: #{inspect(reason)}")
-        {:error, reason}
+      {:error, _reason} = result ->
+        Logger.debug("Failed to get tracked entities")
+        result
     end
   end
 
@@ -399,20 +392,21 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   Returns {:ok, data} on success, {:error, reason} on failure.
   """
   def get_activity_data do
-    url = "#{Config.corp_tools_api_url()}/activity"
+    # Use the helper to build the URL consistently
+    url = build_api_url("activity")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
       {"Content-Type", "application/json"}
     ]
 
-    Logger.info("Fetching character activity data from EVE Corp Tools API")
+    Logger.debug("Fetching character activity data from EVE Corp Tools API")
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         case Jason.decode(body) do
           {:ok, data} ->
-            Logger.info("Successfully retrieved character activity data")
+            Logger.debug("Successfully retrieved character activity data")
             {:ok, data}
 
           {:error, error} ->
@@ -478,19 +472,19 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   Returns {:ok, data} on success, {:error, reason} on failure.
   """
   def get_recent_tps_data do
-    url = "#{Config.corp_tools_api_url()}/recent-tps-data"
+    # Use the helper to build the URL consistently
+    url = build_api_url("recent-tps-data")
 
     headers = [
       {"Authorization", "Bearer #{Config.corp_tools_api_token()}"},
       {"Content-Type", "application/json"}
     ]
 
-    Logger.info("Fetching recent TPS data from EVE Corp Tools API")
+    Logger.info("Fetching recent TPS data from EVE Corp Tools API: #{url}")
 
     case HttpClient.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
-        Logger.info("Recent TPS data response received with status 200")
-        Logger.info("Raw response body length: #{String.length(body)} bytes")
+        Logger.debug("Recent TPS data response received with status 200")
 
         # Check if body is empty or just whitespace
         if body == nil || String.trim(body) == "" do
@@ -499,63 +493,12 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
         else
           case Jason.decode(body) do
             {:ok, data} ->
-              # More detailed logging of the response structure
-              Logger.info(
-                "Successfully retrieved recent TPS data with keys: #{inspect(Map.keys(data))}"
-              )
-
-              # Log the exact structure of the response for debugging
-              Logger.info(
-                "Complete TPS data structure: #{inspect(data, pretty: true, limit: 50000)}"
-              )
-
-              # Check for specific structures we're interested in
-              if Map.has_key?(data, "TimeFrames") do
-                time_frames = Map.get(data, "TimeFrames")
-
-                Logger.info(
-                  "TimeFrames is a #{typeof(time_frames)} with #{length(time_frames)} items"
-                )
-
-                # Log structure of the first TimeFrame
-                if is_list(time_frames) && length(time_frames) > 0 do
-                  first_frame = List.first(time_frames)
-                  Logger.info("First TimeFrame keys: #{inspect(Map.keys(first_frame))}")
-
-                  # Look for the ship types data in the first frame
-                  cond do
-                    Map.has_key?(first_frame, "KillsByShipType") ->
-                      Logger.info(
-                        "KillsByShipType found in TimeFrame with #{map_size(first_frame["KillsByShipType"])} entries"
-                      )
-
-                    Map.has_key?(first_frame, "ShipTypes") ->
-                      Logger.info(
-                        "ShipTypes found in TimeFrame with #{map_size(first_frame["ShipTypes"])} entries"
-                      )
-
-                    true ->
-                      Logger.info("No ship type data found in TimeFrame")
-                  end
-                end
-              end
-
-              # Log useful debug info about other expected keys
-              ["KillsByShipType", "KillsByMonth", "TotalValue"]
-              |> Enum.each(fn key ->
-                if Map.has_key?(data, key) do
-                  value = Map.get(data, key)
-                  Logger.info("Found #{key}: #{inspect(value, limit: 300)}")
-                else
-                  Logger.info("Key #{key} not found in top-level data")
-                end
-              end)
-
+              # Just log success without excessive data dumping
+              Logger.debug("Successfully retrieved recent TPS data")
               {:ok, data}
 
             {:error, error} ->
               Logger.error("Failed to parse recent TPS data response: #{inspect(error)}")
-              Logger.error("Raw response body: #{body}")
               {:error, "Failed to parse response"}
           end
         end
@@ -623,7 +566,7 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   end
 
   @doc """
-  Test function to fetch and log recent TPS data.
+  Test function to fetch recent TPS data.
   Can be called from IEx console with:
 
   ```
@@ -631,49 +574,30 @@ defmodule WandererNotifier.CorpTools.CorpToolsClient do
   ```
   """
   def test_recent_tps_data do
-    Logger.info("Testing recent TPS data API call")
-
     case get_recent_tps_data() do
-      {:ok, data} ->
-        Logger.info("Recent TPS data retrieved successfully")
-        Logger.info("Data structure: #{inspect(data, pretty: true, limit: 10000)}")
+      {:ok, _data} = result ->
+        Logger.debug("Recent TPS data retrieved successfully")
+        result
 
-        # Log specific sections if they exist
-        if Map.has_key?(data, "KillsByShipType") do
-          Logger.info(
-            "KillsByShipType section found with #{map_size(data["KillsByShipType"])} entries"
-          )
-        end
+      {:loading, _message} = result ->
+        Logger.debug("Recent TPS data is still loading")
+        result
 
-        if Map.has_key?(data, "KillsByMonth") do
-          Logger.info("KillsByMonth section found with #{map_size(data["KillsByMonth"])} entries")
-        end
-
-        if Map.has_key?(data, "TotalValue") do
-          Logger.info("TotalValue found: #{data["TotalValue"]}")
-        end
-
-        {:ok, data}
-
-      {:loading, message} ->
-        Logger.info("Recent TPS data is still loading: #{message}")
-        {:loading, message}
-
-      {:error, reason} ->
-        Logger.error("Failed to get recent TPS data: #{inspect(reason)}")
-        {:error, reason}
+      {:error, _reason} = result ->
+        Logger.debug("Failed to get recent TPS data")
+        result
     end
   end
 
-  # Add a helper function to log the type of a value
-  defp typeof(term) when is_nil(term), do: "nil"
-  defp typeof(term) when is_binary(term), do: "string"
-  defp typeof(term) when is_boolean(term), do: "boolean"
-  defp typeof(term) when is_number(term), do: "number"
-  defp typeof(term) when is_atom(term), do: "atom"
-  defp typeof(term) when is_list(term), do: "list"
-  defp typeof(term) when is_map(term), do: "map"
-  defp typeof(term) when is_tuple(term), do: "tuple"
-  defp typeof(term) when is_function(term), do: "function"
-  defp typeof(_term), do: "unknown"
+  # Helper function to get a human-readable type (commented out as it's currently unused)
+  # defp typeof(term) when is_nil(term), do: "nil"
+  # defp typeof(term) when is_binary(term), do: "string"
+  # defp typeof(term) when is_boolean(term), do: "boolean"
+  # defp typeof(term) when is_number(term), do: "number"
+  # defp typeof(term) when is_atom(term), do: "atom"
+  # defp typeof(term) when is_list(term), do: "list"
+  # defp typeof(term) when is_map(term), do: "map"
+  # defp typeof(term) when is_tuple(term), do: "tuple"
+  # defp typeof(term) when is_function(term), do: "function"
+  # defp typeof(_term), do: "unknown"
 end

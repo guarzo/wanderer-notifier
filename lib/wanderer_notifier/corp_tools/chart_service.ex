@@ -491,7 +491,7 @@ defmodule WandererNotifier.CorpTools.ChartService do
     case File.read(chart_path) do
       {:ok, image_data} ->
         # Get the appropriate notifier
-        notifier = WandererNotifier.NotifierFactory.get_notifier()
+        notifier = WandererNotifier.Notifiers.Factory.get_notifier()
 
         # Send the file with title and description
         # The notifier expects (filename, data, title, description)

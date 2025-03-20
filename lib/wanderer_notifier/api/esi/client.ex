@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.ESI.Client do
   """
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Api.Http.ErrorHandler
 
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"
@@ -18,13 +19,8 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, label: label) do
-      {:ok, _} = response ->
-        HttpClient.handle_response(response)
-
-      error ->
-        error
-    end
+    HttpClient.get(url, headers, label: label)
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.killmail")
   end
 
   @doc """
@@ -36,15 +32,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, label: label) do
-      {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
-          {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
-          error -> error
-        end
-
-      error ->
-        error
+    HttpClient.get(url, headers, label: label)
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.character")
+    |> case do
+      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      error -> error
     end
   end
 
@@ -57,15 +49,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, label: label) do
-      {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
-          {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
-          error -> error
-        end
-
-      error ->
-        error
+    HttpClient.get(url, headers, label: label)
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.corporation")
+    |> case do
+      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      error -> error
     end
   end
 
@@ -78,15 +66,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    case HttpClient.get(url, headers, label: label) do
-      {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
-          {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
-          error -> error
-        end
-
-      error ->
-        error
+    HttpClient.get(url, headers, label: label)
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.alliance")
+    |> case do
+      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      error -> error
     end
   end
 
@@ -100,7 +84,7 @@ defmodule WandererNotifier.Api.ESI.Client do
     headers = default_headers()
 
     HttpClient.get(url, headers, label: label)
-    |> HttpClient.handle_response()
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.universe_type")
   end
 
   @doc """
@@ -122,7 +106,7 @@ defmodule WandererNotifier.Api.ESI.Client do
     Logger.debug("[ESI] Searching inventory_type with query #{query} (strict=#{strict})")
 
     HttpClient.get(url, headers, label: label)
-    |> HttpClient.handle_response()
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.search")
   end
 
   @doc """
@@ -137,7 +121,7 @@ defmodule WandererNotifier.Api.ESI.Client do
     Logger.debug("[ESI] Fetching solar system #{system_id}")
 
     HttpClient.get(url, headers, label: label)
-    |> HttpClient.handle_response()
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.solar_system")
   end
 
   @doc """
@@ -152,7 +136,7 @@ defmodule WandererNotifier.Api.ESI.Client do
     Logger.debug("[ESI] Fetching region #{region_id}")
 
     HttpClient.get(url, headers, label: label)
-    |> HttpClient.handle_response()
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.region")
   end
 
   defp default_headers do

@@ -1,132 +1,101 @@
-# Wanderer Notifier Architecture
+# WandererNotifier Architecture Document
 
-## System Architecture
+## Overview
 
-Wanderer Notifier follows a modular OTP-based architecture with clear separation of concerns. The application is structured as a supervision tree with multiple GenServer processes managing different aspects of the system.
+The **WandererNotifier** system is designed to aggregate and process data from external game APIs (e.g., EVE Online's ESI, Map API, zKillboard) and deliver notifications (primarily to Discord) along with data visualization (via charts). The architecture emphasizes modularity, robust error handling, and scalability through clear separation of concerns with a focus on idiomatic Elixir practices and OTP principles.
 
-### Supervision Structure
+## Components
 
-```
-WandererNotifier.Supervisor
-├── WandererNotifier.Core.License
-├── WandererNotifier.License (proxy)
-├── WandererNotifier.Core.Stats
-├── WandererNotifier.Data.Cache.Repository
-├── WandererNotifier.Service
-├── WandererNotifier.Maintenance
-├── WandererNotifier.Web.Server
-└── WandererNotifier.CorpTools.ActivityChartScheduler (conditional)
-```
+### 1. Elixir Backend
+- **Core Functions:**  
+  - **Core Module:** Centralized configuration management in `Core.Config` with feature flags and environment variables handling
+  - **API Clients:** Specialized modules under `lib/wanderer_notifier/api/` interface with external APIs:
+    - **Map API:** Structured clients with URL builders and response validators
+    - **ESI:** EVE Swagger Interface for game data
+    - **zKillboard:** Real-time killmail data via WebSocket and REST API
+    - **Corp Tools:** For TPS and other specific data
+  - **Data Processing:** Implements business logic with structured data types for transformation, validation, and caching
+  - **Schedulers Framework:** Comprehensive system of interval and time-based schedulers following OTP principles
+- **Error Handling & Logging:**  
+  - Centralized error handling with consistent patterns across modules
+  - Structured validation and clear contracts instead of defensive programming
+- **Configuration:**  
+  - Environment-specific configurations in the `config/` directory
+  - Feature flags system for selective feature enabling
+  - Centralized timing configuration in `Core.Config.Timings`
 
-## Module Organization
+### 2. Node.js Chart Service
+- **Purpose:**  
+  - Generates visual charts using Chart.js (configured for Discord's dark theme)
+  - Provides endpoints for generating, saving, and returning chart images
+- **Integration:**  
+  - Invoked by the Elixir backend through adapter pattern with fallback strategies
+  - Supports multiple chart types (TPS, Activity, etc.)
+- **Deployment:**  
+  - Runs in its own container; integrated into CI/CD pipelines
+  - Includes health metrics and automatic cleanup of generated files
 
-The application follows a carefully designed namespace hierarchy that separates functionality into logical domains:
+### 3. React Frontend (Dashboard)
+- **Purpose:**  
+  - Offers a dashboard for viewing notifications, charts, and other system data
+- **Structure:**  
+  - Located in the `renderer/` directory with components for various data visualizations
+  - Specialized components for different chart types and data displays
+- **Build & Deployment:**  
+  - Built with modern tooling (Vite, Tailwind CSS) and deployed as part of the overall system
 
-### Core (`WandererNotifier.Core.*`)
+### 4. External Integrations & Infrastructure
+- **External APIs:**  
+  - **ESI:** For killmail and character data from EVE Online
+  - **Map API:** For system and activity data with structured response handling
+  - **zKillboard:** For real-time kill tracking
+  - **Corp Tools API:** For TPS data and specialized charts
+  - **Discord:** For notifications and interactive chart delivery
+- **Containerization & CI/CD:**  
+  - Dockerfiles, GitHub workflows, and deployment scripts ensure repeatable builds and streamlined deployments
 
-Contains the fundamental building blocks of the application:
+## Data Flow & Communication
 
-- **License**: Manages license validation and feature access control
-- **Config**: Centralizes configuration management with sensible defaults
-- **Features**: Controls feature flags and access based on license tier
-- **Stats**: Tracks application statistics for monitoring
+1. **Data Acquisition:**  
+   - API clients fetch data from external sources using dedicated modules with URL builders
+   - Response validators ensure data integrity through type checking and schema validation
+2. **Transformation & Structures:**
+   - Raw API data is converted to domain-specific structs (Character, MapSystem, KillMail, etc.)
+   - Validation ensures data meets business requirements before processing
+3. **Processing & Caching:**  
+   - Validated data is transformed, cached with appropriate TTLs, and prepared for notifications
+   - Cache repository provides consistent access patterns across all data types
+4. **Chart Generation:**  
+   - Chart configurations are created with standardized `ChartConfig` structs
+   - Chart adapters process these configurations through the Node.js chart service
+   - Fallback strategies ensure resilience in case of service failures
+5. **Notification Delivery:**  
+   - Factory pattern creates appropriate notifiers based on configuration
+   - Final outputs (charts, alerts, status updates) are pushed to Discord or rendered in the dashboard
+   - Direct file attachments for charts improve delivery performance and reliability
 
-### Services (`WandererNotifier.Services.*`)
+## Design Patterns
 
-Implements the primary business logic:
+- **Adapter Pattern:** Used for chart generation services
+- **Factory Pattern:** For notifiers and schedulers creation
+- **Strategy Pattern:** For fallback mechanisms in service failures
+- **Dependency Inversion:** Services depend on behaviors rather than concrete implementations
+- **Registry Pattern:** For tracking and managing scheduler instances
 
-- **Service**: Main service coordinating WebSocket connections and message handling
-- **KillProcessor**: Processes kill notifications from zKillboard
-- **SystemTracker**: Tracks EVE Online solar systems, particularly wormholes
-- **CharTracker**: Tracks EVE Online characters
-- **Maintenance**: Manages periodic maintenance tasks
-- **TPSChartScheduler**: Schedules generation and sending of TPS charts
+## Deployment & Operations
 
-### API (`WandererNotifier.Api.*`)
+- **Containerization:**  
+  - Each component (Elixir backend, Chart Service, Frontend) is containerized
+- **CI/CD:**  
+  - GitHub Actions workflows automate building, testing, and deployment
+- **Monitoring & Error Handling:**  
+  - Integrated logging and error classification ensure issues are captured and retried when transient
+  - Health metrics for chart service and disk usage
 
-Manages external API integrations:
+## Future Enhancements
 
-- **Http.Client**: Generic HTTP client functionality
-- **ZKill**: Integration with zKillboard's API and WebSocket
-- **ESI**: Integration with EVE Online's Swagger Interface
-- **Map**: Integration with the Wanderer map API
-
-### Data (`WandererNotifier.Data.*`)
-
-Defines data structures and storage:
-
-- **Killmail**: Data structure for EVE Online killmails
-- **System**: Data structure for EVE Online solar systems
-- **Character**: Data structure for EVE Online characters
-- **Cache.Repository**: Cache implementation using Cachex
-
-### Notifiers (`WandererNotifier.Notifiers.*`)
-
-Handles sending notifications to different channels:
-
-- **Discord**: Discord notification formatting and sending
-- **Slack**: Slack notification formatting and sending
-- **Factory**: Factory for creating the appropriate notifier based on configuration
-- **Behaviour**: Behaviour definition for notifier implementations
-
-### Web (`WandererNotifier.Web.*`)
-
-Provides web interface and API:
-
-- **Server**: Phoenix web server
-- **Controllers**: API controllers
-- **Router**: Phoenix router
-
-## Data Flow
-
-1. **Kill Notification Flow**:
-   - zKillboard WebSocket → ZKill.Websocket → Service → KillProcessor → Notifier → Discord/Slack
-
-2. **System Tracking Flow**:
-   - Map API → Api.Map.Client → SystemTracker → Cache.Repository → Notifier → Discord/Slack
-
-3. **Character Tracking Flow**:
-   - Map API → Api.Map.Client → CharTracker → Cache.Repository → Notifier → Discord/Slack
-
-4. **TPS Chart Flow**:
-   - TPSChartScheduler → CorpTools.Client → TPSChartAdapter → Notifier → Discord
-
-5. **License Validation Flow**:
-   - Application → License → LicenseManager.Client → License Manager API → Features
-
-## Proxy Pattern Implementation
-
-To facilitate gradual migration of code without breaking existing functionality, the application employs a proxy pattern:
-
-1. Original modules (e.g., `WandererNotifier.License`) act as proxies that delegate to the new implementation (e.g., `WandererNotifier.Core.License`).
-2. All existing code can continue to reference the original module names.
-3. New code uses the new namespaced modules directly.
-4. Once all code has been migrated, the proxy modules can be removed.
-
-## Process Model
-
-The application uses multiple GenServer processes to handle different responsibilities:
-
-- **License**: Manages license validation and periodic refreshing
-- **Stats**: Tracks application statistics
-- **Cache.Repository**: Manages caching with periodic checks
-- **Service**: Manages WebSocket connections and message routing
-- **Maintenance**: Handles periodic maintenance tasks
-- **TPSChartScheduler**: Schedules chart generation and distribution
-
-## Error Handling
-
-The application uses a "let it crash" philosophy with proper supervision:
-
-1. **Supervision**: All critical processes are supervised for automatic restart
-2. **Retries**: Network operations use retry with exponential backoff
-3. **Logging**: Extensive logging for debugging and monitoring
-4. **Graceful Degradation**: Features degrade gracefully when dependencies are unavailable
-
-## Deployment Considerations
-
-- **Environment Configuration**: The application supports different environments (development, production) with appropriate configuration
-- **Containerization**: Designed to run well in containerized environments
-- **License Management**: External license validation service requirement
-- **Cache Persistence**: Cache data can be persisted to disk for continuity
-- **API Tokens**: Requires various API tokens for external service access 
+- Complete migration from external QuickChart.io to internal Node.js chart service
+- Implement structured data types for all remaining API integrations
+- Enhance caching strategies for consistency across all data sources
+- Improve test coverage, especially for API integrations and schedulers
+- Implement more granular feature flags for selective enabling of capabilities

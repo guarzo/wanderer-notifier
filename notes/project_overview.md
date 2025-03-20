@@ -1,73 +1,112 @@
 # WandererNotifier Project Overview
 
-## Project Description
-WandererNotifier is an Elixir application that connects to zKillboard's WebSocket API to receive real-time notifications about EVE Online events. It tracks systems and characters on a Pathfinder mapping tool and sends notifications to Discord.
+## Purpose
 
-## Features
-- Real-time killmail notifications from zKillboard
-- System tracking from Pathfinder mapping tool
-- Character tracking and notifications
-- Discord and Slack integration
-- Web dashboard for statistics and management
-- EVE Corp Tools integration for TPS charts and statistics
-- License validation and feature management
+WandererNotifier is a comprehensive notification and visualization system for EVE Online. It aggregates data from external APIs (ESI, Map API, zKillboard), processes game events, and delivers notifications (e.g., killmails, character activity) via Discord and a dedicated web dashboard with a focus on real-time monitoring and data visualization.
 
-## Architecture
-The application follows a modular design with clear separation of concerns through namespaces:
+## Key Features
 
-### Core Components
-- **Core**: Fundamental functionality like configuration, license management, and feature flags
-- **Services**: Business logic for tracking systems, characters, and processing killmails
-- **API**: External API clients for zKillboard, ESI, and mapping tools
-- **Data**: Data structures, storage, and cache management
-- **Notifiers**: Notification services for Discord and Slack
-- **Web**: Web server and controllers for dashboard
+- **Real-Time Notifications:**  
+  - Monitors ESI killmails, zKillboard feeds, character information, and system data
+  - Sends timely alerts to configurable Discord channels with rich formatting
+  - Supports different notification types with targeted delivery
 
-### Design Patterns
-- **Proxy Pattern**: Used for backward compatibility during refactoring
-- **Factory Pattern**: Used for notification dispatching
-- **Repository Pattern**: Used for cache and data access
-- **Observer Pattern**: Used for event handling and notifications
+- **Data Visualization:**  
+  - Generates charts via a dedicated Node.js service with fallback strategies
+  - Provides activity, system status, and TPS (Tranquility Per Second) charts
+  - Delivers interactive React-based dashboard for viewing statistics and notifications
 
-## Technical Stack
-- **Elixir/OTP**: Core language and runtime
-- **GenServer**: For stateful processes and services
-- **Cachex**: For caching data
-- **WebSockex**: For WebSocket communication
-- **Phoenix/Plug**: For web server functionality
-- **Discord/Slack APIs**: For notifications
+- **Robust API Integration:**  
+  - Interfaces with multiple external APIs using specialized clients with structured data types
+  - Implements validation, error handling, and retry mechanisms
+  - Enforces structured data flow with domain-specific types
 
-## Deployment
-The application is designed to run as a standalone OTP application or Docker container.
+- **Modular Architecture:**
+  - Core configuration system with feature flags
+  - Comprehensive scheduler framework for periodic tasks
+  - Factory pattern for notifiers with behavior-based interfaces
+  - Adapter pattern for chart generation services
 
-### Requirements
-- Elixir 1.14+
-- Erlang/OTP 25+
-- Docker (optional)
+- **Scalability & Containerization:**  
+  - Deployable via Docker with environment-specific configurations
+  - Automated CI/CD pipelines using GitHub Actions
+  - Focused on OTP principles for resilience and fault tolerance
 
-### Configuration
-Configuration is managed through environment variables and application config:
-- Discord bot token and channel ID
-- Map URL and authentication
-- License key and validation
-- Cache settings and timeouts
+## Technology Stack
 
-## Development Workflow
-1. Create feature branches off the main development branch
-2. Follow the established namespacing and module organization
-3. Use proxy modules for backward compatibility
-4. Maintain test coverage
-5. Document all changes
+- **Backend:**  
+  - Elixir with OTP principles, GenServer-based schedulers, and structured logging
+  - Behavior-driven design with factory patterns and adapters
+  - Registry-based process tracking for improved management
 
-## Performance Considerations
-- **Caching**: Extensive caching is used for map data, EVE information, and killmails
-- **Batch Operations**: Batch processing is used for efficient cache operations
-- **Memory Management**: Periodic cache purging is implemented to control memory usage
-- **Error Handling**: Robust error handling with retry mechanisms for external dependencies
+- **Chart Service:**  
+  - Node.js with Chart.js for server-side image generation
+  - RESTful API with standardized response formats
+  - File-based storage with automatic cleanup and monitoring
 
-## Future Direction
-- Complete migration to new namespace organization
-- Remove proxy modules once all external references are updated
-- Enhance web dashboard with more features
-- Add more notification channels
-- Improve analytics and statistics 
+- **Frontend:**  
+  - React built with Vite and styled with Tailwind CSS
+  - Component-based architecture for different visualization types
+  - Dashboard with debugging capabilities
+
+- **Infrastructure:**  
+  - Docker, GitHub Actions, and environment-based configuration
+  - Health monitoring for services and resource usage
+
+## Data Flow
+
+1. **Collection:** External API clients fetch and validate game data
+2. **Transformation:** Raw data is converted to structured domain types
+3. **Storage:** Data is cached with appropriate TTLs
+4. **Processing:** Business logic determines notification requirements
+5. **Visualization:** Chart service generates visual representations
+6. **Delivery:** Notifications are formatted and delivered to Discord
+7. **Presentation:** Dashboard displays historical data and system status
+
+## Target Audience
+
+- **EVE Online Community:**  
+  - Players and corporations seeking real-time game event notifications
+  - Fleet commanders requiring system activity monitoring
+  - Scouts tracking character movements and system changes
+
+- **Developers & System Administrators:**  
+  - Interested in a robust, modular notification system with modern tooling
+  - Learning about Elixir/OTP architecture and design patterns
+
+- **Data Visualization Enthusiasts:**  
+  - Users who want to see complex game data transformed into actionable insights
+
+## Current Development Focus
+
+- **Chart Service Migration:**
+  - Moving from external QuickChart.io to internal Node.js chart service
+  - Implementing adapter pattern with fallback strategies
+  - Enhancing chart generation capabilities and reliability
+
+- **API Client Refactoring:**
+  - Implementing structured data types for all API responses
+  - Standardizing URL builders and response validators
+  - Improving error handling and caching consistency
+
+- **Scheduler Framework:**
+  - Enhancing the comprehensive scheduler system
+  - Improving monitoring and management capabilities
+  - Standardizing timing configuration
+
+## Roadmap & Future Directions
+
+- **Feature Enhancements:**  
+  - Extend notifications to additional platforms beyond Discord
+  - Implement more granular user settings and filtering options
+  - Add support for additional EVE Online data sources
+
+- **Architecture Improvements:**  
+  - Complete the structured data type implementation for all APIs
+  - Enhance caching strategies with data-specific policies
+  - Improve test coverage across all components
+
+- **UI/UX Refinements:**  
+  - Enhance dashboard with more interactive visualizations
+  - Add user customization options for charts and notifications
+  - Implement real-time updates in the web interface

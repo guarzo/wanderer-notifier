@@ -4,10 +4,11 @@ defmodule WandererNotifier.Services.SystemTracker do
   Handles system discovery and notification of new systems.
   """
   require Logger
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Features
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
@@ -484,7 +485,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     if Config.system_notifications_enabled?() do
       NotifierFactory.notify(:send_new_system_notification, [system])
       # Increment the systems counter
-      WandererNotifier.Stats.increment(:systems)
+      Stats.increment(:systems)
     end
   end
 

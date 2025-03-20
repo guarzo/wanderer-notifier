@@ -6,7 +6,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Helpers.NotificationHelpers
 

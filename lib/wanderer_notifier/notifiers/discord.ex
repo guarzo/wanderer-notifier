@@ -7,21 +7,14 @@ defmodule WandererNotifier.Notifiers.Discord do
   alias WandererNotifier.Core.License
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Notifiers.Formatter
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
-  # Default embed colors
+  # Default embed color
   @default_embed_color 0x3498DB
-  # Blue for Pulsar
-  @wormhole_color 0x428BCA
-  # Green for highsec
-  @highsec_color 0x5CB85C
-  # Yellow/orange for lowsec
-  @lowsec_color 0xE28A0D
-  # Red for nullsec
-  @nullsec_color 0xD9534F
 
   @base_url "https://discord.com/api/channels"
   # Set to true to enable verbose logging
@@ -48,21 +41,22 @@ defmodule WandererNotifier.Notifiers.Discord do
     :ok
   end
 
-  defp channel_id,
-    do:
-      get_config!(
-        :discord_channel_id,
-        "Discord channel ID not configured. Please set :discord_channel_id in your configuration."
-      )
+  defp channel_id_for_feature(feature) do
+    Config.discord_channel_id_for(feature)
+  end
 
   defp bot_token,
     do:
+    
       get_config!(
         :discord_bot_token,
         "Discord bot token not configured. Please set :discord_bot_token in your configuration."
       )
 
-  defp build_url, do: "#{@base_url}/#{channel_id()}/messages"
+  defp build_url(feature) do
+    channel = channel_id_for_feature(feature)
+    "#{@base_url}/#{channel}/messages"
+  end
 
   defp headers do
     [
@@ -86,9 +80,13 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   @doc """
   Sends a plain text message to Discord.
+
+  ## Parameters
+    - message: The message to send
+    - feature: Optional feature to determine the channel to use (defaults to :general)
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_message(message) when is_binary(message) do
+  def send_message(message, feature \\ :general) when is_binary(message) do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{message}")
     else
@@ -99,12 +97,12 @@ defmodule WandererNotifier.Notifiers.Discord do
           %{"content" => message, "embeds" => []}
         end
 
-      send_payload(payload)
+      send_payload(payload, feature)
     end
   end
 
   defp process_test_kill_notification(message) do
-    recent_kills = WandererNotifier.KillProcessor.get_recent_kills() || []
+    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
 
     if recent_kills != [] do
       recent_kill = List.first(recent_kills)
@@ -118,12 +116,19 @@ defmodule WandererNotifier.Notifiers.Discord do
     end
   end
 
-  @spec send_embed(any(), any()) :: :ok | {:error, any()}
+  @spec send_embed(any(), any(), any(), any(), atom()) :: :ok | {:error, any()}
   @doc """
   Sends a basic embed message to Discord.
+
+  ## Parameters
+    - title: The embed title
+    - description: The embed description
+    - url: Optional URL for the embed
+    - color: Optional color for the embed
+    - feature: Optional feature to determine the channel to use
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
+  def send_embed(title, description, url \\ nil, color \\ @default_embed_color, feature \\ :general) do
     Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
 
     if env() == :test do
@@ -137,12 +142,12 @@ defmodule WandererNotifier.Notifiers.Discord do
         end
 
       Logger.info("Discord embed payload built, sending to Discord API")
-      send_payload(payload)
+      send_payload(payload, feature)
     end
   end
 
   defp process_test_embed(title, description, url, color) do
-    recent_kills = WandererNotifier.KillProcessor.get_recent_kills() || []
+    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
 
     if recent_kills != [] do
       recent_kill = List.first(recent_kills)
@@ -174,10 +179,14 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   @doc """
   Sends a Discord embed using the Discord API.
+
+  ## Parameters
+    - embed: The embed to send
+    - feature: The feature to use for determining the channel (optional)
   """
-  def send_discord_embed(embed) do
-    url = build_url()
-    Logger.info("Sending Discord embed to URL: #{url}")
+  def send_discord_embed(embed, feature \\ :general) do
+    url = build_url(feature)
+    Logger.info("Sending Discord embed to URL: #{url} for feature: #{inspect(feature)}")
     Logger.debug("Embed content: #{inspect(embed)}")
 
     payload = %{"embeds" => [embed]}
@@ -218,7 +227,10 @@ defmodule WandererNotifier.Notifiers.Discord do
       system_name = Map.get(enriched_kill, "solar_system_name") || "Unknown System"
 
       if License.status().valid do
-        create_and_send_kill_embed(enriched_kill, kill_id, victim_name, victim_ship, system_name)
+        # Use the formatter to create the notification
+        generic_notification = Formatter.format_kill_notification(enriched_kill, kill_id)
+        discord_embed = Formatter.to_discord_format(generic_notification)
+        send_discord_embed(discord_embed, :kill_notifications)
       else
         Logger.info(
           "License not valid, sending plain text kill notification instead of rich embed"
@@ -380,102 +392,6 @@ defmodule WandererNotifier.Notifiers.Discord do
     end
   end
 
-  # -- KILL EMBED --
-
-  defp create_and_send_kill_embed(enriched_kill, kill_id, victim_name, victim_ship, system_name) do
-    victim = Map.get(enriched_kill, "victim") || %{}
-    victim_corp = get_value(victim, ["corporation_name"], "Unknown Corp")
-    victim_alliance = get_value(victim, ["alliance_name"], nil)
-    kill_value = get_in(enriched_kill, ["zkb", "totalValue"]) || 0
-    formatted_value = format_isk_value(kill_value)
-    kill_time = get_in(enriched_kill, ["killmail_time"])
-    attackers = Map.get(enriched_kill, "attackers") || []
-
-    final_blow_attacker =
-      Enum.find(attackers, fn attacker ->
-        Map.get(attacker, "final_blow") in [true, "true"]
-      end)
-
-    final_blow_name =
-      if final_blow_attacker,
-        do: get_value(final_blow_attacker, ["character_name"], "Unknown Pilot"),
-        else: "Unknown Pilot"
-
-    final_blow_ship =
-      if final_blow_attacker,
-        do: get_value(final_blow_attacker, ["ship_type_name"], "Unknown Ship"),
-        else: "Unknown Ship"
-
-    is_npc_kill = get_in(enriched_kill, ["zkb", "npc"]) == true
-    final_blow_name = if is_npc_kill, do: "NPC", else: final_blow_name
-
-    final_blow_character_id =
-      if final_blow_attacker do
-        Map.get(final_blow_attacker, "character_id") ||
-          Map.get(final_blow_attacker, :character_id)
-      else
-        nil
-      end
-
-    final_blow_text =
-      if final_blow_character_id do
-        "[#{final_blow_name}](https://zkillboard.com/character/#{final_blow_character_id}/) (#{final_blow_ship})"
-      else
-        "#{final_blow_name} (#{final_blow_ship})"
-      end
-
-    attackers_count = length(attackers)
-    victim_ship_type_id = get_value(victim, ["ship_type_id"], nil)
-    victim_character_id = get_value(victim, ["character_id"], nil)
-
-    embed =
-      %{
-        "title" => "Kill Notification",
-        "description" => "#{victim_name} lost a #{victim_ship} in #{system_name}",
-        "color" => 0xFF0000,
-        "url" => "https://zkillboard.com/kill/#{kill_id}/",
-        "timestamp" => kill_time,
-        "footer" => %{"text" => "Kill ID: #{kill_id}"},
-        "thumbnail" => %{
-          "url" =>
-            if(victim_ship_type_id,
-              do: "https://images.evetech.net/types/#{victim_ship_type_id}/render",
-              else: nil
-            )
-        },
-        "author" => %{
-          "name" =>
-            if victim_name == "Unknown Pilot" and victim_corp == "Unknown Corp" do
-              "Kill in #{system_name}"
-            else
-              "#{victim_name} (#{victim_corp})"
-            end,
-          "icon_url" =>
-            if victim_name == "Unknown Pilot" and victim_corp == "Unknown Corp" do
-              "https://images.evetech.net/types/30371/icon"
-            else
-              if victim_character_id,
-                do: "https://imageserver.eveonline.com/Character/#{victim_character_id}_64.jpg",
-                else: nil
-            end
-        },
-        "fields" => [
-          %{"name" => "Value", "value" => formatted_value, "inline" => true},
-          %{"name" => "Attackers", "value" => "#{attackers_count}", "inline" => true},
-          %{"name" => "Final Blow", "value" => final_blow_text, "inline" => true}
-        ]
-      }
-
-    embed =
-      if victim_alliance do
-        NotificationHelpers.add_field_if_available(embed, "Alliance", victim_alliance)
-      else
-        embed
-      end
-
-    send_discord_embed(embed)
-  end
-
   defp format_isk_value(value) when is_float(value) or is_integer(value) do
     cond do
       value < 1000 -> "<1k ISK"
@@ -505,15 +421,18 @@ defmodule WandererNotifier.Notifiers.Discord do
         _ -> :ok
       end
 
+      # Enrich the character data with ESI lookups if needed
       character = enrich_character_data(character)
-      character_id = NotificationHelpers.extract_character_id(character)
-      character_name = NotificationHelpers.extract_character_name(character)
-      corporation_name = NotificationHelpers.extract_corporation_name(character)
 
       if License.status().valid do
-        create_and_send_character_embed(character_id, character_name, corporation_name)
+        # Use the formatter module to create the notification
+        generic_notification = Formatter.format_character_notification(character)
+        discord_embed = Formatter.to_discord_format(generic_notification)
+        send_discord_embed(discord_embed, :character_tracking)
       else
         Logger.info("License not valid, sending plain text character notification")
+        character_name = get_value(character, ["character_name"], "Unknown Character")
+        corporation_name = get_value(character, ["corporation_name"], nil)
 
         message =
           "New Character Tracked: #{character_name}" <>
@@ -570,39 +489,6 @@ defmodule WandererNotifier.Notifiers.Discord do
     character
   end
 
-  defp create_and_send_character_embed(character_id, character_name, corporation_name) do
-    embed =
-      %{
-        "title" => "New Character Tracked",
-        "description" => "A new character has been added to the tracking list.",
-        "color" => @default_embed_color,
-        "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "thumbnail" => %{
-          "url" => "https://imageserver.eveonline.com/Character/#{character_id}_128.jpg"
-        },
-        "fields" => [
-          %{
-            "name" => "Character",
-            "value" => "[#{character_name}](https://zkillboard.com/character/#{character_id}/)",
-            "inline" => true
-          }
-        ]
-      }
-
-    embed =
-      if corporation_name do
-        fields =
-          embed["fields"] ++
-            [%{"name" => "Corporation", "value" => corporation_name, "inline" => true}]
-
-        Map.put(embed, "fields", fields)
-      else
-        embed
-      end
-
-    send_discord_embed(embed)
-  end
-
   # -- NEW SYSTEM NOTIFICATION --
 
   @doc """
@@ -622,8 +508,23 @@ defmodule WandererNotifier.Notifiers.Discord do
         _ -> :ok
       end
 
+      # Normalize the system data and use the formatter module
       system = normalize_system_data(system)
-      create_and_send_system_embed(system)
+      generic_notification = Formatter.format_system_notification(system)
+
+      if generic_notification do
+        # Convert the generic notification to a Discord-specific format
+        discord_embed = Formatter.to_discord_format(generic_notification)
+
+        # Add recent kills to the notification
+        discord_embed_with_kills = add_recent_kills_to_embed(discord_embed, system)
+
+        # Send the notification
+        send_discord_embed(discord_embed_with_kills, :system_tracking)
+      else
+        Logger.error("Failed to format system notification: #{inspect(system)}")
+        :error
+      end
     end
   end
 
@@ -636,185 +537,26 @@ defmodule WandererNotifier.Notifiers.Discord do
     end
   end
 
-  defp create_and_send_system_embed(system) do
-    system = normalize_system_data(system)
+  # Adds recent kills information to a system notification embed
+  defp add_recent_kills_to_embed(embed, system) do
+    system_id = Map.get(system, "solar_system_id") ||
+                Map.get(system, :solar_system_id) ||
+                Map.get(system, "system_id") ||
+                Map.get(system, :system_id)
 
-    system_id =
-      Map.get(system, "solar_system_id") ||
-        Map.get(system, :solar_system_id)
-
-    system_name =
-      Map.get(system, "solar_system_name") ||
-        Map.get(system, :solar_system_name) ||
-        Map.get(system, "system_name") ||
-        Map.get(system, :system_name) ||
-        "Unknown System"
-
-    type_description =
-      Map.get(system, "type_description") ||
-        Map.get(system, :type_description)
-
-    if type_description == nil do
-      Logger.error(
-        "Cannot send system notification: type_description not available for system #{system_name} (ID: #{system_id})"
+    if system_id do
+      Logger.info(
+        "[Discord.send_system_activity] Sending recent system activity: System ID #{system_id}"
       )
 
-      :error
-    else
-      effect_name = Map.get(system, "effect_name") || Map.get(system, :effect_name)
-      is_shattered = Map.get(system, "is_shattered") || Map.get(system, :is_shattered)
-      statics = Map.get(system, "statics") || Map.get(system, :statics) || []
-      region_name = Map.get(system, "region_name") || Map.get(system, :region_name)
-
-      title = "New #{type_description} System Mapped"
-
-      description =
-        "A #{type_description} system has been discovered and added to the map."
-
-      is_wormhole = String.contains?(type_description, "Class")
-      sun_type_id = Map.get(system, "sun_type_id") || Map.get(system, :sun_type_id)
-
-      icon_url =
-        if sun_type_id do
-          "https://images.evetech.net/types/#{sun_type_id}/icon"
-        else
-          cond do
-            effect_name == "Pulsar" ->
-              "https://images.evetech.net/types/30488/icon"
-
-            effect_name == "Magnetar" ->
-              "https://images.evetech.net/types/30484/icon"
-
-            effect_name == "Wolf-Rayet Star" ->
-              "https://images.evetech.net/types/30489/icon"
-
-            effect_name == "Black Hole" ->
-              "https://images.evetech.net/types/30483/icon"
-
-            effect_name == "Cataclysmic Variable" ->
-              "https://images.evetech.net/types/30486/icon"
-
-            effect_name == "Red Giant" ->
-              "https://images.evetech.net/types/30485/icon"
-
-            String.contains?(type_description, "High-sec") ->
-              "https://images.evetech.net/types/45041/icon"
-
-            String.contains?(type_description, "Low-sec") ->
-              "https://images.evetech.net/types/45031/icon"
-
-            String.contains?(type_description, "Null-sec") ->
-              "https://images.evetech.net/types/45033/icon"
-
-            true ->
-              "https://images.evetech.net/types/3802/icon"
-          end
-        end
-
-      embed_color =
-        cond do
-          String.contains?(type_description, "High-sec") -> @highsec_color
-          String.contains?(type_description, "Low-sec") -> @lowsec_color
-          String.contains?(type_description, "Null-sec") -> @nullsec_color
-          is_wormhole -> @wormhole_color
-          true -> @default_embed_color
-        end
-
-      display_name = "[#{system_name}](https://zkillboard.com/system/#{system_id}/)"
-
-      embed =
-        %{
-          "title" => title,
-          "description" => description,
-          "color" => embed_color,
-          "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-          "thumbnail" => %{"url" => icon_url},
-          "fields" => [
-            %{"name" => "System", "value" => display_name, "inline" => true}
-          ]
-        }
-
-      embed =
-        if is_wormhole and is_shattered do
-          fields =
-            embed["fields"] ++ [%{"name" => "Shattered", "value" => "Yes", "inline" => true}]
-
-          Map.put(embed, "fields", fields)
-        else
-          embed
-        end
-
-      embed =
-        cond do
-          is_wormhole and is_list(statics) and length(statics) > 0 ->
-            statics_str =
-              Enum.map_join(statics, ", ", fn static ->
-                cond do
-                  is_map(static) ->
-                    Map.get(static, "name") || Map.get(static, :name) || inspect(static)
-
-                  is_binary(static) ->
-                    static
-
-                  true ->
-                    inspect(static)
-                end
-              end)
-
-            fields =
-              embed["fields"] ++
-                [%{"name" => "Statics", "value" => statics_str, "inline" => true}]
-
-            Map.put(embed, "fields", fields)
-
-          region_name ->
-            encoded_region_name = URI.encode(region_name)
-
-            region_link =
-              "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
-
-            fields =
-              embed["fields"] ++ [%{"name" => "Region", "value" => region_link, "inline" => true}]
-
-            Map.put(embed, "fields", fields)
-
-          true ->
-            embed
-        end
-
-      system_kills =
-        if system_id do
+      case WandererNotifier.Api.ZKill.Service.get_system_kills(system_id, 5) do
+        {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
           Logger.info(
-            "[Discord.send_system_activity] Sending recent system activity: System ID #{system_id}"
+            "Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard"
           )
 
-          case WandererNotifier.Api.ZKill.Service.get_system_kills(system_id, 5) do
-            {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
-              Logger.info(
-                "Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard"
-              )
-
-              zkill_kills
-
-            {:ok, []} ->
-              Logger.info("No recent kills found for system #{system_id} from zKillboard")
-              []
-
-            {:error, reason} ->
-              Logger.error(
-                "Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}"
-              )
-
-              []
-          end
-        else
-          []
-        end
-
-      embed =
-        if length(system_kills) > 0 do
           kills_text =
-            Enum.map_join(system_kills, "\n", fn kill ->
+            Enum.map_join(zkill_kills, "\n", fn kill ->
               kill_id = Map.get(kill, "killmail_id")
               zkb = Map.get(kill, "zkb") || %{}
               hash = Map.get(zkb, "hash")
@@ -898,36 +640,44 @@ defmodule WandererNotifier.Notifiers.Discord do
               end
             end)
 
-          fields =
-            embed["fields"] ++
-              [%{"name" => "Recent Kills in System", "value" => kills_text, "inline" => false}]
-
+          # Add the kills field to the embed
+          fields = embed["fields"] || []
+          fields = fields ++ [%{"name" => "Recent Kills in System", "value" => kills_text, "inline" => false}]
           Map.put(embed, "fields", fields)
-        else
-          fields =
-            embed["fields"] ++
-              [
-                %{
-                  "name" => "Recent Kills in System",
-                  "value" => "No recent kills found for this system.",
-                  "inline" => false
-                }
-              ]
 
+        {:ok, []} ->
+          Logger.info("No recent kills found for system #{system_id} from zKillboard")
+
+          # Add a message about no kills
+          fields = embed["fields"] || []
+          fields = fields ++ [
+            %{
+              "name" => "Recent Kills in System",
+              "value" => "No recent kills found for this system.",
+              "inline" => false
+            }
+          ]
           Map.put(embed, "fields", fields)
-        end
 
-      send_discord_embed(embed)
+        {:error, reason} ->
+          Logger.error(
+            "Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}"
+          )
+
+          embed
+      end
+    else
+      embed
     end
   end
 
   # -- HELPER FOR SENDING PAYLOAD --
 
-  defp send_payload(payload) do
-    url = build_url()
+  defp send_payload(payload, feature) do
+    url = build_url(feature)
     json_payload = Jason.encode!(payload)
 
-    Logger.info("Sending Discord API request to URL: #{url}")
+    Logger.info("Sending Discord API request to URL: #{url} for feature: #{inspect(feature)}")
     Logger.debug("Discord API payload: #{inspect(payload, pretty: true)}")
 
     case HttpClient.request("POST", url, headers(), json_payload) do
@@ -953,9 +703,16 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   Implements the Notifiers.Behaviour callback, converts binary data to a file
   and sends it to Discord using the existing file upload functionality.
+
+  ## Parameters
+    - filename: The filename to use
+    - file_data: The file content as binary data
+    - title: Optional title for the message
+    - description: Optional description for the message
+    - feature: Optional feature to determine the channel to use
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_file(filename, file_data, title \\ nil, description \\ nil) do
+  def send_file(filename, file_data, title \\ nil, description \\ nil, feature \\ :general) do
     Logger.info("Discord.Notifier.send_file called with filename: #{filename}")
 
     if env() == :test do
@@ -974,7 +731,7 @@ defmodule WandererNotifier.Notifiers.Discord do
         File.write!(temp_file, file_data)
 
         # Use the existing file sending method
-        send_file_path(temp_file, title, description)
+        send_file_path(temp_file, title, description, feature)
       after
         # Clean up the temp file
         File.rm(temp_file)
@@ -983,7 +740,7 @@ defmodule WandererNotifier.Notifiers.Discord do
   end
 
   # Rename the existing send_file function to send_file_path to avoid conflicts
-  def send_file_path(file_path, title \\ nil, description \\ nil) do
+  def send_file_path(file_path, title \\ nil, description \\ nil, feature \\ :general) do
     Logger.info("Discord.Notifier.send_file_path called with file: #{file_path}")
 
     if env() == :test do
@@ -1010,7 +767,8 @@ defmodule WandererNotifier.Notifiers.Discord do
         end
 
       # Prepare the URL and headers
-      url = "#{@base_url}/#{channel_id()}/messages"
+      channel = channel_id_for_feature(feature)
+      url = "#{@base_url}/#{channel}/messages"
 
       headers = [
         {"Authorization", "Bot #{bot_token()}"},
@@ -1056,16 +814,23 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   @doc """
   Sends an embed with an image to Discord.
+
+  ## Parameters
+    - title: The title of the embed
+    - description: The description content
+    - image_url: URL of the image to display
+    - color: Optional color for the embed
+    - feature: Optional feature to determine which channel to use
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_image_embed(title, description, image_url, color \\ @default_embed_color) do
+  def send_image_embed(title, description, image_url, color \\ @default_embed_color, feature \\ :general) do
     Logger.info(
-      "Discord.Notifier.send_image_embed called with title: #{title}, image_url: #{image_url || "nil"}"
+      "Discord.Notifier.send_image_embed called with title: #{title}, image_url: #{image_url || "nil"}, feature: #{feature}"
     )
 
     if env() == :test do
       handle_test_mode(
-        "DISCORD MOCK IMAGE EMBED: #{title} - #{description} with image: #{image_url}"
+        "DISCORD MOCK IMAGE EMBED: #{title} - #{description} with image: #{image_url} (feature: #{feature})"
       )
     else
       embed = %{
@@ -1079,8 +844,8 @@ defmodule WandererNotifier.Notifiers.Discord do
 
       payload = %{"embeds" => [embed]}
 
-      Logger.info("Discord image embed payload built, sending to Discord API")
-      send_payload(payload)
+      Logger.info("Discord image embed payload built, sending to Discord API with feature: #{feature}")
+      send_payload(payload, feature)
     end
   end
 end
