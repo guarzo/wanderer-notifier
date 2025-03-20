@@ -5,6 +5,7 @@ defmodule WandererNotifier.Discord.Client do
   """
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Api.Http.ErrorHandler
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -72,26 +73,12 @@ defmodule WandererNotifier.Discord.Client do
 
       case Jason.encode(payload) do
         {:ok, json} ->
-          case HttpClient.request("POST", url, headers(), json) do
-            {:ok, %{status_code: status}} when status in 200..299 ->
-              Logger.info("Successfully sent Discord embed, status: #{status}")
-              :ok
-
-            {:ok, %{status_code: status, body: body}} ->
-              Logger.error(
-                "Failed to send Discord embed: status=#{status}, body=#{inspect(body)}"
-              )
-
-              {:error, "Discord API error: #{status}"}
-
-            {:error, reason} ->
-              Logger.error("Error sending Discord embed: #{inspect(reason)}")
-              {:error, reason}
-          end
+          HttpClient.request("POST", url, headers(), json)
+          |> handle_discord_response("send_embed")
 
         {:error, reason} ->
           Logger.error("Failed to encode Discord payload: #{inspect(reason)}")
-          {:error, "JSON encoding error: #{inspect(reason)}"}
+          {:error, :json_error}
       end
     end
   end
@@ -117,27 +104,98 @@ defmodule WandererNotifier.Discord.Client do
 
       case Jason.encode(payload) do
         {:ok, json} ->
-          case HttpClient.request("POST", url, headers(), json) do
-            {:ok, %{status_code: status}} when status in 200..299 ->
-              Logger.info("Successfully sent Discord message, status: #{status}")
-              :ok
-
-            {:ok, %{status_code: status, body: body}} ->
-              Logger.error(
-                "Failed to send Discord message: status=#{status}, body=#{inspect(body)}"
-              )
-
-              {:error, "Discord API error: #{status}"}
-
-            {:error, reason} ->
-              Logger.error("Error sending Discord message: #{inspect(reason)}")
-              {:error, reason}
-          end
+          HttpClient.request("POST", url, headers(), json)
+          |> handle_discord_response("send_message")
 
         {:error, reason} ->
           Logger.error("Failed to encode Discord payload: #{inspect(reason)}")
-          {:error, "JSON encoding error: #{inspect(reason)}"}
+          {:error, :json_error}
       end
+    end
+  end
+
+  @doc """
+  Sends a file to Discord with an optional title and description.
+  
+  ## Parameters
+    - filename: The name of the file to send
+    - file_data: The binary content of the file
+    - title: The title for the Discord embed (optional)
+    - description: The description for the Discord embed (optional)
+    - override_channel_id: Optional channel ID to override the default
+    
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
+  """
+  def send_file(filename, file_data, title \\ nil, description \\ nil, override_channel_id \\ nil) do
+    Logger.info("Sending file to Discord: #{filename}")
+
+    if env() == :test do
+      Logger.info("TEST MODE: Would send file to Discord: #{filename} - #{title || "No title"}")
+      :ok
+    else
+      url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
+
+      # Create form data with file and JSON payload
+      boundary = "----------------------------#{:rand.uniform(999_999_999)}"
+
+      # Create JSON part with embed if title/description provided
+      json_payload =
+        if title || description do
+          embed = %{
+            "title" => title || filename,
+            "description" => description || "",
+            "color" => 3_447_003 # Discord blue
+          }
+
+          Jason.encode!(%{"embeds" => [embed]})
+        else
+          "{}"
+        end
+
+      # Build multipart request body
+      body = [
+        "--#{boundary}\r\n",
+        "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n",
+        json_payload,
+        "\r\n--#{boundary}\r\n",
+        "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n",
+        "Content-Type: application/octet-stream\r\n\r\n",
+        file_data,
+        "\r\n--#{boundary}--\r\n"
+      ]
+
+      # Custom headers for multipart request
+      file_headers = [
+        {"Content-Type", "multipart/form-data; boundary=#{boundary}"},
+        {"Authorization", "Bot #{bot_token()}"}
+      ]
+
+      HttpClient.request("POST", url, file_headers, body)
+      |> handle_discord_response("send_file")
+    end
+  end
+
+  # Handle Discord API responses consistently
+  defp handle_discord_response(response, operation) do
+    case ErrorHandler.handle_http_response(response, domain: :discord, tag: "Discord.#{operation}", decode_json: false) do
+      {:ok, _} -> 
+        Logger.info("Successfully executed Discord operation: #{operation}")
+        :ok
+        
+      {:error, error} ->
+        # Log the specific error details for debugging
+        Logger.error("Discord #{operation} failed: #{inspect(error)}")
+        
+        # Check if it's retriable using ErrorHandler classification
+        retriable = ErrorHandler.retryable?(error)
+        
+        if retriable do
+          Logger.warning("Discord error is retriable. Consider implementing automatic retry logic.")
+        end
+        
+        {:error, error}
     end
   end
 end

@@ -1,4 +1,5 @@
 # Build artifacts
+node_modules/
 repomix.*
 .cursor
 /priv/charts/node_modules
@@ -7,6 +8,7 @@ repomix.*
 /deps/
 /doc/
 /.fetch
+chart-service/node_modules/
 
 # Crash dumps and archives
 erl_crash.dump

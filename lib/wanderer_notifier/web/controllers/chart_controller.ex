@@ -4,11 +4,11 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.ChartService.JSChartAdapter
+  alias WandererNotifier.ChartService.TPSChartAdapter
   alias WandererNotifier.ChartService.ActivityChartAdapter
-  alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.CorpTools.CorpToolsClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Core.Config
   alias WandererNotifier.Web.Controllers.ActivityChartController
 
   plug(:match)
@@ -55,7 +55,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         )
       end
 
-      case MapClient.get_character_activity(slug) do
+      case CharactersClient.get_character_activity(slug) do
         {:ok, data} ->
           conn
           |> put_resp_content_type("application/json")
@@ -127,33 +127,33 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         chart_result =
           case chart_type do
             :damage_final_blows ->
-              JSChartAdapter.generate_chart(chart_type)
+              TPSChartAdapter.generate_chart(chart_type)
 
             :combined_losses ->
-              JSChartAdapter.generate_chart(chart_type)
+              TPSChartAdapter.generate_chart(chart_type)
 
             :kill_activity ->
-              JSChartAdapter.generate_chart(chart_type)
+              TPSChartAdapter.generate_chart(chart_type)
 
             :activity_summary ->
               # Get activity data first
-              case MapClient.get_character_activity(Config.map_name()) do
-                {:ok, data} -> ActivityChartAdapter.generate_activity_summary_chart(data["data"])
+              case CharactersClient.get_character_activity() do
+                {:ok, data} -> ActivityChartAdapter.generate_activity_summary_chart(data)
                 _ -> {:error, "Failed to get activity data"}
               end
 
             :activity_timeline ->
               # Get activity data first
-              case MapClient.get_character_activity(Config.map_name()) do
-                {:ok, data} -> ActivityChartAdapter.generate_activity_timeline_chart(data["data"])
+              case CharactersClient.get_character_activity() do
+                {:ok, data} -> ActivityChartAdapter.generate_activity_timeline_chart(data)
                 _ -> {:error, "Failed to get activity data"}
               end
 
             :activity_distribution ->
               # Get activity data first
-              case MapClient.get_character_activity(Config.map_name()) do
+              case CharactersClient.get_character_activity() do
                 {:ok, data} ->
-                  ActivityChartAdapter.generate_activity_distribution_chart(data["data"])
+                  ActivityChartAdapter.generate_activity_distribution_chart(data)
 
                 _ ->
                   {:error, "Failed to get activity data"}
@@ -217,19 +217,19 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         result =
           case chart_type do
             :damage_final_blows ->
-              JSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
 
             :combined_losses ->
-              JSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
 
             :kill_activity ->
-              JSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
 
             :activity_summary ->
               # Get activity data first for chart generation
-              case MapClient.get_character_activity(Config.map_name()) do
+              case CharactersClient.get_character_activity() do
                 {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord("activity_summary", data["data"])
+                  ActivityChartAdapter.send_chart_to_discord("activity_summary", data)
 
                 _ ->
                   {:error, "Failed to get activity data"}
@@ -237,9 +237,9 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
             :activity_timeline ->
               # Get activity data first for chart generation
-              case MapClient.get_character_activity(Config.map_name()) do
+              case CharactersClient.get_character_activity() do
                 {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord("activity_timeline", data["data"])
+                  ActivityChartAdapter.send_chart_to_discord("activity_timeline", data)
 
                 _ ->
                   {:error, "Failed to get activity data"}
@@ -247,11 +247,11 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
             :activity_distribution ->
               # Get activity data first for chart generation
-              case MapClient.get_character_activity(Config.map_name()) do
+              case CharactersClient.get_character_activity() do
                 {:ok, data} ->
                   ActivityChartAdapter.send_chart_to_discord(
                     "activity_distribution",
-                    data["data"]
+                    data
                   )
 
                 _ ->
@@ -297,7 +297,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
       # Get character activity data
       activity_data =
-        case MapClient.get_character_activity(Config.map_name()) do
+        case CharactersClient.get_character_activity() do
           {:ok, data} ->
             Logger.info(
               "Successfully retrieved character activity data: #{inspect(data, limit: 500)}"

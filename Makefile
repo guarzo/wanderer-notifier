@@ -5,6 +5,9 @@
 compile:
 	@mix compile
 
+compile.strict:
+	@mix compile --warnings-as-errors
+
 clean:
 	@mix clean
 
@@ -49,15 +52,29 @@ shell:
 run:
 	@mix run
 
+# Build tasks for NPM components
+build.npm: build.frontend build.chart-service
+
+build.frontend:
+	@echo "Building frontend assets..."
+	@cd renderer && npm run build
+
+build.chart-service:
+	@echo "Installing chart-service dependencies if needed..."
+	@cd chart-service && npm install --silent
+	@echo "Chart service dependencies installed"
+
 # Development commands with automatic asset rebuilding
-dev:
+dev: build.npm
 	@iex -S mix
 
+# Watch both frontend and start the application
 watch:
-	@cd renderer && npm run watch && cd ..
+	@echo "Starting watchers for both Elixir and frontend..."
+	@(cd renderer && npm run watch) & (iex -S mix)
 
-build.npm: 
-	cd renderer && npm run build && cd ..
+watch.frontend:
+	@cd renderer && npm run watch
 
 # Dependency management
 deps.get:
@@ -66,6 +83,7 @@ deps.get:
 deps.update:
 	@mix deps.update --all
 
-# Original command with automatic asset rebuilding
-s: clean compile
-	@iex -S mix
+# Alias for watch with initial clean+compile and npm build
+s: clean compile build.npm
+	@echo "Starting watchers for both Elixir and frontend..."
+	@(cd renderer && npm run watch) & (iex -S mix)

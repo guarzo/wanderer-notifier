@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   use GenServer
   require Logger
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Core.Config
 
   # Default interval is 24 hours (in milliseconds)
   @default_interval 24 * 60 * 60 * 1000
@@ -52,7 +53,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     Logger.info("Initializing Activity Chart Scheduler...")
 
     # Schedule first chart sending only if map tools are enabled
-    if WandererNotifier.Config.map_tools_enabled?() do
+    if Config.map_tools_enabled?() do
       schedule_charts(interval)
       Logger.info("Activity Chart Scheduler initialized and scheduled")
     else
@@ -66,7 +67,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   @impl true
   def handle_cast(:send_all_charts, state) do
     # Send all charts only if map tools are enabled
-    if WandererNotifier.Config.map_tools_enabled?() do
+    if Config.map_tools_enabled?() do
       # Send all charts
       _results = send_charts()
 
@@ -84,7 +85,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     new_state = %{state | interval: interval_ms}
 
     # Reschedule with new interval only if map tools are enabled
-    if WandererNotifier.Config.map_tools_enabled?() do
+    if Config.map_tools_enabled?() do
       schedule_charts(interval_ms)
     else
       Logger.info("Not rescheduling Activity Charts (Map Tools disabled)")
@@ -96,7 +97,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   @impl true
   def handle_info(:send_charts, state) do
     # Send charts only if map tools are enabled
-    if WandererNotifier.Config.map_tools_enabled?() do
+    if Config.map_tools_enabled?() do
       Logger.info("Sending activity charts to Discord...")
 
       # Send charts
@@ -116,7 +117,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
   defp schedule_charts(interval) do
     # Only schedule if map tools are enabled
-    if WandererNotifier.Config.map_tools_enabled?() do
+    if Config.map_tools_enabled?() do
       Process.send_after(self(), :send_charts, interval)
       Logger.debug("Scheduled next activity chart run in #{interval / 1000 / 60} minutes")
     else

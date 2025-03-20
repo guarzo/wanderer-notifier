@@ -6,7 +6,6 @@ defmodule WandererNotifier.Services.KillProcessor do
   """
   require Logger
 
-  alias WandererNotifier.NotifierFactory
   alias WandererNotifier.Core.Features
 
   # Process dictionary key for recent kills
@@ -153,22 +152,102 @@ defmodule WandererNotifier.Services.KillProcessor do
   """
   def send_test_kill_notification do
     Logger.info("Sending test kill notification...")
-
-    # Use the most recent kill data or create a sample
-    kill = %{
-      "killmail_id" => "123456789",
+    
+    # Get recent kills or use sample data
+    recent_kills = get_recent_kills()
+    
+    cond do
+      recent_kills == [] ->
+        Logger.info("No recent kills available, using sample test data")
+        sample_kill = get_sample_kill()
+        kill_id = Map.get(sample_kill, "killmail_id")
+        WandererNotifier.Notifiers.Factory.notify(:send_enriched_kill_embed, [sample_kill, kill_id])
+        {:ok, kill_id}
+        
+      true ->
+        recent_kill = List.first(recent_kills)
+        kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
+        
+        if kill_id do
+          # Simulate a notification
+          WandererNotifier.Notifiers.Factory.notify(:send_enriched_kill_embed, [recent_kill, kill_id])
+          {:ok, kill_id}
+        else
+          Logger.error("No kill_id found in recent kill data")
+          {:error, :no_kill_id}
+        end
+    end
+  end
+  
+  # Returns a sample kill for testing purposes
+  defp get_sample_kill do
+    # Use pre-enriched data to avoid ESI lookups
+    # These are real IDs that exist in the game
+    %{
+      "killmail_id" => 12345678,
+      "killmail_time" => "2023-05-01T12:00:00Z",
+      "solar_system_id" => 30000142, # Jita
       "victim" => %{
-        "character_id" => "95465499",
-        "character_name" => "Test Character",
-        "ship_type_id" => "11567",
-        "ship_type_name" => "Test Ship"
+        "character_id" => 1354830081, # CCP character
+        "character_name" => "CCP Garthagk",
+        "corporation_id" => 98356193,
+        "corporation_name" => "C C P Alliance",
+        "alliance_id" => 434243723,
+        "alliance_name" => "C C P Alliance",
+        "ship_type_id" => 670, # Capsule
+        "ship_name" => "Capsule",
+        "damage_taken" => 1000,
+        "position" => %{
+          "x" => 0.0,
+          "y" => 0.0,
+          "z" => 0.0
+        }
       },
-      "solar_system_id" => "30000142",
-      "solar_system_name" => "Jita"
+      "attackers" => [
+        %{
+          "character_id" => 92168909, # Another CCP character
+          "character_name" => "CCP Zoetrope",
+          "corporation_id" => 98356193,
+          "corporation_name" => "C C P Alliance",
+          "alliance_id" => 434243723,
+          "alliance_name" => "C C P Alliance",
+          "ship_type_id" => 11567, # Triglavian ship
+          "ship_name" => "Drekavac",
+          "damage_done" => 1000,
+          "final_blow" => true
+        }
+      ],
+      "zkb" => %{
+        "locationID" => 30000142,
+        "hash" => "samplehash",
+        "fittedValue" => 100000000.00,
+        "totalValue" => 150000000.00,
+        "points" => 10,
+        "npc" => false,
+        "solo" => true,
+        "awox" => false
+      },
+      # Add pre-enriched information to prevent ESI lookups
+      "victim_info" => %{
+        "character_name" => "CCP Garthagk",
+        "corporation_name" => "C C P Alliance",
+        "alliance_name" => "C C P Alliance"
+      },
+      "attacker_info" => %{
+        "character_name" => "CCP Zoetrope",
+        "corporation_name" => "C C P Alliance",
+        "alliance_name" => "C C P Alliance"
+      },
+      "system_info" => %{
+        "name" => "Jita",
+        "security" => 0.9
+      },
+      "ship_info" => %{
+        "victim_ship" => "Capsule",
+        "attacker_ship" => "Drekavac"
+      },
+      # Add flags to skip ESI enrichment
+      "_skip_esi_enrichment" => true
     }
-
-    # Simulate a notification
-    NotifierFactory.notify(:send_enriched_kill_embed, [kill, kill["killmail_id"]])
-    {:ok, kill["killmail_id"]}
   end
 end

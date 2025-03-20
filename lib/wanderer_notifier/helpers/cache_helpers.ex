@@ -3,7 +3,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   Helper functions for working with the cache.
   """
   require Logger
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
   @doc """
   Gets all tracked systems from the cache.

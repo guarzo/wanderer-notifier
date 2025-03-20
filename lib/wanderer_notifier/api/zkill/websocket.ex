@@ -9,7 +9,8 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   use WebSockex
   require Logger
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.KillProcessor
+  alias WandererNotifier.Services.KillProcessor
+  alias WandererNotifier.Core.Stats
 
   # Maximum reconnection attempts before circuit breaking
   @max_reconnects 20
@@ -50,7 +51,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Helper function to update connection status with isolated error handling
   defp update_connection_status(state) do
     try do
-      WandererNotifier.Stats.update_websocket(%{
+      Stats.update_websocket(%{
         connected: true,
         last_message: DateTime.utc_now(),
         reconnects: Map.get(state, :reconnects, 0)
@@ -346,7 +347,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     # Update stats
     try do
-      WandererNotifier.Stats.update_websocket(%{
+      Stats.update_websocket(%{
         connected: false,
         last_message: DateTime.utc_now(),
         reconnects: reconnects,

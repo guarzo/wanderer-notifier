@@ -4,8 +4,12 @@
   // Build instructions (which Dockerfile, build context, etc.)
   "build": {
     "context": "..",
-    "dockerfile": "Dockerfile"
-    // If you have Docker build args, they'd go under "args" here.
+    "dockerfile": "Dockerfile",
+    "args": {
+      "USERNAME": "elixir",
+      "NODE_VERSION": "20.x",
+      "INSTALL_ELIXIR_LS": "true"
+    }
   },
 
   "runArgs": [
@@ -20,22 +24,71 @@
   },
 
   // Add port forwarding configuration
-  "forwardPorts": [4000, 4111],
+  "forwardPorts": [4000, 4111, 3001],
 
   // Uncomment to connect as a non-root user. See https://aka.ms/vscode-remote/containers/non-root.
   "remoteUser": "elixir",
   "updateRemoteUserUID": false,
-
+  "mounts": [
+    "source=claude-code-bashhistory,target=/commandhistory,type=volume",
+    "source=claude-code-config,target=/home/elixir/.claude,type=volume",
+    "source=elixir-ls-cache,target=/home/elixir/.elixir-ls,type=volume"
+  ],
+  "remoteEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/elixir/.claude",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
+  },
   "customizations": {
     "vscode": {
       "extensions": [
-        "JakeBecker.elixir-ls"
+        "JakeBecker.elixir-ls",
+        "esbenp.prettier-vscode",
+        "pantajoe.vscode-elixir-credo",
+        "ms-vsliveshare.vsliveshare",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker",
+        "bradlc.vscode-tailwindcss"
       ],
       "settings": {
-        "terminal.integrated.shell.linux": "/bin/bash"
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": null,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          },
+          "zsh": {
+            "path": "zsh"
+          }
+        },
+        "[elixir]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "JakeBecker.elixir-ls"
+        },
+        "elixirLS.suggestSpecs": true,
+        "elixirLS.dialyzerEnabled": true,
+        "elixirLS.signatureAfterComplete": true,
+        "elixirLS.fetchDeps": true,
+        "elixirLS.enableTestLenses": true,
+        "explorer.fileNesting.enabled": true,
+        "explorer.fileNesting.patterns": {
+          "mix.exs": "mix.lock"
+        },
+        "cSpell.words": [
+          "Credo",
+          "devcontainer",
+          "elixir",
+          "inotify",
+          "wanderer"
+        ]
       }
     }
   },
 
-  "postCreateCommand": "mix deps.get"
+  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install"
 }

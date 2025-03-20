@@ -10,7 +10,8 @@ import {
   FaCircleNotch,
   FaExclamationTriangle,
   FaBell,
-  FaSkullCrossbones
+  FaSkullCrossbones,
+  FaChartBar
 } from "react-icons/fa";
 
 export default function Dashboard() {
@@ -28,11 +29,13 @@ export default function Dashboard() {
   async function fetchStatus() {
     try {
       setLoading(true);
+      console.log("Fetching status data from API...");
       const response = await fetch("/api/status");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
+      console.log("Status data received:", data);
       setStatus(data);
       setError(null);
     } catch (err) {
@@ -56,7 +59,17 @@ export default function Dashboard() {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
-      setTestMessage(data.message || "License revalidated!");
+      
+      // Check if the validation was actually successful by examining the success field
+      if (data.success) {
+        setTestMessage(data.message || "License successfully validated!");
+      } else {
+        // Handle unsuccessful validation with the error message
+        console.error("License validation failed:", data.details);
+        setTestMessage(data.message || "License validation failed");
+      }
+      
+      // Refresh the status display
       fetchStatus();
     } catch (err) {
       console.error("Error revalidating license:", err);
@@ -67,11 +80,14 @@ export default function Dashboard() {
   // Test notification actions
   async function testKillNotification() {
     try {
+      // Debug paths
+      console.log("Sending test kill notification request to: /api/test-notification");
       const response = await fetch("/api/test-notification");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
+      console.log("Kill notification response:", data);
       setTestMessage(data.message || "Kill notification sent!");
     } catch (err) {
       console.error("Error sending kill notification:", err);
@@ -81,11 +97,13 @@ export default function Dashboard() {
 
   async function testSystemNotification() {
     try {
+      console.log("Sending test system notification request to: /api/test-system-notification");
       const response = await fetch("/api/test-system-notification");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
+      console.log("System notification response:", data);
       setTestMessage(data.message || "System notification sent!");
     } catch (err) {
       console.error("Error sending system notification:", err);
@@ -95,11 +113,13 @@ export default function Dashboard() {
 
   async function testCharacterNotification() {
     try {
+      console.log("Sending test character notification request to: /api/test-character-notification");
       const response = await fetch("/api/test-character-notification");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
+      console.log("Character notification response:", data);
       setTestMessage(data.message || "Character notification sent!");
     } catch (err) {
       console.error("Error sending character notification:", err);
@@ -176,9 +196,16 @@ export default function Dashboard() {
 
         {/* Test Message Banner */}
         {testMessage && (
-          <div className="bg-green-50 border border-green-200 p-3 rounded-md flex items-center justify-between">
-            <div className="text-green-700 flex items-center space-x-2">
-              <FaCheckCircle />
+          <div className={`${testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error') 
+                           ? 'bg-red-50 border border-red-200' 
+                           : 'bg-green-50 border border-green-200'} 
+                          p-3 rounded-md flex items-center justify-between`}>
+            <div className={`${testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error')
+                           ? 'text-red-700' 
+                           : 'text-green-700'} flex items-center space-x-2`}>
+              {testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error') 
+               ? <FaExclamationTriangle /> 
+               : <FaCheckCircle />}
               <span className="font-medium">{testMessage}</span>
             </div>
             <button
@@ -268,6 +295,18 @@ export default function Dashboard() {
                   {status.license.error_message}
                 </div>
               )}
+              <div className="mt-3 text-sm text-gray-500">
+                <p>
+                  {status?.license?.valid 
+                    ? "Your license is active and valid."
+                    : "Your license is not valid. Please check your license key in the configuration."}
+                </p>
+                {!status?.license?.valid && (
+                  <p className="mt-1">
+                    Try clicking the "Revalidate License" button in the top-right corner to retry validation.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -361,6 +400,48 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+            
+            {/* TPS Charts - Only shown if enabled */}
+            {status?.features?.enabled?.tps_charts && (
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
+                <span className="font-medium text-gray-700">TPS Charts</span>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                    Enabled
+                  </span>
+                  <button
+                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
+                    onClick={() => window.open('/charts', '_blank')}
+                  >
+                    <FaChartBar />
+                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      View TPS Charts
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Activity Charts - Only shown if enabled */}
+            {status?.features?.enabled?.activity_charts && (
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
+                <span className="font-medium text-gray-700">Activity Charts</span>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                    Enabled
+                  </span>
+                  <button
+                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
+                    onClick={() => window.open('/charts', '_blank')}
+                  >
+                    <FaChartBar />
+                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      View Activity Charts
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

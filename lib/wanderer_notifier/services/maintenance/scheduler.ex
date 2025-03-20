@@ -5,7 +5,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   """
   require Logger
   alias WandererNotifier.Api.Map.Client, as: MapClient
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory

@@ -21,11 +21,7 @@ defmodule WandererNotifier.Notifiers.Factory do
       env == :test ->
         WandererNotifier.Notifiers.Discord.Test
 
-      # If Slack is configured, use the Slack notifier
-      slack_configured?() ->
-        WandererNotifier.Notifiers.Slack
-
-      # Default to Discord notifier
+      # Discord is the default and only supported notifier
       true ->
         WandererNotifier.Notifiers.Discord
     end
@@ -44,14 +40,5 @@ defmodule WandererNotifier.Notifiers.Factory do
     end
 
     apply(notifier, function, args)
-  end
-
-  # Checks if Slack is configured.
-  @spec slack_configured?() :: boolean()
-  defp slack_configured? do
-    case Application.get_env(:wanderer_notifier, :slack_webhook_url) do
-      url when is_binary(url) and url != "" -> true
-      _ -> false
-    end
   end
 end

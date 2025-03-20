@@ -356,7 +356,7 @@ defmodule WandererNotifier.CorpTools.ChartGenerator do
     case chart_result do
       {:ok, url} ->
         # Get the notifier
-        notifier = WandererNotifier.NotifierFactory.get_notifier()
+        notifier = WandererNotifier.Notifiers.Factory.get_notifier()
 
         # Send the chart as an embed
         notifier.send_embed(title, description, url)

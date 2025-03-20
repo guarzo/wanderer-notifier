@@ -6,6 +6,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Api.Http.ErrorHandler
 
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   # ^ Adjust or move this to config so that zKill sees you as a real user.
@@ -34,14 +35,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
         case Jason.decode(body) do
           {:ok, true} ->
             Logger.warning("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
-            {:error, :zkb_returned_true}
-
+            {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_true}}}
+            
           _ ->
-            HttpClient.handle_response(response)
+            ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.killmail")
         end
 
-      error ->
-        error
+      response ->
+        ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.killmail")
     end
   end
 
@@ -65,7 +66,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
+        case ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.recent_kills") do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)
@@ -73,14 +74,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
           {:ok, _} ->
             Logger.warning("[ZKill] Unexpected response format for recent kills")
-            {:error, :unexpected_response_format}
+            {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
 
           error ->
             error
         end
 
       error ->
-        error
+        ErrorHandler.handle_http_error(error, domain: :zkill, tag: "ZKill.recent_kills")
     end
   end
 
@@ -107,7 +108,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
+        case ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.system") do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)
@@ -128,14 +129,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
             )
 
             Logger.warning("[ZKill] Response keys: #{inspect(other |> Map.keys())}")
-            {:error, :unexpected_response_format}
+            {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
 
           error ->
             error
         end
 
       error ->
-        error
+        ErrorHandler.handle_http_error(error, domain: :zkill, tag: "ZKill.system")
     end
   end
 end
