@@ -82,7 +82,11 @@ defmodule WandererNotifier.Application do
     end
 
     # Start the supervisor with all children
-    result = Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
+    result =
+      Supervisor.start_link(get_children(),
+        strategy: :one_for_one,
+        name: WandererNotifier.Supervisor
+      )
 
     # Send startup message after a short delay to ensure all services are started
     Task.start(fn ->
@@ -101,16 +105,18 @@ defmodule WandererNotifier.Application do
     # Get license information
     license_status = WandererNotifier.Core.License.status()
     license_valid = if license_status.valid, do: "Valid", else: "Invalid"
-    # Safely check for premium status with a default of false
     is_premium = Map.get(license_status, :premium, false)
     license_type = if is_premium, do: "Premium", else: "Standard"
-
-    # Get feature information
-    features_status = WandererNotifier.Core.Features.get_feature_status()
 
     # Get tracking information
     systems = get_tracked_systems()
     characters = CacheRepo.get("map:characters") || []
+
+    # Get feature information
+    features_status = WandererNotifier.Core.Features.get_feature_status()
+
+    # Get stats
+    stats = WandererNotifier.Core.Stats.get_stats()
 
     # Format message
     title = "WandererNotifier Started"
@@ -124,45 +130,40 @@ defmodule WandererNotifier.Application do
     ]
 
     # Add WebSocket status
-    websocket_status = get_websocket_status()
+    websocket_status = format_websocket_status(stats.websocket)
     fields = fields ++ [%{name: "WebSocket Status", value: websocket_status, inline: true}]
-    
-    # Add stats info
-    stats = WandererNotifier.Core.Stats.get_stats()
-    
+
     # Add notification counts
     notification_stats = stats.notifications
     notification_info = format_notification_counts(notification_stats)
-    fields = fields ++ [
-      %{name: "Notifications Sent", value: notification_info, inline: false}
-    ]
-    
+
+    fields =
+      fields ++
+        [
+          %{name: "Notifications Sent", value: notification_info, inline: false}
+        ]
+
     # Add feature status section
     enabled_features = format_feature_status(features_status)
     fields = fields ++ [%{name: "Enabled Features", value: enabled_features, inline: false}]
 
-    # Send the rich embed notification with fields
-    # The Discord.send_embed function expects 5 parameters (title, description, url, color, feature)
-    # But the fields need to be sent differently - we need to create a complete embed
-    
     # Create a complete Discord embed structure
     embed = %{
       "title" => title,
       "description" => description,
-      "color" => 0x3498DB, # Blue color
+      # Blue color
+      "color" => 0x3498DB,
       "fields" => fields
     }
-    
-    # Send it using the direct send_discord_embed function
-    WandererNotifier.Notifiers.Discord.send_discord_embed(embed, :general)
+
+    # Send the notification using the Discord notifier through the factory
+    NotifierFactory.notify(:send_discord_embed, [embed, :general])
   end
 
-  # Helper to get WebSocket connection status
-  defp get_websocket_status do
-    stats = WandererNotifier.Core.Stats.get_stats()
-
-    if stats.websocket.connected do
-      last_message = stats.websocket.last_message
+  # Helper to format WebSocket connection status
+  defp format_websocket_status(websocket_status) do
+    if websocket_status.connected do
+      last_message = websocket_status.last_message
 
       if last_message do
         time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
@@ -176,7 +177,7 @@ defmodule WandererNotifier.Application do
         "Connected (no messages yet)"
       end
     else
-      reconnects = Map.get(stats.websocket, :reconnects, 0)
+      reconnects = Map.get(websocket_status, :reconnects, 0)
 
       if reconnects > 0 do
         "Disconnected (#{reconnects} reconnect attempts)"
@@ -198,16 +199,17 @@ defmodule WandererNotifier.Application do
 
   # Helper to format feature status
   defp format_feature_status(%{} = features) do
-    enabled = Enum.filter(features, fn {_feature, enabled} -> enabled end)
-    |> Enum.map(fn {feature, _} ->
-      # Convert atom to string and format nicely
-      feature
-      |> Atom.to_string()
-      |> String.replace("_", " ")
-      |> String.split()
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join(" ")
-    end)
+    enabled =
+      Enum.filter(features, fn {_feature, enabled} -> enabled end)
+      |> Enum.map(fn {feature, _} ->
+        # Convert atom to string and format nicely
+        feature
+        |> Atom.to_string()
+        |> String.replace("_", " ")
+        |> String.split()
+        |> Enum.map(&String.capitalize/1)
+        |> Enum.join(" ")
+      end)
 
     if enabled == [] do
       "No features enabled"
@@ -216,93 +218,11 @@ defmodule WandererNotifier.Application do
     end
   end
 
-
-  # This is not part of the Application behaviour, but we handle it for the test notification
-  def handle_info(:send_test_notification, _state) do
-    Logger.info("Sending test notification...")
-
-    NotifierFactory.notify(:send_message, [
-      "Test notification from WandererNotifier. If you see this, notifications are working!"
-    ])
-
-    {:noreply, nil}
-  end
-
-  # Check cache status
-  def handle_info(:check_cache_status, _state) do
-    Logger.debug("Checking cache status...")
-
-    # Check if cache is available
-    cache_available =
-      case Cachex.stats(:wanderer_notifier_cache) do
-        {:ok, _stats} -> true
-        _ -> false
-      end
-
-    # Only log at INFO level if there's a problem
-    if cache_available do
-      Logger.debug("Cache is available")
-    else
-      Logger.warning("Cache is NOT available")
-    end
-
-    # Get systems count
-    systems = get_tracked_systems()
-    characters = CacheRepo.get("map:characters") || []
-    Logger.debug("Cache status - Systems: #{length(systems)}, Characters: #{length(characters)}")
-
-    {:noreply, nil}
-  end
-
-  # Handle retry for EVE Corp Tools API health check
-  def handle_info(:retry_corp_tools_health_check, _state) do
-    Logger.debug("Retrying EVE Corp Tools API health check...")
-
-    case CorpToolsClient.health_check() do
-      :ok ->
-        Logger.debug("EVE Corp Tools API health check passed on retry")
-        # Schedule periodic health checks
-        schedule_corp_tools_health_check()
-
-      {:error, :connection_refused} ->
-        Logger.warning("EVE Corp Tools API connection still refused. Will retry in 60 seconds.")
-        # Schedule another retry after 60 seconds
-        Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
-
-      {:error, reason} ->
-        Logger.error("EVE Corp Tools API health check failed on retry: #{inspect(reason)}")
-        # Schedule another retry after 120 seconds
-        Process.send_after(self(), :retry_corp_tools_health_check, 120_000)
-    end
-
-    {:noreply, nil}
-  end
-
-  # Handle periodic health check for EVE Corp Tools API
-  def handle_info(:corp_tools_health_check, _state) do
-    Logger.debug("Performing periodic EVE Corp Tools API health check...")
-
-    case CorpToolsClient.health_check() do
-      :ok ->
-        Logger.debug("Periodic EVE Corp Tools API health check passed")
-        # Schedule the next health check
-        schedule_corp_tools_health_check()
-
-      {:error, reason} ->
-        Logger.warning("Periodic EVE Corp Tools API health check failed: #{inspect(reason)}")
-        # Schedule a retry sooner
-        Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
-    end
-
-    {:noreply, nil}
-  end
-
   # Schedule periodic health checks for EVE Corp Tools API
   defp schedule_corp_tools_health_check do
     # Schedule a health check every 5 minutes
     Process.send_after(self(), :corp_tools_health_check, 5 * 60 * 1000)
   end
-
 
   defp get_tracked_systems do
     CacheHelpers.get_tracked_systems()

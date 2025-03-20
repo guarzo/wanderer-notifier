@@ -5,6 +5,13 @@ defmodule WandererNotifier.Data.Character do
   This module standardizes the representation of characters from the map API,
   ensuring consistent field names and handling of optional fields.
 
+  ## Core Principles
+  - Single Source of Truth: Character struct is the canonical representation
+  - Early Conversion: API responses are converted to structs immediately
+  - No Silent Renaming: Field names are preserved consistently
+  - Clear Contracts: Each function has explicit input/output contracts
+  - Explicit Error Handling: Validation errors are raised explicitly
+
   Implements the Access behaviour to allow map-like access with ["key"] syntax.
   """
   @behaviour Access
@@ -62,7 +69,7 @@ defmodule WandererNotifier.Data.Character do
       "character_id" ->
         {:ok, struct.eve_id}
 
-      # Legacy field names
+      # Legacy field names - standardized access
       "id" ->
         {:ok, struct.eve_id}
 
@@ -125,22 +132,42 @@ defmodule WandererNotifier.Data.Character do
 
   @doc """
   Creates a new Character struct from map API response data.
+  Validates required fields and standardizes the data structure.
 
   ## Parameters
     - map_response: Raw API response data for a single character
 
   ## Returns
     - A new Character struct with standardized fields
+
+  ## Raises
+    - ArgumentError: If required fields (eve_id, name) are missing
   """
-  def new(map_response) do
+  @spec new(map()) :: t()
+  def new(map_response) when is_map(map_response) do
+    require Logger
+
     # Extract nested character data if present
     character_data = Map.get(map_response, "character", %{})
 
-    # For API responses with non-nested character data, make sure we can still access name and ids
-    name = character_data["name"] || map_response["name"]
-    eve_id = character_data["eve_id"] || map_response["eve_id"] || map_response["id"]
+    # Extract required fields with clear validation
+    name =
+      character_data["name"] ||
+        map_response["name"] ||
+        map_response["character_name"]
 
-    # Look for corporation_id at both top and nested levels
+    eve_id =
+      character_data["eve_id"] ||
+        map_response["eve_id"] ||
+        map_response["id"] ||
+        map_response["character_id"]
+
+    # Validate required fields
+    unless eve_id && name do
+      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
+    end
+
+    # Parse corporation ID with explicit validation
     corp_id_raw =
       character_data["corporation_id"] ||
         map_response["corporation_id"] ||
@@ -148,19 +175,29 @@ defmodule WandererNotifier.Data.Character do
         map_response["corporationID"]
 
     corporation_id = parse_integer(corp_id_raw)
-    alliance_id = parse_integer(character_data["alliance_id"] || map_response["alliance_id"])
 
+    # Look for corporation ticker in various formats
     corporation_ticker =
-      character_data["corporation_ticker"] || map_response["corporation_ticker"]
+      character_data["corporation_ticker"] ||
+        map_response["corporation_ticker"] ||
+        map_response["corporation_name"] ||
+        character_data["corporation_name"]
 
-    alliance_ticker = character_data["alliance_ticker"] || map_response["alliance_ticker"]
+    # Parse alliance ID with explicit validation
+    alliance_id_raw =
+      character_data["alliance_id"] ||
+        map_response["alliance_id"] ||
+        character_data["allianceID"] ||
+        map_response["allianceID"]
 
-    # Log the raw data and parsed corporation ID for debugging
-    require Logger
+    alliance_id = parse_integer(alliance_id_raw)
 
-    Logger.debug(
-      "[Character.new] Raw corp_id_raw: #{inspect(corp_id_raw)}, parsed: #{inspect(corporation_id)}"
-    )
+    # Look for alliance ticker in various formats
+    alliance_ticker =
+      character_data["alliance_ticker"] ||
+        map_response["alliance_ticker"] ||
+        map_response["alliance_name"] ||
+        character_data["alliance_name"]
 
     # Create the struct with all fields
     %__MODULE__{
@@ -175,6 +212,30 @@ defmodule WandererNotifier.Data.Character do
     }
   end
 
+  def new(invalid_input) do
+    raise ArgumentError, "Expected map for Character.new, got: #{inspect(invalid_input)}"
+  end
+
+  @doc """
+  Creates a Character struct from a simplified map with exact field names.
+  Useful for tests and internal data creation.
+
+  ## Parameters
+    - attrs: Map with exact field names matching the struct
+
+  ## Returns
+    - A new Character struct
+  """
+  @spec from_map(map()) :: t()
+  def from_map(attrs) when is_map(attrs) do
+    # Validate required fields
+    unless Map.has_key?(attrs, :eve_id) && Map.has_key?(attrs, :name) do
+      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
+    end
+
+    struct(__MODULE__, attrs)
+  end
+
   @doc """
   Check if a character has an alliance.
 
@@ -184,6 +245,7 @@ defmodule WandererNotifier.Data.Character do
   ## Returns
     - true if the character has alliance data, false otherwise
   """
+  @spec has_alliance?(t()) :: boolean()
   def has_alliance?(%__MODULE__{alliance_id: id, alliance_ticker: ticker}) do
     id != nil && ticker != nil && ticker != ""
   end
@@ -197,6 +259,7 @@ defmodule WandererNotifier.Data.Character do
   ## Returns
     - true if the character has corporation data, false otherwise
   """
+  @spec has_corporation?(t()) :: boolean()
   def has_corporation?(%__MODULE__{corporation_id: id, corporation_ticker: ticker}) do
     id != nil && ticker != nil && ticker != ""
   end
@@ -210,6 +273,7 @@ defmodule WandererNotifier.Data.Character do
   ## Returns
     - Formatted character name with corporation/alliance info
   """
+  @spec format_name(t()) :: String.t()
   def format_name(%__MODULE__{} = character) do
     base_name = character.name || "Unknown Character"
 
@@ -222,6 +286,30 @@ defmodule WandererNotifier.Data.Character do
 
       true ->
         base_name
+    end
+  end
+
+  @doc """
+  Validates a Character struct to ensure it has all required fields.
+
+  ## Parameters
+    - character: A Character struct to validate
+
+  ## Returns
+    - {:ok, character} if valid
+    - {:error, reason} if invalid
+  """
+  @spec validate(t()) :: {:ok, t()} | {:error, String.t()}
+  def validate(%__MODULE__{} = character) do
+    cond do
+      is_nil(character.eve_id) ->
+        {:error, "Character is missing required eve_id field"}
+
+      is_nil(character.name) ->
+        {:error, "Character is missing required name field"}
+
+      true ->
+        {:ok, character}
     end
   end
 

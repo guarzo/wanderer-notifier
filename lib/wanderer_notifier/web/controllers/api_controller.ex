@@ -813,17 +813,40 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Helper to format character data consistently for notification
   defp format_character_for_notification(character) do
     require Logger
-    alias WandererNotifier.Notifiers.Formatter
 
     Logger.debug(
       "[APIController] Formatting character for notification: #{inspect(character, pretty: true, limit: 300)}"
     )
 
-    # Use the centralized Formatter for data extraction
-    character_id = Formatter.extract_character_id(character)
-    character_name = Formatter.extract_character_name(character)
-    corporation_id = Formatter.extract_corporation_id(character)
-    corporation_name = Formatter.extract_corporation_name(character)
+    # Use the Character struct's access behavior if it's already a Character struct
+    # Otherwise, extract fields directly
+    character_id =
+      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
+        character["eve_id"]
+      else
+        character["character_id"] || character["eve_id"]
+      end
+
+    character_name =
+      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
+        character["name"]
+      else
+        character["character_name"] || character["name"]
+      end
+
+    corporation_id =
+      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
+        character["corporation_id"]
+      else
+        character["corporation_id"]
+      end
+
+    corporation_ticker =
+      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
+        character["corporation_ticker"]
+      else
+        character["corporation_ticker"] || character["corporation_name"]
+      end
 
     # Create a map with proper string keys expected by the formatter
     %{
@@ -831,8 +854,51 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       "character_name" => character_name,
       "corporation_id" => corporation_id,
       # Use corporation_ticker for consistency with API format
-      "corporation_ticker" => corporation_name
+      "corporation_ticker" => corporation_ticker
     }
+  end
+
+  # Extract character details
+  defp extract_character_details(character) do
+    require Logger
+
+    # Extract character ID and name based on the type of input
+    character_id =
+      cond do
+        is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+          character.eve_id
+
+        is_map(character) && Map.has_key?(character, "character_id") ->
+          character["character_id"]
+
+        is_map(character) && Map.has_key?(character, "eve_id") ->
+          character["eve_id"]
+
+        true ->
+          nil
+      end
+
+    character_name =
+      cond do
+        is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+          character.name
+
+        is_map(character) && Map.has_key?(character, "character_name") ->
+          character["character_name"]
+
+        is_map(character) && Map.has_key?(character, "name") ->
+          character["name"]
+
+        true ->
+          "Unknown"
+      end
+
+    # Add logging for debugging
+    Logger.info(
+      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
+    )
+
+    {character_id, character_name}
   end
 
   #
@@ -875,27 +941,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       true ->
         false
     end
-  end
-
-  #
-  # Extract character details
-  #
-  defp extract_character_details(character) do
-    require Logger
-
-    # Use the centralized Formatter for character data extraction
-    alias WandererNotifier.Notifiers.Formatter
-
-    # Get character ID and name using the Formatter's extraction functions
-    character_id = Formatter.extract_character_id(character)
-    character_name = Formatter.extract_character_name(character)
-
-    # Add logging for debugging
-    Logger.info(
-      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
-    )
-
-    {character_id, character_name}
   end
 
   # Catch-all route

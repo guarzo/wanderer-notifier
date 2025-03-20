@@ -206,6 +206,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     Logger.info("TEST NOTIFICATION: Manually triggering a test system notification")
 
     alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+    alias WandererNotifier.Data.MapSystem
 
     # Get all tracked systems from cache
     tracked_systems = get_tracked_systems()
@@ -220,53 +221,52 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
           # No wormhole systems, just pick any system
           Logger.info("No wormhole systems found, selecting random system")
           Enum.random(tracked_systems)
+
         wormhole_systems ->
           # Pick a random wormhole system
           Logger.info("Found #{length(wormhole_systems)} wormhole systems")
           Enum.random(wormhole_systems)
       end
 
-    # Extract system ID and name
-    system_id = get_system_id(selected_system)
-    system_name = get_system_name(selected_system)
+    # Convert to MapSystem struct if not already
+    map_system =
+      if is_struct(selected_system, MapSystem) do
+        selected_system
+      else
+        Logger.info("Converting to MapSystem struct for consistent handling")
+        MapSystem.new(selected_system)
+      end
 
-    Logger.info("Using system #{system_name} (ID: #{system_id}) for test notification")
+    Logger.info(
+      "Using system #{map_system.name} (ID: #{map_system.solar_system_id}) for test notification"
+    )
 
-    # Use the API's built-in enrichment function if it's a MapSystem struct
-    enriched_system = if is_struct(selected_system, WandererNotifier.Data.MapSystem) do
-      Logger.info("MapSystem struct detected, using API's enrich_system function")
-
-      # Use the built-in enrichment function that knows how to handle MapSystem structs
-      case WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(selected_system) do
+    # Enrich the MapSystem with static info
+    enriched_system =
+      case WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(map_system) do
         {:ok, enriched} ->
           Logger.info("Successfully enriched system with static info")
           enriched
+
         {:error, reason} ->
           Logger.warning("Failed to enrich system: #{inspect(reason)}")
           # Return the original system if enrichment fails
-          selected_system
+          map_system
       end
-    else
-      # Not a MapSystem struct, just use it as-is
-      selected_system
-    end
 
-    # Send the enriched system through the normal notification flow
-    Logger.info("Sending notification with enriched system")
+    # Log key fields for debugging
+    Logger.info("Enriched system fields:")
+    Logger.info("- solar_system_id: #{enriched_system.solar_system_id}")
+    Logger.info("- name: #{enriched_system.name}")
+    Logger.info("- type_description: #{enriched_system.type_description}")
+    Logger.info("- is_wormhole?: #{MapSystem.is_wormhole?(enriched_system)}")
+    Logger.info("- statics: #{inspect(enriched_system.statics)}")
 
-    # Create a notification payload with the enriched system
-    system_data = %{
-      "id" => get_system_id(enriched_system),
-      "name" => get_system_name(enriched_system),
-      "url" => "https://zkillboard.com/system/#{get_system_id(enriched_system)}/",
-      "system" => enriched_system
-    }
-
-    # Send notification with the system data
+    # Send notification with the enriched system struct directly
     notifier = NotifierFactory.get_notifier()
-    notifier.send_new_system_notification(system_data)
+    notifier.send_new_system_notification(enriched_system)
 
-    {:ok, get_system_id(enriched_system), get_system_name(enriched_system)}
+    {:ok, enriched_system.solar_system_id, enriched_system.name}
   end
 
   # Helper functions for test system notification
@@ -279,6 +279,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     case CacheRepo.get("map:systems") do
       systems when is_list(systems) and length(systems) > 0 ->
         systems
+
       _ ->
         # Try to get system IDs and then fetch individual systems
         case CacheRepo.get("map:system_ids") do
@@ -292,6 +293,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
               end
             end)
             |> Enum.filter(&(&1 != nil))
+
           _ ->
             # No systems found
             []
@@ -303,8 +305,9 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   defp is_wormhole_system?(system) when is_map(system) do
     # Check system ID range (31000000-31999999 is J-space)
     system_id = get_system_id(system)
-    is_integer(system_id) && system_id >= 31000000 && system_id < 32000000
+    is_integer(system_id) && system_id >= 31_000_000 && system_id < 32_000_000
   end
+
   defp is_wormhole_system?(_), do: false
 
   # Get system ID from either a MapSystem struct or a map
@@ -316,35 +319,15 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       is_map(system) ->
         # Try various possible keys for system ID
         Map.get(system, "solar_system_id") ||
-        Map.get(system, :solar_system_id) ||
-        Map.get(system, "system_id") ||
-        Map.get(system, :system_id) ||
-        Map.get(system, "systemId") ||
-        Map.get(system, :systemId)
+          Map.get(system, :solar_system_id) ||
+          Map.get(system, "system_id") ||
+          Map.get(system, :system_id) ||
+          Map.get(system, "systemId") ||
+          Map.get(system, :systemId)
 
       true ->
         nil
     end
   end
 
-  # Get system name from either a MapSystem struct or a map
-  defp get_system_name(system) do
-    cond do
-      is_struct(system, WandererNotifier.Data.MapSystem) ->
-        system.name
-
-      is_map(system) ->
-        # Try various possible keys for system name
-        Map.get(system, "name") ||
-        Map.get(system, :name) ||
-        Map.get(system, "system_name") ||
-        Map.get(system, :system_name) ||
-        Map.get(system, "systemName") ||
-        Map.get(system, :systemName) ||
-        "Unknown System"
-
-      true ->
-        "Unknown System"
-    end
-  end
 end

@@ -165,7 +165,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         Task.start(fn ->
           try do
             # Get system name and ID based on struct or map type
-            system_name =
+            _system_name =
               if is_struct(system, MapSystem) do
                 # Log values explicitly to debug name fields
                 Logger.info(
@@ -193,218 +193,65 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
                 end
               end
 
-            system_id =
+            _system_id =
               if is_struct(system, MapSystem),
                 do: system.solar_system_id,
                 else: system["systemId"] || system["solar_system_id"]
 
-            # Format system data for notification
-            system_data = %{
-              "name" => system_name,
-              "id" => system_id,
-              "url" => "https://evemaps.dotlan.net/system/#{URI.encode_www_form(system_name)}",
-              # Add the full system object
-              "system" => system
-            }
-
             # Process the system based on its type and prepare notification data
-            updated_system_data =
-              if is_struct(system) do
-                # Handle MapSystem struct format - format data
-                region_name = get_region_name(system)
-
-                # Add additional data for the system based on type
-                system_data =
-                  Map.merge(system_data, %{
-                    "region_name" => region_name,
-                    "class_title" => system.class_title,
-                    "effect_name" => system.effect_name,
-                    "system_type" =>
-                      if(MapSystem.is_wormhole?(system), do: "wormhole", else: "k-space"),
-                    "original_name" => system.original_name,
-                    "temporary_name" => system.temporary_name,
-                    "solar_system_id" => system.solar_system_id
-                  })
-
-                # Create structured static_info for Discord notifier to use
-                static_info = %{
-                  "typeDescription" =>
-                    if(MapSystem.is_wormhole?(system),
-                      do: system.class_title || "Wormhole",
-                      else: "K-Space"
-                    ),
-                  "statics" =>
-                    format_statics_with_destinations(system.statics, system.static_details),
-                  "effectName" => system.effect_name || "",
-                  "regionName" => region_name,
-                  # Include the raw static_details for the Discord notifier to use
-                  "static_details" => system.static_details,
-                  # Add class_title to be used in notification titles and text
-                  "class_title" => system.class_title
-                }
-
-                # Fetch recent kills for the system
-                recent_kills = get_recent_kills(system.solar_system_id)
-
-                Logger.info(
-                  "[SystemsClient] Found #{length(recent_kills)} recent kills for system #{system.solar_system_id}"
-                )
-
-                # Add staticInfo and recent kills to the system data
-                system_data
-                |> Map.put("staticInfo", static_info)
-                |> Map.put("recent_kills", recent_kills)
-                |> (fn data ->
-                      # Verify original_name is being preserved
-                      Logger.info(
-                        "[SystemsClient] Original name in struct case: #{system.original_name}"
-                      )
-
-                      data
-                    end).()
+            # Convert system to MapSystem struct if it's not already
+            map_system =
+              if is_struct(system, MapSystem) do
+                system
               else
-                # If it's a map, just pass it through with recent kills
-                system_id = system["solar_system_id"] || system["system_id"] || system["systemId"]
-
-                # Convert system_id to integer if it's a string
-                system_id =
-                  if is_binary(system_id) do
-                    case Integer.parse(system_id) do
-                      {num, _} -> num
-                      :error -> nil
-                    end
-                  else
-                    system_id
-                  end
-
-                # Fetch recent kills if we have a valid system_id
-                recent_kills = if is_integer(system_id), do: get_recent_kills(system_id), else: []
-
-                Logger.info(
-                  "[SystemsClient] Found #{length(recent_kills)} recent kills for non-struct system #{system_id}"
-                )
-
-                # Ensure we include system_id for kill lookups
-                updated_data =
-                  Map.merge(system_data, %{
-                    "system" => system,
-                    "recent_kills" => recent_kills,
-                    "solar_system_id" => system_id
-                  })
-
-                Logger.info(
-                  "[SystemsClient] Notification data keys: #{inspect(Map.keys(updated_data))}"
-                )
-
-                # Verify original_name is preserved
-                if Map.get(system, "original_name") do
-                  Logger.info(
-                    "[SystemsClient] Original name is present in system: #{Map.get(system, "original_name")}"
-                  )
-                end
-
-                updated_data
+                MapSystem.new(system)
               end
 
-            # Send the notification
-            notifier = NotifierFactory.get_notifier()
-            notifier.send_new_system_notification(updated_system_data)
+            # Check if the system is a wormhole
+            if MapSystem.is_wormhole?(map_system) do
+              # Get statics info from MapSystem struct
+              statics_list = map_system.statics || []
 
-            Logger.info("[SystemsClient] New system #{system_name} discovered")
+              # Get the system's type description
+              type_description = map_system.type_description || "Unknown"
+
+              # Get the class title from MapSystem struct
+              class_title = map_system.class_title
+
+              # Log key information found in the system
+              Logger.info(
+                "[SystemsClient] Processing wormhole system notification - " <>
+                  "ID: #{map_system.solar_system_id}, " <>
+                  "Name: #{map_system.name}, " <>
+                  "Type: #{type_description}, " <>
+                  "Class: #{class_title}, " <>
+                  "Statics: #{Enum.join(statics_list, ", ")}"
+              )
+            else
+              Logger.info(
+                "[SystemsClient] Processing non-wormhole system notification - " <>
+                  "ID: #{map_system.solar_system_id}, " <>
+                  "Name: #{map_system.name}, " <>
+                  "Type: #{map_system.type_description}"
+              )
+            end
+
+            # Send the notification using the full MapSystem struct
+            notifier = NotifierFactory.get_notifier()
+            notifier.send_new_system_notification(map_system)
           rescue
             e ->
-              Logger.error("[SystemsClient] Error sending system notification: #{inspect(e)}")
+              Logger.error(
+                "[SystemsClient] Error sending system notification: #{inspect(e)}\n#{Exception.format_stacktrace()}"
+              )
           end
         end)
       end
 
       {:ok, added_systems}
     else
-      Logger.debug("[SystemsClient] System notifications disabled")
+      Logger.info("[SystemsClient] System notifications are disabled, skipping")
       {:ok, []}
     end
   end
-
-  # Format statics properly with destination information if available
-  defp format_statics_with_destinations(statics, static_details) do
-    cond do
-      # If we have detailed static information with destinations
-      is_list(static_details) && length(static_details) > 0 ->
-        # Extract the static names and destinations
-        formatted =
-          Enum.map(static_details, fn static ->
-            # Try to get the destination short name
-            destination = Map.get(static, "destination") || Map.get(static, :destination) || %{}
-            short_name = Map.get(destination, "short_name") || Map.get(destination, :short_name)
-
-            # Get the static name
-            name = Map.get(static, "name") || Map.get(static, :name)
-
-            if short_name && name do
-              "#{name} (#{short_name})"
-            else
-              name
-            end
-          end)
-
-        # Join the formatted statics with commas
-        Enum.join(formatted, ", ")
-
-      # Fall back to basic statics list if no details
-      is_list(statics) && length(statics) > 0 ->
-        Enum.join(statics, ", ")
-
-      # Default empty string
-      true ->
-        ""
-    end
-  end
-
-  # Get region name from MapSystem struct
-  defp get_region_name(%MapSystem{} = system) do
-    # Try to get region info from the struct
-    system.region_name || "Unknown Region"
-  end
-
-  # Get recent kills for a system from zKillboard API
-  defp get_recent_kills(system_id) when is_integer(system_id) do
-    alias WandererNotifier.Api.ZKill.Service, as: ZkillService
-
-    try do
-      Logger.info("[SystemsClient] Getting recent kills for system #{system_id}")
-
-      case ZkillService.get_system_kills(system_id, 5) do
-        {:ok, kills} when is_list(kills) ->
-          Logger.info(
-            "[SystemsClient] Found #{length(kills)} recent kills for system #{system_id}"
-          )
-
-          if length(kills) > 0 do
-            kill_ids = Enum.map(kills, &Map.get(&1, "killmail_id"))
-            Logger.info("[SystemsClient] Kill IDs: #{inspect(kill_ids)}")
-          end
-
-          kills
-
-        {:error, reason} ->
-          Logger.warning("[SystemsClient] Failed to get recent kills: #{inspect(reason)}")
-          []
-
-        other ->
-          Logger.warning(
-            "[SystemsClient] Unexpected response from zKillboard API: #{inspect(other)}"
-          )
-
-          []
-      end
-    rescue
-      e ->
-        Logger.error("[SystemsClient] Exception when getting recent kills: #{inspect(e)}")
-        stacktrace = Process.info(self(), :current_stacktrace)
-        Logger.error("[SystemsClient] Stacktrace: #{inspect(stacktrace)}")
-        []
-    end
-  end
-
-  defp get_recent_kills(_), do: []
 end

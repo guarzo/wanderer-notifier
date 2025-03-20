@@ -2,10 +2,16 @@
 
 ### Top Priority
 
-  - [ ] Validate each notification type from end to end
-    - [ ] Proper use of api, data, cache
-    - [ ] Document the fields included in the notification, and their source
-    - [ ] Ensure we are using the correct field names through the process, not silently renaming things
+- [ ] Validate each notification type from end to end - [ ] Proper use of api, data, cache - [ ] Document the fields included in the notification, and their source - [ ] Ensure we are using the correct field names through the process, not silently renaming things
+      ```
+      For each notifications type:
+      Receive data from API at the API boundary
+      Convert it to the appropriate struct immediately -- field names should not be changed, we should maintain the original api field names
+      There should be no fallbacks, no defaulting, unless specifically requested
+      Pass only the struct to the formatter
+      No fallbacks, no "just in case" code paths
+
+```
     - [ ] Remove all fallbacks for "legacy" or "alteranate" formats, there should be only one format for a given domain object
     - [ ] Document the logic determining when and if the notification is sent
   - [ ] Validate all scheduled tasks
@@ -92,6 +98,57 @@
     - [ ] Add configuration for chart size and quality options
 - [ ] Get all tps charts actually working
 
+### API Data Standardization & Cleanup
+
+- [ ] Standardize Data Structure Handling
+  - [ ] Define clear boundaries for API format vs. internal structure across all data sources
+  - [ ] Create a comprehensive data conversion plan for each API
+  - [ ] Document proper struct conversion and field consistency requirements
+  - [ ] Establish guidelines for handling missing or optional fields
+
+- [ ] Cleanup Data Transformation for Killmail Notifications
+  - [ ] Ensure Killmail struct is used consistently throughout the system
+  - [ ] Eliminate double-parsing and multiple conversions of killmail data
+  - [ ] Consolidate all field extraction to the struct's Access behavior
+  - [ ] Remove redundant conditionals in killmail formatting
+  - [ ] Create test cases for all supported killmail formats
+  - [ ] Fix inconsistent naming between zkb and ESI killmail fields
+
+- [ ] Refine Character Data Processing
+  - [ ] Fix inconsistent field naming in character endpoints
+  - [ ] Standardize corporation naming/ticker extraction and display
+  - [ ] Enforce proper conversion to Character struct at API boundaries
+  - [ ] Document all supported character data formats and their transformation
+  - [ ] Remove duplicate extraction logic for character ID and name
+
+- [ ] Improve MapSystem Data Handling
+  - [ ] Ensure proper usage of `MapSystem.format_display_name` function
+  - [ ] Remove redundant system data normalization in notification formatting
+  - [ ] Fix inconsistent handling of system type classification
+  - [ ] Standardize static wormhole information display
+  - [ ] Create tests for all system type variations (wormhole, k-space, etc.)
+  - [ ] Document proper handling of temporary vs. original system names
+
+- [ ] Migration to Structured Formatter
+  - [ ] Complete transition from old formatter to `StructuredFormatter`
+  - [ ] Identify and fix all remaining usages of legacy field extraction
+  - [ ] Create parallel implementations for each notification type
+  - [ ] Implement A/B testing to verify both formatters produce identical results
+  - [ ] Remove the legacy formatter completely once verified
+
+- [ ] WebSocket Data Processing Improvements
+  - [ ] Standardize WebSocket message handling for killmails
+  - [ ] Implement proper struct conversion for WebSocket data
+  - [ ] Remove defensive programming in WebSocket data processing
+  - [ ] Centralize killmail identification logic
+  - [ ] Add better error handling and logging for WebSocket message parsing
+
+- [ ] Create Comprehensive API Response Documentation
+  - [ ] Document all expected field names and formats for each API
+  - [ ] Create sample responses for all API endpoints
+  - [ ] Document the transformation pipeline for each data type
+  - [ ] Create a field mapping document for each struct type
+  - [ ] Add instrumentation to track field access patterns
 
 ### EVE Swagger Interface (ESI) API (Pending)
 - [ ] Create structured data types for ESI responses:
@@ -164,3 +221,4 @@
 - [x] Update Character Update Scheduler to use new modules
 - [x] Update Activity Chart Scheduler to use new modules
 - [x] Update controllers to use new API modules
+```
