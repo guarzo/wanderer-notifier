@@ -2,7 +2,7 @@ defmodule WandererNotifier.Config.Timings do
   @moduledoc """
   Centralized configuration for all timing-related settings in the application.
   This includes cache TTLs, maintenance intervals, scheduler timings, and other time-based configurations.
-  
+
   This module serves as a central reference for all timing-related values in the application,
   making it easier to manage and adjust these values without having to search through the codebase.
   """
@@ -98,34 +98,34 @@ defmodule WandererNotifier.Config.Timings do
   Interval for license refresh (1 hours)
   """
   def license_refresh_interval, do: :timer.hours(1)
-  
+
   # Scheduler configurations (in milliseconds)
-  
+
   @doc """
   Interval for activity chart generation and sending (24 hours)
   """
   def activity_chart_interval, do: 24 * 60 * 60 * 1000
-  
+
   @doc """
   Hour for TPS chart generation and sending (UTC, 12:00)
   """
   def tps_chart_hour, do: 12
-  
+
   @doc """
   Minute for TPS chart generation and sending (UTC, 00)
   """
   def tps_chart_minute, do: 0
-  
+
   @doc """
   Interval for character data updates (30 minutes)
   """
-  def character_update_scheduler_interval, do: 30 * 60 * 1000
-  
+  def character_update_scheduler_interval, do: 1 * 60 * 1000
+
   @doc """
   Interval for system data updates (60 minutes)
   """
-  def system_update_scheduler_interval, do: 60 * 60 * 1000
-  
+  def system_update_scheduler_interval, do: 1 * 60 * 1000
+
   @doc """
   Returns a map of all scheduler configurations for easier reference
   """
@@ -154,7 +154,7 @@ defmodule WandererNotifier.Config.Timings do
       }
     }
   end
-  
+
   @doc """
   Returns a map of all cache TTLs for easier reference
   """
