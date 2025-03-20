@@ -33,7 +33,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         # Endpoint is available, proceed with update
         with {:ok, url} <- UrlBuilder.build_url("map/characters"),
              headers = UrlBuilder.get_auth_headers() do
-          
           # Make the API request directly to handle raw response
           case Client.get(url, headers) do
             {:ok, %{status_code: 200, body: body, headers: _headers}} when is_binary(body) ->
@@ -41,44 +40,60 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
               case Jason.decode(body) do
                 {:ok, parsed_json} ->
                   # Extract characters data with fallbacks for different API formats
-                  characters_data = case parsed_json do
-                    %{"data" => data} when is_list(data) -> data
-                    %{"characters" => chars} when is_list(chars) -> chars
-                    data when is_list(data) -> data
-                    _ -> []
-                  end
+                  characters_data =
+                    case parsed_json do
+                      %{"data" => data} when is_list(data) -> data
+                      %{"characters" => chars} when is_list(chars) -> chars
+                      data when is_list(data) -> data
+                      _ -> []
+                    end
 
                   # Convert to Character structs
-                  Logger.debug("[CharactersClient] Parsing #{length(characters_data)} characters from API response")
+                  Logger.debug(
+                    "[CharactersClient] Parsing #{length(characters_data)} characters from API response"
+                  )
+
                   characters = Enum.map(characters_data, &Character.new/1)
 
                   # Filter for tracked characters only
                   tracked_characters = Enum.filter(characters, & &1.tracked)
 
                   if tracked_characters == [] do
-                    Logger.warning("[CharactersClient] No tracked characters found in map API response")
+                    Logger.warning(
+                      "[CharactersClient] No tracked characters found in map API response"
+                    )
                   else
-                    Logger.debug("[CharactersClient] Found #{length(tracked_characters)} tracked characters")
+                    Logger.debug(
+                      "[CharactersClient] Found #{length(tracked_characters)} tracked characters"
+                    )
                   end
 
                   # Cache the characters
-                  CacheRepo.set("map:characters", tracked_characters, Timings.characters_cache_ttl())
+                  CacheRepo.set(
+                    "map:characters",
+                    tracked_characters,
+                    Timings.characters_cache_ttl()
+                  )
 
                   # Find and notify about new characters
                   _ = notify_new_tracked_characters(tracked_characters, cached_characters)
 
                   {:ok, tracked_characters}
-                  
+
                 {:error, reason} ->
                   Logger.error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
-                  Logger.debug("[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}...")
+
+                  Logger.debug(
+                    "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
+                  )
+
                   {:error, {:json_parse_error, reason}}
               end
-              
+
             {:ok, %{status_code: status_code}} when status_code != 200 ->
               Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
               {:error, {:http_error, status_code}}
-              
+
             {:error, reason} ->
               Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
               {:error, {:http_error, reason}}
@@ -114,14 +129,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     - {:error, reason} if not available
   """
   def check_characters_endpoint_availability do
-    Logger.debug(
-      "[CharactersClient] Checking characters endpoint availability"
-    )
+    Logger.debug("[CharactersClient] Checking characters endpoint availability")
 
     with {:ok, url} <- UrlBuilder.build_url("map/characters"),
          headers = UrlBuilder.get_auth_headers(),
          {:ok, response} <- Client.get(url, headers) do
-
       # We only need to verify that we get a successful response
       case response do
         %{status_code: status} when status >= 200 and status < 300 ->
@@ -130,9 +142,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
         %{status_code: status, body: body} ->
           error_reason = "Endpoint returned status #{status}: #{body}"
-          Logger.warning(
-            "[CharactersClient] Characters endpoint returned error: #{error_reason}"
-          )
+          Logger.warning("[CharactersClient] Characters endpoint returned error: #{error_reason}")
           {:error, error_reason}
       end
     else
@@ -140,6 +150,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         Logger.warning(
           "[CharactersClient] Characters endpoint is NOT available: #{inspect(reason)}"
         )
+
         {:error, reason}
     end
   end
@@ -158,7 +169,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     try do
       with {:ok, url} <- UrlBuilder.build_url("map/character-activity", %{}, slug),
            headers = UrlBuilder.get_auth_headers() do
-           
         # Make the API request directly to handle raw response
         case Client.get(url, headers) do
           {:ok, %{status_code: 200, body: body, headers: _headers}} when is_binary(body) ->
@@ -166,30 +176,37 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
             case Jason.decode(body) do
               {:ok, parsed_json} ->
                 # Extract activity data with fallbacks for different API formats
-                activity_data = case parsed_json do
-                  %{"data" => data} when is_list(data) -> data
-                  %{"activity" => activity} when is_list(activity) -> activity
-                  data when is_list(data) -> data
-                  _ -> []
-                end
+                activity_data =
+                  case parsed_json do
+                    %{"data" => data} when is_list(data) -> data
+                    %{"activity" => activity} when is_list(activity) -> activity
+                    data when is_list(data) -> data
+                    _ -> []
+                  end
 
-                Logger.debug("[CharactersClient] Parsed #{length(activity_data)} activity entries from API response")
+                Logger.debug(
+                  "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
+                )
 
                 # Return the validated activity data
                 {:ok, activity_data}
-                
+
               {:error, reason} ->
                 Logger.error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
-                Logger.debug("[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}...")
+
+                Logger.debug(
+                  "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
+                )
+
                 {:error, {:json_parse_error, reason}}
             end
-            
+
           {:ok, %{status_code: status_code}} when status_code != 200 ->
             Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
             # Determine if this error is retryable
             error_type = if status_code >= 500, do: :retriable, else: :permanent
             {:error, {error_type, {:http_error, status_code}}}
-            
+
           {:error, reason} ->
             Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
             # Network errors are generally retryable
@@ -246,7 +263,8 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
             character_info = %{
               "character_id" => char.eve_id,
               "character_name" => char.name,
-              "corporation_name" => char.corporation_ticker
+              "corporation_ticker" => char.corporation_ticker,
+              "corporation_id" => char.corporation_id
             }
 
             send_character_notification(character_info)

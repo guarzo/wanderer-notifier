@@ -89,9 +89,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             advanced_statistics: features.enabled?(:advanced_statistics)
           },
           config: %{
-            character_tracking_enabled: WandererNotifier.Core.Config.character_tracking_enabled?(),
-            character_notifications_enabled: WandererNotifier.Core.Config.character_notifications_enabled?(),
-            system_notifications_enabled: WandererNotifier.Core.Config.system_notifications_enabled?()
+            character_tracking_enabled:
+              WandererNotifier.Core.Config.character_tracking_enabled?(),
+            character_notifications_enabled:
+              WandererNotifier.Core.Config.character_notifications_enabled?(),
+            system_notifications_enabled:
+              WandererNotifier.Core.Config.system_notifications_enabled?()
           }
         }
       }
@@ -487,7 +490,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Helper functions
   defp calculate_percentage(_current, limit) when is_nil(limit), do: nil
-  defp calculate_percentage(current, limit) when limit > 0, do: min(100, round(current / limit * 100))
+
+  defp calculate_percentage(current, limit) when limit > 0,
+    do: min(100, round(current / limit * 100))
+
   defp calculate_percentage(_, _), do: 0
 
   # Test kill notification endpoint
@@ -516,10 +522,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     Logger.info("Test character notification endpoint called")
 
     result = send_test_character_notification()
-    
+
     # Handle the result (should always return {:ok, character_id, character_name} with our changes)
     {:ok, character_id, character_name} = result
-    
+
     response = %{
       success: true,
       message: "Test character notification sent for #{character_name} (ID: #{character_id})",
@@ -540,8 +546,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
     # Get result data - system ID and name for response
     {:ok, system_id, system_name} = result
-    
-    # Send API response  
+
+    # Send API response
     response = %{
       success: true,
       message: "Test system notification sent for #{system_name} (ID: #{system_id})",
@@ -623,13 +629,15 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
           {:error, reason} ->
             Logger.error("Direct license validation failed: #{inspect(reason)}")
-            error_message = case reason do
-              :not_found -> "License not found"
-              :invalid_bot_token -> "Invalid bot token"
-              :bot_not_authorized -> "Bot not authorized for this license"
-              :request_failed -> "Connection to license server failed"
-              _ -> "Validation error: #{inspect(reason)}"
-            end
+
+            error_message =
+              case reason do
+                :not_found -> "License not found"
+                :invalid_bot_token -> "Invalid bot token"
+                :bot_not_authorized -> "Bot not authorized for this license"
+                :request_failed -> "Connection to license server failed"
+                _ -> "Validation error: #{inspect(reason)}"
+              end
 
             %{
               success: false,
@@ -640,6 +648,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       rescue
         e ->
           Logger.error("Exception during license revalidation: #{inspect(e)}")
+
           %{
             success: false,
             message: "License validation failed",
@@ -708,17 +717,22 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         # Create a sample character for testing
         sample_character = %{
           "character_id" => "1354830081",
-          "name" => "CCP Garthagk",
-          "corporationID" => "98356193",
-          "corporationName" => "C C P Alliance"
+          "character_name" => "CCP Garthagk",
+          "corporation_id" => 98_356_193,
+          "corporation_ticker" => "CCP"
         }
-        
+
         character_id = sample_character["character_id"]
-        character_name = sample_character["name"]
-        
-        Logger.info("Using sample character #{character_name} (ID: #{character_id}) for test notification")
-        WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [sample_character])
-        
+        character_name = sample_character["character_name"]
+
+        Logger.info(
+          "Using sample character #{character_name} (ID: #{character_id}) for test notification"
+        )
+
+        WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [
+          sample_character
+        ])
+
         {:ok, character_id, character_name}
 
       characters ->
@@ -731,17 +745,22 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             # Create a sample character for testing
             sample_character = %{
               "character_id" => "1354830081",
-              "name" => "CCP Garthagk",
-              "corporationID" => "98356193",
-              "corporationName" => "C C P Alliance"
+              "character_name" => "CCP Garthagk",
+              "corporation_id" => 98_356_193,
+              "corporation_ticker" => "CCP"
             }
-            
+
             character_id = sample_character["character_id"]
-            character_name = sample_character["name"]
-            
-            Logger.info("Using sample character #{character_name} (ID: #{character_id}) for test notification")
-            WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [sample_character])
-            
+            character_name = sample_character["character_name"]
+
+            Logger.info(
+              "Using sample character #{character_name} (ID: #{character_id}) for test notification"
+            )
+
+            WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [
+              sample_character
+            ])
+
             {:ok, character_id, character_name}
 
           valid_list ->
@@ -752,7 +771,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               "Using character #{character_name} (ID: #{character_id}) for test notification"
             )
 
-            result = WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [character])
+            # Create a properly formatted character map with string keys for the notifier
+            formatted_character = format_character_for_notification(character)
+
+            result =
+              WandererNotifier.Notifiers.Factory.notify(
+                :send_new_tracked_character_notification,
+                [formatted_character]
+              )
 
             case result do
               {:error, :invalid_character_id} ->
@@ -760,17 +786,21 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
                 # Fall back to sample character on error
                 sample_character = %{
                   "character_id" => "1354830081",
-                  "name" => "CCP Garthagk",
-                  "corporationID" => "98356193",
-                  "corporationName" => "C C P Alliance"
+                  "character_name" => "CCP Garthagk",
+                  "corporation_id" => 98_356_193,
+                  "corporation_ticker" => "CCP"
                 }
-                
+
                 character_id = sample_character["character_id"]
-                character_name = sample_character["name"]
-                
+                character_name = sample_character["character_name"]
+
                 Logger.info("Using fallback character #{character_name} (ID: #{character_id})")
-                WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [sample_character])
-                
+
+                WandererNotifier.Notifiers.Factory.notify(
+                  :send_new_tracked_character_notification,
+                  [sample_character]
+                )
+
                 {:ok, character_id, character_name}
 
               _ ->
@@ -780,7 +810,30 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
   end
 
-  # This function has been moved to NotificationHelpers.send_test_system_notification/0
+  # Helper to format character data consistently for notification
+  defp format_character_for_notification(character) do
+    require Logger
+    alias WandererNotifier.Notifiers.Formatter
+
+    Logger.debug(
+      "[APIController] Formatting character for notification: #{inspect(character, pretty: true, limit: 300)}"
+    )
+
+    # Use the centralized Formatter for data extraction
+    character_id = Formatter.extract_character_id(character)
+    character_name = Formatter.extract_character_name(character)
+    corporation_id = Formatter.extract_corporation_id(character)
+    corporation_name = Formatter.extract_corporation_name(character)
+
+    # Create a map with proper string keys expected by the formatter
+    %{
+      "character_id" => character_id,
+      "character_name" => character_name,
+      "corporation_id" => corporation_id,
+      # Use corporation_ticker for consistency with API format
+      "corporation_ticker" => corporation_name
+    }
+  end
 
   #
   # Validate EVE ID
@@ -828,49 +881,19 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Extract character details
   #
   defp extract_character_details(character) do
-    character_id =
-      cond do
-        is_binary(character["character_id"]) and
-            NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
-          character["character_id"]
+    require Logger
 
-        is_binary(character["eve_id"]) and
-            NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
-          character["eve_id"]
+    # Use the centralized Formatter for character data extraction
+    alias WandererNotifier.Notifiers.Formatter
 
-        (is_map(character["character"]) && is_binary(character["character"]["eve_id"])) and
-            NotificationHelpers.is_valid_numeric_id?(character["character"]["eve_id"]) ->
-          character["character"]["eve_id"]
+    # Get character ID and name using the Formatter's extraction functions
+    character_id = Formatter.extract_character_id(character)
+    character_name = Formatter.extract_character_name(character)
 
-        (is_map(character["character"]) && is_binary(character["character"]["character_id"])) and
-            NotificationHelpers.is_valid_numeric_id?(character["character"]["character_id"]) ->
-          character["character"]["character_id"]
-
-        (is_map(character["character"]) && is_binary(character["character"]["id"])) and
-            NotificationHelpers.is_valid_numeric_id?(character["character"]["id"]) ->
-          character["character"]["id"]
-
-        true ->
-          nil
-      end
-
-    character_name =
-      cond do
-        character["character_name"] != nil ->
-          character["character_name"]
-
-        character["name"] != nil ->
-          character["name"]
-
-        is_map(character["character"]) && character["character"]["name"] != nil ->
-          character["character"]["name"]
-
-        is_map(character["character"]) && character["character"]["character_name"] != nil ->
-          character["character"]["character_name"]
-
-        true ->
-          "Character #{character_id}"
-      end
+    # Add logging for debugging
+    Logger.info(
+      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
+    )
 
     {character_id, character_name}
   end

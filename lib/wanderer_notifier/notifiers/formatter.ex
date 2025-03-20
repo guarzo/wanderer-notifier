@@ -176,10 +176,19 @@ defmodule WandererNotifier.Notifiers.Formatter do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_character_notification(character) do
+    # Extract all character information
     character_id = extract_character_id(character)
     character_name = extract_character_name(character)
     corporation_name = extract_corporation_name(character)
     corporation_id = extract_corporation_id(character)
+
+    # Log all extracted values for debugging
+    Logger.info(
+      "[Formatter] Character notification - id: #{character_id}, name: #{character_name}, " <>
+        "corporation_name: #{corporation_name}, corporation_id: #{inspect(corporation_id)}"
+    )
+
+    Logger.info("[Formatter] Character data: #{inspect(character, pretty: true, limit: 1000)}")
 
     %{
       type: :character_notification,
@@ -224,215 +233,61 @@ defmodule WandererNotifier.Notifiers.Formatter do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_system_notification(system) do
-    # Extract all system information
-    Logger.info("Original system data: #{inspect(system, pretty: true, limit: 5000)}")
+    # Extract all system information with normalized data
+    require Logger
+
+    Logger.debug(
+      "[Formatter] Processing system notification with original data: #{inspect(system, pretty: true, limit: 2000)}"
+    )
+
     system = normalize_system_data(system)
-    Logger.info("Normalized system data: #{inspect(system, pretty: true, limit: 5000)}")
 
-    # Check if system contains a system object and log its contents
-    system_obj = Map.get(system, "system") || Map.get(system, :system)
-
-    if system_obj do
-      Logger.info("System object found with keys: #{inspect(Map.keys(system_obj))}")
-
-      if is_struct(system_obj) do
-        Logger.info(
-          "System object is a struct with original_name: #{system_obj.original_name}, temporary_name: #{inspect(system_obj.temporary_name)}"
-        )
-      else
-        orig = Map.get(system_obj, "original_name") || Map.get(system_obj, :original_name)
-        temp = Map.get(system_obj, "temporary_name") || Map.get(system_obj, :temporary_name)
-
-        Logger.info(
-          "System object is a map with original_name: #{inspect(orig)}, temporary_name: #{inspect(temp)}"
-        )
-      end
-    end
-
-    # Get system ID from multiple possible locations
-    system_id =
-      Map.get(system, "solar_system_id") ||
-        Map.get(system, :solar_system_id) ||
-        Map.get(system, "system_id") ||
-        Map.get(system, :system_id) ||
-        Map.get(system, "id") ||
-        Map.get(system, :id) ||
-        Map.get(system, "systemId") ||
-        Map.get(system, :systemId)
-
-    # Get system name from multiple possible locations,
-    # prioritizing system object fields
-    orig_name =
-      get_in(system, ["system", "original_name"]) ||
-        get_in(system, [:system, :original_name]) ||
-        Map.get(system, "original_name") ||
-        Map.get(system, :original_name)
-
-    temp_name =
-      get_in(system, ["system", "temporary_name"]) ||
-        get_in(system, [:system, :temporary_name]) ||
-        Map.get(system, "temporary_name") ||
-        Map.get(system, :temporary_name)
-
-    # Get basic name from various sources
-    basic_name =
-      get_in(system, ["system", "name"]) ||
-        get_in(system, [:system, :name]) ||
-        Map.get(system, "display_name") ||
-        Map.get(system, :display_name) ||
-        Map.get(system, "solar_system_name") ||
-        Map.get(system, :solar_system_name) ||
-        Map.get(system, "system_name") ||
-        Map.get(system, :system_name) ||
-        Map.get(system, "systemName") ||
-        Map.get(system, :systemName) ||
-        Map.get(system, "name") ||
-        Map.get(system, :name) ||
-        "Unknown System"
-
-    Logger.info(
-      "[Formatter] Name values - orig_name: #{inspect(orig_name)}, temp_name: #{inspect(temp_name)}, basic_name: #{inspect(basic_name)}"
+    Logger.debug(
+      "[Formatter] Using normalized system data: #{inspect(system, pretty: true, limit: 2000)}"
     )
 
-    # Set the final system name, with preference for combination of temporary and original
-    system_name =
-      if temp_name && temp_name != "" && orig_name && orig_name != "" do
-        formatted_name = "#{temp_name} (#{orig_name})"
-
-        Logger.info(
-          "[Formatter] Using combined temporary_name and original_name: #{formatted_name}"
-        )
-
-        formatted_name
-      else
-        if orig_name && orig_name != "" do
-          Logger.info("[Formatter] Using just original_name: #{orig_name}")
-          orig_name
-        else
-          Logger.info("[Formatter] Falling back to basic_name: #{basic_name}")
-          basic_name
-        end
-      end
-
-    # Get type description from multiple possible locations
-    type_description =
-      Map.get(system, "type_description") ||
-        Map.get(system, :type_description) ||
-        get_in(system, ["staticInfo", "typeDescription"]) ||
-        get_in(system, [:staticInfo, :typeDescription]) ||
-        Map.get(system, "typeDescription") ||
-        Map.get(system, :typeDescription)
-
-    # Get class title for wormhole systems from multiple possible locations
-    # First prioritize the system object's class_title
-    # Then the top-level class_title
-    # Fall back to other sources
-    class_title =
-      get_in(system, ["system", "class_title"]) ||
-        get_in(system, [:system, :class_title]) ||
-        Map.get(system, "class_title") ||
-        Map.get(system, :class_title) ||
-        get_in(system, ["staticInfo", "class_title"]) ||
-        get_in(system, [:staticInfo, :class_title])
+    # Extract essential system information using consistent extraction methods
+    system_id = extract_system_id(system)
+    system_name = extract_system_name(system)
+    type_description = extract_type_description(system)
 
     Logger.info(
-      "System ID: #{system_id}, System Name: #{system_name}, Type Description: #{type_description}"
+      "[Formatter] System ID: #{system_id}, System Name: #{system_name}, Type Description: #{type_description}"
     )
 
-    if type_description == nil do
+    if is_nil(type_description) do
       Logger.error(
-        "Cannot format system notification: type_description not available for system #{system_name} (ID: #{system_id})"
+        "[Formatter] Cannot format system notification: type_description not available for system #{system_name} (ID: #{system_id})"
       )
 
       nil
     else
-      effect_name =
-        Map.get(system, "effect_name") ||
-          Map.get(system, :effect_name) ||
-          get_in(system, ["staticInfo", "effectName"]) ||
-          get_in(system, [:staticInfo, :effectName])
+      # Extract additional system information
+      effect_name = extract_effect_name(system)
+      is_shattered = extract_is_shattered(system)
+      statics = extract_statics(system)
+      static_details = extract_static_details(system)
+      region_name = extract_region_name(system)
+      sun_type_id = extract_sun_type_id(system)
 
-      is_shattered =
-        Map.get(system, "is_shattered") ||
-          Map.get(system, :is_shattered) ||
-          get_in(system, ["staticInfo", "isShattered"]) ||
-          get_in(system, [:staticInfo, :isShattered])
-
-      statics =
-        Map.get(system, "statics") ||
-          Map.get(system, :statics) ||
-          get_in(system, ["staticInfo", "statics"]) ||
-          get_in(system, [:staticInfo, :statics]) ||
-          []
-
-      # Ensure statics is always a string for display
-      _static_display =
-        cond do
-          is_binary(statics) && statics != "" -> statics
-          is_list(statics) && length(statics) > 0 -> Enum.join(statics, ", ")
-          true -> "None"
-        end
-
-      region_name =
-        Map.get(system, "region_name") ||
-          Map.get(system, :region_name) ||
-          get_in(system, ["staticInfo", "regionName"]) ||
-          get_in(system, [:staticInfo, :regionName])
-
-      # Use class_title for wormholes if available, otherwise fall back to type_description
+      # Determine system properties
       is_wormhole =
         String.contains?(type_description || "", "Class") ||
-          (class_title != nil &&
-             (String.contains?(class_title, "C") || String.contains?(class_title, "Class")))
+          (extract_class_title(system) != nil &&
+             (String.contains?(extract_class_title(system), "C") ||
+                String.contains?(extract_class_title(system), "Class")))
 
-      # Generate title using class_title for wormholes, type_description for others
-      title =
-        if is_wormhole && class_title do
-          "New #{class_title} System Mapped"
-        else
-          "New #{type_description} System Mapped"
-        end
+      # Generate notification components
+      title = generate_system_title(type_description, extract_class_title(system), is_wormhole)
 
-      # Generate description using class_title for wormholes, type_description for others
       description =
-        if is_wormhole && class_title do
-          "A #{class_title} wormhole system has been discovered and added to the map."
-        else
-          "A #{type_description} system has been discovered and added to the map."
-        end
-
-      sun_type_id =
-        Map.get(system, "sun_type_id") ||
-          Map.get(system, :sun_type_id) ||
-          get_in(system, ["staticInfo", "sunTypeId"]) ||
-          get_in(system, [:staticInfo, :sunTypeId])
+        generate_system_description(type_description, extract_class_title(system), is_wormhole)
 
       icon_url = determine_system_icon(sun_type_id, effect_name, type_description)
-
       embed_color = determine_system_color(type_description, is_wormhole)
+      display_name = format_system_display_name(system_id, system_name)
 
-      # Use system ID if available, otherwise use ID field
-      zkill_id =
-        if system_id do
-          if is_binary(system_id) && String.contains?(system_id, "-") do
-            # Handle UUID-style IDs - use system name for link instead
-            system_name
-          else
-            system_id
-          end
-        else
-          system_name
-        end
-
-      display_name =
-        if is_binary(zkill_id) && String.contains?(zkill_id, "-") do
-          # For UUID-style IDs, just show the name without a link
-          system_name
-        else
-          "[#{system_name}](https://zkillboard.com/system/#{zkill_id}/)"
-        end
-
-      # Start building fields list
+      # Build fields list
       fields = [%{name: "System", value: display_name, inline: true}]
 
       # Add shattered field if applicable
@@ -446,44 +301,7 @@ defmodule WandererNotifier.Notifiers.Formatter do
       # Add statics field if applicable for wormhole systems
       fields =
         if is_wormhole do
-          # First try to get static_details which has destination information
-          static_details =
-            get_in(system, ["static_details"]) ||
-              get_in(system, [:static_details]) ||
-              get_in(system, ["staticInfo", "static_details"]) ||
-              get_in(system, [:staticInfo, :static_details])
-
-          if is_list(static_details) && length(static_details) > 0 do
-            statics_str = format_statics_list(static_details)
-            Logger.info("[Formatter] Adding statics with destination details: #{statics_str}")
-            fields ++ [%{name: "Statics", value: statics_str, inline: true}]
-          else
-            # Fall back to basic statics list if detailed info is not available
-            if is_list(statics) && length(statics) > 0 do
-              statics_str = format_statics_list(statics)
-              Logger.info("[Formatter] Adding statics to system notification: #{statics_str}")
-              fields ++ [%{name: "Statics", value: statics_str, inline: true}]
-            else
-              # Try to find statics from other common locations
-              alt_statics =
-                get_in(system, ["staticInfo", "statics"]) ||
-                  get_in(system, [:staticInfo, :statics]) ||
-                  get_in(system, ["data", "statics"]) ||
-                  get_in(system, [:data, :statics])
-
-              if is_list(alt_statics) && length(alt_statics) > 0 do
-                statics_str = format_statics_list(alt_statics)
-                Logger.info("[Formatter] Adding statics from alternative source: #{statics_str}")
-                fields ++ [%{name: "Statics", value: statics_str, inline: true}]
-              else
-                Logger.warning(
-                  "[Formatter] Wormhole system without statics: #{system_name}, tried statics=#{inspect(statics)} and alt_statics=#{inspect(alt_statics)}"
-                )
-
-                fields
-              end
-            end
-          end
+          add_statics_field(fields, statics, static_details, system_name)
         else
           fields
         end
@@ -511,6 +329,229 @@ defmodule WandererNotifier.Notifiers.Formatter do
         thumbnail: %{url: icon_url},
         fields: fields
       }
+    end
+  end
+
+  # Extract system ID with consistent precedence
+  defp extract_system_id(system) when is_map(system) do
+    require Logger
+
+    system_id =
+      Map.get(system, "solar_system_id") ||
+        Map.get(system, "system_id") ||
+        Map.get(system, "id") ||
+        Map.get(system, "systemId")
+
+    Logger.debug("[Formatter] Extracted system_id: #{inspect(system_id)}")
+    system_id
+  end
+
+  # Extract system name with consistent precedence
+  defp extract_system_name(system) when is_map(system) do
+    require Logger
+
+    # Get system name components
+    orig_name = get_original_name(system)
+    temp_name = get_temporary_name(system)
+    basic_name = get_basic_name(system)
+
+    system_name =
+      cond do
+        # If both temporary and original names exist, combine them
+        temp_name && temp_name != "" && orig_name && orig_name != "" ->
+          formatted_name = "#{temp_name} (#{orig_name})"
+
+          Logger.debug(
+            "[Formatter] Using combined temporary_name and original_name: #{formatted_name}"
+          )
+
+          formatted_name
+
+        # If only original name exists, use it
+        orig_name && orig_name != "" ->
+          Logger.debug("[Formatter] Using just original_name: #{orig_name}")
+          orig_name
+
+        # Fall back to basic name
+        true ->
+          Logger.debug("[Formatter] Falling back to basic_name: #{basic_name}")
+          basic_name
+      end
+
+    system_name
+  end
+
+  # Get original name from system data
+  defp get_original_name(system) do
+    get_in(system, ["system", "original_name"]) ||
+      Map.get(system, "original_name")
+  end
+
+  # Get temporary name from system data
+  defp get_temporary_name(system) do
+    get_in(system, ["system", "temporary_name"]) ||
+      Map.get(system, "temporary_name")
+  end
+
+  # Get basic name from system data
+  defp get_basic_name(system) do
+    get_in(system, ["system", "name"]) ||
+      Map.get(system, "display_name") ||
+      Map.get(system, "solar_system_name") ||
+      Map.get(system, "system_name") ||
+      Map.get(system, "name") ||
+      "Unknown System"
+  end
+
+  # Extract type description with consistent precedence
+  defp extract_type_description(system) when is_map(system) do
+    require Logger
+
+    type_description =
+      Map.get(system, "type_description") ||
+        get_in(system, ["staticInfo", "typeDescription"]) ||
+        Map.get(system, "typeDescription")
+
+    Logger.debug("[Formatter] Extracted type_description: #{inspect(type_description)}")
+    type_description
+  end
+
+  # Extract class title with consistent precedence
+  defp extract_class_title(system) when is_map(system) do
+    require Logger
+
+    class_title =
+      get_in(system, ["system", "class_title"]) ||
+        Map.get(system, "class_title") ||
+        get_in(system, ["staticInfo", "class_title"])
+
+    Logger.debug("[Formatter] Extracted class_title: #{inspect(class_title)}")
+    class_title
+  end
+
+  # Extract effect name with consistent precedence
+  defp extract_effect_name(system) when is_map(system) do
+    require Logger
+
+    effect_name =
+      Map.get(system, "effect_name") ||
+        get_in(system, ["staticInfo", "effectName"])
+
+    Logger.debug("[Formatter] Extracted effect_name: #{inspect(effect_name)}")
+    effect_name
+  end
+
+  # Extract is_shattered with consistent precedence
+  defp extract_is_shattered(system) when is_map(system) do
+    require Logger
+
+    is_shattered =
+      Map.get(system, "is_shattered") ||
+        get_in(system, ["staticInfo", "isShattered"])
+
+    Logger.debug("[Formatter] Extracted is_shattered: #{inspect(is_shattered)}")
+    is_shattered
+  end
+
+  # Extract statics with consistent precedence
+  defp extract_statics(system) when is_map(system) do
+    require Logger
+
+    statics =
+      Map.get(system, "statics") ||
+        get_in(system, ["staticInfo", "statics"]) ||
+        []
+
+    Logger.debug("[Formatter] Extracted statics: #{inspect(statics)}")
+    statics
+  end
+
+  # Extract static_details with consistent precedence
+  defp extract_static_details(system) when is_map(system) do
+    require Logger
+
+    static_details =
+      Map.get(system, "static_details") ||
+        get_in(system, ["staticInfo", "static_details"])
+
+    Logger.debug("[Formatter] Extracted static_details: #{inspect(static_details)}")
+    static_details
+  end
+
+  # Extract region_name with consistent precedence
+  defp extract_region_name(system) when is_map(system) do
+    require Logger
+
+    region_name =
+      Map.get(system, "region_name") ||
+        get_in(system, ["staticInfo", "regionName"])
+
+    Logger.debug("[Formatter] Extracted region_name: #{inspect(region_name)}")
+    region_name
+  end
+
+  # Extract sun_type_id with consistent precedence
+  defp extract_sun_type_id(system) when is_map(system) do
+    require Logger
+
+    sun_type_id =
+      Map.get(system, "sun_type_id") ||
+        get_in(system, ["staticInfo", "sunTypeId"])
+
+    Logger.debug("[Formatter] Extracted sun_type_id: #{inspect(sun_type_id)}")
+    sun_type_id
+  end
+
+  # Generate system title
+  defp generate_system_title(type_description, class_title, is_wormhole) do
+    if is_wormhole && class_title do
+      "New #{class_title} System Mapped"
+    else
+      "New #{type_description} System Mapped"
+    end
+  end
+
+  # Generate system description
+  defp generate_system_description(type_description, class_title, is_wormhole) do
+    if is_wormhole && class_title do
+      "A #{class_title} wormhole system has been discovered and added to the map."
+    else
+      "A #{type_description} system has been discovered and added to the map."
+    end
+  end
+
+  # Format system display name for zkill link
+  defp format_system_display_name(system_id, system_name) do
+    if is_binary(system_id) && String.contains?(system_id, "-") do
+      # For UUID-style IDs, just show the name without a link
+      system_name
+    else
+      "[#{system_name}](https://zkillboard.com/system/#{system_id}/)"
+    end
+  end
+
+  # Add statics field to embed fields
+  defp add_statics_field(fields, statics, static_details, system_name) do
+    require Logger
+
+    # First try to use static_details which has destination information
+    if is_list(static_details) && length(static_details) > 0 do
+      statics_str = format_statics_list(static_details)
+      Logger.debug("[Formatter] Adding statics with destination details: #{statics_str}")
+      fields ++ [%{name: "Statics", value: statics_str, inline: true}]
+    else
+      # Fall back to basic statics list if detailed info is not available
+      if is_list(statics) && length(statics) > 0 do
+        statics_str = format_statics_list(statics)
+        Logger.debug("[Formatter] Adding statics to system notification: #{statics_str}")
+        fields ++ [%{name: "Statics", value: statics_str, inline: true}]
+      else
+        Logger.warning(
+          "[Formatter] Wormhole system without statics: #{system_name}, tried statics=#{inspect(statics)}"
+        )
+
+        fields
+      end
     end
   end
 
@@ -550,19 +591,66 @@ defmodule WandererNotifier.Notifiers.Formatter do
 
   # Extracts details about the final blow attacker
   defp extract_final_blow_details(final_blow_attacker, is_npc_kill) do
+    require Logger
+
     if final_blow_attacker do
-      final_blow_name =
-        if is_npc_kill,
-          do: "NPC",
-          else: get_value(final_blow_attacker, ["character_name"], "Unknown Pilot")
+      # Extract attacker details with proper logging
+      Logger.debug(
+        "[Formatter] Extracting final blow details from attacker: #{inspect(final_blow_attacker, pretty: true, limit: 300)}"
+      )
 
-      final_blow_ship = get_value(final_blow_attacker, ["ship_type_name"], "Unknown Ship")
-
+      # Extract character_id using consistent approach
       final_blow_character_id =
-        Map.get(final_blow_attacker, "character_id") ||
-          Map.get(final_blow_attacker, :character_id)
+        cond do
+          # Direct character_id field
+          Map.has_key?(final_blow_attacker, "character_id") ->
+            Logger.debug("[Formatter] Found final blow character_id field")
+            final_blow_attacker["character_id"]
 
+          # Character struct with eve_id
+          Map.has_key?(final_blow_attacker, :__struct__) &&
+              final_blow_attacker.__struct__ == WandererNotifier.Data.Character ->
+            Logger.debug("[Formatter] Found Character struct for final blow")
+            final_blow_attacker.eve_id
+
+          # Nested character object
+          is_map(final_blow_attacker["character"]) &&
+              Map.has_key?(final_blow_attacker["character"], "eve_id") ->
+            Logger.debug("[Formatter] Found nested character with eve_id for final blow")
+            final_blow_attacker["character"]["eve_id"]
+
+          # Check for atom key :character_id
+          Map.has_key?(final_blow_attacker, :character_id) ->
+            Logger.debug("[Formatter] Found atom key :character_id for final blow")
+            final_blow_attacker.character_id
+
+          true ->
+            Logger.warning("[Formatter] Could not find character_id for final blow attacker")
+            nil
+        end
+
+      # Extract character name
+      final_blow_name =
+        if is_npc_kill do
+          Logger.debug("[Formatter] Using NPC as final blow attacker name")
+          "NPC"
+        else
+          name = Map.get(final_blow_attacker, "character_name")
+          Logger.debug("[Formatter] Found final blow character name: #{inspect(name)}")
+          name || "Unknown Pilot"
+        end
+
+      # Extract ship type
+      final_blow_ship = Map.get(final_blow_attacker, "ship_type_name") || "Unknown Ship"
+      Logger.debug("[Formatter] Found final blow ship type: #{inspect(final_blow_ship)}")
+
+      Logger.debug("[Formatter] Final blow character ID: #{inspect(final_blow_character_id)}")
+
+      # Create response with appropriate formatting
       if final_blow_character_id && !is_npc_kill do
+        # If we have a character ID and it's not an NPC kill, include a zkillboard link
+        Logger.debug("[Formatter] Creating final blow details with zkillboard link")
+
         %{
           name: final_blow_name,
           ship: final_blow_ship,
@@ -571,6 +659,9 @@ defmodule WandererNotifier.Notifiers.Formatter do
             "[#{final_blow_name}](https://zkillboard.com/character/#{final_blow_character_id}/) (#{final_blow_ship})"
         }
       else
+        # Otherwise just format the name and ship without a link
+        Logger.debug("[Formatter] Creating final blow details without link")
+
         %{
           name: final_blow_name,
           ship: final_blow_ship,
@@ -579,6 +670,9 @@ defmodule WandererNotifier.Notifiers.Formatter do
         }
       end
     else
+      # No final blow attacker found, return default values
+      Logger.debug("[Formatter] No final blow attacker found, using defaults")
+
       %{
         name: "Unknown Pilot",
         ship: "Unknown Ship",
@@ -651,65 +745,59 @@ defmodule WandererNotifier.Notifiers.Formatter do
 
   # Helper to format a list of statics with improved handling for different data formats
   defp format_statics_list(statics) do
+    require Logger
+
     # If statics is already a formatted string, just return it
     if is_binary(statics) do
+      Logger.debug("[Formatter] Statics is already a string: #{statics}")
       statics
     else
       # Safely handle nil case
       statics_list = if is_nil(statics), do: [], else: statics
+      Logger.debug("[Formatter] Processing statics list with #{length(statics_list)} items")
 
       # Map each static and join with comma
-      Enum.map_join(statics_list, ", ", fn static ->
-        cond do
-          # Handle map with destination information (complete format)
-          is_map(static) && Map.has_key?(static, "destination") ->
-            name = Map.get(static, "name")
-            destination = Map.get(static, "destination") || %{}
-            short_name = Map.get(destination, "short_name")
+      formatted = Enum.map(statics_list, fn static -> format_single_static(static) end)
+      Enum.join(formatted, ", ")
+    end
+  end
 
-            if name && short_name do
-              "#{name} (#{short_name})"
-            else
-              name || "Unknown"
-            end
+  # Format a single static wormhole entry
+  defp format_single_static(static) do
+    require Logger
 
-          # Handle map with name key (common format)
-          is_map(static) && (Map.has_key?(static, "name") || Map.has_key?(static, :name)) ->
-            Map.get(static, "name") || Map.get(static, :name)
+    cond do
+      # Handle map with destination information (complete format)
+      is_map(static) && Map.has_key?(static, "destination") ->
+        name = Map.get(static, "name")
+        destination = Map.get(static, "destination") || %{}
+        short_name = Map.get(destination, "short_name")
 
-          # Handle map with destination_class key (detailed format)
-          is_map(static) &&
-              (Map.has_key?(static, "destination_class") ||
-                 Map.has_key?(static, :destination_class)) ->
-            destination =
-              Map.get(static, "destination_class") || Map.get(static, :destination_class)
-
-            wh_code =
-              Map.get(static, "wormhole_code") || Map.get(static, :wormhole_code) ||
-                Map.get(static, "code") || Map.get(static, :code)
-
-            if wh_code && destination do
-              "#{wh_code} → #{destination}"
-            else
-              wh_code || destination || inspect(static)
-            end
-
-          # Handle map with just code field
-          is_map(static) &&
-              (Map.has_key?(static, "wormhole_code") || Map.has_key?(static, :wormhole_code) ||
-                 Map.has_key?(static, "code") || Map.has_key?(static, :code)) ->
-            Map.get(static, "wormhole_code") || Map.get(static, :wormhole_code) ||
-              Map.get(static, "code") || Map.get(static, :code)
-
-          # Handle simple string static
-          is_binary(static) ->
-            static
-
-          # Fallback for any other format
-          true ->
-            inspect(static)
+        if name && short_name do
+          formatted = "#{name} (#{short_name})"
+          Logger.debug("[Formatter] Formatted static with destination info: #{formatted}")
+          formatted
+        else
+          Logger.debug("[Formatter] Static has name but no short_name: #{inspect(name)}")
+          name || "Unknown"
         end
-      end)
+
+      # Handle map with name key (common format)
+      is_map(static) && Map.has_key?(static, "name") ->
+        name = Map.get(static, "name")
+        Logger.debug("[Formatter] Using static name: #{inspect(name)}")
+        name
+
+      # Handle simple string static
+      is_binary(static) ->
+        Logger.debug("[Formatter] Static is already a string: #{static}")
+        static
+
+      # Fallback for any other format
+      true ->
+        formatted = inspect(static)
+        Logger.debug("[Formatter] Using fallback format for static: #{formatted}")
+        formatted
     end
   end
 
@@ -864,158 +952,269 @@ defmodule WandererNotifier.Notifiers.Formatter do
   # Character data extraction functions
 
   @doc """
-  Extracts a valid EVE character ID from a character map.
-  Handles various possible key structures.
+  Extracts a character ID from a character map following the API format.
 
-  Returns the ID as a string or nil if no valid ID is found.
+  According to the API documentation, characters are returned with:
+  1. A nested 'character' object containing 'eve_id' field (standard format)
+  2. Direct 'character_id' field for notification format
+
+  Returns the ID as a string, or nil if not found.
   """
   def extract_character_id(character) when is_map(character) do
-    # Extract character ID - only accept numeric IDs
-    cond do
-      # Check top level character_id
-      is_binary(character["character_id"]) && is_valid_numeric_id?(character["character_id"]) ->
-        character["character_id"]
+    require Logger
 
-      # Check top level eve_id
-      is_binary(character["eve_id"]) && is_valid_numeric_id?(character["eve_id"]) ->
-        character["eve_id"]
+    # Log the input for debugging
+    Logger.debug(
+      "[Formatter] Extracting character_id from: #{inspect(character, pretty: true, limit: 300)}"
+    )
 
-      # Check nested character object
-      is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
-          is_valid_numeric_id?(character["character"]["eve_id"]) ->
-        character["character"]["eve_id"]
+    character_id =
+      cond do
+        # Handle Character struct
+        Map.has_key?(character, :__struct__) &&
+            character.__struct__ == WandererNotifier.Data.Character ->
+          Logger.debug("[Formatter] Found character_id in Character struct (eve_id)")
+          character.eve_id
 
-      is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
-          is_valid_numeric_id?(character["character"]["character_id"]) ->
-        character["character"]["character_id"]
+        # Standard API format with nested character object
+        is_map(character["character"]) && Map.has_key?(character["character"], "eve_id") ->
+          Logger.debug("[Formatter] Found character_id in standard API format (character.eve_id)")
+          character["character"]["eve_id"]
 
-      is_map(character["character"]) && is_binary(character["character"]["id"]) &&
-          is_valid_numeric_id?(character["character"]["id"]) ->
-        character["character"]["id"]
+        # Direct character_id (notification format)
+        Map.has_key?(character, "character_id") ->
+          Logger.debug("[Formatter] Found character_id in notification format (character_id)")
+          character["character_id"]
 
-      # No valid numeric ID found
-      true ->
-        Logger.error(
-          "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
-        )
+        # Check for atom key :eve_id
+        Map.has_key?(character, :eve_id) ->
+          Logger.debug("[Formatter] Found character_id as atom key (:eve_id)")
+          character.eve_id
 
+        true ->
+          Logger.warning("[Formatter] Could not find character_id in any supported format")
+          nil
+      end
+
+    # Convert to string if needed for consistency
+    case character_id do
+      id when is_integer(id) ->
+        Logger.debug("[Formatter] Converting integer character_id to string: #{id}")
+        Integer.to_string(id)
+
+      id when is_binary(id) ->
+        id
+
+      _ ->
         nil
     end
   end
 
   @doc """
-  Extracts a character name from a character map.
-  Handles various possible key structures.
+  Extracts a character name from a character map following the API format.
 
-  Returns the name as a string or a default value if no name is found.
+  According to the API documentation, characters are returned with:
+  1. A nested 'character' object containing 'name' field (standard format)
+  2. Direct 'character_name' field for notification format
+
+  Returns the name as a string, or a default value if not found.
   """
   def extract_character_name(character, default \\ "Unknown Character") when is_map(character) do
-    cond do
-      character["character_name"] != nil ->
-        character["character_name"]
+    require Logger
 
-      character["name"] != nil ->
-        character["name"]
+    # Log the input for debugging
+    Logger.debug(
+      "[Formatter] Extracting character_name from: #{inspect(character, pretty: true, limit: 300)}"
+    )
 
-      is_map(character["character"]) && character["character"]["name"] != nil ->
-        character["character"]["name"]
+    character_name =
+      cond do
+        # Handle Character struct
+        Map.has_key?(character, :__struct__) &&
+            character.__struct__ == WandererNotifier.Data.Character ->
+          Logger.debug("[Formatter] Found character_name in Character struct (name)")
+          character.name
 
-      is_map(character["character"]) && character["character"]["character_name"] != nil ->
-        character["character"]["character_name"]
+        # Standard API format with nested character object
+        is_map(character["character"]) && Map.has_key?(character["character"], "name") ->
+          Logger.debug("[Formatter] Found character_name in standard API format (character.name)")
+          character["character"]["name"]
 
-      true ->
-        character_id = extract_character_id(character)
-        if character_id, do: "Character #{character_id}", else: default
+        # Direct character_name (notification format)
+        Map.has_key?(character, "character_name") ->
+          Logger.debug("[Formatter] Found character_name in notification format (character_name)")
+          character["character_name"]
+
+        # Check for atom key :name
+        Map.has_key?(character, :name) ->
+          Logger.debug("[Formatter] Found character_name as atom key (:name)")
+          character.name
+
+        true ->
+          Logger.warning("[Formatter] Could not find character_name in any supported format")
+          nil
+      end
+
+    if is_nil(character_name) || character_name == "" do
+      Logger.debug("[Formatter] Using default character name: #{default}")
+      default
+    else
+      character_name
     end
   end
 
   @doc """
-  Extracts a corporation name from a character map.
-  Handles various possible key structures including fallbacks.
+  Extracts a corporation ID from a character map following the API format.
 
-  Returns the name as a string or a default value if no name is found.
+  According to the API documentation, characters are returned with:
+  1. A nested 'character' object containing 'corporation_id' field (standard format)
+  2. Direct 'corporation_id' field for notification format
+
+  Returns the ID as an integer, or nil if not found.
+  """
+  def extract_corporation_id(character) when is_map(character) do
+    require Logger
+
+    # Log the input for debugging
+    Logger.debug(
+      "[Formatter] Extracting corporation_id from: #{inspect(character, pretty: true, limit: 300)}"
+    )
+
+    corporation_id =
+      cond do
+        # Handle Character struct
+        Map.has_key?(character, :__struct__) &&
+            character.__struct__ == WandererNotifier.Data.Character ->
+          Logger.debug("[Formatter] Found corporation_id in Character struct (corporation_id)")
+          character.corporation_id
+
+        # Standard API format with nested character object
+        is_map(character["character"]) && Map.has_key?(character["character"], "corporation_id") ->
+          Logger.debug(
+            "[Formatter] Found corporation_id in standard API format (character.corporation_id)"
+          )
+
+          character["character"]["corporation_id"]
+
+        # Direct corporation_id (notification format)
+        Map.has_key?(character, "corporation_id") ->
+          Logger.debug("[Formatter] Found corporation_id in notification format (corporation_id)")
+          character["corporation_id"]
+
+        # Check for atom key :corporation_id
+        Map.has_key?(character, :corporation_id) ->
+          Logger.debug("[Formatter] Found corporation_id as atom key (:corporation_id)")
+          character.corporation_id
+
+        true ->
+          Logger.warning("[Formatter] Could not find corporation_id in any supported format")
+          nil
+      end
+
+    # Convert to integer if a string
+    case corporation_id do
+      id when is_integer(id) ->
+        Logger.debug("[Formatter] Corporation ID is already an integer: #{id}")
+        id
+
+      id when is_binary(id) ->
+        Logger.debug("[Formatter] Converting string corporation_id to integer: #{id}")
+
+        case Integer.parse(id) do
+          {int_id, ""} ->
+            int_id
+
+          _ ->
+            Logger.warning("[Formatter] Failed to parse corporation_id as integer: #{id}")
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Extracts a corporation name from a character map following the API format.
+
+  According to the API documentation, characters are returned with:
+  1. A nested 'character' object containing 'corporation_ticker' field (standard format)
+  2. Direct 'corporation_ticker' field for notification format
+
+  Returns the name as a string, or a default value if not found.
+  If no corporation name is found but corporation_id is available, attempts to look it up from ESI.
   """
   def extract_corporation_name(character, default \\ "Unknown Corporation")
       when is_map(character) do
+    require Logger
+
+    # Log the input for debugging
+    Logger.debug(
+      "[Formatter] Extracting corporation_name from: #{inspect(character, pretty: true, limit: 300)}"
+    )
+
     corporation_name =
       cond do
-        # Direct corporation_name
-        character["corporation_name"] != nil ->
+        # Handle Character struct with corporation_ticker
+        Map.has_key?(character, :__struct__) &&
+          character.__struct__ == WandererNotifier.Data.Character && character.corporation_ticker ->
+          Logger.debug("[Formatter] Found corporation ticker in Character struct")
+          character.corporation_ticker
+
+        # Standard API format with nested character object and corporation_ticker
+        is_map(character["character"]) &&
+            Map.has_key?(character["character"], "corporation_ticker") ->
+          Logger.debug(
+            "[Formatter] Found corporation ticker in standard API format (character.corporation_ticker)"
+          )
+
+          character["character"]["corporation_ticker"]
+
+        # Direct corporation_ticker (notification format)
+        Map.has_key?(character, "corporation_ticker") ->
+          Logger.debug("[Formatter] Found corporation ticker in notification format")
+          character["corporation_ticker"]
+
+        # Legacy corporation_name key (backwards compatibility)
+        Map.has_key?(character, "corporation_name") ->
+          Logger.debug("[Formatter] Found legacy corporation_name in notification format")
           character["corporation_name"]
 
-        # Alternative key corporationName
-        character["corporationName"] != nil ->
-          character["corporationName"]
+        # Check for corporation_name in character object
+        is_map(character["character"]) && Map.has_key?(character["character"], "corporation_name") ->
+          Logger.debug(
+            "[Formatter] Found corporation_name in standard API format (character.corporation_name)"
+          )
 
-        # Nested in character object
-        is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
           character["character"]["corporation_name"]
 
-        # Nested with alternate key
-        is_map(character["character"]) && character["character"]["corporationName"] != nil ->
-          character["character"]["corporationName"]
+        # Character struct with corporation_name atom key
+        Map.has_key?(character, :corporation_name) ->
+          Logger.debug("[Formatter] Found corporation_name in Character struct")
+          character.corporation_name
 
-        # Fall back to corporation ticker as name
-        character["corporation_ticker"] != nil ->
-          "[#{character["corporation_ticker"]}]"
-
-        # Nested corporation ticker
-        is_map(character["character"]) && character["character"]["corporation_ticker"] != nil ->
-          "[#{character["character"]["corporation_ticker"]}]"
-
-        # Try to look up from ESI if we have corporation_id
-        character["corporation_id"] != nil ->
-          lookup_corporation_name_from_esi(character["corporation_id"]) || default
-
-        # Try to look up from nested corporation_id
-        is_map(character["character"]) && character["character"]["corporation_id"] != nil ->
-          lookup_corporation_name_from_esi(character["character"]["corporation_id"]) || default
-
-        # Try to look up from corporationID (alternative key)
-        character["corporationID"] != nil ->
-          lookup_corporation_name_from_esi(character["corporationID"]) || default
-
-        # No corporation info found
         true ->
-          default
+          Logger.debug("[Formatter] Corporation name not found in data, trying ESI lookup")
+          # If no corporation name is available, try the ESI lookup if we have corporation_id
+          corporation_id = extract_corporation_id(character)
+
+          if corporation_id do
+            Logger.debug(
+              "[Formatter] Attempting ESI lookup with corporation_id: #{corporation_id}"
+            )
+
+            lookup_corporation_name_from_esi(corporation_id)
+          else
+            Logger.warning("[Formatter] No corporation_id available for ESI lookup")
+            nil
+          end
       end
 
-    # Clean up any nil values that might have slipped through
-    if is_nil(corporation_name), do: default, else: corporation_name
-  end
-
-  @doc """
-  Extracts a corporation ID from a character map.
-  Handles various possible key structures.
-
-  Returns the ID as a string or nil if no valid ID is found.
-  """
-  def extract_corporation_id(character) when is_map(character) do
-    # Try several possible locations for corporation ID
-    cond do
-      # Direct corporation_id
-      character["corporation_id"] != nil && is_valid_numeric_id?(character["corporation_id"]) ->
-        character["corporation_id"]
-
-      # Alternative key corporationID
-      character["corporationID"] != nil && is_valid_numeric_id?(character["corporationID"]) ->
-        character["corporationID"]
-
-      # Nested in character object with regular key
-      is_map(character["character"]) &&
-        character["character"]["corporation_id"] != nil &&
-          is_valid_numeric_id?(character["character"]["corporation_id"]) ->
-        character["character"]["corporation_id"]
-
-      # Nested with alternative key
-      is_map(character["character"]) &&
-        character["character"]["corporationID"] != nil &&
-          is_valid_numeric_id?(character["character"]["corporationID"]) ->
-        character["character"]["corporationID"]
-
-      # No valid corporation ID found
-      true ->
-        nil
+    if is_nil(corporation_name) || corporation_name == "" do
+      Logger.debug("[Formatter] Using default corporation name: #{default}")
+      default
+    else
+      corporation_name
     end
   end
 

@@ -4,7 +4,9 @@
 
   - [ ] Validate each notification type from end to end
     - [ ] Proper use of api, data, cache
-    - [ ] Document the field included in the notification, and their source
+    - [ ] Document the fields included in the notification, and their source
+    - [ ] Ensure we are using the correct field names through the process, not silently renaming things
+    - [ ] Remove all fallbacks for "legacy" or "alteranate" formats, there should be only one format for a given domain object
     - [ ] Document the logic determining when and if the notification is sent
   - [ ] Validate all scheduled tasks
     - [ ] When do they run, what do they do
