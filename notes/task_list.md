@@ -2,26 +2,15 @@
 
 ### Top Priority
 
- - [ ] Post-Testing Fixes
-   - [x] WebSocket Connectivity Enhancement
-     - [x] Improve WebSocket connection logging to debug why kills aren't received
-     - [x] Add heartbeat mechanism to verify connection is alive
-     - [x] Implement additional reconnection strategies if current ones aren't effective
-   - [ ] Fix System Notification Format
-     - [ ] Include static information for wormhole systems in embedded messages
-     - [ ] Update plain text messages to include temporary name for wormhole systems
-   - [ ] Character Notification Improvements
+  - [x] Fix System Notification Format
+     - [x] Include static information for wormhole systems in embedded messages
+     - [x] Update plain text messages to include temporary name for wormhole systems
+  - [ ] Character Notification Improvements
      - [ ] Add zkillboard link for corporation in character notifications
      - [ ] Ensure corporation name is consistently displayed alongside ticker
-   - [ ] Fix Compilation Warnings
-     - [ ] Fix unused variable in `application.ex` (line 137)
-     - [ ] Fix reference to undefined function `system_tracking_enabled?` in `features.ex`
-   - [ ] Fix License Validation Error
-     - [ ] Fix `:premium` key not found error in startup message task
-     - [ ] Add better error handling for missing license keys
-   - [ ] Create Enhanced Startup Message
-     - [ ] Design and implement a detailed embedded startup message
-     - [ ] Include enabled features, tracked systems, and characters in startup message
+  - [ ] Create Enhanced Startup Message
+     - [ ] Improve embedded startup message
+     - [ ] Enhance colors and display
  - [ ] Code Quality Improvements
    - [ ] Replace excessive conditionals with pattern matching where possible
      - [ ] Refactor `extract_character_id` and `extract_character_name` to use pattern matching
@@ -70,13 +59,7 @@
    - [ ] Test Error Handling
      - [ ] Verify missing data fields produce reasonable fallbacks
      - [ ] Check logging output for appropriate error handling
-     - [ ] Test with malformed data to ensure system handles it gracefully
- - [x] Add status message improvements
-   - [x] Include connection status for WebSocket and APIs
-   - [x] Show more details on notification channel routing
-   - [x] Add count of recent notifications by type
-   - [x] Create enhanced startup message with system configuration
-   - [x] Add zkillboard link for corporation in character notifications
+     - [ ] Test with malformed data to ensure system handles it gracefullys
  - [ ] Validate notification functionality
    - [ ] Create test script to validate each notification type
    - [ ] Verify kill notifications with both test API and WebSocket

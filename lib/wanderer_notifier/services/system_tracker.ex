@@ -1,14 +1,19 @@
 defmodule WandererNotifier.Services.SystemTracker do
   @moduledoc """
-  Tracks EVE Online solar systems.
-  Handles system discovery and notification of new systems.
+  Service for tracking EVE Online systems and their activity.
+  Handles fetching, caching, and notifications for systems.
   """
+
   require Logger
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  use GenServer
+
+  alias WandererNotifier.Api.Http.Client
+  alias WandererNotifier.Api.Http.ErrorHandler
+  alias WandererNotifier.Api.Map.SystemsClient
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Features
-  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
@@ -207,9 +212,8 @@ defmodule WandererNotifier.Services.SystemTracker do
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
     label = "SystemTracker"
 
-    HttpClient.get(url, headers, label: label)
-    # Don't parse JSON, we'll do that separately
-    |> HttpClient.handle_response(false)
+    Client.get(url, headers)
+    |> ErrorHandler.handle_http_response(domain: :map, tag: label)
   end
 
   defp decode_json(raw), do: Jason.decode(raw)
@@ -218,7 +222,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
 
     # Check if we should track all systems or just wormhole systems
-    track_all_systems = Features.track_all_systems?()
+    track_all_systems = Config.track_all_systems?()
     Logger.debug("[process_systems] TRACK_ALL_SYSTEMS=#{track_all_systems}")
 
     # Process systems from the map API
@@ -399,7 +403,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
     cache_key = "static_info:#{system_id}"
 
-    case HttpClient.request("GET", url, headers) do
+    case Client.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
         CacheRepo.set(cache_key, body, Config.static_info_cache_ttl())
         Jason.decode(body)
@@ -483,9 +487,75 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Send notification for new system
   defp send_notification(system) do
     if Config.system_notifications_enabled?() do
-      NotifierFactory.notify(:send_new_system_notification, [system])
-      # Increment the systems counter
-      Stats.increment(:systems)
+      # Log the system data to help with debugging
+      Logger.debug(
+        "[send_notification] Sending notification for system: #{inspect(system, pretty: true, limit: 2000)}"
+      )
+
+      # Ensure we're working with a MapSystem struct
+      enriched_system =
+        cond do
+          # Already a MapSystem struct
+          is_struct(system, MapSystem) ->
+            Logger.info("[send_notification] Using MapSystem struct")
+            enrich_system(system)
+
+          # Map with system_id or solar_system_id
+          is_map(system) ->
+            system_id =
+              Map.get(system, "solar_system_id") ||
+                Map.get(system, :solar_system_id) ||
+                Map.get(system, "system_id") ||
+                Map.get(system, :system_id)
+
+            if system_id do
+              Logger.info(
+                "[send_notification] Converting map to MapSystem struct for system #{system_id}"
+              )
+
+              # Convert to MapSystem struct and enrich
+              system
+              |> MapSystem.new()
+              |> enrich_system()
+            else
+              Logger.warning("[send_notification] Cannot convert to MapSystem: missing system ID")
+              system
+            end
+
+          true ->
+            Logger.warning("[send_notification] Unknown system type: #{inspect(system)}")
+            system
+        end
+
+      # Prepare system data for notification
+      system_id =
+        if is_struct(enriched_system, MapSystem) do
+          enriched_system.solar_system_id
+        else
+          Map.get(enriched_system, "system_id") || Map.get(enriched_system, "solar_system_id")
+        end
+
+      system_name =
+        if is_struct(enriched_system, MapSystem) do
+          enriched_system.name
+        else
+          Map.get(enriched_system, "system_name") || Map.get(enriched_system, "name") ||
+            "Unknown System"
+        end
+
+      # Prepare the notification data
+      system_data = %{
+        "id" => system_id,
+        "name" => system_name,
+        "url" => "https://zkillboard.com/system/#{system_id}/",
+        "system" => enriched_system
+      }
+
+      # Send the notification
+      notifier = NotifierFactory.get_notifier()
+      notifier.send_new_system_notification(system_data)
+    else
+      Logger.debug("[send_notification] System notifications are disabled")
     end
   end
 
@@ -537,5 +607,70 @@ defmodule WandererNotifier.Services.SystemTracker do
       _ ->
         []
     end
+  end
+
+  # Helper function to enrich a system with static information
+  defp enrich_system(system) do
+    if system != nil do
+      case SystemStaticInfo.enrich_system(system) do
+        {:ok, enriched_system} ->
+          Logger.debug("[SystemTracker] Successfully enriched system #{system.name}")
+          enriched_system
+
+        {:error, reason} ->
+          Logger.warning(
+            "[SystemTracker] Failed to enrich system #{system.name}: #{inspect(reason)}"
+          )
+
+          system
+      end
+    else
+      system
+    end
+  end
+
+  @impl true
+  def init(_args) do
+    Logger.info("[SystemTracker] Initializing system tracker service")
+
+    # Schedule the initial systems update
+    schedule_systems_update()
+
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info(:update_systems, state) do
+    Logger.debug("[SystemTracker] Starting systems update...")
+
+    # Get existing systems first for comparison
+    cached_systems = CacheRepo.get("map:systems") || []
+
+    # Use the SystemsClient to fetch systems
+    case SystemsClient.update_systems(cached_systems) do
+      {:ok, fresh_systems} ->
+        # Note: SystemsClient already handles notifications for new systems
+
+        Logger.info(
+          "[SystemTracker] Systems updated successfully with #{length(fresh_systems)} systems"
+        )
+
+        # Schedule the next update
+        schedule_systems_update()
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.error("[SystemTracker] Failed to update systems: #{inspect(reason)}")
+
+        # Schedule next update even if this one failed
+        schedule_systems_update()
+        {:noreply, state}
+    end
+  end
+
+  defp schedule_systems_update do
+    # Default to 5 minutes if not configured
+    interval = Application.get_env(:wanderer_notifier, :systems_update_interval, 300_000)
+    Process.send_after(self(), :update_systems, interval)
   end
 end

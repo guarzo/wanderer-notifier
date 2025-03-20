@@ -535,11 +535,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/test-system-notification" do
     Logger.info("Test system notification endpoint called")
 
-    result = send_test_system_notification()
+    # Directly call the normal notification pathway instead of using custom test data
+    result = NotificationHelpers.send_test_system_notification()
 
-    # Since we now always return {:ok, system_id, system_name} with our sample data implementation
+    # Get result data - system ID and name for response
     {:ok, system_id, system_name} = result
     
+    # Send API response  
     response = %{
       success: true,
       message: "Test system notification sent for #{system_name} (ID: #{system_id})",
@@ -687,12 +689,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Helper Functions
   #
 
-  defp get_tracked_systems do
-    # Make sure we're using the proper alias
-    alias WandererNotifier.Helpers.CacheHelpers
-    CacheHelpers.get_tracked_systems()
-  end
-
   #
   # Character Notification
   #
@@ -784,73 +780,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
   end
 
-  #
-  # System Notification
-  #
-  defp send_test_system_notification do
-    Logger.info("TEST NOTIFICATION: Manually triggering a test system notification")
-
-    tracked_systems = get_tracked_systems()
-    Logger.info("Found #{length(tracked_systems)} tracked systems")
-
-    case tracked_systems do
-      [] ->
-        Logger.info("No tracked systems available, using sample system data")
-        # Create a sample system for testing
-        sample_system = %{
-          "id" => "test-123",
-          "systemName" => "J123456",
-          "alias" => "Test Wormhole",
-          "systemId" => 31000123,
-          "staticInfo" => %{
-            "statics" => ["C247", "D382"],
-            "typeDescription" => "Class 5"
-          }
-        }
-        system_id = sample_system["systemId"]
-        system_name = sample_system["systemName"]
-        
-        Logger.info("Using sample system #{system_name} (ID: #{system_id}) for test notification")
-        WandererNotifier.Notifiers.Factory.notify(:send_new_system_notification, [sample_system])
-        
-        {:ok, system_id, system_name}
-
-      systems ->
-        system = Enum.random(systems)
-        # Debug the system structure to understand what fields are available
-        Logger.debug("System data for notification: #{inspect(system)}")
-        
-        system_id = Map.get(system, "system_id") || 
-                    Map.get(system, :system_id) || 
-                    Map.get(system, "systemId") || 
-                    Map.get(system, "id") || 
-                    31000001  # Fallback ID
-
-        system_name =
-          Map.get(system, "system_name") ||
-            Map.get(system, :alias) ||
-            Map.get(system, "name") ||
-            Map.get(system, "systemName") ||
-            "J000001"  # Fallback name
-
-        Logger.info("Using system #{system_name} (ID: #{system_id}) for test notification")
-        
-        # Add staticInfo if missing to avoid notifications failing
-        system_with_static =
-          if !Map.has_key?(system, "staticInfo") && !Map.has_key?(system, :staticInfo) do
-            Map.put(system, "staticInfo", %{
-              "statics" => [],
-              "typeDescription" => "Class 1"  # Default type
-            })
-          else
-            system
-          end
-        
-        WandererNotifier.Notifiers.Factory.notify(:send_new_system_notification, [system_with_static])
-
-        {:ok, system_id, system_name}
-    end
-  end
+  # This function has been moved to NotificationHelpers.send_test_system_notification/0
 
   #
   # Validate EVE ID

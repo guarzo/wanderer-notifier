@@ -189,4 +189,162 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   end
 
   def is_valid_numeric_id?(_), do: false
+
+  @doc """
+  Sends a test system notification using a real system from the cache.
+
+  This function retrieves a random wormhole system from the tracked systems and
+  sends a system notification for it. It uses the normal notification pathway to ensure
+  accurate test behavior.
+
+  ## Returns
+  - `{:ok, system_id, system_name}` - The ID and name of the system that was used for the test notification
+  """
+  @spec send_test_system_notification() :: {:ok, String.t() | integer(), String.t()}
+  def send_test_system_notification() do
+    require Logger
+    Logger.info("TEST NOTIFICATION: Manually triggering a test system notification")
+
+    alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+
+    # Get all tracked systems from cache
+    tracked_systems = get_tracked_systems()
+    Logger.info("Found #{length(tracked_systems)} tracked systems")
+
+    # Select a random wormhole system if available, or any system if no wormholes
+    selected_system =
+      tracked_systems
+      |> Enum.filter(&is_wormhole_system?/1)
+      |> case do
+        [] ->
+          # No wormhole systems, just pick any system
+          Logger.info("No wormhole systems found, selecting random system")
+          Enum.random(tracked_systems)
+        wormhole_systems ->
+          # Pick a random wormhole system
+          Logger.info("Found #{length(wormhole_systems)} wormhole systems")
+          Enum.random(wormhole_systems)
+      end
+
+    # Extract system ID and name
+    system_id = get_system_id(selected_system)
+    system_name = get_system_name(selected_system)
+
+    Logger.info("Using system #{system_name} (ID: #{system_id}) for test notification")
+
+    # Use the API's built-in enrichment function if it's a MapSystem struct
+    enriched_system = if is_struct(selected_system, WandererNotifier.Data.MapSystem) do
+      Logger.info("MapSystem struct detected, using API's enrich_system function")
+
+      # Use the built-in enrichment function that knows how to handle MapSystem structs
+      case WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(selected_system) do
+        {:ok, enriched} ->
+          Logger.info("Successfully enriched system with static info")
+          enriched
+        {:error, reason} ->
+          Logger.warning("Failed to enrich system: #{inspect(reason)}")
+          # Return the original system if enrichment fails
+          selected_system
+      end
+    else
+      # Not a MapSystem struct, just use it as-is
+      selected_system
+    end
+
+    # Send the enriched system through the normal notification flow
+    Logger.info("Sending notification with enriched system")
+
+    # Create a notification payload with the enriched system
+    system_data = %{
+      "id" => get_system_id(enriched_system),
+      "name" => get_system_name(enriched_system),
+      "url" => "https://zkillboard.com/system/#{get_system_id(enriched_system)}/",
+      "system" => enriched_system
+    }
+
+    # Send notification with the system data
+    notifier = NotifierFactory.get_notifier()
+    notifier.send_new_system_notification(system_data)
+
+    {:ok, get_system_id(enriched_system), get_system_name(enriched_system)}
+  end
+
+  # Helper functions for test system notification
+
+  # Get tracked systems from cache
+  defp get_tracked_systems() do
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+    # Try to get systems from the "map:systems" cache key
+    case CacheRepo.get("map:systems") do
+      systems when is_list(systems) and length(systems) > 0 ->
+        systems
+      _ ->
+        # Try to get system IDs and then fetch individual systems
+        case CacheRepo.get("map:system_ids") do
+          ids when is_list(ids) and length(ids) > 0 ->
+            # Get all systems by ID
+            ids
+            |> Enum.map(fn id ->
+              case CacheRepo.get("map:system:#{id}") do
+                nil -> nil
+                system -> system
+              end
+            end)
+            |> Enum.filter(&(&1 != nil))
+          _ ->
+            # No systems found
+            []
+        end
+    end
+  end
+
+  # Check if a system is a wormhole system
+  defp is_wormhole_system?(system) when is_map(system) do
+    # Check system ID range (31000000-31999999 is J-space)
+    system_id = get_system_id(system)
+    is_integer(system_id) && system_id >= 31000000 && system_id < 32000000
+  end
+  defp is_wormhole_system?(_), do: false
+
+  # Get system ID from either a MapSystem struct or a map
+  defp get_system_id(system) do
+    cond do
+      is_struct(system, WandererNotifier.Data.MapSystem) ->
+        system.solar_system_id
+
+      is_map(system) ->
+        # Try various possible keys for system ID
+        Map.get(system, "solar_system_id") ||
+        Map.get(system, :solar_system_id) ||
+        Map.get(system, "system_id") ||
+        Map.get(system, :system_id) ||
+        Map.get(system, "systemId") ||
+        Map.get(system, :systemId)
+
+      true ->
+        nil
+    end
+  end
+
+  # Get system name from either a MapSystem struct or a map
+  defp get_system_name(system) do
+    cond do
+      is_struct(system, WandererNotifier.Data.MapSystem) ->
+        system.name
+
+      is_map(system) ->
+        # Try various possible keys for system name
+        Map.get(system, "name") ||
+        Map.get(system, :name) ||
+        Map.get(system, "system_name") ||
+        Map.get(system, :system_name) ||
+        Map.get(system, "systemName") ||
+        Map.get(system, :systemName) ||
+        "Unknown System"
+
+      true ->
+        "Unknown System"
+    end
+  end
 end
