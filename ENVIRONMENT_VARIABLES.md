@@ -32,6 +32,7 @@ This document provides a complete reference for all environment variables used b
 | `ENABLE_TPS_CHARTS` | Enable TPS charts | `false` |
 | `ENABLE_MAP_CHARTS` | Enable map charts | `false` |
 | `TRACK_ALL_SYSTEMS` | Track all systems instead of specific ones | `false` |
+| `PROCESS_ALL_KILLS` | Process kills from all systems (for testing) | `false` |
 
 *Note*: The `ENABLE_CORP_TOOLS` and `ENABLE_MAP_TOOLS` variables are being gradually replaced by `ENABLE_TPS_CHARTS` and `ENABLE_MAP_CHARTS` respectively, but are still supported for backward compatibility. Similarly, `ENABLE_ACTIVITY_CHARTS` is being renamed to `ENABLE_MAP_CHARTS`.
 

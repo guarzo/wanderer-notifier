@@ -214,6 +214,9 @@ defmodule WandererNotifier.Notifiers.Discord do
   @doc """
   Sends a rich embed message for an enriched killmail.
   Expects the enriched killmail (and its nested maps) to have string keys.
+  
+  The first kill notification after startup is always sent in enriched format 
+  regardless of license status to demonstrate the premium features.
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(enriched_kill, kill_id) do
@@ -226,7 +229,17 @@ defmodule WandererNotifier.Notifiers.Discord do
       victim_ship = get_value(victim, ["ship_type_name"], "Unknown Ship")
       system_name = Map.get(enriched_kill, "solar_system_name") || "Unknown System"
 
-      if License.status().valid do
+      # Check if this is the first kill notification since startup using Stats GenServer
+      is_first_notification = Stats.is_first_notification?(:kill)
+      
+      # For first notification, use enriched format regardless of license
+      if is_first_notification || License.status().valid do
+        # Mark that we've sent the first notification if this is it
+        if is_first_notification do
+          Stats.mark_notification_sent(:kill)
+          Logger.info("Sending first kill notification in enriched format (startup message)")
+        end
+        
         # Use the formatter to create the notification
         generic_notification = Formatter.format_kill_notification(enriched_kill, kill_id)
         discord_embed = Formatter.to_discord_format(generic_notification)
@@ -236,7 +249,7 @@ defmodule WandererNotifier.Notifiers.Discord do
           "License not valid, sending plain text kill notification instead of rich embed"
         )
 
-        send_message("Kill Alert: #{victim_name} lost a #{victim_ship} in #{system_name}.")
+        send_message("Kill Alert: #{victim_name} lost a #{victim_ship} in #{system_name}.", :kill_notifications)
       end
     end
   end
@@ -408,6 +421,9 @@ defmodule WandererNotifier.Notifiers.Discord do
   Sends a notification for a new tracked character.
   Expects a map with keys: "character_id", "character_name", "corporation_id", "corporation_name".
   If names are missing, ESI lookups are performed.
+  
+  The first character notification after startup is always sent in enriched format
+  regardless of license status to demonstrate the premium features.
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character) when is_map(character) do
@@ -423,22 +439,37 @@ defmodule WandererNotifier.Notifiers.Discord do
 
       # Enrich the character data with ESI lookups if needed
       character = enrich_character_data(character)
+      
+      # Log the character data to help with debugging
+      character_id = get_value(character, ["character_id", "eve_id"], "Unknown-ID")
+      character_name = get_value(character, ["character_name", "name"], "Unknown Character")
+      corporation_name = get_value(character, ["corporation_name", "corporationName", "corporation_ticker"], nil)
+      Logger.debug("Character notification for #{character_name} (#{character_id}), corp: #{corporation_name || "Unknown"}")
+      
+      # Check if this is the first character notification since startup using Stats GenServer
+      is_first_notification = Stats.is_first_notification?(:character)
 
-      if License.status().valid do
+      # For first notification, use enriched format regardless of license
+      if is_first_notification || License.status().valid do
+        # Mark that we've sent the first notification if this is it
+        if is_first_notification do
+          Stats.mark_notification_sent(:character)
+          Logger.info("Sending first character notification in enriched format (startup message)")
+        end
+        
         # Use the formatter module to create the notification
         generic_notification = Formatter.format_character_notification(character)
         discord_embed = Formatter.to_discord_format(generic_notification)
         send_discord_embed(discord_embed, :character_tracking)
       else
         Logger.info("License not valid, sending plain text character notification")
-        character_name = get_value(character, ["character_name"], "Unknown Character")
-        corporation_name = get_value(character, ["corporation_name"], nil)
-
+        
+        # Improved fallback for corporation name
         message =
           "New Character Tracked: #{character_name}" <>
             if corporation_name, do: " (#{corporation_name})", else: ""
 
-        send_message(message)
+        send_message(message, :character_tracking)
       end
     end
   end
@@ -495,6 +526,9 @@ defmodule WandererNotifier.Notifiers.Discord do
   Sends a notification for a new system found.
   Expects a map with keys: "system_id" and optionally "system_name".
   If "system_name" is missing, falls back to a lookup.
+  
+  The first system notification after startup is always sent in enriched format
+  regardless of license status to demonstrate the premium features.
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) when is_map(system) do
@@ -508,22 +542,135 @@ defmodule WandererNotifier.Notifiers.Discord do
         _ -> :ok
       end
 
-      # Normalize the system data and use the formatter module
+      # Normalize the system data 
       system = normalize_system_data(system)
+      
+      # Extract system ID and name for logging
+      system_id = Map.get(system, "solar_system_id") || 
+                  Map.get(system, :solar_system_id) ||
+                  Map.get(system, "system_id") ||
+                  Map.get(system, :system_id) ||
+                  Map.get(system, "systemId") ||
+                  Map.get(system, "id") ||
+                  "Unknown-ID"
+                  
+      system_name = Map.get(system, "solar_system_name") || 
+                    Map.get(system, :solar_system_name) ||
+                    Map.get(system, "system_name") ||
+                    Map.get(system, :system_name) ||
+                    Map.get(system, "systemName") ||
+                    Map.get(system, "name") ||
+                    "Unknown System"
+      
+      Logger.debug("System notification for #{system_name} (ID: #{system_id})")
+      
+      # Check if system data contains the required type description
+      system = if !has_type_description?(system) do
+        # Try to enrich with static info if missing required fields
+        enrich_with_static_info(system)
+      else
+        system
+      end
+      
+      # Check if this is the first system notification since startup using Stats GenServer
+      is_first_notification = Stats.is_first_notification?(:system)
+      
+      # Generate generic notification using formatter
       generic_notification = Formatter.format_system_notification(system)
-
+      
       if generic_notification do
-        # Convert the generic notification to a Discord-specific format
-        discord_embed = Formatter.to_discord_format(generic_notification)
+        # For first notification, use enriched format regardless of license or for valid license
+        if is_first_notification || License.status().valid do
+          # Mark that we've sent the first notification if this is it
+          if is_first_notification do
+            Stats.mark_notification_sent(:system)
+            Logger.info("Sending first system notification in enriched format (startup message)")
+          end
+          
+          # Convert the generic notification to a Discord-specific format
+          discord_embed = Formatter.to_discord_format(generic_notification)
 
-        # Add recent kills to the notification
-        discord_embed_with_kills = add_recent_kills_to_embed(discord_embed, system)
+          # Add recent kills to the notification
+          discord_embed_with_kills = add_recent_kills_to_embed(discord_embed, system)
 
-        # Send the notification
-        send_discord_embed(discord_embed_with_kills, :system_tracking)
+          # Send the notification
+          send_discord_embed(discord_embed_with_kills, :system_tracking)
+        else
+          # For non-licensed users after first message, send simple text
+          Logger.info("License not valid, sending plain text system notification")
+          type_desc = get_system_type_description(system)
+          message = "New System Discovered: #{system_name} - #{type_desc}"
+          send_message(message, :system_tracking)
+        end
       else
         Logger.error("Failed to format system notification: #{inspect(system)}")
         :error
+      end
+    end
+  end
+  
+  # Helper to check if system has type description in any of the expected formats
+  defp has_type_description?(system) do
+    type_desc = Map.get(system, "type_description") || 
+                Map.get(system, :type_description) ||
+                get_in(system, ["staticInfo", "typeDescription"]) ||
+                get_in(system, [:staticInfo, :typeDescription])
+                
+    type_desc != nil
+  end
+  
+  # Helper to get system type description from any of the possible locations
+  defp get_system_type_description(system) do
+    type_desc = Map.get(system, "type_description") || 
+                Map.get(system, :type_description) ||
+                get_in(system, ["staticInfo", "typeDescription"]) ||
+                get_in(system, [:staticInfo, :typeDescription])
+                
+    type_desc || "Unknown Type"
+  end
+  
+  # Helper to enrich system with static information if available
+  defp enrich_with_static_info(system) do
+    if Map.has_key?(system, "solar_system_id") || Map.has_key?(system, :solar_system_id) do
+      system_id = Map.get(system, "solar_system_id") || Map.get(system, :solar_system_id)
+      
+      # Try to get static information for this system
+      case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id) do
+        {:ok, static_info} ->
+          # Merge static info with system data
+          Map.put(system, "staticInfo", static_info)
+          
+        _ ->
+          # Add minimal type info if lookup fails
+          if !Map.has_key?(system, "staticInfo") && !Map.has_key?(system, :staticInfo) do
+            # Add a placeholder static info based on ID range (rough estimate)
+            cond do
+              is_integer(system_id) && system_id >= 31000000 && system_id < 32000000 ->
+                Map.put(system, "staticInfo", %{"typeDescription" => "Wormhole"})
+                
+              is_integer(system_id) && system_id < 30000000 ->
+                Map.put(system, "staticInfo", %{"typeDescription" => "High-sec"})
+                
+              is_integer(system_id) && system_id >= 30000000 && system_id < 31000000 ->
+                if is_integer(system_id) && rem(system_id, 1000) < 500 do
+                  Map.put(system, "staticInfo", %{"typeDescription" => "Low-sec"}) 
+                else
+                  Map.put(system, "staticInfo", %{"typeDescription" => "Null-sec"})
+                end
+                
+              true ->
+                Map.put(system, "staticInfo", %{"typeDescription" => "Unknown Space"})
+            end
+          else
+            system
+          end
+      end
+    else
+      # Can't enrich without a system ID
+      if !Map.has_key?(system, "staticInfo") && !Map.has_key?(system, :staticInfo) do
+        Map.put(system, "staticInfo", %{"typeDescription" => "Unknown Space"})
+      else
+        system
       end
     end
   end

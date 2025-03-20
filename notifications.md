@@ -6,73 +6,142 @@ description: Learn about the different types of notifications provided by Wander
 
 # Notification Types
 
-Wanderer Notifier supports three main notification types, each tailored based on your map subscription status.
+Wanderer Notifier supports three main notification types, each tailored based on your map subscription status. The first notification sent on application startup is always in rich format, regardless of subscription status.
 
 ## Kill Notifications
 
 When a kill occurs in a tracked system or involves a tracked character:
 
-- **With Premium Map Subscription:**  
-  Receives a rich embed that includes:
-  - Ship thumbnail image
-  - Detailed information about both victim and attacker
-  - Links to zKillboard profiles
-  - Ship type details
-  - ISK value of the kill
-  - Corporation logos
-  - A clickable link on the final blow character to zKillboard
+### With Premium Map Subscription
+
+Receives a rich embed that includes:
+- **Visual Elements:**
+  - Ship thumbnail image from ESI
+  - Character portraits for victim 
+  - Corporation logos if available
+  
+- **Victim Information:**
+  - Character name with clickable link to zKillboard profile
+  - Corporation name and alliance (if applicable)
+  - Ship type lost with icon
+  
+- **Attack Information:**
+  - Number of attackers involved
+  - Final blow details with clickable link to zKillboard
+  - Final blow ship type
+  
+- **Kill Details:**
+  - System name where kill occurred
+  - ISK value of the kill formatted appropriately
+  - Timestamp of the kill
+  - Kill ID with link to zKillboard
 
 ![Premium Kill Notification Example](./assets/images/paid-kill.png)
 
-- **With Free Map:**  
-  Displays a basic text notification containing:
-  - Victim name
-  - Ship type lost
-  - System name
+### With Free Map
+
+Displays a basic text notification containing:
+- Victim name
+- Ship type lost
+- System name
+- Simplified format without images or embeds
 
 ![Free Kill Notification Example](./assets/images/free-kill.png)
+
+### Data Sources
+- Initial kill data from zKillboard WebSocket
+- Enrichment from ESI for character, corporation, and ship details
+- Additional details from zkillboard API when needed
 
 ## Character Tracking Notifications
 
 When a new character is added to your tracked list:
 
-- **With Premium Map Subscription:**  
-  You get a rich embed featuring:
-  - Character portrait
-  - Corporation details
-  - Direct link to the zKillboard profile
-  - Formatted timestamp
+### With Premium Map Subscription
+
+You get a rich embed featuring:
+- **Visual Elements:**
+  - Character portrait from EVE Image Server
+  
+- **Character Information:**
+  - Character name with link to zKillboard profile
+  - Character EVE ID for reference
+  - Corporation name and ticker
+  - Alliance name (if applicable)
+  
+- **Metadata:**
+  - Formatted timestamp of when character was added
+  - Clear visual formatting with appropriate color scheme
 
 ![Premium Character Notification Example](./assets/images/paid-character.png)
 
-- **With Free Map:**  
-  Receives a simple text notification that includes:
-  - Character name
-  - Corporation name (if available)
+### With Free Map
+
+Receives a simple text notification that includes:
+- Character name
+- Corporation name and ticker (if available)
+- No images or rich formatting
 
 ![Free Character Notification Example](./assets/images/free-character.png)
+
+### Data Sources
+- Initial character data from Map API
+- Enrichment from ESI for character and corporation details
+- Corporation name fallback to ticker if full name unavailable
 
 ## System Notifications
 
 When a new system is discovered or added to your map:
 
-- **With Premium Map Subscription:**  
-  Shows a rich embed with:
+### With Premium Map Subscription
+
+Shows a rich embed with:
+- **Visual Elements:**
+  - System type icon (appropriate for wormhole class, highsec, lowsec, or nullsec)
+  - Color coding based on system type and security status
+  
+- **System Information:**
   - System name (including aliases/temporary names)
-  - System type icon
-  - Region information or wormhole statics
-  - Security status
-  - Recent kills in the system
-  - Links to zKillboard and Dotlan
+  - System ID with link to zKillboard
+  - Security status and system type description
+  
+- **Space-Type Specific Details:**
+  - **For Wormholes:**
+    - Wormhole class (C1-C6, Thera, etc.)
+    - Static wormhole connections listed with destination types
+    - Effect information (Red Giant, Black Hole, etc.)
+    - Shattered status if applicable
+  
+  - **For Known Space:**
+    - Region name with link to Dotlan
+    - Security classification (High-sec, Low-sec, Null-sec)
+    - Sovereignty information if available
+  
+- **Activity Information:**
+  - Recent kills in the system from zKillboard
+  - For each kill: victim, ship type, value, and time
+  - Links to individual killmails
 
 ![Premium System Notification Example](./assets/images/paid-system.png)
 
-- **With Free Map:**  
-  Provides a basic text notification including:
-  - Original system name (for wormholes)
-  - System name (for k-space)
+### With Free Map
+
+Provides a basic text notification including:
+- Original system name (for wormholes)
+- System name (for k-space)
+- Minimal type information (wormhole/k-space)
 
 ![Free System Notification Example](./assets/images/free-system.png)
+
+### Data Sources
+- Initial system data from Map API
+- Static system information from Map API or internal database
+- Kill data enrichment from zKillboard API
+- Region information from ESI when needed
+
+## Special First Message Behavior
+
+The very first notification of each type sent after application startup is always sent in rich format with full details, regardless of license/subscription status. This helps demonstrate the premium features available with a valid license.
 
 ## Web Dashboard
 

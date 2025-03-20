@@ -1,6 +1,87 @@
 # WandererNotifier Refactoring Task List
 
 ### Top Priority
+
+ - [ ] Post-Testing Fixes
+   - [ ] WebSocket Connectivity Enhancement
+     - [ ] Improve WebSocket connection logging to debug why kills aren't received
+     - [ ] Add heartbeat mechanism to verify connection is alive
+     - [ ] Implement additional reconnection strategies if current ones aren't effective
+   - [ ] Fix System Notification Format
+     - [ ] Include static information for wormhole systems in embedded messages
+     - [ ] Update plain text messages to include temporary name for wormhole systems
+   - [ ] Character Notification Improvements
+     - [ ] Add zkillboard link for corporation in character notifications
+     - [ ] Ensure corporation name is consistently displayed alongside ticker
+   - [ ] Fix Compilation Warnings
+     - [ ] Fix unused variable in `application.ex` (line 137)
+     - [ ] Fix reference to undefined function `system_tracking_enabled?` in `features.ex`
+   - [ ] Fix License Validation Error
+     - [ ] Fix `:premium` key not found error in startup message task
+     - [ ] Add better error handling for missing license keys
+   - [ ] Create Enhanced Startup Message
+     - [ ] Design and implement a detailed embedded startup message
+     - [ ] Include enabled features, tracked systems, and characters in startup message
+ - [ ] Code Quality Improvements
+   - [ ] Replace excessive conditionals with pattern matching where possible
+     - [ ] Refactor `extract_character_id` and `extract_character_name` to use pattern matching
+     - [ ] Use pattern matching in `extract_corporation_name` instead of nested cond blocks
+     - [ ] Refactor key extraction in system notification formatting to use pattern matching
+     - [ ] Improve WebSocket message handling with better pattern matching
+   - [ ] Reduce duplication in data extraction logic
+     - [ ] Create a shared module for data field extraction
+     - [ ] Implement common functions for nested field access
+     - [ ] Consider creating structs for key data types (character, system, kill)
+   - [ ] Improve error handling with better fallbacks
+     - [ ] Add more verbose logging for failed data transformations
+     - [ ] Ensure all error cases have appropriate fallbacks
+   - [ ] Consider creating specialized data extraction modules
+     - [ ] Create a `WandererNotifier.Data.Extractors.Character` module
+     - [ ] Create a `WandererNotifier.Data.Extractors.System` module
+     - [ ] Create a `WandererNotifier.Data.Extractors.KillMail` module
+ - [ ] Manual Testing Checklist
+   - [ ] Test Kill Notifications
+     - [ ] Verify first kill notification after startup is enriched (has embed with details)
+     - [ ] Confirm victim and attacker details are correctly displayed
+     - [ ] Test with license valid and invalid to verify gating works
+     - [ ] Validate fallback corporation name extraction works
+     - [ ] Check zkillboard links redirect correctly
+   - [ ] Test Character Notifications
+     - [ ] Verify first character notification after startup is enriched
+     - [ ] Confirm corporation name displays correctly (try character with and without corporation)
+     - [ ] Test with license valid and invalid to verify gating works
+     - [ ] Check character portrait image loads correctly
+     - [ ] Validate zkillboard link works correctly
+   - [ ] Test System Notifications
+     - [ ] Verify first system notification after startup is enriched
+     - [ ] Test with different system types (highsec, lowsec, nullsec, wormhole)
+     - [ ] Confirm statics display for wormhole systems
+     - [ ] Verify region information shows for k-space systems
+     - [ ] Test with license valid and invalid to verify gating works
+   - [ ] Test WebSocket Functionality
+     - [ ] Monitor WebSocket connection via status endpoint
+     - [ ] Intentionally disconnect network to test reconnection
+     - [ ] Verify kill messages from WebSocket flow through to notifications
+     - [ ] Check circuit breaker functions properly on excessive disconnects
+   - [ ] Test License Validation
+     - [ ] Verify with valid license that all notifications are enriched
+     - [ ] Test with invalid license that only first notifications are enriched
+     - [ ] Change license status mid-session to verify behavior changes
+   - [ ] Test Error Handling
+     - [ ] Verify missing data fields produce reasonable fallbacks
+     - [ ] Check logging output for appropriate error handling
+     - [ ] Test with malformed data to ensure system handles it gracefully
+ - [x] Add status message improvements
+   - [x] Include connection status for WebSocket and APIs
+   - [x] Show more details on notification channel routing
+   - [x] Add count of recent notifications by type
+   - [x] Create enhanced startup message with system configuration
+   - [x] Add zkillboard link for corporation in character notifications
+ - [ ] Validate notification functionality
+   - [ ] Create test script to validate each notification type
+   - [ ] Verify kill notifications with both test API and WebSocket
+   - [ ] Test character notifications with sample data
+   - [ ] Test system notifications with different system types
 - [ ] Move from quickcharts to node chart service
   - [ ] Phase 1: Chart Service Enhancement
     - [ ] Update chart-service endpoints for each chart type

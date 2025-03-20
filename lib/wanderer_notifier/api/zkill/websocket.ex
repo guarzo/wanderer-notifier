@@ -19,20 +19,65 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   @reconnect_window 3600
 
   def start_link(parent, url) do
-    # Initialize with empty connection history for circuit breaker
-    WebSockex.start_link(url, __MODULE__, %{
+    # Enhanced logging for WebSocket connection attempt
+    Logger.info("Starting zKillboard WebSocket connection to #{url}")
+    
+    # Set application-level status for monitoring
+    update_startup_status()
+    
+    # Run in spawn_link for better exception handling during startup
+    result = WebSockex.start_link(url, __MODULE__, %{
       parent: parent,
       connected: false,
       reconnects: 0,
       reconnect_history: [],
       circuit_open: false,
-      last_circuit_reset: System.os_time(:second)
-    })
+      last_circuit_reset: System.os_time(:second),
+      url: url,  # Store URL for reconnection reference
+      startup_time: System.os_time(:second)
+    }, [retry_initial_connection: true])
+    
+    # Log the connection result
+    case result do
+      {:ok, pid} ->
+        Logger.info("Successfully initialized zKillboard WebSocket with PID: #{inspect(pid)}")
+        # Return the result
+        result
+        
+      {:error, reason} ->
+        Logger.error("Failed to connect to zKillboard WebSocket: #{inspect(reason)}")
+        # Try to recover with a delayed restart
+        Process.sleep(5000)  # Wait 5 seconds
+        # Return the original error to avoid masking issues
+        result
+    end
   end
 
   def init(state) do
-    Logger.info("Initializing zKill websocket client.")
+    Logger.info("Initializing zKill WebSocket client. Will attempt connection to #{state.url}")
+    # Report initial state
+    Stats.update_websocket(%{
+      connected: false,
+      connecting: true,
+      last_message: nil,
+      reconnects: 0,
+      url: state.url
+    })
     {:ok, state}
+  end
+  
+  # Helper to update status at startup
+  defp update_startup_status do
+    try do
+      Stats.update_websocket(%{
+        connected: false,
+        connecting: true,
+        startup_time: DateTime.utc_now(),
+        last_message: nil
+      })
+    rescue
+      e -> Logger.error("Failed to update startup status: #{inspect(e)}")
+    end
   end
 
   @impl true
@@ -205,10 +250,27 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   # Process text frames containing JSON data
   defp process_text_frame(raw_msg, state) do
-    Logger.debug("Received killstream frame: #{raw_msg}")
+    # Update timestamp of last received message for monitoring
+    now = DateTime.utc_now()
+    try do
+      Stats.update_websocket(%{
+        connected: true,
+        last_message: now,
+        reconnects: Map.get(state, :reconnects, 0)
+      })
+    rescue
+      e -> Logger.error("Failed to update websocket status: #{inspect(e)}")
+    end
+    
+    # Log more verbosely to help with troubleshooting
+    log_level = if String.length(raw_msg) > 500, do: :debug, else: :info
+    Logger.log(log_level, "Received killstream frame at #{DateTime.to_string(now)}: #{raw_msg}")
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
+        # Log the type of message for troubleshooting
+        message_type = classify_message_type(json_data)
+        Logger.info("Processed killstream message of type: #{message_type}")
         handle_json_message(json_data, raw_msg, state)
 
       {:error, decode_err} ->
@@ -216,6 +278,31 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         {:ok, state}
     end
   end
+  
+  # Identify the message type for better logging
+  defp classify_message_type(json_data) when is_map(json_data) do
+    cond do
+      Map.has_key?(json_data, "action") ->
+        "action:#{json_data["action"]}"
+        
+      Map.has_key?(json_data, "killmail_id") and Map.has_key?(json_data, "zkb") ->
+        "killmail_with_zkb"
+        
+      Map.has_key?(json_data, "killmail_id") ->
+        "killmail_without_zkb"
+        
+      Map.has_key?(json_data, "kill_id") ->
+        "kill_info"
+        
+      Map.has_key?(json_data, "tqStatus") ->
+        "tq_status"
+        
+      true ->
+        "unknown"
+    end
+  end
+  
+  defp classify_message_type(_), do: "non_map"
 
   # Process different types of JSON messages
   defp handle_json_message(json_data, raw_msg, state) do
@@ -284,22 +371,71 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Forward message to parent process or process directly
   defp forward_to_parent(parent, raw_msg, json_data, state) do
     if is_pid(parent) and Process.alive?(parent) do
-      send(parent, {:zkill_message, raw_msg})
-      {:ok, state}
+      Logger.debug("Forwarding zKill message to parent process #{inspect(parent)}")
+      
+      # Enhanced message forwarding with better error handling and logging
+      try do
+        # Extract the killmail ID for logging if available
+        kill_id = extract_kill_id(json_data)
+        id_log = if kill_id, do: " (ID: #{kill_id})", else: ""
+        
+        Logger.info("Forwarding killmail message#{id_log} to parent process")
+        send(parent, {:zkill_message, raw_msg})
+        
+        # Track this in stats
+        update_kill_forwarded_stats()
+        
+        {:ok, state}
+      rescue
+        e ->
+          Logger.error("Error forwarding message to parent: #{inspect(e)}")
+          {:ok, state}
+      end
     else
       # If parent process is not available, process directly
-      Logger.warning("Parent process not available, processing kill directly")
+      Logger.warning("Parent process not available or not alive, processing kill directly")
       try_direct_processing(json_data, state)
+    end
+  end
+
+  # Helper to extract kill ID for logging
+  defp extract_kill_id(json_data) do
+    cond do
+      is_map_key(json_data, "killmail_id") -> json_data["killmail_id"]
+      is_map_key(json_data, "kill_id") -> json_data["kill_id"]
+      true -> nil
+    end
+  end
+  
+  # Update stats about forwarded kill messages
+  defp update_kill_forwarded_stats do
+    try do
+      stats = Stats.get_stats()
+      # Track time of last forwarded message in websocket stats
+      Stats.update_websocket(Map.put(stats.websocket, :last_forwarded, DateTime.utc_now()))
+    rescue
+      _ -> :ok
     end
   end
 
   # Attempt direct processing of messages if parent is unavailable
   defp try_direct_processing(json_data, state) do
-    if is_map_key(json_data, "killmail_id") do
-      KillProcessor.process_zkill_message(json_data, %{})
+    # Enhanced error handling and message typechecking
+    try do
+      if is_map_key(json_data, "killmail_id") do
+        Logger.info("Directly processing kill ID #{json_data["killmail_id"]}")
+        KillProcessor.process_zkill_message(json_data, %{})
+        {:ok, state}
+      else
+        kill_type = classify_message_type(json_data)
+        Logger.info("Skipping direct processing for non-killmail message of type #{kill_type}")
+        {:ok, state}
+      end
+    rescue
+      e ->
+        Logger.error("Error in direct kill processing: #{inspect(e)}")
+        {:ok, state}
     end
-
-    {:ok, state}
   end
 
   @impl true

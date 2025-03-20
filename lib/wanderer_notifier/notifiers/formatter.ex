@@ -155,6 +155,7 @@ defmodule WandererNotifier.Notifiers.Formatter do
     character_id = extract_character_id(character)
     character_name = extract_character_name(character)
     corporation_name = extract_corporation_name(character)
+    corporation_id = extract_corporation_id(character)
     
     %{
       type: :character_notification,
@@ -171,7 +172,18 @@ defmodule WandererNotifier.Notifiers.Formatter do
           value: "[#{character_name}](https://zkillboard.com/character/#{character_id}/)",
           inline: true
         }
-      ] ++ (if corporation_name, do: [%{name: "Corporation", value: corporation_name, inline: true}], else: [])
+      ] ++ if corporation_name do
+        # Create a link to zKillboard if we have the corporation ID, otherwise just use the name
+        corp_value = if corporation_id do
+          "[#{corporation_name}](https://zkillboard.com/corporation/#{corporation_id}/)"
+        else
+          corporation_name
+        end
+        
+        [%{name: "Corporation", value: corp_value, inline: true}]
+      else
+        []
+      end
     }
   end
   
@@ -593,20 +605,109 @@ defmodule WandererNotifier.Notifiers.Formatter do
   
   @doc """
   Extracts a corporation name from a character map.
-  Handles various possible key structures.
+  Handles various possible key structures including fallbacks.
   
   Returns the name as a string or a default value if no name is found.
   """
   def extract_corporation_name(character, default \\ "Unknown Corporation") when is_map(character) do
+    corporation_name = 
+      cond do
+        # Direct corporation_name
+        character["corporation_name"] != nil ->
+          character["corporation_name"]
+        
+        # Alternative key corporationName  
+        character["corporationName"] != nil ->
+          character["corporationName"]
+          
+        # Nested in character object
+        is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
+          character["character"]["corporation_name"]
+          
+        # Nested with alternate key
+        is_map(character["character"]) && character["character"]["corporationName"] != nil ->
+          character["character"]["corporationName"]
+          
+        # Fall back to corporation ticker as name
+        character["corporation_ticker"] != nil ->
+          "[#{character["corporation_ticker"]}]"
+          
+        # Nested corporation ticker
+        is_map(character["character"]) && character["character"]["corporation_ticker"] != nil ->
+          "[#{character["character"]["corporation_ticker"]}]"
+          
+        # Try to look up from ESI if we have corporation_id
+        character["corporation_id"] != nil ->
+          lookup_corporation_name_from_esi(character["corporation_id"]) || default
+          
+        # Try to look up from nested corporation_id
+        is_map(character["character"]) && character["character"]["corporation_id"] != nil ->
+          lookup_corporation_name_from_esi(character["character"]["corporation_id"]) || default
+          
+        # Try to look up from corporationID (alternative key)
+        character["corporationID"] != nil ->
+          lookup_corporation_name_from_esi(character["corporationID"]) || default
+          
+        # No corporation info found
+        true ->
+          default
+      end
+      
+    # Clean up any nil values that might have slipped through
+    if is_nil(corporation_name), do: default, else: corporation_name
+  end
+  
+  @doc """
+  Extracts a corporation ID from a character map.
+  Handles various possible key structures.
+  
+  Returns the ID as a string or nil if no valid ID is found.
+  """
+  def extract_corporation_id(character) when is_map(character) do
+    # Try several possible locations for corporation ID
     cond do
-      character["corporation_name"] != nil ->
-        character["corporation_name"]
+      # Direct corporation_id
+      character["corporation_id"] != nil && is_valid_numeric_id?(character["corporation_id"]) ->
+        character["corporation_id"]
+      
+      # Alternative key corporationID
+      character["corporationID"] != nil && is_valid_numeric_id?(character["corporationID"]) ->
+        character["corporationID"]
         
-      is_map(character["character"]) && character["character"]["corporation_name"] != nil ->
-        character["character"]["corporation_name"]
+      # Nested in character object with regular key
+      is_map(character["character"]) && 
+      character["character"]["corporation_id"] != nil && 
+      is_valid_numeric_id?(character["character"]["corporation_id"]) ->
+        character["character"]["corporation_id"]
         
+      # Nested with alternative key
+      is_map(character["character"]) && 
+      character["character"]["corporationID"] != nil && 
+      is_valid_numeric_id?(character["character"]["corporationID"]) ->
+        character["character"]["corporationID"]
+        
+      # No valid corporation ID found
       true ->
-        default
+        nil
+    end
+  end
+  
+  # Helper function to look up corporation name from ESI
+  defp lookup_corporation_name_from_esi(corporation_id) do
+    if is_binary(corporation_id) || is_integer(corporation_id) do
+      try do
+        case WandererNotifier.Api.ESI.Service.get_corporation_info(corporation_id) do
+          {:ok, corp_data} when is_map(corp_data) ->
+            Map.get(corp_data, "name")
+            
+          _ ->
+            nil
+        end
+      rescue
+        _ -> nil
+      end
+    else
+      nil
     end
   end
   
