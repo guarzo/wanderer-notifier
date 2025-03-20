@@ -121,7 +121,8 @@ defmodule WandererNotifier.Services.Service do
 
   @impl true
   def handle_info({:zkill_message, message}, state) do
-    Logger.debug("Received zkill message: #{message}")
+    Logger.info("SERVICE TRACE: Received zkill message from WebSocket, length: #{String.length(message)}")
+    # Process the message with the KillProcessor
     new_state = WandererNotifier.Services.KillProcessor.process_zkill_message(message, state)
     {:noreply, new_state}
   end

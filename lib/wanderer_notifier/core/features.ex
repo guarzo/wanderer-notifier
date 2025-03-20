@@ -242,9 +242,11 @@ defmodule WandererNotifier.Core.Features do
       {feature, License.status().valid}
     end)
     
-    # Premium features
+    # Premium features - safely handle missing premium key
+    license_status = License.status()
+    is_premium = Map.get(license_status, :premium, false)
     premium_features = Map.new(@features.premium, fn feature -> 
-      {feature, License.status().valid && License.status().premium}
+      {feature, license_status.valid && is_premium}
     end)
     
     # Special overrides based on configuration
@@ -254,7 +256,7 @@ defmodule WandererNotifier.Core.Features do
       # Character tracking status (can be disabled in config)
       character_tracking_enabled: WandererNotifier.Core.Config.character_tracking_enabled?(),
       # System tracking status
-      system_tracking_enabled: WandererNotifier.Core.Config.system_tracking_enabled?(),
+      system_tracking_enabled: WandererNotifier.Core.Config.system_notifications_enabled?(),
       # Kill notifications status
       kill_notifications_enabled: kill_notifications_enabled?(),
       # Processing all kills (usually for testing)

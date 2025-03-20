@@ -1,189 +1,135 @@
-# Pattern Matching Improvement Opportunities
+# Pattern Matching Improvements
 
-This document outlines specific areas in the codebase where we can improve readability and maintainability by replacing conditional logic with pattern matching.
+This document outlines the pattern matching improvements made to handle different data structures in the WandererNotifier application.
 
-## 1. Character Data Extraction
+## Killmail Data Structure Handling
 
-### Current Implementation (in `formatter.ex`):
+The application needs to handle killmails in multiple formats:
+
+1. Raw JSON strings from the WebSocket
+2. Parsed maps with string keys
+3. `WandererNotifier.Data.Killmail` structs
+4. Maps with atom keys
+
+We've improved the pattern matching to handle all these formats consistently.
+
+## Improvements Made
+
+### 1. Extract Kill ID from Different Structures
 
 ```elixir
-def extract_character_id(character) when is_map(character) do
-  # Extract character ID - only accept numeric IDs
+defp get_killmail_id(kill_data) when is_map(kill_data) do
   cond do
-    # Check top level character_id
-    is_binary(character["character_id"]) && is_valid_numeric_id?(character["character_id"]) ->
-      character["character_id"]
+    # Direct field
+    Map.has_key?(kill_data, "killmail_id") -> 
+      Map.get(kill_data, "killmail_id")
+    
+    # Check for nested structure
+    Map.has_key?(kill_data, "zkb") && Map.has_key?(kill_data, "killmail") ->
+      get_in(kill_data, ["killmail", "killmail_id"])
+    
+    # Check for string keys converted to atoms
+    Map.has_key?(kill_data, :killmail_id) ->
+      Map.get(kill_data, :killmail_id)
       
-    # Check top level eve_id
-    is_binary(character["eve_id"]) && is_valid_numeric_id?(character["eve_id"]) ->
-      character["eve_id"]
-      
-    # Check nested character object
-    is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
-        is_valid_numeric_id?(character["character"]["eve_id"]) ->
-      character["character"]["eve_id"]
-      
-    is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
-        is_valid_numeric_id?(character["character"]["character_id"]) ->
-      character["character"]["character_id"]
-      
-    is_map(character["character"]) && is_binary(character["character"]["id"]) &&
-        is_valid_numeric_id?(character["character"]["id"]) ->
-      character["character"]["id"]
-      
-    # No valid numeric ID found
-    true ->
-      Logger.error(
-        "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
-      )
-      
-      nil
+    # Try to extract from the raw data if it has a zkb key 
+    # (common format in real-time websocket feed)
+    Map.has_key?(kill_data, "zkb") ->
+      kill_id = Map.get(kill_data, "killID") || 
+               get_in(kill_data, ["zkb", "killID"]) ||
+               get_in(kill_data, ["zkb", "killmail_id"])
+               
+      # If we found a string ID, convert to integer
+      if is_binary(kill_id) do
+        String.to_integer(kill_id)
+      else
+        kill_id
+      end
+    
+    true -> nil
   end
 end
 ```
 
-### Improved Implementation Using Pattern Matching:
+### 2. Extract Kill Data from Different Formats
 
 ```elixir
-def extract_character_id(%{"character_id" => id}) when is_binary(id) and is_valid_numeric_id?(id), do: id
-def extract_character_id(%{"eve_id" => id}) when is_binary(id) and is_valid_numeric_id?(id), do: id
-def extract_character_id(%{"character" => %{"eve_id" => id}}) when is_binary(id) and is_valid_numeric_id?(id), do: id
-def extract_character_id(%{"character" => %{"character_id" => id}}) when is_binary(id) and is_valid_numeric_id?(id), do: id
-def extract_character_id(%{"character" => %{"id" => id}}) when is_binary(id) and is_valid_numeric_id?(id), do: id
-def extract_character_id(character) when is_map(character) do
-  Logger.error("No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}")
-  nil
-end
-```
-
-Similar improvements can be made to `extract_character_name` and `extract_corporation_name`.
-
-## 2. System Data Extraction
-
-### Current Implementation (in system notification formatter):
-
-The current implementation uses multiple `Map.get` calls with fallbacks, which can be simplified with pattern matching.
-
-### Improved Implementation:
-
-```elixir
-# Pattern match directly in function parameters
-def format_system_notification(%{"solar_system_id" => id, "solar_system_name" => name} = system) do
-  # Process with known ID and name
-end
-
-def format_system_notification(%{"system_id" => id, "system_name" => name} = system) do
-  # Process with known ID and name using different keys
-end
-
-# Add more pattern matching variants for different data formats
-```
-
-## 3. WebSocket Message Handling
-
-### Current Implementation (in `websocket.ex`):
-
-```elixir
-defp classify_json_message(json_data) do
+defp extract_kill_data(kill) do
   cond do
-    # Killmail with zkb data
-    is_map_key(json_data, "killmail_id") and is_map_key(json_data, "zkb") ->
-      {:killmail_with_zkb, json_data["killmail_id"], json_data["zkb"]}
-
-    # Killmail without zkb data
-    is_map_key(json_data, "killmail_id") ->
-      {:killmail_without_zkb, json_data["killmail_id"]}
-
-    # Kill info message
-    is_map_key(json_data, "kill_id") ->
-      {:kill_info, json_data["kill_id"], Map.get(json_data, "solar_system_id")}
-
-    # Action message
-    is_map_key(json_data, "action") ->
-      {:action, json_data["action"]}
-
-    # Unknown message format
+    # Case 1: It's a Killmail struct
+    match?(%Killmail{}, kill) ->
+      # Convert struct to a map format that the notifier expects
+      kill_id = kill.killmail_id
+      # Merge zkb and esi_data into a single map for the notifier
+      kill_data = Map.merge(%{"killmail_id" => kill_id}, kill.zkb || %{})
+      kill_data = if kill.esi_data, do: Map.merge(kill_data, kill.esi_data), else: kill_data
+      {kill_data, kill_id}
+    
+    # Case 2: It's a binary string (JSON)
+    is_binary(kill) ->
+      case Jason.decode(kill) do
+        {:ok, decoded} -> 
+          kill_id = get_killmail_id(decoded)
+          {decoded, kill_id}
+        _ -> 
+          {kill, nil}
+      end
+    
+    # Case 3: It's a regular map
+    is_map(kill) ->
+      kill_id = get_killmail_id(kill)
+      {kill, kill_id}
+    
+    # Case 4: Unknown format
     true ->
-      :unknown
+      {kill, nil}
   end
 end
 ```
 
-### Improved Implementation:
+### 3. Convert Raw Data to Killmail Struct
 
 ```elixir
-defp classify_json_message(%{"killmail_id" => kill_id, "zkb" => zkb}), 
-  do: {:killmail_with_zkb, kill_id, zkb}
+defp try_create_killmail_struct(kill_data) do
+  kill_id = get_killmail_id(kill_data)
   
-defp classify_json_message(%{"killmail_id" => kill_id}), 
-  do: {:killmail_without_zkb, kill_id}
-  
-defp classify_json_message(%{"kill_id" => kill_id, "solar_system_id" => system_id}), 
-  do: {:kill_info, kill_id, system_id}
-  
-defp classify_json_message(%{"kill_id" => kill_id}), 
-  do: {:kill_info, kill_id, nil}
-  
-defp classify_json_message(%{"action" => action}), 
-  do: {:action, action}
-  
-defp classify_json_message(_), do: :unknown
-```
-
-## 4. Data Field Extraction
-
-### Current Implementation:
-
-The code currently uses a lot of `Map.get || Map.get || ...` patterns that could be replaced with a cleaner approach.
-
-### Improved Implementation:
-
-```elixir
-# Define accessor functions that handle different key formats
-def get_field(map, field) do
-  field_variants = [
-    field, 
-    String.to_atom(field), 
-    Macro.camelize(field), 
-    String.to_atom(Macro.camelize(field))
-  ]
-  
-  Enum.find_value(field_variants, fn key -> 
-    Map.get(map, key)
-  end)
-end
-
-# Or using pattern matching for nested access
-def get_nested_field(map, parent, field) do
-  with parent_data when not is_nil(parent_data) <- Map.get(map, parent),
-       field_value when not is_nil(field_value) <- Map.get(parent_data, field) do
-    field_value
+  if kill_id do
+    # Extract zkb data if available
+    zkb_data = Map.get(kill_data, "zkb") || %{}
+    
+    # The rest is treated as ESI data
+    esi_data = Map.drop(kill_data, ["zkb"])
+    
+    # Create a proper Killmail struct
+    try do
+      Killmail.new(kill_id, zkb_data, esi_data)
+    rescue
+      # If struct creation fails, just store the raw data
+      _ -> kill_data
+    end
   else
-    _ -> nil
+    # If no kill ID, just return the raw data
+    kill_data
   end
 end
 ```
 
-## 5. Type-Based Data Transformation
+## Benefits
 
-### Current Approach:
-The code uses many conditionals to determine what type of data is being processed.
+These improvements provide several benefits:
 
-### Improved Approach:
-Create specialized functions with pattern matching:
+1. **Robustness**: The application can handle kills in different formats without failing
+2. **Consistency**: Data is normalized to a consistent structure when possible
+3. **Error Recovery**: If struct creation fails, the system falls back to the raw data
+4. **Graceful Degradation**: Even partial or malformed data can be handled appropriately
 
-```elixir
-# For system notification formatting
-def format_notification(%{type: :wormhole} = system), do: format_wormhole_system(system)
-def format_notification(%{type: :highsec} = system), do: format_highsec_system(system)
-def format_notification(%{type: :lowsec} = system), do: format_lowsec_system(system)
-def format_notification(%{type: :nullsec} = system), do: format_nullsec_system(system)
-```
+## Testing
 
-## Recommendations
+When testing kill notifications, the system now:
 
-1. Create specialized extractor modules for each data type
-2. Use pattern matching in function heads rather than conditional logic in function bodies
-3. Create common field access functions that handle different naming conventions
-4. Use the `with` special form for multi-step data transformations
-5. Create proper structs for key data types to leverage compile-time checking
+1. Checks if the data is a Killmail struct and handles it appropriately
+2. Properly extracts the killmail ID regardless of format
+3. Converts to the expected format for the notifier
+4. Falls back to sample data only when absolutely necessary
+
+This makes the testing flow more reliable, especially when real WebSocket data is available.

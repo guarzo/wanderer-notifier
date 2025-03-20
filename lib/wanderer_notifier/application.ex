@@ -83,79 +83,90 @@ defmodule WandererNotifier.Application do
 
     # Start the supervisor with all children
     result = Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
-    
+
     # Send startup message after a short delay to ensure all services are started
     Task.start(fn ->
       # Wait a bit for everything to start up
       Process.sleep(2000)
       send_startup_message()
     end)
-    
+
     result
   end
 
   # Send a rich startup message with system information
   defp send_startup_message do
     Logger.info("Sending startup message...")
-    
+
     # Get license information
     license_status = WandererNotifier.Core.License.status()
     license_valid = if license_status.valid, do: "Valid", else: "Invalid"
-    license_type = if license_status.premium, do: "Premium", else: "Standard"
-    
+    # Safely check for premium status with a default of false
+    is_premium = Map.get(license_status, :premium, false)
+    license_type = if is_premium, do: "Premium", else: "Standard"
+
     # Get feature information
-    features = WandererNotifier.Core.Features.get_feature_status()
-    
+    features_status = WandererNotifier.Core.Features.get_feature_status()
+
     # Get tracking information
     systems = get_tracked_systems()
     characters = CacheRepo.get("map:characters") || []
-    
+
     # Format message
     title = "WandererNotifier Started"
     description = "The notification service has started successfully."
-    
+
     # Build fields for the embed
     fields = [
       %{name: "License Status", value: "#{license_valid} (#{license_type})", inline: true},
       %{name: "Tracked Systems", value: "#{length(systems)}", inline: true},
       %{name: "Tracked Characters", value: "#{length(characters)}", inline: true}
     ]
-    
+
     # Add WebSocket status
     websocket_status = get_websocket_status()
     fields = fields ++ [%{name: "WebSocket Status", value: websocket_status, inline: true}]
     
-    # Add notification counts
+    # Add stats info
     stats = WandererNotifier.Core.Stats.get_stats()
-    notifications = stats.notifications
+    
+    # Add notification counts
+    notification_stats = stats.notifications
+    notification_info = format_notification_counts(notification_stats)
     fields = fields ++ [
-      %{name: "Notifications Sent", value: format_notification_counts(notifications), inline: false}
+      %{name: "Notifications Sent", value: notification_info, inline: false}
     ]
     
     # Add feature status section
-    enabled_features = format_feature_status(features)
+    enabled_features = format_feature_status(features_status)
     fields = fields ++ [%{name: "Enabled Features", value: enabled_features, inline: false}]
+
+    # Send the rich embed notification with fields
+    # The Discord.send_embed function expects 5 parameters (title, description, url, color, feature)
+    # But the fields need to be sent differently - we need to create a complete embed
     
-    # Send the rich embed notification
-    NotifierFactory.notify(:send_embed, [
-      title,
-      description,
-      nil,  # No URL
-      0x3498DB,  # Blue color
-      :general   # Send to general channel
-    ])
+    # Create a complete Discord embed structure
+    embed = %{
+      "title" => title,
+      "description" => description,
+      "color" => 0x3498DB, # Blue color
+      "fields" => fields
+    }
+    
+    # Send it using the direct send_discord_embed function
+    WandererNotifier.Notifiers.Discord.send_discord_embed(embed, :general)
   end
-  
+
   # Helper to get WebSocket connection status
   defp get_websocket_status do
     stats = WandererNotifier.Core.Stats.get_stats()
-    
+
     if stats.websocket.connected do
       last_message = stats.websocket.last_message
-      
+
       if last_message do
         time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
-        
+
         cond do
           time_diff < 60 -> "Connected (active)"
           time_diff < 300 -> "Connected (last message #{div(time_diff, 60)} min ago)"
@@ -166,7 +177,7 @@ defmodule WandererNotifier.Application do
       end
     else
       reconnects = Map.get(stats.websocket, :reconnects, 0)
-      
+
       if reconnects > 0 do
         "Disconnected (#{reconnects} reconnect attempts)"
       else
@@ -174,21 +185,21 @@ defmodule WandererNotifier.Application do
       end
     end
   end
-  
+
   # Helper to format notification counts
-  defp format_notification_counts(notifications) do
+  defp format_notification_counts(%{} = notifications) do
     total = Map.get(notifications, :total, 0)
     kills = Map.get(notifications, :kills, 0)
     systems = Map.get(notifications, :systems, 0)
     characters = Map.get(notifications, :characters, 0)
-    
+
     "Total: #{total} (Kills: #{kills}, Systems: #{systems}, Characters: #{characters})"
   end
-  
+
   # Helper to format feature status
-  defp format_feature_status(features) do
+  defp format_feature_status(%{} = features) do
     enabled = Enum.filter(features, fn {_feature, enabled} -> enabled end)
-    |> Enum.map(fn {feature, _} -> 
+    |> Enum.map(fn {feature, _} ->
       # Convert atom to string and format nicely
       feature
       |> Atom.to_string()
@@ -197,7 +208,7 @@ defmodule WandererNotifier.Application do
       |> Enum.map(&String.capitalize/1)
       |> Enum.join(" ")
     end)
-    
+
     if enabled == [] do
       "No features enabled"
     else

@@ -64,6 +64,75 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     |> send_resp(200, Jason.encode!(scheduler_data))
   end
   
+  # ZKill WebSocket status endpoint
+  get "/zkill-status" do
+    # Get WebSocket status from the Stats GenServer
+    stats = WandererNotifier.Core.Stats.get_stats()
+    websocket_stats = stats.websocket || %{}
+    
+    # Format timestamps for better readability
+    formatted_stats = websocket_stats
+    |> Map.new(fn
+      {key, %DateTime{} = dt} -> {key, DateTime.to_string(dt)}
+      {key, value} -> {key, value}
+    end)
+    
+    # Calculate time since last message
+    last_message_time = websocket_stats[:last_message]
+    time_since_last_message = 
+      if last_message_time do
+        now = DateTime.utc_now()
+        seconds = DateTime.diff(now, last_message_time, :second)
+        
+        cond do
+          seconds < 60 -> "#{seconds} seconds ago"
+          seconds < 3600 -> "#{div(seconds, 60)} minutes ago" 
+          seconds < 86400 -> "#{div(seconds, 3600)} hours ago"
+          true -> "#{div(seconds, 86400)} days ago"
+        end
+      else
+        "No messages received yet"
+      end
+    
+    # Calculate connection age
+    startup_time = websocket_stats[:startup_time]
+    connection_age = 
+      if startup_time do
+        now = DateTime.utc_now()
+        seconds = DateTime.diff(now, startup_time, :second)
+        
+        cond do
+          seconds < 60 -> "#{seconds} seconds"
+          seconds < 3600 -> "#{div(seconds, 60)} minutes" 
+          seconds < 86400 -> "#{div(seconds, 3600)} hours"
+          true -> "#{div(seconds, 86400)} days"
+        end
+      else
+        "Unknown"
+      end
+    
+    # Create enhanced status output
+    status_data = %{
+      raw: formatted_stats,
+      summary: %{
+        status: if(Map.get(websocket_stats, :connected, false), do: "Connected", else: "Disconnected"),
+        connection_age: connection_age,
+        last_message: time_since_last_message,
+        reconnects: Map.get(websocket_stats, :reconnects, 0),
+        circuit_breaker: Map.get(websocket_stats, :circuit_open, false)
+      }
+    }
+    
+    # Log WebSocket status check for monitoring
+    Logger.info("ZKill WebSocket status check: " <> 
+                "#{if Map.get(websocket_stats, :connected, false), do: "CONNECTED", else: "DISCONNECTED"}, " <>
+                "Last message: #{time_since_last_message}")
+    
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(status_data))
+  end
+  
   # Cache information endpoint
   get "/cache" do
     # Get configured TTLs

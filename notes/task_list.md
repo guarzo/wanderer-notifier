@@ -3,10 +3,10 @@
 ### Top Priority
 
  - [ ] Post-Testing Fixes
-   - [ ] WebSocket Connectivity Enhancement
-     - [ ] Improve WebSocket connection logging to debug why kills aren't received
-     - [ ] Add heartbeat mechanism to verify connection is alive
-     - [ ] Implement additional reconnection strategies if current ones aren't effective
+   - [x] WebSocket Connectivity Enhancement
+     - [x] Improve WebSocket connection logging to debug why kills aren't received
+     - [x] Add heartbeat mechanism to verify connection is alive
+     - [x] Implement additional reconnection strategies if current ones aren't effective
    - [ ] Fix System Notification Format
      - [ ] Include static information for wormhole systems in embedded messages
      - [ ] Update plain text messages to include temporary name for wormhole systems

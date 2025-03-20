@@ -1,164 +1,71 @@
-# Kill Notification Testing Guide
+# Kill Notification Testing
 
-This document provides a step-by-step guide to test kill notifications in WandererNotifier after the recent refactoring.
+This document explains the WebSocket message flow and how kills are processed and cached in the WandererNotifier application.
 
-## Prerequisites
+## WebSocket Message Flow
 
-1. Running instance of WandererNotifier
-2. Discord webhook setup correctly in environment variables
-3. Access to the application logs
+1. WebSocket messages are received in `WandererNotifier.Api.ZKill.WebSocket` via the `handle_frame/2` function
+2. Messages are parsed and classified in `process_text_frame/2` 
+3. Valid kill messages are forwarded to the main service GenServer via `{:zkill_message, message}`
+4. The service GenServer receives the message in its `handle_info/2` function and forwards to `KillProcessor`
+5. `KillProcessor.process_zkill_message/2` parses and validates the kill data
+6. If valid, the kill is cached and ready for notification
 
-## Environment Setup
+## Cache Changes
 
-For testing kill notifications, set the following environment variables:
+### Previous Implementation Issues
 
-```bash
-# Enable kill notifications
-export ENABLE_KILL_NOTIFICATIONS=true
+The previous implementation used the Process Dictionary to store recent kills:
 
-# Process kills from all systems, not just wormholes (for testing)
-export PROCESS_ALL_KILLS=true
-
-# Optional: Set a specific Discord channel for kill notifications
-# export DISCORD_KILL_CHANNEL_ID=123456789012345678
+```elixir
+Process.put(@recent_kills_key, updated_kills)
 ```
 
-## Testing Procedure
+This approach had several issues:
+- Process dictionary is process-specific, meaning kills stored in the WebSocket process were not accessible from the API controller process
+- Restarting the WebSocket process would lose all cached kills
+- No TTL (time to live) management, requiring manual cleanup
+- No shared access between different parts of the application
 
-### 1. Testing First Kill Notification Enhancement
+### New Implementation
 
-**Objective**: Verify that the first kill notification after startup is always enriched, regardless of license status.
+The updated implementation uses the shared `WandererNotifier.Cache.Repository` to store kills:
 
-**Steps**:
-1. Stop the WandererNotifier application if running
-2. Clear any existing application state
-3. Set license to INVALID status (for testing the first-message enhancement)
-4. Start the application
-5. Trigger a test kill notification using the API endpoint
+1. Each kill is stored individually with its own key
+2. A separate list of recent kill IDs is maintained
+3. TTL is applied to avoid unbounded cache growth
+4. Data is converted to the `WandererNotifier.Data.Killmail` struct when possible for consistency
 
-```bash
-# Create a test notification via API
-curl -X POST http://localhost:4000/api/test/kill_notification
-```
+Benefits:
+- Kills are accessible from any process in the application
+- Persistence across WebSocket restarts (until TTL expires)
+- Automatic cache cleanup via TTL
+- Better data structure consistency with the Killmail struct
 
-**Expected Results**:
-- The first kill notification should be a rich embed with full details
-- The application logs should show: "Sending first kill notification in enriched format (startup message)"
-- The Process dictionary flag `:first_kill_notification` should be set to `false` after the first notification
+## Testing Notifications
 
-### 2. Testing License Gating
+To test kill notifications:
 
-**Objective**: Verify that only the first notification is enriched when license is invalid.
+1. Call the `/api/test-notification` endpoint
+2. The system will look for recent kills in the shared cache
+3. If found, it will use the most recent one for the test notification
+4. If no recent kills are found, it will fall back to sample data
 
-**Steps**:
-1. Ensure license is still INVALID
-2. Trigger multiple additional kill notifications
+## Debugging
 
-```bash
-# Create more test notifications
-curl -X POST http://localhost:4000/api/test/kill_notification
-curl -X POST http://localhost:4000/api/test/kill_notification
-```
+The system has extensive logging with specific trace tags:
+- `WEBSOCKET TRACE` - For WebSocket connection and message receipt
+- `PROCESSOR TRACE` - For message processing and parsing
+- `KILLMAIL TRACE` - For killmail-specific handling
+- `CACHE TRACE` - For cache operations
 
-**Expected Results**:
-- Only the first notification should be a rich embed
-- Subsequent notifications should be basic text notifications
-- Logs should confirm this behavior
+These logs can help identify where issues are occurring in the processing chain.
 
-### 3. Testing with Valid License
+## Cache Keys
 
-**Objective**: Verify that all notifications are enriched with a valid license.
+The following cache keys are used for kill data:
 
-**Steps**:
-1. Change license to VALID status
-2. Trigger multiple kill notifications
+- `zkill:recent_kills` - List of recent kill IDs
+- `zkill:recent_kills:{kill_id}` - Individual kill data
 
-```bash
-# Create more test notifications with valid license
-curl -X POST http://localhost:4000/api/test/kill_notification
-curl -X POST http://localhost:4000/api/test/kill_notification
-```
-
-**Expected Results**:
-- All notifications should be rich embeds with full details
-- Logs should confirm that notifications are being sent in enriched format
-
-### 4. Testing Data Enrichment and Fallbacks
-
-**Objective**: Verify that the system properly enriches kill data and uses fallbacks when needed.
-
-**Steps**:
-1. Trigger a kill notification with incomplete data
-2. Check how the system handles missing fields
-
-**Expected Results**:
-- System should attempt to fetch missing data from ESI
-- If data cannot be found, appropriate fallbacks should be used
-- Logs should show ESI lookup attempts and fallbacks
-
-### 5. Testing WebSocket Connection
-
-**Objective**: Verify that the WebSocket connection to zKillboard is working correctly.
-
-**Steps**:
-1. Check WebSocket connection status
-2. Observe any incoming kill messages
-3. Verify that real-time kill notifications are processed
-
-```bash
-# Check WebSocket status via API
-curl http://localhost:4000/api/status
-```
-
-**Expected Results**:
-- WebSocket should be connected to zKillboard
-- Status should show connection information
-- Logs should show WebSocket activity
-
-### 6. Testing Reconnection Logic
-
-**Objective**: Verify that the WebSocket reconnection logic works properly.
-
-**Steps**:
-1. Temporarily disrupt the WebSocket connection
-2. Observe reconnection attempts
-3. Verify successful reconnection
-
-**Expected Results**:
-- System should attempt to reconnect automatically
-- Logs should show reconnection attempts
-- After connection is restored, WebSocket should function normally
-
-## Troubleshooting
-
-If kill notifications are not working properly, check the following:
-
-1. **Configuration Issues**:
-   - Verify that `ENABLE_KILL_NOTIFICATIONS=true` is set
-   - Verify that `PROCESS_ALL_KILLS=true` is set for testing
-   - Check that Discord webhook/token is correct
-
-2. **License Issues**:
-   - Check license status in the application logs
-   - Verify that the first-message enhancement works regardless of license
-
-3. **Data Enrichment Issues**:
-   - Check logs for ESI API errors or timeout issues
-   - Verify that fallbacks are being used when data is missing
-
-4. **WebSocket Issues**:
-   - Check WebSocket connection status in logs
-   - Look for any error messages related to WebSocket connection
-   - Verify that the circuit breaker is not engaged
-
-## Test Results Recording
-
-When conducting these tests, record the following information:
-
-1. Test date and time
-2. Environment configuration used
-3. Results of each test step
-4. Any unexpected behavior
-5. Relevant log snippets
-
-This information will be valuable for diagnosing any issues and confirming that the refactoring changes are working as expected.
+Each kill has a TTL of 1 hour to prevent the cache from growing unbounded.

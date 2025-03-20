@@ -504,23 +504,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             message: "Test notification sent for kill_id: #{kill_id}",
             details: "Check your Discord for the message."
           }
-
-        # Remove case that can never match with the new implementation
-        # The kill processor now always provides a sample kill when no real kills are available
-
-        {:error, :no_kill_id} ->
-          %{
-            success: false,
-            message: "Failed to send test notification: No kill ID found",
-            details: "The kill data did not contain a valid kill ID."
-          }
-
-        {:error, reason} ->
-          %{
-            success: false,
-            message: "Failed to send test notification: #{inspect(reason)}",
-            details: "Check logs for details."
-          }
       end
 
     conn
@@ -695,32 +678,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             success: true,
             message: "Test kill notification sent",
             kill_id: kill_id
-          })
-        )
-
-      # Removed unused case that cannot happen with new implementation
-
-      {:error, :no_kill_id} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          400,
-          Jason.encode!(%{
-            success: false,
-            message: "Failed to send test notification: No kill ID found",
-            details: "The kill data did not contain a valid kill ID."
-          })
-        )
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            success: false,
-            message: "Failed to send test notification",
-            error: inspect(reason)
           })
         )
     end
