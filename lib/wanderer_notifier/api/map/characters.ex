@@ -141,43 +141,58 @@ defmodule WandererNotifier.Api.Map.Characters do
 
   defp parse_characters_response(body) do
     Logger.debug("[parse_characters_response] Raw body: #{body}")
+
     case Jason.decode(body) do
       {:ok, data} ->
         Logger.debug("[parse_characters_response] Decoded data: #{inspect(data)}")
+
         case data do
           %{"data" => characters} when is_list(characters) ->
             # API returns a "data" array containing character objects with nested "character" data
             Logger.debug(
               "[parse_characters_response] Parsed characters from data array: #{length(characters)}"
             )
-            Logger.debug("[parse_characters_response] First raw character: #{inspect(List.first(characters))}")
+
+            Logger.debug(
+              "[parse_characters_response] First raw character: #{inspect(List.first(characters))}"
+            )
 
             # Transform the characters to match the expected format for the rest of the application
             transformed_characters =
               Enum.map(characters, fn char ->
                 # Extract the character data from the nested structure
                 character_data = Map.get(char, "character", %{})
-                Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
+
+                Logger.debug(
+                  "[parse_characters_response] Character data: #{inspect(character_data)}"
+                )
 
                 # Create a standardized format for the character
-                transformed = %{
-                  "character_id" => Map.get(character_data, "eve_id"),
-                  "name" => Map.get(character_data, "name"),
-                  "corporationID" => Map.get(character_data, "corporation_id"),
-                  # Using ticker as name
-                  "corporationName" => Map.get(character_data, "corporation_ticker"),
-                  "allianceID" => Map.get(character_data, "alliance_id"),
-                  # Using ticker as name
-                  "allianceName" => Map.get(character_data, "alliance_ticker")
-                }
-                |> Enum.filter(fn {_, v} -> v != nil end)
-                |> Map.new()
+                transformed =
+                  %{
+                    "character_id" => Map.get(character_data, "eve_id"),
+                    "name" => Map.get(character_data, "name"),
+                    "corporationID" => Map.get(character_data, "corporation_id"),
+                    # Using ticker as name
+                    "corporationName" => Map.get(character_data, "corporation_ticker"),
+                    "allianceID" => Map.get(character_data, "alliance_id"),
+                    # Using ticker as name
+                    "allianceName" => Map.get(character_data, "alliance_ticker")
+                  }
+                  |> Enum.filter(fn {_, v} -> v != nil end)
+                  |> Map.new()
 
-                Logger.debug("[parse_characters_response] Transformed character: #{inspect(transformed)}")
+                Logger.debug(
+                  "[parse_characters_response] Transformed character: #{inspect(transformed)}"
+                )
+
                 transformed
               end)
 
-            Logger.debug("[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}")
+            Logger.debug(
+              "[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}"
+            )
+
             {:ok, transformed_characters}
 
           characters when is_list(characters) ->
@@ -232,7 +247,8 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do
-    if Config.character_tracking_enabled?() && Config.character_notifications_enabled?() do
+    # Use the centralized notification determiner to check if character notifications are enabled globally
+    if WandererNotifier.Services.NotificationDeterminer.should_notify_character?(nil) do
       # Check if we have both new and cached characters
       new_chars = new_characters || []
       cached_chars = cached_characters || []
@@ -247,6 +263,7 @@ defmodule WandererNotifier.Api.Map.Characters do
           new_chars
           |> Enum.filter(fn char ->
             char_id = Map.get(char, "character_id")
+
             !Enum.any?(cached_chars, fn c ->
               Map.get(c, "character_id") == char_id
             end)
@@ -256,14 +273,30 @@ defmodule WandererNotifier.Api.Map.Characters do
       Enum.each(added_characters, fn char ->
         Task.start(fn ->
           try do
-            # Create the character notification data structure
-            character_info = %{
-              "character_id" => NotificationHelpers.extract_character_id(char),
-              "character_name" => NotificationHelpers.extract_character_name(char),
-              "corporation_name" => NotificationHelpers.extract_corporation_name(char)
-            }
+            # Extract the character ID
+            character_id = NotificationHelpers.extract_character_id(char)
 
-            send_character_notification(character_info)
+            # Check if this specific character should trigger a notification
+            if WandererNotifier.Services.NotificationDeterminer.should_notify_character?(
+                 character_id
+               ) do
+              # Create the character notification data structure
+              character_info = %{
+                "character_id" => character_id,
+                "character_name" => NotificationHelpers.extract_character_name(char),
+                "corporation_name" => NotificationHelpers.extract_corporation_name(char)
+              }
+
+              send_character_notification(character_info)
+
+              Logger.info(
+                "[notify_new_tracked_characters] Sent notification for character #{character_info["character_name"]} (ID: #{character_id})"
+              )
+            else
+              Logger.debug(
+                "[notify_new_tracked_characters] Character with ID #{character_id} is not marked for notification"
+              )
+            end
           rescue
             e ->
               Logger.error(
@@ -273,7 +306,9 @@ defmodule WandererNotifier.Api.Map.Characters do
         end)
       end)
     else
-      Logger.debug("[notify_new_tracked_characters] Character notifications disabled")
+      Logger.debug(
+        "[notify_new_tracked_characters] Character notifications are disabled globally"
+      )
     end
 
     {:ok, new_characters}

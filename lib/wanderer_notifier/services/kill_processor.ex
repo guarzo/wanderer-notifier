@@ -197,14 +197,72 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Simulate enrichment and notification
   defp enrich_and_notify(kill_id) do
     try do
-      # This would be the real enrichment and notification logic
-      Logger.info("Would enrich and notify about kill #{kill_id}")
-      :ok
+      # Get the cached killmail
+      key = "#{@recent_kills_key}:#{kill_id}"
+      killmail = CacheRepo.get(key)
+
+      if is_nil(killmail) do
+        Logger.error("Cannot find cached killmail for kill_id=#{kill_id}")
+        {:error, "Killmail not found in cache"}
+      else
+        # Extract the system ID from the killmail
+        system_id = get_system_id_from_killmail(killmail)
+
+        # Determine if this kill should trigger a notification
+        if WandererNotifier.Services.NotificationDeterminer.should_notify_kill?(
+             killmail,
+             system_id
+           ) do
+          # Get the enriched killmail data
+          enriched_killmail = enrich_killmail_data(killmail)
+
+          # Send the notification
+          send_kill_notification(enriched_killmail, kill_id)
+          Logger.info("Successfully sent notification for kill_id=#{kill_id}")
+          :ok
+        else
+          Logger.info(
+            "Kill #{kill_id} filtered out - not in tracked system or involving tracked character"
+          )
+
+          :ok
+        end
+      end
     rescue
       e ->
         Logger.error("Exception during enrichment: #{Exception.message(e)}")
         {:error, "Failed to enrich kill: #{Exception.message(e)}"}
     end
+  end
+
+  # Extract system ID from killmail
+  defp get_system_id_from_killmail(%Killmail{} = killmail) do
+    case killmail do
+      %Killmail{esi_data: esi_data} when is_map(esi_data) ->
+        Map.get(esi_data, "solar_system_id")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp get_system_id_from_killmail(killmail) when is_map(killmail) do
+    # Try to get system ID from various possible locations
+    Map.get(killmail, "solar_system_id") ||
+      Map.get(killmail, :solar_system_id) ||
+      get_in(killmail, ["esi_data", "solar_system_id"]) ||
+      get_in(killmail, [:esi_data, "solar_system_id"])
+  end
+
+  defp get_system_id_from_killmail(_), do: nil
+
+  # Send the notification for a kill
+  defp send_kill_notification(enriched_killmail, kill_id) do
+    # Format and send the notification using Discord notifier
+    WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+
+    # Log the notification for tracking purposes
+    Logger.info("Kill notification sent for kill_id=#{kill_id}")
   end
 
   @doc """
@@ -390,4 +448,115 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   defp get_killmail_id(_), do: nil
+
+  # Enrich the killmail data with additional information needed for notifications
+  defp enrich_killmail_data(%Killmail{} = killmail) do
+    # Since we can't use the private enrichment function directly,
+    # we'll implement our own basic enrichment logic
+    %Killmail{esi_data: esi_data} = killmail
+
+    # Enrich with system name if needed
+    esi_data = enrich_with_system_name(esi_data)
+
+    # Enrich victim data if available
+    esi_data =
+      if Map.has_key?(esi_data, "victim") do
+        victim = Map.get(esi_data, "victim")
+        enriched_victim = enrich_entity(victim)
+        Map.put(esi_data, "victim", enriched_victim)
+      else
+        esi_data
+      end
+
+    # Enrich attackers if available
+    esi_data =
+      if Map.has_key?(esi_data, "attackers") do
+        attackers = Map.get(esi_data, "attackers", [])
+        enriched_attackers = Enum.map(attackers, &enrich_entity/1)
+        Map.put(esi_data, "attackers", enriched_attackers)
+      else
+        esi_data
+      end
+
+    # Return updated killmail with enriched ESI data
+    %Killmail{killmail | esi_data: esi_data}
+  end
+
+  # Handle non-Killmail structured data
+  defp enrich_killmail_data(killmail) when is_map(killmail) do
+    # Convert to Killmail struct if possible
+    kill_id = Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id)
+    zkb_data = Map.get(killmail, "zkb") || Map.get(killmail, :zkb) || %{}
+    esi_data = Map.drop(killmail, ["zkb", :zkb])
+
+    # Create a new Killmail struct
+    killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
+
+    # Now enrich using the struct version
+    enrich_killmail_data(killmail_struct)
+  end
+
+  defp enrich_killmail_data(data) do
+    # For anything else, return as is with a warning
+    Logger.warning("Cannot enrich killmail data of unknown format: #{inspect(data, limit: 100)}")
+    data
+  end
+
+  # Enrich entity (victim or attacker) with additional information
+  defp enrich_entity(entity) when is_map(entity) do
+    # Add character name if missing
+    entity =
+      if Map.has_key?(entity, "character_id") && !Map.has_key?(entity, "character_name") do
+        character_id = Map.get(entity, "character_id")
+
+        character_name =
+          case WandererNotifier.Api.ESI.Service.get_character_info(character_id) do
+            {:ok, char_info} -> Map.get(char_info, "name", "Unknown Pilot")
+            _ -> "Unknown Pilot"
+          end
+
+        Map.put(entity, "character_name", character_name)
+      else
+        entity
+      end
+
+    # Add ship name if missing
+    entity =
+      if Map.has_key?(entity, "ship_type_id") && !Map.has_key?(entity, "ship_type_name") do
+        ship_id = Map.get(entity, "ship_type_id")
+
+        ship_name =
+          case WandererNotifier.Api.ESI.Service.get_ship_type_name(ship_id) do
+            {:ok, type_info} -> Map.get(type_info, "name", "Unknown Ship")
+            _ -> "Unknown Ship"
+          end
+
+        Map.put(entity, "ship_type_name", ship_name)
+      else
+        entity
+      end
+
+    entity
+  end
+
+  defp enrich_entity(entity), do: entity
+
+  # Add system name to ESI data if missing
+  defp enrich_with_system_name(esi_data) when is_map(esi_data) do
+    if Map.has_key?(esi_data, "solar_system_id") && !Map.has_key?(esi_data, "solar_system_name") do
+      system_id = Map.get(esi_data, "solar_system_id")
+
+      system_name =
+        case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+          {:ok, system_info} -> Map.get(system_info, "name", "Unknown System")
+          _ -> "Unknown System"
+        end
+
+      Map.put(esi_data, "solar_system_name", system_name)
+    else
+      esi_data
+    end
+  end
+
+  defp enrich_with_system_name(data), do: data
 end
