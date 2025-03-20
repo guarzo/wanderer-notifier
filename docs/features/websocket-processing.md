@@ -1,4 +1,4 @@
-# WebSocket Message Processing Logic
+# WebSocket Message Processing
 
 This document outlines the flow and logic for processing WebSocket messages from zKillboard's real-time kill feed.
 
@@ -6,11 +6,12 @@ This document outlines the flow and logic for processing WebSocket messages from
 
 1. WebSocket connection is established to `wss://zkillboard.com/websocket/`
 2. The application subscribes to the `killstream` channel
-3. Messages are received in the WebSocket handler
-4. Messages are forwarded to the parent process (Service GenServer)
-5. Messages are decoded and processed by KillProcessor
-6. Processed kills are stored in Process dictionary
-7. Kill notifications are sent based on configured filters
+3. Messages are received in the WebSocket handler (`WandererNotifier.Api.ZKill.WebSocket` via the `handle_frame/2` function)
+4. Messages are parsed and classified in `process_text_frame/2`
+5. Valid kill messages are forwarded to the parent process (Service GenServer) via `{:zkill_message, message}`
+6. The service GenServer receives the message in its `handle_info/2` function and forwards to `KillProcessor`
+7. `KillProcessor.process_zkill_message/2` parses and validates the kill data
+8. If valid, the kill is cached and processed for notification if it meets the criteria
 
 ## Message Types
 
@@ -91,16 +92,16 @@ defp classify_message_type(json_data) when is_map(json_data) do
   cond do
     Map.has_key?(json_data, "action") ->
       "action:#{json_data["action"]}"
-      
+
     Map.has_key?(json_data, "killmail_id") and Map.has_key?(json_data, "zkb") ->
       "killmail_with_zkb"
-      
+
     Map.has_key?(json_data, "killmail_id") ->
       "killmail_without_zkb"
-      
+
     Map.has_key?(json_data, "tqStatus") ->
       "tq_status"
-      
+
     true ->
       "unknown"
   end
@@ -180,101 +181,90 @@ Each killmail goes through the following steps:
 
 4. **Store in Cache**
 
-   The kill is stored in the process dictionary for later use:
+   The kill is stored in a shared cache for later use:
 
    ```elixir
-   # Add the new kill to the front
-   updated_kills = [kill_with_id | recent_kills]
-   # Keep only the most recent ones
-   updated_kills = Enum.take(updated_kills, @max_recent_kills)
-   # Update the process dictionary
-   Process.put(@recent_kills_key, updated_kills)
+   # Create a cache key for this kill
+   kill_key = "zkill:recent_kills:#{kill_id}"
+
+   # Store the kill data with TTL
+   Cache.Repository.put(kill_key, kill_data, ttl: @kill_cache_ttl)
+
+   # Update the list of recent kill IDs
+   recent_kill_ids = [kill_id | recent_kill_ids] |> Enum.take(@max_recent_kills)
+   Cache.Repository.put("zkill:recent_kills", recent_kill_ids, ttl: @kill_list_cache_ttl)
    ```
+
+## Cache Implementation
+
+The application stores kills in a shared cache repository:
+
+1. Each kill is stored individually with its own key (`zkill:recent_kills:{kill_id}`)
+2. A separate list of recent kill IDs is maintained (`zkill:recent_kills`)
+3. TTL is applied to avoid unbounded cache growth
+4. Data is converted to the `WandererNotifier.Data.Killmail` struct when possible for consistency
+
+Benefits of this approach:
+
+- Kills are accessible from any process in the application
+- Persistence across WebSocket restarts (until TTL expires)
+- Automatic cache cleanup via TTL
+- Better data structure consistency with the Killmail struct
 
 ## Kill ID Extraction Logic
 
-To handle variations in kill message formats from zKillboard, we have a robust ID extraction function:
+To handle variations in kill message formats from zKillboard, there's a robust ID extraction function:
 
 ```elixir
 defp get_killmail_id(kill_data) when is_map(kill_data) do
   cond do
     # Direct field
-    Map.has_key?(kill_data, "killmail_id") -> 
+    Map.has_key?(kill_data, "killmail_id") ->
       Map.get(kill_data, "killmail_id")
-    
+
     # Check for nested structure
     Map.has_key?(kill_data, "zkb") && Map.has_key?(kill_data, "killmail") ->
       get_in(kill_data, ["killmail", "killmail_id"])
-    
+
     # Check for string keys converted to atoms
     Map.has_key?(kill_data, :killmail_id) ->
       Map.get(kill_data, :killmail_id)
-      
-    # Try to extract from the raw data if it has a zkb key 
+
+    # Try to extract from the raw data if it has a zkb key
     # (common format in real-time websocket feed)
     Map.has_key?(kill_data, "zkb") ->
-      kill_id = Map.get(kill_data, "killID") || 
+      kill_id = Map.get(kill_data, "killID") ||
                get_in(kill_data, ["zkb", "killID"]) ||
                get_in(kill_data, ["zkb", "killmail_id"])
-               
+
       # If we found a string ID, convert to integer
       if is_binary(kill_id) do
         String.to_integer(kill_id)
       else
         kill_id
       end
-    
+
     true -> nil
   end
 end
 ```
 
-## Notification Decision Logic
+## Testing Kill Notifications
 
-Kills are processed for notification based on these criteria:
+To test kill notifications:
 
-1. Is it the first notification since startup? (Always send enriched)
-2. Is the license valid? (Controls rich vs. text notifications)
-3. Is the kill relevant based on:
-   - System tracking settings
-   - Character tracking settings
+1. Call the `/api/test-notification` endpoint
+2. The system will look for recent kills in the shared cache
+3. If found, it will use the most recent one for the test notification
+4. If no recent kills are found, it will fall back to sample data
 
-## Special Cases
+## Debugging
 
-### First Kill Notification
+The system has extensive logging with specific trace tags:
 
-The first kill notification after startup is always sent in enriched format regardless of license status to demonstrate premium features:
+- `WEBSOCKET TRACE` - For WebSocket connection and message receipt
+- `PROCESSOR TRACE` - For message processing and parsing
+- `KILLMAIL TRACE` - For killmail-specific handling
+- `CACHE TRACE` - For cache operations
 
-```elixir
-# For first notification, use enriched format regardless of license
-if is_first_notification || License.status().valid do
-  # Mark that we've sent the first notification if this is it
-  if is_first_notification do
-    Stats.mark_notification_sent(:kill)
-    Logger.info("Sending first kill notification in enriched format (startup message)")
-  end
-  
-  # Use the formatter to create the notification
-  generic_notification = Formatter.format_kill_notification(enriched_kill, kill_id)
-  discord_embed = Formatter.to_discord_format(generic_notification)
-  send_discord_embed(discord_embed, :kill_notifications)
-end
-```
-
-### Test Notifications
-
-For debugging and testing, we have a special endpoint that will use real cached kills if available, falling back to sample data only when necessary:
-
-```elixir
-cond do
-  recent_kills == [] ->
-    # Use sample data if no real kills cached
-    sample_kill = get_sample_kill()
-    # ...
-    
-  true ->
-    # Use real kill data for the notification
-    recent_kill = List.first(recent_kills)
-    # ...
-end
-```
+These logs can help identify where issues are occurring in the processing chain.

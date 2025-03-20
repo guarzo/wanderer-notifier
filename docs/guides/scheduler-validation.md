@@ -1,8 +1,8 @@
-# Scheduler Validation Documentation
+# Scheduler Validation Guide
 
 ## Overview
 
-This document provides a comprehensive overview of all scheduled tasks in the WandererNotifier application, including what they do, when they run, and their implementation details. This documentation serves as a validation record for the scheduled tasks.
+This document provides a comprehensive overview of all scheduled tasks in the WandererNotifier application, including what they do, when they run, and their implementation details. Use this guide to understand and validate the scheduled tasks in the system.
 
 ## Scheduler Architecture
 
@@ -151,26 +151,51 @@ All timing-related configurations are centralized in the `WandererNotifier.Core.
 
 This centralization makes it easier to manage and adjust timing values without having to search through the codebase.
 
-## Validation Status
-
-Based on code review, all four schedulers are correctly implemented and functioning as expected:
-
-- ✅ TPS Chart Scheduler
-- ✅ Activity Chart Scheduler
-- ✅ Character Update Scheduler
-- ✅ System Update Scheduler
-
-The configuration from the Timings module matches the scheduler implementations, and the Supervisor properly starts all schedulers.
-
 ## Manual Scheduler Control
 
 All schedulers can be manually triggered using their `execute_now/0` function, which is useful for testing and debugging.
 
 Additionally, the Registry provides an `execute_all/0` function to trigger all registered schedulers simultaneously.
 
-## Recommendations
+## Validating Schedulers
 
-1. Consider adding more comprehensive error handling for API failures
-2. Implement retry logic for transient errors in external API calls
-3. Add telemetry or metrics collection for scheduler execution
-4. Consider implementing a web dashboard for scheduler status monitoring
+To validate that schedulers are working properly:
+
+1. **Check Registry**: Verify that all schedulers are registered correctly:
+
+   ```elixir
+   WandererNotifier.Schedulers.Registry.list_registered()
+   ```
+
+2. **Manually Trigger**: Test a specific scheduler by manually triggering it:
+
+   ```elixir
+   WandererNotifier.Schedulers.TPSChartScheduler.execute_now()
+   ```
+
+3. **Check Logs**: Monitor logs for scheduler execution messages
+
+   ```
+   [info] TPS Chart Scheduler executing
+   ```
+
+4. **Verify Output**: Check Discord for the expected notifications or charts
+
+## Best Practices
+
+When working with schedulers:
+
+1. Always use the centralized `Timings` module for configuration values
+2. Implement proper error handling in scheduler execute functions
+3. Include detailed logging for debugging purposes
+4. Keep scheduler logic simple, delegating complex operations to service modules
+5. Consider adding telemetry or metrics for monitoring scheduler health
+
+## Recommendations for Improvement
+
+If you're enhancing the scheduler system, consider:
+
+1. Adding more comprehensive error handling for API failures
+2. Implementing retry logic for transient errors in external API calls
+3. Adding telemetry or metrics collection for scheduler execution
+4. Implementing a web dashboard for scheduler status monitoring

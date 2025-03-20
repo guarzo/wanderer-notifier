@@ -1,6 +1,6 @@
-# WandererNotifier Development Guide
+# WandererNotifier Code Style Guide
 
-This guide combines coding standards, architectural patterns, and best practices to ensure the codebase remains consistent, maintainable, and aligned with project goals.
+This guide outlines the coding standards, architectural patterns, and best practices to follow when developing for the WandererNotifier project.
 
 ## Core Principles
 
@@ -80,7 +80,7 @@ This guide combines coding standards, architectural patterns, and best practices
 - **GenServer Implementation**: Follow consistent patterns for GenServers:
   - Clear state definition
   - Explicit API functions
-  - Proper handle_* callbacks
+  - Proper handle\_\* callbacks
   - Defensive state updates
 - **Named Processes**: Register important processes with the Registry
 - **Process Configuration**: Configure processes from application environment
@@ -152,4 +152,3 @@ This guide combines coding standards, architectural patterns, and best practices
 - **Performance Considerations**: Profile and optimize critical paths
 - **Memory Management**: Be mindful of memory usage, especially in long-running processes
 - **Security**: Follow security best practices, especially for external API interactions
-

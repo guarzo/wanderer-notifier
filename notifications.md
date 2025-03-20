@@ -202,6 +202,6 @@ If you encounter issues with Wanderer Notifier, here are solutions to common pro
 3. **Verify Status:** Check the dashboard at `http://localhost:4000` to see subscription status.
 4. **Restart After Subscribing:** If you've recently subscribed, restart the notifier with `docker-compose restart`.
 
-For additional support, join our [Discord community](https://discord.gg/wanderer) or email support@wanderer.ltd.
+For additional support, join our [Discord community](https://discord.gg/wanderer)
 
-[Back to home](./index.html) | [See subscription options](./license.html) | [View on GitHub](https://github.com/yourusername/wanderer-notifier) 
+[Back to home](./index.html) | [See subscription options](https://wanderer.ltd/news/map-subscriptions) | [View on GitHub](https://github.com/guarzo/wanderer-notifier) 
