@@ -28,6 +28,9 @@ RUN mix deps.get --only prod
 # Copy config files first
 COPY config config
 
+# Copy chart service
+COPY chart-service chart-service
+
 # Copy release files and ensure correct permissions
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
@@ -81,12 +84,16 @@ WORKDIR /app
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
 # Copy chart service files
-COPY --from=builder /app/renderer/chart-service chart-service/
-COPY --from=builder /app/renderer/package.json ./
-COPY --from=builder /app/renderer/package-lock.json ./
+COPY --from=builder /app/chart-service chart-service/
 
-# Install Node.js dependencies for chart service
+# Install chart service dependencies
+WORKDIR /app/chart-service
+COPY --from=builder /app/chart-service/package.json ./
+COPY --from=builder /app/chart-service/package-lock.json ./
 RUN npm ci --production
+
+# Return to app directory
+WORKDIR /app
 
 # Create directory for runtime environment file and data
 RUN mkdir -p /app/etc /app/data/cache /app/chart-output
@@ -94,10 +101,10 @@ RUN mkdir -p /app/etc /app/data/cache /app/chart-output
 # Create a startup script
 RUN echo '#!/bin/sh\n\
 # Start the chart service in background\n\
-node /app/chart-service/chart-generator.js &\n\
+cd /app/chart-service && node chart-generator.js &\n\
 \n\
 # Start the Elixir application\n\
-exec /app/bin/wanderer_notifier start\n\
+cd /app && exec /app/bin/wanderer_notifier start\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Create a non-root user
