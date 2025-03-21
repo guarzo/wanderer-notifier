@@ -378,7 +378,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             "Shows the number of kills and estimated value over time"
         end
 
-      case TPSChartAdapter.send_chart_to_discord(chart_type, title, description) do
+      # Get the appropriate channel ID for TPS charts
+      channel_id = WandererNotifier.Core.Config.discord_channel_id_for(:tps_charts)
+      Logger.info("Using Discord channel ID for TPS charts: #{channel_id}")
+
+      case TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id) do
         :ok ->
           conn
           |> put_resp_content_type("application/json")
@@ -401,7 +405,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Send all TPS charts to Discord
   get "/corp-tools/charts/send-all-to-discord" do
-    results = TPSChartAdapter.send_all_charts_to_discord()
+    # Get the appropriate channel ID for TPS charts
+    channel_id = WandererNotifier.Core.Config.discord_channel_id_for(:tps_charts)
+    Logger.info("Using Discord channel ID for TPS charts: #{channel_id}")
+
+    results = TPSChartAdapter.send_all_charts_to_discord(channel_id)
 
     # Check if any of the charts were sent successfully
     any_success = Enum.any?(Map.values(results), fn result -> result == :ok end)

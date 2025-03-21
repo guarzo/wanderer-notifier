@@ -45,6 +45,14 @@ config :wanderer_notifier,
   bot_api_token: System.get_env("BOT_API_TOKEN"),
   license_manager_api_url: System.get_env("LICENSE_MANAGER_API_URL")
 
+# Feature flag configuration
+# Enable activity charts by default, keep TPS charts disabled
+config :wanderer_notifier,
+  feature_activity_charts: System.get_env("FEATURE_ACTIVITY_CHARTS", "true"),
+  feature_tps_charts: System.get_env("FEATURE_TPS_CHARTS", "false"),
+  feature_map_tools: System.get_env("FEATURE_MAP_TOOLS", "true"),
+  feature_corp_tools: System.get_env("FEATURE_CORP_TOOLS", "false")
+
 # Web server configuration
 config :wanderer_notifier,
   web_port: String.to_integer(System.get_env("PORT") || "4000")

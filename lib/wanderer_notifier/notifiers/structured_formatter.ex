@@ -785,7 +785,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       kill_notifications: Map.get(features_status, :kill_notifications_enabled, true),
       tracked_systems_notifications: Map.get(features_status, :system_tracking_enabled, true),
       tracked_characters_notifications:
-        Map.get(features_status, :character_tracking_enabled, true)
+        Map.get(features_status, :character_tracking_enabled, true),
+      activity_charts: Map.get(features_status, :activity_charts, false)
     }
 
     # For debugging display
@@ -803,6 +804,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         format_feature_item(
           "Character Notifications",
           primary_features.tracked_characters_notifications
+        ),
+        format_feature_item(
+          "Activity Charts",
+          primary_features.activity_charts
         )
       ]
       |> Enum.join("\n")

@@ -346,6 +346,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     Logger.info("Sending #{chart_type} chart to Discord")
     Logger.info("Preparing to send #{chart_type} chart to Discord")
 
+    # Get the appropriate channel ID for activity charts
+    channel_id = WandererNotifier.Core.Config.discord_channel_id_for_activity_charts()
+    Logger.info("Using Discord channel ID for activity charts: #{channel_id}")
+
     # Log the activity data type
     Logger.info(
       "Activity data type: #{if is_nil(activity_data), do: "nil", else: if(is_map(activity_data), do: "map with keys: #{inspect(Map.keys(activity_data))}", else: if(is_list(activity_data), do: "list with #{length(activity_data)} items", else: inspect(activity_data, limit: 50)))}"
@@ -373,7 +377,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       :activity_summary ->
         case ActivityChartAdapter.send_chart_to_discord(
                activity_data,
-               "Character Activity Summary"
+               "Character Activity Summary",
+               "activity_summary",
+               "Top characters by connections, passages, and signatures in the last 24 hours.\nData is refreshed daily.",
+               channel_id
              ) do
           {:ok, url, title} -> {:ok, url, title}
           error -> error
@@ -386,7 +393,8 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
             case WandererNotifier.ChartService.send_chart_to_discord(
                    url,
                    "Activity Timeline",
-                   "Activity over time"
+                   "Activity over time",
+                   channel_id
                  ) do
               :ok -> {:ok, url, "Activity Timeline"}
               error -> error
@@ -403,7 +411,8 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
             case WandererNotifier.ChartService.send_chart_to_discord(
                    url,
                    "Activity Distribution",
-                   "Distribution of activities"
+                   "Distribution of activities",
+                   channel_id
                  ) do
               :ok -> {:ok, url, "Activity Distribution"}
               error -> error

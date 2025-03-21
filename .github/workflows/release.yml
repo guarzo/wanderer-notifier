@@ -94,7 +94,7 @@ jobs:
           push: false
           load: true
           build-args: |
-            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
+            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.WANDERER_PRODUCTION_BOT_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
           tags: |
             guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
@@ -104,8 +104,8 @@ jobs:
       - name: Test Docker image
         run: |
           echo "Testing Docker image startup..."
-          # Test with the built-in token (no DISCORD_BOT_TOKEN env var needed)
-          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Test passed: Built-in token was properly configured' && exit 0"
+          # Test that we're in production mode and using baked-in token
+          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Running test...' && if [ \"\$(grep -r 'production_bot_token:' /app/releases)\" ]; then echo 'Token is correctly baked into release'; else echo 'ERROR: Token not found in release!'; exit 1; fi"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2

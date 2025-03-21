@@ -7,11 +7,22 @@ echo "Elixir version: $(elixir --version | head -1)"
 echo "Node.js version: $(node --version)"
 echo "Current directory: $(pwd)"
 
+if [ "$MIX_ENV" != "prod" ]; then
+  if [ -z "$BOT_API_TOKEN" ] && [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then
+    export BOT_API_TOKEN="$WANDERER_PRODUCTION_BOT_TOKEN"
+  fi
+else
+  echo "Running in production mode - using baked-in configuration only"
+fi
+
 # Debug some key environment variables
 echo "MIX_ENV: $MIX_ENV"
 echo "PORT: $PORT"
 echo "DISCORD_BOT_TOKEN set: ${DISCORD_BOT_TOKEN:+yes}"
-echo "BOT_API_TOKEN set: ${BOT_API_TOKEN:+yes}"
+# Don't log token information in production
+if [ "$MIX_ENV" != "prod" ]; then
+  echo "BOT_API_TOKEN set: ${BOT_API_TOKEN:+yes}"
+fi
 echo "MAP_URL_WITH_NAME: ${MAP_URL_WITH_NAME:-(not set)}"
 
 echo "Starting chart service..."

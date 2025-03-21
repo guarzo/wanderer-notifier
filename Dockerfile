@@ -32,6 +32,14 @@ COPY chart-service chart-service
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
+# Inject the production bot token into the application configuration
+RUN if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then \
+    echo "Injecting production bot token into application configuration"; \
+    for file in $(find config -name "*.exs"); do \
+      sed -i "s/production_bot_token: \"[^\"]*\"/production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"/" $file; \
+    done; \
+  fi
+
 # Create a proper sys.config in the overlays
 RUN echo '[' > rel/overlays/sys.config && \
     echo '  {kernel, [{distribution_mode, none}, {start_distribution, false}]},' >> rel/overlays/sys.config && \
@@ -60,6 +68,10 @@ RUN mix release && \
 # --- Runtime Stage ---
 FROM elixir:1.14-otp-25 AS app
 
+# Accept and set the production bot token environment variable from build arg
+ARG WANDERER_PRODUCTION_BOT_TOKEN
+ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+
 # Only set default values for environment variables
 ENV DISCORD_BOT_TOKEN="" \
     APP_VERSION="" \
@@ -69,7 +81,6 @@ ENV DISCORD_BOT_TOKEN="" \
     CACHE_DIR=/app/data/cache \
     CHART_SERVICE_PORT=3001 \
     BOT_API_TOKEN="" \
-    WANDERER_PRODUCTION_BOT_TOKEN="" \
     LICENSE_KEY="" \
     MAP_URL="" \
     MAP_URL_WITH_NAME="" \

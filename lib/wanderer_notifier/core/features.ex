@@ -203,7 +203,7 @@ defmodule WandererNotifier.Core.Features do
       _ -> true
     end
   end
-  
+
   @doc """
   Convenience function to check if all systems should be tracked,
   delegating to Config.track_all_systems?
@@ -211,11 +211,11 @@ defmodule WandererNotifier.Core.Features do
   def track_all_systems? do
     WandererNotifier.Core.Config.track_all_systems?()
   end
-  
+
   @doc """
   Convenience function to check if all kills should be processed for notifications.
   By default, only specific systems' kills are tracked unless explicitly enabled.
-  
+
   Setting PROCESS_ALL_KILLS=true in the environment is useful for testing kill notifications.
   """
   def process_all_kills? do
@@ -228,7 +228,7 @@ defmodule WandererNotifier.Core.Features do
       _ -> false
     end
   end
-  
+
   @doc """
   Returns a map of feature names and their status (enabled/disabled).
   Used for status reporting and debugging.
@@ -236,19 +236,22 @@ defmodule WandererNotifier.Core.Features do
   def get_feature_status do
     # Core features
     core_features = Map.new(@features.core, fn feature -> {feature, true} end)
-    
+
     # Standard features
-    standard_features = Map.new(@features.standard, fn feature -> 
-      {feature, License.status().valid}
-    end)
-    
+    standard_features =
+      Map.new(@features.standard, fn feature ->
+        {feature, License.status().valid}
+      end)
+
     # Premium features - safely handle missing premium key
     license_status = License.status()
     is_premium = Map.get(license_status, :premium, false)
-    premium_features = Map.new(@features.premium, fn feature -> 
-      {feature, license_status.valid && is_premium}
-    end)
-    
+
+    premium_features =
+      Map.new(@features.premium, fn feature ->
+        {feature, license_status.valid && is_premium}
+      end)
+
     # Special overrides based on configuration
     special_features = %{
       # WebSocket connection status
@@ -262,15 +265,17 @@ defmodule WandererNotifier.Core.Features do
       # Processing all kills (usually for testing)
       processing_all_kills: process_all_kills?(),
       # Tracking all systems
-      tracking_all_systems: track_all_systems?()
+      tracking_all_systems: track_all_systems?(),
+      # Activity charts status
+      activity_charts: WandererNotifier.Core.Config.activity_charts_enabled?()
     }
-    
+
     # Merge all feature maps
     Map.merge(core_features, standard_features)
     |> Map.merge(premium_features)
     |> Map.merge(special_features)
   end
-  
+
   # Helper function to get WebSocket connection status from stats
   defp get_websocket_status do
     try do
