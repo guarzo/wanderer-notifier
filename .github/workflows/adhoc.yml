@@ -1,4 +1,4 @@
-name: Ad-hoc Image
+name: Ad-hoc
 
 on:
   workflow_dispatch:

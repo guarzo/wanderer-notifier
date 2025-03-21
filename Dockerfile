@@ -42,7 +42,7 @@
     # Copy mix files and fetch deps first for better caching
     # -------------
     COPY mix.exs mix.lock ./
-    # Copy only the configuration that’s needed to compile dependencies
+    # Copy only the configuration that's needed to compile dependencies
     COPY config config
     
     RUN mix deps.get --only prod
@@ -58,7 +58,7 @@
     # -------------
     # Environment- or token-specific steps
     # -------------
-    # If you want to “bake in” the token at build time:
+    # If you want to "bake in" the token at build time:
     RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
           echo "Config setup: Using production token from build arg" && \
           echo "# Production token from build" >> config/runtime.exs && \
@@ -88,7 +88,7 @@
     # Compile and build release
     # -------------
     RUN mix deps.compile && \
-        # Toggle ERTS inclusion if you prefer to rely on the final container’s OTP
+        # Toggle ERTS inclusion if you prefer to rely on the final container's OTP
         sed -i 's/include_executables_for: \[:unix\]/include_executables_for: \[:unix\], include_erts: false/' mix.exs && \
         mix compile --no-deps-check && \
         mix release && \
@@ -133,6 +133,18 @@
           wget \
         && rm -rf /var/lib/apt/lists/*
     
+    # ----------------------------------------
+    # CHART SERVICE DEPENDENCIES - Install Node.js BEFORE setting up chart-service
+    # ----------------------------------------
+    RUN apt-get update && \
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+        apt-get install -y --no-install-recommends \
+          nodejs \
+          # If chart-service must compile native addons:
+          build-essential \
+          python3 \
+        && rm -rf /var/lib/apt/lists/*
+    
     # Enable locale
     RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
         locale-gen
@@ -152,23 +164,13 @@
         chmod +x /app/bin/wanderer_notifier /app/start.sh
     
     # ----------------------------------------
-    # CHART SERVICE SETUP
+    # CHART SERVICE SETUP - Node.js is already installed above
     # ----------------------------------------
-    # Option 1: If chart-service needs Node at runtime
-    # we install Node here:
-    RUN apt-get update && \
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-        apt-get install -y --no-install-recommends \
-          nodejs \
-          # If chart-service must compile native addons:
-          build-essential \
-          python3 \
-        && rm -rf /var/lib/apt/lists/*
-    
     # Copy chart-service from builder
     COPY --from=builder /app/chart-service /app/chart-service
     WORKDIR /app/chart-service
     
+    # Now npm should be available
     RUN npm ci --only=production || npm install --production
     
     # -------------
