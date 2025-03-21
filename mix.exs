@@ -47,10 +47,7 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"],
-        config_providers: [
-          {Config.Reader, {:system, "RELEASE_SYS_CONFIG", "/app/releases/sys.config"}}
-        ]
+        overlays: ["rel/overlays"]
       ]
     ]
   end
