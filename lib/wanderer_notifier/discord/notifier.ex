@@ -91,12 +91,12 @@ defmodule WandererNotifier.Discord.Notifier do
     cond do
       value < 1000 -> "<1k ISK"
       value < 1_000_000 -> "#{round(value / 1000)}k ISK"
-      true -> "#{round(value / 1_000_000)}M ISK"
+      value < 1_000_000_000 -> "#{round(value / 1_000_000)}M ISK"
+      true -> "#{Float.round(value / 1_000_000_000, 2)}B ISK"
     end
   end
 
   defp format_isk_value(_), do: "0 ISK"
-
   # Helper function used by character notification code
   defp enrich_character(data, key, fun) do
     case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
