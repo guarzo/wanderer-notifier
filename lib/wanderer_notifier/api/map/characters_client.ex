@@ -209,7 +209,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   @spec get_character_activity(String.t() | nil) :: {:ok, list(map())} | {:error, term()}
   def get_character_activity(slug \\ nil) do
     try do
-      with {:ok, url} <- UrlBuilder.build_url("map/character-activity", %{}, slug),
+      with {:ok, url} <- UrlBuilder.build_url("map/character-activity", %{days: 1}, slug),
            headers = UrlBuilder.get_auth_headers() do
         # Make the API request directly to handle raw response
         case Client.get(url, headers) do

@@ -11,30 +11,31 @@ defmodule WandererNotifier.LicenseManager.Client do
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
 
   @doc """
-  Validates a bot with a license key using the License Manager API.
-  This endpoint handles both bot validation and license validation in a single call.
+  Validates a bot by calling the license manager API.
 
   ## Parameters
-
-  - `bot_api_token`: The API token for the bot.
-  - `license_key`: The license key to validate against.
+  - `notifier_api_token`: The API token for the notifier.
+  - `license_key`: The license key to validate.
 
   ## Returns
-
-  - `{:ok, response}`: If the validation is successful.
-  - `{:error, reason}`: If the validation fails or an error occurred.
+  - `{:ok, data}` if the bot was validated successfully.
+  - `{:error, reason}` if the validation failed.
   """
-  def validate_bot(bot_api_token, license_key) do
-    url = "#{Config.license_manager_api_url()}/api/validate_bot"
+  def validate_bot(notifier_api_token, license_key) do
+    url = "#{Config.license_manager_api_url()}/api/v1/validate/bot"
     Logger.info("License Manager API URL: #{url}")
-    Logger.debug("Using bot_api_token: #{String.slice(bot_api_token, 0, 8)}... (first 8 chars)")
+
+    Logger.debug(
+      "Using notifier_api_token: #{String.slice(notifier_api_token, 0, 8)}... (first 8 chars)"
+    )
+
     Logger.debug("Using license_key: #{String.slice(license_key, 0, 8)}... (first 8 chars)")
 
     # Set the bot API token as a Bearer token in the Authorization header
     headers = [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
-      {"Authorization", "Bearer #{bot_api_token}"}
+      {"Authorization", "Bearer #{notifier_api_token}"}
     ]
 
     # Create the request body with the license key
@@ -55,7 +56,7 @@ defmodule WandererNotifier.LicenseManager.Client do
           {:ok, decoded} ->
             # Additional logging for easier debugging
             Logger.debug("Bot validation response: #{inspect(decoded)}")
-            
+
             # Check if the license is valid from the response
             license_valid = decoded["license_valid"] || false
             message = decoded["message"]
@@ -72,18 +73,18 @@ defmodule WandererNotifier.LicenseManager.Client do
             {:ok, enhanced_response}
 
           {:error, :unauthorized} ->
-            Logger.error("License Manager API: Invalid bot API token (401)")
-            {:error, :invalid_bot_token}
+            Logger.error("License Manager API: Invalid notifier API token (401)")
+            {:error, :invalid_notifier_token}
 
           {:error, :forbidden} ->
             Logger.error(
-              "License Manager API: Bot is inactive or not associated with license (403)"
+              "License Manager API: Notifier is inactive or not associated with license (403)"
             )
 
-            {:error, :bot_not_authorized}
+            {:error, :notifier_not_authorized}
 
           {:error, :not_found} ->
-            Logger.error("License Manager API: Bot or license not found (404)")
+            Logger.error("License Manager API: Notifier or license not found (404)")
             {:error, :not_found}
 
           error ->
@@ -102,20 +103,17 @@ defmodule WandererNotifier.LicenseManager.Client do
   end
 
   @doc """
-  Validates a license key using the License Manager API.
-  This is a simplified version of validate_bot that only checks license validity.
+  Validates a license key by calling the license manager API.
 
   ## Parameters
-
   - `license_key`: The license key to validate.
-  - `bot_api_token`: The API token for the bot.
+  - `notifier_api_token`: The API token for the notifier.
 
   ## Returns
-
-  - `{:ok, response}`: If the validation is successful.
-  - `{:error, reason}`: If the validation fails or an error occurred.
+  - `{:ok, data}` if the license was validated successfully.
+  - `{:error, reason}` if the validation failed.
   """
-  def validate_license(license_key, bot_api_token) do
+  def validate_license(license_key, notifier_api_token) do
     url = "#{Config.license_manager_api_url()}/api/validate_license"
     Logger.info("License Manager API URL: #{url}")
 
@@ -123,7 +121,7 @@ defmodule WandererNotifier.LicenseManager.Client do
     headers = [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
-      {"Authorization", "Bearer #{bot_api_token}"}
+      {"Authorization", "Bearer #{notifier_api_token}"}
     ]
 
     # Create the request body with the license key
@@ -146,53 +144,68 @@ defmodule WandererNotifier.LicenseManager.Client do
             {:ok, decoded} ->
               # Additional logging for easier debugging
               Logger.debug("License validation response: #{inspect(decoded)}")
-              
+
               # Check response structure and adapt to either {"valid": true/false} or {"license_valid": true/false} format
               cond do
                 # Check for license_valid field (validate_bot endpoint format)
                 Map.has_key?(decoded, "license_valid") ->
                   license_valid = decoded["license_valid"]
+
                   if license_valid do
                     Logger.info("License validation successful - License is valid")
                   else
                     error_msg = decoded["message"] || "License not valid"
                     Logger.warning("License validation failed - #{error_msg}")
                   end
+
                   # Map to expected format for backward compatibility
                   {:ok, Map.merge(decoded, %{"valid" => license_valid})}
-                  
+
                 # Check for valid field (validate_license endpoint format)
                 Map.has_key?(decoded, "valid") ->
                   valid = decoded["valid"]
                   bot_assigned = decoded["bot_assigned"] || false
+
                   if valid do
                     if bot_assigned do
-                      Logger.info("License validation successful - License is valid and bot is assigned")
+                      Logger.info(
+                        "License validation successful - License is valid and bot is assigned"
+                      )
                     else
-                      Logger.warning("License validation partial - License is valid but bot is not assigned")
+                      Logger.warning(
+                        "License validation partial - License is valid but bot is not assigned"
+                      )
                     end
                   else
                     error_msg = decoded["message"] || "License not valid"
                     Logger.warning("License validation failed - #{error_msg}")
                   end
+
                   {:ok, decoded}
-                  
+
                 # Unknown response format
                 true ->
-                  Logger.warning("Unrecognized license validation response format: #{inspect(decoded)}")
-                  {:ok, Map.merge(decoded, %{"valid" => false, "message" => "Unrecognized response format"})}
+                  Logger.warning(
+                    "Unrecognized license validation response format: #{inspect(decoded)}"
+                  )
+
+                  {:ok,
+                   Map.merge(decoded, %{
+                     "valid" => false,
+                     "message" => "Unrecognized response format"
+                   })}
               end
 
             {:error, :unauthorized} ->
-              Logger.error("License Manager API: Invalid bot API token (401)")
-              {:error, "Invalid bot API token"}
+              Logger.error("License Manager API: Invalid notifier API token (401)")
+              {:error, "Invalid notifier API token"}
 
             {:error, :forbidden} ->
               Logger.error(
-                "License Manager API: Bot is inactive or not associated with license (403)"
+                "License Manager API: Notifier is inactive or not associated with license (403)"
               )
 
-              {:error, "Bot not authorized"}
+              {:error, "Notifier not authorized"}
 
             {:error, :not_found} ->
               Logger.error("License Manager API: License not found (404)")

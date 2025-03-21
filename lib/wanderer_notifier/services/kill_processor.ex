@@ -534,24 +534,45 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Send the notification for a kill
   defp send_kill_notification(enriched_killmail, kill_id) do
     # Add detailed logging for kill notification
-    Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for kill #{kill_id}")
+    Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for killmail #{kill_id}")
 
-    # Check if this is a duplicate notification
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_kill(kill_id) do
+    # Generate a unique key combining killmail ID and current day for extra safety
+    # If a restart happens, this will still prevent resending the same kill on the same day
+    current_day = div(:os.system_time(:second), 86400)
+    global_kill_key = "global:killmail:#{kill_id}:#{current_day}"
+
+    # First check with the global key to prevent duplicates across restarts
+    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(global_kill_key) do
       {:ok, :duplicate} ->
-        Logger.info("🔄 DUPLICATE KILL: Kill #{kill_id} notification already sent, skipping")
+        Logger.info(
+          "🔒 GLOBAL DUPLICATE KILL: Killmail #{kill_id} already sent today, skipping (global key)"
+        )
+
         :ok
 
       {:ok, :new} ->
-        # Format and send the notification using Discord notifier
-        Logger.info("✅ NEW KILL: Sending notification for kill #{kill_id}")
-        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+        # Now check with the standard per-kill deduplication
+        case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_kill(kill_id) do
+          {:ok, :duplicate} ->
+            Logger.info(
+              "🔄 DUPLICATE KILL: Killmail #{kill_id} notification already sent, skipping"
+            )
 
-        # Update statistics for notification sent
-        update_kill_stats(:notification_sent)
+            :ok
 
-        # Log the notification for tracking purposes
-        Logger.info("📢 NOTIFICATION SENT: Kill #{kill_id} notification delivered successfully")
+          {:ok, :new} ->
+            # Format and send the notification using Discord notifier
+            Logger.info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
+            WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+
+            # Update statistics for notification sent
+            update_kill_stats(:notification_sent)
+
+            # Log the notification for tracking purposes
+            Logger.info(
+              "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
+            )
+        end
     end
   end
 

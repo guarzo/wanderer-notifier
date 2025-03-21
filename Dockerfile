@@ -2,8 +2,8 @@
 FROM elixir:1.14-otp-25 AS builder
 
 # Accept build arguments
-ARG WANDERER_PRODUCTION_BOT_TOKEN
-ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+ARG NOTIFIER_API_TOKEN
+ENV NOTIFIER_API_TOKEN=${NOTIFIER_API_TOKEN}
 
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
@@ -32,17 +32,17 @@ COPY chart-service chart-service
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
-# Inject the production bot token into the application configuration
-RUN if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then \
-    echo "Injecting production bot token into application configuration"; \
-    # Add to runtime.exs
-    echo "\n# Production bot token - Injected during Docker build" >> config/runtime.exs && \
-    echo "config :wanderer_notifier, production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"" >> config/runtime.exs && \
-    # Create a release-config file that will be included in the release
+# Inject the production token into the application configuration
+RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
+    echo "Config setup: Using production token from build arg" && \
+    # Append to runtime.exs
+    echo "# Production token from build" >> config/runtime.exs && \
+    echo "config :wanderer_notifier, notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> config/runtime.exs && \
+    # Create production token file for the release
     mkdir -p rel/overlays/etc && \
-    echo "Production token: $WANDERER_PRODUCTION_BOT_TOKEN" > rel/overlays/etc/production_token.txt; \
+    echo "Production token: $NOTIFIER_API_TOKEN" > rel/overlays/etc/production_token.txt; \
   else \
-    echo "WARNING: WANDERER_PRODUCTION_BOT_TOKEN is not set. The release may not work correctly."; \
+    echo "WARNING: NOTIFIER_API_TOKEN is not set. The release may not work correctly."; \
   fi
 
 # Create a proper sys.config in the overlays
@@ -73,9 +73,10 @@ RUN mix release && \
 # --- Runtime Stage ---
 FROM elixir:1.14-otp-25 AS app
 
-# Accept and set the production bot token environment variable from build arg
-ARG WANDERER_PRODUCTION_BOT_TOKEN
-ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+# Accept build argument but DON'T set it as an environment variable in the runtime container
+# This ensures we use the baked-in value from the application config
+ARG NOTIFIER_API_TOKEN
+# ENV NOTIFIER_API_TOKEN=${NOTIFIER_API_TOKEN} -- REMOVED to prevent environment variable use
 
 # Only set default values for environment variables
 ENV DISCORD_BOT_TOKEN="" \
@@ -85,7 +86,7 @@ ENV DISCORD_BOT_TOKEN="" \
     MIX_ENV=prod \
     CACHE_DIR=/app/data/cache \
     CHART_SERVICE_PORT=3001 \
-    BOT_API_TOKEN="" \
+    NOTIFIER_API_TOKEN="" \
     LICENSE_KEY="" \
     MAP_URL="" \
     MAP_URL_WITH_NAME="" \
@@ -119,12 +120,22 @@ RUN mkdir -p /app/extracted && \
     mv /app/extracted/wanderer_notifier/* /app/ && \
     rm -rf /app/extracted /app/release.tar.gz
 
+# Create token backup files for validation/debugging
+RUN mkdir -p /app/releases/token && \
+  if [ -n "$NOTIFIER_API_TOKEN" ]; then \
+    echo "Creating token backup files for validation..." && \
+    echo "# Production token configuration" > /app/releases/token/production_config.txt && \
+    echo "notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> /app/releases/token/production_config.txt; \
+  else \
+    echo "WARNING: No production token provided at build time" > /app/releases/token/warning.txt; \
+  fi
+
 # Ensure the token is accessible in the runtime environment by creating a backup file
-RUN if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then \
+RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
     echo "Adding production token to release environment"; \
     mkdir -p /app/releases/token && \
-    echo "# This file contains the production bot token injected during build" > /app/releases/token/production_config.txt && \
-    echo "production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"" >> /app/releases/token/production_config.txt; \
+    echo "# This file contains the production token injected during build" > /app/releases/token/production_config.txt && \
+    echo "notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> /app/releases/token/production_config.txt; \
   fi
 
 # Ensure the release executable is runnable

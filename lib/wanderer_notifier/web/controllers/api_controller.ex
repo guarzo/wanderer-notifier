@@ -605,13 +605,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       try do
         # Get the license manager directly
         license_key = Config.license_key()
-        bot_api_token = Config.bot_api_token()
+        notifier_api_token = Config.notifier_api_token()
 
         # Log what we're doing
         Logger.info("Directly validating license with key and token")
 
         # Call the license manager client directly
-        case WandererNotifier.LicenseManager.Client.validate_bot(bot_api_token, license_key) do
+        case WandererNotifier.LicenseManager.Client.validate_bot(notifier_api_token, license_key) do
           {:ok, response} ->
             # Get validation status directly from response
             license_valid = response["license_valid"] || false

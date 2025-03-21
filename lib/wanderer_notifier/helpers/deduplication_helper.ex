@@ -6,8 +6,8 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   use GenServer
   require Logger
 
-  # TTL for deduplication entries - 1 hour by default
-  @dedup_ttl 60 * 60 * 1000
+  # TTL for deduplication entries - 12 hours by default for better protection against restarts
+  @dedup_ttl 12 * 60 * 60 * 1000
 
   # ETS table name for deduplication
   @dedup_table :notification_deduplication

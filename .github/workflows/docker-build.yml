@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # required for pushing tags
+          fetch-depth: 0 # required for pushing tags
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -33,17 +33,15 @@ jobs:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           build-args: |
-            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
-          tags: |
-            guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag }}
-            guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag_with_sha }}
-            guarzo/wanderer-notifier:latest
+            APP_VERSION=${{ steps.version.outputs.version }}-test
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+          tags: ${{ steps.meta.outputs.tags }}
 
       - name: Create and push Git tag
         env:

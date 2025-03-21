@@ -874,7 +874,7 @@ defmodule WandererNotifier.Discord.Notifier do
       system_id =
         if is_struct(system, MapSystem),
           do: system.solar_system_id,
-          else: Map.get(system, "system_id") || Map.get(system, :system_id)
+          else: Map.get(system, "solar_system_id") || Map.get(system, :solar_system_id)
 
       handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     else
@@ -883,7 +883,8 @@ defmodule WandererNotifier.Discord.Notifier do
         if is_struct(system, MapSystem),
           do: system.solar_system_id,
           else:
-            Map.get(system, "system_id") || Map.get(system, :system_id) || Map.get(system, "id")
+            Map.get(system, "solar_system_id") || Map.get(system, :solar_system_id) ||
+              Map.get(system, "id")
 
       # Check if this is a duplicate notification
       case system_id do
@@ -896,16 +897,35 @@ defmodule WandererNotifier.Discord.Notifier do
           process_system_notification(system)
 
         id ->
-          # Check with the deduplication helper
-          case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_system(id) do
+          # Create a global key that includes the day to handle restarts
+          current_day = div(:os.system_time(:second), 86400)
+          global_system_key = "global:system:#{id}:#{current_day}"
+
+          # First check the global deduplication key
+          case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(global_system_key) do
             {:ok, :duplicate} ->
-              Logger.info("[Discord] Skipping duplicate system notification for system ID: #{id}")
+              Logger.info(
+                "[Discord] Skipping duplicate system notification (global key) for system ID: #{id}"
+              )
+
               :ok
 
             {:ok, :new} ->
-              # This is not a duplicate, proceed with the notification
-              Logger.info("[Discord] Processing new system notification for system ID: #{id}")
-              process_system_notification(system)
+              # Check with the standard deduplication helper
+              case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_system(id) do
+                {:ok, :duplicate} ->
+                  Logger.info(
+                    "[Discord] Skipping duplicate system notification for system ID: #{id}"
+                  )
+
+                  :ok
+
+                {:ok, :new} ->
+                  # This is not a duplicate, proceed with the notification
+                  Logger.info("[Discord] Processing new system notification for system ID: #{id}")
+
+                  process_system_notification(system)
+              end
           end
       end
     end

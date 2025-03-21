@@ -42,8 +42,7 @@ config :wanderer_notifier,
 # License Configuration
 config :wanderer_notifier,
   license_key: System.get_env("LICENSE_KEY"),
-  bot_api_token: System.get_env("BOT_API_TOKEN"),
-  production_bot_token: System.get_env("WANDERER_PRODUCTION_BOT_TOKEN"),
+  notifier_api_token: System.get_env("NOTIFIER_API_TOKEN"),
   license_manager_api_url: System.get_env("LICENSE_MANAGER_API_URL")
 
 # Feature flag configuration

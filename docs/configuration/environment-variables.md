@@ -75,13 +75,13 @@ This document provides a comprehensive reference for all environment variables u
 
 ## Development Configuration
 
-| Variable                   | Description                          | Default                   |
-| -------------------------- | ------------------------------------ | ------------------------- |
-| `LICENSE_MANAGER_API_URL`  | License manager API URL              | `https://lm.wanderer.ltd` |
-| `LICENSE_MANAGER_AUTH_KEY` | License manager authentication key   | -                         |
-| `BOT_API_TOKEN`            | Development bot API token            | -                         |
-| `BOT_REGISTRATION_TOKEN`   | Optional bot registration token      | -                         |
-| `MIX_ENV`                  | Elixir environment (dev, test, prod) | `prod`                    |
+| Variable                   | Description                           | Default                   |
+| -------------------------- | ------------------------------------- | ------------------------- |
+| `LICENSE_MANAGER_API_URL`  | License manager API URL               | `https://lm.wanderer.ltd` |
+| `LICENSE_MANAGER_AUTH_KEY` | License manager authentication key    | -                         |
+| `NOTIFIER_API_TOKEN`       | Notifier API token for authentication | -                         |
+| `BOT_REGISTRATION_TOKEN`   | Optional bot registration token       | -                         |
+| `MIX_ENV`                  | Elixir environment (dev, test, prod)  | `prod`                    |
 
 ## Application Configuration
 
@@ -95,9 +95,14 @@ This document provides a comprehensive reference for all environment variables u
 
 ## Environment-Specific Configuration
 
-| Variable                        | Description                           | Default |
-| ------------------------------- | ------------------------------------- | ------- |
-| `WANDERER_PRODUCTION_BOT_TOKEN` | Token used in production environments | -       |
+The following configuration options are used in specific environments:
+
+| Variable            | Description                          | Default |
+| ------------------- | ------------------------------------ | ------- |
+| `DEBUG_PANEL`       | Enable debug panel in development    | `false` |
+| `ENABLE_CHARTS`     | Enable chart generation capabilities | `false` |
+| `TRACK_ALL_SYSTEMS` | Track all systems (for testing)      | `false` |
+| `PROCESS_ALL_KILLS` | Process all kills (for testing)      | `false` |
 
 ## Feature Relationships
 

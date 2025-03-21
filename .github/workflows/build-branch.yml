@@ -70,28 +70,26 @@ jobs:
           mix release
 
       # Determine production token to use
-      - name: Set production token
+      - name: Get production token
         id: token
         run: |
-          if [ -n "${{ github.event.inputs.production_token }}" ]; then
-            echo "Using provided production token"
-            echo "production_token=${{ github.event.inputs.production_token }}" >> "$GITHUB_OUTPUT"
+          # Get token from secrets, or use a placeholder for pull requests
+          # This ensures PRs can build, but won't have a valid token
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "production_token=placeholder-token-for-pr" >> "$GITHUB_OUTPUT"
           else
-            echo "Using secret production token"
-            echo "production_token=${{ secrets.WANDERER_PRODUCTION_BOT_TOKEN }}" >> "$GITHUB_OUTPUT"
+            echo "production_token=${{ secrets.NOTIFIER_API_TOKEN }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
-          push: false
-          load: true
+          push: true
           build-args: |
-            WANDERER_PRODUCTION_BOT_TOKEN=${{ steps.token.outputs.production_token }}
-            APP_VERSION=${{ steps.version.outputs.short_sha }}
-          tags: |
-            guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}
+            APP_VERSION=${{ steps.version.outputs.version }}
+            NOTIFIER_API_TOKEN=${{ steps.token.outputs.production_token }}
+          tags: ${{ steps.meta.outputs.tags }}
 
       # Test the Docker image
       - name: Test Docker image

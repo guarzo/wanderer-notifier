@@ -14,7 +14,7 @@ defmodule WandererNotifier.Core.Config do
 
   # Production bot API token - use environment variable or Application config
   # This should be set at runtime, not hardcoded
-  @production_bot_token_env "WANDERER_PRODUCTION_BOT_TOKEN"
+  @production_bot_token_env "WANDERER_PRODUCTION_NOTIFIER_TOKEN"
 
   # Feature definitions with their environment variables
   @features %{
@@ -313,62 +313,79 @@ defmodule WandererNotifier.Core.Config do
   In production, this returns a value from environment variable.
   In development and test environments, it requires a development token to be set.
   """
-  def bot_api_token do
-    # Check if we're in a development container by looking for a specific environment variable
-    # or by checking if the LICENSE_MANAGER_API_URL is set (which is only used in development)
-    is_dev_container = System.get_env("LICENSE_MANAGER_API_URL") != nil
+  def notifier_api_token do
+    # For non-development containers (production), use environment variable
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-    if is_dev_container do
-      # In development containers, require the environment variable
-      env_token = Application.get_env(:wanderer_notifier, :bot_api_token)
+    case env do
+      :prod ->
+        # In production, ONLY use the hardcoded production token
+        # Do not accept tokens from environment variables for security
+        production_token = Application.get_env(:wanderer_notifier, :production_notifier_token)
 
-      if is_nil(env_token) || env_token == "" do
-        # Fail fast in development mode if token is not set
-        require Logger
+        if is_binary(production_token) && production_token != "" do
+          # Log that we're using the baked-in token, but don't show the token itself
+          require Logger
+          prefix = String.slice(production_token, 0, 3)
 
-        Logger.error(
-          "BOT_API_TOKEN environment variable is not set. Development requires a valid token."
-        )
+          Logger.info(
+            "Using baked-in production token from application config (starts with: #{prefix}...)"
+          )
 
-        raise "Missing required BOT_API_TOKEN environment variable for development"
-      else
-        env_token
-      end
-    else
-      # For non-development containers (production), use environment variable
-      env = Application.get_env(:wanderer_notifier, :env, :prod)
+          production_token
+        else
+          # As a fallback, check the production environment variable
+          # This should only be used during build time, not runtime
+          backup_token = System.get_env(@production_bot_token_env)
 
-      case env do
-        :prod ->
-          # In production, ONLY use the hardcoded production token
-          # Do not accept tokens from environment variables for security
-          production_token = Application.get_env(:wanderer_notifier, :production_bot_token)
+          if is_binary(backup_token) && backup_token != "" do
+            require Logger
+            prefix = String.slice(backup_token, 0, 3)
 
-          if is_binary(production_token) && production_token != "" do
-            production_token
+            Logger.warning(
+              "Using token from environment variable rather than baked-in value (starts with: #{prefix}...)"
+            )
+
+            backup_token
           else
-            # As a fallback, check the production environment variable
-            # This should only be used during build time, not runtime
-            backup_token = System.get_env(@production_bot_token_env)
+            require Logger
 
-            if is_binary(backup_token) && backup_token != "" do
-              backup_token
-            else
-              require Logger
+            Logger.error(
+              "Production notifier token not configured properly. Token should be compiled into the release."
+            )
 
-              Logger.error(
-                "Production bot token not configured properly. Token should be compiled into the release."
-              )
-
-              raise "Missing required production bot token. This release was not built correctly."
-            end
+            raise "Missing required production notifier token. This release was not built correctly."
           end
+        end
 
-        _ ->
-          # In test or other environments, use the environment variable
-          Application.get_env(:wanderer_notifier, :bot_api_token)
-      end
+      _ ->
+        # In development/test environments, require the environment variable
+        env_token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+
+        if is_nil(env_token) || env_token == "" do
+          env_token = System.get_env("NOTIFIER_API_TOKEN")
+
+          if is_nil(env_token) || env_token == "" do
+            # Fail fast in development mode if token is not set
+            require Logger
+
+            Logger.error(
+              "NOTIFIER_API_TOKEN environment variable is not set. Development requires a valid token."
+            )
+
+            raise "Missing required NOTIFIER_API_TOKEN environment variable for development"
+          else
+            env_token
+          end
+        else
+          env_token
+        end
     end
+  end
+
+  # For backward compatibility during transition - will be removed in future versions
+  def bot_api_token do
+    notifier_api_token()
   end
 
   @doc """
