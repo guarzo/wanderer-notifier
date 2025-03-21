@@ -27,10 +27,6 @@ if [ "${MIX_ENV:-prod}" = "prod" ]; then
   echo "Production mode detected - clearing token environment variables"
   # Unset the environment variables to ensure we use only baked-in values
   unset NOTIFIER_API_TOKEN
-else
-  # For development/test environments only:
-  # Make sure the variable is set (empty string is OK)
-  export NOTIFIER_API_TOKEN="${NOTIFIER_API_TOKEN:-}"
 fi
 
 # Set LANG if not already set

@@ -181,24 +181,10 @@ defmodule WandererNotifier.Core.License do
     # Process the validation result
     {valid, bot_assigned, details, error, error_message} =
       case validation_result do
-        # Handle validate_bot response format which uses license_valid instead of valid
+        # Handle validate_bot response format
         {:ok, %{"license_valid" => true} = response} ->
           Logger.info("License is valid and bot is assigned")
           {true, true, response, nil, nil}
-
-        # Also handle validate_license format for backward compatibility
-        {:ok, %{"valid" => true, "bot_assigned" => true} = response} ->
-          Logger.info("License is valid and bot is assigned")
-          {true, true, response, nil, nil}
-
-        {:ok, %{"valid" => true, "bot_assigned" => false} = response} ->
-          Logger.warning("License is valid but bot is not assigned")
-          {true, false, response, :bot_not_assigned, "Bot is not assigned to this license"}
-
-        {:ok, %{"valid" => false} = response} ->
-          error_msg = response["message"] || "License is invalid"
-          Logger.error("License is invalid: #{error_msg}")
-          {false, false, response, :invalid_license, error_msg}
 
         {:ok, %{"license_valid" => false} = response} ->
           error_msg = response["message"] || "License is invalid"
@@ -244,8 +230,8 @@ defmodule WandererNotifier.Core.License do
   def handle_call({:feature_enabled, feature}, _from, state) do
     is_enabled =
       case state do
-        # Handle the case when details is a map with string keys
-        %{valid: true, details: details} when is_map(details) and is_map_key(details, "features") ->
+        %{valid: true, details: details}
+        when is_map(details) and is_map_key(details, "features") ->
           features = details["features"]
 
           if is_list(features) do
@@ -261,16 +247,6 @@ defmodule WandererNotifier.Core.License do
             false
           end
 
-        # This is the original clause using atom keys
-        %{valid: true, details: %{features: features}} when is_list(features) ->
-          enabled = Enum.member?(features, to_string(feature))
-
-          Logger.debug(
-            "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
-          )
-
-          enabled
-
         _ ->
           Logger.debug("Feature check: #{feature} - disabled (invalid license)")
           false
@@ -283,19 +259,8 @@ defmodule WandererNotifier.Core.License do
   def handle_call(:premium, _from, state) do
     is_premium =
       case state do
-        # Handle the case when details is a map with string keys
         %{valid: true, details: details} when is_map(details) and is_map_key(details, "tier") ->
           tier = details["tier"]
-          premium = tier in ["premium", "enterprise"]
-
-          Logger.debug(
-            "Premium check: #{if premium, do: "premium", else: "not premium"} (tier: #{tier})"
-          )
-
-          premium
-
-        # Original clause using atom keys
-        %{valid: true, details: %{tier: tier}} ->
           premium = tier in ["premium", "enterprise"]
 
           Logger.debug(
@@ -327,68 +292,52 @@ defmodule WandererNotifier.Core.License do
     license_key = Config.license_key()
     notifier_api_token = Config.notifier_api_token()
 
-    # Log the status but keep private information secure
-    if is_nil(license_key) || license_key == "" do
-      Logger.error("No license key provided")
-      {:error, %{error: :no_license_key, message: "License key not provided"}}
-    else
-      if is_nil(notifier_api_token) || notifier_api_token == "" do
-        Logger.error("No notifier API token provided")
+    # Validate the license with the license manager
+    case LicenseClient.validate_bot(notifier_api_token, license_key) do
+      {:ok, response} ->
+        # Check if the license is valid from the response
+        license_valid = response["license_valid"] || false
+        # Extract error message if provided
+        message = response["message"]
 
-        {:error,
-         %{
-           error: :no_notifier_api_token,
-           message: "Notifier API token not provided"
-         }}
-      else
-        # Attempt to validate with the license manager
-        case LicenseClient.validate_bot(notifier_api_token, license_key) do
-          {:ok, response} ->
-            # Check if the license is valid from the response
-            license_valid = response["license_valid"] || false
-            # Extract error message if provided
-            message = response["message"]
+        if license_valid do
+          Logger.info("License and bot validation successful")
+          # If valid, return success state
+          %{
+            valid: true,
+            bot_assigned: true,
+            details: response,
+            error: nil,
+            error_message: nil,
+            last_validated: :os.system_time(:second)
+          }
+        else
+          # For invalid license, return error state with message
+          error_msg = message || "License is not valid"
+          Logger.error("License validation failed - #{error_msg}")
 
-            if license_valid do
-              Logger.info("License and bot validation successful")
-              # If valid, return success state
-              %{
-                valid: true,
-                bot_assigned: true,
-                details: response,
-                error: nil,
-                error_message: nil,
-                last_validated: :os.system_time(:second)
-              }
-            else
-              # For invalid license, return error state with message
-              error_msg = message || "License is not valid"
-              Logger.error("License validation failed - #{error_msg}")
-
-              %{
-                valid: false,
-                bot_assigned: false,
-                details: response,
-                error: :invalid_license,
-                error_message: error_msg,
-                last_validated: :os.system_time(:second)
-              }
-            end
-
-          {:error, reason} ->
-            error_message = error_reason_to_message(reason)
-            Logger.error("License/bot validation failed: #{error_message}")
-
-            %{
-              valid: false,
-              bot_assigned: false,
-              error: reason,
-              error_message: error_message,
-              details: nil,
-              last_validated: :os.system_time(:second)
-            }
+          %{
+            valid: false,
+            bot_assigned: false,
+            details: response,
+            error: :invalid_license,
+            error_message: error_msg,
+            last_validated: :os.system_time(:second)
+          }
         end
-      end
+
+      {:error, reason} ->
+        error_message = error_reason_to_message(reason)
+        Logger.error("License/bot validation failed: #{error_message}")
+
+        %{
+          valid: false,
+          bot_assigned: false,
+          error: reason,
+          error_message: error_message,
+          details: nil,
+          last_validated: :os.system_time(:second)
+        }
     end
   end
 

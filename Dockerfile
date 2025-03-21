@@ -37,10 +37,7 @@ RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
     echo "Config setup: Using production token from build arg" && \
     # Append to runtime.exs
     echo "# Production token from build" >> config/runtime.exs && \
-    echo "config :wanderer_notifier, notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> config/runtime.exs && \
-    # Create production token file for the release
-    mkdir -p rel/overlays/etc && \
-    echo "Production token: $NOTIFIER_API_TOKEN" > rel/overlays/etc/production_token.txt; \
+    echo "config :wanderer_notifier, notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> config/runtime.exs; \
   else \
     echo "WARNING: NOTIFIER_API_TOKEN is not set. The release may not work correctly."; \
   fi
@@ -78,22 +75,10 @@ FROM elixir:1.14-otp-25 AS app
 ARG NOTIFIER_API_TOKEN
 # ENV NOTIFIER_API_TOKEN=${NOTIFIER_API_TOKEN} -- REMOVED to prevent environment variable use
 
-# Only set default values for environment variables
-ENV DISCORD_BOT_TOKEN="" \
-    APP_VERSION="" \
-    PORT=4000 \
+# Only set essential environment variables with default values
+ENV PORT=4000 \
     HOST=0.0.0.0 \
     MIX_ENV=prod \
-    CACHE_DIR=/app/data/cache \
-    CHART_SERVICE_PORT=3001 \
-    NOTIFIER_API_TOKEN="" \
-    LICENSE_KEY="" \
-    MAP_URL="" \
-    MAP_URL_WITH_NAME="" \
-    MAP_TOKEN="" \
-    ENABLE_MAP_TOOLS=true \
-    ERL_LIBS="" \
-    ELIXIR_ERL_OPTIONS="" \
     RELEASE_DISTRIBUTION=none \
     RELEASE_NODE=none \
     ERL_EPMD_PORT=-1
@@ -119,24 +104,6 @@ RUN mkdir -p /app/extracted && \
     tar -xzf /app/release.tar.gz -C /app/extracted && \
     mv /app/extracted/wanderer_notifier/* /app/ && \
     rm -rf /app/extracted /app/release.tar.gz
-
-# Create token backup files for validation/debugging
-RUN mkdir -p /app/releases/token && \
-  if [ -n "$NOTIFIER_API_TOKEN" ]; then \
-    echo "Creating token backup files for validation..." && \
-    echo "# Production token configuration" > /app/releases/token/production_config.txt && \
-    echo "notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> /app/releases/token/production_config.txt; \
-  else \
-    echo "WARNING: No production token provided at build time" > /app/releases/token/warning.txt; \
-  fi
-
-# Ensure the token is accessible in the runtime environment by creating a backup file
-RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
-    echo "Adding production token to release environment"; \
-    mkdir -p /app/releases/token && \
-    echo "# This file contains the production token injected during build" > /app/releases/token/production_config.txt && \
-    echo "notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> /app/releases/token/production_config.txt; \
-  fi
 
 # Ensure the release executable is runnable
 RUN chmod +x /app/bin/wanderer_notifier
