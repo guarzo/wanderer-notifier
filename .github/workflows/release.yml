@@ -94,7 +94,7 @@ jobs:
           push: false
           load: true
           build-args: |
-            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.WANDERER_PRODUCTION_BOT_TOKEN }}
+            WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
           tags: |
             guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
