@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Release version tag"
+        description: "Release version (format: major.minor.patch)"
         required: false
-        default: "v1"
+        default: "1.0.0"
 
 jobs:
   release:
@@ -24,9 +24,19 @@ jobs:
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           DATE=$(date +'%Y%m%d')
-          VERSION="${{ github.event.inputs.release_version }}-${DATE}-${SHORT_SHA}"
+          # Create a valid Elixir version string
+          VERSION="${{ github.event.inputs.release_version }}"
+          DOCKER_VERSION="${{ github.event.inputs.release_version }}-${DATE}-${SHORT_SHA}"
+          # Extract the major version number and create a v-prefixed tag
+          MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
+          VTAG="v${MAJOR_VERSION}"
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Generated version: ${VERSION}"
+          echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "vtag=${VTAG}" >> "$GITHUB_OUTPUT"
+          echo "Generated Elixir version: ${VERSION}"
+          echo "Generated Docker version: ${DOCKER_VERSION}"
+          echo "Generated v-tag: ${VTAG}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
@@ -54,6 +64,7 @@ jobs:
 
       - name: Update version in mix.exs
         run: |
+          # Update the version with a valid Elixir version format
           sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
           cat mix.exs
 
@@ -83,10 +94,10 @@ jobs:
           load: true
           build-args: |
             WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
-            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_VERSION=${{ steps.version.outputs.docker_version }}
           tags: |
-            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
-            guarzo/wanderer-notifier:${{ steps.version.outputs.version }}
+            guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
+            guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -96,5 +107,5 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
-          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.version }}
+          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
+          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
