@@ -22,16 +22,14 @@ defmodule WandererNotifier.LicenseManager.Client do
   - `{:error, reason}` if the validation failed.
   """
   def validate_bot(notifier_api_token, license_key) do
-    url = "#{Config.license_manager_api_url()}/api/v1/validate/bot"
-    Logger.info("License Manager API URL: #{url}")
+    url = "#{Config.license_manager_api_url()}/api/validate_bot"
 
-    Logger.debug(
-      "Using notifier_api_token: #{String.slice(notifier_api_token, 0, 8)}... (first 8 chars)"
-    )
+    # Log complete request information for debugging
+    Logger.info("LICENSE VALIDATION DEBUG: Full request details:")
+    Logger.info("  URL: #{url}")
+    Logger.info("  API Token (first 8 chars): #{String.slice(notifier_api_token || "", 0, 8)}")
+    Logger.info("  License Key: #{license_key}")
 
-    Logger.debug("Using license_key: #{String.slice(license_key, 0, 8)}... (first 8 chars)")
-
-    # Set the bot API token as a Bearer token in the Authorization header
     headers = [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
@@ -43,6 +41,10 @@ defmodule WandererNotifier.LicenseManager.Client do
       "license_key" => license_key
     }
 
+    # Log the full body
+    Logger.info("  Request Body: #{inspect(body)}")
+    Logger.info("  Request Headers: #{inspect(headers)}")
+
     Logger.debug("Sending HTTP request to License Manager API for bot validation...")
 
     # Use our improved HTTP client
@@ -51,8 +53,11 @@ defmodule WandererNotifier.LicenseManager.Client do
            debug: true,
            timeout: 5000
          ) do
-      {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
+      {:ok, response} = result ->
+        # Log full response for debugging
+        Logger.info("LICENSE VALIDATION DEBUG: Full response: #{inspect(response)}")
+
+        case HttpClient.handle_response(result) do
           {:ok, decoded} ->
             # Additional logging for easier debugging
             Logger.debug("Bot validation response: #{inspect(decoded)}")
@@ -114,7 +119,7 @@ defmodule WandererNotifier.LicenseManager.Client do
   - `{:error, reason}` if the validation failed.
   """
   def validate_license(license_key, notifier_api_token) do
-    url = "#{Config.license_manager_api_url()}/api/validate_license"
+    url = "#{Config.license_manager_api_url()}/api/v1/validate_license"
     Logger.info("License Manager API URL: #{url}")
 
     # Set the headers

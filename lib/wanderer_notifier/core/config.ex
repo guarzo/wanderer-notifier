@@ -308,13 +308,19 @@ defmodule WandererNotifier.Core.Config do
     else
       env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-      message =
-        if env == :prod,
-          do:
-            "Missing notifier API token in production. Token should be compiled into the release.",
-          else: "Missing NOTIFIER_API_TOKEN environment variable for development"
+      if env == :prod do
+        message =
+          "Missing notifier API token in production. Token should be compiled into the release."
 
-      raise message
+        Logger.error(message)
+        # In production, return a dummy token that will fail validation
+        "invalid-prod-token-missing"
+      else
+        # In development, log a warning but use a development token
+        message = "Missing NOTIFIER_API_TOKEN environment variable for development"
+        Logger.warning(message)
+        "dev-environment-token"
+      end
     end
   end
 

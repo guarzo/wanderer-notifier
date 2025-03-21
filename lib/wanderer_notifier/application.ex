@@ -102,8 +102,19 @@ defmodule WandererNotifier.Application do
   defp send_startup_message do
     Logger.info("Sending startup message...")
 
-    # Get license information
-    license_status = WandererNotifier.Core.License.status()
+    # Get license information safely
+    license_status =
+      try do
+        WandererNotifier.Core.License.status()
+      rescue
+        e ->
+          Logger.error("Error getting license status for startup message: #{inspect(e)}")
+          %{valid: false, error_message: "Error retrieving license status"}
+      catch
+        type, error ->
+          Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+          %{valid: false, error_message: "Error retrieving license status"}
+      end
 
     # Get tracking information
     systems = get_tracked_systems()
@@ -204,7 +215,7 @@ defmodule WandererNotifier.Application do
       cmd_str = to_string(cmd)
 
       Logger.info(
-        "Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
+        "Processed watcher command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
       )
 
       Task.start(fn ->

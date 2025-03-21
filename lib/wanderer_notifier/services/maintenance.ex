@@ -18,15 +18,29 @@ defmodule WandererNotifier.Services.Maintenance do
     # Initialize state with the current timestamp
     current_time = :os.system_time(:second)
 
-    state =
-      Scheduler.do_initial_checks(%{
-        service_start_time: current_time,
-        last_systems_update: current_time,
-        last_characters_update: current_time,
-        last_status_time: current_time,
-        systems_count: 0,
-        characters_count: 0
-      })
+    # Wrap the initial checks in a try/catch to prevent crashes if license service is down
+    state = %{
+      service_start_time: current_time,
+      last_systems_update: current_time,
+      last_characters_update: current_time,
+      last_status_time: current_time,
+      systems_count: 0,
+      characters_count: 0
+    }
+
+    # Perform initial checks safely
+    try do
+      Scheduler.do_initial_checks(state)
+    rescue
+      e ->
+        Logger.error("Error during initial maintenance checks: #{inspect(e)}")
+        # Return the base state if checks fail
+        state
+    catch
+      type, error ->
+        Logger.error("Error during initial maintenance checks: #{inspect(type)}, #{inspect(error)}")
+        state
+    end
 
     {:ok, state}
   end
@@ -35,8 +49,20 @@ defmodule WandererNotifier.Services.Maintenance do
   def handle_info(:tick, state) do
     # Schedule the next tick
     schedule_tick()
-    # Run the maintenance tasks
-    new_state = Scheduler.tick(state)
+
+    # Run the maintenance tasks safely
+    new_state = try do
+      Scheduler.tick(state)
+    rescue
+      e ->
+        Logger.error("Error during maintenance tick: #{inspect(e)}")
+        state
+    catch
+      type, error ->
+        Logger.error("Error during maintenance tick: #{inspect(type)}, #{inspect(error)}")
+        state
+    end
+
     {:noreply, new_state}
   end
 

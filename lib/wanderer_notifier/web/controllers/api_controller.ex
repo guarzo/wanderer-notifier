@@ -641,9 +641,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             error_message =
               case reason do
                 :not_found -> "License not found"
-                :invalid_bot_token -> "Invalid bot token"
-                :bot_not_authorized -> "Bot not authorized for this license"
+                :invalid_notifier_token -> "Invalid notifier token"
+                :notifier_not_authorized -> "Notifier not authorized for this license"
                 :request_failed -> "Connection to license server failed"
+                :api_error -> "API error from license server"
                 _ -> "Validation error: #{inspect(reason)}"
               end
 
