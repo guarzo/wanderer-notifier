@@ -86,6 +86,25 @@ defmodule WandererNotifier.Discord.Notifier do
     end)
   end
 
+  # Format ISK values for display - moved from removed code
+  defp format_isk_value(value) when is_float(value) or is_integer(value) do
+    cond do
+      value < 1000 -> "<1k ISK"
+      value < 1_000_000 -> "#{round(value / 1000)}k ISK"
+      true -> "#{round(value / 1_000_000)}M ISK"
+    end
+  end
+
+  defp format_isk_value(_), do: "0 ISK"
+
+  # Helper function used by character notification code
+  defp enrich_character(data, key, fun) do
+    case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
+      nil -> data
+      value -> fun.(value)
+    end
+  end
+
   # -- MESSAGE SENDING --
 
   @doc """
@@ -190,529 +209,49 @@ defmodule WandererNotifier.Discord.Notifier do
 
   @doc """
   Sends an enriched kill embed to Discord.
-  This supports both the Killmail struct and older map formats.
+  This supports the Killmail struct format.
   """
   @impl WandererNotifier.NotifierBehaviour
-  def send_enriched_kill_embed(kill_data, kill_id) do
-    Logger.info("[KILL DEBUG] send_enriched_kill_embed called with kill_id: #{kill_id}")
+  def send_enriched_kill_embed(killmail, kill_id) do
+    # Log the notification request
+    Logger.info("[Discord] Preparing kill notification embed for kill ID: #{kill_id}")
 
-    # Convert the incoming data to a Killmail struct - standardize early
-    killmail = convert_to_killmail_struct(kill_data, kill_id)
-    Logger.info("[KILL DEBUG] Working with Killmail struct, checking for required enrichment")
-
-    # Check if we need to enrich the data with ESI information
-    # Only enrich if we're missing essential display information
-    killmail = enrich_killmail_if_needed(killmail)
-
-    # Verify we have the essential data after enrichment
-    victim = Killmail.get_victim(killmail)
-
-    ship_name =
-      if victim, do: Map.get(victim, "ship_type_name", "Unknown Ship"), else: "Unknown Ship"
-
-    character_name =
-      if victim, do: Map.get(victim, "character_name", "Unknown Pilot"), else: "Unknown Pilot"
-
-    system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
-
-    Logger.info(
-      "[KILL DEBUG] Extracted data: ship=#{ship_name}, character=#{character_name}, system=#{system_name}"
-    )
+    # Ensure we're working with a Killmail struct
+    killmail_struct = ensure_killmail_struct(killmail, kill_id)
 
     # Use the standardized formatter to create the notification
-    generic_notification = StructuredFormatter.format_kill_notification(killmail)
+    generic_notification =
+      WandererNotifier.Notifiers.StructuredFormatter.format_kill_notification(killmail_struct)
 
-    Logger.info(
-      "[KILL DEBUG] Created generic notification: #{inspect(generic_notification, limit: 200)}"
-    )
-
-    # Convert to Discord format
-    discord_embed = StructuredFormatter.to_discord_format(generic_notification)
-    Logger.info("[KILL DEBUG] Converted to Discord format, sending to webhook")
-
-    # Build and send a standardized payload
-    discord_payload = %{"embeds" => [discord_embed]}
+    # Convert to Discord format and send
+    discord_embed =
+      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
     # Skip actual sending in test mode
     if env() == :test do
-      handle_test_mode("DISCORD MOCK KILL EMBED: #{kill_id}")
+      handle_test_mode("DISCORD TEST KILL EMBED: #{kill_id}")
     else
-      Logger.info("[KILL DEBUG] Sending kill notification webhook payload")
+      # Build and send a standardized payload
+      discord_payload = %{"embeds" => [discord_embed]}
       send_payload(discord_payload)
     end
   end
 
-  # Helper function to convert various formats to a Killmail struct
-  defp convert_to_killmail_struct(kill_data, kill_id) do
-    Logger.info("[KILL DEBUG] Converting kill data to Killmail struct for id=#{kill_id}")
+  # Ensure we're working with a Killmail struct
+  defp ensure_killmail_struct(%Killmail{} = killmail, _kill_id), do: killmail
 
-    cond do
-      # Already a Killmail struct - use it directly
-      is_struct(kill_data) && kill_data.__struct__ == Killmail ->
-        Logger.info("[KILL DEBUG] Data is already a Killmail struct - using as is")
-        kill_data
+  defp ensure_killmail_struct(kill_data, kill_id) when is_map(kill_data) do
+    Logger.info("[Discord] Converting map data to Killmail struct for kill ID #{kill_id}")
 
-      # Regular map with expected structure
-      is_map(kill_data) ->
-        Logger.info("[KILL DEBUG] Converting map to Killmail struct")
+    # Extract zkb data if present
+    zkb_data = Map.get(kill_data, "zkb") || Map.get(kill_data, :zkb) || %{}
 
-        # Extract zkb data if available
-        zkb_data = Map.get(kill_data, "zkb") || %{}
-        Logger.debug("[KILL DEBUG] Extracted zkb data: #{inspect(zkb_data, pretty: true)}")
+    # Everything else is treated as ESI data
+    esi_data = Map.drop(kill_data, ["zkb", :zkb])
 
-        # The rest is treated as ESI data (excluding zkb)
-        esi_data = Map.drop(kill_data, ["zkb"])
-        Logger.debug("[KILL DEBUG] Extracted ESI data keys: #{inspect(Map.keys(esi_data))}")
-
-        # Create a Killmail struct
-        Killmail.new(kill_id, zkb_data, esi_data)
-
-      # Other cases (shouldn't happen)
-      true ->
-        Logger.warning("[KILL DEBUG] Unexpected killmail data format: #{inspect(kill_data)}")
-        # Create a minimal struct with the ID that will need enrichment
-        Killmail.new(kill_id, %{}, %{})
-    end
+    # Create a Killmail struct
+    Killmail.new(kill_id, zkb_data, esi_data)
   end
-
-  # Check if a Killmail struct needs enrichment and enrich if necessary
-  defp enrich_killmail_if_needed(%Killmail{} = killmail) do
-    # Check if we have the essential data for display
-    victim = Killmail.get_victim(killmail)
-    has_character_name = victim && Map.has_key?(victim, "character_name")
-    has_ship_name = victim && Map.has_key?(victim, "ship_type_name")
-    has_system_name = killmail.esi_data && Map.has_key?(killmail.esi_data, "solar_system_name")
-
-    Logger.info(
-      "[KILL DEBUG] Killmail enrichment check - has_character_name: #{has_character_name}, has_ship_name: #{has_ship_name}, has_system_name: #{has_system_name}"
-    )
-
-    # Only enrich if we're missing essential display information
-    if !has_character_name || !has_ship_name || !has_system_name do
-      Logger.info("[KILL DEBUG] Killmail missing essential data - enriching")
-      enrich_killmail_data(killmail)
-    else
-      Logger.info("[KILL DEBUG] Killmail has all essential data - no enrichment needed")
-      killmail
-    end
-  end
-
-  # Function to enrich a Killmail struct with missing data using ESI
-  defp enrich_killmail_data(%Killmail{} = killmail) do
-    # Get the ESI data from the killmail
-    esi_data = killmail.esi_data || %{}
-
-    Logger.info(
-      "[KILL ENRICH] Starting enrichment process for killmail_id=#{killmail.killmail_id}"
-    )
-
-    Logger.info("[KILL ENRICH] Initial ESI data keys: #{inspect(Map.keys(esi_data))}")
-
-    # Check for victim information before enrichment
-    victim_before = Map.get(esi_data, "victim", %{})
-    Logger.info("[KILL ENRICH] Victim data before enrichment: #{inspect(victim_before)}")
-
-    Logger.info(
-      "[KILL ENRICH] Victim has character_id: #{Map.has_key?(victim_before, "character_id")}"
-    )
-
-    Logger.info(
-      "[KILL ENRICH] Victim has ship_type_id: #{Map.has_key?(victim_before, "ship_type_id")}"
-    )
-
-    # Log solar_system_id before enrichment
-    solar_system_id = Map.get(esi_data, "solar_system_id")
-    Logger.info("[KILL ENRICH] Solar system ID before enrichment: #{inspect(solar_system_id)}")
-
-    # Enrich the ESI data with missing information
-    Logger.info("[KILL ENRICH] Starting ESI data enrichment")
-    enriched_esi_data = enrich_esi_data(esi_data)
-
-    # Log enrichment results
-    victim_after = Map.get(enriched_esi_data, "victim", %{})
-    Logger.info("[KILL ENRICH] Victim data after enrichment: #{inspect(victim_after)}")
-
-    Logger.info(
-      "[KILL ENRICH] Victim now has character_name: #{Map.has_key?(victim_after, "character_name")}"
-    )
-
-    Logger.info(
-      "[KILL ENRICH] Victim now has ship_type_name: #{Map.has_key?(victim_after, "ship_type_name")}"
-    )
-
-    # Log solar_system_name after enrichment
-    solar_system_name = Map.get(enriched_esi_data, "solar_system_name")
-    Logger.info("[KILL ENRICH] Solar system name after enrichment: #{inspect(solar_system_name)}")
-
-    # Create a new Killmail struct with the enriched data
-    updated_killmail = %Killmail{killmail | esi_data: enriched_esi_data}
-    Logger.info("[KILL ENRICH] Enrichment process completed")
-
-    updated_killmail
-  end
-
-  # -- ENRICHMENT FUNCTIONS --
-
-  # Helper function used by character notification code
-  defp enrich_character(data, key, fun) do
-    case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
-      nil -> data
-      value -> fun.(value)
-    end
-  end
-
-  # Function to enrich ESI data with missing information
-  defp enrich_esi_data(esi_data) when is_map(esi_data) do
-    Logger.info("[KILL DEBUG] Enriching ESI data")
-    # Always perform each enrichment step, even if we think data exists
-    # This ensures more complete data
-    esi_data = enrich_system_data(esi_data)
-    esi_data = enrich_victim_info(esi_data)
-    enrich_attacker_info(esi_data)
-  end
-
-  # Add system name information if missing
-  defp enrich_system_data(esi_data) do
-    if Map.has_key?(esi_data, "solar_system_id") do
-      system_id = Map.get(esi_data, "solar_system_id")
-      Logger.info("[KILL ENRICH] Looking up system name for system_id=#{system_id}")
-
-      # Verify the type of system_id
-      system_id_type = typeof(system_id)
-      Logger.info("[KILL ENRICH] system_id type: #{system_id_type}")
-
-      # Attempt to convert if needed
-      system_id_normalized =
-        case system_id_type do
-          "binary" ->
-            Logger.info("[KILL ENRICH] Converting string system_id to integer")
-
-            case Integer.parse(system_id) do
-              {id, _} ->
-                Logger.info("[KILL ENRICH] Successfully converted system_id to integer: #{id}")
-                id
-
-              :error ->
-                Logger.error(
-                  "[KILL ENRICH] Failed to convert system_id string to integer: #{system_id}"
-                )
-
-                system_id
-            end
-
-          _ ->
-            system_id
-        end
-
-      # Log the normalized ID
-      Logger.info("[KILL ENRICH] Using normalized system_id=#{system_id_normalized}")
-
-      case ESIService.get_system_info(system_id_normalized) do
-        {:ok, system_info} ->
-          system_name = Map.get(system_info, "name", "Unknown System")
-          Logger.info("[KILL ENRICH] Found system name: #{system_name}")
-          Logger.info("[KILL ENRICH] Full system info: #{inspect(system_info)}")
-          Map.put(esi_data, "solar_system_name", system_name)
-
-        {:error, reason} ->
-          Logger.warning("[KILL ENRICH] Failed to get system name: #{inspect(reason)}")
-          # Ensure we at least have a fallback value
-          Logger.warning("[KILL ENRICH] Using fallback system name: Unknown System")
-          Map.put_new(esi_data, "solar_system_name", "Unknown System")
-      end
-    else
-      Logger.warning("[KILL ENRICH] No solar_system_id found in ESI data")
-      Logger.warning("[KILL ENRICH] ESI data keys: #{inspect(Map.keys(esi_data))}")
-      # Ensure we at least have a fallback value
-      Logger.warning("[KILL ENRICH] Using fallback system name: Unknown System")
-      Map.put_new(esi_data, "solar_system_name", "Unknown System")
-    end
-  end
-
-  # Helper function to get the type of a value
-  defp typeof(self) do
-    cond do
-      is_float(self) -> "float"
-      is_number(self) -> "number"
-      is_atom(self) -> "atom"
-      is_boolean(self) -> "boolean"
-      is_binary(self) -> "binary"
-      is_function(self) -> "function"
-      is_list(self) -> "list"
-      is_tuple(self) -> "tuple"
-      is_map(self) -> "map"
-      is_pid(self) -> "pid"
-      is_port(self) -> "port"
-      is_reference(self) -> "reference"
-      true -> "unknown"
-    end
-  end
-
-  # Add victim character and ship information if missing
-  defp enrich_victim_info(esi_data) do
-    victim = Map.get(esi_data, "victim", %{})
-
-    if is_map(victim) do
-      Logger.info("[KILL ENRICH] Enriching victim data: #{inspect(victim)}")
-      Logger.info("[KILL ENRICH] Victim data keys: #{inspect(Map.keys(victim))}")
-      enriched_victim = victim
-
-      # Add character name if we have the ID
-      enriched_victim =
-        if Map.has_key?(victim, "character_id") do
-          char_id = Map.get(victim, "character_id")
-          Logger.info("[KILL ENRICH] Looking up character name for character_id=#{char_id}")
-
-          # Verify the type of char_id
-          char_id_type = typeof(char_id)
-          Logger.info("[KILL ENRICH] character_id type: #{char_id_type}")
-
-          # Attempt to convert if needed
-          char_id_normalized =
-            case char_id_type do
-              "binary" ->
-                Logger.info("[KILL ENRICH] Converting string character_id to integer")
-
-                case Integer.parse(char_id) do
-                  {id, _} ->
-                    Logger.info(
-                      "[KILL ENRICH] Successfully converted character_id to integer: #{id}"
-                    )
-
-                    id
-
-                  :error ->
-                    Logger.error(
-                      "[KILL ENRICH] Failed to convert character_id string to integer: #{char_id}"
-                    )
-
-                    char_id
-                end
-
-              _ ->
-                char_id
-            end
-
-          # Log the normalized ID
-          Logger.info("[KILL ENRICH] Using normalized character_id=#{char_id_normalized}")
-
-          case ESIService.get_character_info(char_id_normalized) do
-            {:ok, char_info} ->
-              char_name = Map.get(char_info, "name", "Unknown Pilot")
-              Logger.info("[KILL ENRICH] Found character name: #{char_name}")
-              Logger.info("[KILL ENRICH] Full character info: #{inspect(char_info)}")
-              Map.put(enriched_victim, "character_name", char_name)
-
-            {:error, reason} ->
-              Logger.warning("[KILL ENRICH] Failed to get character name: #{inspect(reason)}")
-              # Ensure we at least have a fallback value
-              Logger.warning("[KILL ENRICH] Using fallback character name: Unknown Pilot")
-              Map.put_new(enriched_victim, "character_name", "Unknown Pilot")
-          end
-        else
-          Logger.warning("[KILL ENRICH] No character_id found in victim data")
-          # Ensure we at least have a fallback value
-          Logger.warning("[KILL ENRICH] Using fallback character name: Unknown Pilot")
-          Map.put_new(enriched_victim, "character_name", "Unknown Pilot")
-        end
-
-      # Add corporation name if we have the ID
-      enriched_victim =
-        if Map.has_key?(victim, "corporation_id") && !Map.has_key?(victim, "corporation_name") do
-          corp_id = Map.get(victim, "corporation_id")
-          Logger.info("[KILL ENRICH] Looking up corporation name for corporation_id=#{corp_id}")
-
-          # Verify the type of corp_id
-          corp_id_type = typeof(corp_id)
-          Logger.info("[KILL ENRICH] corporation_id type: #{corp_id_type}")
-
-          # Attempt to convert if needed
-          corp_id_normalized =
-            case corp_id_type do
-              "binary" ->
-                Logger.info("[KILL ENRICH] Converting string corporation_id to integer")
-
-                case Integer.parse(corp_id) do
-                  {id, _} ->
-                    Logger.info(
-                      "[KILL ENRICH] Successfully converted corporation_id to integer: #{id}"
-                    )
-
-                    id
-
-                  :error ->
-                    Logger.error(
-                      "[KILL ENRICH] Failed to convert corporation_id string to integer: #{corp_id}"
-                    )
-
-                    corp_id
-                end
-
-              _ ->
-                corp_id
-            end
-
-          # Log the normalized ID
-          Logger.info("[KILL ENRICH] Using normalized corporation_id=#{corp_id_normalized}")
-
-          case ESIService.get_corporation_info(corp_id_normalized) do
-            {:ok, corp_info} ->
-              corp_name = Map.get(corp_info, "name", "Unknown Corp")
-              Logger.info("[KILL ENRICH] Found corporation name: #{corp_name}")
-              Logger.info("[KILL ENRICH] Full corporation info: #{inspect(corp_info)}")
-              Map.put(enriched_victim, "corporation_name", corp_name)
-
-            {:error, reason} ->
-              Logger.warning("[KILL ENRICH] Failed to get corporation name: #{inspect(reason)}")
-              # Ensure we at least have a fallback value
-              Logger.warning("[KILL ENRICH] Using fallback corporation name: Unknown Corp")
-              Map.put_new(enriched_victim, "corporation_name", "Unknown Corp")
-          end
-        else
-          if Map.has_key?(victim, "corporation_name") do
-            Logger.info(
-              "[KILL ENRICH] Victim already has corporation_name: #{Map.get(victim, "corporation_name")}"
-            )
-          else
-            Logger.warning("[KILL ENRICH] No corporation_id found in victim data")
-            # Ensure we at least have a fallback value
-            Logger.warning("[KILL ENRICH] Using fallback corporation name: Unknown Corp")
-            Map.put_new(enriched_victim, "corporation_name", "Unknown Corp")
-          end
-        end
-
-      # Add ship type name if we have the ID
-      enriched_victim =
-        if Map.has_key?(enriched_victim, "ship_type_id") do
-          ship_id = Map.get(enriched_victim, "ship_type_id")
-          Logger.info("[KILL ENRICH] Looking up ship name for ship_type_id=#{ship_id}")
-
-          # Verify the type of ship_id
-          ship_id_type = typeof(ship_id)
-          Logger.info("[KILL ENRICH] ship_type_id type: #{ship_id_type}")
-
-          # Attempt to convert if needed
-          ship_id_normalized =
-            case ship_id_type do
-              "binary" ->
-                Logger.info("[KILL ENRICH] Converting string ship_type_id to integer")
-
-                case Integer.parse(ship_id) do
-                  {id, _} ->
-                    Logger.info(
-                      "[KILL ENRICH] Successfully converted ship_type_id to integer: #{id}"
-                    )
-
-                    id
-
-                  :error ->
-                    Logger.error(
-                      "[KILL ENRICH] Failed to convert ship_type_id string to integer: #{ship_id}"
-                    )
-
-                    ship_id
-                end
-
-              _ ->
-                ship_id
-            end
-
-          # Log the normalized ID
-          Logger.info("[KILL ENRICH] Using normalized ship_type_id=#{ship_id_normalized}")
-
-          case ESIService.get_ship_type_name(ship_id_normalized) do
-            {:ok, ship_info} ->
-              ship_name = Map.get(ship_info, "name", "Unknown Ship")
-              Logger.info("[KILL ENRICH] Found ship name: #{ship_name}")
-              Logger.info("[KILL ENRICH] Full ship info: #{inspect(ship_info)}")
-              Map.put(enriched_victim, "ship_type_name", ship_name)
-
-            {:error, reason} ->
-              Logger.warning("[KILL ENRICH] Failed to get ship name: #{inspect(reason)}")
-              # Ensure we at least have a fallback value
-              Logger.warning("[KILL ENRICH] Using fallback ship name: Unknown Ship")
-              Map.put_new(enriched_victim, "ship_type_name", "Unknown Ship")
-          end
-        else
-          Logger.warning("[KILL ENRICH] No ship_type_id found in victim data")
-          # Ensure we at least have a fallback value
-          Logger.warning("[KILL ENRICH] Using fallback ship name: Unknown Ship")
-          Map.put_new(enriched_victim, "ship_type_name", "Unknown Ship")
-        end
-
-      # Update the ESI data with the enriched victim
-      Map.put(esi_data, "victim", enriched_victim)
-    else
-      Logger.warning("[KILL ENRICH] No victim data found or not a map: #{inspect(victim)}")
-      # Create a minimal victim entry with default values
-      Logger.warning("[KILL ENRICH] Creating placeholder victim data with default values")
-
-      Map.put(esi_data, "victim", %{
-        "character_name" => "Unknown Pilot",
-        "corporation_name" => "Unknown Corp",
-        "ship_type_name" => "Unknown Ship"
-      })
-    end
-  end
-
-  # Add attacker information if missing
-  defp enrich_attacker_info(esi_data) do
-    attackers = Map.get(esi_data, "attackers", [])
-
-    if is_list(attackers) && length(attackers) > 0 do
-      enriched_attackers =
-        Enum.map(attackers, fn attacker ->
-          # Add character name if missing but we have the ID
-          attacker =
-            if !Map.has_key?(attacker, "character_name") && Map.has_key?(attacker, "character_id") do
-              char_id = Map.get(attacker, "character_id")
-
-              case ESIService.get_character_info(char_id) do
-                {:ok, char_info} ->
-                  char_name = Map.get(char_info, "name", "Unknown Pilot")
-                  Map.put(attacker, "character_name", char_name)
-
-                {:error, _} ->
-                  attacker
-              end
-            else
-              attacker
-            end
-
-          # Add ship type name if missing but we have the ID
-          if !Map.has_key?(attacker, "ship_type_name") && Map.has_key?(attacker, "ship_type_id") do
-            ship_id = Map.get(attacker, "ship_type_id")
-
-            case ESIService.get_ship_type_name(ship_id) do
-              {:ok, ship_info} ->
-                ship_name = Map.get(ship_info, "name", "Unknown Ship")
-                Map.put(attacker, "ship_type_name", ship_name)
-
-              {:error, _} ->
-                attacker
-            end
-          else
-            attacker
-          end
-        end)
-
-      # Update the ESI data with the enriched attackers
-      Map.put(esi_data, "attackers", enriched_attackers)
-    else
-      esi_data
-    end
-  end
-
-  # Format ISK values for display
-  defp format_isk_value(value) when is_float(value) or is_integer(value) do
-    cond do
-      value < 1000 -> "<1k ISK"
-      value < 1_000_000 -> "#{round(value / 1000)}k ISK"
-      true -> "#{round(value / 1_000_000)}M ISK"
-    end
-  end
-
-  defp format_isk_value(_), do: "0 ISK"
 
   # -- NEW TRACKED CHARACTER NOTIFICATION --
 
@@ -740,21 +279,32 @@ defmodule WandererNotifier.Discord.Notifier do
           process_character_notification(character)
 
         id ->
-          # Check with the deduplication helper
-          case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_character(id) do
-            {:ok, :duplicate} ->
+          # Use the centralized deduplication logic from NotificationDeterminer
+          case WandererNotifier.Services.NotificationDeterminer.check_deduplication(
+                 :character,
+                 id
+               ) do
+            {:ok, :send} ->
+              # This is not a duplicate, proceed with notification
+              Logger.info(
+                "[Discord] Processing new character notification for character ID: #{id}"
+              )
+
+              process_character_notification(character)
+
+            {:ok, :skip} ->
+              # This is a duplicate, skip notification
               Logger.info(
                 "[Discord] Skipping duplicate character notification for character ID: #{id}"
               )
 
               :ok
 
-            {:ok, :new} ->
-              # This is not a duplicate, proceed with the notification
-              Logger.info(
-                "[Discord] Processing new character notification for character ID: #{id}"
-              )
-
+            {:error, reason} ->
+              # Error during deduplication check, log it
+              Logger.error("[Discord] Error checking character deduplication: #{reason}")
+              # Default to sending notification in case of error
+              Logger.info("[Discord] Proceeding with notification despite deduplication error")
               process_character_notification(character)
           end
       end
@@ -868,7 +418,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- NEW SYSTEM NOTIFICATION --
 
-  @impl true
+  @impl WandererNotifier.NotifierBehaviour
   def send_new_system_notification(system) when is_map(system) do
     if env() == :test do
       system_id =
@@ -897,35 +447,24 @@ defmodule WandererNotifier.Discord.Notifier do
           process_system_notification(system)
 
         id ->
-          # Create a global key that includes the day to handle restarts
-          current_day = div(:os.system_time(:second), 86400)
-          global_system_key = "global:system:#{id}:#{current_day}"
+          # Use the centralized deduplication logic from NotificationDeterminer
+          case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:system, id) do
+            {:ok, :send} ->
+              # This is not a duplicate, proceed with notification
+              Logger.info("[Discord] Processing new system notification for system ID: #{id}")
+              process_system_notification(system)
 
-          # First check the global deduplication key
-          case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(global_system_key) do
-            {:ok, :duplicate} ->
-              Logger.info(
-                "[Discord] Skipping duplicate system notification (global key) for system ID: #{id}"
-              )
-
+            {:ok, :skip} ->
+              # This is a duplicate, skip notification
+              Logger.info("[Discord] Skipping duplicate system notification for system ID: #{id}")
               :ok
 
-            {:ok, :new} ->
-              # Check with the standard deduplication helper
-              case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_system(id) do
-                {:ok, :duplicate} ->
-                  Logger.info(
-                    "[Discord] Skipping duplicate system notification for system ID: #{id}"
-                  )
-
-                  :ok
-
-                {:ok, :new} ->
-                  # This is not a duplicate, proceed with the notification
-                  Logger.info("[Discord] Processing new system notification for system ID: #{id}")
-
-                  process_system_notification(system)
-              end
+            {:error, reason} ->
+              # Error during deduplication check, log it
+              Logger.error("[Discord] Error checking system deduplication: #{reason}")
+              # Default to sending notification in case of error
+              Logger.info("[Discord] Proceeding with notification despite deduplication error")
+              process_system_notification(system)
           end
       end
     end

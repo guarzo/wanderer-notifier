@@ -7,6 +7,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   require Logger
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Helpers.DeduplicationHelper
 
   @doc """
   Determines if a killmail should trigger a notification.
@@ -181,6 +182,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       direct_cache_key = "tracked:character:#{victim_id_str}"
       direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
       ^victim_tracked = direct_tracked
+
       if direct_tracked do
         Logger.info(
           "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
@@ -368,4 +370,95 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   defp extract_system_id(_), do: nil
+
+  @doc """
+  Checks and marks if a notification should be sent based on entity type and ID.
+  Provides centralized deduplication logic for all notification types.
+
+  ## Parameters
+    - entity_type: The type of entity (:kill, :system, :character)
+    - entity_id: The ID of the entity
+
+  ## Returns
+    - {:ok, :send} if the notification should be sent (not a duplicate)
+    - {:ok, :skip} if the notification should be skipped (duplicate)
+    - {:error, reason} if there was an error in the deduplication check
+  """
+  def check_deduplication(entity_type, entity_id) when entity_id != nil do
+    # Convert ID to string for consistent handling
+    id_str = to_string(entity_id)
+
+    # Create a mutex key to prevent race conditions
+    mutex_key = :"notification_mutex_#{entity_type}_#{id_str}"
+
+    # Check if another process is already checking this notification
+    if Process.get(mutex_key) == true do
+      Logger.info("DEDUPLICATION: Another process is already handling #{entity_type} #{id_str}")
+      {:ok, :skip}
+    else
+      # Acquire the mutex
+      Process.put(mutex_key, true)
+
+      try do
+        # Generate day-based global key for all entity types
+        current_day = div(:os.system_time(:second), 86400)
+        global_key = "global:#{entity_type}:#{id_str}:#{current_day}"
+
+        # First check global key
+        case DeduplicationHelper.check_and_mark(global_key) do
+          {:ok, :duplicate} ->
+            Logger.info("DEDUPLICATION: Global duplicate for #{entity_type} #{id_str}, skipping")
+            {:ok, :skip}
+
+          {:ok, :new} ->
+            # Now check entity-specific deduplication
+            dedup_result =
+              case entity_type do
+                :kill ->
+                  DeduplicationHelper.check_and_mark_kill(id_str)
+
+                :system ->
+                  DeduplicationHelper.check_and_mark_system(id_str)
+
+                :character ->
+                  DeduplicationHelper.check_and_mark_character(id_str)
+
+                _ ->
+                  Logger.warning("DEDUPLICATION: Unknown entity type #{entity_type}")
+                  {:ok, :new}
+              end
+
+            case dedup_result do
+              {:ok, :duplicate} ->
+                Logger.info("DEDUPLICATION: #{entity_type} #{id_str} is a duplicate, skipping")
+                {:ok, :skip}
+
+              {:ok, :new} ->
+                Logger.info(
+                  "DEDUPLICATION: #{entity_type} #{id_str} is new, sending notification"
+                )
+
+                {:ok, :send}
+
+              error ->
+                Logger.error(
+                  "DEDUPLICATION: Error checking #{entity_type} #{id_str}: #{inspect(error)}"
+                )
+
+                # Default to sending notification on error
+                {:error, "Deduplication check failed"}
+            end
+        end
+      after
+        # Release the mutex
+        Process.put(mutex_key, nil)
+      end
+    end
+  end
+
+  def check_deduplication(_entity_type, nil) do
+    Logger.warning("DEDUPLICATION: Cannot check deduplication for nil entity ID")
+    # Default to sending notification if ID is nil (can't deduplicate)
+    {:ok, :send}
+  end
 end
