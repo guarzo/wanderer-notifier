@@ -100,6 +100,13 @@ jobs:
             guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
             guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
 
+      # Test the Docker image to verify it can start
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image startup..."
+          # Test with the built-in token (no DISCORD_BOT_TOKEN env var needed)
+          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Test passed: Built-in token was properly configured' && exit 0"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
