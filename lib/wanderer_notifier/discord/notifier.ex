@@ -208,49 +208,80 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   @doc """
-  Sends an enriched kill embed to Discord.
-  This supports the Killmail struct format.
+  Send an enriched kill embed to Discord.
   """
   @impl WandererNotifier.NotifierBehaviour
-  def send_enriched_kill_embed(killmail, kill_id) do
-    # Log the notification request
-    Logger.info("[Discord] Preparing kill notification embed for kill ID: #{kill_id}")
+  def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
+    Logger.debug("📨 FORMATTING: Preparing to format killmail #{kill_id} for Discord")
 
-    # Ensure we're working with a Killmail struct
-    killmail_struct = ensure_killmail_struct(killmail, kill_id)
+    # Ensure the killmail has a system name if system_id is present
+    enriched_killmail = enrich_with_system_name(killmail)
 
-    # Use the standardized formatter to create the notification
-    generic_notification =
-      WandererNotifier.Notifiers.StructuredFormatter.format_kill_notification(killmail_struct)
+    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
+    send_to_discord(formatted_embed, "kill")
+  end
 
-    # Convert to Discord format and send
-    discord_embed =
-      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
+  def send_enriched_kill_embed(raw_killmail, kill_id) do
+    Logger.debug("📨 FORMATTING: Converting raw killmail #{kill_id} to struct")
+    killmail = ensure_killmail_struct(raw_killmail)
+    send_enriched_kill_embed(killmail, kill_id)
+  end
 
-    # Skip actual sending in test mode
-    if env() == :test do
-      handle_test_mode("DISCORD TEST KILL EMBED: #{kill_id}")
+  # Simple helper to ensure we have a Killmail struct
+  defp ensure_killmail_struct(data) when is_struct(data, Killmail), do: data
+  defp ensure_killmail_struct(data) when is_map(data), do: struct(Killmail, data)
+
+  # Ensure the killmail has a system name if missing
+  defp enrich_with_system_name(%Killmail{} = killmail) do
+    # Get system_id from the esi_data
+    system_id = get_system_id_from_killmail(killmail)
+
+    # Check if we need to get the system name
+    if system_id do
+      # Get system name using the same approach as in kill_processor
+      system_name = get_system_name(system_id)
+      Logger.debug("🔍 ENRICHING: Added system name '#{system_name}' to killmail")
+
+      # Add system name to esi_data
+      new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
+      %{killmail | esi_data: new_esi_data}
     else
-      # Build and send a standardized payload
-      discord_payload = %{"embeds" => [discord_embed]}
-      send_payload(discord_payload)
+      killmail
     end
   end
 
-  # Ensure we're working with a Killmail struct
-  defp ensure_killmail_struct(%Killmail{} = killmail, _kill_id), do: killmail
+  # Get system ID from killmail
+  defp get_system_id_from_killmail(%Killmail{} = killmail) do
+    if killmail.esi_data do
+      Map.get(killmail.esi_data, "solar_system_id")
+    else
+      nil
+    end
+  end
 
-  defp ensure_killmail_struct(kill_data, kill_id) when is_map(kill_data) do
-    Logger.info("[Discord] Converting map data to Killmail struct for kill ID #{kill_id}")
+  # Helper function to get system name with caching
+  defp get_system_name(nil), do: nil
 
-    # Extract zkb data if present
-    zkb_data = Map.get(kill_data, "zkb") || Map.get(kill_data, :zkb) || %{}
+  defp get_system_name(system_id) do
+    case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+      {:ok, system_info} -> Map.get(system_info, "name")
+      _ -> nil
+    end
+  end
 
-    # Everything else is treated as ESI data
-    esi_data = Map.drop(kill_data, ["zkb", :zkb])
+  # Send formatted notification to Discord
+  defp send_to_discord(formatted_notification, feature) do
+    # Skip actual sending in test mode
+    if env() == :test do
+      handle_test_mode("DISCORD TEST NOTIFICATION: #{inspect(feature)}")
+    else
+      # Convert to Discord format
+      discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
 
-    # Create a Killmail struct
-    Killmail.new(kill_id, zkb_data, esi_data)
+      # Build and send a standardized payload
+      discord_payload = %{"embeds" => [discord_embed]}
+      send_payload(discord_payload, feature)
+    end
   end
 
   # -- NEW TRACKED CHARACTER NOTIFICATION --

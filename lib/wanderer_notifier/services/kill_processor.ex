@@ -406,7 +406,11 @@ defmodule WandererNotifier.Services.KillProcessor do
 
         # Send the notification
         send_kill_notification(enriched_killmail, kill_id)
-        Logger.info("📢 NOTIFICATION SENT: Kill #{kill_id} notification delivered successfully")
+
+        Logger.info(
+          "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
+        )
+
         :ok
       else
         # Log detailed information about why the kill was filtered out
@@ -536,7 +540,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Add detailed logging for kill notification
     Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for killmail #{kill_id}")
 
-    # Use the centralized deduplication logic from NotificationDeterminer
+    # Use the centralized deduplication check
     case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:kill, kill_id) do
       {:ok, :send} ->
         # This is not a duplicate, send the notification
