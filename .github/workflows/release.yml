@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Release version tag'
+        description: "Release version tag"
         required: false
-        default: 'v1'
+        default: "v1"
 
 jobs:
   release:
@@ -17,14 +17,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # required for getting commit SHA
+          fetch-depth: 0 # required for getting commit SHA
+
+      - name: Generate version string
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DATE=$(date +'%Y%m%d')
+          VERSION="${{ github.event.inputs.release_version }}-${DATE}-${SHORT_SHA}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Generated version: ${VERSION}"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: 'renderer/package-lock.json'
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "renderer/package-lock.json"
       - name: Build React application
         run: |
           cd renderer
@@ -39,8 +49,13 @@ jobs:
       - name: Set up BEAM
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.14.5'
-          otp-version: '25.0'
+          elixir-version: "1.14.5"
+          otp-version: "25.0"
+
+      - name: Update version in mix.exs
+        run: |
+          sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
+          cat mix.exs
 
       - name: Install dependencies and build release
         run: |
@@ -51,12 +66,6 @@ jobs:
 
           # Build the release
           mix release
-
-      - name: Compute short SHA
-        id: sha
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Debug Dockerfile
         run: |
@@ -74,9 +83,10 @@ jobs:
           load: true
           build-args: |
             WANDERER_PRODUCTION_BOT_TOKEN=${{ secrets.PRODUCTION_BOT_TOKEN }}
+            APP_VERSION=${{ steps.version.outputs.version }}
           tags: |
             guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
-            guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}
+            guarzo/wanderer-notifier:${{ steps.version.outputs.version }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -87,4 +97,4 @@ jobs:
       - name: Push Docker image
         run: |
           docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}
-          docker push guarzo/wanderer-notifier:${{ github.event.inputs.release_version }}_${{ steps.sha.outputs.short_sha }}
+          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.version }}

@@ -18,10 +18,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   def start_link(parent, url) do
     # Enhanced logging for WebSocket connection attempt
     Logger.info("Starting zKillboard WebSocket connection to #{url}")
-    
+
     # Set application-level status for monitoring
     update_startup_status()
-    
+
     # Start the WebSocket connection
     case WebSockex.start_link(url, __MODULE__, %{
       parent: parent,
@@ -36,7 +36,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       {:ok, pid} ->
         Logger.info("Successfully initialized zKillboard WebSocket with PID: #{inspect(pid)}")
         {:ok, pid}
-        
+
       {:error, reason} ->
         Logger.error("Failed to start websocket: #{inspect(reason)}")
         {:error, reason}
@@ -53,13 +53,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       reconnects: 0,
       url: state.url
     })
-    
+
     # Schedule the initial heartbeat check
     Process.send_after(self(), :check_heartbeat, 60_000)
-    
+
     {:ok, state}
   end
-  
+
   # Helper to update status at startup
   defp update_startup_status do
     try do
@@ -84,7 +84,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     # Schedule subscription message to avoid calling self
     Process.send_after(self(), :subscribe, 100)
-    
+
     # Return OK immediately
     {:ok, new_state}
   end
@@ -107,7 +107,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
     Logger.info("Subscribing to zKillboard killstream channel with message: #{msg}")
-    
+
     # Send the subscription frame
     {:reply, {:text, msg}, state}
   end
@@ -118,24 +118,24 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     # Get last message time from state or Stats
     stats = Stats.get_stats()
     last_message_time = stats.websocket.last_message
-    
+
     # Check if we've received any messages in the last 5 minutes
     now = DateTime.utc_now()
     no_messages = case last_message_time do
       nil -> true
       time -> DateTime.diff(now, time, :second) > 300  # 5 minutes
     end
-    
+
     if no_messages && state.connected do
       # No messages for too long, connection might be stale
       Logger.warning("No WebSocket messages received in over 5 minutes. Connection may be stale.")
-      
+
       # Send a test ping to verify connection
       Logger.info("Sending manual ping to test WebSocket connection")
       case WebSockex.send_frame(self(), :ping) do
-        :ok -> 
+        :ok ->
           Logger.debug("Manual ping sent successfully")
-        {:error, reason} -> 
+        {:error, reason} ->
           Logger.error("Failed to send manual ping: #{inspect(reason)}")
           # Connection is definitely bad, initiate a reconnect
           Process.send_after(self(), :force_reconnect, 1000)
@@ -143,12 +143,12 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     else
       Logger.debug("WebSocket heartbeat check passed")
     end
-    
+
     # Schedule the next heartbeat check
     Process.send_after(self(), :check_heartbeat, 60_000)  # Check every minute
     {:ok, state}
   end
-  
+
   # Handle reconnect request
   @impl true
   def handle_info(:force_reconnect, state) do
@@ -217,21 +217,15 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     rescue
       e -> Logger.error("Failed to update websocket status: #{inspect(e)}")
     end
-    
-    # Enhanced logging to debug websocket messages
-    Logger.info("WEBSOCKET TRACE: Received killstream message, length: #{String.length(raw_msg)}")
-    if String.length(raw_msg) > 500 do
-      Logger.info("WEBSOCKET TRACE: Message content (truncated): #{String.slice(raw_msg, 0, 100)}...")
-    else
-      Logger.info("WEBSOCKET TRACE: Message content: #{raw_msg}")
-    end
+
+
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
         # Log the type of message (debug level to avoid excessive logging)
         message_type = classify_message_type(json_data)
         Logger.debug("Processed killstream message of type: #{message_type}")
-        
+
         # Forward to parent process for handling
         if is_pid(state.parent) and Process.alive?(state.parent) do
           Logger.debug("Forwarding zKill message to parent process")
@@ -247,30 +241,30 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         {:ok, state}
     end
   end
-  
+
   # Identify the message type for better logging
   defp classify_message_type(json_data) when is_map(json_data) do
     cond do
       Map.has_key?(json_data, "action") ->
         "action:#{json_data["action"]}"
-        
+
       Map.has_key?(json_data, "killmail_id") and Map.has_key?(json_data, "zkb") ->
         "killmail_with_zkb"
-        
+
       Map.has_key?(json_data, "killmail_id") ->
         "killmail_without_zkb"
-        
+
       Map.has_key?(json_data, "kill_id") ->
         "kill_info"
-        
+
       Map.has_key?(json_data, "tqStatus") ->
         "tq_status"
-        
+
       true ->
         "unknown"
     end
   end
-  
+
   defp classify_message_type(_), do: "non_map"
 
   @impl true

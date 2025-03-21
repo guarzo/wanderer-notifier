@@ -690,45 +690,165 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp custom_round(float) when is_float(float), do: trunc(float + 0.5)
   defp custom_round(int) when is_integer(int), do: int
 
-  # # Format system display name for zkill link
-  # defp format_system_display_name(system) do
-  #   if is_binary(system.solar_system_id) && String.contains?(system.solar_system_id, "-") do
-  #     # For UUID-style IDs, just show the name without a link
-  #     system.name
-  #   else
-  #     "[#{system.name}](https://zkillboard.com/system/#{system.solar_system_id}/)"
-  #   end
-  # end
+  # Get application version - first check env var, then Application.spec, fallback to "dev"
+  defp get_app_version do
+    System.get_env("APP_VERSION") ||
+      Application.spec(:wanderer_notifier, :vsn) ||
+      "dev"
+  end
 
-  # # Format system name, handling temporary and original names
-  # defp format_system_name(system) do
-  #   case {system.temporary_name, system.original_name} do
-  #     {temp, orig} when is_binary(temp) and temp != "" and is_binary(orig) and orig != "" ->
-  #       "#{temp} (#{orig})"
+  @doc """
+  Creates a rich formatted status/startup message with enhanced visual elements.
 
-  #     {temp, _} when is_binary(temp) and temp != "" ->
-  #       temp
+  ## Parameters
+    - title: The title for the message (e.g., "WandererNotifier Started" or "Service Status Report")
+    - description: Brief description of the message purpose
+    - stats: The stats map containing notification counts and websocket info
+    - uptime: Optional uptime in seconds (for status messages, nil for startup)
+    - features_status: Map of feature statuses
+    - license_status: Map with license information
+    - systems_count: Number of tracked systems
+    - characters_count: Number of tracked characters
 
-  #     {_, orig} when is_binary(orig) and orig != "" ->
-  #       orig
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  """
+  def format_system_status_message(
+        title,
+        description,
+        stats,
+        uptime \\ nil,
+        features_status,
+        license_status,
+        systems_count,
+        characters_count
+      ) do
+    Logger.info("[StructuredFormatter] Creating status message with title: #{title}")
 
-  #     _ ->
-  #       system.name
-  #   end
-  # end
+    # Format uptime if provided
+    uptime_str =
+      if uptime do
+        days = div(uptime, 86400)
+        hours = div(rem(uptime, 86400), 3600)
+        minutes = div(rem(uptime, 3600), 60)
+        seconds = rem(uptime, 60)
+        "⏱️ #{days}d #{hours}h #{minutes}m #{seconds}s"
+      else
+        "🚀 Just started"
+      end
 
-  # # Helper to get the system ID from the MapSystem struct
-  # # This handles the proper solar_system_id field as coming from the API
-  # defp get_system_id(system) do
-  #   cond do
-  #     Map.has_key?(system, :solar_system_id) && system.solar_system_id ->
-  #       system.solar_system_id
+    is_premium = Map.get(license_status, :premium, false)
 
-  #     Map.has_key?(system, :id) && system.id ->
-  #       system.id
+    license_icon =
+      if license_status.valid do
+        if is_premium, do: "💎", else: "✅"
+      else
+        "❌"
+      end
 
-  #     true ->
-  #       "unknown"
-  #   end
-  # end
+    # Get WebSocket status icon
+    websocket_icon =
+      if Map.has_key?(stats, :websocket) do
+        ws_status = stats.websocket
+
+        if ws_status.connected do
+          last_message = ws_status.last_message
+
+          if last_message do
+            time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
+
+            cond do
+              time_diff < 60 -> "🟢"
+              time_diff < 300 -> "🟡"
+              true -> "🟠"
+            end
+          else
+            "🟡"
+          end
+        else
+          "🔴"
+        end
+      else
+        "❓"
+      end
+
+    # Format notification counts
+    notification_info =
+      if Map.has_key?(stats, :notifications) do
+        format_notification_counts(stats.notifications)
+      else
+        "No notifications sent yet"
+      end
+
+    # Extract primary feature statuses
+    primary_features = %{
+      kill_notifications: Map.get(features_status, :kill_notifications_enabled, true),
+      tracked_systems_notifications: Map.get(features_status, :system_tracking_enabled, true),
+      tracked_characters_notifications:
+        Map.get(features_status, :character_tracking_enabled, true)
+    }
+
+    # For debugging display
+    Logger.debug("[StructuredFormatter] Found feature statuses: #{inspect(features_status)}")
+    Logger.debug("[StructuredFormatter] Extracted primary features: #{inspect(primary_features)}")
+
+    # Format primary feature statuses
+    formatted_features =
+      [
+        format_feature_item("Kill Notifications", primary_features.kill_notifications),
+        format_feature_item(
+          "System Notifications",
+          primary_features.tracked_systems_notifications
+        ),
+        format_feature_item(
+          "Character Notifications",
+          primary_features.tracked_characters_notifications
+        )
+      ]
+      |> Enum.join("\n")
+
+    # Build the response structure
+    %{
+      type: :status_notification,
+      title: title,
+      description: "#{description}\n\n**System Status Overview:**",
+      color: @info_color,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      thumbnail: %{
+        # Use the EVE Online logo or similar icon
+        url: "https://images.evetech.net/corporations/1000001/logo?size=128"
+      },
+      footer: %{
+        text: "Wanderer Notifier v#{get_app_version()}"
+      },
+      fields: [
+        %{name: "Uptime", value: uptime_str, inline: true},
+        %{name: "License", value: license_icon, inline: true},
+        %{name: "WebSocket", value: websocket_icon, inline: true},
+        %{name: "Systems", value: "🗺️ #{systems_count}", inline: true},
+        %{name: "Characters", value: "👤 #{characters_count}", inline: true},
+        %{name: "📊 Notifications", value: notification_info, inline: false},
+        %{name: "⚙️ Primary Features", value: formatted_features, inline: false}
+      ]
+    }
+  end
+
+  # Helper to format a single feature item
+  defp format_feature_item(name, enabled) do
+    if enabled do
+      "✅ #{name}"
+    else
+      "❌ #{name}"
+    end
+  end
+
+  # Helper to format notification counts
+  defp format_notification_counts(%{} = notifications) do
+    total = Map.get(notifications, :total, 0)
+    kills = Map.get(notifications, :kills, 0)
+    systems = Map.get(notifications, :systems, 0)
+    characters = Map.get(notifications, :characters, 0)
+
+    "Total: **#{total}** (Kills: **#{kills}**, Systems: **#{systems}**, Characters: **#{characters}**)"
+  end
 end

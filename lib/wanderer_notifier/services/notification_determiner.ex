@@ -6,7 +6,6 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   """
   require Logger
   alias WandererNotifier.Core.Features
-  alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Data.Killmail
 
   @doc """
@@ -24,11 +23,23 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def should_notify_kill?(killmail, system_id \\ nil) do
     # Check if kill notifications are enabled globally
     if !Features.kill_notifications_enabled?() do
-      Logger.debug("NOTIFICATION DECISION: Kill notifications are disabled globally")
+      Logger.debug(
+        "🔕 NOTIFICATION BLOCKED: Kill notifications are disabled globally (ENABLE_KILL_NOTIFICATIONS=false)"
+      )
+
       false
     else
       # Extract system ID if not provided
       system_id = system_id || extract_system_id(killmail)
+
+      # Get system name for better logging
+      system_name = get_system_name(system_id)
+      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
+      kill_id =
+        if is_map(killmail),
+          do: Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id"),
+          else: "unknown"
 
       # Check if the kill is in a tracked system
       is_tracked_system = is_tracked_system?(system_id)
@@ -37,8 +48,13 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       has_tracked_character = has_tracked_character?(killmail)
 
       # Log the decision factors
-      Logger.debug("NOTIFICATION CRITERIA: System #{system_id} tracked? #{is_tracked_system}")
-      Logger.debug("NOTIFICATION CRITERIA: Has tracked character? #{has_tracked_character}")
+      Logger.debug(
+        "NOTIFICATION CRITERIA: Kill #{kill_id} - System #{system_info} tracked? #{is_tracked_system}"
+      )
+
+      Logger.debug(
+        "NOTIFICATION CRITERIA: Kill #{kill_id} - Has tracked character? #{has_tracked_character}"
+      )
 
       # Return true if either condition is met
       is_tracked_system || has_tracked_character
@@ -55,31 +71,51 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - true if the system is tracked
     - false otherwise
   """
-  def is_tracked_system?(nil), do: false
-
-  def is_tracked_system?(system_id) do
-    # Get all tracked systems from cache
-    tracked_systems = CacheHelpers.get_tracked_systems()
-
-    # Convert system ID to string for consistent comparison
+  def is_tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
+    # Convert system_id to string for consistent comparison
     system_id_str = to_string(system_id)
 
-    # Extract system IDs from tracked systems
-    tracked_ids =
-      Enum.map(tracked_systems, fn system ->
-        case system do
-          %{solar_system_id: id} when not is_nil(id) -> to_string(id)
-          %{"solar_system_id" => id} when not is_nil(id) -> to_string(id)
-          %{system_id: id} when not is_nil(id) -> to_string(id)
-          %{"system_id" => id} when not is_nil(id) -> to_string(id)
-          _ -> nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
+    # Get system name for better logging
+    system_name = get_system_name(system_id)
+    system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
 
-    # Check if this system ID is in the tracked systems list
-    system_id_str in tracked_ids
+    # Direct check in tracked systems cache
+    cache_key = "tracked:system:#{system_id_str}"
+    is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+
+    # Also check if system exists in main cache
+    system_cache_key = "map:system:#{system_id_str}"
+    exists_in_cache = WandererNotifier.Data.Cache.Repository.get(system_cache_key) != nil
+
+    # Track all systems if configured
+    track_all = Features.track_all_systems?()
+
+    # System is tracked if it's explicitly tracked or if track_all is enabled and system exists
+    tracked = is_tracked || (track_all && exists_in_cache)
+
+    # Add detailed logging
+    if tracked do
+      Logger.debug("TRACKING: System #{system_info} is tracked ✅")
+
+      if is_tracked do
+        Logger.debug("TRACKING DETAIL: System is explicitly tracked (#{cache_key}=true)")
+      else
+        Logger.debug(
+          "TRACKING DETAIL: System is tracked due to TRACK_ALL_SYSTEMS=true and exists in #{system_cache_key}"
+        )
+      end
+    else
+      Logger.debug("TRACKING: System #{system_info} is NOT tracked ❌")
+
+      Logger.debug(
+        "TRACKING DETAIL: Not found in #{cache_key} and either TRACK_ALL_SYSTEMS=false or not in #{system_cache_key}"
+      )
+    end
+
+    tracked
   end
+
+  def is_tracked_system?(_), do: false
 
   @doc """
   Checks if a killmail involves a tracked character (as victim or attacker).
@@ -92,21 +128,6 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - false otherwise
   """
   def has_tracked_character?(killmail) do
-    # Get all tracked characters
-    tracked_characters = CacheHelpers.get_tracked_characters()
-
-    # Extract character IDs from tracked characters list (handle different data formats)
-    tracked_char_ids =
-      Enum.map(tracked_characters, fn char ->
-        case char do
-          %{character_id: id} when not is_nil(id) -> to_string(id)
-          %{"character_id" => id} when not is_nil(id) -> to_string(id)
-          id when is_integer(id) or is_binary(id) -> to_string(id)
-          _ -> nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
-
     # Handle different killmail formats
     kill_data =
       case killmail do
@@ -115,30 +136,75 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         _ -> %{}
       end
 
+    kill_id =
+      if is_map(killmail),
+        do: Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id"),
+        else: "unknown"
+
     # Check victim
     victim = Map.get(kill_data, "victim") || Map.get(kill_data, :victim) || %{}
     victim_id = Map.get(victim, "character_id") || Map.get(victim, :character_id)
     victim_id_str = if victim_id, do: to_string(victim_id), else: nil
-    victim_tracked = victim_id_str && victim_id_str in tracked_char_ids
+
+    # Check if victim is tracked using direct cache lookup
+    victim_tracked =
+      if victim_id_str do
+        cache_key = "tracked:character:#{victim_id_str}"
+        is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+
+        if is_tracked do
+          Logger.debug("CHARACTER TRACKING: Victim character cache hit: #{cache_key}")
+        end
+
+        is_tracked
+      else
+        false
+      end
 
     if victim_tracked do
-      Logger.debug("TRACKED CHARACTER: Victim with ID #{victim_id_str} is tracked")
+      Logger.debug(
+        "CHARACTER TRACKING: Victim with ID #{victim_id_str} in kill #{kill_id} is tracked"
+      )
+
       true
     else
       # Check attackers
       attackers = Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
 
-      Enum.any?(attackers, fn attacker ->
-        attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-        attacker_id_str = if attacker_id, do: to_string(attacker_id), else: nil
-        is_tracked = attacker_id_str && attacker_id_str in tracked_char_ids
+      # Extract all attacker character IDs
+      attacker_ids =
+        attackers
+        |> Enum.map(fn attacker ->
+          char_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
+          if char_id, do: to_string(char_id), else: nil
+        end)
+        |> Enum.reject(&is_nil/1)
 
-        if is_tracked do
-          Logger.debug("TRACKED CHARACTER: Attacker with ID #{attacker_id_str} is tracked")
-        end
+      # Find tracked attackers using direct cache lookup
+      tracked_attacker_ids =
+        Enum.filter(attacker_ids, fn id ->
+          cache_key = "tracked:character:#{id}"
+          is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
 
-        is_tracked
-      end)
+          if is_tracked do
+            Logger.debug("CHARACTER TRACKING: Attacker character cache hit: #{cache_key}")
+          end
+
+          is_tracked
+        end)
+
+      tracked_count = length(tracked_attacker_ids)
+
+      if tracked_count > 0 do
+        Logger.debug(
+          "CHARACTER TRACKING: Found #{tracked_count} tracked attackers in kill #{kill_id}: #{inspect(tracked_attacker_ids)}"
+        )
+
+        true
+      else
+        Logger.debug("CHARACTER TRACKING: No tracked characters found in kill #{kill_id}")
+        false
+      end
     end
   end
 
@@ -159,28 +225,24 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       Logger.debug("NOTIFICATION DECISION: Character notifications are disabled globally")
       false
     else
-      # Get all tracked characters
-      tracked_characters = CacheHelpers.get_tracked_characters()
-
       # Convert to string for consistent comparison
       character_id_str = to_string(character_id)
 
-      # Check if this character ID is in the tracked characters list
-      is_tracked =
-        Enum.any?(tracked_characters, fn char ->
-          case char do
-            %{character_id: id} when not is_nil(id) -> to_string(id) == character_id_str
-            %{"character_id" => id} when not is_nil(id) -> to_string(id) == character_id_str
-            id when is_integer(id) or is_binary(id) -> to_string(id) == character_id_str
-            _ -> false
-          end
-        end)
+      # Direct check in tracked characters cache
+      cache_key = "tracked:character:#{character_id_str}"
+      is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
 
       if is_tracked do
-        Logger.debug("NOTIFICATION DECISION: Character #{character_id} is tracked")
+        Logger.debug(
+          "NOTIFICATION DECISION: Character #{character_id} is tracked (#{cache_key}=true)"
+        )
+
         true
       else
-        Logger.debug("NOTIFICATION DECISION: Character #{character_id} is not tracked")
+        Logger.debug(
+          "NOTIFICATION DECISION: Character #{character_id} is not tracked (#{cache_key} not found)"
+        )
+
         false
       end
     end
@@ -204,13 +266,27 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     else
       is_tracked = is_tracked_system?(system_id)
 
+      # Get system name for better logging
+      system_name = get_system_name(system_id)
+      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
       if is_tracked do
-        Logger.debug("NOTIFICATION DECISION: System #{system_id} is tracked")
+        Logger.debug("NOTIFICATION DECISION: System #{system_info} is tracked")
         true
       else
-        Logger.debug("NOTIFICATION DECISION: System #{system_id} is not tracked")
+        Logger.debug("NOTIFICATION DECISION: System #{system_info} is not tracked")
         false
       end
+    end
+  end
+
+  # Helper function to get system name
+  defp get_system_name(nil), do: nil
+
+  defp get_system_name(system_id) do
+    case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+      {:ok, system_info} -> Map.get(system_info, "name")
+      _ -> nil
     end
   end
 

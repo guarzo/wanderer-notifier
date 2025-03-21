@@ -6,65 +6,139 @@ defmodule WandererNotifier.Services.KillProcessor do
   """
   require Logger
 
-  alias WandererNotifier.Core.Features
-
   # Cache keys for recent kills
   @recent_kills_key "zkill:recent_kills"
   @max_recent_kills 10
   # 1 hour TTL for cached kills
   @kill_ttl 3600
 
+  # Add stats for tracking received kills during this session
+  @kill_stats_key :kill_processor_stats
+
+  # Cache for system names to avoid repeated API calls
+  @system_names_cache_key :system_names_cache
+
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail
 
-  def process_zkill_message(message, state) when is_binary(message) do
+  # Initialize stats on module load
+  def init_stats do
+    Process.put(@kill_stats_key, %{
+      total_kills_received: 0,
+      total_notifications_sent: 0,
+      last_kill_time: nil,
+      start_time: :os.system_time(:second)
+    })
+
+    # Initialize system names cache
+    Process.put(@system_names_cache_key, %{})
+
+    # Start a timer to periodically log stats
+    schedule_stats_logging()
+  end
+
+  # Schedule periodic stats logging (every 5 minutes)
+  def schedule_stats_logging do
+    # Send the message to the main Service module since that's where GenServer is implemented
+    Process.send_after(WandererNotifier.Service, :log_kill_stats, 5 * 60 * 1000)
+  end
+
+  # Log kill statistics
+  def log_kill_stats do
+    stats =
+      Process.get(@kill_stats_key) ||
+        %{
+          total_kills_received: 0,
+          total_notifications_sent: 0,
+          last_kill_time: nil,
+          start_time: :os.system_time(:second)
+        }
+
+    current_time = :os.system_time(:second)
+    uptime_seconds = current_time - stats.start_time
+    hours = div(uptime_seconds, 3600)
+    minutes = div(rem(uptime_seconds, 3600), 60)
+    seconds = rem(uptime_seconds, 60)
+
+    # Format the last kill time if available
+    last_kill_ago =
+      if stats.last_kill_time do
+        time_diff = current_time - stats.last_kill_time
+
+        cond do
+          time_diff < 60 -> "#{time_diff} seconds ago"
+          time_diff < 3600 -> "#{div(time_diff, 60)} minutes ago"
+          true -> "#{div(time_diff, 3600)} hours ago"
+        end
+      else
+        "none received"
+      end
+
     Logger.info(
-      "PROCESSOR TRACE: Processing raw message from WebSocket, length: #{String.length(message)}"
+      "📊 KILL STATS: Processed #{stats.total_kills_received} kills, sent #{stats.total_notifications_sent} notifications. Last kill: #{last_kill_ago}. Uptime: #{hours}h #{minutes}m #{seconds}s"
     )
+  end
+
+  # Update kill statistics
+  defp update_kill_stats(type) do
+    stats =
+      Process.get(@kill_stats_key) ||
+        %{
+          total_kills_received: 0,
+          total_notifications_sent: 0,
+          last_kill_time: nil,
+          start_time: :os.system_time(:second)
+        }
+
+    # Update the appropriate counter
+    updated_stats =
+      case type do
+        :kill_received ->
+          %{
+            stats
+            | total_kills_received: stats.total_kills_received + 1,
+              last_kill_time: :os.system_time(:second)
+          }
+
+        :notification_sent ->
+          %{stats | total_notifications_sent: stats.total_notifications_sent + 1}
+      end
+
+    # Store the updated stats
+    Process.put(@kill_stats_key, updated_stats)
+  end
+
+  def process_zkill_message(message, state) when is_binary(message) do
+    Logger.debug("Processing raw message from WebSocket")
 
     case Jason.decode(message) do
       {:ok, decoded_message} ->
-        Logger.info(
-          "PROCESSOR TRACE: Successfully decoded JSON message: #{inspect(Map.keys(decoded_message))}"
-        )
-
         process_zkill_message(decoded_message, state)
 
       {:error, reason} ->
-        Logger.error("PROCESSOR TRACE: Failed to decode zKill message: #{inspect(reason)}")
-        # Return the state unchanged if we couldn't decode the message
+        Logger.error("Failed to decode zKill message: #{inspect(reason)}")
         state
     end
   end
 
   def process_zkill_message(message, state) when is_map(message) do
-    # Enhanced logging to trace message processing
-    Logger.info(
-      "PROCESSOR TRACE: Processing decoded message with keys: #{inspect(Map.keys(message))}"
-    )
+    # Determine message type based on structure
+    cond do
+      # TQ server status message
+      Map.has_key?(message, "action") && message["action"] == "tqStatus" ->
+        handle_tq_status(message)
+        state
 
-    # Check for killmail_id or zkb, which would indicate a kill message regardless of action field
-    if Map.has_key?(message, "killmail_id") || Map.has_key?(message, "zkb") do
-      Logger.info("PROCESSOR TRACE: Message has killmail_id or zkb key - treating as killmail")
-      handle_killmail(message, state)
-    else
-      # Normal path for non-kill messages
-      case Map.get(message, "action") do
-        "tqStatus" ->
-          # Handle server status updates
-          Logger.info("PROCESSOR TRACE: Processing tqStatus message")
-          handle_tq_status(message)
-          state
+      # Killmail message - identified by either killmail_id or zkb key
+      Map.has_key?(message, "killmail_id") || Map.has_key?(message, "zkb") ->
+        # Update statistics for kill received
+        update_kill_stats(:kill_received)
+        handle_killmail(message, state)
 
-        nil ->
-          # Handle message with no action as potential killmail
-          Logger.info("PROCESSOR TRACE: Processing message with no action as potential killmail")
-          handle_killmail(message, state)
-
-        other ->
-          Logger.info("PROCESSOR TRACE: Ignoring zKill message with action: #{other}")
-          state
-      end
+      # Unknown message type
+      true ->
+        Logger.debug("Ignoring unknown zKill message type")
+        state
     end
   end
 
@@ -84,79 +158,232 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   defp handle_killmail(killmail, state) do
-    # Enhanced logging to trace kill handling
-    Logger.info("KILLMAIL TRACE: Handling potential killmail: #{inspect(Map.keys(killmail))}")
-
-    # Extract the kill ID if available
+    # Extract the kill ID
     kill_id = get_killmail_id(killmail)
-    Logger.info("KILLMAIL TRACE: Extracted killmail_id: #{inspect(kill_id)}")
+    Logger.debug("Extracted killmail_id: #{inspect(kill_id)}")
 
-    # Check if this kill has already been processed or if kill_id is missing
+    # Skip processing if no kill ID or already processed
     cond do
       is_nil(kill_id) ->
-        Logger.warning("KILLMAIL TRACE: Received killmail without kill ID: #{inspect(killmail)}")
+        Logger.warning("Received killmail without kill ID")
         state
 
       Map.has_key?(state.processed_kill_ids, kill_id) ->
-        Logger.info("KILLMAIL TRACE: Kill #{kill_id} already processed, skipping")
+        Logger.debug("Kill #{kill_id} already processed, skipping")
         state
 
       true ->
-        # Process the kill - first convert to Killmail struct for consistent handling
-        Logger.info("KILLMAIL TRACE: Processing new kill #{kill_id}")
+        # Process the new kill - first standardize to Killmail struct
+        Logger.debug("Processing new kill #{kill_id}")
 
         # Extract zkb data
         zkb_data = Map.get(killmail, "zkb", %{})
 
-        # The rest is treated as ESI data, except for fields we know aren't ESI data
-        # This ensures we don't drop important data when organizing it
+        # The rest is treated as ESI data, removing zkb key
         esi_data = Map.drop(killmail, ["zkb"])
 
-        # Create a Killmail struct - standardizing the data structure early
+        # Create a Killmail struct to standardize the data structure
         killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
 
-        # Now process the standardized data structure
+        # Process the standardized data
         process_new_kill(killmail_struct, kill_id, state)
     end
   end
 
   defp process_new_kill(%Killmail{} = killmail, kill_id, state) do
-    # Store the kill in the cache - now we're passing a Killmail struct
+    # Store the kill in the cache
     update_recent_kills(killmail)
 
-    # Only continue with processing if feature is enabled
-    if Features.enabled?(:backup_kills_processing) do
-      with :ok <- validate_killmail(killmail),
-           :ok <- enrich_and_notify(kill_id) do
-        # Return the state with the kill marked as processed
+    # Process the kill for notification (removed check for backup_kills_processing)
+    case enrich_and_notify(killmail) do
+      :ok ->
+        # Mark kill as processed in state
         Map.update(state, :processed_kill_ids, %{kill_id => :os.system_time(:second)}, fn ids ->
           Map.put(ids, kill_id, :os.system_time(:second))
         end)
-      else
-        {:error, reason} ->
-          Logger.error("Error processing kill #{kill_id}: #{reason}")
-          Logger.debug("Problematic killmail: #{inspect(killmail)}")
-          state
-      end
-    else
-      Logger.debug("Backup kills processing disabled, not enriching kill #{kill_id}")
-      state
+
+      {:error, reason} ->
+        Logger.error("Error processing kill #{kill_id}: #{reason}")
+        state
     end
   end
 
-  # Validate Killmail struct
-  defp validate_killmail(%Killmail{} = killmail) do
-    # Standardized validation for Killmail struct
-    if is_nil(killmail.killmail_id) do
-      {:error, "Killmail struct has no killmail_id field"}
-    else
-      :ok
+  # Simplified to remove validate_killmail since we're now using the Killmail struct properly
+  defp enrich_and_notify(%Killmail{} = killmail) do
+    try do
+      # Get the kill details for better logging
+      kill_id = killmail.killmail_id
+
+      # Get the system ID from the killmail
+      system_id = get_system_id_from_killmail(killmail)
+
+      # Get system name for better logging
+      system_name = get_system_name(system_id)
+      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
+      # Debug tracking for this specific system
+      debug_system_tracking(system_id)
+
+      # Extract victim info if available for better logging
+      victim_id = get_in(killmail.esi_data || %{}, ["victim", "character_id"])
+      victim_ship_id = get_in(killmail.esi_data || %{}, ["victim", "ship_type_id"])
+
+      # Extract attacker info if available
+      attackers = get_in(killmail.esi_data || %{}, ["attackers"]) || []
+
+      attacker_ids =
+        attackers
+        |> Enum.map(& &1["character_id"])
+        |> Enum.reject(&is_nil/1)
+
+      Logger.info(
+        "📥 KILL RECEIVED: ID=#{kill_id} in system=#{system_info}, victim_id=#{victim_id}, victim_ship=#{victim_ship_id}, attackers=#{Enum.count(attackers)}"
+      )
+
+      # Get counts of tracked systems and characters for debugging
+      tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+      tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+
+      # Convert tracked character IDs to strings for easier comparison
+      tracked_char_ids =
+        tracked_characters
+        |> Enum.map(fn char ->
+          case char do
+            %{character_id: id} when not is_nil(id) -> to_string(id)
+            %{"character_id" => id} when not is_nil(id) -> to_string(id)
+            id when is_integer(id) or is_binary(id) -> to_string(id)
+            _ -> nil
+          end
+        end)
+        |> Enum.filter(&(&1 != nil))
+        |> MapSet.new()
+
+      # Check if victim is tracked
+      victim_id_str = if victim_id, do: to_string(victim_id), else: nil
+      victim_tracked = victim_id_str && MapSet.member?(tracked_char_ids, victim_id_str)
+
+      # Check which attackers are tracked
+      attacker_ids_str = Enum.map(attacker_ids, &to_string/1)
+
+      tracked_attackers =
+        attacker_ids_str
+        |> MapSet.new()
+        |> MapSet.intersection(tracked_char_ids)
+        |> MapSet.to_list()
+
+      Logger.debug(
+        "TRACKING STATUS: #{length(tracked_systems)} systems and #{length(tracked_characters)} characters tracked"
+      )
+
+      # Log detailed character tracking information
+      if victim_tracked do
+        Logger.debug("VICTIM TRACKING: Victim #{victim_id_str} is tracked")
+      end
+
+      if length(tracked_attackers) > 0 do
+        Logger.debug(
+          "ATTACKER TRACKING: Found #{length(tracked_attackers)} tracked attackers: #{inspect(tracked_attackers)}"
+        )
+      end
+
+      # Log the specific systems being tracked for easier debugging
+      if length(tracked_systems) > 0 do
+        system_ids_with_names =
+          Enum.map(tracked_systems, fn system ->
+            system_id =
+              cond do
+                is_map(system) && Map.has_key?(system, "solar_system_id") ->
+                  system["solar_system_id"]
+
+                is_map(system) && Map.has_key?(system, :solar_system_id) ->
+                  system.solar_system_id
+
+                true ->
+                  system
+              end
+
+            system_name = get_system_name(system_id)
+            if system_name, do: "#{system_id} (#{system_name})", else: system_id
+          end)
+
+        Logger.debug("TRACKED SYSTEMS: #{inspect(system_ids_with_names)}")
+      end
+
+      # Check if system is tracked
+      is_system_tracked =
+        WandererNotifier.Services.NotificationDeterminer.is_tracked_system?(system_id)
+
+      # Check if any character is tracked
+      is_character_tracked =
+        WandererNotifier.Services.NotificationDeterminer.has_tracked_character?(killmail)
+
+      # Log the tracking status for this specific kill
+      Logger.debug(
+        "📊 KILL TRACKING: ID=#{kill_id}, system_tracked=#{is_system_tracked}, character_tracked=#{is_character_tracked}"
+      )
+
+      # Determine if this kill should trigger a notification
+      if WandererNotifier.Services.NotificationDeterminer.should_notify_kill?(killmail, system_id) do
+        # Log the specific reason for notification
+        notification_reason =
+          cond do
+            is_system_tracked && is_character_tracked ->
+              "both system and character are tracked"
+
+            is_system_tracked ->
+              "system #{system_info} is tracked"
+
+            is_character_tracked && victim_tracked ->
+              "victim #{victim_id_str} is tracked"
+
+            is_character_tracked && length(tracked_attackers) > 0 ->
+              "attacker(s) #{inspect(tracked_attackers)} are tracked"
+
+            true ->
+              "matched tracking criteria"
+          end
+
+        Logger.debug(
+          "✅ NOTIFICATION DECISION: Kill #{kill_id} in #{system_info} - sending notification because #{notification_reason}"
+        )
+
+        # Get the enriched killmail data
+        enriched_killmail = enrich_killmail_data(killmail)
+
+        # Send the notification
+        send_kill_notification(enriched_killmail, kill_id)
+        Logger.info("📢 NOTIFICATION SENT: Kill #{kill_id} notification delivered successfully")
+        :ok
+      else
+        # Log detailed information about why the kill was filtered out
+        reason =
+          cond do
+            !WandererNotifier.Core.Features.kill_notifications_enabled?() ->
+              "kill notifications are globally disabled"
+
+            !is_system_tracked && !is_character_tracked ->
+              "neither system nor any characters are tracked"
+
+            true ->
+              "unknown reason - check notification determiner"
+          end
+
+        Logger.debug(
+          "❌ NOTIFICATION SKIPPED: Kill #{kill_id} in #{system_info} filtered out - #{reason}"
+        )
+
+        :ok
+      end
+    rescue
+      e ->
+        Logger.error("⚠️ EXCEPTION: Error during kill enrichment: #{Exception.message(e)}")
+        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
     end
   end
 
   defp update_recent_kills(%Killmail{} = killmail) do
     # Add enhanced logging to trace cache updates
-    Logger.info("CACHE TRACE: Storing Killmail struct in shared cache repository")
+    Logger.debug("Storing Killmail struct in shared cache repository")
 
     kill_id = killmail.killmail_id
 
@@ -169,7 +396,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Now update the list of recent kill IDs
     update_recent_kill_ids(kill_id)
 
-    Logger.info("CACHE TRACE: Stored kill #{kill_id} in shared cache repository")
+    Logger.debug("Stored kill #{kill_id} in shared cache repository")
     :ok
   end
 
@@ -189,91 +416,96 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Update the cache
     CacheRepo.set(@recent_kills_key, updated_ids, @kill_ttl)
 
-    Logger.info(
-      "CACHE TRACE: Updated recent kill IDs in cache - now has #{length(updated_ids)} IDs"
-    )
-  end
-
-  # Simulate enrichment and notification
-  defp enrich_and_notify(kill_id) do
-    try do
-      # Get the cached killmail
-      key = "#{@recent_kills_key}:#{kill_id}"
-      killmail = CacheRepo.get(key)
-
-      if is_nil(killmail) do
-        Logger.error("Cannot find cached killmail for kill_id=#{kill_id}")
-        {:error, "Killmail not found in cache"}
-      else
-        # Extract the system ID from the killmail
-        system_id = get_system_id_from_killmail(killmail)
-
-        # Determine if this kill should trigger a notification
-        if WandererNotifier.Services.NotificationDeterminer.should_notify_kill?(
-             killmail,
-             system_id
-           ) do
-          # Get the enriched killmail data
-          enriched_killmail = enrich_killmail_data(killmail)
-
-          # Send the notification
-          send_kill_notification(enriched_killmail, kill_id)
-          Logger.info("Successfully sent notification for kill_id=#{kill_id}")
-          :ok
-        else
-          Logger.info(
-            "Kill #{kill_id} filtered out - not in tracked system or involving tracked character"
-          )
-
-          :ok
-        end
-      end
-    rescue
-      e ->
-        Logger.error("Exception during enrichment: #{Exception.message(e)}")
-        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
-    end
+    Logger.debug("Updated recent kill IDs in cache - now has #{length(updated_ids)} IDs")
   end
 
   # Extract system ID from killmail
   defp get_system_id_from_killmail(%Killmail{} = killmail) do
-    case killmail do
-      %Killmail{esi_data: esi_data} when is_map(esi_data) ->
-        Map.get(esi_data, "solar_system_id")
+    # Use the Killmail module's helper
+    system_id = Killmail.get_system_id(killmail)
 
-      _ ->
-        nil
+    # Special debug for DAYP-G system (30000253)
+    if system_id == 30_000_253 or system_id == "30000253" do
+      Logger.info("SPECIAL DEBUG: Found DAYP-G system ID: #{system_id}")
+
+      # Force the service to debug tracked systems
+      WandererNotifier.Services.Service.debug_tracked_systems()
+
+      # Test a manual notification for this system
+      handle_dayp_test_notification(killmail, system_id)
     end
-  end
 
-  defp get_system_id_from_killmail(killmail) when is_map(killmail) do
-    # Try to get system ID from various possible locations
-    Map.get(killmail, "solar_system_id") ||
-      Map.get(killmail, :solar_system_id) ||
-      get_in(killmail, ["esi_data", "solar_system_id"]) ||
-      get_in(killmail, [:esi_data, "solar_system_id"])
+    system_id
   end
 
   defp get_system_id_from_killmail(_), do: nil
 
+  # Special handler for DAYP-G system notifications for debugging
+  defp handle_dayp_test_notification(killmail, system_id) do
+    try do
+      # Get system name
+      system_name = get_system_name(system_id)
+      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
+      # Log the special case
+      Logger.info(
+        "DAYP-G TEST: Attempting to manually send notification for kill in #{system_info}"
+      )
+
+      # Get the enriched killmail data
+      enriched_killmail = enrich_killmail_data(killmail)
+
+      # Force a notification
+      kill_id = killmail.killmail_id
+
+      # Send the notification
+      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+
+      Logger.info("DAYP-G TEST: Manually sent notification for kill #{kill_id} in #{system_info}")
+
+      # Update stats
+      update_kill_stats(:notification_sent)
+
+      :ok
+    rescue
+      e ->
+        Logger.error(
+          "DAYP-G TEST ERROR: Failed to send manual notification: #{Exception.message(e)}"
+        )
+
+        {:error, Exception.message(e)}
+    end
+  end
+
   # Send the notification for a kill
   defp send_kill_notification(enriched_killmail, kill_id) do
-    # Format and send the notification using Discord notifier
-    WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+    # Check if this is a duplicate notification
+    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_kill(kill_id) do
+      {:ok, :duplicate} ->
+        Logger.debug("DUPLICATE KILL: Kill #{kill_id} notification already sent, skipping")
+        :ok
 
-    # Log the notification for tracking purposes
-    Logger.info("Kill notification sent for kill_id=#{kill_id}")
+      {:ok, :new} ->
+        # Format and send the notification using Discord notifier
+        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+
+        # Update statistics for notification sent
+        update_kill_stats(:notification_sent)
+
+        # Log the notification for tracking purposes
+        Logger.debug("Kill notification sent for kill_id=#{kill_id}")
+    end
   end
 
   @doc """
   Returns the list of recent kills from the shared cache repository.
   """
   def get_recent_kills do
-    Logger.info("CACHE TRACE: Retrieving recent kills from shared cache repository")
+    Logger.debug("Retrieving recent kills from shared cache repository")
 
     # First get the list of recent kill IDs
     kill_ids = CacheRepo.get(@recent_kills_key) || []
-    Logger.info("CACHE TRACE: Found #{length(kill_ids)} recent kill IDs in cache")
+    Logger.debug("Found #{length(kill_ids)} recent kill IDs in cache")
 
     # Then fetch each kill by its ID
     recent_kills =
@@ -283,23 +515,18 @@ defmodule WandererNotifier.Services.KillProcessor do
 
         if kill_data do
           # Log successful retrieval
-          Logger.debug("CACHE TRACE: Successfully retrieved kill #{id} from cache")
+          Logger.debug("Successfully retrieved kill #{id} from cache")
           kill_data
         else
           # Log cache miss
-          Logger.warning(
-            "CACHE TRACE: Failed to retrieve kill #{id} from cache (expired or missing)"
-          )
-
+          Logger.warning("Failed to retrieve kill #{id} from cache (expired or missing)")
           nil
         end
       end)
       # Remove any nils from the list
       |> Enum.filter(&(&1 != nil))
 
-    Logger.info(
-      "CACHE TRACE: Retrieved #{length(recent_kills)} cached kills from shared repository"
-    )
+    Logger.debug("Retrieved #{length(recent_kills)} cached kills from shared repository")
 
     recent_kills
   end
@@ -312,18 +539,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     # Get recent kills
     recent_kills = get_recent_kills()
-
-    # Log what we're finding to debug the issue
-    Logger.info("Found #{length(recent_kills)} recent kills in shared cache repository")
-
-    if length(recent_kills) > 0 do
-      first_kill = List.first(recent_kills)
-      Logger.debug("First kill data structure: #{inspect(first_kill, pretty: true, limit: 200)}")
-
-      # Check for Killmail struct
-      is_struct = match?(%Killmail{}, first_kill)
-      Logger.debug("First kill is Killmail struct? #{is_struct}")
-    end
+    Logger.debug("Found #{length(recent_kills)} recent kills in shared cache repository")
 
     if recent_kills == [] do
       error_message = "No recent kills available for test notification"
@@ -339,120 +555,35 @@ defmodule WandererNotifier.Services.KillProcessor do
 
       {:error, error_message}
     else
-      # Use the first kill - it should already be a Killmail struct
-      recent_kill = List.first(recent_kills)
+      # Get the first kill - should already be a Killmail struct
+      %Killmail{} = recent_kill = List.first(recent_kills)
+      kill_id = recent_kill.killmail_id
 
-      kill_id =
-        if match?(%Killmail{}, recent_kill),
-          do: recent_kill.killmail_id,
-          else: get_killmail_id(recent_kill)
+      # Log what we're using for testing
+      Logger.debug("Using kill data for test notification with kill_id: #{kill_id}")
 
-      if kill_id do
-        # Log what we're using for testing clarity
-        Logger.info("Using REAL KILL DATA for test notification with kill_id: #{kill_id}")
+      # Directly call the notifier with the killmail struct
+      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(
+        recent_kill,
+        kill_id
+      )
 
-        # Ensure we're working with a Killmail struct
-        kill_data =
-          if match?(%Killmail{}, recent_kill),
-            do: recent_kill,
-            else: convert_to_killmail(recent_kill, kill_id)
-
-        # Log the kill data structure for debugging
-        Logger.info(
-          "Using Killmail struct with id=#{kill_data.killmail_id}, esi_data keys: #{inspect(Map.keys(kill_data.esi_data || %{}))}"
-        )
-
-        # Directly call the notifier to avoid translation layers
-        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(
-          kill_data,
-          kill_id
-        )
-
-        {:ok, kill_id}
-      else
-        error_message = "No valid killmail_id found in recent kill data"
-        Logger.error("#{error_message}: #{inspect(recent_kill)}")
-
-        # Notify the user through Discord
-        WandererNotifier.Notifiers.Factory.notify(
-          :send_message,
-          ["Error: #{error_message} - No test notification sent."]
-        )
-
-        {:error, error_message}
-      end
+      {:ok, kill_id}
     end
-  end
-
-  # Helper function to convert a map to a Killmail struct
-  defp convert_to_killmail(kill_data, kill_id) when is_map(kill_data) do
-    # Extract zkb data if available
-    zkb_data = Map.get(kill_data, "zkb", %{})
-
-    # The rest is treated as ESI data
-    esi_data = Map.drop(kill_data, ["zkb"])
-
-    # Add solar_system_name if we have solar_system_id but no name
-    esi_data =
-      if Map.has_key?(esi_data, "solar_system_id") && !Map.has_key?(esi_data, "solar_system_name") do
-        # We have a system_id but no name - we'll need to look it up when enriching
-        # Just preserve the id for now
-        esi_data
-      else
-        esi_data
-      end
-
-    # Create a Killmail struct
-    Killmail.new(kill_id, zkb_data, esi_data)
-  end
-
-  defp convert_to_killmail(kill_data, kill_id) do
-    # For non-map data, create a minimal struct
-    Logger.warning("Converting non-map data to Killmail struct: #{inspect(kill_data)}")
-    Killmail.new(kill_id, %{}, %{})
   end
 
   # Helper function to extract the killmail ID from different possible structures
   defp get_killmail_id(kill_data) when is_map(kill_data) do
-    cond do
-      # Direct field
-      Map.has_key?(kill_data, "killmail_id") ->
-        Map.get(kill_data, "killmail_id")
-
-      # Check for nested structure
-      Map.has_key?(kill_data, "zkb") && Map.has_key?(kill_data, "killmail") ->
-        get_in(kill_data, ["killmail", "killmail_id"])
-
-      # Check for string keys converted to atoms
-      Map.has_key?(kill_data, :killmail_id) ->
-        Map.get(kill_data, :killmail_id)
-
-      # Try to extract from the raw data if it has a zkb key
-      # (common format in real-time websocket feed)
-      Map.has_key?(kill_data, "zkb") ->
-        kill_id =
-          Map.get(kill_data, "killID") ||
-            get_in(kill_data, ["zkb", "killID"]) ||
-            get_in(kill_data, ["zkb", "killmail_id"])
-
-        # If we found a string ID, convert to integer
-        if is_binary(kill_id) do
-          String.to_integer(kill_id)
-        else
-          kill_id
-        end
-
-      true ->
-        nil
-    end
+    # Based on the standard zKillboard websocket format, the killmail_id should be directly
+    # available as a field named "killmail_id". If not, try to extract from the zkb data.
+    kill_data["killmail_id"] ||
+      (kill_data["zkb"] && kill_data["zkb"]["killID"])
   end
 
   defp get_killmail_id(_), do: nil
 
   # Enrich the killmail data with additional information needed for notifications
   defp enrich_killmail_data(%Killmail{} = killmail) do
-    # Since we can't use the private enrichment function directly,
-    # we'll implement our own basic enrichment logic
     %Killmail{esi_data: esi_data} = killmail
 
     # Enrich with system name if needed
@@ -482,26 +613,6 @@ defmodule WandererNotifier.Services.KillProcessor do
     %Killmail{killmail | esi_data: esi_data}
   end
 
-  # Handle non-Killmail structured data
-  defp enrich_killmail_data(killmail) when is_map(killmail) do
-    # Convert to Killmail struct if possible
-    kill_id = Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id)
-    zkb_data = Map.get(killmail, "zkb") || Map.get(killmail, :zkb) || %{}
-    esi_data = Map.drop(killmail, ["zkb", :zkb])
-
-    # Create a new Killmail struct
-    killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
-
-    # Now enrich using the struct version
-    enrich_killmail_data(killmail_struct)
-  end
-
-  defp enrich_killmail_data(data) do
-    # For anything else, return as is with a warning
-    Logger.warning("Cannot enrich killmail data of unknown format: #{inspect(data, limit: 100)}")
-    data
-  end
-
   # Enrich entity (victim or attacker) with additional information
   defp enrich_entity(entity) when is_map(entity) do
     # Add character name if missing
@@ -516,6 +627,38 @@ defmodule WandererNotifier.Services.KillProcessor do
           end
 
         Map.put(entity, "character_name", character_name)
+      else
+        entity
+      end
+
+    # Add corporation name if missing
+    entity =
+      if Map.has_key?(entity, "corporation_id") && !Map.has_key?(entity, "corporation_name") do
+        corporation_id = Map.get(entity, "corporation_id")
+
+        corporation_name =
+          case WandererNotifier.Api.ESI.Service.get_corporation_info(corporation_id) do
+            {:ok, corp_info} -> Map.get(corp_info, "name", "Unknown Corp")
+            _ -> "Unknown Corp"
+          end
+
+        Map.put(entity, "corporation_name", corporation_name)
+      else
+        entity
+      end
+
+    # Add alliance name if missing
+    entity =
+      if Map.has_key?(entity, "alliance_id") && !Map.has_key?(entity, "alliance_name") do
+        alliance_id = Map.get(entity, "alliance_id")
+
+        alliance_name =
+          case WandererNotifier.Api.ESI.Service.get_alliance_info(alliance_id) do
+            {:ok, alliance_info} -> Map.get(alliance_info, "name", "Unknown Alliance")
+            _ -> "Unknown Alliance"
+          end
+
+        Map.put(entity, "alliance_name", alliance_name)
       else
         entity
       end
@@ -559,4 +702,147 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   defp enrich_with_system_name(data), do: data
+
+  # Helper function to get system name with caching
+  defp get_system_name(nil), do: nil
+
+  defp get_system_name(system_id) do
+    # Check the local process cache first
+    cache = Process.get(@system_names_cache_key) || %{}
+
+    case Map.get(cache, system_id) do
+      nil ->
+        # Not in cache, fetch from ESI
+        system_name =
+          case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+            {:ok, system_info} -> Map.get(system_info, "name")
+            _ -> nil
+          end
+
+        # Update cache
+        updated_cache = Map.put(cache, system_id, system_name)
+        Process.put(@system_names_cache_key, updated_cache)
+
+        system_name
+
+      system_name ->
+        # Return from cache
+        system_name
+    end
+  end
+
+  # Helper function to diagnose tracking issues for a specific system ID
+  defp debug_system_tracking(system_id) do
+    system_id_str = to_string(system_id)
+
+    # Get system name for better logging
+    system_name = get_system_name(system_id)
+    system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
+    # Get all tracked systems from cache
+    tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+
+    Logger.debug("DEBUG: Checking tracking for system #{system_info}")
+    Logger.debug("DEBUG: Found #{length(tracked_systems)} tracked systems")
+
+    # Try standard check first
+    standard_check =
+      WandererNotifier.Services.NotificationDeterminer.is_tracked_system?(system_id)
+
+    Logger.debug("DEBUG: Standard tracking check result: #{standard_check}")
+
+    # Manual check with each possible format
+    matches =
+      Enum.filter(tracked_systems, fn system ->
+        case system do
+          %{solar_system_id: id} when not is_nil(id) ->
+            id_str = to_string(id)
+            match = id_str == system_id_str
+
+            if match,
+              do: Logger.debug("DEBUG: Found match with solar_system_id (atom key): #{id}")
+
+            match
+
+          %{"solar_system_id" => id} when not is_nil(id) ->
+            id_str = to_string(id)
+            match = id_str == system_id_str
+
+            if match,
+              do: Logger.debug("DEBUG: Found match with solar_system_id (string key): #{id}")
+
+            match
+
+          %{system_id: id} when not is_nil(id) ->
+            id_str = to_string(id)
+            match = id_str == system_id_str
+            if match, do: Logger.debug("DEBUG: Found match with system_id (atom key): #{id}")
+            match
+
+          %{"system_id" => id} when not is_nil(id) ->
+            id_str = to_string(id)
+            match = id_str == system_id_str
+            if match, do: Logger.debug("DEBUG: Found match with system_id (string key): #{id}")
+            match
+
+          id when is_integer(id) or is_binary(id) ->
+            id_str = to_string(id)
+            match = id_str == system_id_str
+            if match, do: Logger.debug("DEBUG: Found match with direct ID value: #{id}")
+            match
+
+          _ ->
+            # No match for this system
+            false
+        end
+      end)
+
+    found = length(matches) > 0
+
+    if !found do
+      # If no match found, log the first few systems for debugging
+      sample = Enum.take(tracked_systems, min(3, length(tracked_systems)))
+      Logger.debug("DEBUG: No match found. Sample tracked system structures: #{inspect(sample)}")
+    else
+      Logger.debug("DEBUG: Found #{length(matches)} matches in tracked systems")
+    end
+
+    # Try to find the system by direct lookup
+    direct_system = WandererNotifier.Data.Cache.Repository.get("map:system:#{system_id_str}")
+
+    if direct_system != nil do
+      Logger.debug("DEBUG: Found system in direct cache lookup: #{inspect(direct_system)}")
+    else
+      Logger.debug("DEBUG: System not found in direct cache lookup")
+    end
+
+    # Return the results
+    %{
+      system_id: system_id,
+      standard_check: standard_check,
+      manual_check: found,
+      matches: matches,
+      direct_lookup: direct_system != nil
+    }
+  end
+
+  # Public function to trigger special debug for a specific system
+  def debug_special_system(system_id) do
+    # Convert to integer if possible
+    system_id =
+      case system_id do
+        id when is_binary(id) ->
+          case Integer.parse(id) do
+            {int_id, ""} -> int_id
+            _ -> id
+          end
+
+        id ->
+          id
+      end
+
+    Logger.info("Triggering special debug for system ID: #{system_id}")
+    # Send the message to the main Service module
+    Process.send(WandererNotifier.Service, {:debug_special_system, system_id}, [])
+  end
 end

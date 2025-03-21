@@ -93,14 +93,28 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
           Logger.info("Characters updated: #{length(characters)} characters found")
           # Verify the characters were actually stored in cache
           updated_cache = CacheRepo.get("map:characters")
-          Logger.debug("Post-update cache verification - map:characters contains: #{inspect(updated_cache)}")
+
+          Logger.debug(
+            "Post-update cache verification - map:characters contains: #{inspect(updated_cache)}"
+          )
 
           if updated_cache == nil || updated_cache == [] do
-            Logger.warning("Characters were updated but cache appears empty. Forcing manual cache update.")
-            CacheRepo.set("map:characters", characters, WandererNotifier.Config.Timings.characters_cache_ttl())
+            Logger.warning(
+              "Characters were updated but cache appears empty. Forcing manual cache update."
+            )
+
+            CacheRepo.set(
+              "map:characters",
+              characters,
+              WandererNotifier.Config.Timings.characters_cache_ttl()
+            )
+
             # Double-check the cache again
             final_cache = CacheRepo.get("map:characters")
-            Logger.debug("After manual cache update - map:characters contains: #{inspect(final_cache)}")
+
+            Logger.debug(
+              "After manual cache update - map:characters contains: #{inspect(final_cache)}"
+            )
           end
 
           %{state | last_characters_update: now, characters_count: length(characters)}
@@ -128,20 +142,41 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Get current stats
     stats = WandererNotifier.Core.Stats.get_stats()
 
-    # Format status message
-    status_message = """
-    SERVICE STATUS REPORT
-    Uptime: #{uptime_str}
-    Notifications sent: #{stats.notifications.total}
-    Kill notifications: #{stats.notifications.kills}
-    System notifications: #{stats.notifications.systems}
-    Character notifications: #{stats.notifications.characters}
-    WebSocket connected: #{if stats.websocket.connected, do: "Yes", else: "No"}
-    WebSocket reconnects: #{stats.websocket.reconnects}
-    """
+    # Get license information
+    license_status = WandererNotifier.Core.License.status()
 
-    # Log status and also send as a notification
-    Logger.info(status_message)
-    NotifierFactory.notify(:send_message, [status_message])
+    # Get feature information
+    features_status = WandererNotifier.Core.Features.get_feature_status()
+
+    # Get tracked systems and characters counts
+    systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+    characters = CacheRepo.get("map:characters") || []
+
+    # Create a structured notification for the status message
+    title = "Service Status Report"
+    description = "Periodic status update for the notification service."
+
+    # Create a structured notification using our formatter
+    generic_notification =
+      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+        title,
+        description,
+        stats,
+        uptime_seconds,
+        features_status,
+        license_status,
+        length(systems),
+        length(characters)
+      )
+
+    # Convert to Discord format
+    discord_embed =
+      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
+
+    # Log simple status message
+    Logger.info("Service status report - Uptime: #{uptime_str}")
+
+    # Send the rich notification
+    NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
   end
 end

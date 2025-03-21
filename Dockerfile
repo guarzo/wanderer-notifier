@@ -5,6 +5,10 @@ FROM elixir:1.15-alpine AS builder
 ARG WANDERER_PRODUCTION_BOT_TOKEN
 ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
 
+# Accept version argument
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
+
 # Install build dependencies
 RUN apk add --no-cache build-base git npm nodejs
 
@@ -52,6 +56,10 @@ FROM node:20-alpine AS app
 # Pass build arguments to runtime
 ARG WANDERER_PRODUCTION_BOT_TOKEN
 ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+
+# Pass version argument to runtime
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 
 # Install runtime dependencies
 RUN apk add --no-cache openssl ncurses-libs libstdc++ bash wget

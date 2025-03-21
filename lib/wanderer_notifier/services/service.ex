@@ -44,6 +44,12 @@ defmodule WandererNotifier.Services.Service do
     Process.flag(:trap_exit, true)
     now = :os.system_time(:second)
 
+    # Initialize kill stats for tracking
+    WandererNotifier.Services.KillProcessor.init_stats()
+
+    # The DeduplicationHelper is already started by the application supervisor
+    # so we don't need to initialize it here
+
     state = %State{
       service_start_time: now,
       last_status_time: now,
@@ -121,7 +127,6 @@ defmodule WandererNotifier.Services.Service do
 
   @impl true
   def handle_info({:zkill_message, message}, state) do
-    Logger.info("SERVICE TRACE: Received zkill message from WebSocket, length: #{String.length(message)}")
     # Process the message with the KillProcessor
     new_state = WandererNotifier.Services.KillProcessor.process_zkill_message(message, state)
     {:noreply, new_state}
@@ -157,10 +162,115 @@ defmodule WandererNotifier.Services.Service do
     {:noreply, new_state}
   end
 
-  # Distinguish normal vs. abnormal exits
+  @impl true
+  def handle_info(:log_kill_stats, state) do
+    try do
+      WandererNotifier.Services.KillProcessor.log_kill_stats()
+    rescue
+      e -> Logger.error("Error logging kill stats: #{Exception.message(e)}")
+    end
+
+    # Reschedule for the next interval
+    schedule_stats_logging()
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:debug_special_system, system_id}, state) do
+    # Get system name for better logging
+    system_name = get_system_name(system_id)
+    system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
+
+    Logger.info("SPECIAL DEBUG: Processing debug request for system #{system_info}")
+
+    # Get all tracked systems from cache
+    tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+
+    Logger.info("SPECIAL DEBUG: Found #{length(tracked_systems)} tracked systems")
+
+    # Check if system is already tracked
+    found =
+      Enum.any?(tracked_systems, fn system ->
+        case system do
+          %{solar_system_id: id} when not is_nil(id) ->
+            id_str = to_string(id)
+            id_str == to_string(system_id)
+
+          %{"solar_system_id" => id} when not is_nil(id) ->
+            id_str = to_string(id)
+            id_str == to_string(system_id)
+
+          %{system_id: id} when not is_nil(id) ->
+            id_str = to_string(id)
+            id_str == to_string(system_id)
+
+          %{"system_id" => id} when not is_nil(id) ->
+            id_str = to_string(id)
+            id_str == to_string(system_id)
+
+          id when is_integer(id) or is_binary(id) ->
+            id_str = to_string(id)
+            id_str == to_string(system_id)
+
+          _ ->
+            false
+        end
+      end)
+
+    Logger.info("SPECIAL DEBUG: System #{system_info} found in tracked systems: #{found}")
+
+    # Try direct cache lookup
+    direct_system = WandererNotifier.Data.Cache.Repository.get("map:system:#{system_id}")
+    Logger.info("SPECIAL DEBUG: Direct cache lookup result: #{inspect(direct_system)}")
+
+    # Use the new CacheHelpers function instead of directly manipulating the cache
+    :ok = WandererNotifier.Helpers.CacheHelpers.add_system_to_tracked(system_id, system_name)
+    Logger.info("SPECIAL DEBUG: Added system #{system_info} to tracked systems")
+
+    Logger.info("SPECIAL DEBUG: Debug tracking operation complete for #{system_info}")
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:debug_special_character, character_id}, state) do
+    # Get character name for better logging
+    character_name = get_character_name(character_id)
+
+    character_info =
+      if character_name, do: "#{character_id} (#{character_name})", else: character_id
+
+    Logger.info("SPECIAL DEBUG: Processing debug request for character #{character_info}")
+
+    # Get all tracked characters from cache
+    tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+
+    Logger.info("SPECIAL DEBUG: Found #{length(tracked_characters)} tracked characters")
+
+    # Check if character is already tracked
+    character_id_str = to_string(character_id)
+
+    # Try direct cache lookup
+    direct_character =
+      WandererNotifier.Data.Cache.Repository.get("tracked:character:#{character_id_str}")
+
+    Logger.info("SPECIAL DEBUG: Direct cache lookup result: #{inspect(direct_character)}")
+
+    # Use the CacheHelpers function to add the character
+    :ok =
+      WandererNotifier.Helpers.CacheHelpers.add_character_to_tracked(character_id, character_name)
+
+    Logger.info("SPECIAL DEBUG: Added character #{character_info} to tracked characters")
+
+    Logger.info("SPECIAL DEBUG: Debug tracking operation complete for #{character_info}")
+
+    {:noreply, state}
+  end
+
   @impl true
   def handle_info({:EXIT, pid, reason}, state) when reason == :normal do
-    Logger.debug("Linked process #{inspect(pid)} exited normally.")
+    Logger.debug("Linked process #{inspect(pid)} exited normally")
     {:noreply, state}
   end
 
@@ -179,6 +289,13 @@ defmodule WandererNotifier.Services.Service do
     else
       {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info({:clear_dedup_key, key}, state) do
+    # Handle deduplication key expiration
+    WandererNotifier.Helpers.DeduplicationHelper.handle_clear_key(key)
+    {:noreply, state}
   end
 
   @impl true
@@ -214,6 +331,155 @@ defmodule WandererNotifier.Services.Service do
         Logger.error("Reconnection failed: #{inspect(reason)}")
         Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
         state
+    end
+  end
+
+  @doc """
+  Dumps the current tracked systems data for debugging purposes.
+  """
+  def debug_tracked_systems do
+    tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+    system_count = length(tracked_systems)
+    Logger.info("DEBUG: Found #{system_count} tracked systems")
+
+    # Get raw data from cache for comparison
+    raw_systems = WandererNotifier.Data.Cache.Repository.get("map:systems")
+    raw_system_count = if is_list(raw_systems), do: length(raw_systems), else: 0
+    Logger.info("DEBUG: Raw map:systems cache has #{raw_system_count} systems")
+
+    # Examine a few systems for structure
+    if system_count > 0 do
+      sample = Enum.take(tracked_systems, min(3, system_count))
+      Logger.info("DEBUG: Sample system structure: #{inspect(sample)}")
+
+      # Get the possible ID formats for each system
+      id_formats =
+        Enum.map(sample, fn system ->
+          %{
+            system: system,
+            formats: %{
+              raw: system,
+              solar_system_id_atom: is_map(system) && Map.get(system, :solar_system_id),
+              solar_system_id_string: is_map(system) && Map.get(system, "solar_system_id"),
+              system_id_atom: is_map(system) && Map.get(system, :system_id),
+              system_id_string: is_map(system) && Map.get(system, "system_id")
+            }
+          }
+        end)
+
+      Logger.info("DEBUG: ID formats: #{inspect(id_formats)}")
+    end
+
+    # Check if the system being tested is in the list
+    # DAYP-G system ID from log
+    test_system_id = "30000253"
+    Logger.info("DEBUG: Checking if system #{test_system_id} is tracked")
+
+    matches =
+      Enum.filter(tracked_systems, fn system ->
+        case system do
+          %{solar_system_id: id} when not is_nil(id) -> to_string(id) == test_system_id
+          %{"solar_system_id" => id} when not is_nil(id) -> to_string(id) == test_system_id
+          %{system_id: id} when not is_nil(id) -> to_string(id) == test_system_id
+          %{"system_id" => id} when not is_nil(id) -> to_string(id) == test_system_id
+          id when is_integer(id) or is_binary(id) -> to_string(id) == test_system_id
+          _ -> false
+        end
+      end)
+
+    if matches != [] do
+      Logger.info(
+        "DEBUG: System #{test_system_id} IS in the tracked systems list: #{inspect(matches)}"
+      )
+    else
+      Logger.info("DEBUG: System #{test_system_id} is NOT in the tracked systems list")
+    end
+
+    # Try additional cache keys
+    system_ids_key = WandererNotifier.Data.Cache.Repository.get("map:system_ids")
+
+    specific_system_key =
+      WandererNotifier.Data.Cache.Repository.get("map:system:#{test_system_id}")
+
+    Logger.info("DEBUG: map:system_ids contains: #{inspect(system_ids_key)}")
+    Logger.info("DEBUG: map:system:#{test_system_id} contains: #{inspect(specific_system_key)}")
+
+    %{
+      tracked_systems_count: system_count,
+      raw_systems_count: raw_system_count,
+      test_system_found: matches != [],
+      test_system_details: matches
+    }
+  end
+
+  # Schedule the next kill stats logging interval (every 5 minutes)
+  defp schedule_stats_logging do
+    Process.send_after(self(), :log_kill_stats, 5 * 60 * 1000)
+  end
+
+  @doc """
+  Dumps the current tracked characters data for debugging purposes.
+  """
+  def debug_tracked_characters do
+    tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+    character_count = length(tracked_characters)
+    Logger.info("DEBUG: Found #{character_count} tracked characters")
+
+    # Get raw data from cache for comparison
+    raw_characters = WandererNotifier.Data.Cache.Repository.get("map:characters")
+    raw_character_count = if is_list(raw_characters), do: length(raw_characters), else: 0
+    Logger.info("DEBUG: Raw map:characters cache has #{raw_character_count} characters")
+
+    # Examine a few characters for structure
+    if character_count > 0 do
+      sample = Enum.take(tracked_characters, min(3, character_count))
+      Logger.info("DEBUG: Sample character structure: #{inspect(sample)}")
+
+      # Get the possible ID formats for each character
+      id_formats =
+        Enum.map(sample, fn character ->
+          %{
+            character: character,
+            formats: %{
+              raw: character,
+              character_id_atom: is_map(character) && Map.get(character, :character_id),
+              character_id_string: is_map(character) && Map.get(character, "character_id"),
+              eve_id_atom: is_map(character) && Map.get(character, :eve_id),
+              eve_id_string: is_map(character) && Map.get(character, "eve_id")
+            }
+          }
+        end)
+
+      Logger.info("DEBUG: Character ID formats: #{inspect(id_formats)}")
+    end
+
+    # Try additional cache keys
+    character_ids_key = WandererNotifier.Data.Cache.Repository.get("map:character_ids")
+    tracked_characters_key = WandererNotifier.Data.Cache.Repository.get("tracked:characters")
+
+    Logger.info("DEBUG: map:character_ids contains: #{inspect(character_ids_key)}")
+    Logger.info("DEBUG: tracked:characters contains: #{inspect(tracked_characters_key)}")
+
+    %{
+      tracked_characters_count: character_count,
+      raw_characters_count: raw_character_count,
+      sample_characters: Enum.take(tracked_characters, min(3, character_count))
+    }
+  end
+
+  # Helper function to get system name
+  defp get_system_name(system_id) do
+    case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+      {:ok, system_info} -> Map.get(system_info, "name")
+      _ -> "Unknown System"
+    end
+  end
+
+  # Helper function to get character name
+  defp get_character_name(character_id) do
+    case WandererNotifier.Api.ESI.Service.get_character_info(character_id) do
+      {:ok, character_info} -> Map.get(character_info, "name")
+      _ -> "Unknown Character"
     end
   end
 end

@@ -104,9 +104,6 @@ defmodule WandererNotifier.Application do
 
     # Get license information
     license_status = WandererNotifier.Core.License.status()
-    license_valid = if license_status.valid, do: "Valid", else: "Invalid"
-    is_premium = Map.get(license_status, :premium, false)
-    license_type = if is_premium, do: "Premium", else: "Standard"
 
     # Get tracking information
     systems = get_tracked_systems()
@@ -118,104 +115,29 @@ defmodule WandererNotifier.Application do
     # Get stats
     stats = WandererNotifier.Core.Stats.get_stats()
 
-    # Format message
+    # Use the new structured formatter
     title = "WandererNotifier Started"
     description = "The notification service has started successfully."
 
-    # Build fields for the embed
-    fields = [
-      %{name: "License Status", value: "#{license_valid} (#{license_type})", inline: true},
-      %{name: "Tracked Systems", value: "#{length(systems)}", inline: true},
-      %{name: "Tracked Characters", value: "#{length(characters)}", inline: true}
-    ]
+    # Create a structured notification using our formatter
+    generic_notification =
+      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+        title,
+        description,
+        stats,
+        nil,
+        features_status,
+        license_status,
+        length(systems),
+        length(characters)
+      )
 
-    # Add WebSocket status
-    websocket_status = format_websocket_status(stats.websocket)
-    fields = fields ++ [%{name: "WebSocket Status", value: websocket_status, inline: true}]
-
-    # Add notification counts
-    notification_stats = stats.notifications
-    notification_info = format_notification_counts(notification_stats)
-
-    fields =
-      fields ++
-        [
-          %{name: "Notifications Sent", value: notification_info, inline: false}
-        ]
-
-    # Add feature status section
-    enabled_features = format_feature_status(features_status)
-    fields = fields ++ [%{name: "Enabled Features", value: enabled_features, inline: false}]
-
-    # Create a complete Discord embed structure
-    embed = %{
-      "title" => title,
-      "description" => description,
-      # Blue color
-      "color" => 0x3498DB,
-      "fields" => fields
-    }
+    # Convert to Discord format
+    discord_embed =
+      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
     # Send the notification using the Discord notifier through the factory
-    NotifierFactory.notify(:send_discord_embed, [embed, :general])
-  end
-
-  # Helper to format WebSocket connection status
-  defp format_websocket_status(websocket_status) do
-    if websocket_status.connected do
-      last_message = websocket_status.last_message
-
-      if last_message do
-        time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
-
-        cond do
-          time_diff < 60 -> "Connected (active)"
-          time_diff < 300 -> "Connected (last message #{div(time_diff, 60)} min ago)"
-          true -> "Connected (inactive for #{div(time_diff, 60)} min)"
-        end
-      else
-        "Connected (no messages yet)"
-      end
-    else
-      reconnects = Map.get(websocket_status, :reconnects, 0)
-
-      if reconnects > 0 do
-        "Disconnected (#{reconnects} reconnect attempts)"
-      else
-        "Disconnected"
-      end
-    end
-  end
-
-  # Helper to format notification counts
-  defp format_notification_counts(%{} = notifications) do
-    total = Map.get(notifications, :total, 0)
-    kills = Map.get(notifications, :kills, 0)
-    systems = Map.get(notifications, :systems, 0)
-    characters = Map.get(notifications, :characters, 0)
-
-    "Total: #{total} (Kills: #{kills}, Systems: #{systems}, Characters: #{characters})"
-  end
-
-  # Helper to format feature status
-  defp format_feature_status(%{} = features) do
-    enabled =
-      Enum.filter(features, fn {_feature, enabled} -> enabled end)
-      |> Enum.map(fn {feature, _} ->
-        # Convert atom to string and format nicely
-        feature
-        |> Atom.to_string()
-        |> String.replace("_", " ")
-        |> String.split()
-        |> Enum.map(&String.capitalize/1)
-        |> Enum.join(" ")
-      end)
-
-    if enabled == [] do
-      "No features enabled"
-    else
-      Enum.join(enabled, ", ")
-    end
+    NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
   end
 
   # Schedule periodic health checks for EVE Corp Tools API
@@ -251,6 +173,9 @@ defmodule WandererNotifier.Application do
 
       # Start the Chart Service Manager (if enabled)
       {WandererNotifier.ChartService.ChartServiceManager, []},
+
+      # Start the Deduplication Helper
+      {WandererNotifier.Helpers.DeduplicationHelper, []},
 
       # Start the main service (which starts the WebSocket)
       {WandererNotifier.Services.Service, []},
