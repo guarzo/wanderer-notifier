@@ -11,8 +11,11 @@ export MAP_URL="${MAP_URL:-}"
 export MAP_TOKEN="${MAP_TOKEN:-}"
 export MAP_URL_WITH_NAME="${MAP_URL_WITH_NAME:-}"
 
-# Application configuration
+# Port configuration (use defaults if not set)
 export PORT="${PORT:-4000}"
+export CHART_SERVICE_PORT="${CHART_SERVICE_PORT:-3001}"
+
+# Application configuration
 export HOST="${HOST:-0.0.0.0}"
 export MIX_ENV=prod
 export LANG="${LANG:-en_US.UTF-8}"

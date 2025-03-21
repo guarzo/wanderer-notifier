@@ -60,15 +60,17 @@ FROM elixir:1.14-otp-25-slim AS app
 ARG NOTIFIER_API_TOKEN
 
 # Only set essential environment variables with default values
-ENV PORT=4000 \
+ENV MIX_ENV=prod \
     HOST=0.0.0.0 \
-    MIX_ENV=prod \
     RELEASE_DISTRIBUTION=none \
     RELEASE_NODE=none \
     ERL_EPMD_PORT=-1 \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=en_US.UTF-8 \
+    # Default ports - these can be overridden at runtime
+    PORT=4000 \
+    CHART_SERVICE_PORT=3001
 
 # Install runtime dependencies and set up locale
 RUN apt-get update && \
@@ -101,11 +103,12 @@ RUN npm install -g node-gyp && npm install --production
 
 # Set the working directory back to app and expose ports
 WORKDIR /app
+# Expose default ports - note that runtime ENV variables can change the actual ports used
 EXPOSE 4000 3001
 
-# Health check
+# Health check - use PORT environment variable for check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-4000}/health || exit 1
 
 # Start the application
 CMD ["/app/start.sh"]

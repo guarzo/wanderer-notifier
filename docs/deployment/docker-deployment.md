@@ -60,6 +60,7 @@ docker run -d \
   --restart unless-stopped \
   --env-file .env \
   -p 127.0.0.1:4000:4000 \
+  -p 127.0.0.1:3001:3001 \
   wanderernotifier/app:latest
 ```
 
@@ -88,6 +89,7 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:4000:4000"
+      - "127.0.0.1:3001:3001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
@@ -103,11 +105,38 @@ docker-compose up -d
 
 ## Port Configuration
 
-By default, the application exposes:
+The application exposes two services with configurable ports:
 
-- Port 4000 - Main application web interface and health endpoint
+- `PORT=4000` - Main application web interface and health endpoint
+- `CHART_SERVICE_PORT=3001` - Chart generation service
 
-For security, this is bound to localhost (127.0.0.1) and should be exposed through a reverse proxy for production use.
+Both port settings can be configured via environment variables. When mapping ports in Docker, make sure to map both services:
+
+```bash
+docker run -d \
+  --name wanderer-notifier \
+  --restart unless-stopped \
+  --env-file .env \
+  -p 127.0.0.1:4000:4000 \
+  -p 127.0.0.1:3001:3001 \
+  wanderernotifier/app:latest
+```
+
+If you change the default ports using environment variables, adjust your port mappings accordingly:
+
+```bash
+docker run -d \
+  --name wanderer-notifier \
+  --restart unless-stopped \
+  -e PORT=8080 \
+  -e CHART_SERVICE_PORT=8081 \
+  --env-file .env \
+  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:8081:8081 \
+  wanderernotifier/app:latest
+```
+
+For security, these ports are bound to localhost (127.0.0.1) and should be exposed through a reverse proxy for production use.
 
 ## Reverse Proxy Configuration
 

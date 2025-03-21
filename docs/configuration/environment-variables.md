@@ -130,3 +130,23 @@ The following configuration options are used in specific environments:
    - Each feature can have a dedicated Slack webhook URL
    - If a feature-specific webhook is not found, it falls back to the main webhook
    - The logic is similar to the Discord channel resolution
+
+# Port Configuration
+
+The application uses the following ports which can be configured via environment variables:
+
+| Variable             | Description        | Default |
+| -------------------- | ------------------ | ------- |
+| `PORT`               | Web server port    | `4000`  |
+| `CHART_SERVICE_PORT` | Chart service port | `3001`  |
+
+Note that while these ports are exposed in the Docker container (EXPOSE 4000 3001), the actual
+ports used by the application are determined by these environment variables. If you change
+these values, you'll need to map the corresponding ports when running the container.
+
+Example:
+
+```bash
+# Running with custom ports
+docker run -e PORT=8080 -e CHART_SERVICE_PORT=8081 -p 8080:8080 -p 8081:8081 guarzo/wanderer-notifier:latest
+```
