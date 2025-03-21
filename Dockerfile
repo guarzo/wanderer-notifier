@@ -68,7 +68,7 @@ ENV APP_VERSION=${APP_VERSION}
 # Install runtime dependencies
 RUN apk add --no-cache openssl ncurses-libs libstdc++ bash wget
 
-# Install Node.js canvas dependencies
+# Install Node.js canvas dependencies (both runtime and build dependencies)
 RUN apk add --no-cache \
     cairo \
     pango \
@@ -76,7 +76,16 @@ RUN apk add --no-cache \
     giflib \
     pixman \
     pangomm \
-    libjpeg
+    libjpeg \
+    # Build dependencies for canvas
+    build-base \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    python3 \
+    pixman-dev
 
 WORKDIR /app
 
@@ -90,7 +99,15 @@ COPY --from=builder /app/chart-service chart-service/
 WORKDIR /app/chart-service
 COPY --from=builder /app/chart-service/package.json ./
 COPY --from=builder /app/chart-service/package-lock.json ./
-RUN npm ci --production
+
+# Install node-gyp globally
+RUN npm install -g node-gyp
+
+# Install chart service dependencies
+RUN npm ci --production --build-from-source
+
+# Clean up build dependencies to reduce image size
+RUN apk del build-base g++ cairo-dev jpeg-dev pango-dev giflib-dev python3 pixman-dev
 
 # Return to app directory
 WORKDIR /app
