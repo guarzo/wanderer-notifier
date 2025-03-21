@@ -62,9 +62,10 @@
     RUN if [ -n "$NOTIFIER_API_TOKEN" ]; then \
           echo "Config setup: Using production token from build arg" && \
           echo "# Production token from build" >> config/runtime.exs && \
-          echo "config :wanderer_notifier, notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> config/runtime.exs; \
+          echo "config :wanderer_notifier, notifier_api_token: \"$NOTIFIER_API_TOKEN\"" >> config/runtime.exs && \
+          echo "config :wanderer_notifier, env: :prod" >> config/runtime.exs; \
         else \
-          echo "WARNING: NOTIFIER_API_TOKEN is not set. The release may not work correctly."; \
+          echo "WARNING: NOTIFIER_API_TOKEN is not set. The release may not work correctly in production."; \
         fi && \
         chmod +x rel/overlays/env.sh
     

@@ -129,16 +129,36 @@ defmodule WandererNotifier.Core.License do
   end
 
   @impl true
-  def handle_continue(:initial_validation, state) do
+  def handle_continue(:initial_validation, _state) do
     # Perform initial license validation at startup
-    case do_validate() do
-      {:ok, validated_license} ->
-        Logger.info("License validated successfully: #{validated_license.status}")
+    try do
+      new_state = do_validate()
 
-      # ... existing code ...
-      {:error, reason} ->
-        Logger.error("License validation failed: #{inspect(reason)}")
-        # ... existing code ...
+      if new_state.valid do
+        Logger.info("License validated successfully: #{new_state.details["status"] || "valid"}")
+      else
+        error_msg = new_state.error_message || "No error message provided"
+        Logger.warning("License validation warning: #{error_msg}")
+      end
+
+      {:noreply, new_state}
+    rescue
+      e ->
+        Logger.error(
+          "License validation failed, continuing with invalid license state: #{inspect(e)}"
+        )
+
+        # Return invalid license state but don't crash
+        invalid_state = %{
+          valid: false,
+          bot_assigned: false,
+          details: nil,
+          error: :exception,
+          error_message: "Exception during validation: #{inspect(e)}",
+          last_validated: :os.system_time(:second)
+        }
+
+        {:noreply, invalid_state}
     end
   end
 
@@ -151,12 +171,6 @@ defmodule WandererNotifier.Core.License do
 
     # Get the API token from configuration
     notifier_api_token = Config.notifier_api_token()
-
-    # Get the license manager API URL from configuration
-    license_manager_url = Config.license_manager_api_url()
-
-    # Log the license manager URL
-    Logger.info("License Manager API URL: #{license_manager_url}")
 
     # Validate the license with a timeout - use validate_bot for consistency with init/startup
     validation_result =
@@ -344,10 +358,11 @@ defmodule WandererNotifier.Core.License do
   # Helper function to convert error reasons to human-readable messages
   defp error_reason_to_message(:api_error), do: "API error from license server"
   defp error_reason_to_message(:not_found), do: "License or bot not found"
-  defp error_reason_to_message(:bot_not_authorized), do: "Bot not authorized for this license"
-  defp error_reason_to_message(:invalid_bot_token), do: "Invalid bot API token"
-  # defp error_reason_to_message(:bad_request), do: "Bad request to license server"
-  # defp error_reason_to_message(:invalid_response), do: "Invalid response from license server"
+
+  defp error_reason_to_message(:notifier_not_authorized),
+    do: "Notifier not authorized for this license"
+
+  defp error_reason_to_message(:invalid_notifier_token), do: "Invalid notifier API token"
   defp error_reason_to_message(:request_failed), do: "Failed to connect to license server"
   defp error_reason_to_message(reason) when is_atom(reason), do: "License server error: #{reason}"
   defp error_reason_to_message(reason) when is_binary(reason), do: reason

@@ -22,16 +22,11 @@ defmodule WandererNotifier.LicenseManager.Client do
   - `{:error, reason}` if the validation failed.
   """
   def validate_bot(notifier_api_token, license_key) do
-    url = "#{Config.license_manager_api_url()}/api/v1/validate/bot"
-    Logger.info("License Manager API URL: #{url}")
+    url = "#{Config.license_manager_api_url()}/api/validate_bot"
 
-    Logger.debug(
-      "Using notifier_api_token: #{String.slice(notifier_api_token, 0, 8)}... (first 8 chars)"
-    )
+    # Log minimal request information without exposing sensitive data
+    Logger.info("Making license validation request to License Manager API")
 
-    Logger.debug("Using license_key: #{String.slice(license_key, 0, 8)}... (first 8 chars)")
-
-    # Set the bot API token as a Bearer token in the Authorization header
     headers = [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
@@ -51,20 +46,21 @@ defmodule WandererNotifier.LicenseManager.Client do
            debug: true,
            timeout: 5000
          ) do
-      {:ok, _} = response ->
-        case HttpClient.handle_response(response) do
-          {:ok, decoded} ->
-            # Additional logging for easier debugging
-            Logger.debug("Bot validation response: #{inspect(decoded)}")
+      {:ok, response} = result ->
+        # Log minimal response information
+        Logger.debug(
+          "Received response from License Manager API with status: #{response.status_code}"
+        )
 
-            # Check if the license is valid from the response
+        case HttpClient.handle_response(result) do
+          {:ok, decoded} ->
+            # Additional logging for easier debugging without exposing sensitive data
             license_valid = decoded["license_valid"] || false
-            message = decoded["message"]
 
             if license_valid do
               Logger.info("License and bot validation successful - License is valid")
             else
-              error_msg = message || "License is not valid"
+              error_msg = decoded["message"] || "License is not valid"
               Logger.warning("License and bot validation failed - #{error_msg}")
             end
 
@@ -115,7 +111,7 @@ defmodule WandererNotifier.LicenseManager.Client do
   """
   def validate_license(license_key, notifier_api_token) do
     url = "#{Config.license_manager_api_url()}/api/validate_license"
-    Logger.info("License Manager API URL: #{url}")
+    Logger.info("Making license validation request to License Manager API")
 
     # Set the headers
     headers = [
@@ -143,7 +139,7 @@ defmodule WandererNotifier.LicenseManager.Client do
           case HttpClient.handle_response(response) do
             {:ok, decoded} ->
               # Additional logging for easier debugging
-              Logger.debug("License validation response: #{inspect(decoded)}")
+              Logger.debug("License validation response received")
 
               # Check response structure and adapt to either {"valid": true/false} or {"license_valid": true/false} format
               cond do

@@ -154,8 +154,19 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         # Get current stats
         stats = WandererNotifier.Core.Stats.get_stats()
 
-        # Get license information
-        license_status = WandererNotifier.Core.License.status()
+        # Get license information safely
+        license_status =
+          try do
+            WandererNotifier.Core.License.status()
+          rescue
+            e ->
+              Logger.error("Error getting license status: #{inspect(e)}")
+              %{valid: false, error_message: "Error retrieving license status"}
+          catch
+            type, error ->
+              Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+              %{valid: false, error_message: "Error retrieving license status"}
+          end
 
         # Get feature information
         features_status = WandererNotifier.Core.Features.get_feature_status()
@@ -219,8 +230,19 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         # Get current stats
         stats = WandererNotifier.Core.Stats.get_stats()
 
-        # Get license information
-        license_status = WandererNotifier.Core.License.status()
+        # Get license information safely
+        license_status =
+          try do
+            WandererNotifier.Core.License.status()
+          rescue
+            e ->
+              Logger.error("Error getting license status: #{inspect(e)}")
+              %{valid: false, error_message: "Error retrieving license status"}
+          catch
+            type, error ->
+              Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+              %{valid: false, error_message: "Error retrieving license status"}
+          end
 
         # Get feature information
         features_status = WandererNotifier.Core.Features.get_feature_status()

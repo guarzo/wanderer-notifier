@@ -608,7 +608,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         notifier_api_token = Config.notifier_api_token()
 
         # Log what we're doing
-        Logger.info("Directly validating license with key and token")
+        Logger.info("Performing manual license validation")
 
         # Call the license manager client directly
         case WandererNotifier.LicenseManager.Client.validate_bot(notifier_api_token, license_key) do
@@ -641,9 +641,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             error_message =
               case reason do
                 :not_found -> "License not found"
-                :invalid_bot_token -> "Invalid bot token"
-                :bot_not_authorized -> "Bot not authorized for this license"
+                :invalid_notifier_token -> "Invalid notifier token"
+                :notifier_not_authorized -> "Notifier not authorized for this license"
                 :request_failed -> "Connection to license server failed"
+                :api_error -> "API error from license server"
                 _ -> "Validation error: #{inspect(reason)}"
               end
 

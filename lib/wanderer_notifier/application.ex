@@ -39,15 +39,15 @@ defmodule WandererNotifier.Application do
 
     # Log configuration details
     license_key = Config.license_key()
-    license_manager_url = Config.license_manager_api_url()
-    # Bot API token is determined by the environment
 
-    # Log at debug level since this is mostly informational
+    # Only log if certain features are configured, not any actual sensitive values
     Logger.debug(
       "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
     )
 
-    Logger.debug("License Manager URL: #{license_manager_url || "Not configured"}")
+    Logger.debug(
+      "License Manager: #{if Config.license_manager_api_url(), do: "Configured", else: "Not configured"}"
+    )
 
     Logger.debug(
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
@@ -102,8 +102,19 @@ defmodule WandererNotifier.Application do
   defp send_startup_message do
     Logger.info("Sending startup message...")
 
-    # Get license information
-    license_status = WandererNotifier.Core.License.status()
+    # Get license information safely
+    license_status =
+      try do
+        WandererNotifier.Core.License.status()
+      rescue
+        e ->
+          Logger.error("Error getting license status for startup message: #{inspect(e)}")
+          %{valid: false, error_message: "Error retrieving license status"}
+      catch
+        type, error ->
+          Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+          %{valid: false, error_message: "Error retrieving license status"}
+      end
 
     # Get tracking information
     systems = get_tracked_systems()
@@ -204,7 +215,7 @@ defmodule WandererNotifier.Application do
       cmd_str = to_string(cmd)
 
       Logger.info(
-        "Processed watcher command: #{cmd_str} #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
+        "Processed watcher command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
       )
 
       Task.start(fn ->
