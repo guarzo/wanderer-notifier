@@ -32,8 +32,11 @@ COPY chart-service chart-service
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
-# Create a custom sys.config that reads from environment variables
-RUN echo '[{nostrum, [{token, "${DISCORD_BOT_TOKEN}"}]}].' > rel/overlays/sys.config
+# Create a proper sys.config in the overlays
+RUN echo '[' > rel/overlays/sys.config && \
+    echo '  {kernel, [{distribution_mode, none}, {start_distribution, false}]},' >> rel/overlays/sys.config && \
+    echo '  {nostrum, [{token, {system, "DISCORD_BOT_TOKEN"}}]}' >> rel/overlays/sys.config && \
+    echo '].' >> rel/overlays/sys.config
 
 # Ensure necessary directories exist
 RUN mkdir -p priv/static/app
@@ -65,6 +68,13 @@ ENV DISCORD_BOT_TOKEN="" \
     MIX_ENV=prod \
     CACHE_DIR=/app/data/cache \
     CHART_SERVICE_PORT=3001 \
+    BOT_API_TOKEN="" \
+    WANDERER_PRODUCTION_BOT_TOKEN="" \
+    LICENSE_KEY="" \
+    MAP_URL="" \
+    MAP_URL_WITH_NAME="" \
+    MAP_TOKEN="" \
+    ENABLE_MAP_TOOLS=true \
     ERL_LIBS="" \
     ELIXIR_ERL_OPTIONS="" \
     RELEASE_DISTRIBUTION=none \
@@ -96,11 +106,8 @@ RUN mkdir -p /app/extracted && \
 # Ensure the release executable is runnable
 RUN chmod +x /app/bin/wanderer_notifier
 
-# Use our custom sys.config - remove the line that would override it
-# RUN find /app/releases -type d -name "*.*.*" -exec sh -c 'echo "[{kernel, [{distribution_mode, none}, {start_distribution, false}]}]." > {}/sys.config' \;
-
-# Instead, use the one we created earlier
-COPY --from=builder /app/rel/overlays/sys.config /app/releases/sys.config
+# Remove the complex config generation and just ensure the release can find its config
+RUN mkdir -p /app/releases/$(find /app/releases -type d -name "[0-9]*.[0-9]*.[0-9]*" | xargs basename)/sys
 
 # Set up chart service
 COPY --from=builder /app/chart-service /app/chart-service/
