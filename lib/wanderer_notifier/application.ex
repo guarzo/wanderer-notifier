@@ -13,89 +13,111 @@ defmodule WandererNotifier.Application do
 
   @impl true
   def start(_type, _args) do
-    Logger.info("Starting WandererNotifier...")
+    # Check if we should skip application start for tests
+    if should_skip_app_start?() do
+      Logger.info("Skipping full application start due to test environment configuration")
+      start_minimal_test_components()
+    else
+      Logger.info("Starting WandererNotifier...")
 
-    # Get the environment from system environment variable
-    env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
+      # Get the environment from system environment variable
+      env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
 
-    # Start ExSync in development mode
-    if env == :dev do
-      Logger.info("Starting ExSync for hot code reloading")
-      # Handle the case where ExSync is not available
-      case Application.ensure_all_started(:exsync) do
-        {:ok, _} -> Logger.info("ExSync started successfully")
-        {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
+      # Start ExSync in development mode
+      if env == :dev do
+        Logger.info("Starting ExSync for hot code reloading")
+        # Handle the case where ExSync is not available
+        case Application.ensure_all_started(:exsync) do
+          {:ok, _} -> Logger.info("ExSync started successfully")
+          {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
+        end
+
+        # Start watchers for frontend asset rebuilding in development
+        start_watchers()
       end
 
-      # Start watchers for frontend asset rebuilding in development
-      start_watchers()
-    end
+      # Set the environment in the application configuration
+      Application.put_env(:wanderer_notifier, :env, env)
 
-    # Set the environment in the application configuration
-    Application.put_env(:wanderer_notifier, :env, env)
+      Logger.info("Starting WandererNotifier application...")
+      Logger.info("Environment: #{env}")
 
-    Logger.info("Starting WandererNotifier application...")
-    Logger.info("Environment: #{env}")
+      # Log configuration details
+      license_key = Config.license_key()
 
-    # Log configuration details
-    license_key = Config.license_key()
-
-    # Only log if certain features are configured, not any actual sensitive values
-    Logger.debug(
-      "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
-    )
-
-    Logger.debug(
-      "License Manager: #{if Config.license_manager_api_url(), do: "Configured", else: "Not configured"}"
-    )
-
-    Logger.debug(
-      "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
-    )
-
-    # Check EVE Corp Tools API configuration
-    corp_tools_api_url = Config.corp_tools_api_url()
-    corp_tools_api_token = Config.corp_tools_api_token()
-
-    if corp_tools_api_url && corp_tools_api_token && Config.corp_tools_enabled?() do
-      # Perform health check
-      Task.start(fn ->
-        # Add a small delay to ensure the application is fully started
-        Process.sleep(2000)
-
-        case CorpToolsClient.health_check() do
-          :ok ->
-            # Schedule periodic health checks
-            schedule_corp_tools_health_check()
-
-          {:error, :connection_refused} ->
-            Logger.warning("EVE Corp Tools API connection refused. Will retry in 30 seconds.")
-            # Schedule a retry after 30 seconds
-            Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
-
-          {:error, reason} ->
-            Logger.error("EVE Corp Tools API health check failed: #{inspect(reason)}")
-            # Schedule a retry after 60 seconds
-            Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
-        end
-      end)
-    end
-
-    # Start the supervisor with all children
-    result =
-      Supervisor.start_link(get_children(),
-        strategy: :one_for_one,
-        name: WandererNotifier.Supervisor
+      # Only log if certain features are configured, not any actual sensitive values
+      Logger.debug(
+        "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
       )
 
-    # Send startup message after a short delay to ensure all services are started
-    Task.start(fn ->
-      # Wait a bit for everything to start up
-      Process.sleep(2000)
-      send_startup_message()
-    end)
+      Logger.debug(
+        "License Manager: #{if Config.license_manager_api_url(), do: "Configured", else: "Not configured"}"
+      )
 
-    result
+      Logger.debug(
+        "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
+      )
+
+      # Check EVE Corp Tools API configuration
+      corp_tools_api_url = Config.corp_tools_api_url()
+      corp_tools_api_token = Config.corp_tools_api_token()
+
+      if corp_tools_api_url && corp_tools_api_token && Config.corp_tools_enabled?() do
+        # Perform health check
+        Task.start(fn ->
+          # Add a small delay to ensure the application is fully started
+          Process.sleep(2000)
+
+          case CorpToolsClient.health_check() do
+            :ok ->
+              # Schedule periodic health checks
+              schedule_corp_tools_health_check()
+
+            {:error, :connection_refused} ->
+              Logger.warning("EVE Corp Tools API connection refused. Will retry in 30 seconds.")
+              # Schedule a retry after 30 seconds
+              Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
+
+            {:error, reason} ->
+              Logger.error("EVE Corp Tools API health check failed: #{inspect(reason)}")
+              # Schedule a retry after 60 seconds
+              Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
+          end
+        end)
+      end
+
+      # Start the supervisor with all children
+      result =
+        Supervisor.start_link(get_children(),
+          strategy: :one_for_one,
+          name: WandererNotifier.Supervisor
+        )
+
+      # Send startup message after a short delay to ensure all services are started
+      Task.start(fn ->
+        # Wait a bit for everything to start up
+        Process.sleep(2000)
+        send_startup_message()
+      end)
+
+      result
+    end
+  end
+
+  # Helper function to check if we should skip application start
+  defp should_skip_app_start? do
+    # Check environment variable
+    disable_start = System.get_env("DISABLE_APP_START") == "true"
+
+    # Check application env setting
+    app_env_disable = Application.get_env(:wanderer_notifier, :start_application) == false
+
+    # Check test environment setting
+    test_env_disable =
+      Application.get_env(:wanderer_notifier, :start_external_connections) == false
+
+    # Return true if any condition is true
+    disable_start || app_env_disable || test_env_disable
   end
 
   # Send a rich startup message with system information
@@ -260,5 +282,18 @@ defmodule WandererNotifier.Application do
         _arg -> {acc_args, acc_cd}
       end
     end)
+  end
+
+  # Start only minimal components needed for testing
+  defp start_minimal_test_components do
+    children = [
+      # Only add essential components for testing
+      {Registry, keys: :unique, name: WandererNotifier.Registry},
+      {Cachex,
+       name: Application.get_env(:wanderer_notifier, :cache_name, :wanderer_notifier_cache)}
+    ]
+
+    opts = [strategy: :one_for_one, name: WandererNotifier.TestSupervisor]
+    Supervisor.start_link(children, opts)
   end
 end

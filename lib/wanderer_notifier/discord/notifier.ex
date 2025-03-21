@@ -5,13 +5,10 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Core.License
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @behaviour WandererNotifier.NotifierBehaviour
@@ -77,15 +74,6 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- HELPER FUNCTIONS --
 
-  # Retrieves a value from a map checking both string and atom keys.
-  # Tries each key in the provided list until a value is found.
-  @spec get_value(map(), [String.t()], any()) :: any()
-  defp get_value(map, keys, default) do
-    Enum.find_value(keys, default, fn key ->
-      Map.get(map, key) || Map.get(map, String.to_atom(key))
-    end)
-  end
-
   # Format ISK values for display - moved from removed code
   defp format_isk_value(value) when is_float(value) or is_integer(value) do
     cond do
@@ -97,13 +85,6 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp format_isk_value(_), do: "0 ISK"
-  # Helper function used by character notification code
-  defp enrich_character(data, key, fun) do
-    case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
-      nil -> data
-      value -> fun.(value)
-    end
-  end
 
   # -- MESSAGE SENDING --
 
@@ -139,7 +120,7 @@ defmodule WandererNotifier.Discord.Notifier do
           if is_struct(recent_kill, Killmail) do
             recent_kill
           else
-            Killmail.new(recent_kill)
+            Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
           end
 
         send_enriched_kill_embed(killmail, kill_id)
@@ -187,7 +168,7 @@ defmodule WandererNotifier.Discord.Notifier do
           if is_struct(recent_kill, Killmail) do
             recent_kill
           else
-            Killmail.new(recent_kill)
+            Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
           end
 
         send_enriched_kill_embed(killmail, kill_id)

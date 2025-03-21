@@ -1,23 +1,30 @@
 import Config
 
-# Configure the application for testing
 config :wanderer_notifier,
-  discord_channel_id: "test_channel_id",
-  discord_bot_token: "test_bot_token",
-  license_key: "test_license_key",
-  license_manager_api_url: "https://test.license.manager",
-  bot_registration_token: "test_bot_token"
+  # Use test-specific configuration
+  http_client: WandererNotifier.MockHTTP,
+  discord_client: WandererNotifier.MockDiscord,
+  websocket_client: WandererNotifier.MockWebSocket,
+  cache_name: :test_cache,
 
-# Use the test notifier for Discord
-config :wanderer_notifier, :discord_notifier, WandererNotifier.Discord.TestNotifier
+  # Faster timeouts for tests
+  api_timeout: 100,
 
-# Configure the HTTP client to use a mock
-config :wanderer_notifier, :http_client, WandererNotifier.Api.Http.ClientMock
+  # Test-specific feature flags
+  features: %{
+    "send_discord_notifications" => true,
+    "track_character_changes" => true,
+    # Disable for tests
+    "generate_tps_charts" => false
+  }
 
-# Configure logger for testing
-config :logger,
-  level: :info,
-  backends: [:console]
+# Prevent Nostrum from starting during tests
+config :nostrum,
+  token: "fake_token_for_testing",
+  gateway_intents: []
 
-# Reduce log noise during tests
-config :logger, :console, format: "[$level] $message\n"
+# Prevent application from starting external connections
+config :wanderer_notifier, :start_external_connections, false
+
+# Configure logger for test environment
+config :logger, level: :warning
