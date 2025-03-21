@@ -80,12 +80,47 @@ defmodule WandererNotifier.Data.MapSystem do
   end
 
   def fetch(struct, key) when is_binary(key) do
-    # Try to convert to an existing atom to access the struct field directly
-    try do
-      atom_key = String.to_existing_atom(key)
-      Map.fetch(Map.from_struct(struct), atom_key)
-    rescue
-      ArgumentError -> :error
+    # Handle field name conversions for common API inconsistencies
+    case key do
+      # Handle API inconsistencies with different field naming styles
+      "typeDescription" ->
+        Map.fetch(Map.from_struct(struct), :type_description)
+
+      "isShattered" ->
+        Map.fetch(Map.from_struct(struct), :is_shattered)
+
+      "systemType" ->
+        Map.fetch(Map.from_struct(struct), :system_type)
+
+      "solarSystemId" ->
+        Map.fetch(Map.from_struct(struct), :solar_system_id)
+
+      "temporaryName" ->
+        Map.fetch(Map.from_struct(struct), :temporary_name)
+
+      "originalName" ->
+        Map.fetch(Map.from_struct(struct), :original_name)
+
+      "classTitle" ->
+        Map.fetch(Map.from_struct(struct), :class_title)
+
+      "effectName" ->
+        Map.fetch(Map.from_struct(struct), :effect_name)
+
+      "regionName" ->
+        Map.fetch(Map.from_struct(struct), :region_name)
+
+      "sunTypeId" ->
+        Map.fetch(Map.from_struct(struct), :sun_type_id)
+
+      # For any other field, try to convert to an existing atom
+      _ ->
+        try do
+          atom_key = String.to_existing_atom(key)
+          Map.fetch(Map.from_struct(struct), atom_key)
+        rescue
+          ArgumentError -> :error
+        end
     end
   end
 
@@ -153,13 +188,7 @@ defmodule WandererNotifier.Data.MapSystem do
     system_type = determine_system_type(solar_system_id)
 
     # Get a more specific type description for the system
-    type_description =
-      map_response["type_description"] ||
-        get_in(map_response, ["staticInfo", "typeDescription"]) ||
-        get_in(map_response, ["staticInfo", "class_title"]) ||
-        if solar_system_id,
-          do: determine_system_type_description(solar_system_id),
-          else: "Unknown"
+    type_description = extract_type_description(map_response)
 
     # For wormhole systems, enhance with class information if available
     {type_description, class_title} =
@@ -227,9 +256,7 @@ defmodule WandererNotifier.Data.MapSystem do
       # Will be populated if system-static-info is called
       region_name:
         map_response["region_name"] || get_in(map_response, ["staticInfo", "regionName"]),
-      is_shattered:
-        map_response["is_shattered"] || get_in(map_response, ["staticInfo", "isShattered"]) ||
-          false,
+      is_shattered: extract_is_shattered(map_response),
       sun_type_id:
         map_response["sun_type_id"] || get_in(map_response, ["staticInfo", "sun_type_id"])
     }
@@ -389,4 +416,25 @@ defmodule WandererNotifier.Data.MapSystem do
   end
 
   defp determine_wormhole_class(_), do: "Wormhole"
+
+  # Helper function to extract type description with consistent field names
+  defp extract_type_description(map_response) do
+    map_response["type_description"] ||
+      map_response["typeDescription"] ||
+      get_in(map_response, ["staticInfo", "type_description"]) ||
+      get_in(map_response, ["staticInfo", "typeDescription"]) ||
+      get_in(map_response, ["staticInfo", "class_title"]) ||
+      if Map.get(map_response, "solar_system_id"),
+        do: determine_system_type_description(Map.get(map_response, "solar_system_id")),
+        else: "Unknown"
+  end
+
+  # Helper function to extract is_shattered status with consistent field names
+  defp extract_is_shattered(map_response) do
+    Map.get(map_response, "is_shattered") ||
+      Map.get(map_response, "isShattered") ||
+      get_in(map_response, ["staticInfo", "is_shattered"]) ||
+      get_in(map_response, ["staticInfo", "isShattered"]) ||
+      false
+  end
 end

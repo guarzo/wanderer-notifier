@@ -69,7 +69,6 @@ defmodule WandererNotifier.Data.Character do
       "character_id" ->
         {:ok, struct.eve_id}
 
-      # Legacy field names - standardized access
       "id" ->
         {:ok, struct.eve_id}
 
@@ -150,20 +149,34 @@ defmodule WandererNotifier.Data.Character do
     # Extract nested character data if present
     character_data = Map.get(map_response, "character", %{})
 
+    # Log the incoming data structure at debug level
+    Logger.debug(
+      "[Character.new] Processing character data: #{inspect(map_response, limit: 500)}"
+    )
+
     # Extract required fields with clear validation
     name =
       character_data["name"] ||
         map_response["name"] ||
         map_response["character_name"]
 
+    # IMPORTANT: For character IDs, we prioritize eve_id as the canonical identifier
+    # and only fall back to character_id if eve_id is not available
     eve_id =
       character_data["eve_id"] ||
         map_response["eve_id"] ||
         map_response["id"] ||
         map_response["character_id"]
 
+    # Log the extracted ID for debugging
+    Logger.debug("[Character.new] Extracted eve_id: #{inspect(eve_id)} from data")
+
     # Validate required fields
     unless eve_id && name do
+      Logger.error(
+        "[Character.new] Missing required fields: eve_id=#{inspect(eve_id)}, name=#{inspect(name)}"
+      )
+
       raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
     end
 

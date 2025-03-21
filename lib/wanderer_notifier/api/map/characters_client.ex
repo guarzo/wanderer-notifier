@@ -311,7 +311,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
         Enum.each(added_characters, fn character ->
           try do
-            send_notification(character)
+            send_character_notification(character)
           rescue
             e ->
               Logger.error(
@@ -330,18 +330,29 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     end
   end
 
-  defp send_notification(%Character{} = character) do
-    # Get the factory alias
-    alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  @doc """
+  Sends a notification for a new tracked character.
+  """
+  def send_character_notification(character_data) when is_map(character_data) do
+    Logger.info("[CharactersClient] Sending notification for new tracked character")
+    Logger.debug("[CharactersClient] Character data: #{inspect(character_data)}")
 
-    # Format for structured notification
+    # Convert to Character struct if not already
+    character =
+      if is_struct(character_data, WandererNotifier.Data.Character) do
+        character_data
+      else
+        WandererNotifier.Data.Character.new(character_data)
+      end
+
+    # Create a generic notification that can be converted to various formats
     generic_notification =
       WandererNotifier.Notifiers.StructuredFormatter.format_character_notification(character)
 
-    # Convert to Discord format and send
-    discord_embed =
+    discord_format =
       WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
-    NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+    # Send notification via factory
+    NotifierFactory.notify(:send_discord_embed, [discord_format, :character_tracking])
   end
 end

@@ -199,21 +199,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     }
   end
 
-  # For backward compatibility with enriched kill data
-  def format_kill_notification(enriched_kill, kill_id) when is_map(enriched_kill) do
-    # Convert the enriched kill to a Killmail struct if possible
-    cond do
-      # If we already have a Killmail struct, use it
-      Map.has_key?(enriched_kill, :__struct__) && enriched_kill.__struct__ == Killmail ->
-        format_kill_notification(enriched_kill)
-
-      # Try to build a killmail struct from the enriched data
-      true ->
-        killmail = Killmail.new(kill_id, Map.get(enriched_kill, "zkb", %{}), enriched_kill)
-        format_kill_notification(killmail)
-    end
-  end
-
   @doc """
   Creates a standard formatted new tracked character notification from a Character struct.
 
@@ -424,24 +409,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         text: "System ID: #{system.solar_system_id}"
       }
     }
-  end
-
-  # For backward compatibility with map API response data
-  def format_system_notification(system_data) when is_map(system_data) do
-    Logger.info(
-      "[StructuredFormatter] Converting map to MapSystem struct for notification formatting"
-    )
-
-    # Try to convert to a MapSystem struct if not already
-    system =
-      if Map.has_key?(system_data, :__struct__) && system_data.__struct__ == MapSystem do
-        system_data
-      else
-        # Try to create a MapSystem from the data
-        MapSystem.new(system_data)
-      end
-
-    format_system_notification(system)
   end
 
   @doc """
