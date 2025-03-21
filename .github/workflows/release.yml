@@ -47,14 +47,15 @@ jobs:
           cache-dependency-path: "renderer/package-lock.json"
       - name: Build React application
         run: |
+          # Ensure the static app directory exists first
+          mkdir -p priv/static/app
           cd renderer
           npm ci
           npm run build
           cd ..
-          # Ensure the static app directory exists
-          mkdir -p priv/static/app
-          # Copy the built React app to the static directory
-          cp -r renderer/dist/* priv/static/app/
+          # Copy the built React app to the static directory if needed
+          # This may be redundant if the postbuild script works
+          cp -r renderer/dist/* priv/static/app/ || true
 
       - name: Set up BEAM
         uses: erlef/setup-beam@v1

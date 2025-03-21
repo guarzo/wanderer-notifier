@@ -32,11 +32,12 @@ COPY config config
 COPY rel rel
 RUN chmod +x rel/overlays/env.sh
 
+# Ensure directories exist
+RUN mkdir -p priv/static/app
+
 # Copy renderer code and build frontend
 COPY renderer renderer/
 RUN cd renderer && npm ci && npm run build
-RUN mkdir -p priv/static/app
-RUN cp -r renderer/dist/* priv/static/app/
 
 # Compile dependencies
 RUN mix deps.compile
