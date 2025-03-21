@@ -235,6 +235,37 @@ defmodule WandererNotifier.Data.Cache.Repository do
   end
 
   @doc """
+  Gets a value from the cache, updates it with the provided function, and stores the result.
+  The update function should accept the current value and return {new_value, result}.
+  The TTL is preserved for the key.
+  """
+  def get_and_update(key, update_fn) do
+    retry_with_backoff(fn ->
+      Logger.debug("[CacheRepo] Getting and updating value for key: #{key}")
+
+      # Get the current value and TTL
+      current_value = get(key)
+      current_ttl = ttl(key)
+
+      # Apply the update function to get the new value
+      {new_value, result} = update_fn.(current_value)
+
+      # Store the new value with the same TTL if it exists
+      if current_ttl && current_ttl > 0 do
+        # Convert from milliseconds to seconds for our set function
+        ttl_seconds = div(current_ttl, 1000)
+        set(key, new_value, ttl_seconds)
+      else
+        # No TTL, just store the value permanently
+        put(key, new_value)
+      end
+
+      # Return the result from the update function
+      result
+    end)
+  end
+
+  @doc """
   Gets multiple values from the cache by keys in a batch operation.
   Returns a map of {key => value} pairs. Keys that don't exist will have nil values.
   """

@@ -82,88 +82,62 @@ defmodule WandererNotifier.Application do
     end
 
     # Start the supervisor with all children
-    Supervisor.start_link(get_children(), strategy: :one_for_one, name: WandererNotifier.Supervisor)
+    result =
+      Supervisor.start_link(get_children(),
+        strategy: :one_for_one,
+        name: WandererNotifier.Supervisor
+      )
+
+    # Send startup message after a short delay to ensure all services are started
+    Task.start(fn ->
+      # Wait a bit for everything to start up
+      Process.sleep(2000)
+      send_startup_message()
+    end)
+
+    result
   end
 
+  # Send a rich startup message with system information
+  defp send_startup_message do
+    Logger.info("Sending startup message...")
 
-  # This is not part of the Application behaviour, but we handle it for the test notification
-  def handle_info(:send_test_notification, _state) do
-    Logger.info("Sending test notification...")
+    # Get license information
+    license_status = WandererNotifier.Core.License.status()
 
-    NotifierFactory.notify(:send_message, [
-      "Test notification from WandererNotifier. If you see this, notifications are working!"
-    ])
-
-    {:noreply, nil}
-  end
-
-  # Check cache status
-  def handle_info(:check_cache_status, _state) do
-    Logger.debug("Checking cache status...")
-
-    # Check if cache is available
-    cache_available =
-      case Cachex.stats(:wanderer_notifier_cache) do
-        {:ok, _stats} -> true
-        _ -> false
-      end
-
-    # Only log at INFO level if there's a problem
-    if cache_available do
-      Logger.debug("Cache is available")
-    else
-      Logger.warning("Cache is NOT available")
-    end
-
-    # Get systems count
+    # Get tracking information
     systems = get_tracked_systems()
     characters = CacheRepo.get("map:characters") || []
-    Logger.debug("Cache status - Systems: #{length(systems)}, Characters: #{length(characters)}")
 
-    {:noreply, nil}
-  end
+    # Get feature information
+    features_status = WandererNotifier.Core.Features.get_feature_status()
 
-  # Handle retry for EVE Corp Tools API health check
-  def handle_info(:retry_corp_tools_health_check, _state) do
-    Logger.debug("Retrying EVE Corp Tools API health check...")
+    # Get stats
+    stats = WandererNotifier.Core.Stats.get_stats()
 
-    case CorpToolsClient.health_check() do
-      :ok ->
-        Logger.debug("EVE Corp Tools API health check passed on retry")
-        # Schedule periodic health checks
-        schedule_corp_tools_health_check()
+    # Use the new structured formatter
+    title = "WandererNotifier Started"
+    description = "The notification service has started successfully."
 
-      {:error, :connection_refused} ->
-        Logger.warning("EVE Corp Tools API connection still refused. Will retry in 60 seconds.")
-        # Schedule another retry after 60 seconds
-        Process.send_after(self(), :retry_corp_tools_health_check, 60_000)
+    # Create a structured notification using our formatter
+    generic_notification =
+      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+        title,
+        description,
+        stats,
+        nil,
+        features_status,
+        license_status,
+        length(systems),
+        length(characters)
+      )
 
-      {:error, reason} ->
-        Logger.error("EVE Corp Tools API health check failed on retry: #{inspect(reason)}")
-        # Schedule another retry after 120 seconds
-        Process.send_after(self(), :retry_corp_tools_health_check, 120_000)
-    end
+    # Convert to Discord format
+    discord_embed =
+      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
-    {:noreply, nil}
-  end
-
-  # Handle periodic health check for EVE Corp Tools API
-  def handle_info(:corp_tools_health_check, _state) do
-    Logger.debug("Performing periodic EVE Corp Tools API health check...")
-
-    case CorpToolsClient.health_check() do
-      :ok ->
-        Logger.debug("Periodic EVE Corp Tools API health check passed")
-        # Schedule the next health check
-        schedule_corp_tools_health_check()
-
-      {:error, reason} ->
-        Logger.warning("Periodic EVE Corp Tools API health check failed: #{inspect(reason)}")
-        # Schedule a retry sooner
-        Process.send_after(self(), :retry_corp_tools_health_check, 30_000)
-    end
-
-    {:noreply, nil}
+    # Send the notification using the Discord notifier through the factory
+    NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
   end
 
   # Schedule periodic health checks for EVE Corp Tools API
@@ -171,7 +145,6 @@ defmodule WandererNotifier.Application do
     # Schedule a health check every 5 minutes
     Process.send_after(self(), :corp_tools_health_check, 5 * 60 * 1000)
   end
-
 
   defp get_tracked_systems do
     CacheHelpers.get_tracked_systems()
@@ -200,6 +173,9 @@ defmodule WandererNotifier.Application do
 
       # Start the Chart Service Manager (if enabled)
       {WandererNotifier.ChartService.ChartServiceManager, []},
+
+      # Start the Deduplication Helper
+      {WandererNotifier.Helpers.DeduplicationHelper, []},
 
       # Start the main service (which starts the WebSocket)
       {WandererNotifier.Services.Service, []},

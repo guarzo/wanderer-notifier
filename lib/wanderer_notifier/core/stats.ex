@@ -2,6 +2,7 @@ defmodule WandererNotifier.Core.Stats do
   @moduledoc """
   Statistics tracking for WandererNotifier.
   Maintains counters and metrics for application monitoring.
+  Also tracks first notification flags for feature gating.
   """
   use GenServer
   require Logger
@@ -36,6 +37,28 @@ defmodule WandererNotifier.Core.Stats do
   def update_websocket(status) do
     GenServer.cast(__MODULE__, {:update_websocket, status})
   end
+  
+  @doc """
+  Checks if this is the first notification of a specific type since application startup.
+  Returns true if it's the first notification, false otherwise.
+  
+  ## Parameters
+    - type: The notification type (:kill, :character, or :system)
+  """
+  def is_first_notification?(type) when type in [:kill, :character, :system] do
+    GenServer.call(__MODULE__, {:is_first_notification, type})
+  end
+  
+  @doc """
+  Marks that the first notification of a specific type has been sent.
+  This updates application state so future checks will return false.
+  
+  ## Parameters
+    - type: The notification type (:kill, :character, or :system)
+  """
+  def mark_notification_sent(type) when type in [:kill, :character, :system] do
+    GenServer.cast(__MODULE__, {:mark_notification_sent, type})
+  end
 
   # Server Implementation
 
@@ -56,6 +79,12 @@ defmodule WandererNotifier.Core.Stats do
         connected: false,
         last_message: nil,
         reconnects: 0
+      },
+      # Track first notifications with the GenServer state instead of Process dictionary
+      first_notifications: %{
+        kill: true,
+        character: true,
+        system: true
       }
     }
 
@@ -74,6 +103,15 @@ defmodule WandererNotifier.Core.Stats do
   def handle_cast({:update_websocket, status}, state) do
     {:noreply, %{state | websocket: status}}
   end
+  
+  @impl true
+  def handle_cast({:mark_notification_sent, type}, state) do
+    # Update the first_notifications map to mark this type as sent
+    first_notifications = Map.put(state.first_notifications, type, false)
+    Logger.debug("Marked #{type} notification as sent - no longer first notification")
+    
+    {:noreply, %{state | first_notifications: first_notifications}}
+  end
 
   @impl true
   def handle_call(:get_stats, _from, state) do
@@ -84,10 +122,19 @@ defmodule WandererNotifier.Core.Stats do
       uptime_seconds: uptime_seconds,
       startup_time: state.startup_time,
       notifications: state.notifications,
-      websocket: state.websocket
+      websocket: state.websocket,
+      first_notifications: state.first_notifications
     }
 
     {:reply, stats, state}
+  end
+  
+  @impl true
+  def handle_call({:is_first_notification, type}, _from, state) do
+    # Look up the first notification status from the state
+    is_first = Map.get(state.first_notifications, type, true)
+    
+    {:reply, is_first, state}
   end
 
   # Helper functions

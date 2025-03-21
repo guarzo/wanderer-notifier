@@ -39,6 +39,14 @@ defmodule WandererNotifier.Api.ESI.Service do
   end
 
   @doc """
+  Alias for get_solar_system_name to maintain consistent naming.
+  Fetches solar system info from ESI given a system_id.
+  """
+  def get_system_info(system_id, opts \\ []) do
+    get_solar_system_name(system_id, opts)
+  end
+
+  @doc """
   Fetches region info from ESI given a region_id.
   Expects the response to include a "name" field.
   """

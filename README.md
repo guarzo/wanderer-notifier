@@ -16,6 +16,7 @@ Wanderer Notifier is an Elixir-based application that monitors EVE Online kill d
 The application provides several types of Discord notifications:
 
 1. **Kill Notifications**
+
    - Real-time alerts for ship destructions in tracked systems
    - Rich embed format with detailed information:
      - System location and kill value
@@ -26,11 +27,13 @@ The application provides several types of Discord notifications:
    - Direct links to zKillboard
 
 2. **System Notifications**
+
    - Alerts when new systems are added to tracking
    - System identification and zKillboard links
    - Distinctive orange color scheme for easy identification
 
 3. **Character Notifications**
+
    - Notifications for newly tracked characters
    - Character portraits and corporation affiliations
    - Links to character profiles
@@ -46,16 +49,19 @@ The application provides several types of Discord notifications:
 The application sends several types of notifications to Discord:
 
 1. **Kill Notifications**
+
    - **Trigger**: When a ship is destroyed in a tracked system or involves a tracked character
    - **Frequency**: Real-time as events occur
    - **Content**: Detailed information about the kill, including victim, attacker, ship types, and ISK value
 
 2. **System Notifications**
+
    - **Trigger**: When a new system is added to the tracking list via the map API
    - **Frequency**: Real-time when systems are added
    - **Content**: System name, ID, and link to zKillboard
 
 3. **Character Notifications**
+
    - **Trigger**: When a new character is added to the tracking list
    - **Frequency**: Real-time when characters are added
    - **Content**: Character name, corporation, and portrait
@@ -97,31 +103,31 @@ To test different notification types:
    # Required Core Configuration
    DISCORD_BOT_TOKEN=your_discord_bot_token
    LICENSE_KEY=your_license_key_here
-   
+
    # Map Configuration
    MAP_URL=https://wanderer.zoolanders.space
    MAP_NAME=your_map_slug
    MAP_TOKEN=your_map_api_token
-   
+
    # Feature Enablement Flags
    ENABLE_NOTIFICATIONS=true
    ENABLE_KILL_NOTIFICATIONS=true
    ENABLE_SYSTEM_NOTIFICATIONS=true
    ENABLE_CHARACTER_NOTIFICATIONS=true
-   
+
    # Discord Channel Configuration
    DISCORD_CHANNEL_ID=your_main_discord_channel_id
    # Optional feature-specific channels:
    # DISCORD_KILL_CHANNEL_ID=your_kill_notifications_channel
    # DISCORD_SYSTEM_CHANNEL_ID=your_system_tracking_channel
    # DISCORD_CHARACTER_CHANNEL_ID=your_character_tracking_channel
-   
+
    # API URLs
    ZKILL_BASE_URL=https://zkillboard.com
    ESI_BASE_URL=https://esi.evetech.net/latest
    ```
-   
-   For a complete list of all available environment variables, see the [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) file.
+
+   For a complete list of all available environment variables, see the [Environment Variables Documentation](docs/configuration/environment-variables.md).
 
 3. **Install Dependencies:**
 
@@ -159,6 +165,19 @@ You can run the application in several ways:
   mix run --no-halt
   ```
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory, covering:
+
+- **Architecture**: [Overview](docs/architecture/overview.md), [Components](docs/architecture/components.md), and [Data Flow](docs/architecture/data-flow.md)
+- **Features**: [System Notifications](docs/features/system-notifications.md), [Character Notifications](docs/features/character-notifications.md), [Kill Notifications](docs/features/kill-notifications.md), and [Discord Formatting](docs/features/discord-formatting.md)
+- **Configuration**: [Environment Variables](docs/configuration/environment-variables.md) and [Feature Flags](docs/configuration/feature-flags.md)
+- **Development**: [Code Style](docs/development/code-style.md)  and [Error Handling](docs/development/error-handling.md)
+- **Deployment**: [Docker Deployment](docs/deployment/docker-deployment.md)
+- **Utilities**: [Caching](docs/utilities/caching.md) and [Logging](docs/utilities/logging.md)
+
+Start with the [Documentation Index](docs/index.md) for a complete overview of available documentation.
+
 ## Development
 
 ### Using the Dev Container
@@ -194,16 +213,19 @@ All configuration is managed through environment variables in the `.env` file. A
 ### Key Configuration Options
 
 1. **Required Core Configuration**
+
    - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token (without "Bot" prefix)
    - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
    - `LICENSE_KEY`: Your license key for accessing premium features
 
 2. **Map Configuration**
+
    - `MAP_URL`: URL of the map service
    - `MAP_NAME`: Map identifier for system tracking
    - `MAP_TOKEN`: Authentication token for map API
 
 3. **Feature Enablement**
+
    - `ENABLE_NOTIFICATIONS`: Master switch for all notifications (default: `true`)
    - `ENABLE_KILL_NOTIFICATIONS`: Enable kill notifications (default: `true`)
    - `ENABLE_SYSTEM_NOTIFICATIONS`: Enable system tracking notifications (default: `true`)
@@ -212,67 +234,24 @@ All configuration is managed through environment variables in the `.env` file. A
    - `ENABLE_MAP_CHARTS`: Enable map/activity charts (default: `false`)
    - `ENABLE_CHARTS`: General charts functionality (default: `false`)
    - `TRACK_ALL_SYSTEMS`: Track all systems instead of specific ones (default: `false`)
-   
-   *Note*: The `ENABLE_CORP_TOOLS` and `ENABLE_MAP_TOOLS` variables are being gradually replaced by `ENABLE_TPS_CHARTS` and `ENABLE_MAP_CHARTS` respectively, but are still supported for backward compatibility.
+
+   _Note_: The `ENABLE_CORP_TOOLS` and `ENABLE_MAP_TOOLS` variables are being gradually replaced by `ENABLE_TPS_CHARTS` and `ENABLE_MAP_CHARTS` respectively, but are still supported for backward compatibility.
 
 4. **Feature-specific Discord Channels**
+
    - `DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications (defaults to main channel)
    - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (defaults to main channel)
    - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications (defaults to main channel)
    - `DISCORD_CHARTS_CHANNEL_ID`: Channel for general chart notifications (defaults to main channel)
    - `DISCORD_TPS_CHARTS_CHANNEL_ID`: Channel for TPS chart notifications (defaults to main channel)
    - `DISCORD_MAP_CHARTS_CHANNEL_ID`: Channel for map chart notifications (defaults to main channel)
-   
-   *Note*: The `DISCORD_CORP_TOOLS_CHANNEL_ID` and `DISCORD_MAP_TOOLS_CHANNEL_ID` variables are being gradually replaced by `DISCORD_TPS_CHARTS_CHANNEL_ID` and `DISCORD_MAP_CHARTS_CHANNEL_ID` respectively, but are still supported for backward compatibility.
 
-5. **Slack Integration (Optional)**
-   - `SLACK_WEBHOOK_URL`: Main Slack webhook URL
-   - Feature-specific webhook URLs are also available (see ENVIRONMENT_VARIABLES.md)
+   _Note_: The `DISCORD_CORP_TOOLS_CHANNEL_ID` and `DISCORD_MAP_TOOLS_CHANNEL_ID` variables are being gradually replaced by `DISCORD_TPS_CHARTS_CHANNEL_ID` and `DISCORD_MAP_CHARTS_CHANNEL_ID` respectively, but are still supported for backward compatibility.
 
-6. **External Services**
-   - `ZKILL_BASE_URL`: zKillboard API endpoint (default: `https://zkillboard.com`)
-   - `ESI_BASE_URL`: EVE Swagger Interface endpoint (default: `https://esi.evetech.net/latest`)
-   - `CORP_TOOLS_API_URL`: Corporation tools API URL
-   - `CORP_TOOLS_API_TOKEN`: Corporation tools API token
-
-7. **Application Configuration**
-   - `CHART_SERVICE_PORT`: Port for the chart service (default: `3001`)
-   - `PORT`: Port for the web interface (default: `4000`)
-
-For a complete list of all environment variables, see [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md).
-
-### Feature Relationships
-
-Some features have dependencies on others:
-
-- `ENABLE_CHARTS` is automatically considered enabled if `ENABLE_CORP_TOOLS` or `ENABLE_MAP_TOOLS` is enabled
-- `ENABLE_TPS_CHARTS` is automatically considered enabled if `ENABLE_CORP_TOOLS` is enabled
-- `ENABLE_ACTIVITY_CHARTS` is automatically considered enabled if `ENABLE_MAP_TOOLS` is enabled
-
-### Channel Resolution Strategy
-
-Each notification checks for a feature-specific channel first. If not found, it falls back to the main channel defined by `DISCORD_CHANNEL_ID`. This allows you to:
-
-1. Send all notifications to a single channel by only setting `DISCORD_CHANNEL_ID`
-2. Send specific notification types to different channels by setting the corresponding channel variables
-3. Mix and match, with some notification types going to dedicated channels and others falling back to the main channel
-
-Example:
-```dotenv
-# Main channel that will receive all non-specific notifications
-DISCORD_CHANNEL_ID=123456789012345678
-
-# Send kill notifications to a dedicated channel
-DISCORD_KILL_CHANNEL_ID=234567890123456789
-
-# Character and system notifications will go to the main channel
-# since we haven't specified dedicated channels for them
-```
-
-These settings can be changed without restarting the application by updating the environment variables and reloading the configuration.
+For a complete list of all environment variables, see the [Environment Variables Documentation](docs/configuration/environment-variables.md).
 
 ---
 
-*Wanderer Notifier* integrates critical EVE Online data with Discord notifications in a robust, fault-tolerant manner. For any questions or issues, please open an issue on the repository.
+_Wanderer Notifier_ integrates critical EVE Online data with Discord notifications in a robust, fault-tolerant manner. For any questions or issues, please open an issue on the repository.
 
 For detailed technical documentation and architecture overview, see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
