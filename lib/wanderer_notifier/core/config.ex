@@ -288,33 +288,33 @@ defmodule WandererNotifier.Core.Config do
   def notifier_api_token do
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-    case env do
-      :prod ->
-        # In production, use the hardcoded token from application config
-        production_token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+    cond do
+      # Production mode: prefer baked-in token
+      env == :prod ->
+        token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+        if is_binary(token) && token != "", do: token, else: get_token_from_env()
 
-        if is_binary(production_token) && production_token != "" do
-          production_token
-        else
-          # Fallback to environment variable if needed
-          env_token = System.get_env(@production_token_env)
+      # Development mode: always use environment variable
+      true ->
+        get_token_from_env()
+    end
+  end
 
-          if is_binary(env_token) && env_token != "" do
-            env_token
-          else
-            raise "Missing notifier API token in production. Token should be compiled into the release."
-          end
-        end
+  defp get_token_from_env do
+    token = System.get_env(@production_token_env)
 
-      _ ->
-        # In development/test, use the environment variable
-        env_token = System.get_env(@production_token_env)
+    if is_binary(token) && token != "" do
+      token
+    else
+      env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-        if is_binary(env_token) && env_token != "" do
-          env_token
-        else
-          raise "Missing NOTIFIER_API_TOKEN environment variable for development"
-        end
+      message =
+        if env == :prod,
+          do:
+            "Missing notifier API token in production. Token should be compiled into the release.",
+          else: "Missing NOTIFIER_API_TOKEN environment variable for development"
+
+      raise message
     end
   end
 
