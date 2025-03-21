@@ -406,7 +406,11 @@ defmodule WandererNotifier.Services.KillProcessor do
 
         # Send the notification
         send_kill_notification(enriched_killmail, kill_id)
-        Logger.info("📢 NOTIFICATION SENT: Kill #{kill_id} notification delivered successfully")
+
+        Logger.info(
+          "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
+        )
+
         :ok
       else
         # Log detailed information about why the kill was filtered out
@@ -536,43 +540,33 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Add detailed logging for kill notification
     Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for killmail #{kill_id}")
 
-    # Generate a unique key combining killmail ID and current day for extra safety
-    # If a restart happens, this will still prevent resending the same kill on the same day
-    current_day = div(:os.system_time(:second), 86400)
-    global_kill_key = "global:killmail:#{kill_id}:#{current_day}"
+    # Use the centralized deduplication check
+    case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:kill, kill_id) do
+      {:ok, :send} ->
+        # This is not a duplicate, send the notification
+        Logger.info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
+        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
 
-    # First check with the global key to prevent duplicates across restarts
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(global_kill_key) do
-      {:ok, :duplicate} ->
+        # Update statistics for notification sent
+        update_kill_stats(:notification_sent)
+
+        # Log the notification for tracking purposes
         Logger.info(
-          "🔒 GLOBAL DUPLICATE KILL: Killmail #{kill_id} already sent today, skipping (global key)"
+          "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
         )
 
+      {:ok, :skip} ->
+        # This is a duplicate, skip the notification
+        Logger.info("🔄 DUPLICATE KILL: Killmail #{kill_id} notification already sent, skipping")
         :ok
 
-      {:ok, :new} ->
-        # Now check with the standard per-kill deduplication
-        case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_kill(kill_id) do
-          {:ok, :duplicate} ->
-            Logger.info(
-              "🔄 DUPLICATE KILL: Killmail #{kill_id} notification already sent, skipping"
-            )
-
-            :ok
-
-          {:ok, :new} ->
-            # Format and send the notification using Discord notifier
-            Logger.info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
-            WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
-
-            # Update statistics for notification sent
-            update_kill_stats(:notification_sent)
-
-            # Log the notification for tracking purposes
-            Logger.info(
-              "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
-            )
-        end
+      {:error, reason} ->
+        # Error during deduplication check, log it
+        Logger.error("⚠️ DEDUPLICATION ERROR: Failed to check killmail #{kill_id}: #{reason}")
+        # Default to sending the notification in case of errors
+        Logger.info("⚠️ FALLBACK: Sending notification despite deduplication error")
+        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+        :ok
     end
   end
 

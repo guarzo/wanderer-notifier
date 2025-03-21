@@ -7,6 +7,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   require Logger
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Helpers.DeduplicationHelper
 
   @doc """
   Determines if a killmail should trigger a notification.
@@ -181,6 +182,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       direct_cache_key = "tracked:character:#{victim_id_str}"
       direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
       ^victim_tracked = direct_tracked
+
       if direct_tracked do
         Logger.info(
           "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
@@ -368,4 +370,52 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   defp extract_system_id(_), do: nil
+
+  @doc """
+  Centralized deduplication check for notifications.
+  Uses a day-based global key approach for consistent deduplication across service restarts.
+
+  ## Parameters
+    - type: The notification type (:kill, :system, :character)
+    - id: The ID of the entity
+
+  ## Returns
+    - {:ok, :send} if notification should be sent (not a duplicate)
+    - {:ok, :skip} if notification should be skipped (duplicate)
+    - {:error, reason} if there was an error in the check
+  """
+  def check_deduplication(type, id)
+      when type in [:kill, :system, :character] and (is_binary(id) or is_integer(id)) do
+    id_str = to_string(id)
+
+    # Create a day-based global key that includes the current date
+    # This helps with deduplication across service restarts
+    day_str = Date.utc_today() |> Date.to_string()
+    global_key = "global:#{type}:#{day_str}:#{id_str}"
+
+    # Log that we're checking deduplication
+    Logger.info("DEDUPLICATION: Checking for #{type} #{id_str}")
+
+    # Check if this is a duplicate notification using the global key
+    case DeduplicationHelper.check_and_mark(global_key) do
+      {:ok, :new} ->
+        Logger.info("DEDUPLICATION: #{type} #{id_str} is new, sending notification")
+        {:ok, :send}
+
+      {:ok, :duplicate} ->
+        Logger.info("DEDUPLICATION: #{type} #{id_str} is a duplicate, skipping notification")
+        {:ok, :skip}
+
+      error ->
+        Logger.error("DEDUPLICATION: Error checking #{type} #{id_str}: #{inspect(error)}")
+        # Default to allowing notification in case of errors
+        {:error, "Deduplication check failed: #{inspect(error)}"}
+    end
+  end
+
+  def check_deduplication(_type, id) do
+    Logger.warning("DEDUPLICATION: Invalid type or ID (#{inspect(id)}) for deduplication check")
+    # Default to sending notification if we can't properly check
+    {:ok, :send}
+  end
 end
