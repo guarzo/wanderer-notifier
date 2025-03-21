@@ -33,7 +33,6 @@ defmodule WandererNotifier.Api.ZKill.SimpleClientTest do
   describe "get_single_killmail/1" do
     test "successfully retrieves killmail data" do
       kill_id = "12345"
-
       # Call the function (using our TestApiClient)
       {:ok, result} = WandererNotifier.Api.ZKill.Client.get_single_killmail(kill_id)
 
