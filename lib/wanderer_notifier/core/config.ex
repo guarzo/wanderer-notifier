@@ -282,17 +282,27 @@ defmodule WandererNotifier.Core.Config do
 
   @doc """
   Returns the notifier API token.
-  In production, uses the baked-in value from application config.
+  In production, always uses the baked-in value from application config.
   In development, uses the value from environment variable.
   """
   def notifier_api_token do
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
     cond do
-      # Production mode: prefer baked-in token
+      # Production mode: strictly use baked-in token, never fall back to env vars
       env == :prod ->
         token = Application.get_env(:wanderer_notifier, :notifier_api_token)
-        if is_binary(token) && token != "", do: token, else: get_token_from_env()
+
+        if is_binary(token) && token != "" do
+          token
+        else
+          message =
+            "Missing baked-in notifier API token in production. Token should be compiled into the release."
+
+          Logger.error(message)
+          # In production, return a dummy token that will fail validation
+          "invalid-prod-token-missing"
+        end
 
       # Development mode: always use environment variable
       true ->
@@ -308,13 +318,19 @@ defmodule WandererNotifier.Core.Config do
     else
       env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-      message =
-        if env == :prod,
-          do:
-            "Missing notifier API token in production. Token should be compiled into the release.",
-          else: "Missing NOTIFIER_API_TOKEN environment variable for development"
+      if env == :prod do
+        message =
+          "Missing notifier API token in production. Token should be compiled into the release."
 
-      raise message
+        Logger.error(message)
+        # In production, return a dummy token that will fail validation
+        "invalid-prod-token-missing"
+      else
+        # In development, log a warning but use a development token
+        message = "Missing NOTIFIER_API_TOKEN environment variable for development"
+        Logger.warning(message)
+        "dev-environment-token"
+      end
     end
   end
 
@@ -333,12 +349,21 @@ defmodule WandererNotifier.Core.Config do
   @doc """
   Returns the License Manager API URL.
   In development environment, this can be overridden with LICENSE_MANAGER_API_URL.
-  In production, it uses the default URL.
+  In production, it always uses the default URL for security.
   """
   def license_manager_api_url do
-    # Allow override from environment in all environments
-    Application.get_env(:wanderer_notifier, :license_manager_api_url) ||
-      @default_license_manager_url
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
+
+    cond do
+      # In production, always use the default URL for security
+      env == :prod ->
+        @default_license_manager_url
+
+      # In development/test, allow override from environment variable
+      true ->
+        Application.get_env(:wanderer_notifier, :license_manager_api_url) ||
+          @default_license_manager_url
+    end
   end
 
   @doc """
