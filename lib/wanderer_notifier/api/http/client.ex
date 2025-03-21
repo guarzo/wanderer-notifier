@@ -3,6 +3,8 @@ defmodule WandererNotifier.Api.Http.Client do
   Generic HTTP client wrapper with consistent error handling and retry functionality.
   Provides a unified interface for making HTTP requests across the application.
   """
+  @behaviour WandererNotifier.Api.Http.ClientBehaviour
+
   require Logger
 
   @default_max_retries 3
@@ -39,6 +41,7 @@ defmodule WandererNotifier.Api.Http.Client do
     - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
     - `{:error, reason}` on failure
   """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
   def get(url, headers \\ [], opts \\ []) do
     url_with_query =
       case Keyword.get(opts, :query) do
@@ -63,6 +66,51 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   @doc """
+  Makes a POST request to the specified URL.
+
+  ## Options
+    - Same as `request/5`
+
+  ## Returns
+    - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
+    - `{:error, reason}` on failure
+  """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
+  def post(url, body, headers \\ [], opts \\ []) do
+    request("POST", url, headers, body, opts)
+  end
+
+  @doc """
+  Makes a PUT request to the specified URL.
+
+  ## Options
+    - Same as `request/5`
+
+  ## Returns
+    - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
+    - `{:error, reason}` on failure
+  """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
+  def put(url, body, headers \\ [], opts \\ []) do
+    request("PUT", url, headers, body, opts)
+  end
+
+  @doc """
+  Makes a DELETE request to the specified URL.
+
+  ## Options
+    - Same as `request/5`
+
+  ## Returns
+    - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
+    - `{:error, reason}` on failure
+  """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
+  def delete(url, headers \\ [], opts \\ []) do
+    request("DELETE", url, headers, "", opts)
+  end
+
+  @doc """
   Makes a POST request with JSON data to the specified URL.
   Automatically sets the Content-Type header to application/json.
 
@@ -73,6 +121,7 @@ defmodule WandererNotifier.Api.Http.Client do
     - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
     - `{:error, reason}` on failure
   """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
   def post_json(url, data, headers \\ [], opts \\ []) do
     json_data = Jason.encode!(data)
     json_headers = [{"Content-Type", "application/json"} | headers]
@@ -92,6 +141,7 @@ defmodule WandererNotifier.Api.Http.Client do
     - `{:ok, %{status_code: status, body: body, headers: headers}}` on success
     - `{:error, reason}` on failure
   """
+  @impl WandererNotifier.Api.Http.ClientBehaviour
   def request(method, url, headers \\ [], body \\ "", opts \\ []) do
     max_retries = Keyword.get(opts, :max_retries, @default_max_retries)
     initial_backoff = Keyword.get(opts, :initial_backoff, @default_initial_backoff)
