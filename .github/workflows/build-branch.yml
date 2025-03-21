@@ -1,0 +1,111 @@
+name: Build Branch Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+      production_token:
+        description: "Production bot token (leave empty to use secret)"
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0 # required for getting commit SHA
+
+      - name: Generate version string
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          # Replace slashes in branch name with hyphens for Docker tag
+          SAFE_BRANCH=$(echo "${{ github.event.inputs.branch }}" | sed 's/\//-/g')
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Generated SHA: ${SHORT_SHA}"
+          echo "Sanitized branch name: ${SAFE_BRANCH}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "renderer/package-lock.json"
+
+      - name: Build React application
+        run: |
+          # Ensure the static app directory exists first
+          mkdir -p priv/static/app
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
+          # Copy the built React app to the static directory
+          cp -r renderer/dist/* priv/static/app/ || true
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.14.5"
+          otp-version: "25.0"
+
+      - name: Install dependencies and build release
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
+          mix deps.compile
+
+          # Build the release
+          mix release
+
+      # Determine production token to use
+      - name: Set production token
+        id: token
+        run: |
+          if [ -n "${{ github.event.inputs.production_token }}" ]; then
+            echo "Using provided production token"
+            echo "production_token=${{ github.event.inputs.production_token }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Using secret production token"
+            echo "production_token=${{ secrets.WANDERER_PRODUCTION_BOT_TOKEN }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          load: true
+          build-args: |
+            WANDERER_PRODUCTION_BOT_TOKEN=${{ steps.token.outputs.production_token }}
+            APP_VERSION=${{ steps.version.outputs.short_sha }}
+          tags: |
+            guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}
+
+      # Test the Docker image
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image startup..."
+          docker run --rm guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }} /bin/sh -c "echo 'Version: $(cat /app/VERSION || echo unknown)' && echo 'Build SHA: ${{ steps.version.outputs.short_sha }}' && exit 0"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Push Docker image
+        run: |
+          docker push guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}
+          echo "::notice::Image pushed as guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}"

@@ -35,9 +35,14 @@ RUN chmod +x rel/overlays/env.sh
 # Inject the production bot token into the application configuration
 RUN if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then \
     echo "Injecting production bot token into application configuration"; \
-    for file in $(find config -name "*.exs"); do \
-      sed -i "s/production_bot_token: \"[^\"]*\"/production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"/" $file; \
-    done; \
+    # Add to runtime.exs
+    echo "\n# Production bot token - Injected during Docker build" >> config/runtime.exs && \
+    echo "config :wanderer_notifier, production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"" >> config/runtime.exs && \
+    # Create a release-config file that will be included in the release
+    mkdir -p rel/overlays/etc && \
+    echo "Production token: $WANDERER_PRODUCTION_BOT_TOKEN" > rel/overlays/etc/production_token.txt; \
+  else \
+    echo "WARNING: WANDERER_PRODUCTION_BOT_TOKEN is not set. The release may not work correctly."; \
   fi
 
 # Create a proper sys.config in the overlays
@@ -113,6 +118,14 @@ RUN mkdir -p /app/extracted && \
     tar -xzf /app/release.tar.gz -C /app/extracted && \
     mv /app/extracted/wanderer_notifier/* /app/ && \
     rm -rf /app/extracted /app/release.tar.gz
+
+# Ensure the token is accessible in the runtime environment by creating a backup file
+RUN if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then \
+    echo "Adding production token to release environment"; \
+    mkdir -p /app/releases/token && \
+    echo "# This file contains the production bot token injected during build" > /app/releases/token/production_config.txt && \
+    echo "production_bot_token: \"$WANDERER_PRODUCTION_BOT_TOKEN\"" >> /app/releases/token/production_config.txt; \
+  fi
 
 # Ensure the release executable is runnable
 RUN chmod +x /app/bin/wanderer_notifier
