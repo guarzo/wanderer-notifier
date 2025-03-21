@@ -96,11 +96,18 @@ RUN mkdir -p /app/extracted && \
 # Ensure the release executable is runnable
 RUN chmod +x /app/bin/wanderer_notifier
 
-# Use our custom sys.config - remove the line that would override it
-# RUN find /app/releases -type d -name "*.*.*" -exec sh -c 'echo "[{kernel, [{distribution_mode, none}, {start_distribution, false}]}]." > {}/sys.config' \;
-
-# Instead, use the one we created earlier
-COPY --from=builder /app/rel/overlays/sys.config /app/releases/sys.config
+# Create a wrapper script that will generate sys.config at runtime
+RUN echo '#!/bin/sh' > /app/generate_config.sh && \
+    echo 'set -e' >> /app/generate_config.sh && \
+    echo 'RELEASE_DIR=$(find /app/releases -type d -name "[0-9]*.[0-9]*.[0-9]*" | head -n 1)' >> /app/generate_config.sh && \
+    echo 'echo "Detected RELEASE_DIR: $RELEASE_DIR"' >> /app/generate_config.sh && \
+    echo 'mkdir -p "$RELEASE_DIR/sys"' >> /app/generate_config.sh && \
+    echo 'CONFIG="[{kernel, [{distribution_mode, none}, {start_distribution, false}]}, {nostrum, [{token, \"$DISCORD_BOT_TOKEN\"}]}]."' >> /app/generate_config.sh && \
+    echo 'echo "$CONFIG" > "$RELEASE_DIR/sys.config"' >> /app/generate_config.sh && \
+    echo 'echo "Generated sys.config at $RELEASE_DIR/sys.config"' >> /app/generate_config.sh && \
+    echo 'cat "$RELEASE_DIR/sys.config" | grep -v token' >> /app/generate_config.sh && \
+    echo 'exec "$@"' >> /app/generate_config.sh && \
+    chmod +x /app/generate_config.sh
 
 # Set up chart service
 COPY --from=builder /app/chart-service /app/chart-service/
@@ -121,6 +128,9 @@ EXPOSE 4000 3001
 # Health check (adjust as needed)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
+
+# Use our generate_config.sh as the entrypoint to ensure sys.config is set up before starting
+ENTRYPOINT ["/app/generate_config.sh"]
 
 # Start the application
 CMD ["/app/start.sh"]
