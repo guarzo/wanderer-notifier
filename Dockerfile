@@ -85,6 +85,12 @@
         npm run build
     
     # -------------
+    # Install chart service dependencies in the build stage
+    # -------------
+    WORKDIR /app/chart-service
+    RUN npm ci --only=production || npm install --production
+    
+    # -------------
     # Compile and build release
     # -------------
     RUN mix deps.compile && \
@@ -133,18 +139,6 @@
           wget \
         && rm -rf /var/lib/apt/lists/*
     
-    # ----------------------------------------
-    # CHART SERVICE DEPENDENCIES - Install Node.js BEFORE setting up chart-service
-    # ----------------------------------------
-    RUN apt-get update && \
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-        apt-get install -y --no-install-recommends \
-          nodejs \
-          # If chart-service must compile native addons:
-          build-essential \
-          python3 \
-        && rm -rf /var/lib/apt/lists/*
-    
     # Enable locale
     RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
         locale-gen
@@ -164,15 +158,11 @@
         chmod +x /app/bin/wanderer_notifier /app/start.sh
     
     # ----------------------------------------
-    # CHART SERVICE SETUP - Node.js is already installed above
+    # CHART SERVICE SETUP - Copy with node_modules already installed from builder
     # ----------------------------------------
-    # Copy chart-service from builder
+    # Copy chart-service including pre-installed node_modules
     COPY --from=builder /app/chart-service /app/chart-service
-    WORKDIR /app/chart-service
-    
-    # Now npm should be available
-    RUN npm ci --only=production || npm install --production
-    
+
     # -------------
     # Set final working directory and ports
     # -------------
