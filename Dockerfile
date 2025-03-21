@@ -91,8 +91,9 @@
     RUN npm ci --only=production || npm install --production
     
     # -------------
-    # Compile and build release
+    # Compile and build release - make sure we're in the main app directory
     # -------------
+    WORKDIR /app
     RUN mix deps.compile && \
         # Toggle ERTS inclusion if you prefer to rely on the final container's OTP
         sed -i 's/include_executables_for: \[:unix\]/include_executables_for: \[:unix\], include_erts: false/' mix.exs && \
@@ -121,7 +122,7 @@
         PORT=4000 \
         CHART_SERVICE_PORT=3001
     
-    # Install only the needed runtime dependencies
+    # Install runtime dependencies including Node.js
     RUN apt-get update && \
         apt-get install -y --no-install-recommends \
           curl \
@@ -138,6 +139,16 @@
           locales \
           wget \
         && rm -rf /var/lib/apt/lists/*
+    
+    # Install Node.js for the runtime - simpler approach
+    RUN apt-get update && \
+        apt-get install -y --no-install-recommends gnupg curl ca-certificates && \
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends nodejs && \
+        rm -rf /var/lib/apt/lists/* && \
+        node --version && \
+        npm --version
     
     # Enable locale
     RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
@@ -158,10 +169,15 @@
         chmod +x /app/bin/wanderer_notifier /app/start.sh
     
     # ----------------------------------------
-    # CHART SERVICE SETUP - Copy with node_modules already installed from builder
+    # CHART SERVICE SETUP - Copy with pre-installed node_modules, but verify Node.js availability
     # ----------------------------------------
     # Copy chart-service including pre-installed node_modules
     COPY --from=builder /app/chart-service /app/chart-service
+    WORKDIR /app/chart-service
+
+    # Verify Node.js is available in the runtime environment
+    RUN node --version && npm --version && \
+        echo "Node.js and npm verified in chart-service directory"
 
     # -------------
     # Set final working directory and ports

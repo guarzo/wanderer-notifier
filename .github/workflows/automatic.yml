@@ -1,4 +1,4 @@
-name: Automatic
+name: Automatic Image
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
 
     steps:
       - name: Checkout code
@@ -15,17 +17,55 @@ jobs:
         with:
           fetch-depth: 0 # required for pushing tags
 
+      - name: Generate version string
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DATE=$(date +'%Y%m%d')
+          # Create version strings
+          VERSION="0.0.0"  # Default version for automatic builds
+          DOCKER_VERSION="${DATE}-${SHORT_SHA}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Generated Docker version: ${DOCKER_VERSION}"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "renderer/package-lock.json"
+
+      - name: Build React application
+        run: |
+          # Ensure the static app directory exists first
+          mkdir -p priv/static/app
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
+          # Copy the built React app to the static directory if needed
+          # This may be redundant if the postbuild script works
+          cp -r renderer/dist/* priv/static/app/ || true
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.14.5"
+          otp-version: "25.0"
+
+      - name: Install dependencies and build release
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
+          mix deps.compile
+          mix release
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-
-      - name: Compute image tag from date and SHA
-        id: tag
-        run: |
-          # Compute tag based on current date and short SHA
-          DATE_TAG=$(date +'%Y%m%d')
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "image_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "image_tag_with_sha=${DATE_TAG}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -39,12 +79,17 @@ jobs:
           context: .
           push: true
           build-args: |
-            APP_VERSION=${{ steps.tag.outputs.image_tag_with_sha }}
+            APP_VERSION=${{ steps.version.outputs.docker_version }}
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           tags: |
             guarzo/wanderer-notifier:latest
-            guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag }}
-            guarzo/wanderer-notifier:${{ steps.tag.outputs.image_tag_with_sha }}
+            guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
+
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image startup..."
+          # Basic check to verify the container can start
+          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }} /bin/sh -c "echo 'Verifying container startup...' && echo 'Version: ${{ steps.version.outputs.docker_version }}' && echo 'Container started successfully'"
 
       - name: Create and push Git tag
         env:
@@ -52,5 +97,5 @@ jobs:
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git tag ${{ steps.tag.outputs.image_tag_with_sha }}
-          git push origin ${{ steps.tag.outputs.image_tag_with_sha }}
+          git tag ${{ steps.version.outputs.docker_version }}
+          git push origin ${{ steps.version.outputs.docker_version }}
