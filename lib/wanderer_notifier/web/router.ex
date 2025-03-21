@@ -45,10 +45,10 @@ defmodule WandererNotifier.Web.Router do
 
   # Forward chart requests to the ChartController
   forward("/charts", to: ChartController)
-  
+
   # Forward debug API requests to the DebugController
   forward("/api/debug", to: DebugController)
-  
+
   # Forward all other API requests to the API controller
   forward("/api", to: ApiController)
 

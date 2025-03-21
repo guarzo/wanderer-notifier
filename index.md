@@ -129,4 +129,4 @@ Your notifier is now up and running, delivering alerts to your Discord channel a
 
 [Learn more about notification types](./notifications.html)
 
- [View on GitHub](https://github.com/yourusername/wanderer-notifier) 
+ [View on GitHub](https://github.com/guarzo/wanderer-notifier) 

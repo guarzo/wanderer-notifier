@@ -3,13 +3,16 @@ defmodule WandererNotifier.Notifiers.Discord do
   Discord notifier for WandererNotifier.
   Handles formatting and sending notifications to Discord.
   """
+  use GenServer
   require Logger
   alias WandererNotifier.Core.License
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Notifiers.Formatter
+  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Data.Killmail
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
@@ -47,7 +50,6 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   defp bot_token,
     do:
-    
       get_config!(
         :discord_bot_token,
         "Discord bot token not configured. Please set :discord_bot_token in your configuration."
@@ -66,15 +68,6 @@ defmodule WandererNotifier.Notifiers.Discord do
   end
 
   # -- HELPER FUNCTIONS --
-
-  # Retrieves a value from a map checking both string and atom keys.
-  # Tries each key in the provided list until a value is found.
-  @spec get_value(map(), [String.t()], any()) :: any()
-  defp get_value(map, keys, default) do
-    Enum.find_value(keys, default, fn key ->
-      Map.get(map, key) || Map.get(map, String.to_atom(key))
-    end)
-  end
 
   # -- MESSAGE SENDING --
 
@@ -128,7 +121,13 @@ defmodule WandererNotifier.Notifiers.Discord do
     - feature: Optional feature to determine the channel to use
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_embed(title, description, url \\ nil, color \\ @default_embed_color, feature \\ :general) do
+  def send_embed(
+        title,
+        description,
+        url \\ nil,
+        color \\ @default_embed_color,
+        feature \\ :general
+      ) do
     Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
 
     if env() == :test do
@@ -185,213 +184,83 @@ defmodule WandererNotifier.Notifiers.Discord do
     - feature: The feature to use for determining the channel (optional)
   """
   def send_discord_embed(embed, feature \\ :general) do
-    url = build_url(feature)
-    Logger.info("Sending Discord embed to URL: #{url} for feature: #{inspect(feature)}")
-    Logger.debug("Embed content: #{inspect(embed)}")
-
-    payload = %{"embeds" => [embed]}
-
-    with {:ok, json} <- Jason.encode(payload),
-         {:ok, %{status_code: status}} when status in 200..299 <-
-           HttpClient.request("POST", url, headers(), json) do
-      Logger.info("Successfully sent Discord embed, status: #{status}")
-      :ok
+    if env() == :test do
+      handle_test_mode("DISCORD MOCK EMBED (JSON): #{inspect(embed)}")
     else
-      {:ok, %{status_code: status, body: body}} ->
-        Logger.error("Failed to send Discord embed: status=#{status}, body=#{inspect(body)}")
-        {:error, "Discord API error: #{status}"}
+      payload = %{"embeds" => [embed]}
 
-      {:error, reason} ->
-        Logger.error("Error sending Discord embed: #{inspect(reason)}")
-        {:error, reason}
+      # Log the payload for debugging
+      Logger.debug(
+        "[Discord] Sending Discord embed payload: #{inspect(payload, pretty: true, limit: 5000)}"
+      )
 
-      error ->
-        Logger.error("Unexpected error: #{inspect(error)}")
-        {:error, error}
+      send_payload(payload, feature)
     end
   end
 
   @doc """
   Sends a rich embed message for an enriched killmail.
   Expects the enriched killmail (and its nested maps) to have string keys.
+
+  The first kill notification after startup is always sent in enriched format
+  regardless of license status to demonstrate the premium features.
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(enriched_kill, kill_id) do
     if env() == :test do
       handle_test_mode("TEST MODE: Would send enriched kill embed for kill_id=#{kill_id}")
     else
-      enriched_kill = fully_enrich_kill_data(enriched_kill)
-      victim = Map.get(enriched_kill, "victim") || %{}
-      victim_name = get_value(victim, ["character_name"], "Unknown Pilot")
-      victim_ship = get_value(victim, ["ship_type_name"], "Unknown Ship")
-      system_name = Map.get(enriched_kill, "solar_system_name") || "Unknown System"
+      # Convert to Killmail struct if it's not already one
+      killmail =
+        case enriched_kill do
+          %Killmail{} ->
+            enriched_kill
 
-      if License.status().valid do
-        # Use the formatter to create the notification
-        generic_notification = Formatter.format_kill_notification(enriched_kill, kill_id)
-        discord_embed = Formatter.to_discord_format(generic_notification)
+          _ ->
+            # Create a Killmail struct from the enriched data
+            Killmail.new(kill_id, Map.get(enriched_kill, "zkb", %{}), enriched_kill)
+        end
+
+      # Extract basic info for logging and non-premium fallback
+      victim = Killmail.get_victim(killmail) || %{}
+      victim_name = Map.get(victim, "character_name", "Unknown Pilot")
+      victim_ship = Map.get(victim, "ship_type_name", "Unknown Ship")
+      system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
+
+      # Check if this is the first kill notification since startup using Stats GenServer
+      is_first_notification = Stats.is_first_notification?(:kill)
+
+      # For first notification, use enriched format regardless of license
+      if is_first_notification || License.status().valid do
+        # Mark that we've sent the first notification if this is it
+        if is_first_notification do
+          Stats.mark_notification_sent(:kill)
+          Logger.info("Sending first kill notification in enriched format (startup message)")
+        end
+
+        # Use the structured formatter to create the notification
+        generic_notification = StructuredFormatter.format_kill_notification(killmail)
+        discord_embed = StructuredFormatter.to_discord_format(generic_notification)
         send_discord_embed(discord_embed, :kill_notifications)
       else
         Logger.info(
           "License not valid, sending plain text kill notification instead of rich embed"
         )
 
-        send_message("Kill Alert: #{victim_name} lost a #{victim_ship} in #{system_name}.")
+        send_message(
+          "Kill Alert: #{victim_name} lost a #{victim_ship} in #{system_name}.",
+          :kill_notifications
+        )
       end
     end
   end
 
   # -- ENRICHMENT FUNCTIONS --
 
-  defp fully_enrich_kill_data(enriched_kill) do
-    Logger.debug("Processing kill data: #{inspect(enriched_kill, pretty: true)}")
+  # These functions are deprecated and will be used only as a fallback
+  # New code should use the StructuredFormatter with proper domain structs
 
-    victim =
-      enriched_kill
-      |> Map.get("victim", %{})
-      |> enrich_victim_data()
-
-    attackers =
-      enriched_kill
-      |> Map.get("attackers", [])
-      |> Enum.map(&enrich_attacker_data/1)
-
-    enriched_kill
-    |> Map.put("victim", victim)
-    |> Map.put("attackers", attackers)
-  end
-
-  defp enrich_victim_data(victim) do
-    victim =
-      case get_value(victim, ["character_name"], nil) do
-        nil ->
-          victim
-          |> enrich_character("character_id", fn character_id ->
-            case ESIService.get_character_info(character_id) do
-              {:ok, char_data} ->
-                Map.put(victim, "character_name", Map.get(char_data, "name", "Unknown Pilot"))
-                |> enrich_corporation("corporation_id", char_data)
-
-              _ ->
-                Map.put_new(victim, "character_name", "Unknown Pilot")
-            end
-          end)
-
-        _ ->
-          victim
-      end
-
-    victim =
-      case get_value(victim, ["ship_type_name"], nil) do
-        nil ->
-          victim
-          |> enrich_character("ship_type_id", fn ship_type_id ->
-            case ESIService.get_ship_type_name(ship_type_id) do
-              {:ok, ship_data} ->
-                Map.put(victim, "ship_type_name", Map.get(ship_data, "name", "Unknown Ship"))
-
-              _ ->
-                Map.put_new(victim, "ship_type_name", "Unknown Ship")
-            end
-          end)
-
-        _ ->
-          victim
-      end
-
-    if get_value(victim, ["corporation_name"], "Unknown Corp") == "Unknown Corp" do
-      victim =
-        enrich_character(victim, "character_id", fn character_id ->
-          case ESIService.get_character_info(character_id) do
-            {:ok, char_data} ->
-              case Map.get(char_data, "corporation_id") do
-                nil ->
-                  victim
-
-                corp_id ->
-                  case ESIService.get_corporation_info(corp_id) do
-                    {:ok, corp_data} ->
-                      Map.put(
-                        victim,
-                        "corporation_name",
-                        Map.get(corp_data, "name", "Unknown Corp")
-                      )
-
-                    _ ->
-                      Map.put_new(victim, "corporation_name", "Unknown Corp")
-                  end
-              end
-
-            _ ->
-              victim
-          end
-        end)
-
-      victim
-    else
-      victim
-    end
-  end
-
-  defp enrich_character(data, key, fun) do
-    case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
-      nil -> data
-      value -> fun.(value)
-    end
-  end
-
-  defp enrich_corporation(victim, _key, char_data) do
-    case Map.get(victim, "corporation_id") || Map.get(victim, :corporation_id) ||
-           Map.get(char_data, "corporation_id") do
-      nil ->
-        victim
-
-      corp_id ->
-        case ESIService.get_corporation_info(corp_id) do
-          {:ok, corp_data} ->
-            Map.put(victim, "corporation_name", Map.get(corp_data, "name", "Unknown Corp"))
-
-          _ ->
-            Map.put_new(victim, "corporation_name", "Unknown Corp")
-        end
-    end
-  end
-
-  defp enrich_attacker_data(attacker) do
-    attacker =
-      case get_value(attacker, ["character_name"], nil) do
-        nil ->
-          enrich_character(attacker, "character_id", fn character_id ->
-            case ESIService.get_character_info(character_id) do
-              {:ok, char_data} ->
-                Map.put(attacker, "character_name", Map.get(char_data, "name", "Unknown Pilot"))
-
-              _ ->
-                Map.put_new(attacker, "character_name", "Unknown Pilot")
-            end
-          end)
-
-        _ ->
-          attacker
-      end
-
-    case get_value(attacker, ["ship_type_name"], nil) do
-      nil ->
-        enrich_character(attacker, "ship_type_id", fn ship_type_id ->
-          case ESIService.get_ship_type_name(ship_type_id) do
-            {:ok, ship_data} ->
-              Map.put(attacker, "ship_type_name", Map.get(ship_data, "name", "Unknown Ship"))
-
-            _ ->
-              Map.put_new(attacker, "ship_type_name", "Unknown Ship")
-          end
-        end)
-
-      _ ->
-        attacker
-    end
-  end
-
+  # Format ISK values for display
   defp format_isk_value(value) when is_float(value) or is_integer(value) do
     cond do
       value < 1000 -> "<1k ISK"
@@ -408,6 +277,9 @@ defmodule WandererNotifier.Notifiers.Discord do
   Sends a notification for a new tracked character.
   Expects a map with keys: "character_id", "character_name", "corporation_id", "corporation_name".
   If names are missing, ESI lookups are performed.
+
+  The first character notification after startup is always sent in enriched format
+  regardless of license status to demonstrate the premium features.
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character) when is_map(character) do
@@ -421,81 +293,65 @@ defmodule WandererNotifier.Notifiers.Discord do
         _ -> :ok
       end
 
-      # Enrich the character data with ESI lookups if needed
-      character = enrich_character_data(character)
+      # Log the original character data for debugging
+      Logger.info("[Discord] Processing character notification")
 
-      if License.status().valid do
-        # Use the formatter module to create the notification
-        generic_notification = Formatter.format_character_notification(character)
-        discord_embed = Formatter.to_discord_format(generic_notification)
+      Logger.debug(
+        "[Discord] Raw character data: #{inspect(character, pretty: true, limit: 5000)}"
+      )
+
+      # Check if this is the first character notification since startup
+      is_first_notification = Stats.is_first_notification?(:character)
+
+      # Mark that we've sent the first notification if this is it
+      if is_first_notification do
+        Stats.mark_notification_sent(:character)
+        Logger.info("[Discord] Sending first character notification in enriched format")
+      end
+
+      if is_first_notification || License.status().valid do
+        # Convert to Character struct if not already
+        character_struct =
+          if is_struct(character) && character.__struct__ == Character do
+            character
+          else
+            Character.new(character)
+          end
+
+        # Create notification with StructuredFormatter
+        generic_notification = StructuredFormatter.format_character_notification(character_struct)
+        discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+
+        # Send the notification
         send_discord_embed(discord_embed, :character_tracking)
       else
-        Logger.info("License not valid, sending plain text character notification")
-        character_name = get_value(character, ["character_name"], "Unknown Character")
-        corporation_name = get_value(character, ["corporation_name"], nil)
+        # For non-licensed users after first message, send plain text
+        Logger.info("[Discord] License not valid, sending plain text character notification")
 
-        message =
-          "New Character Tracked: #{character_name}" <>
-            if corporation_name, do: " (#{corporation_name})", else: ""
+        # Convert to Character struct if not already for consistent field access
+        character_struct =
+          if is_struct(character) && character.__struct__ == Character do
+            character
+          else
+            Character.new(character)
+          end
 
-        send_message(message)
+        # Create plain text message using struct fields directly
+        corporation_info =
+          if Character.has_corporation?(character_struct) do
+            " (#{character_struct.corporation_ticker})"
+          else
+            ""
+          end
+
+        message = "New Character Tracked: #{character_struct.name}#{corporation_info}"
+        send_message(message, :character_tracking)
       end
     end
   end
 
-  defp enrich_character_data(character) do
-    character =
-      case get_value(character, ["character_name"], nil) do
-        nil ->
-          enrich_character(character, "character_id", fn character_id ->
-            case ESIService.get_character_info(character_id) do
-              {:ok, char_data} ->
-                Map.put(character, "character_name", Map.get(char_data, "name", "Unknown Pilot"))
-
-              _ ->
-                Map.put_new(character, "character_name", "Unknown Pilot")
-            end
-          end)
-
-        _ ->
-          character
-      end
-
-    character =
-      case get_value(character, ["corporation_name"], nil) do
-        nil ->
-          case Map.get(character, "corporation_id") || Map.get(character, :corporation_id) do
-            nil ->
-              Map.put_new(character, "corporation_name", "Unknown Corp")
-
-            corp_id ->
-              case ESIService.get_corporation_info(corp_id) do
-                {:ok, corp_data} ->
-                  Map.put(
-                    character,
-                    "corporation_name",
-                    Map.get(corp_data, "name", "Unknown Corp")
-                  )
-
-                _ ->
-                  Map.put_new(character, "corporation_name", "Unknown Corp")
-              end
-          end
-
-        _ ->
-          character
-      end
-
-    character
-  end
-
   # -- NEW SYSTEM NOTIFICATION --
 
-  @doc """
-  Sends a notification for a new system found.
-  Expects a map with keys: "system_id" and optionally "system_name".
-  If "system_name" is missing, falls back to a lookup.
-  """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) when is_map(system) do
     if env() == :test do
@@ -508,166 +364,81 @@ defmodule WandererNotifier.Notifiers.Discord do
         _ -> :ok
       end
 
-      # Normalize the system data and use the formatter module
-      system = normalize_system_data(system)
-      generic_notification = Formatter.format_system_notification(system)
+      # Log the system data for debugging
+      Logger.info("[Discord] Processing system notification")
+      Logger.debug("[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}")
 
-      if generic_notification do
-        # Convert the generic notification to a Discord-specific format
-        discord_embed = Formatter.to_discord_format(generic_notification)
+      # Convert to MapSystem struct if not already
+      system_struct =
+        if is_struct(system) && system.__struct__ == MapSystem do
+          system
+        else
+          MapSystem.new(system)
+        end
+
+      # Check if this is the first system notification since startup
+      is_first_notification = Stats.is_first_notification?(:system)
+
+      # Mark that we've sent the first notification if this is it
+      if is_first_notification do
+        Stats.mark_notification_sent(:system)
+        Logger.info("[Discord] Sending first system notification in enriched format")
+      end
+
+      # For first notification or with valid license, use enriched format
+      if is_first_notification || License.status().valid do
+        # Generate notification with StructuredFormatter
+        generic_notification = StructuredFormatter.format_system_notification(system_struct)
+        discord_embed = StructuredFormatter.to_discord_format(generic_notification)
 
         # Add recent kills to the notification
-        discord_embed_with_kills = add_recent_kills_to_embed(discord_embed, system)
+        solar_system_id = system_struct.solar_system_id
 
-        # Send the notification
-        send_discord_embed(discord_embed_with_kills, :system_tracking)
-      else
-        Logger.error("Failed to format system notification: #{inspect(system)}")
-        :error
-      end
-    end
-  end
+        recent_kills =
+          WandererNotifier.Services.KillProcessor.get_recent_kills()
+          |> Enum.filter(fn kill ->
+            kill_system_id = get_in(kill, ["esi_data", "solar_system_id"])
+            kill_system_id == solar_system_id
+          end)
 
-  # Helper function to normalize system data by merging nested data if present
-  defp normalize_system_data(system) do
-    if Map.has_key?(system, "data") and is_map(system["data"]) do
-      Map.merge(system, system["data"])
-    else
-      system
-    end
-  end
-
-  # Adds recent kills information to a system notification embed
-  defp add_recent_kills_to_embed(embed, system) do
-    system_id = Map.get(system, "solar_system_id") ||
-                Map.get(system, :solar_system_id) ||
-                Map.get(system, "system_id") ||
-                Map.get(system, :system_id)
-
-    if system_id do
-      Logger.info(
-        "[Discord.send_system_activity] Sending recent system activity: System ID #{system_id}"
-      )
-
-      case WandererNotifier.Api.ZKill.Service.get_system_kills(system_id, 5) do
-        {:ok, zkill_kills} when is_list(zkill_kills) and length(zkill_kills) > 0 ->
-          Logger.info(
-            "Found #{length(zkill_kills)} recent kills for system #{system_id} from zKillboard"
-          )
-
-          kills_text =
-            Enum.map_join(zkill_kills, "\n", fn kill ->
-              kill_id = Map.get(kill, "killmail_id")
-              zkb = Map.get(kill, "zkb") || %{}
-              hash = Map.get(zkb, "hash")
-
-              enriched_kill =
-                if kill_id != nil and hash do
-                  case ESIService.get_esi_kill_mail(kill_id, hash) do
-                    {:ok, killmail_data} -> Map.merge(kill, killmail_data)
-                    _ -> kill
-                  end
-                else
-                  kill
-                end
-
-              victim = Map.get(enriched_kill, "victim") || %{}
-
-              victim_name =
-                if Map.has_key?(victim, "character_id") do
-                  character_id = Map.get(victim, "character_id")
-
-                  case ESIService.get_character_info(character_id) do
-                    {:ok, char_info} -> Map.get(char_info, "name", "Unknown Pilot")
-                    _ -> "Unknown Pilot"
-                  end
-                else
-                  "Unknown Pilot"
-                end
-
-              ship_type =
-                if Map.has_key?(victim, "ship_type_id") do
-                  ship_type_id = Map.get(victim, "ship_type_id")
-
-                  case ESIService.get_ship_type_name(ship_type_id) do
-                    {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
-                    _ -> "Unknown Ship"
-                  end
-                else
-                  "Unknown Ship"
-                end
-
-              zkb = Map.get(kill, "zkb") || %{}
-              kill_value = Map.get(zkb, "totalValue")
-
-              kill_time =
-                Map.get(kill, "killmail_time") || Map.get(enriched_kill, "killmail_time")
-
-              time_ago =
-                if kill_time do
-                  case DateTime.from_iso8601(kill_time) do
-                    {:ok, kill_datetime, _} ->
-                      diff_seconds = DateTime.diff(DateTime.utc_now(), kill_datetime)
-
-                      cond do
-                        diff_seconds < 60 -> "just now"
-                        diff_seconds < 3600 -> "#{div(diff_seconds, 60)}m ago"
-                        diff_seconds < 86400 -> "#{div(diff_seconds, 3600)}h ago"
-                        diff_seconds < 2_592_000 -> "#{div(diff_seconds, 86400)}d ago"
-                        true -> "#{div(diff_seconds, 2_592_000)}mo ago"
-                      end
-
-                    _ ->
-                      ""
-                  end
-                else
-                  ""
-                end
-
-              time_display = if time_ago != "", do: " (#{time_ago})", else: ""
-
-              value_text =
-                if kill_value do
-                  " - #{format_isk_value(kill_value)}"
-                else
-                  ""
-                end
-
-              if victim_name == "Unknown Pilot" do
-                "#{ship_type}#{value_text}#{time_display}"
-              else
-                "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_type}#{value_text}#{time_display}"
-              end
-            end)
-
-          # Add the kills field to the embed
-          fields = embed["fields"] || []
-          fields = fields ++ [%{"name" => "Recent Kills in System", "value" => kills_text, "inline" => false}]
-          Map.put(embed, "fields", fields)
-
-        {:ok, []} ->
-          Logger.info("No recent kills found for system #{system_id} from zKillboard")
-
-          # Add a message about no kills
-          fields = embed["fields"] || []
-          fields = fields ++ [
-            %{
-              "name" => "Recent Kills in System",
-              "value" => "No recent kills found for this system.",
+        discord_embed =
+          if recent_kills && recent_kills != [] do
+            # We found recent kills in this system, add them to the embed
+            recent_kills_field = %{
+              "name" => "Recent Kills",
+              "value" => format_recent_kills_list(recent_kills),
               "inline" => false
             }
-          ]
-          Map.put(embed, "fields", fields)
 
-        {:error, reason} ->
-          Logger.error(
-            "Failed to fetch kills for system #{system_id} from zKillboard: #{inspect(reason)}"
-          )
+            # Add the field to the existing embed
+            Map.update(discord_embed, "fields", [recent_kills_field], fn fields ->
+              fields ++ [recent_kills_field]
+            end)
+          else
+            discord_embed
+          end
 
-          embed
+        # Send the notification
+        send_discord_embed(discord_embed, :system_tracking)
+      else
+        # For non-licensed users after first message, send simple text
+        Logger.info("[Discord] License not valid, sending plain text system notification")
+
+        # Create plain text message using struct fields directly
+        display_name = MapSystem.format_display_name(system_struct)
+        type_desc = MapSystem.get_type_description(system_struct)
+
+        message = "New System Discovered: #{display_name} - #{type_desc}"
+
+        # Add statics for wormhole systems
+        if MapSystem.is_wormhole?(system_struct) && length(system_struct.statics) > 0 do
+          statics = Enum.map_join(system_struct.statics, ", ", &(&1["name"] || &1[:name] || ""))
+          updated_message = "#{message} - Statics: #{statics}"
+          send_message(updated_message, :system_tracking)
+        else
+          send_message(message, :system_tracking)
+        end
       end
-    else
-      embed
     end
   end
 
@@ -823,7 +594,13 @@ defmodule WandererNotifier.Notifiers.Discord do
     - feature: Optional feature to determine which channel to use
   """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_image_embed(title, description, image_url, color \\ @default_embed_color, feature \\ :general) do
+  def send_image_embed(
+        title,
+        description,
+        image_url,
+        color \\ @default_embed_color,
+        feature \\ :general
+      ) do
     Logger.info(
       "Discord.Notifier.send_image_embed called with title: #{title}, image_url: #{image_url || "nil"}, feature: #{feature}"
     )
@@ -844,8 +621,231 @@ defmodule WandererNotifier.Notifiers.Discord do
 
       payload = %{"embeds" => [embed]}
 
-      Logger.info("Discord image embed payload built, sending to Discord API with feature: #{feature}")
+      Logger.info(
+        "Discord image embed payload built, sending to Discord API with feature: #{feature}"
+      )
+
       send_payload(payload, feature)
     end
+  end
+
+  def send_new_mapped_system_notification(system) when is_map(system) do
+    if env() == :test do
+      system_id = Map.get(system, "id") || Map.get(system, "solar_system_id")
+      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
+    else
+      try do
+        Stats.increment(:systems)
+      rescue
+        _ -> :ok
+      end
+
+      # Log the original system data for debugging
+      Logger.info("[Discord] Processing system notification")
+      Logger.debug("[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}")
+
+      # Check if this is the first system notification since startup
+      is_first_notification = Stats.is_first_notification?(:system)
+
+      # Mark that we've sent the first notification if this is it
+      if is_first_notification do
+        Stats.mark_notification_sent(:system)
+        Logger.info("[Discord] Sending first system notification in enriched format")
+      end
+
+      # Convert to MapSystem struct if not already
+      system_struct =
+        if is_struct(system) && system.__struct__ == MapSystem do
+          system
+        else
+          # Create MapSystem struct from the provided data
+          MapSystem.new(system)
+        end
+
+      # Enrich with system static info for wormhole systems
+      Logger.info("[Discord] Checking system for wormhole enrichment")
+      Logger.info("[Discord] - is_wormhole?: #{MapSystem.is_wormhole?(system_struct)}")
+      Logger.info("[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}")
+      Logger.info("[Discord] - type_description: #{inspect(system_struct.type_description)}")
+      Logger.info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
+
+      system_struct =
+        if MapSystem.is_wormhole?(system_struct) && system_struct.solar_system_id do
+          Logger.info(
+            "[Discord] Enriching wormhole system with static info: #{system_struct.solar_system_id}"
+          )
+
+          # Use the existing enrich_system function instead of duplicating the logic
+          Logger.info("[Discord] Calling SystemStaticInfo.enrich_system")
+
+          enrichment_result =
+            WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(system_struct)
+
+          Logger.info("[Discord] Enrichment result: #{inspect(enrichment_result)}")
+
+          case enrichment_result do
+            {:ok, enriched_system} ->
+              Logger.info("[Discord] Successfully enriched system with static info")
+              Logger.info("[Discord] Enriched statics: #{inspect(enriched_system.statics)}")
+
+              Logger.info(
+                "[Discord] Enriched static_details: #{inspect(enriched_system.static_details)}"
+              )
+
+              Logger.info(
+                "[Discord] Enriched class_title: #{inspect(enriched_system.class_title)}"
+              )
+
+              enriched_system
+
+            {:error, reason} ->
+              Logger.warning(
+                "[Discord] Failed to enrich system with static info: #{inspect(reason)}"
+              )
+
+              system_struct
+          end
+        else
+          Logger.info(
+            "[Discord] System not a wormhole or missing solar_system_id, skipping enrichment"
+          )
+
+          system_struct
+        end
+
+      # Log the enriched MapSystem struct for debugging
+      Logger.info("[Discord] Enriched MapSystem struct:")
+      Logger.info("[Discord] - name: #{inspect(system_struct.name)}")
+      Logger.info("[Discord] - original_name: #{inspect(system_struct.original_name)}")
+      Logger.info("[Discord] - temporary_name: #{inspect(system_struct.temporary_name)}")
+      Logger.info("[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}")
+      Logger.info("[Discord] - type_description: #{inspect(system_struct.type_description)}")
+      Logger.info("[Discord] - statics: #{inspect(system_struct.statics)}")
+      Logger.info("[Discord] - static_details: #{inspect(system_struct.static_details)}")
+      Logger.info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
+      Logger.info("[Discord] - class_title: #{inspect(system_struct.class_title)}")
+      Logger.info("[Discord] - effect_name: #{inspect(system_struct.effect_name)}")
+      Logger.info("[Discord] - region_name: #{inspect(system_struct.region_name)}")
+
+      if is_first_notification || License.status().valid do
+        # Create notification with StructuredFormatter
+        generic_notification = StructuredFormatter.format_system_notification(system_struct)
+        discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+
+        # Add recent kills to the embed if available
+        solar_system_id = system_struct.solar_system_id
+
+        recent_kills =
+          WandererNotifier.Services.KillProcessor.get_recent_kills()
+          |> Enum.filter(fn kill ->
+            kill_system_id = get_in(kill, ["esi_data", "solar_system_id"])
+            kill_system_id == solar_system_id
+          end)
+
+        discord_embed =
+          if recent_kills && recent_kills != [] do
+            # We found recent kills in this system, add them to the embed
+            recent_kills_field = %{
+              "name" => "Recent Kills",
+              "value" => format_recent_kills_list(recent_kills),
+              "inline" => false
+            }
+
+            # Add the field to the existing embed
+            Map.update(discord_embed, "fields", [recent_kills_field], fn fields ->
+              fields ++ [recent_kills_field]
+            end)
+          else
+            discord_embed
+          end
+
+        # Send the notification
+        send_discord_embed(discord_embed, :system_mapping)
+      else
+        # For non-licensed users after first message, send plain text
+        Logger.info("[Discord] License not valid, sending plain text system notification")
+
+        # Create plain text message using struct fields directly
+        formatted_name = MapSystem.format_display_name(system_struct)
+        type_desc = MapSystem.get_type_description(system_struct)
+
+        message = "New System Mapped: #{formatted_name} - #{type_desc}"
+
+        # Add statics for wormhole systems
+        if MapSystem.is_wormhole?(system_struct) && length(system_struct.statics) > 0 do
+          statics = Enum.map_join(system_struct.statics, ", ", &(&1["name"] || &1[:name] || ""))
+          updated_message = "#{message} - Statics: #{statics}"
+          send_message(updated_message, :system_mapping)
+        else
+          send_message(message, :system_mapping)
+        end
+      end
+    end
+  end
+
+  # Format a list of recent kills for system notification
+  defp format_recent_kills_list(kills) when is_list(kills) do
+    Logger.info("[Discord.format_recent_kills_list] Formatting #{length(kills)} kills")
+
+    Enum.map_join(kills, "\n", fn kill ->
+      # Extract kill ID using various possible keys
+      kill_id =
+        Map.get(kill, "killmail_id") ||
+          Map.get(kill, :killmail_id) ||
+          get_in(kill, ["data", "killmail_id"]) ||
+          get_in(kill, [:data, :killmail_id])
+
+      # Log the kill ID for debugging
+      Logger.debug("[Discord.format_recent_kills_list] Processing kill ID: #{kill_id}")
+
+      # Get victim data, handling different formats
+      victim =
+        Map.get(kill, "victim") ||
+          Map.get(kill, :victim) ||
+          get_in(kill, ["data", "victim"]) ||
+          get_in(kill, [:data, :victim]) ||
+          %{}
+
+      # Extract victim name, checking multiple possible key formats
+      victim_name =
+        Map.get(victim, "character_name") ||
+          Map.get(victim, :character_name) ||
+          "Unknown Pilot"
+
+      # Extract ship name
+      ship_name =
+        Map.get(victim, "ship_type_name") ||
+          Map.get(victim, :ship_type_name) ||
+          "Unknown Ship"
+
+      # Get zkb data to extract value
+      zkb =
+        Map.get(kill, "zkb") ||
+          Map.get(kill, :zkb) ||
+          get_in(kill, ["data", "zkb"]) ||
+          get_in(kill, [:data, :zkb]) ||
+          %{}
+
+      # Extract value from zkb data
+      value =
+        Map.get(zkb, "totalValue") ||
+          Map.get(zkb, :totalValue)
+
+      formatted_value =
+        if value,
+          do: " - #{format_isk_value(value)}",
+          else: ""
+
+      # Create formatted string with zkillboard link
+      "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_name}#{formatted_value}"
+    end)
+  end
+
+  defp format_recent_kills_list(_), do: "No recent kills"
+
+  # -- GenServer callback for behaviour --
+  @impl GenServer
+  def init(init_arg) do
+    {:ok, init_arg}
   end
 end

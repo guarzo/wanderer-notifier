@@ -5,7 +5,7 @@ defmodule WandererNotifier.MixProject do
     [
       app: :wanderer_notifier,
       version: "0.1.0",
-      elixir: "~> 1.12",
+      elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases()
@@ -47,7 +47,10 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"]
+        overlays: ["rel/overlays"],
+        config_providers: [
+          {Config.Reader, {:system, "RELEASE_SYS_CONFIG", "/app/releases/sys.config"}}
+        ]
       ]
     ]
   end

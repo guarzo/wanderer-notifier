@@ -3,27 +3,43 @@ defmodule WandererNotifier.Api.ESI.Service do
   Service for accessing EVE Online ESI data.
   Provides higher-level functions for retrieving and processing game data.
   """
+  @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
+
   require Logger
   alias WandererNotifier.Api.ESI.Client, as: ESIClient
 
-  def get_esi_kill_mail(kill_id, killmail_hash, _opts \\ []) do
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_killmail(kill_id, killmail_hash) do
     ESIClient.get_killmail(kill_id, killmail_hash)
   end
 
-  def get_character_info(eve_id, _opts \\ []) do
-    ESIClient.get_character_info(eve_id)
+  # Legacy/backwards compatibility
+  def get_esi_kill_mail(kill_id, killmail_hash, _opts \\ []) do
+    get_killmail(kill_id, killmail_hash)
   end
 
-  def get_corporation_info(eve_id, _opts \\ []) do
-    ESIClient.get_corporation_info(eve_id)
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_character_info(character_id, _opts \\ []) do
+    ESIClient.get_character_info(character_id)
   end
 
-  def get_alliance_info(eve_id, _opts \\ []) do
-    ESIClient.get_alliance_info(eve_id)
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_corporation_info(corporation_id, _opts \\ []) do
+    ESIClient.get_corporation_info(corporation_id)
+  end
+
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_alliance_info(alliance_id, _opts \\ []) do
+    ESIClient.get_alliance_info(alliance_id)
   end
 
   def get_ship_type_name(ship_type_id, _opts \\ []) do
     ESIClient.get_universe_type(ship_type_id)
+  end
+
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_type_info(type_id, _opts \\ []) do
+    ESIClient.get_universe_type(type_id)
   end
 
   def search_inventory_type(query, strict \\ true, _opts \\ []) do
@@ -36,6 +52,15 @@ defmodule WandererNotifier.Api.ESI.Service do
   """
   def get_solar_system_name(system_id, _opts \\ []) do
     ESIClient.get_solar_system(system_id)
+  end
+
+  @doc """
+  Alias for get_solar_system_name to maintain consistent naming.
+  Fetches solar system info from ESI given a system_id.
+  """
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_system_info(system_id, opts \\ []) do
+    get_solar_system_name(system_id, opts)
   end
 
   @doc """
