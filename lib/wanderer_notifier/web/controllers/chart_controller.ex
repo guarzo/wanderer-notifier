@@ -213,23 +213,45 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         |> put_resp_content_type("application/json")
         |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
       else
+        # Get the appropriate channel ID based on chart type
+        channel_id =
+          case chart_type do
+            type when type in [:activity_summary, :activity_timeline, :activity_distribution] ->
+              # Use the activity charts channel ID
+              channel = Config.discord_channel_id_for_activity_charts()
+              Logger.info("Using Discord channel ID for activity charts: #{channel}")
+              channel
+
+            _ ->
+              # For TPS charts, use the TPS charts channel or the main channel
+              channel = Config.discord_channel_id_for(:tps_charts)
+              Logger.info("Using Discord channel ID for TPS charts: #{channel}")
+              channel
+          end
+
         # Determine which adapter to use based on chart type
         result =
           case chart_type do
             :damage_final_blows ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
 
             :combined_losses ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
 
             :kill_activity ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description)
+              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
 
             :activity_summary ->
               # Get activity data first for chart generation
               case CharactersClient.get_character_activity() do
                 {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord("activity_summary", data)
+                  ActivityChartAdapter.send_chart_to_discord(
+                    data,
+                    title,
+                    "activity_summary",
+                    description,
+                    channel_id
+                  )
 
                 _ ->
                   {:error, "Failed to get activity data"}
@@ -239,7 +261,13 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
               # Get activity data first for chart generation
               case CharactersClient.get_character_activity() do
                 {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord("activity_timeline", data)
+                  ActivityChartAdapter.send_chart_to_discord(
+                    data,
+                    title,
+                    "activity_timeline",
+                    description,
+                    channel_id
+                  )
 
                 _ ->
                   {:error, "Failed to get activity data"}
@@ -250,8 +278,11 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
               case CharactersClient.get_character_activity() do
                 {:ok, data} ->
                   ActivityChartAdapter.send_chart_to_discord(
+                    data,
+                    title,
                     "activity_distribution",
-                    data
+                    description,
+                    channel_id
                   )
 
                 _ ->
@@ -310,8 +341,12 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             nil
         end
 
+      # Get the appropriate channel ID for activity charts
+      channel_id = Config.discord_channel_id_for_activity_charts()
+      Logger.info("Using Discord channel ID for activity charts: #{channel_id}")
+
       # Use the ActivityChartAdapter directly to send all charts
-      results = ActivityChartAdapter.send_all_charts_to_discord(activity_data)
+      results = ActivityChartAdapter.send_all_charts_to_discord(activity_data, channel_id)
 
       # Format the results for proper JSON encoding
       formatted_results =

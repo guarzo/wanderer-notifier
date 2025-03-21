@@ -51,13 +51,13 @@ defmodule WandererNotifier.Core.Config do
     map_tools: %{
       enabled_var: "ENABLE_MAP_TOOLS",
       channel_var: "DISCORD_MAP_TOOLS_CHANNEL_ID",
-      default_enabled: false,
+      default_enabled: true,
       description: "Map tools integration"
     },
     charts: %{
       enabled_var: "ENABLE_CHARTS",
       channel_var: "DISCORD_CHARTS_CHANNEL_ID",
-      default_enabled: false,
+      default_enabled: true,
       description: "Chart generation"
     },
     tps_charts: %{
@@ -69,7 +69,7 @@ defmodule WandererNotifier.Core.Config do
     activity_charts: %{
       enabled_var: "ENABLE_ACTIVITY_CHARTS",
       channel_var: "DISCORD_ACTIVITY_CHARTS_CHANNEL_ID",
-      default_enabled: false,
+      default_enabled: true,
       description: "Activity charts generation and notifications"
     }
   }
@@ -87,21 +87,21 @@ defmodule WandererNotifier.Core.Config do
   def discord_channel_id do
     Application.get_env(:wanderer_notifier, :discord_channel_id)
   end
-  
+
   @doc """
   Returns the Discord channel ID for a specific feature.
   Falls back to the main channel ID if a feature-specific channel isn't defined.
-  
+
   ## Parameters
     - feature: The feature to get the channel ID for (e.g., :kill_notifications)
   """
   def discord_channel_id_for(feature) when is_atom(feature) do
     feature_config = Map.get(@features, feature)
-    
+
     if feature_config do
       channel_var = feature_config.channel_var
       channel_id = System.get_env(channel_var)
-      
+
       if is_binary(channel_id) && channel_id != "" do
         channel_id
       else
@@ -112,6 +112,36 @@ defmodule WandererNotifier.Core.Config do
       # Unknown feature, use the main channel
       Logger.warning("Unknown feature #{feature} when looking up Discord channel ID")
       discord_channel_id()
+    end
+  end
+
+  @doc """
+  Returns the Discord channel ID specifically for activity charts.
+  This function implements the priority order:
+  1. DISCORD_MAP_CHARTS_CHANNEL_ID (newer name)
+  2. DISCORD_ACTIVITY_CHARTS_CHANNEL_ID (older name)
+  3. Main Discord channel ID
+
+  This specialized function is needed because these features
+  use multiple environment variables for backward compatibility.
+  """
+  def discord_channel_id_for_activity_charts do
+    # Check for map charts channel ID first (newer name)
+    map_charts_channel = System.get_env("DISCORD_MAP_CHARTS_CHANNEL_ID")
+    activity_charts_channel = System.get_env("DISCORD_ACTIVITY_CHARTS_CHANNEL_ID")
+
+    cond do
+      # If map charts channel is set, use it (highest priority)
+      is_binary(map_charts_channel) && map_charts_channel != "" ->
+        map_charts_channel
+
+      # If activity charts channel is set, use it (second priority)
+      is_binary(activity_charts_channel) && activity_charts_channel != "" ->
+        activity_charts_channel
+
+      # Otherwise fall back to main channel ID
+      true ->
+        discord_channel_id()
     end
   end
 
@@ -128,20 +158,20 @@ defmodule WandererNotifier.Core.Config do
   def corp_tools_api_token do
     Application.get_env(:wanderer_notifier, :corp_tools_api_token)
   end
-  
+
   @doc """
   Returns whether a specific feature is enabled based on its environment variable.
-  
+
   ## Parameters
     - feature: The feature to check (atom matching a key in @features)
   """
   def feature_enabled?(feature) when is_atom(feature) do
     feature_config = Map.get(@features, feature)
-    
+
     if feature_config do
       env_var = feature_config.enabled_var
       default_enabled = feature_config.default_enabled
-      
+
       case System.get_env(env_var) do
         "true" -> true
         "1" -> true
@@ -165,7 +195,7 @@ defmodule WandererNotifier.Core.Config do
     explicit_charts_enabled = feature_enabled?(:charts)
     corp_tools_enabled = feature_enabled?(:corp_tools)
     map_tools_enabled = feature_enabled?(:map_tools)
-    
+
     explicit_charts_enabled || corp_tools_enabled || map_tools_enabled
   end
 
@@ -224,7 +254,9 @@ defmodule WandererNotifier.Core.Config do
   """
   def chart_service_port do
     case System.get_env("CHART_SERVICE_PORT") do
-      nil -> @default_chart_service_port
+      nil ->
+        @default_chart_service_port
+
       port ->
         case Integer.parse(port) do
           {port_num, _} when port_num > 0 -> port_num
@@ -360,8 +392,9 @@ defmodule WandererNotifier.Core.Config do
   """
   def web_port do
     case System.get_env("PORT") do
-      nil -> 
+      nil ->
         Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
+
       port ->
         case Integer.parse(port) do
           {port_num, _} when port_num > 0 -> port_num
@@ -497,20 +530,21 @@ defmodule WandererNotifier.Core.Config do
     # 7 days in seconds
     7 * 86400
   end
-  
+
   @doc """
   Returns a map with information about all defined features.
   Useful for displaying feature status in the web dashboard.
   """
   def get_all_features do
     Enum.reduce(@features, %{}, fn {feature_key, feature_config}, acc ->
-      display_name = feature_key
+      display_name =
+        feature_key
         |> Atom.to_string()
         |> String.replace("_", " ")
-        |> String.split
+        |> String.split()
         |> Enum.map(&String.capitalize/1)
         |> Enum.join(" ")
-      
+
       feature_data = %{
         name: feature_key,
         display_name: display_name,
@@ -520,7 +554,7 @@ defmodule WandererNotifier.Core.Config do
         channel_id: discord_channel_id_for(feature_key),
         channel_var: feature_config.channel_var
       }
-      
+
       Map.put(acc, feature_key, feature_data)
     end)
   end

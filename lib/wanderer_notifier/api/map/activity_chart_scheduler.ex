@@ -14,8 +14,9 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   @chart_configs [
     %{
       type: :activity_summary,
-      title: "Character Activity",
-      description: "Top 5 most active characters showing connections, passages, and signatures"
+      title: "Character Activity Summary",
+      description:
+        "Top characters by connections, passages, and signatures in the last 24 hours.\nData is refreshed daily."
     }
     # Timeline and distribution charts removed
   ]
@@ -125,6 +126,15 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     end
   end
 
+  # Get the channel ID for activity charts with proper fallback
+  defp get_channel_id do
+    channel_id = Config.discord_channel_id_for_activity_charts()
+
+    # Use debug level for detailed channel variables, info level will show the actual ID being used
+    Logger.debug("Using activity charts channel ID: #{channel_id}")
+    channel_id
+  end
+
   defp send_charts do
     Logger.info("Sending scheduled activity charts to Discord")
 
@@ -133,6 +143,10 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
     case activity_data_result do
       {:ok, activity_data} ->
+        # Get the channel ID for activity charts
+        channel_id = get_channel_id()
+        Logger.info("Sending activity charts to Discord channel: #{channel_id}")
+
         # Send each chart and collect results
         results =
           Enum.map(@chart_configs, fn config ->
@@ -145,7 +159,10 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
                   :activity_summary ->
                     WandererNotifier.ChartService.ActivityChartAdapter.send_chart_to_discord(
                       activity_data,
-                      config.title
+                      config.title,
+                      "activity_summary",
+                      config.description,
+                      channel_id
                     )
 
                   :activity_timeline ->
@@ -156,7 +173,8 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
                         WandererNotifier.ChartService.send_chart_to_discord(
                           url,
                           "Activity Timeline",
-                          "Activity over time"
+                          "Activity over time",
+                          channel_id
                         )
 
                       error ->

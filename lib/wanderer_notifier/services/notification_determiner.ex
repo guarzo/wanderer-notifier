@@ -180,13 +180,11 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if !victim_tracked && victim_id_str do
       direct_cache_key = "tracked:character:#{victim_id_str}"
       direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
-
+      ^victim_tracked = direct_tracked
       if direct_tracked do
         Logger.info(
           "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
         )
-
-        victim_tracked = true
       end
     end
 

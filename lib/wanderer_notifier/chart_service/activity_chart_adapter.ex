@@ -198,7 +198,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
             }
           }
 
-          {:ok, chart_data, "Character Activity", options}
+          {:ok, chart_data, "Character Activity Summary", options}
         else
           {:error, "No character data available"}
         end
@@ -566,8 +566,33 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
             true -> "EVE Online Character Activity"
           end
 
+        # Create a more informative description
+        enhanced_description =
+          if actual_description do
+            actual_description
+          else
+            case actual_chart_type do
+              "activity_summary" ->
+                "Top characters by connections, passages, and signatures in the last 24 hours"
+
+              "activity_timeline" ->
+                "Character activity trends over time"
+
+              "activity_distribution" ->
+                "Distribution of character activity by type"
+
+              _ ->
+                "Character activity in EVE Online"
+            end
+          end
+
         # Send the embed with the chart and convert response format
-        case ChartService.send_chart_to_discord(url, embed_title, actual_description, channel_id) do
+        case ChartService.send_chart_to_discord(
+               url,
+               embed_title,
+               enhanced_description,
+               channel_id
+             ) do
           :ok ->
             # Return standardized format with URL and title for caller
             {:ok, url, embed_title}
@@ -597,16 +622,28 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     - A map of chart types to results
   """
   def send_all_charts_to_discord(activity_data, channel_id \\ nil) do
+    # Use provided channel ID or determine the appropriate channel with fallbacks
+    actual_channel_id =
+      if is_nil(channel_id) do
+        WandererNotifier.Core.Config.discord_channel_id_for_activity_charts()
+      else
+        channel_id
+      end
+
+    Logger.info("Sending activity charts to Discord channel: #{actual_channel_id}")
+
     # Chart types and their descriptions
     charts = [
       {"activity_summary", "Character Activity Summary",
-       "Top characters by connections, passages, and signatures"}
+       "Top characters by connections, passages, and signatures in the last 24 hours.\nData is refreshed daily."}
       # Timeline and distribution charts removed
     ]
 
     # Send each chart and collect results
     Enum.reduce(charts, %{}, fn {chart_type, title, description}, results ->
-      result = send_chart_to_discord(activity_data, title, chart_type, description, channel_id)
+      result =
+        send_chart_to_discord(activity_data, title, chart_type, description, actual_channel_id)
+
       Map.put(results, chart_type, result)
     end)
   end
