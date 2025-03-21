@@ -7,43 +7,50 @@ echo "Elixir version: $(elixir --version | head -1)"
 echo "Node.js version: $(node --version)"
 echo "Current directory: $(pwd)"
 
-# TEMPORARY DEBUG: Log token information for validation
-if [ "$MIX_ENV" = "prod" ]; then
-  # Get first 8 chars of token safely with cut instead of parameter expansion
-  FIRST_CHARS=""
-  if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then
-    FIRST_CHARS=$(echo "$WANDERER_PRODUCTION_BOT_TOKEN" | cut -c1-8)
-    echo "TEMPORARY DEBUG: WANDERER_PRODUCTION_BOT_TOKEN first 8 chars: ${FIRST_CHARS}..."
+# Minimal token debugging - only show first 3 chars
+if [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then
+  ENV_TOKEN_PREFIX=$(echo "$WANDERER_PRODUCTION_BOT_TOKEN" | cut -c1-3)
+  echo "DEBUG: Environment has WANDERER_PRODUCTION_BOT_TOKEN starting with: ${ENV_TOKEN_PREFIX}..."
+else
+  echo "DEBUG: Environment has NO WANDERER_PRODUCTION_BOT_TOKEN set"
+fi
+
+if [ -n "$BOT_API_TOKEN" ]; then
+  API_TOKEN_PREFIX=$(echo "$BOT_API_TOKEN" | cut -c1-3)
+  echo "DEBUG: Environment has BOT_API_TOKEN starting with: ${API_TOKEN_PREFIX}..."
+else
+  echo "DEBUG: Environment has NO BOT_API_TOKEN set"
+fi
+
+# Check the baked-in token file
+BAKED_TOKEN_LINE=$(grep "production_bot_token:" /app/releases/*/runtime.exs | tail -1)
+if [ -n "$BAKED_TOKEN_LINE" ]; then
+  # Extract the token value - assumes format: production_bot_token: "TOKEN"
+  BAKED_TOKEN=$(echo "$BAKED_TOKEN_LINE" | sed 's/.*production_bot_token: "\([^"]*\)".*/\1/')
+  if [ -n "$BAKED_TOKEN" ]; then
+    BAKED_PREFIX=$(echo "$BAKED_TOKEN" | cut -c1-3)
+    echo "DEBUG: Baked-in token found in release files starting with: ${BAKED_PREFIX}..."
   else
-    echo "TEMPORARY DEBUG: WANDERER_PRODUCTION_BOT_TOKEN not set"
+    echo "DEBUG: Could not extract baked-in token value from: $BAKED_TOKEN_LINE"
   fi
-
-  echo "TEMPORARY DEBUG: Searching for baked-in token in release files..."
-  # Try multiple locations where the token might be stored
-  echo "In /app/releases:"
-  grep -r "production_bot_token:" /app/releases 2>/dev/null || echo "Not found in /app/releases"
-
-  echo "In /app/lib:"
-  grep -r "production_bot_token:" /app/lib 2>/dev/null || echo "Not found in /app/lib"
-
-  echo "In /app/config:"
-  grep -r "production_bot_token:" /app/config 2>/dev/null || echo "Not found in /app/config"
-
-  # Check sys.config which might have the token
-  echo "In sys.config:"
-  find /app -name "sys.config" -exec grep -l "token" {} \; -exec cat {} \; 2>/dev/null || echo "Not found in sys.config"
+else
+  echo "DEBUG: No baked-in token found in release files"
 fi
 
 # In production mode, we don't use environment variables for security
 # The token should be baked into the release
-if [ "$MIX_ENV" != "prod" ]; then
+if [ "$MIX_ENV" = "prod" ]; then
+  # Force use of baked-in token by unsetting environment variables in production
+  echo "Running in production mode - clearing token environment variables to use baked-in configuration"
+  # Unset the environment variables to ensure we use the baked-in values
+  unset WANDERER_PRODUCTION_BOT_TOKEN
+  unset BOT_API_TOKEN
+else
   # Only in development/test environments
   if [ -z "$BOT_API_TOKEN" ] && [ -n "$WANDERER_PRODUCTION_BOT_TOKEN" ]; then
     echo "Setting BOT_API_TOKEN from WANDERER_PRODUCTION_BOT_TOKEN (development only)"
     export BOT_API_TOKEN="$WANDERER_PRODUCTION_BOT_TOKEN"
   fi
-else
-  echo "Running in production mode - using baked-in configuration only"
 fi
 
 # Debug some key environment variables

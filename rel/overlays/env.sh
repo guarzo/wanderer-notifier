@@ -21,11 +21,16 @@ export RELEASE_COOKIE="${RELEASE_COOKIE:-wanderer_notifier_cookie}"
 export RELEASE_NODE="${RELEASE_NODE:-wanderer_notifier@127.0.0.1}"
 
 # Bot API configuration
-# In production mode (the default for releases), we don't use environment variables for the token
+# In production mode (the default for releases), we don't use environment variables for token
 # for security reasons. The token should be baked into the release.
-# These environment variables only apply in development/test modes.
-export WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN:-}"
-if [ "$MIX_ENV" != "prod" ]; then
+if [ "$MIX_ENV" = "prod" ]; then
+  # Explicitly unset these variables in production to ensure we use the baked-in values
+  unset WANDERER_PRODUCTION_BOT_TOKEN
+  unset BOT_API_TOKEN
+  echo "Running in production mode - token environment variables cleared"
+else
+  # These environment variables only apply in development/test modes
+  export WANDERER_PRODUCTION_BOT_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN:-}"
   # Only set BOT_API_TOKEN from environment in non-production environments
   if [ -z "${BOT_API_TOKEN}" ] && [ -n "${WANDERER_PRODUCTION_BOT_TOKEN}" ]; then
     export BOT_API_TOKEN="${WANDERER_PRODUCTION_BOT_TOKEN}"

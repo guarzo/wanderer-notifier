@@ -345,6 +345,14 @@ defmodule WandererNotifier.Core.Config do
           production_token = Application.get_env(:wanderer_notifier, :production_bot_token)
 
           if is_binary(production_token) && production_token != "" do
+            # Log that we're using the baked-in token, but don't show the token itself
+            require Logger
+            prefix = String.slice(production_token, 0, 3)
+
+            Logger.info(
+              "Using baked-in production token from application config (starts with: #{prefix}...)"
+            )
+
             production_token
           else
             # As a fallback, check the production environment variable
@@ -352,6 +360,13 @@ defmodule WandererNotifier.Core.Config do
             backup_token = System.get_env(@production_bot_token_env)
 
             if is_binary(backup_token) && backup_token != "" do
+              require Logger
+              prefix = String.slice(backup_token, 0, 3)
+
+              Logger.warning(
+                "Using token from environment variable rather than baked-in value (starts with: #{prefix}...)"
+              )
+
               backup_token
             else
               require Logger

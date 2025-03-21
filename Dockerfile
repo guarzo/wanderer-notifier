@@ -73,9 +73,10 @@ RUN mix release && \
 # --- Runtime Stage ---
 FROM elixir:1.14-otp-25 AS app
 
-# Accept and set the production bot token environment variable from build arg
+# Accept build argument but DON'T set it as an environment variable in the runtime container
+# This ensures we use the baked-in value from the application config
 ARG WANDERER_PRODUCTION_BOT_TOKEN
-ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN}
+# ENV WANDERER_PRODUCTION_BOT_TOKEN=${WANDERER_PRODUCTION_BOT_TOKEN} -- REMOVED to prevent environment variable use
 
 # Only set default values for environment variables
 ENV DISCORD_BOT_TOKEN="" \

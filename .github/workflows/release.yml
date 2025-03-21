@@ -104,15 +104,8 @@ jobs:
       - name: Test Docker image
         run: |
           echo "Testing Docker image startup..."
-          # Test with more comprehensive checks for the token in various locations
-          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Running token verification checks...' && \
-            echo 'CHECKS:' && \
-            echo '1. Checking runtime.exs:' && grep -r 'production_bot_token:' /app/config 2>/dev/null || echo 'Not found in config' && \
-            echo '2. Checking release files:' && grep -r 'production_bot_token:' /app/releases 2>/dev/null || echo 'Not found in releases' && \
-            echo '3. Checking lib directories:' && grep -r 'production_bot_token:' /app/lib 2>/dev/null || echo 'Not found in lib' && \
-            echo '4. Check sys.config:' && find /app -name 'sys.config' -exec cat {} \; 2>/dev/null || echo 'sys.config not found' && \
-            echo '5. Checking overlays directory:' && find /app -path '*/overlays/*' -type f -exec grep -l 'production_bot_token' {} \; 2>/dev/null && \
-            echo 'Verification complete'"
+          # Basic check to verify the container can start
+          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Verifying container startup...' && echo 'Version: ${{ steps.version.outputs.docker_version }}' && echo 'Container started successfully'"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
