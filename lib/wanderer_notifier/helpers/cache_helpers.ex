@@ -160,26 +160,40 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   Also checks both "map:characters" and "tracked:characters" keys for comprehensive tracking.
   """
   def get_tracked_characters do
+    # Merge characters from both sources, removing duplicates
     map_characters = get_characters_from_cache("map:characters")
     tracked_characters = get_characters_from_cache("tracked:characters")
+    all_characters = merge_characters_lists(map_characters, tracked_characters)
 
-    # Merge both lists, avoiding duplicates based on character_id
-    merged_characters = merge_characters_lists(map_characters, tracked_characters)
-
-    Logger.debug(
-      "CacheHelpers.get_tracked_characters: Retrieved #{length(merged_characters)} total characters (#{length(map_characters)} from map:characters, #{length(tracked_characters)} from tracked:characters)"
+    Logger.info(
+      "Retrieved #{length(all_characters)} tracked characters (#{length(map_characters)} from map, #{length(tracked_characters)} from tracked)"
     )
 
-    # Log sample for debugging
-    if length(merged_characters) > 0 do
-      sample = Enum.take(merged_characters, min(2, length(merged_characters)))
-      Logger.debug("CacheHelpers.get_tracked_characters: Sample data: #{inspect(sample)}")
-    end
+    # Log a sample of eve_ids for debugging
+    sample_ids =
+      all_characters
+      |> Enum.take(5)
+      |> Enum.map(fn char ->
+        if is_map(char) do
+          eve_id =
+            cond do
+              Map.has_key?(char, :eve_id) -> char.eve_id
+              Map.has_key?(char, "eve_id") -> char["eve_id"]
+              true -> nil
+            end
 
-    # Ensure all characters are properly cached for direct lookup
-    ensure_characters_individual_cache(merged_characters)
+          "#{inspect(char)} with eve_id: #{eve_id}"
+        else
+          "#{inspect(char)}"
+        end
+      end)
 
-    merged_characters
+    Logger.debug("Sample character data: #{inspect(sample_ids)}")
+
+    # Ensure all characters are cached individually for direct lookup
+    ensure_characters_individual_cache(all_characters)
+
+    all_characters
   end
 
   @doc """
@@ -384,6 +398,8 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   # Helper function to extract character ID from different formats
   defp extract_character_id(char) do
     cond do
+      is_map(char) && Map.has_key?(char, :eve_id) -> to_string(char.eve_id)
+      is_map(char) && Map.has_key?(char, "eve_id") -> to_string(char["eve_id"])
       is_map(char) && Map.has_key?(char, :character_id) -> to_string(char.character_id)
       is_map(char) && Map.has_key?(char, "character_id") -> to_string(char["character_id"])
       is_integer(char) || is_binary(char) -> to_string(char)

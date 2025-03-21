@@ -141,28 +141,57 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         do: Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id"),
         else: "unknown"
 
+    Logger.debug("CHARACTER TRACKING: Checking kill #{kill_id} for tracked characters")
+
     # Check victim
     victim = Map.get(kill_data, "victim") || Map.get(kill_data, :victim) || %{}
     victim_id = Map.get(victim, "character_id") || Map.get(victim, :character_id)
     victim_id_str = if victim_id, do: to_string(victim_id), else: nil
 
-    # Check if victim is tracked using direct cache lookup
-    victim_tracked =
-      if victim_id_str do
-        cache_key = "tracked:character:#{victim_id_str}"
-        is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+    # Log victim information for debugging
+    if victim_id_str do
+      Logger.debug("CHARACTER TRACKING: Victim ID in kill #{kill_id} is #{victim_id_str}")
+    else
+      Logger.debug("CHARACTER TRACKING: No victim character ID found in kill #{kill_id}")
+    end
 
-        if is_tracked do
-          Logger.debug("CHARACTER TRACKING: Victim character cache hit: #{cache_key}")
-        end
+    # Get all tracked character IDs for comparison (do this early so we can use for both victim and attackers)
+    all_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
 
-        is_tracked
-      else
-        false
+    all_character_ids =
+      Enum.map(all_characters, fn char ->
+        # Only use eve_id for consistency
+        eve_id = Map.get(char, "eve_id") || Map.get(char, :eve_id)
+        if eve_id, do: to_string(eve_id), else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    # For debugging, log sample character IDs
+    sample_character_ids = Enum.take(all_character_ids, min(5, length(all_character_ids)))
+
+    Logger.info(
+      "CHARACTER TRACKING: Using #{length(all_character_ids)} tracked characters. Sample: #{inspect(sample_character_ids)}"
+    )
+
+    # Check if victim is tracked against eve_id list
+    victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
+
+    # Also try direct cache lookup for victim
+    if !victim_tracked && victim_id_str do
+      direct_cache_key = "tracked:character:#{victim_id_str}"
+      direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
+
+      if direct_tracked do
+        Logger.info(
+          "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
+        )
+
+        victim_tracked = true
       end
+    end
 
     if victim_tracked do
-      Logger.debug(
+      Logger.info(
         "CHARACTER TRACKING: Victim with ID #{victim_id_str} in kill #{kill_id} is tracked"
       )
 
@@ -171,7 +200,10 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       # Check attackers
       attackers = Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
 
-      # Extract all attacker character IDs
+      # Log attackers count for debugging
+      Logger.debug("CHARACTER TRACKING: Kill #{kill_id} has #{length(attackers)} attackers")
+
+      # Now extract all attacker IDs for checking
       attacker_ids =
         attackers
         |> Enum.map(fn attacker ->
@@ -180,30 +212,58 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         end)
         |> Enum.reject(&is_nil/1)
 
-      # Find tracked attackers using direct cache lookup
-      tracked_attacker_ids =
-        Enum.filter(attacker_ids, fn id ->
-          cache_key = "tracked:character:#{id}"
-          is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+      Logger.debug(
+        "CHARACTER TRACKING: Found #{length(attacker_ids)} attacker IDs in kill #{kill_id}: #{inspect(attacker_ids)}"
+      )
+
+      # Check if any attacker is in our tracked characters
+      matching_attackers =
+        attacker_ids
+        |> Enum.filter(fn id ->
+          is_tracked = Enum.member?(all_character_ids, id)
 
           if is_tracked do
-            Logger.debug("CHARACTER TRACKING: Attacker character cache hit: #{cache_key}")
+            Logger.info("CHARACTER TRACKING: Found tracked attacker #{id} in kill #{kill_id}")
           end
 
           is_tracked
         end)
 
-      tracked_count = length(tracked_attacker_ids)
+      # Also try direct cache lookup for additional safety
+      tracked_via_cache =
+        Enum.any?(attacker_ids, fn id ->
+          cache_key = "tracked:character:#{id}"
+          is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
 
-      if tracked_count > 0 do
-        Logger.debug(
-          "CHARACTER TRACKING: Found #{tracked_count} tracked attackers in kill #{kill_id}: #{inspect(tracked_attacker_ids)}"
-        )
+          if is_tracked do
+            Logger.info(
+              "CHARACTER TRACKING: Attacker #{id} found via direct cache key #{cache_key}"
+            )
+          end
 
-        true
-      else
-        Logger.debug("CHARACTER TRACKING: No tracked characters found in kill #{kill_id}")
-        false
+          is_tracked
+        end)
+
+      tracked_attacker_count = length(matching_attackers)
+
+      cond do
+        tracked_attacker_count > 0 ->
+          Logger.info(
+            "CHARACTER TRACKING: Found #{tracked_attacker_count} tracked attackers in kill #{kill_id}: #{inspect(matching_attackers)}"
+          )
+
+          true
+
+        tracked_via_cache ->
+          Logger.info(
+            "CHARACTER TRACKING: Found tracked attacker via direct cache lookup in kill #{kill_id}"
+          )
+
+          true
+
+        true ->
+          Logger.debug("CHARACTER TRACKING: No tracked characters found in kill #{kill_id}")
+          false
       end
     end
   end

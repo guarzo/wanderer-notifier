@@ -228,6 +228,10 @@ defmodule WandererNotifier.Services.KillProcessor do
       victim_id = get_in(killmail.esi_data || %{}, ["victim", "character_id"])
       victim_ship_id = get_in(killmail.esi_data || %{}, ["victim", "ship_type_id"])
 
+      Logger.debug(
+        "VICTIM ID EXTRACT: Using character_id #{victim_id} from killmail, will match against eve_id in tracked characters"
+      )
+
       # Extract attacker info if available
       attackers = get_in(killmail.esi_data || %{}, ["attackers"]) || []
 
@@ -240,6 +244,17 @@ defmodule WandererNotifier.Services.KillProcessor do
         "📥 KILL RECEIVED: ID=#{kill_id} in system=#{system_info}, victim_id=#{victim_id}, victim_ship=#{victim_ship_id}, attackers=#{Enum.count(attackers)}"
       )
 
+      # Log more details about attackers for debugging
+      if length(attacker_ids) > 0 do
+        Logger.debug(
+          "ATTACKER DEBUG: Kill #{kill_id} has #{length(attacker_ids)} attackers with character IDs"
+        )
+
+        Enum.each(attacker_ids, fn attacker_id ->
+          Logger.debug("ATTACKER DEBUG: Attacker ID: #{attacker_id} in kill #{kill_id}")
+        end)
+      end
+
       # Get counts of tracked systems and characters for debugging
       tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
       tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
@@ -249,20 +264,39 @@ defmodule WandererNotifier.Services.KillProcessor do
         tracked_characters
         |> Enum.map(fn char ->
           case char do
-            %{character_id: id} when not is_nil(id) -> to_string(id)
-            %{"character_id" => id} when not is_nil(id) -> to_string(id)
-            id when is_integer(id) or is_binary(id) -> to_string(id)
+            %{eve_id: id} when not is_nil(id) -> to_string(id)
+            %{"eve_id" => id} when not is_nil(id) -> to_string(id)
             _ -> nil
           end
         end)
         |> Enum.filter(&(&1 != nil))
         |> MapSet.new()
 
+      # Log some tracked character IDs for debugging
+      sample_tracked_ids =
+        MapSet.to_list(tracked_char_ids) |> Enum.take(min(5, MapSet.size(tracked_char_ids)))
+
+      Logger.info(
+        "TRACKING DEBUG: Using #{MapSet.size(tracked_char_ids)} character IDs from eve_id field. Sample: #{inspect(sample_tracked_ids)}"
+      )
+
       # Check if victim is tracked
       victim_id_str = if victim_id, do: to_string(victim_id), else: nil
+
+      # Log more detailed information about the victim tracking check
+      if victim_id_str do
+        Logger.info(
+          "VICTIM TRACKING CHECK: Checking victim ID #{victim_id_str} against #{MapSet.size(tracked_char_ids)} tracked character eve_ids"
+        )
+
+        # Check if the victim ID is in our tracked characters set
+        victim_in_set = MapSet.member?(tracked_char_ids, victim_id_str)
+        Logger.info("VICTIM ID MATCH RESULT: #{victim_in_set}")
+      end
+
       victim_tracked = victim_id_str && MapSet.member?(tracked_char_ids, victim_id_str)
 
-      # Check which attackers are tracked
+      # Check which attackers are tracked - convert to strings first to ensure consistent comparison
       attacker_ids_str = Enum.map(attacker_ids, &to_string/1)
 
       tracked_attackers =
@@ -271,13 +305,33 @@ defmodule WandererNotifier.Services.KillProcessor do
         |> MapSet.intersection(tracked_char_ids)
         |> MapSet.to_list()
 
+      # Enhanced logging for attacker checking
+      if length(attacker_ids_str) > 0 do
+        Logger.info(
+          "ATTACKER MATCHING: Checking #{length(attacker_ids_str)} attackers against #{MapSet.size(tracked_char_ids)} tracked characters"
+        )
+
+        # Log each attacker ID for better tracking
+        Enum.each(attacker_ids_str, fn attacker_id ->
+          is_tracked = MapSet.member?(tracked_char_ids, attacker_id)
+
+          if is_tracked do
+            Logger.info("ATTACKER MATCH: Attacker #{attacker_id} in kill #{kill_id} IS TRACKED ✓")
+          else
+            Logger.debug(
+              "ATTACKER MATCH: Attacker #{attacker_id} in kill #{kill_id} is not tracked"
+            )
+          end
+        end)
+      end
+
       Logger.debug(
         "TRACKING STATUS: #{length(tracked_systems)} systems and #{length(tracked_characters)} characters tracked"
       )
 
       # Log detailed character tracking information
       if victim_tracked do
-        Logger.debug("VICTIM TRACKING: Victim #{victim_id_str} is tracked")
+        Logger.info("VICTIM TRACKING: Victim #{victim_id_str} is tracked")
       end
 
       if length(tracked_attackers) > 0 do
@@ -479,21 +533,25 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Send the notification for a kill
   defp send_kill_notification(enriched_killmail, kill_id) do
+    # Add detailed logging for kill notification
+    Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for kill #{kill_id}")
+
     # Check if this is a duplicate notification
     case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_kill(kill_id) do
       {:ok, :duplicate} ->
-        Logger.debug("DUPLICATE KILL: Kill #{kill_id} notification already sent, skipping")
+        Logger.info("🔄 DUPLICATE KILL: Kill #{kill_id} notification already sent, skipping")
         :ok
 
       {:ok, :new} ->
         # Format and send the notification using Discord notifier
+        Logger.info("✅ NEW KILL: Sending notification for kill #{kill_id}")
         WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
 
         # Update statistics for notification sent
         update_kill_stats(:notification_sent)
 
         # Log the notification for tracking purposes
-        Logger.debug("Kill notification sent for kill_id=#{kill_id}")
+        Logger.info("📢 NOTIFICATION SENT: Kill #{kill_id} notification delivered successfully")
     end
   end
 

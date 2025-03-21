@@ -117,12 +117,12 @@ defmodule WandererNotifier.Config.Timings do
   def tps_chart_minute, do: 0
 
   @doc """
-  Interval for character data updates (130 minutes)
+  Interval for character data updates (1 minute)
   """
   def character_update_scheduler_interval, do: 1 * 60 * 1000
 
   @doc """
-  Interval for system data updates (1 minutes)
+  Interval for system data updates (1 minute)
   """
   def system_update_scheduler_interval, do: 1 * 60 * 1000
 

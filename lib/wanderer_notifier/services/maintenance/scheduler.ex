@@ -36,8 +36,8 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         new_state
       end
 
-    # Log status
-    if now - state.last_status_time > 3600 do
+    # Log status every 24 hours (86400 seconds)
+    if now - state.last_status_time > 86400 do
       log_service_status(now - state.service_start_time)
       %{new_state | last_status_time: now}
     else
@@ -139,44 +139,122 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
 
-    # Get current stats
-    stats = WandererNotifier.Core.Stats.get_stats()
+    # Create a deduplication key based on a time window (e.g., hourly)
+    # We'll use the current day as part of the key to deduplicate within the same day
+    current_day = div(:os.system_time(:second), 86400)
+    dedup_key = "status_report:#{current_day}"
 
-    # Get license information
-    license_status = WandererNotifier.Core.License.status()
+    # Check if we've already sent a status report in this time window
+    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
+      {:ok, :duplicate} ->
+        Logger.info("Status report for current day already sent, skipping duplicate")
+        :ok
 
-    # Get feature information
-    features_status = WandererNotifier.Core.Features.get_feature_status()
+      {:ok, :new} ->
+        # Get current stats
+        stats = WandererNotifier.Core.Stats.get_stats()
 
-    # Get tracked systems and characters counts
-    systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-    characters = CacheRepo.get("map:characters") || []
+        # Get license information
+        license_status = WandererNotifier.Core.License.status()
 
-    # Create a structured notification for the status message
-    title = "Service Status Report"
-    description = "Periodic status update for the notification service."
+        # Get feature information
+        features_status = WandererNotifier.Core.Features.get_feature_status()
 
-    # Create a structured notification using our formatter
-    generic_notification =
-      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
-        title,
-        description,
-        stats,
-        uptime_seconds,
-        features_status,
-        license_status,
-        length(systems),
-        length(characters)
-      )
+        # Get tracked systems and characters counts
+        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+        characters = CacheRepo.get("map:characters") || []
 
-    # Convert to Discord format
-    discord_embed =
-      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
+        # Create a structured notification for the status message
+        title = "Service Status Report"
+        description = "Periodic status update for the notification service."
 
-    # Log simple status message
-    Logger.info("Service status report - Uptime: #{uptime_str}")
+        # Create a structured notification using our formatter
+        generic_notification =
+          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+            title,
+            description,
+            stats,
+            uptime_seconds,
+            features_status,
+            license_status,
+            length(systems),
+            length(characters)
+          )
 
-    # Send the rich notification
-    NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+        # Convert to Discord format
+        discord_embed =
+          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
+
+        # Log simple status message
+        Logger.info("Service status report - Uptime: #{uptime_str}")
+
+        # Send the rich notification
+        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+    end
+  end
+
+  def send_status_report do
+    # Calculate uptime
+    uptime_seconds = :os.system_time(:second) - Process.get(:service_start_time, 0)
+
+    days = div(uptime_seconds, 86400)
+    hours = div(rem(uptime_seconds, 86400), 3600)
+    minutes = div(rem(uptime_seconds, 3600), 60)
+    seconds = rem(uptime_seconds, 60)
+
+    uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
+
+    # Create a deduplication key based on a time window
+    # We'll use the current day as part of the key to deduplicate within the same day
+    current_day = div(:os.system_time(:second), 86400)
+    dedup_key = "status_report:#{current_day}"
+
+    # Check if we've already sent a status report in this time window
+    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
+      {:ok, :duplicate} ->
+        Logger.info("Status report for current day already sent, skipping duplicate")
+        :ok
+
+      {:ok, :new} ->
+        # Get current stats
+        stats = WandererNotifier.Core.Stats.get_stats()
+
+        # Get license information
+        license_status = WandererNotifier.Core.License.status()
+
+        # Get feature information
+        features_status = WandererNotifier.Core.Features.get_feature_status()
+
+        # Get tracked systems and characters counts
+        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+        characters = CacheRepo.get("map:characters") || []
+
+        # Create a structured notification for the status message
+        title = "Service Status Report"
+        description = "Periodic status update for the notification service."
+
+        # Create a structured notification using our formatter
+        generic_notification =
+          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+            title,
+            description,
+            stats,
+            uptime_seconds,
+            features_status,
+            license_status,
+            length(systems),
+            length(characters)
+          )
+
+        # Convert to Discord format
+        discord_embed =
+          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
+
+        # Log simple status message
+        Logger.info("Service status report - Uptime: #{uptime_str}")
+
+        # Send the rich notification
+        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+    end
   end
 end

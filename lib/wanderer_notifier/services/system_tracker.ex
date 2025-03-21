@@ -535,25 +535,42 @@ defmodule WandererNotifier.Services.SystemTracker do
           Map.get(enriched_system, "system_id") || Map.get(enriched_system, "solar_system_id")
         end
 
-      system_name =
-        if is_struct(enriched_system, MapSystem) do
-          enriched_system.name
-        else
-          Map.get(enriched_system, "system_name") || Map.get(enriched_system, "name") ||
-            "Unknown System"
-        end
+      # Perform deduplication check here to avoid duplicate notifications
+      # This will ensure we only send one notification per system ID, regardless of format
+      case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_system(system_id) do
+        {:ok, :duplicate} ->
+          Logger.info(
+            "[send_notification] Skipping duplicate system notification for ID: #{system_id}"
+          )
 
-      # Prepare the notification data
-      system_data = %{
-        "id" => system_id,
-        "name" => system_name,
-        "url" => "https://zkillboard.com/system/#{system_id}/",
-        "system" => enriched_system
-      }
+          :ok
 
-      # Send the notification
-      notifier = NotifierFactory.get_notifier()
-      notifier.send_new_system_notification(system_data)
+        {:ok, :new} ->
+          # Prepare the notification data and send only for new systems
+          Logger.info(
+            "[send_notification] Processing new system notification for ID: #{system_id}"
+          )
+
+          system_name =
+            if is_struct(enriched_system, MapSystem) do
+              enriched_system.name
+            else
+              Map.get(enriched_system, "system_name") || Map.get(enriched_system, "name") ||
+                "Unknown System"
+            end
+
+          # Prepare the notification data
+          system_data = %{
+            "id" => system_id,
+            "name" => system_name,
+            "url" => "https://zkillboard.com/system/#{system_id}/",
+            "system" => enriched_system
+          }
+
+          # Send the notification
+          notifier = NotifierFactory.get_notifier()
+          notifier.send_new_system_notification(system_data)
+      end
     else
       Logger.debug("[send_notification] System notifications are disabled")
     end
