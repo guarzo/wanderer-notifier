@@ -39,6 +39,15 @@ jobs:
           echo "Generated v-tag: ${VTAG}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Create Git tag for release
+        run: |
+          VERSION="${{ github.event.inputs.release_version }}"
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+          echo "Created and pushed tag v${VERSION}"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
