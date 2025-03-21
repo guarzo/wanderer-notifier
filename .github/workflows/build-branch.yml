@@ -1,4 +1,4 @@
-name: Build Branch Docker Image
+name: Ad-hoc Image
 
 on:
   workflow_dispatch:
@@ -7,10 +7,6 @@ on:
         description: "Branch to build"
         required: true
         default: "main"
-      production_token:
-        description: "Production bot token (leave empty to use secret)"
-        required: false
-        type: string
 
 jobs:
   build:
@@ -28,12 +24,18 @@ jobs:
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          DATE=$(date +'%Y%m%d')
           # Replace slashes in branch name with hyphens for Docker tag
           SAFE_BRANCH=$(echo "${{ github.event.inputs.branch }}" | sed 's/\//-/g')
+
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "version=branch-${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "docker_version=branch-${SAFE_BRANCH}-${DATE}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
           echo "Generated SHA: ${SHORT_SHA}"
           echo "Sanitized branch name: ${SAFE_BRANCH}"
+          echo "Docker version: branch-${SAFE_BRANCH}-${DATE}-${SHORT_SHA}"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -65,45 +67,34 @@ jobs:
           mix local.rebar --force
           mix deps.get --only prod
           mix deps.compile
-
-          # Build the release
           mix release
 
-      # Determine production token to use
-      - name: Get production token
-        id: token
-        run: |
-          # Get token from secrets, or use a placeholder for pull requests
-          # This ensures PRs can build, but won't have a valid token
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "production_token=placeholder-token-for-pr" >> "$GITHUB_OUTPUT"
-          else
-            echo "production_token=${{ secrets.NOTIFIER_API_TOKEN }}" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          build-args: |
-            APP_VERSION=${{ steps.version.outputs.version }}
-            NOTIFIER_API_TOKEN=${{ steps.token.outputs.production_token }}
-          tags: ${{ steps.meta.outputs.tags }}
-
-      # Test the Docker image
-      - name: Test Docker image
-        run: |
-          echo "Testing Docker image startup..."
-          docker run --rm guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }} /bin/sh -c "echo 'Version: $(cat /app/VERSION || echo unknown)' && echo 'Build SHA: ${{ steps.version.outputs.short_sha }}' && exit 0"
-
-      - name: Log in to Docker Hub
+      - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Push Docker image
+      - name: Build and Push Docker image
+        id: docker_build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}
+            guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
+          build-args: |
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            APP_VERSION=${{ steps.version.outputs.docker_version }}
+          load: true
+
+      # Test the Docker image to verify it can start
+      - name: Test Docker image
         run: |
-          docker push guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}
-          echo "::notice::Image pushed as guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}-${{ steps.version.outputs.short_sha }}"
+          echo "Testing Docker image startup..."
+          # Basic check to verify the container can start
+          docker run --rm guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }} /bin/sh -c "echo 'Verifying container startup...' && echo 'Version: ${{ steps.version.outputs.docker_version }}' && echo 'Container started successfully'"

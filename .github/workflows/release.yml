@@ -1,4 +1,4 @@
-name: Official Release
+name: Official Image
 
 on:
   workflow_dispatch:
@@ -75,30 +75,30 @@ jobs:
           mix local.rebar --force
           mix deps.get --only prod
           mix deps.compile
-
-          # Build the release
           mix release
 
-      - name: Debug Dockerfile
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Listing files in current directory:"
-          ls -la
-          echo "Dockerfile content:"
-          cat Dockerfile
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-      - name: Build Docker image
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: guarzo
+          password: ${{ secrets.DOCKERHUB_PAT }}
+
+      - name: Build and Push Docker image
+        id: docker_build
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: false
-          load: true
-          build-args: |
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-            APP_VERSION=${{ steps.version.outputs.docker_version }}
+          push: true
           tags: |
             guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
             guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
+          build-args: |
+            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            APP_VERSION=${{ steps.version.outputs.docker_version }}
+          load: true
 
       # Test the Docker image to verify it can start
       - name: Test Docker image
@@ -106,14 +106,3 @@ jobs:
           echo "Testing Docker image startup..."
           # Basic check to verify the container can start
           docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Verifying container startup...' && echo 'Version: ${{ steps.version.outputs.docker_version }}' && echo 'Container started successfully'"
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: guarzo
-          password: ${{ secrets.DOCKERHUB_PAT }}
-
-      - name: Push Docker image
-        run: |
-          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
-          docker push guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}

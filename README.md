@@ -172,7 +172,7 @@ Comprehensive documentation is available in the `docs/` directory, covering:
 - **Architecture**: [Overview](docs/architecture/overview.md), [Components](docs/architecture/components.md), and [Data Flow](docs/architecture/data-flow.md)
 - **Features**: [System Notifications](docs/features/system-notifications.md), [Character Notifications](docs/features/character-notifications.md), [Kill Notifications](docs/features/kill-notifications.md), and [Discord Formatting](docs/features/discord-formatting.md)
 - **Configuration**: [Environment Variables](docs/configuration/environment-variables.md) and [Feature Flags](docs/configuration/feature-flags.md)
-- **Development**: [Code Style](docs/development/code-style.md)  and [Error Handling](docs/development/error-handling.md)
+- **Development**: [Code Style](docs/development/code-style.md) and [Error Handling](docs/development/error-handling.md)
 - **Deployment**: [Docker Deployment](docs/deployment/docker-deployment.md)
 - **Utilities**: [Caching](docs/utilities/caching.md) and [Logging](docs/utilities/logging.md)
 
@@ -218,13 +218,18 @@ All configuration is managed through environment variables in the `.env` file. A
    - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
    - `LICENSE_KEY`: Your license key for accessing premium features
 
-2. **Map Configuration**
+2. **Port Configuration**
+
+   - `PORT`: Web server port (default: `4000`)
+   - `CHART_SERVICE_PORT`: Chart generation service port (default: `3001`)
+
+3. **Map Configuration**
 
    - `MAP_URL`: URL of the map service
    - `MAP_NAME`: Map identifier for system tracking
    - `MAP_TOKEN`: Authentication token for map API
 
-3. **Feature Enablement**
+4. **Feature Enablement**
 
    - `ENABLE_NOTIFICATIONS`: Master switch for all notifications (default: `true`)
    - `ENABLE_KILL_NOTIFICATIONS`: Enable kill notifications (default: `true`)
@@ -237,7 +242,7 @@ All configuration is managed through environment variables in the `.env` file. A
 
    _Note_: The `ENABLE_CORP_TOOLS` and `ENABLE_MAP_TOOLS` variables are being gradually replaced by `ENABLE_TPS_CHARTS` and `ENABLE_MAP_CHARTS` respectively, but are still supported for backward compatibility.
 
-4. **Feature-specific Discord Channels**
+5. **Feature-specific Discord Channels**
 
    - `DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications (defaults to main channel)
    - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (defaults to main channel)

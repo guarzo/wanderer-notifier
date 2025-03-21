@@ -34,8 +34,6 @@ This document provides a comprehensive reference for all environment variables u
 | `TRACK_ALL_SYSTEMS`              | Track all systems instead of specific ones   | `false` |
 | `PROCESS_ALL_KILLS`              | Process kills from all systems (for testing) | `false` |
 
-> **Note**: The `ENABLE_CORP_TOOLS` and `ENABLE_MAP_TOOLS` variables are being gradually replaced by `ENABLE_TPS_CHARTS` and `ENABLE_MAP_CHARTS` respectively, but are still supported for backward compatibility. Similarly, `ENABLE_ACTIVITY_CHARTS` is being renamed to `ENABLE_MAP_CHARTS`.
-
 ## Discord Channel Configuration
 
 | Variable                        | Description                                  | Default Fallback |
@@ -48,8 +46,6 @@ This document provides a comprehensive reference for all environment variables u
 | `DISCORD_TPS_CHARTS_CHANNEL_ID` | Channel for TPS chart notifications          | Main channel     |
 | `DISCORD_MAP_CHARTS_CHANNEL_ID` | Channel for map chart notifications          | Main channel     |
 
-> **Note**: The `DISCORD_CORP_TOOLS_CHANNEL_ID` and `DISCORD_MAP_TOOLS_CHANNEL_ID` variables are being gradually replaced by `DISCORD_TPS_CHARTS_CHANNEL_ID` and `DISCORD_MAP_CHARTS_CHANNEL_ID` respectively, but are still supported for backward compatibility. Similarly, `DISCORD_ACTIVITY_CHARTS_CHANNEL_ID` is being renamed to `DISCORD_MAP_CHARTS_CHANNEL_ID`.
-
 ## Slack Webhook Configuration
 
 | Variable                       | Description                                  | Default Fallback |
@@ -61,8 +57,6 @@ This document provides a comprehensive reference for all environment variables u
 | `SLACK_CHARTS_WEBHOOK_URL`     | Webhook for general chart notifications      | Main webhook     |
 | `SLACK_TPS_CHARTS_WEBHOOK_URL` | Webhook for TPS chart notifications          | Main webhook     |
 | `SLACK_MAP_CHARTS_WEBHOOK_URL` | Webhook for map chart notifications          | Main webhook     |
-
-> **Note**: The `SLACK_CORP_TOOLS_WEBHOOK_URL` and `SLACK_MAP_TOOLS_WEBHOOK_URL` variables are being gradually replaced by `SLACK_TPS_CHARTS_WEBHOOK_URL` and `SLACK_MAP_CHARTS_WEBHOOK_URL` respectively, but are still supported for backward compatibility. Similarly, `SLACK_ACTIVITY_CHARTS_WEBHOOK_URL` is being renamed to `SLACK_MAP_CHARTS_WEBHOOK_URL`.
 
 ## API URLs
 
@@ -104,14 +98,6 @@ The following configuration options are used in specific environments:
 | `TRACK_ALL_SYSTEMS` | Track all systems (for testing)      | `false` |
 | `PROCESS_ALL_KILLS` | Process all kills (for testing)      | `false` |
 
-## Feature Relationships
-
-Some features have relationships with others:
-
-- `ENABLE_CHARTS` is automatically considered enabled if `ENABLE_CORP_TOOLS` or `ENABLE_MAP_TOOLS` is enabled
-- `ENABLE_TPS_CHARTS` is automatically considered enabled if `ENABLE_CORP_TOOLS` is enabled
-- `ENABLE_ACTIVITY_CHARTS` is automatically considered enabled if `ENABLE_MAP_TOOLS` is enabled
-
 ## Cache Configuration
 
 | Variable                | Description                                  | Default            |
@@ -144,3 +130,23 @@ Some features have relationships with others:
    - Each feature can have a dedicated Slack webhook URL
    - If a feature-specific webhook is not found, it falls back to the main webhook
    - The logic is similar to the Discord channel resolution
+
+# Port Configuration
+
+The application uses the following ports which can be configured via environment variables:
+
+| Variable             | Description        | Default |
+| -------------------- | ------------------ | ------- |
+| `PORT`               | Web server port    | `4000`  |
+| `CHART_SERVICE_PORT` | Chart service port | `3001`  |
+
+Note that while these ports are exposed in the Docker container (EXPOSE 4000 3001), the actual
+ports used by the application are determined by these environment variables. If you change
+these values, you'll need to map the corresponding ports when running the container.
+
+Example:
+
+```bash
+# Running with custom ports
+docker run -e PORT=8080 -e CHART_SERVICE_PORT=8081 -p 8080:8080 -p 8081:8081 guarzo/wanderer-notifier:latest
+```

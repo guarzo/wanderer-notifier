@@ -14,7 +14,7 @@ defmodule WandererNotifier.Core.Config do
 
   # Production bot API token - use environment variable or Application config
   # This should be set at runtime, not hardcoded
-  @production_bot_token_env "WANDERER_PRODUCTION_NOTIFIER_TOKEN"
+  @production_token_env "NOTIFIER_API_TOKEN"
 
   # Feature definitions with their environment variables
   @features %{
@@ -117,32 +117,9 @@ defmodule WandererNotifier.Core.Config do
 
   @doc """
   Returns the Discord channel ID specifically for activity charts.
-  This function implements the priority order:
-  1. DISCORD_MAP_CHARTS_CHANNEL_ID (newer name)
-  2. DISCORD_ACTIVITY_CHARTS_CHANNEL_ID (older name)
-  3. Main Discord channel ID
-
-  This specialized function is needed because these features
-  use multiple environment variables for backward compatibility.
   """
   def discord_channel_id_for_activity_charts do
-    # Check for map charts channel ID first (newer name)
-    map_charts_channel = System.get_env("DISCORD_MAP_CHARTS_CHANNEL_ID")
-    activity_charts_channel = System.get_env("DISCORD_ACTIVITY_CHARTS_CHANNEL_ID")
-
-    cond do
-      # If map charts channel is set, use it (highest priority)
-      is_binary(map_charts_channel) && map_charts_channel != "" ->
-        map_charts_channel
-
-      # If activity charts channel is set, use it (second priority)
-      is_binary(activity_charts_channel) && activity_charts_channel != "" ->
-        activity_charts_channel
-
-      # Otherwise fall back to main channel ID
-      true ->
-        discord_channel_id()
-    end
+    discord_channel_id_for(:activity_charts)
   end
 
   @doc """
@@ -189,14 +166,9 @@ defmodule WandererNotifier.Core.Config do
 
   @doc """
   Returns whether charts functionality is enabled.
-  Enabled if explicitly set to true or if corp_tools or map_tools are enabled.
   """
   def charts_enabled? do
-    explicit_charts_enabled = feature_enabled?(:charts)
-    corp_tools_enabled = feature_enabled?(:corp_tools)
-    map_tools_enabled = feature_enabled?(:map_tools)
-
-    explicit_charts_enabled || corp_tools_enabled || map_tools_enabled
+    feature_enabled?(:charts)
   end
 
   @doc """
@@ -238,14 +210,14 @@ defmodule WandererNotifier.Core.Config do
   Returns whether TPS charts are enabled.
   """
   def tps_charts_enabled? do
-    feature_enabled?(:tps_charts) || corp_tools_enabled?()
+    feature_enabled?(:tps_charts)
   end
 
   @doc """
   Returns whether activity charts are enabled.
   """
   def activity_charts_enabled? do
-    feature_enabled?(:activity_charts) || map_tools_enabled?()
+    feature_enabled?(:activity_charts)
   end
 
   @doc """
@@ -309,83 +281,41 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns the bot API token.
-  In production, this returns a value from environment variable.
-  In development and test environments, it requires a development token to be set.
+  Returns the notifier API token.
+  In production, uses the baked-in value from application config.
+  In development, uses the value from environment variable.
   """
   def notifier_api_token do
-    # For non-development containers (production), use environment variable
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-    case env do
-      :prod ->
-        # In production, ONLY use the hardcoded production token
-        # Do not accept tokens from environment variables for security
-        production_token = Application.get_env(:wanderer_notifier, :production_notifier_token)
+    cond do
+      # Production mode: prefer baked-in token
+      env == :prod ->
+        token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+        if is_binary(token) && token != "", do: token, else: get_token_from_env()
 
-        if is_binary(production_token) && production_token != "" do
-          # Log that we're using the baked-in token, but don't show the token itself
-          require Logger
-          prefix = String.slice(production_token, 0, 3)
-
-          Logger.info(
-            "Using baked-in production token from application config (starts with: #{prefix}...)"
-          )
-
-          production_token
-        else
-          # As a fallback, check the production environment variable
-          # This should only be used during build time, not runtime
-          backup_token = System.get_env(@production_bot_token_env)
-
-          if is_binary(backup_token) && backup_token != "" do
-            require Logger
-            prefix = String.slice(backup_token, 0, 3)
-
-            Logger.warning(
-              "Using token from environment variable rather than baked-in value (starts with: #{prefix}...)"
-            )
-
-            backup_token
-          else
-            require Logger
-
-            Logger.error(
-              "Production notifier token not configured properly. Token should be compiled into the release."
-            )
-
-            raise "Missing required production notifier token. This release was not built correctly."
-          end
-        end
-
-      _ ->
-        # In development/test environments, require the environment variable
-        env_token = Application.get_env(:wanderer_notifier, :notifier_api_token)
-
-        if is_nil(env_token) || env_token == "" do
-          env_token = System.get_env("NOTIFIER_API_TOKEN")
-
-          if is_nil(env_token) || env_token == "" do
-            # Fail fast in development mode if token is not set
-            require Logger
-
-            Logger.error(
-              "NOTIFIER_API_TOKEN environment variable is not set. Development requires a valid token."
-            )
-
-            raise "Missing required NOTIFIER_API_TOKEN environment variable for development"
-          else
-            env_token
-          end
-        else
-          env_token
-        end
+      # Development mode: always use environment variable
+      true ->
+        get_token_from_env()
     end
   end
 
-  # For backward compatibility during transition - will be removed in future versions
-  def bot_api_token do
-    notifier_api_token()
+  defp get_token_from_env do
+    token = System.get_env(@production_token_env)
+
+    if is_binary(token) && token != "" do
+      token
+    else
+      env = Application.get_env(:wanderer_notifier, :env, :prod)
+
+      message =
+        if env == :prod,
+          do:
+            "Missing notifier API token in production. Token should be compiled into the release.",
+          else: "Missing NOTIFIER_API_TOKEN environment variable for development"
+
+      raise message
+    end
   end
 
   @doc """
