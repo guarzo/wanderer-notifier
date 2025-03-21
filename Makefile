@@ -13,7 +13,10 @@ clean:
 
 # Testing and formatting tasks
 test:
-	@MIX_ENV=test mix test
+	@./test/run_tests.sh
+
+test.all:
+	@MIX_ENV=test mix test --trace
 
 test.mock:
 	@MIX_ENV=test mix test --no-start
