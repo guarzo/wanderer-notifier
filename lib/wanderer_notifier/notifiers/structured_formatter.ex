@@ -695,8 +695,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Format uptime if provided
     uptime_str =
       if uptime do
-        days = div(uptime, 86400)
-        hours = div(rem(uptime, 86400), 3600)
+        days = div(uptime, 86_400)
+        hours = div(rem(uptime, 86_400), 3600)
         minutes = div(rem(uptime, 3600), 60)
         seconds = rem(uptime, 60)
         "⏱️ #{days}d #{hours}h #{minutes}m #{seconds}s"

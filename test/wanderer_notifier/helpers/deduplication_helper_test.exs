@@ -31,6 +31,23 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
       assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:key4")
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark("test:key3")
     end
+
+    @tag :ttl_test
+    test "entries expire after TTL" do
+      # Mock a short TTL for the test by sending a manual expiration message
+      test_key = "test:ttl_expire"
+      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(test_key)
+
+      # Manually trigger expiration
+      send(DeduplicationHelper, {:clear_dedup_key, test_key})
+
+      # Small delay to allow processing
+      Process.sleep(100)
+
+      # Should be treated as new again after expiration
+      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+    end
   end
 
   describe "check_and_mark_system/1" do
@@ -117,6 +134,44 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
 
       # It should be new again
       assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:expire")
+    end
+  end
+
+  describe "TTL and expiration" do
+    test "entries can be manually expired" do
+      test_key = "test:manual_expire"
+
+      # Mark the key
+      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(test_key)
+
+      # Manually clear the key
+      :ok = DeduplicationHelper.handle_clear_key(test_key)
+
+      # Should be new again
+      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+    end
+
+    test "clearing all entries removes all deduplication data" do
+      keys = ["test:clear1", "test:clear2", "test:clear3"]
+
+      # Mark all keys
+      Enum.each(keys, fn key ->
+        assert {:ok, :new} = DeduplicationHelper.check_and_mark(key)
+      end)
+
+      # Verify they're all marked
+      Enum.each(keys, fn key ->
+        assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(key)
+      end)
+
+      # Clear all entries
+      :ok = DeduplicationHelper.clear_all()
+
+      # Verify they're all new again
+      Enum.each(keys, fn key ->
+        assert {:ok, :new} = DeduplicationHelper.check_and_mark(key)
+      end)
     end
   end
 end

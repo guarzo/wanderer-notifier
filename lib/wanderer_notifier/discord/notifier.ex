@@ -25,8 +25,6 @@ defmodule WandererNotifier.Discord.Notifier do
   # @nullsec_color 0xD9534F
 
   @base_url "https://discord.com/api/channels"
-  # Set to true to enable verbose logging
-  @verbose_logging false
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -45,7 +43,8 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # Helper function to handle test mode logging and response
   defp handle_test_mode(log_message) do
-    if @verbose_logging, do: Logger.info(log_message)
+    # Always log in test mode for test assertions
+    Logger.info(log_message)
     :ok
   end
 
@@ -362,7 +361,7 @@ defmodule WandererNotifier.Discord.Notifier do
             discord_embed = StructuredFormatter.to_discord_format(generic_notification)
 
             # Add recent kills to the embed if available and system is a wormhole
-            if WandererNotifier.Data.MapSystem.is_wormhole?(system) do
+            if WandererNotifier.Data.MapSystem.wormhole?(system) do
               solar_system_id = system.solar_system_id
 
               recent_kills =
@@ -408,7 +407,7 @@ defmodule WandererNotifier.Discord.Notifier do
             message = "New System Discovered: #{display_name} - #{type_desc}"
 
             # Add statics for wormhole systems
-            if WandererNotifier.Data.MapSystem.is_wormhole?(system) && length(system.statics) > 0 do
+            if WandererNotifier.Data.MapSystem.wormhole?(system) && length(system.statics) > 0 do
               statics_text = format_statics_list(system.statics)
               updated_message = "#{message} - Statics: #{statics_text}"
               send_message(updated_message, :system_tracking)

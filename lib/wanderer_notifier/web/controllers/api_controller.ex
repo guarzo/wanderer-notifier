@@ -916,35 +916,35 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   defp valid_eve_id?(character) do
     cond do
       is_binary(character["character_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["character_id"]) ->
+          NotificationHelpers.valid_numeric_id?(character["character_id"]) ->
         true
 
       is_binary(character["eve_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(character["eve_id"]) ->
+          NotificationHelpers.valid_numeric_id?(character["eve_id"]) ->
         true
 
       is_map(character["character"]) ->
-        is_valid_nested?(character["character"])
+        valid_nested?(character["character"])
 
       true ->
         false
     end
   end
 
-  defp is_valid_nested?(nested_map) do
+  defp valid_nested?(nested_map) do
     # Because we can't call external functions in a guard,
     # we just do normal boolean checks in the function body:
     cond do
       is_binary(nested_map["eve_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(nested_map["eve_id"]) ->
+          NotificationHelpers.valid_numeric_id?(nested_map["eve_id"]) ->
         true
 
       is_binary(nested_map["character_id"]) and
-          NotificationHelpers.is_valid_numeric_id?(nested_map["character_id"]) ->
+          NotificationHelpers.valid_numeric_id?(nested_map["character_id"]) ->
         true
 
       is_binary(nested_map["id"]) and
-          NotificationHelpers.is_valid_numeric_id?(nested_map["id"]) ->
+          NotificationHelpers.valid_numeric_id?(nested_map["id"]) ->
         true
 
       true ->

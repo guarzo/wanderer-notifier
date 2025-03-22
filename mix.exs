@@ -30,19 +30,18 @@ defmodule WandererNotifier.MixProject do
 
   defp deps do
     [
-      {:dotenvy, "~> 1.0.0"},
-      {:httpoison, "~> 1.8"},
-      {:cachex, "~> 3.4"},
-      {:nostrum, "~> 0.8.0"},
+      {:dotenvy, "~> 1.1"},
+      {:httpoison, "~> 2.2"},
+      {:cachex, "~> 4.0"},
+      {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.3"},
-      {:plug, "~> 1.14"},
+      {:plug, "~> 1.17"},
       {:plug_cowboy, "~> 2.6"},
       {:mime, "~> 2.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test},
-      {:meck, "~> 0.9.2", only: :test}
     ]
   end
 

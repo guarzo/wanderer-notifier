@@ -23,13 +23,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   """
   def should_notify_kill?(killmail, system_id \\ nil) do
     # Check if kill notifications are enabled globally
-    if !Features.kill_notifications_enabled?() do
-      Logger.debug(
-        "🔕 NOTIFICATION BLOCKED: Kill notifications are disabled globally (ENABLE_KILL_NOTIFICATIONS=false)"
-      )
-
-      false
-    else
+    if Features.kill_notifications_enabled?() do
       # Extract system ID if not provided
       system_id = system_id || extract_system_id(killmail)
 
@@ -43,7 +37,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
           else: "unknown"
 
       # Check if the kill is in a tracked system
-      is_tracked_system = is_tracked_system?(system_id)
+      is_tracked_system = tracked_system?(system_id)
 
       # Check if the kill involves a tracked character
       has_tracked_character = has_tracked_character?(killmail)
@@ -59,6 +53,12 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
 
       # Return true if either condition is met
       is_tracked_system || has_tracked_character
+    else
+      Logger.debug(
+        "🔕 NOTIFICATION BLOCKED: Kill notifications are disabled globally (ENABLE_KILL_NOTIFICATIONS=false)"
+      )
+
+      false
     end
   end
 
@@ -72,7 +72,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - true if the system is tracked
     - false otherwise
   """
-  def is_tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
+  def tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
     # Convert system_id to string for consistent comparison
     system_id_str = to_string(system_id)
 
@@ -116,7 +116,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     tracked
   end
 
-  def is_tracked_system?(_), do: false
+  def tracked_system?(_), do: false
 
   @doc """
   Checks if a killmail involves a tracked character (as victim or attacker).
@@ -281,10 +281,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def should_notify_character?(character_id)
       when is_integer(character_id) or is_binary(character_id) do
     # Check if character notifications are enabled globally
-    if !Features.enabled?(:tracked_characters_notifications) do
-      Logger.debug("NOTIFICATION DECISION: Character notifications are disabled globally")
-      false
-    else
+    if Features.enabled?(:tracked_characters_notifications) do
       # Convert to string for consistent comparison
       character_id_str = to_string(character_id)
 
@@ -305,6 +302,9 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
 
         false
       end
+    else
+      Logger.debug("NOTIFICATION DECISION: Character notifications are disabled globally")
+      false
     end
   end
 
@@ -320,11 +320,8 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   """
   def should_notify_system?(system_id) do
     # Check if system notifications are enabled globally
-    if !Features.enabled?(:tracked_systems_notifications) do
-      Logger.debug("NOTIFICATION DECISION: System notifications are disabled globally")
-      false
-    else
-      is_tracked = is_tracked_system?(system_id)
+    if Features.enabled?(:tracked_systems_notifications) do
+      is_tracked = tracked_system?(system_id)
 
       # Get system name for better logging
       system_name = get_system_name(system_id)
@@ -337,6 +334,9 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         Logger.debug("NOTIFICATION DECISION: System #{system_info} is not tracked")
         false
       end
+    else
+      Logger.debug("NOTIFICATION DECISION: System notifications are disabled globally")
+      false
     end
   end
 

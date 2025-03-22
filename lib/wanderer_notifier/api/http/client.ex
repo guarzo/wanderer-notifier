@@ -304,10 +304,9 @@ defmodule WandererNotifier.Api.Http.Client do
     method_str = to_string(method) |> String.upcase()
 
     header_str =
-      Enum.map(headers, fn {k, v} ->
+      Enum.map_join(headers, " ", fn {k, v} ->
         ~s(-H "#{k}: #{v}")
       end)
-      |> Enum.join(" ")
 
     body_str = if body && body != "", do: ~s(--data '#{body}'), else: ""
 

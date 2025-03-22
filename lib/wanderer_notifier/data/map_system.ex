@@ -314,7 +314,7 @@ defmodule WandererNotifier.Data.MapSystem do
   ## Returns
     - true if the system is a wormhole, false otherwise
   """
-  def is_wormhole?(system) do
+  def wormhole?(system) do
     system.system_type == :wormhole
   end
 

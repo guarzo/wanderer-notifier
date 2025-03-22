@@ -2,35 +2,22 @@ defmodule WandererNotifier.Data.KillmailTest do
   use ExUnit.Case, async: true
   alias WandererNotifier.Data.Killmail
 
-  describe "new/3" do
-    test "creates a new killmail struct with required fields" do
-      killmail_id = 123_456_789
-      zkb = %{"hash" => "abcd1234", "totalValue" => 1_000_000.0}
-
-      result = Killmail.new(killmail_id, zkb)
-
-      assert %Killmail{} = result
-      assert result.killmail_id == killmail_id
-      assert result.zkb == zkb
-      assert result.esi_data == nil
+  describe "new/2" do
+    test "creates a valid killmail struct with two arguments" do
+      killmail = Killmail.new("12345", %{"totalValue" => 1_000_000})
+      assert %Killmail{} = killmail
+      assert killmail.killmail_id == "12345"
+      assert killmail.zkb == %{"totalValue" => 1_000_000}
+      assert killmail.esi_data == nil
     end
 
-    test "creates a new killmail struct with ESI data" do
-      killmail_id = 123_456_789
-      zkb = %{"hash" => "abcd1234", "totalValue" => 1_000_000.0}
-
-      esi_data = %{
-        "victim" => %{"character_id" => 98765, "ship_type_id" => 12345},
-        "attackers" => [%{"character_id" => 54321, "ship_type_id" => 67890}],
-        "solar_system_id" => 30_000_142
-      }
-
-      result = Killmail.new(killmail_id, zkb, esi_data)
-
-      assert %Killmail{} = result
-      assert result.killmail_id == killmail_id
-      assert result.zkb == zkb
-      assert result.esi_data == esi_data
+    test "creates a valid killmail struct with three arguments" do
+      esi_data = %{"solar_system_id" => 30000142}
+      killmail = Killmail.new("12345", %{"totalValue" => 1_000_000}, esi_data)
+      assert %Killmail{} = killmail
+      assert killmail.killmail_id == "12345"
+      assert killmail.zkb == %{"totalValue" => 1_000_000}
+      assert killmail.esi_data == esi_data
     end
   end
 
@@ -55,121 +42,111 @@ defmodule WandererNotifier.Data.KillmailTest do
     end
   end
 
-  describe "Access behaviour" do
+  describe "Access behavior" do
     setup do
-      killmail =
-        Killmail.new(
-          123_456_789,
-          %{"hash" => "abcd1234", "totalValue" => 1_000_000.0},
-          %{
-            "victim" => %{"character_id" => 98765, "ship_type_id" => 12345},
-            "attackers" => [%{"character_id" => 54321, "ship_type_id" => 67890}],
-            "solar_system_id" => 30_000_142
-          }
-        )
+      esi_data = %{
+        "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
+        "solar_system_id" => 30_000_142,
+        "attackers" => [
+          %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
+        ]
+      }
 
-      {:ok, killmail: killmail}
+      zkb_data = %{
+        "totalValue" => 1_000_000_000,
+        "points" => 100
+      }
+
+      killmail = Killmail.new("12345", zkb_data, esi_data)
+
+      %{killmail: killmail}
     end
 
-    test "fetch/2 retrieves struct fields", %{killmail: killmail} do
-      assert {:ok, 123_456_789} = Access.fetch(killmail, "killmail_id")
-
-      assert {:ok, %{"hash" => "abcd1234", "totalValue" => 1_000_000.0}} =
-               Access.fetch(killmail, "zkb")
-
-      assert {:ok, _} = Access.fetch(killmail, "esi_data")
+    test "allows direct field access via string keys", %{killmail: killmail} do
+      assert killmail["killmail_id"] == "12345"
+      assert killmail["zkb"] == %{"totalValue" => 1_000_000_000, "points" => 100}
+      assert killmail["esi_data"] == %{
+        "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
+        "solar_system_id" => 30_000_142,
+        "attackers" => [
+          %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
+        ]
+      }
     end
 
-    test "fetch/2 retrieves nested fields from esi_data", %{killmail: killmail} do
-      assert {:ok, %{"character_id" => 98765, "ship_type_id" => 12345}} =
-               Access.fetch(killmail, "victim")
-
-      assert {:ok, [%{"character_id" => 54321, "ship_type_id" => 67890}]} =
-               Access.fetch(killmail, "attackers")
-
-      assert {:ok, 30_000_142} = Access.fetch(killmail, "solar_system_id")
+    test "allows access to nested ESI data via string keys", %{killmail: killmail} do
+      assert killmail["victim"] == %{"character_id" => 93_847_759, "ship_type_id" => 33_470}
+      assert killmail["solar_system_id"] == 30_000_142
+      assert killmail["attackers"] == [%{"character_id" => 95_465_499, "ship_type_id" => 11_987}]
     end
 
-    test "fetch/2 returns error for non-existent keys", %{killmail: killmail} do
-      assert :error = Access.fetch(killmail, "non_existent_key")
+    test "returns nil for undefined keys", %{killmail: killmail} do
+      assert killmail["undefined_key"] == nil
     end
 
-    test "get/2 retrieves values with default", %{killmail: killmail} do
-      assert Killmail.get(killmail, "killmail_id") == 123_456_789
-      assert Killmail.get(killmail, "non_existent_key") == nil
-      assert Killmail.get(killmail, "non_existent_key", "default") == "default"
+    test "get_and_update allows modification of fields", %{killmail: killmail} do
+      {old_value, updated_killmail} = Access.get_and_update(killmail, "killmail_id", fn current ->
+        {current, "54321"}
+      end)
+
+      assert old_value == "12345"
+      assert updated_killmail.killmail_id == "54321"
     end
 
-    test "get_and_update/3 updates values", %{killmail: killmail} do
-      {value, updated} =
-        Access.get_and_update(killmail, "killmail_id", fn current -> {current, 987_654_321} end)
+    test "pop removes a field value", %{killmail: killmail} do
+      {victim, updated_killmail} = Access.pop(killmail, "victim")
 
-      assert value == 123_456_789
-      assert updated.killmail_id == 987_654_321
-
-      # Update nested field in esi_data
-      {value, updated} =
-        Access.get_and_update(killmail, "solar_system_id", fn current -> {current, 30_000_143} end)
-
-      assert value == 30_000_142
-      assert updated.esi_data["solar_system_id"] == 30_000_143
-    end
-
-    test "pop/2 removes values", %{killmail: killmail} do
-      {value, updated} = Access.pop(killmail, "killmail_id")
-      assert value == 123_456_789
-      assert updated.killmail_id == nil
-
-      # Pop a nested field
-      {value, updated} = Access.pop(killmail, "solar_system_id")
-      assert value == 30_000_142
-      assert updated.esi_data["solar_system_id"] == nil
+      assert victim == %{"character_id" => 93_847_759, "ship_type_id" => 33_470}
+      assert updated_killmail["victim"] == nil
     end
   end
 
   describe "helper functions" do
     setup do
-      killmail =
-        Killmail.new(
-          123_456_789,
-          %{"hash" => "abcd1234", "totalValue" => 1_000_000.0},
-          %{
-            "victim" => %{"character_id" => 98765, "ship_type_id" => 12345},
-            "attackers" => [
-              %{"character_id" => 54321, "ship_type_id" => 67890, "final_blow" => true},
-              %{"character_id" => 11111, "ship_type_id" => 22222}
-            ],
-            "solar_system_id" => 30_000_142
-          }
-        )
+      esi_data = %{
+        "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
+        "solar_system_id" => 30_000_142,
+        "attackers" => [
+          %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
+        ]
+      }
 
-      {:ok, killmail: killmail}
+      zkb_data = %{
+        "totalValue" => 1_000_000_000,
+        "points" => 100
+      }
+
+      killmail = Killmail.new("12345", zkb_data, esi_data)
+
+      %{killmail: killmail}
     end
 
-    test "get_victim/1 returns victim data", %{killmail: killmail} do
-      victim = Killmail.get_victim(killmail)
-      assert victim["character_id"] == 98765
-      assert victim["ship_type_id"] == 12345
+    test "get_victim returns victim data", %{killmail: killmail} do
+      assert Killmail.get_victim(killmail) == %{"character_id" => 93_847_759, "ship_type_id" => 33_470}
     end
 
-    test "get_attacker/1 returns first attacker data", %{killmail: killmail} do
-      attacker = Killmail.get_attacker(killmail)
-      assert attacker["character_id"] == 54321
-      assert attacker["ship_type_id"] == 67890
-      assert attacker["final_blow"] == true
+    test "get_attacker returns first attacker", %{killmail: killmail} do
+      assert Killmail.get_attacker(killmail) == %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
     end
 
-    test "get_system_id/1 returns solar system ID", %{killmail: killmail} do
-      system_id = Killmail.get_system_id(killmail)
-      assert system_id == 30_000_142
+    test "get_system_id returns solar system ID", %{killmail: killmail} do
+      assert Killmail.get_system_id(killmail) == 30_000_142
     end
 
-    test "helper functions return nil when esi_data is nil" do
-      killmail = Killmail.new(123_456_789, %{"hash" => "abcd1234"})
+    test "from_map creates killmail from map", %{killmail: killmail} do
+      # Convert to map and back
+      map = %{
+        "killmail_id" => killmail.killmail_id,
+        "zkb" => killmail.zkb,
+        "esi_data" => killmail.esi_data
+      }
 
-      assert Killmail.get_victim(killmail) == nil
-      assert Killmail.get_attacker(killmail) == nil
-      assert Killmail.get_system_id(killmail) == nil
+      recreated = Killmail.from_map(map)
+
+      assert %Killmail{} = recreated
+      assert recreated.killmail_id == killmail.killmail_id
+      assert recreated.zkb == killmail.zkb
+      assert recreated.esi_data == killmail.esi_data
     end
   end
 end

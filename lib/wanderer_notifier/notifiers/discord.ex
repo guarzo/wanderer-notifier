@@ -431,7 +431,7 @@ defmodule WandererNotifier.Notifiers.Discord do
         message = "New System Discovered: #{display_name} - #{type_desc}"
 
         # Add statics for wormhole systems
-        if MapSystem.is_wormhole?(system_struct) && length(system_struct.statics) > 0 do
+        if MapSystem.wormhole?(system_struct) && length(system_struct.statics) > 0 do
           statics = Enum.map_join(system_struct.statics, ", ", &(&1["name"] || &1[:name] || ""))
           updated_message = "#{message} - Statics: #{statics}"
           send_message(updated_message, :system_tracking)
@@ -664,13 +664,13 @@ defmodule WandererNotifier.Notifiers.Discord do
 
       # Enrich with system static info for wormhole systems
       Logger.info("[Discord] Checking system for wormhole enrichment")
-      Logger.info("[Discord] - is_wormhole?: #{MapSystem.is_wormhole?(system_struct)}")
+      Logger.info("[Discord] - is_wormhole?: #{MapSystem.wormhole?(system_struct)}")
       Logger.info("[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}")
       Logger.info("[Discord] - type_description: #{inspect(system_struct.type_description)}")
       Logger.info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
 
       system_struct =
-        if MapSystem.is_wormhole?(system_struct) && system_struct.solar_system_id do
+        if MapSystem.wormhole?(system_struct) && system_struct.solar_system_id do
           Logger.info(
             "[Discord] Enriching wormhole system with static info: #{system_struct.solar_system_id}"
           )
@@ -772,7 +772,7 @@ defmodule WandererNotifier.Notifiers.Discord do
         message = "New System Mapped: #{formatted_name} - #{type_desc}"
 
         # Add statics for wormhole systems
-        if MapSystem.is_wormhole?(system_struct) && length(system_struct.statics) > 0 do
+        if MapSystem.wormhole?(system_struct) && length(system_struct.statics) > 0 do
           statics = Enum.map_join(system_struct.statics, ", ", &(&1["name"] || &1[:name] || ""))
           updated_message = "#{message} - Statics: #{statics}"
           send_message(updated_message, :system_mapping)

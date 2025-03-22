@@ -178,7 +178,7 @@ defmodule WandererNotifier.Api.Map.Systems do
     # Filter for wormhole systems
     wormhole_systems =
       systems_with_static_info
-      |> Enum.filter(&is_wormhole_system?/1)
+      |> Enum.filter(&wormhole_system?/1)
       |> Enum.map(&extract_system_data/1)
 
     Logger.info(
@@ -234,7 +234,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   defp classify_system_by_id(_), do: "Unknown"
 
-  defp is_wormhole_system?(system) do
+  defp wormhole_system?(system) do
     # First check solar_system_id which is the most reliable indicator
     solar_system_id = Map.get(system, "solar_system_id")
 

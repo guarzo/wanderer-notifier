@@ -365,7 +365,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
       # Check if system is tracked
       is_system_tracked =
-        WandererNotifier.Services.NotificationDeterminer.is_tracked_system?(system_id)
+        WandererNotifier.Services.NotificationDeterminer.tracked_system?(system_id)
 
       # Check if any character is tracked
       is_character_tracked =
@@ -820,7 +820,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     # Try standard check first
     standard_check =
-      WandererNotifier.Services.NotificationDeterminer.is_tracked_system?(system_id)
+      WandererNotifier.Services.NotificationDeterminer.tracked_system?(system_id)
 
     Logger.debug("DEBUG: Standard tracking check result: #{standard_check}")
 

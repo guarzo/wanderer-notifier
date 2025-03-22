@@ -15,24 +15,24 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     # Extract character ID - only accept numeric IDs
     cond do
       # Check top level character_id
-      is_binary(character["character_id"]) && is_valid_numeric_id?(character["character_id"]) ->
+      is_binary(character["character_id"]) && valid_numeric_id?(character["character_id"]) ->
         character["character_id"]
 
       # Check top level eve_id
-      is_binary(character["eve_id"]) && is_valid_numeric_id?(character["eve_id"]) ->
+      is_binary(character["eve_id"]) && valid_numeric_id?(character["eve_id"]) ->
         character["eve_id"]
 
       # Check nested character object
       is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
-          is_valid_numeric_id?(character["character"]["eve_id"]) ->
+          valid_numeric_id?(character["character"]["eve_id"]) ->
         character["character"]["eve_id"]
 
       is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
-          is_valid_numeric_id?(character["character"]["character_id"]) ->
+          valid_numeric_id?(character["character"]["character_id"]) ->
         character["character"]["character_id"]
 
       is_map(character["character"]) && is_binary(character["character"]["id"]) &&
-          is_valid_numeric_id?(character["character"]["id"]) ->
+          valid_numeric_id?(character["character"]["id"]) ->
         character["character"]["id"]
 
       # No valid numeric ID found
@@ -180,15 +180,15 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   ## Returns
   true if the string is a valid numeric ID, false otherwise
   """
-  @spec is_valid_numeric_id?(String.t() | any()) :: boolean()
-  def is_valid_numeric_id?(id) when is_binary(id) do
+  @spec valid_numeric_id?(String.t() | any()) :: boolean()
+  def valid_numeric_id?(id) when is_binary(id) do
     case Integer.parse(id) do
       {num, ""} when num > 0 -> true
       _ -> false
     end
   end
 
-  def is_valid_numeric_id?(_), do: false
+  def valid_numeric_id?(_), do: false
 
   @doc """
   Sends a test system notification using a real system from the cache.
@@ -215,7 +215,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     # Select a random wormhole system if available, or any system if no wormholes
     selected_system =
       tracked_systems
-      |> Enum.filter(&is_wormhole_system?/1)
+      |> Enum.filter(&wormhole_system?/1)
       |> case do
         [] ->
           # No wormhole systems, just pick any system
@@ -302,13 +302,13 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   end
 
   # Check if a system is a wormhole system
-  defp is_wormhole_system?(system) when is_map(system) do
+  defp wormhole_system?(system) when is_map(system) do
     # Check system ID range (31000000-31999999 is J-space)
     system_id = get_system_id(system)
     is_integer(system_id) && system_id >= 31_000_000 && system_id < 32_000_000
   end
 
-  defp is_wormhole_system?(_), do: false
+  defp wormhole_system?(_), do: false
 
   # Get system ID from either a MapSystem struct or a map
   defp get_system_id(system) do
@@ -329,5 +329,4 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
         nil
     end
   end
-
 end

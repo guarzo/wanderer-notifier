@@ -37,7 +37,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       end
 
     # Log status every 24 hours (86400 seconds)
-    if now - state.last_status_time > 86400 do
+    if now - state.last_status_time > 86_400 do
       log_service_status(now - state.service_start_time)
       %{new_state | last_status_time: now}
     else
@@ -141,7 +141,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     # Create a deduplication key based on a time window (e.g., hourly)
     # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86400)
+    current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window
@@ -217,7 +217,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     # Create a deduplication key based on a time window
     # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86400)
+    current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window
