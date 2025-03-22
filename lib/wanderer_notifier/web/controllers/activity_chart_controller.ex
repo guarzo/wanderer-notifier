@@ -55,10 +55,12 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
             ActivityChartAdapter.generate_activity_summary_chart(activity_data)
 
           "activity_timeline" ->
-            ActivityChartAdapter.generate_activity_timeline_chart(activity_data)
+            # This chart type has been removed
+            {:error, "Activity Timeline chart has been removed"}
 
           "activity_distribution" ->
-            ActivityChartAdapter.generate_activity_distribution_chart(activity_data)
+            # This chart type has been removed
+            {:error, "Activity Distribution chart has been removed"}
 
           _ ->
             {:error, "Unknown chart type"}
@@ -329,9 +331,8 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
     # List of charts to send
     charts = [
-      :activity_summary,
-      :activity_timeline,
-      :activity_distribution
+      :activity_summary
+      # activity_timeline and activity_distribution have been removed
     ]
 
     # Send each chart and collect the results
@@ -406,32 +407,14 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     )
   end
 
-  defp generate_and_send_chart(:activity_timeline, activity_data, channel_id) do
-    # Use generate_ instead of send_ since that's what the adapter provides
-    with {:ok, url} <- ActivityChartAdapter.generate_activity_timeline_chart(activity_data),
-         :ok <-
-           WandererNotifier.ChartService.send_chart_to_discord(
-             url,
-             "Activity Timeline",
-             "Activity over time",
-             channel_id
-           ) do
-      {:ok, url, "Activity Timeline"}
-    end
+  defp generate_and_send_chart(:activity_timeline, _activity_data, _channel_id) do
+    # This chart type has been removed
+    {:error, "Activity Timeline chart has been removed"}
   end
 
-  defp generate_and_send_chart(:activity_distribution, activity_data, channel_id) do
-    # Use generate_ instead of send_ since that's what the adapter provides
-    with {:ok, url} <- ActivityChartAdapter.generate_activity_distribution_chart(activity_data),
-         :ok <-
-           WandererNotifier.ChartService.send_chart_to_discord(
-             url,
-             "Activity Distribution",
-             "Distribution of activities",
-             channel_id
-           ) do
-      {:ok, url, "Activity Distribution"}
-    end
+  defp generate_and_send_chart(:activity_distribution, _activity_data, _channel_id) do
+    # This chart type has been removed
+    {:error, "Activity Distribution chart has been removed"}
   end
 
   defp generate_and_send_chart(unknown_type, _activity_data, _channel_id) do

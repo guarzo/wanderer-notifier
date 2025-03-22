@@ -52,13 +52,14 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     # Log configuration for debugging
     Logger.info("Chart Service Manager initialized with port #{port}")
 
-    # Only start the chart service if chart functionality is enabled
-    if WandererNotifier.Core.Config.charts_enabled?() do
-      Logger.info("Charts functionality is enabled, starting chart service...")
+    # Only start the chart service if any chart functionality is enabled
+    if WandererNotifier.Core.Config.map_charts_enabled?() ||
+         WandererNotifier.Core.Config.kill_charts_enabled?() do
+      Logger.info("Chart functionality is enabled, starting chart service...")
       # Schedule a delayed start to ensure application is fully initialized
       Process.send_after(self(), :start_chart_service, 1000)
     else
-      Logger.warning("Charts functionality is disabled. Chart service will not start.")
+      Logger.warning("Chart functionality is disabled. Chart service will not start.")
     end
 
     {:ok,
@@ -66,7 +67,13 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
        port: port,
        process: nil,
        url: "http://localhost:#{port}",
-       status: if(WandererNotifier.Core.Config.charts_enabled?(), do: :starting, else: :disabled),
+       status:
+         if(
+           WandererNotifier.Core.Config.map_charts_enabled?() ||
+             WandererNotifier.Core.Config.kill_charts_enabled?(),
+           do: :starting,
+           else: :disabled
+         ),
        restart_attempts: 0,
        last_started_at: nil
      }}
@@ -123,7 +130,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   @impl true
   def handle_info(:start_chart_service, state) do
     # Check if charts functionality is enabled
-    if WandererNotifier.Core.Config.charts_enabled?() do
+    if WandererNotifier.Core.Config.map_charts_enabled?() ||
+         WandererNotifier.Core.Config.kill_charts_enabled?() do
       Logger.info("Starting Node.js chart service on port #{state.port}")
 
       case start_chart_service_process(state.port) do
@@ -175,7 +183,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   @impl true
   def handle_info(:restart_chart_service, state) do
     # Check if charts are enabled before attempting restart
-    if WandererNotifier.Core.Config.charts_enabled?() do
+    if WandererNotifier.Core.Config.map_charts_enabled?() ||
+         WandererNotifier.Core.Config.kill_charts_enabled?() do
       handle_chart_service_restart(state)
     else
       Logger.info("Charts functionality is disabled. Not restarting chart service.")

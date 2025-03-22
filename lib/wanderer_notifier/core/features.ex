@@ -267,7 +267,7 @@ defmodule WandererNotifier.Core.Features do
       # Tracking all systems
       tracking_all_systems: track_all_systems?(),
       # Activity charts status
-      activity_charts: WandererNotifier.Core.Config.activity_charts_enabled?()
+      activity_charts: WandererNotifier.Core.Config.map_charts_enabled?()
     }
 
     # Merge all feature maps

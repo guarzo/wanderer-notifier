@@ -22,13 +22,14 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
       title: "Character Activity",
       description: "Top 5 most active characters showing connections, passages, and signatures"
     }
+    # activity_timeline and activity_distribution charts have been removed
   ]
 
   # Create an interval-based scheduler with specific configuration
   WandererNotifier.Schedulers.Factory.create_scheduler(
     type: :interval,
     default_interval: @default_interval,
-    enabled_check: &WandererNotifier.Core.Config.map_tools_enabled?/0
+    enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0
   )
 
   @impl true

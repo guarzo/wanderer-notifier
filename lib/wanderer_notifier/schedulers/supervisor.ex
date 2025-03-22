@@ -19,12 +19,27 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     # Define the scheduler registry
     registry = {WandererNotifier.Schedulers.Registry, []}
 
-    # Define all schedulers to be supervised (TPSChartScheduler removed)
+    # Define all schedulers to be supervised
     schedulers = [
       {WandererNotifier.Schedulers.ActivityChartScheduler, []},
       {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
       {WandererNotifier.Schedulers.SystemUpdateScheduler, []}
     ]
+
+    # Add kill charts-related schedulers if kill charts feature is enabled
+    schedulers =
+      if kill_charts_enabled?() do
+        Logger.info("Kill charts feature enabled, adding killmail schedulers")
+
+        schedulers ++
+          [
+            {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
+            {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
+            {WandererNotifier.Schedulers.KillmailChartScheduler, []}
+          ]
+      else
+        schedulers
+      end
 
     children = [registry | schedulers]
 
@@ -51,5 +66,10 @@ defmodule WandererNotifier.Schedulers.Supervisor do
         Logger.error("Failed to start scheduler #{inspect(scheduler_module)}: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 end

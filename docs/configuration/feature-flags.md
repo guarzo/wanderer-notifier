@@ -77,9 +77,12 @@ def character_notifications_enabled?(), do: feature_enabled?(:character_notifica
 | `system_notifications`    | `ENABLE_SYSTEM_NOTIFICATIONS`    | `true`  | System tracking notifications                    |
 | `character_notifications` | `ENABLE_CHARACTER_NOTIFICATIONS` | `true`  | Character tracking notifications                 |
 | `charts`                  | `ENABLE_CHARTS`                  | `false` | Master switch for chart generation               |
-| `tps_charts`              | `ENABLE_TPS_CHARTS`              | `false` | TPS chart generation                             |
-| `map_charts`              | `ENABLE_MAP_CHARTS`              | `false` | Map-based activity charts                        |
+| `map_charts`              | `ENABLE_MAP_CHARTS`              | `true`  | Map-based activity charts                        |
+| `kill_charts`             | `ENABLE_KILL_CHARTS`             | `false` | Killmail charts and history                      |
 | `node_chart_service`      | `ENABLE_NODE_CHART_SERVICE`      | `false` | Use Node.js chart service instead of QuickCharts |
+
+- Note: Some chart types have been removed. The `map_charts` feature now only supports the activity_summary chart type.
+  The activity_timeline and activity_distribution chart types are no longer available.
 
 ## Feature Dependencies
 
@@ -93,11 +96,15 @@ These dependencies are handled in the helper functions:
 
 ```elixir
 def charts_enabled?() do
-  feature_enabled?(:charts) || corp_tools_enabled?() || map_tools_enabled?()
+  feature_enabled?(:charts)
 end
 
-def tps_charts_enabled?() do
-  (feature_enabled?(:tps_charts) || corp_tools_enabled?()) && charts_enabled?()
+def map_charts_enabled?() do
+  feature_enabled?(:map_charts)
+end
+
+def kill_charts_enabled?() do
+  feature_enabled?(:kill_charts) || killmail_persistence_enabled?()  # Legacy support
 end
 ```
 
@@ -182,7 +189,6 @@ The application logs feature flag status on startup:
 [info]   ✓ system_notifications
 [info]   ✓ character_notifications
 [info]   ✗ charts
-[info]   ✗ tps_charts
 [info]   ✗ map_charts
 ```
 

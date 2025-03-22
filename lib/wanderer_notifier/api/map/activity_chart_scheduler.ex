@@ -53,12 +53,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
     Logger.info("Initializing Activity Chart Scheduler...")
 
-    # Schedule first chart sending only if map tools are enabled
-    if Config.map_tools_enabled?() do
+    # Schedule first chart sending only if map charts are enabled
+    if Config.map_charts_enabled?() do
       schedule_charts(interval)
       Logger.info("Activity Chart Scheduler initialized and scheduled")
     else
-      Logger.info("Activity Chart Scheduler initialized but not scheduled (Map Tools disabled)")
+      Logger.info("Activity Chart Scheduler initialized but not scheduled (Map Charts disabled)")
     end
 
     # Initial state
@@ -67,15 +67,15 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
   @impl true
   def handle_cast(:send_all_charts, state) do
-    # Send all charts only if map tools are enabled
-    if Config.map_tools_enabled?() do
+    # Send all charts only if map charts are enabled
+    if Config.map_charts_enabled?() do
       # Send all charts
       _results = send_charts()
 
       # Update state with last sent timestamp
       {:noreply, %{state | last_sent: DateTime.utc_now()}}
     else
-      Logger.info("Skipping manually triggered Activity Charts (Map Tools disabled)")
+      Logger.info("Skipping manually triggered Activity Charts (Map Charts disabled)")
       {:noreply, state}
     end
   end
@@ -85,11 +85,11 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Update interval in state
     new_state = %{state | interval: interval_ms}
 
-    # Reschedule with new interval only if map tools are enabled
-    if Config.map_tools_enabled?() do
+    # Reschedule with new interval only if map charts are enabled
+    if Config.map_charts_enabled?() do
       schedule_charts(interval_ms)
     else
-      Logger.info("Not rescheduling Activity Charts (Map Tools disabled)")
+      Logger.info("Not rescheduling Activity Charts (Map Charts disabled)")
     end
 
     {:reply, :ok, new_state}
@@ -97,8 +97,8 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
   @impl true
   def handle_info(:send_charts, state) do
-    # Send charts only if map tools are enabled
-    if Config.map_tools_enabled?() do
+    # Send charts only if map charts are enabled
+    if Config.map_charts_enabled?() do
       Logger.info("Sending activity charts to Discord...")
 
       # Send charts
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
       {:noreply, %{state | last_sent: DateTime.utc_now()}}
     else
-      Logger.info("Skipping scheduled Activity Charts (Map Tools disabled)")
+      Logger.info("Skipping scheduled Activity Charts (Map Charts disabled)")
       {:noreply, state}
     end
   end
@@ -117,12 +117,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   # Helper Functions
 
   defp schedule_charts(interval) do
-    # Only schedule if map tools are enabled
-    if Config.map_tools_enabled?() do
+    # Only schedule if map charts are enabled
+    if Config.map_charts_enabled?() do
       Process.send_after(self(), :send_charts, interval)
       Logger.debug("Scheduled next activity chart run in #{interval / 1000 / 60} minutes")
     else
-      Logger.info("Not scheduling Activity Charts (Map Tools disabled)")
+      Logger.info("Not scheduling Activity Charts (Map Charts disabled)")
     end
   end
 
@@ -205,21 +205,9 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     )
   end
 
-  defp generate_activity_timeline(activity_data, channel_id) do
-    case WandererNotifier.ChartService.ActivityChartAdapter.generate_activity_timeline_chart(
-           activity_data
-         ) do
-      {:ok, url} ->
-        WandererNotifier.ChartService.send_chart_to_discord(
-          url,
-          "Activity Timeline",
-          "Activity over time",
-          channel_id
-        )
-
-      error ->
-        error
-    end
+  defp generate_activity_timeline(_activity_data, _channel_id) do
+    Logger.warning("Activity Timeline chart has been removed", [])
+    {:error, "Activity Timeline chart has been removed"}
   end
 
   defp log_chart_results(results) do
