@@ -138,7 +138,7 @@ defmodule WandererNotifier.Data.MapSystem do
   @doc """
   Determines if the system is a wormhole based on its properties.
   """
-  def is_wormhole?(%__MODULE__{} = system) do
+  def wormhole?(%__MODULE__{} = system) do
     system.system_type == :wormhole
   end
 

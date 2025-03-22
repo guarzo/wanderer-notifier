@@ -259,7 +259,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     Logger.info("- solar_system_id: #{enriched_system.solar_system_id}")
     Logger.info("- name: #{enriched_system.name}")
     Logger.info("- type_description: #{enriched_system.type_description}")
-    Logger.info("- is_wormhole?: #{MapSystem.is_wormhole?(enriched_system)}")
+    Logger.info("- is_wormhole?: #{MapSystem.wormhole?(enriched_system)}")
     Logger.info("- statics: #{inspect(enriched_system.statics)}")
 
     # Send notification with the enriched system struct directly

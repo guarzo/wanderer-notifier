@@ -13,7 +13,7 @@ defmodule WandererNotifier.Api.Http.Client do
   # milliseconds
   @default_max_backoff 5000
   # milliseconds (10 seconds)
-  @default_timeout 10000
+  @default_timeout 10_000
 
   # Errors that are considered transient and can be retried
   @transient_errors [

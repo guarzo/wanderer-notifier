@@ -80,10 +80,10 @@ defmodule WandererNotifier.ChartService.ChartConfig do
   """
   def validate(%__MODULE__{} = config) do
     cond do
-      not is_valid_type(config.type) ->
+      not valid_type?(config.type) ->
         {:error, "Invalid chart type: #{inspect(config.type)}"}
 
-      not is_valid_data(config.data) ->
+      not valid_data?(config.data) ->
         {:error, "Invalid chart data structure"}
 
       true ->
@@ -120,7 +120,7 @@ defmodule WandererNotifier.ChartService.ChartConfig do
 
   # Private helpers
 
-  defp is_valid_type(type) do
+  defp valid_type?(type) do
     valid_types = [
       ChartTypes.bar(),
       ChartTypes.line(),
@@ -132,17 +132,16 @@ defmodule WandererNotifier.ChartService.ChartConfig do
     type in valid_types
   end
 
-  defp is_valid_data(data) when is_map(data) do
-    # Validate data structure (must have labels and at least one dataset)
-    has_labels = Map.has_key?(data, :labels) || Map.has_key?(data, "labels")
-    has_datasets = Map.has_key?(data, :datasets) || Map.has_key?(data, "datasets")
-
+  defp valid_data?(data) when is_map(data) do
+    # Check for required data structures
+    has_labels = data[:labels] != nil || data["labels"] != nil
+    has_datasets = data[:datasets] != nil || data["datasets"] != nil
     datasets = data[:datasets] || data["datasets"] || []
 
     has_labels and has_datasets and is_list(datasets) and length(datasets) > 0
   end
 
-  defp is_valid_data(_), do: false
+  defp valid_data?(_), do: false
 
   defp default_options(title) do
     # Default styling for charts with white text on dark background

@@ -49,7 +49,10 @@ defmodule WandererNotifier.CorpTools.ChartService do
     charts_dir = Path.join(:code.priv_dir(:wanderer_notifier), "charts")
     node_modules_path = Path.join(charts_dir, "node_modules")
 
-    if !File.exists?(node_modules_path) do
+    if File.exists?(node_modules_path) do
+      Logger.debug("Node.js dependencies already installed")
+      {:ok, "Dependencies already installed"}
+    else
       Logger.info("Installing Node.js dependencies for chart generation...")
 
       case System.cmd("npm", ["install"], cd: charts_dir) do
@@ -64,9 +67,6 @@ defmodule WandererNotifier.CorpTools.ChartService do
 
           {:error, "Failed to install Node.js dependencies"}
       end
-    else
-      Logger.info("Node.js dependencies already installed")
-      :ok
     end
   end
 

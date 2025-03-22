@@ -59,7 +59,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
                   map_system = MapSystem.new(system_data)
 
                   # Enrich with static info if it's a wormhole system
-                  if MapSystem.is_wormhole?(map_system) do
+                  if MapSystem.wormhole?(map_system) do
                     case SystemStaticInfo.enrich_system(map_system) do
                       {:ok, enriched_system} ->
                         Logger.debug(
@@ -78,7 +78,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
                 end)
 
               # Filter for wormhole systems
-              wormhole_systems = Enum.filter(systems, &MapSystem.is_wormhole?/1)
+              wormhole_systems = Enum.filter(systems, &MapSystem.wormhole?/1)
 
               # Log status
               if wormhole_systems == [] do
@@ -208,7 +208,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
               end
 
             # Check if the system is a wormhole
-            if MapSystem.is_wormhole?(map_system) do
+            if MapSystem.wormhole?(map_system) do
               # Get statics info from MapSystem struct
               statics_list = map_system.statics || []
 

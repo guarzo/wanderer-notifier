@@ -872,12 +872,12 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     found = length(matches) > 0
 
-    if !found do
+    if found do
+      Logger.debug("DEBUG: Found #{length(matches)} matches in tracked systems")
+    else
       # If no match found, log the first few systems for debugging
       sample = Enum.take(tracked_systems, min(3, length(tracked_systems)))
       Logger.debug("DEBUG: No match found. Sample tracked system structures: #{inspect(sample)}")
-    else
-      Logger.debug("DEBUG: Found #{length(matches)} matches in tracked systems")
     end
 
     # Try to find the system by direct lookup

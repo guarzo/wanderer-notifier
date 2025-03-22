@@ -198,7 +198,7 @@ defmodule WandererNotifier.ChartService do
   def send_chart_to_discord(image_binary, title, description, channel_id)
       when is_binary(image_binary) do
     # Check if the binary is actually a URL
-    if is_url(image_binary) do
+    if url?(image_binary) do
       # It's a URL, use it directly in an embed
       chart_url = image_binary
       Logger.debug("URL detected for chart - using in embed: #{title}")
@@ -284,7 +284,7 @@ defmodule WandererNotifier.ChartService do
   end
 
   # Helper to check if a binary is a URL
-  defp is_url(binary) do
+  defp url?(binary) do
     String.starts_with?(binary, "http://") or String.starts_with?(binary, "https://")
   end
 

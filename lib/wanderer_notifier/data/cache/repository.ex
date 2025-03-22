@@ -35,7 +35,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Configure Cachex with optimized settings
     cachex_options = [
       # Set a higher limit for maximum entries (default is often too low)
-      limit: 10000,
+      limit: 10_000,
 
       # Configure memory limits (in bytes) - 256MB
       max_size: 256 * 1024 * 1024,
@@ -295,7 +295,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   defp process_get_result(key, {:ok, nil}, {:ok, true}) do
     # Handle special keys that should initialize as empty lists when they exist but have nil value
-    if is_special_collection_key(key) do
+    if special_collection_key?(key) do
       init_empty_collection(key)
     else
       handle_nil_value(key)
@@ -317,7 +317,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   end
 
   # Checks if the key is a special collection key that should initialize as empty list
-  defp is_special_collection_key(key) do
+  defp special_collection_key?(key) do
     key in ["map:systems", "map:characters"]
   end
 

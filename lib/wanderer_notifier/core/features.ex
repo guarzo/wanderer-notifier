@@ -86,13 +86,13 @@ defmodule WandererNotifier.Core.Features do
         system_notifications_enabled? =
           WandererNotifier.Core.Config.system_notifications_enabled?()
 
-        if not system_notifications_enabled? do
-          Logger.debug("[Features] System notifications are explicitly disabled in configuration")
-          false
-        else
+        if system_notifications_enabled? do
           # If enabled in config, continue with normal license check
           Logger.debug("[Features] System notifications are enabled (default), checking license")
           check_license_for_feature(feature)
+        else
+          Logger.debug("[Features] System notifications are explicitly disabled in configuration")
+          false
         end
 
       true ->

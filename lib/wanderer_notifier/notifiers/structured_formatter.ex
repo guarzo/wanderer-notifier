@@ -307,7 +307,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     Logger.debug("[StructuredFormatter] - system_type: #{inspect(system.system_type)}")
 
     # Check if the system is a wormhole
-    is_wormhole = MapSystem.is_wormhole?(system)
+    is_wormhole = MapSystem.wormhole?(system)
     Logger.debug("[StructuredFormatter] Is wormhole: #{is_wormhole}")
 
     # Generate the display name for the notification

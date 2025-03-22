@@ -132,8 +132,8 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Log service status
   defp log_service_status(uptime_seconds) do
-    days = div(uptime_seconds, 86400)
-    hours = div(rem(uptime_seconds, 86400), 3600)
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 
@@ -208,8 +208,8 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Calculate uptime
     uptime_seconds = :os.system_time(:second) - Process.get(:service_start_time, 0)
 
-    days = div(uptime_seconds, 86400)
-    hours = div(rem(uptime_seconds, 86400), 3600)
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 

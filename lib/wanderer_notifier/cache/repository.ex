@@ -35,7 +35,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Configure Cachex with optimized settings
     cachex_options = [
       # Set a higher limit for maximum entries (default is often too low)
-      limit: 10000,
+      limit: 10_000,
 
       # Configure memory limits (in bytes) - 256MB
       max_size: 256 * 1024 * 1024,

@@ -230,11 +230,8 @@ defmodule WandererNotifier.Data.MapSystem do
       original_name: original_name,
       # Only set temporary_name if it's different from the original_name
       temporary_name:
-        if(
-          map_response["temporary_name"] &&
-            map_response["temporary_name"] !=
-              (original_name || map_response["name"])
-        ) do
+        if map_response["temporary_name"] &&
+             map_response["temporary_name"] != (original_name || map_response["name"]) do
           map_response["temporary_name"]
         else
           nil
