@@ -974,34 +974,40 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Add system name to ESI data if missing
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
-    # First check if we already have a solar_system_name
+    # Already has a system name, no need to add it
     if Map.has_key?(esi_data, "solar_system_name") do
-      # Already has a system name, no need to add it
       esi_data
     else
-      # Get the system ID
-      system_id = Map.get(esi_data, "solar_system_id")
-
-      if system_id do
-        # Use the get_system_name helper which has caching already implemented
-        system_name = get_system_name(system_id)
-
-        if system_name do
-          Map.put(esi_data, "solar_system_name", system_name)
-        else
-          # If no system name could be retrieved, just return the original data
-          Logger.debug("[KillProcessor] No system name found for ID #{system_id}")
-          esi_data
-        end
-      else
-        # No system ID available, leave the data as is
-        Logger.warning("[KillProcessor] No system ID available in killmail data")
-        esi_data
-      end
+      add_system_name_to_data(esi_data)
     end
   end
 
   defp enrich_with_system_name(data), do: data
+
+  # Helper to add system name if system_id exists
+  defp add_system_name_to_data(esi_data) do
+    system_id = Map.get(esi_data, "solar_system_id")
+
+    # No system ID, return original data
+    if is_nil(system_id) do
+      Logger.warning("[KillProcessor] No system ID available in killmail data")
+      esi_data
+    else
+      # Get system name and add it if found
+      system_name = get_system_name(system_id)
+      add_system_name_if_found(esi_data, system_id, system_name)
+    end
+  end
+
+  # Add system name to data if found
+  defp add_system_name_if_found(esi_data, system_id, nil) do
+    Logger.debug("[KillProcessor] No system name found for ID #{system_id}")
+    esi_data
+  end
+
+  defp add_system_name_if_found(esi_data, _system_id, system_name) do
+    Map.put(esi_data, "solar_system_name", system_name)
+  end
 
   # Helper function to get system name with caching
   defp get_system_name(nil), do: nil
