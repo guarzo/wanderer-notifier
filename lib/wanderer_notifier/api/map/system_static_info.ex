@@ -21,47 +21,62 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
-    # Build the URL with the 'id' parameter instead of 'slug'
-    with {:ok, base_domain} <- extract_base_domain(),
-         url = "#{base_domain}/api/common/system-static-info?id=#{solar_system_id}",
-         headers = UrlBuilder.get_auth_headers() do
-      # Log request details for debugging
-      Logger.debug("[SystemStaticInfo] Requesting static info for system #{solar_system_id}")
-      Logger.debug("[SystemStaticInfo] URL: #{url}")
+    with {:ok, url} <- build_system_static_info_url(solar_system_id),
+         {:ok, response} <- make_api_request(url, solar_system_id),
+         {:ok, parsed_response} <- process_api_response(response),
+         {:ok, data} <- validate_static_info(parsed_response) do
+      Logger.debug("[SystemStaticInfo] Successfully validated static info")
+      {:ok, data}
+    end
+  end
 
-      # Make the API request
-      case Client.get(url, headers) do
-        {:ok, response} ->
-          # Let the error handler handle the response in a consistent way
-          case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
-            {:ok, parsed_response} ->
-              # Validate the response structure with our validator
-              case ResponseValidator.validate_system_static_info_response(parsed_response) do
-                {:ok, data} ->
-                  Logger.debug("[SystemStaticInfo] Successfully validated static info")
-                  {:ok, data}
+  defp build_system_static_info_url(solar_system_id) do
+    case extract_base_domain() do
+      {:ok, base_domain} ->
+        url = "#{base_domain}/api/common/system-static-info?id=#{solar_system_id}"
+        {:ok, url}
 
-                {:error, reason} ->
-                  Logger.warning(
-                    "[SystemStaticInfo] Invalid system static info: #{inspect(reason)}"
-                  )
-
-                  {:error, reason}
-              end
-
-            {:error, reason} ->
-              Logger.error("[SystemStaticInfo] HTTP error: #{inspect(reason)}")
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          Logger.error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
-          {:error, reason}
-      end
-    else
-      {:error, reason} ->
+      {:error, reason} = error ->
         Logger.error("[SystemStaticInfo] Failed to construct URL: #{inspect(reason)}")
-        {:error, reason}
+        error
+    end
+  end
+
+  defp make_api_request(url, solar_system_id) do
+    headers = UrlBuilder.get_auth_headers()
+    # Log request details for debugging
+    Logger.debug("[SystemStaticInfo] Requesting static info for system #{solar_system_id}")
+    Logger.debug("[SystemStaticInfo] URL: #{url}")
+
+    case Client.get(url, headers) do
+      {:ok, _response} = success ->
+        success
+
+      {:error, reason} = error ->
+        Logger.error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp process_api_response(response) do
+    case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
+      {:ok, _parsed_response} = success ->
+        success
+
+      {:error, reason} = error ->
+        Logger.error("[SystemStaticInfo] HTTP error: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp validate_static_info(parsed_response) do
+    case ResponseValidator.validate_system_static_info_response(parsed_response) do
+      {:ok, _data} = success ->
+        success
+
+      {:error, reason} = error ->
+        Logger.warning("[SystemStaticInfo] Invalid system static info: #{inspect(reason)}")
+        error
     end
   end
 

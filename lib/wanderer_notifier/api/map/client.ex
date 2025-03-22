@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Api.Map.Client do
   @moduledoc """
   Client for interacting with the Wanderer map API.
-  
+
   This module provides a simplified facade over the specific client modules
   for different map API endpoints, handling feature checks and error management.
   """
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Api.Map.Client do
 
   @doc """
   Updates system information from the map API.
-  
+
   ## Returns
     - {:ok, systems} on success
     - {:error, reason} on failure
@@ -30,17 +30,21 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_systems: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end
 
   @doc """
   Updates system information from the map API, comparing with cached systems.
-  
+
   ## Parameters
     - cached_systems: List of previously cached systems for comparison
-    
+
   ## Returns
     - {:ok, systems} on success
     - {:error, reason} on failure
@@ -60,17 +64,21 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_systems_with_cache: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end
 
   @doc """
   Updates tracked character information from the map API.
-  
+
   ## Parameters
     - cached_characters: Optional list of cached characters for comparison
-    
+
   ## Returns
     - {:ok, characters} on success
     - {:error, reason} on failure
@@ -109,17 +117,21 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_tracked_characters: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end
 
   @doc """
   Retrieves character activity data from the map API.
-  
+
   ## Parameters
     - slug: Optional map slug override
-    
+
   ## Returns
     - {:ok, data} on success
     - {:error, reason} on failure

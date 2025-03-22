@@ -36,7 +36,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:ok, true} ->
             Logger.warning("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
             {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_true}}}
-            
+
           _ ->
             ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.killmail")
         end
@@ -66,7 +66,10 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
-        case ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.recent_kills") do
+        case ErrorHandler.handle_http_response(response,
+               domain: :zkill,
+               tag: "ZKill.recent_kills"
+             ) do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)

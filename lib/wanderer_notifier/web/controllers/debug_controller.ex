@@ -101,8 +101,8 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
         cond do
           seconds < 60 -> "#{seconds} seconds ago"
           seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
-          seconds < 86400 -> "#{div(seconds, 3600)} hours ago"
-          true -> "#{div(seconds, 86400)} days ago"
+          seconds < 86_400 -> "#{div(seconds, 3600)} hours ago"
+          true -> "#{div(seconds, 86_400)} days ago"
         end
       else
         "No messages received yet"
@@ -119,8 +119,8 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
         cond do
           seconds < 60 -> "#{seconds} seconds"
           seconds < 3600 -> "#{div(seconds, 60)} minutes"
-          seconds < 86400 -> "#{div(seconds, 3600)} hours"
-          true -> "#{div(seconds, 86400)} days"
+          seconds < 86_400 -> "#{div(seconds, 3600)} hours"
+          true -> "#{div(seconds, 86_400)} days"
         end
       else
         "Unknown"
@@ -272,8 +272,8 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
         current_time = :erlang.system_time(:second)
         uptime_seconds = current_time - start_time
 
-        days = div(uptime_seconds, 86400)
-        hours = div(rem(uptime_seconds, 86400), 3600)
+        days = div(uptime_seconds, 86_400)
+        hours = div(rem(uptime_seconds, 86_400), 3600)
         minutes = div(rem(uptime_seconds, 3600), 60)
         seconds = rem(uptime_seconds, 60)
 

@@ -140,89 +140,108 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
     # Get activity data first
     activity_data_result = get_activity_data()
+    process_activity_data(activity_data_result)
+  end
 
-    case activity_data_result do
-      {:ok, activity_data} ->
-        # Get the channel ID for activity charts
-        channel_id = get_channel_id()
-        Logger.info("Sending activity charts to Discord channel: #{channel_id}")
+  defp process_activity_data({:ok, activity_data}) do
+    # Get the channel ID for activity charts
+    channel_id = get_channel_id()
+    Logger.info("Sending activity charts to Discord channel: #{channel_id}")
 
-        # Send each chart and collect results
-        results =
-          Enum.map(@chart_configs, fn config ->
-            Logger.info("Generating chart: #{config.type} - #{config.title}")
+    # Send each chart and collect results
+    results = generate_charts(activity_data, channel_id)
 
-            # Add a try/rescue block to catch any unexpected errors
-            result =
-              try do
-                case config.type do
-                  :activity_summary ->
-                    WandererNotifier.ChartService.ActivityChartAdapter.send_chart_to_discord(
-                      activity_data,
-                      config.title,
-                      "activity_summary",
-                      config.description,
-                      channel_id
-                    )
+    # Log the results
+    log_chart_results(results)
 
-                  :activity_timeline ->
-                    case WandererNotifier.ChartService.ActivityChartAdapter.generate_activity_timeline_chart(
-                           activity_data
-                         ) do
-                      {:ok, url} ->
-                        WandererNotifier.ChartService.send_chart_to_discord(
-                          url,
-                          "Activity Timeline",
-                          "Activity over time",
-                          channel_id
-                        )
+    # Return the results
+    results
+  end
 
-                      error ->
-                        error
-                    end
+  defp process_activity_data({:error, reason}) do
+    Logger.error("Failed to retrieve activity data: #{inspect(reason)}")
+    []
+  end
 
-                  _ ->
-                    {:error, "Unknown chart type: #{config.type}"}
-                end
-              rescue
-                e ->
-                  error_message = "Chart generation crashed: #{inspect(e)}"
-                  Logger.error(error_message)
-                  {:error, error_message}
-              catch
-                kind, reason ->
-                  error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
-                  Logger.error(error_message)
-                  {:error, error_message}
-              end
+  defp generate_charts(activity_data, channel_id) do
+    Enum.map(@chart_configs, fn config ->
+      Logger.info("Generating chart: #{config.type} - #{config.title}")
+      {config.type, generate_chart(config, activity_data, channel_id)}
+    end)
+  end
 
-            {config.type, result}
-          end)
+  defp generate_chart(config, activity_data, channel_id) do
+    try do
+      case config.type do
+        :activity_summary ->
+          generate_activity_summary(activity_data, config, channel_id)
 
-        # Log results
-        Enum.each(results, fn {type, result} ->
-          case result do
-            {:ok, url, title} ->
-              Logger.info("Successfully sent #{type} chart to Discord: #{title}")
-              Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
+        :activity_timeline ->
+          generate_activity_timeline(activity_data, channel_id)
 
-            {:error, reason} ->
-              Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
-
-            _ ->
-              Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
-          end
-        end)
-
-        success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
-        Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
-
-        results
-
-      {:error, reason} ->
-        Logger.error("Failed to retrieve activity data: #{inspect(reason)}")
-        []
+        _ ->
+          {:error, "Unknown chart type: #{config.type}"}
+      end
+    rescue
+      e ->
+        error_message = "Chart generation crashed: #{inspect(e)}"
+        Logger.error(error_message)
+        {:error, error_message}
+    catch
+      kind, reason ->
+        error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
+        Logger.error(error_message)
+        {:error, error_message}
     end
+  end
+
+  defp generate_activity_summary(activity_data, config, channel_id) do
+    WandererNotifier.ChartService.ActivityChartAdapter.send_chart_to_discord(
+      activity_data,
+      config.title,
+      "activity_summary",
+      config.description,
+      channel_id
+    )
+  end
+
+  defp generate_activity_timeline(activity_data, channel_id) do
+    case WandererNotifier.ChartService.ActivityChartAdapter.generate_activity_timeline_chart(
+           activity_data
+         ) do
+      {:ok, url} ->
+        WandererNotifier.ChartService.send_chart_to_discord(
+          url,
+          "Activity Timeline",
+          "Activity over time",
+          channel_id
+        )
+
+      error ->
+        error
+    end
+  end
+
+  defp log_chart_results(results) do
+    # Log individual results
+    Enum.each(results, &log_chart_result/1)
+
+    # Log summary
+    success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
+    Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
+  end
+
+  defp log_chart_result({type, {:ok, url, title}}) do
+    Logger.info("Successfully sent #{type} chart to Discord: #{title}")
+    Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
+  end
+
+  defp log_chart_result({type, {:error, reason}}) do
+    Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
+  end
+
+  defp log_chart_result({type, result}) do
+    Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
   end
 
   # Helper to get activity data from Map API

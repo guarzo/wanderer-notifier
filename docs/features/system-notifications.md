@@ -18,7 +18,7 @@ When a new system is discovered, the `WandererNotifier.Api.Map.SystemsClient.not
 | `region_name`     | Region name                                      | `MapSystem.region_name`                                                           | `"A-R00001"`                                  |
 | `class_title`     | Wormhole class designation                       | `MapSystem.class_title`                                                           | `"C3"`                                        |
 | `effect_name`     | Name of system effect (if any)                   | `MapSystem.effect_name`                                                           | `"Wolf-Rayet"`                                |
-| `system_type`     | Type of system                                   | Derived from `MapSystem.is_wormhole?`                                             | `"wormhole"` or `"k-space"`                   |
+| `system_type`     | Type of system                                   | Derived from `MapSystem.wormhole?`                                                | `"wormhole"` or `"k-space"`                   |
 | `original_name`   | Original EVE system name                         | `MapSystem.original_name`                                                         | `"J123456"`                                   |
 | `temporary_name`  | User-assigned nickname                           | `MapSystem.temporary_name`                                                        | `"Home"`                                      |
 | `solar_system_id` | EVE Online solar system ID                       | `MapSystem.solar_system_id`                                                       | `31000123`                                    |

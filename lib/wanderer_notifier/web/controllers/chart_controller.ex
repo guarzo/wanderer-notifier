@@ -4,10 +4,8 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.ChartService.TPSChartAdapter
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.Api.Map.CharactersClient
-  alias WandererNotifier.CorpTools.CorpToolsClient
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Web.Controllers.ActivityChartController
 
@@ -24,7 +22,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     |> send_resp(
       200,
       Jason.encode!(%{
-        corp_tools_enabled: Config.corp_tools_enabled?(),
+        tps_charts_enabled: Config.tps_charts_enabled?(),
         map_tools_enabled: Config.map_tools_enabled?()
       })
     )
@@ -33,14 +31,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Get character activity data
   get "/character-activity" do
     # Check if map tools functionality is enabled
-    if not Config.map_tools_enabled?() do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "Map Tools functionality is not enabled"})
-      )
-    else
+    if Config.map_tools_enabled?() do
       # Extract slug parameter if provided
       slug = conn.params["slug"]
 
@@ -89,20 +80,20 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             })
           )
       end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        404,
+        Jason.encode!(%{status: "error", message: "Map Tools functionality is not enabled"})
+      )
     end
   end
 
   # Generate a chart based on the provided type
   get "/generate" do
-    # Check if corp tools functionality is enabled
-    if not Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "Corp Tools functionality is not enabled"})
-      )
-    else
+    # Check if TPS charts functionality is enabled
+    if Config.tps_charts_enabled?() do
       # Extract parameters from the query string
       chart_type =
         case conn.params["type"] do
@@ -127,13 +118,16 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         chart_result =
           case chart_type do
             :damage_final_blows ->
-              TPSChartAdapter.generate_chart(chart_type)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :combined_losses ->
-              TPSChartAdapter.generate_chart(chart_type)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :kill_activity ->
-              TPSChartAdapter.generate_chart(chart_type)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :activity_summary ->
               # Get activity data first
@@ -179,20 +173,20 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             )
         end
       end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        404,
+        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
+      )
     end
   end
 
   # Send a chart to Discord
   get "/send-to-discord" do
-    # Check if corp tools functionality is enabled
-    if not Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "Corp Tools functionality is not enabled"})
-      )
-    else
+    # Check if TPS charts functionality is enabled
+    if Config.tps_charts_enabled?() do
       # Extract parameters from the query string
       chart_type =
         case conn.params["type"] do
@@ -233,13 +227,16 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         result =
           case chart_type do
             :damage_final_blows ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :combined_losses ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :kill_activity ->
-              TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id)
+              # TPS functionality has been removed
+              {:error, "TPS chart functionality has been removed"}
 
             :activity_summary ->
               # Get activity data first for chart generation
@@ -309,6 +306,13 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             )
         end
       end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        404,
+        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
+      )
     end
   end
 
@@ -317,13 +321,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     Logger.info("Forwarding request to send all activity charts to Discord")
 
     # Only allow this if map tools are enabled
-    if !Config.map_tools_enabled?() do
-      Logger.warning("Map tools are not enabled, cannot send activity charts")
-
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(404, Jason.encode!(%{status: "error", message: "Map tools are not enabled"}))
-    else
+    if Config.map_tools_enabled?() do
       Logger.info("Forwarding request to activity controller send-all endpoint")
 
       # Get character activity data
@@ -378,43 +376,29 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           results: formatted_results
         })
       )
+    else
+      Logger.warning("Map tools are not enabled, cannot send activity charts")
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(404, Jason.encode!(%{status: "error", message: "Map tools are not enabled"}))
     end
   end
 
   # Get TPS data for debugging
   get "/debug-tps-structure" do
-    # Check if corp tools functionality is enabled
-    if not Config.corp_tools_enabled?() do
+    # Check if TPS charts functionality is enabled
+    if Config.tps_charts_enabled?() do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{status: "ok", message: "TPS charts enabled", data: %{}}))
+    else
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(
         404,
-        Jason.encode!(%{status: "error", message: "Corp Tools functionality is not enabled"})
+        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
       )
-    else
-      case CorpToolsClient.get_tps_data() do
-        {:ok, data} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(200, Jason.encode!(%{status: "ok", data: data}))
-
-        {:loading, message} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
-
-        {:error, reason} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            500,
-            Jason.encode!(%{
-              status: "error",
-              message: "Failed to get TPS data",
-              reason: inspect(reason)
-            })
-          )
-      end
     end
   end
 

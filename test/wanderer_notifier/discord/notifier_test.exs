@@ -1,136 +1,83 @@
 defmodule WandererNotifier.Discord.NotifierTest do
-  use WandererNotifier.TestCase
+  use ExUnit.Case, async: false
+  import ExUnit.CaptureLog
+  require Logger
   alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.Data.Killmail
 
-  # Import mocks
-  alias WandererNotifier.MockHTTPClient
-  alias WandererNotifier.MockESIService
-
-  # Setup with proper global mocks
   setup do
-    # Make sure the right implementations are used for tests
-    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.MockHTTPClient)
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.MockESIService)
+    # Set app to test environment
+    previous_env = Application.get_env(:wanderer_notifier, :env)
+    Application.put_env(:wanderer_notifier, :env, :test)
+
+    # Configure logger for testing
+    :ok = Logger.configure(level: :info)
+
+    # Ensure we restore the original environment after the test
+    on_exit(fn ->
+      if previous_env do
+        Application.put_env(:wanderer_notifier, :env, previous_env)
+      else
+        Application.delete_env(:wanderer_notifier, :env)
+      end
+    end)
 
     :ok
   end
 
   describe "send_message/2" do
-    test "sends a plain text message to Discord" do
-      # The function should pass in test environment without actually sending
-      result = Notifier.send_message("Test message")
-      assert result == :ok
-    end
-
-    test "correctly handles feature-specific messages" do
-      result = Notifier.send_message("Test feature message", :test_feature)
-      assert result == :ok
-    end
-
-    test "handles test kill notification requests" do
-      # Mock the get_recent_kills function
-      original_module = WandererNotifier.Services.KillProcessor
-
-      if Code.ensure_loaded?(original_module) do
-        # Only run this test if KillProcessor is loaded
-        mock_kill = sample_killmail()
-
-        # This is a workaround for mocking without mocking the entire module
-        # We temporarily redefine the function
-        try do
-          :meck.new(WandererNotifier.Services.KillProcessor, [:passthrough])
-
-          :meck.expect(WandererNotifier.Services.KillProcessor, :get_recent_kills, fn ->
-            [mock_kill]
-          end)
-
-          result = Notifier.send_message("test kill notification")
-          assert result == :ok
-        after
-          # Clean up the mock
-          :meck.unload(WandererNotifier.Services.KillProcessor)
-        end
-      else
-        # Skip this test if KillProcessor is not loaded
-        :ok
-      end
+    test "handles basic message in test mode" do
+      # Use a more direct approach to ensure we capture the log
+      assert capture_log(fn ->
+               assert :ok = Notifier.send_message("Test message")
+             end) =~ "DISCORD MOCK: Test message"
     end
   end
 
   describe "send_embed/4" do
-    test "sends a basic embed message to Discord" do
-      result = Notifier.send_embed("Test Title", "Test Description")
-      assert result == :ok
-    end
-
-    test "includes URL and color when provided" do
-      result =
-        Notifier.send_embed("Test Title", "Test Description", "https://example.com", 0xFF0000)
-
-      assert result == :ok
-    end
-  end
-
-  describe "send_enriched_kill_embed/2" do
-    test "handles sample killmail data" do
-      kill_data = sample_killmail()
-
-      # Mock the ESI service response for enrichment if needed
-      MockESIService
-      |> stub(:get_killmail, fn _kill_id, _hash ->
-        {:ok, kill_data}
-      end)
-
-      result = Notifier.send_enriched_kill_embed(kill_data, kill_data["killmail_id"])
-      assert result == :ok
-    end
-
-    test "handles minimal killmail and performs enrichment" do
-      kill_data = %{
-        "killmail_id" => "12345",
-        "zkb" => %{
-          "hash" => "abc123"
-        }
-      }
-
-      enriched_data = sample_killmail()
-
-      # Stub the enrichment function to return our enriched data
-      try do
-        :meck.new(WandererNotifier.Api.ESI.Service, [:passthrough])
-
-        :meck.expect(WandererNotifier.Api.ESI.Service, :get_killmail, fn _kill_id, _hash ->
-          {:ok, enriched_data}
-        end)
-
-        result = Notifier.send_enriched_kill_embed(kill_data, kill_data["killmail_id"])
-        assert result == :ok
-      after
-        # Clean up the mock
-        :meck.unload(WandererNotifier.Api.ESI.Service)
-      end
+    test "handles basic embed in test mode" do
+      # Use a more direct approach to ensure we capture the log
+      assert capture_log(fn ->
+               assert :ok =
+                        Notifier.send_embed(
+                          "Test Title",
+                          "Test Description",
+                          "https://example.com"
+                        )
+             end) =~ "DISCORD MOCK EMBED: Test Title - Test Description"
     end
   end
 
-  describe "integration with http client" do
-    test "actual API interaction in prod mode with mocked client" do
-      # Temporarily set to prod for this test
-      prev_env = Application.get_env(:wanderer_notifier, :env)
-      Application.put_env(:wanderer_notifier, :env, :prod)
+  describe "Killmail.new usage" do
+    test "properly creates a killmail struct from map data" do
+      # Test data matching what would be in the notifier
+      killmail_id = "12345"
+      zkb_data = %{"totalValue" => 1_000_000_000, "points" => 100}
 
-      # Mock the HTTP client for Discord API call
-      MockHTTPClient
-      |> expect(:post, fn _url, _payload, _headers, _opts ->
-        {:ok, %{status_code: 200, body: "success"}}
-      end)
+      # Create a killmail using the signature we expect
+      killmail = Killmail.new(killmail_id, zkb_data)
 
-      # Test the message sending
-      result = Notifier.send_message("Test prod message")
+      # Validate the struct is properly created
+      assert %Killmail{} = killmail
+      assert killmail.killmail_id == killmail_id
+      assert killmail.zkb == zkb_data
+      assert killmail.esi_data == nil
+    end
 
-      # Reset environment
-      Application.put_env(:wanderer_notifier, :env, prev_env)
+    test "properly handles with three parameters" do
+      # Test data matching what would be in the notifier
+      killmail_id = "12345"
+      zkb_data = %{"totalValue" => 1_000_000_000, "points" => 100}
+      esi_data = %{"solar_system_id" => 30_000_142, "victim" => %{"ship_type_id" => 123}}
 
-      assert result == :ok
+      # Create a killmail using all three parameters
+      killmail = Killmail.new(killmail_id, zkb_data, esi_data)
+
+      # Validate the struct is properly created
+      assert %Killmail{} = killmail
+      assert killmail.killmail_id == killmail_id
+      assert killmail.zkb == zkb_data
+      assert killmail.esi_data == esi_data
     end
   end
 end

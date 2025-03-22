@@ -92,71 +92,56 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   """
   @spec classify_error(http_error()) :: :transient | :permanent
   def classify_error(error) do
-    case error do
-      # Transient errors that can be retried
-      :timeout ->
-        :transient
-
-      :connection_error ->
-        :transient
-
-      :server_error ->
-        :transient
-
-      :rate_limited ->
-        :transient
-
-      {:econnrefused, _} ->
-        :transient
-
-      {:closed, _} ->
-        :transient
-
-      {:timeout, _} ->
-        :transient
-
-      :econnrefused ->
-        :transient
-
-      :enetunreach ->
-        :transient
-
-      :system_limit ->
-        :transient
-
-      # Permanent errors that cannot be retried
-      :not_found ->
-        :permanent
-
-      :unauthorized ->
-        :permanent
-
-      :forbidden ->
-        :permanent
-
-      :bad_request ->
-        :permanent
-
-      :json_error ->
-        :permanent
-
-      :unsupported_media_type ->
-        :permanent
-
-      :conflict ->
-        :permanent
-
-      :client_error ->
-        :permanent
-
-      # Domain-specific errors may be either
-      {:domain_error, domain, reason} ->
-        classify_domain_error(domain, reason)
-
-      # All other errors are assumed permanent by default
-      _ ->
-        :permanent
+    cond do
+      error in transient_errors() -> :transient
+      error in permanent_errors() -> :permanent
+      is_tuple(error) && elem(error, 0) in transient_tuple_errors() -> :transient
+      # Default to permanent for unknown errors
+      true -> :permanent
     end
+  end
+
+  # List of errors that are transient (can be retried)
+  defp transient_errors do
+    [
+      :timeout,
+      :connection_error,
+      :server_error,
+      :rate_limited,
+      :econnrefused,
+      :enetunreach,
+      :system_limit,
+      :connect_timeout,
+      :checkout_timeout,
+      :overload,
+      :service_unavailable
+    ]
+  end
+
+  # List of tuple errors where the first element indicates a transient error
+  defp transient_tuple_errors do
+    [
+      :econnrefused,
+      :closed,
+      :timeout,
+      :enetunreach,
+      :server_error
+    ]
+  end
+
+  # List of errors that are permanent (cannot be retried)
+  defp permanent_errors do
+    [
+      :not_found,
+      :unauthorized,
+      :forbidden,
+      :bad_request,
+      :json_error,
+      :unsupported_media_type,
+      :client_error,
+      :invalid_request,
+      :not_implemented
+    ]
   end
 
   @doc """
@@ -199,95 +184,53 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     # Log the response type to help with debugging
     Logger.debug("#{tag} Response type: #{inspect(response)}")
 
-    case response do
-      # Handle raw response map directly (most common case)
+    # Normalize response format to handle both direct maps and {:ok, map} tuples
+    normalized_response = normalize_response(response)
+
+    # Process based on status code
+    case normalized_response do
       %{status_code: status, body: body} when status in 200..299 ->
-        # Handle JSON string properly, whether it's already parsed or not
-        cond do
-          # If it's a binary (string) and we want to decode JSON
-          decode_json and is_binary(body) and body != "" ->
-            case Jason.decode(body) do
-              {:ok, data} ->
-                {:ok, data}
+        handle_success_response(body, decode_json, log_level, tag)
 
-              {:error, reason} ->
-                log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
-                {:error, :json_error}
-            end
-
-          # If we already have a map or other data structure and don't need JSON decoding
-          true ->
-            {:ok, body}
-        end
-
-      # Handle tuple response with :ok atom
-      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        # Handle JSON string properly, whether it's already parsed or not
-        cond do
-          # If it's a binary (string) and we want to decode JSON
-          decode_json and is_binary(body) and body != "" ->
-            case Jason.decode(body) do
-              {:ok, data} ->
-                {:ok, data}
-
-              {:error, reason} ->
-                log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
-                {:error, :json_error}
-            end
-
-          # If we already have a map or other data structure and don't need JSON decoding
-          true ->
-            {:ok, body}
-        end
-
-      # Handle raw response map for non-success status
       %{status_code: status, body: body} ->
-        error = status_to_error(status)
-        domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
+        handle_error_response(status, body, domain, log_level, tag)
 
-        log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
-        if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
-
-        {:error, domain_error}
-
-      # Handle tuple response for non-success status
-      {:ok, %{status_code: status, body: body}} ->
-        error = status_to_error(status)
-        domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
-
-        log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
-        if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
-
-        {:error, domain_error}
-
-      # Handle plain error tuple
-      {:error, reason} ->
-        handle_http_error(reason, opts)
-
-      # Fallback for any other response format - this is essential
-      other ->
-        log(log_level, "#{tag} Unexpected response format: #{inspect(other)}")
-
-        # Try to extract meaningful data if possible
-        cond do
-          is_map(other) and Map.has_key?(other, :body) and is_binary(other.body) ->
-            # Try to parse body as JSON
-            case Jason.decode(other.body) do
-              {:ok, data} -> {:ok, data}
-              _ -> {:ok, other.body}
-            end
-
-          is_binary(other) ->
-            # Try to parse as JSON string
-            case Jason.decode(other) do
-              {:ok, data} -> {:ok, data}
-              _ -> {:ok, other}
-            end
-
-          true ->
-            {:error, {:unexpected_format, other}}
-        end
+      {:error, _} = error ->
+        error
     end
+  end
+
+  # Normalize response to a consistent format
+  defp normalize_response({:ok, response_map}), do: response_map
+  defp normalize_response(response_map) when is_map(response_map), do: response_map
+  defp normalize_response(error), do: error
+
+  # Handle success responses (200-299 status codes)
+  defp handle_success_response(body, decode_json, log_level, tag) do
+    if decode_json and is_binary(body) and body != "" do
+      case Jason.decode(body) do
+        {:ok, data} ->
+          {:ok, data}
+
+        {:error, reason} ->
+          log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
+          {:error, :json_error}
+      end
+    else
+      # If we already have a map or other data structure and don't need JSON decoding
+      {:ok, body}
+    end
+  end
+
+  # Handle error responses (non 200-299 status codes)
+  defp handle_error_response(status, body, domain, log_level, tag) do
+    error = status_to_error(status)
+    domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
+
+    log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
+    if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
+
+    {:error, domain_error}
   end
 
   @doc """
@@ -315,30 +258,39 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     {:error, domain_error}
   end
 
-  @doc """
-  Converts an HTTP status code to a standardized error type.
+  @client_errors %{
+    400 => :bad_request,
+    401 => :unauthorized,
+    403 => :forbidden,
+    404 => :not_found,
+    409 => :conflict,
+    415 => :unsupported_media_type,
+    429 => :rate_limited
+  }
 
-  ## Examples
-      iex> ErrorHandler.status_to_error(404)
-      :not_found
-
-      iex> ErrorHandler.status_to_error(500)
-      :server_error
-  """
   @spec status_to_error(integer()) :: error_type() | {:unexpected_status, integer()}
   def status_to_error(status) do
-    case status do
-      400 -> :bad_request
-      401 -> :unauthorized
-      403 -> :forbidden
-      404 -> :not_found
-      409 -> :conflict
-      415 -> :unsupported_media_type
-      429 -> :rate_limited
-      code when code in 400..499 -> :client_error
-      code when code in 500..599 -> :server_error
-      _ -> {:unexpected_status, status}
+    cond do
+      specific_error?(status) -> @client_errors[status]
+      client_error?(status) -> :client_error
+      server_error?(status) -> :server_error
+      true -> {:unexpected_status, status}
     end
+  end
+
+  # Check if the status is a specific named error
+  defp specific_error?(status) do
+    Map.has_key?(@client_errors, status)
+  end
+
+  # Check if the status is in the 400-499 range (client error)
+  defp client_error?(status) do
+    status in 400..499
+  end
+
+  # Check if the status is in the 500-599 range (server error)
+  defp server_error?(status) do
+    status in 500..599
   end
 
   @doc """
@@ -353,18 +305,36 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   """
   @spec error_to_type(any()) :: error_type()
   def error_to_type(reason) do
-    case reason do
-      :timeout -> :timeout
-      {:timeout, _} -> :timeout
-      :econnrefused -> :connection_error
-      {:econnrefused, _} -> :connection_error
-      :closed -> :connection_error
-      {:closed, _} -> :connection_error
-      :enetunreach -> :connection_error
-      :system_limit -> :connection_error
-      error when error in @error_types -> error
-      _ -> :connection_error
+    cond do
+      timeout_error?(reason) -> :timeout
+      connection_error?(reason) -> :connection_error
+      known_error_type?(reason) -> reason
+      true -> :connection_error
     end
+  end
+
+  # Check if the error is a timeout
+  defp timeout_error?(reason) do
+    reason == :timeout || match?({:timeout, _}, reason)
+  end
+
+  # Check if the error is a known connection error
+  defp connection_error?(reason) do
+    connection_errors = [
+      :econnrefused,
+      :closed,
+      :enetunreach,
+      :system_limit
+    ]
+
+    reason in connection_errors ||
+      match?({:econnrefused, _}, reason) ||
+      match?({:closed, _}, reason)
+  end
+
+  # Check if the error is a predefined error type
+  defp known_error_type?(reason) do
+    reason in @error_types
   end
 
   @doc """
@@ -440,29 +410,6 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     end
   end
 
-  # Domain-specific error classification
-  defp classify_domain_error(domain, reason) do
-    case domain do
-      :esi ->
-        case reason do
-          {:not_found, _} -> :permanent
-          {:bad_request, _} -> :permanent
-          {:server_error, _} -> :transient
-          _ -> :permanent
-        end
-
-      :discord ->
-        case reason do
-          {:rate_limited, _} -> :transient
-          {:server_error, _} -> :transient
-          _ -> :permanent
-        end
-
-      _ ->
-        :permanent
-    end
-  end
-
   # ESI-specific error handling
   defp handle_esi_error(status_or_error, body_or_reason) do
     error =
@@ -504,33 +451,43 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     end
   end
 
-  # Discord-specific error handling
+  # Discord-specific error handling - main function
   defp handle_discord_error(status_or_error, body_or_reason) do
-    error =
-      if is_integer(status_or_error), do: status_to_error(status_or_error), else: status_or_error
+    # Convert HTTP status to error atom if needed
+    error = normalize_error(status_or_error)
 
+    # Extract Discord's error code
     error_code = extract_discord_error_code(body_or_reason)
 
-    case {error, error_code} do
-      {:unauthorized, _} ->
-        {:domain_error, :discord, {:unauthorized, :invalid_token}}
-
-      {:forbidden, _} ->
-        {:domain_error, :discord, {:forbidden, :missing_permissions}}
-
-      {:rate_limited, _} ->
-        {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
-
-      {:bad_request, 50006} ->
-        {:domain_error, :discord, {:bad_request, :empty_message}}
-
-      {:bad_request, _} ->
-        {:domain_error, :discord, {:bad_request, error_code || :general}}
-
-      _ ->
-        {:domain_error, :discord, {error, error_code || :general}}
-    end
+    # Process the specific error
+    create_discord_error(error, error_code)
   end
+
+  # Normalize error by converting status to error atom if needed
+  defp normalize_error(status_or_error) when is_integer(status_or_error),
+    do: status_to_error(status_or_error)
+
+  defp normalize_error(error), do: error
+
+  # Pattern match on specific Discord error types
+  defp create_discord_error(:unauthorized, _),
+    do: {:domain_error, :discord, {:unauthorized, :invalid_token}}
+
+  defp create_discord_error(:forbidden, _),
+    do: {:domain_error, :discord, {:forbidden, :missing_permissions}}
+
+  defp create_discord_error(:rate_limited, _),
+    do: {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
+
+  defp create_discord_error(:bad_request, 50_006),
+    do: {:domain_error, :discord, {:bad_request, :empty_message}}
+
+  defp create_discord_error(:bad_request, error_code),
+    do: {:domain_error, :discord, {:bad_request, error_code || :general}}
+
+  # Fallback for all other error types
+  defp create_discord_error(error, error_code),
+    do: {:domain_error, :discord, {error, error_code || :general}}
 
   # Map API-specific error handling
   defp handle_map_error(status_or_error, body_or_reason) do

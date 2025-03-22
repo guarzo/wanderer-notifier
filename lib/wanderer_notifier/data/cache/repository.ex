@@ -35,7 +35,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Configure Cachex with optimized settings
     cachex_options = [
       # Set a higher limit for maximum entries (default is often too low)
-      limit: 10000,
+      limit: 10_000,
 
       # Configure memory limits (in bytes) - 256MB
       max_size: 256 * 1024 * 1024,
@@ -83,16 +83,14 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Get the configured cache directory
     configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
 
-    cond do
-      # Check if we're in a dev container
-      String.contains?(File.cwd!(), "dev-container") or
-          String.contains?(File.cwd!(), "workspaces") ->
-        # Use a directory in the current workspace
-        Path.join(File.cwd!(), "tmp/cache")
-
+    # Check if we're in a dev container
+    if String.contains?(File.cwd!(), "dev-container") or
+         String.contains?(File.cwd!(), "workspaces") do
+      # Use a directory in the current workspace
+      Path.join(File.cwd!(), "tmp/cache")
+    else
       # Otherwise use the configured directory (for production)
-      true ->
-        configured_dir
+      configured_dir
     end
   end
 
@@ -165,8 +163,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
   @impl true
   def handle_info(:check_cache, state) do
     # Get cache stats
-    {:ok, stats} = Cachex.stats(@cache_name)
-    Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+    stats_result = Cachex.stats(@cache_name)
+
+    # Handle stats result, which could be {:ok, stats} or {:error, :stats_disabled}
+    case stats_result do
+      {:ok, stats} ->
+        Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+
+      {:error, :stats_disabled} ->
+        Logger.debug("[CacheRepo] Cache stats are disabled")
+
+      other_error ->
+        Logger.warning("[CacheRepo] Failed to get cache stats: #{inspect(other_error)}")
+    end
 
     # Check systems and characters counts
     systems = get("map:systems") || []
@@ -274,17 +283,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
       Logger.debug("[CacheRepo] Batch getting #{length(keys)} keys")
 
       # Implement our own batch get since Cachex doesn't provide get_many
-      results =
-        Enum.map(keys, fn key ->
-          case Cachex.get(@cache_name, key) do
-            {:ok, value} -> {key, value}
-            _ -> {key, nil}
-          end
-        end)
+      results = Enum.map(keys, &get_single_key/1)
 
       # Convert results to a map for easier access
       Map.new(results)
     end)
+  end
+
+  # Helper function to get a single key from the cache
+  defp get_single_key(key) do
+    case Cachex.get(@cache_name, key) do
+      {:ok, value} -> {key, value}
+      _ -> {key, nil}
+    end
   end
 
   # Helper functions to process get results
@@ -295,7 +306,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   defp process_get_result(key, {:ok, nil}, {:ok, true}) do
     # Handle special keys that should initialize as empty lists when they exist but have nil value
-    if is_special_collection_key(key) do
+    if special_collection_key?(key) do
       init_empty_collection(key)
     else
       handle_nil_value(key)
@@ -317,7 +328,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   end
 
   # Checks if the key is a special collection key that should initialize as empty list
-  defp is_special_collection_key(key) do
+  defp special_collection_key?(key) do
     key in ["map:systems", "map:characters"]
   end
 

@@ -67,6 +67,13 @@ defmodule WandererNotifier.Api.Map.Characters do
     base_url_with_slug = Config.map_url()
     map_token = Config.map_token()
 
+    # Validate configuration
+    with {:ok, _} <- validate_config(base_url_with_slug, map_token) do
+      construct_characters_url(base_url_with_slug)
+    end
+  end
+
+  defp validate_config(base_url_with_slug, map_token) do
     cond do
       is_nil(base_url_with_slug) or base_url_with_slug == "" ->
         {:error, "Map URL is not configured"}
@@ -75,37 +82,47 @@ defmodule WandererNotifier.Api.Map.Characters do
         {:error, "Map token is not configured"}
 
       true ->
-        # Parse the URL to separate the base URL from the slug
-        uri = URI.parse(base_url_with_slug)
-        Logger.debug("[build_characters_url] Parsed URI: #{inspect(uri)}")
+        {:ok, true}
+    end
+  end
 
-        # Extract the path which contains the slug
-        path = uri.path || ""
-        path = String.trim_trailing(path, "/")
-        Logger.debug("[build_characters_url] Extracted path: #{path}")
+  defp construct_characters_url(base_url_with_slug) do
+    # Parse the URL to separate the base URL from the slug
+    uri = URI.parse(base_url_with_slug)
+    Logger.debug("[build_characters_url] Parsed URI: #{inspect(uri)}")
 
-        # Extract the slug id from the path
-        slug_id =
-          path
-          |> String.split("/")
-          |> Enum.filter(fn part -> part != "" end)
-          |> List.last() || ""
+    # Extract the slug ID from the path
+    slug_id = extract_slug_id(uri)
+    Logger.debug("[build_characters_url] Extracted slug ID: #{slug_id}")
 
-        Logger.debug("[build_characters_url] Extracted slug ID: #{slug_id}")
+    # Get base host and construct the final URL
+    base_host = get_base_host(uri)
+    url = build_final_url(base_host, slug_id)
 
-        # Get just the base host without the path
-        base_host = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+    Logger.debug("[build_characters_url] Final URL: #{url}")
+    {:ok, url}
+  end
 
-        # Construct URL with the slug as a query parameter: http://host.docker.internal:4444/api/map/characters?slug=flygd
-        url =
-          if String.ends_with?(base_host, "/") do
-            "#{base_host}api/map/characters?slug=#{URI.encode_www_form(slug_id)}"
-          else
-            "#{base_host}/api/map/characters?slug=#{URI.encode_www_form(slug_id)}"
-          end
+  defp extract_slug_id(uri) do
+    path = uri.path || ""
+    path = String.trim_trailing(path, "/")
+    Logger.debug("[build_characters_url] Extracted path: #{path}")
 
-        Logger.debug("[build_characters_url] Final URL: #{url}")
-        {:ok, url}
+    path
+    |> String.split("/")
+    |> Enum.filter(fn part -> part != "" end)
+    |> List.last() || ""
+  end
+
+  defp get_base_host(uri) do
+    "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+  end
+
+  defp build_final_url(base_host, slug_id) do
+    if String.ends_with?(base_host, "/") do
+      "#{base_host}api/map/characters?slug=#{URI.encode_www_form(slug_id)}"
+    else
+      "#{base_host}/api/map/characters?slug=#{URI.encode_www_form(slug_id)}"
     end
   end
 
@@ -158,36 +175,7 @@ defmodule WandererNotifier.Api.Map.Characters do
             )
 
             # Transform the characters to match the expected format for the rest of the application
-            transformed_characters =
-              Enum.map(characters, fn char ->
-                # Extract the character data from the nested structure
-                character_data = Map.get(char, "character", %{})
-
-                Logger.debug(
-                  "[parse_characters_response] Character data: #{inspect(character_data)}"
-                )
-
-                # Create a standardized format for the character
-                transformed =
-                  %{
-                    "character_id" => Map.get(character_data, "eve_id"),
-                    "name" => Map.get(character_data, "name"),
-                    "corporationID" => Map.get(character_data, "corporation_id"),
-                    # Using ticker as name
-                    "corporationName" => Map.get(character_data, "corporation_ticker"),
-                    "allianceID" => Map.get(character_data, "alliance_id"),
-                    # Using ticker as name
-                    "allianceName" => Map.get(character_data, "alliance_ticker")
-                  }
-                  |> Enum.filter(fn {_, v} -> v != nil end)
-                  |> Map.new()
-
-                Logger.debug(
-                  "[parse_characters_response] Transformed character: #{inspect(transformed)}"
-                )
-
-                transformed
-              end)
+            transformed_characters = Enum.map(characters, &transform_nested_character/1)
 
             Logger.debug(
               "[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}"
@@ -200,19 +188,7 @@ defmodule WandererNotifier.Api.Map.Characters do
             Logger.debug("[parse_characters_response] Parsed characters: #{length(characters)}")
 
             # Transform the characters to match the expected format for the rest of the application
-            transformed_characters =
-              Enum.map(characters, fn char ->
-                %{
-                  "character_id" => Map.get(char, "id"),
-                  "name" => Map.get(char, "name"),
-                  "corporationID" => Map.get(char, "corporation_id"),
-                  "corporationName" => Map.get(char, "corporation_name"),
-                  "allianceID" => Map.get(char, "alliance_id"),
-                  "allianceName" => Map.get(char, "alliance_name")
-                }
-                |> Enum.filter(fn {_, v} -> v != nil end)
-                |> Map.new()
-              end)
+            transformed_characters = Enum.map(characters, &transform_legacy_character/1)
 
             {:ok, transformed_characters}
 
@@ -254,57 +230,10 @@ defmodule WandererNotifier.Api.Map.Characters do
       cached_chars = cached_characters || []
 
       # Find characters that are in new_chars but not in cached_chars
-      added_characters =
-        if cached_chars == [] do
-          # If there are no cached characters, this might be the first run
-          # In that case, don't notify about all characters to avoid spamming
-          []
-        else
-          new_chars
-          |> Enum.filter(fn char ->
-            char_id = Map.get(char, "character_id")
+      added_characters = find_new_characters(new_chars, cached_chars)
 
-            !Enum.any?(cached_chars, fn c ->
-              Map.get(c, "character_id") == char_id
-            end)
-          end)
-        end
-
-      Enum.each(added_characters, fn char ->
-        Task.start(fn ->
-          try do
-            # Extract the character ID
-            character_id = NotificationHelpers.extract_character_id(char)
-
-            # Check if this specific character should trigger a notification
-            if WandererNotifier.Services.NotificationDeterminer.should_notify_character?(
-                 character_id
-               ) do
-              # Create the character notification data structure
-              character_info = %{
-                "character_id" => character_id,
-                "character_name" => NotificationHelpers.extract_character_name(char),
-                "corporation_name" => NotificationHelpers.extract_corporation_name(char)
-              }
-
-              send_character_notification(character_info)
-
-              Logger.info(
-                "[notify_new_tracked_characters] Sent notification for character #{character_info["character_name"]} (ID: #{character_id})"
-              )
-            else
-              Logger.debug(
-                "[notify_new_tracked_characters] Character with ID #{character_id} is not marked for notification"
-              )
-            end
-          rescue
-            e ->
-              Logger.error(
-                "[notify_new_tracked_characters] Error sending character notification: #{inspect(e)}"
-              )
-          end
-        end)
-      end)
+      # Process each new character for notification
+      Enum.each(added_characters, &process_character_notification/1)
     else
       Logger.debug(
         "[notify_new_tracked_characters] Character notifications are disabled globally"
@@ -317,5 +246,124 @@ defmodule WandererNotifier.Api.Map.Characters do
   defp send_character_notification(character_info) do
     notifier = NotifierFactory.get_notifier()
     notifier.send_new_tracked_character_notification(character_info)
+  end
+
+  defp transform_legacy_character(char) do
+    # Create map with all potential fields
+    char_map = %{
+      "character_id" => Map.get(char, "id"),
+      "name" => Map.get(char, "name"),
+      "corporationID" => Map.get(char, "corporation_id"),
+      "corporationName" => Map.get(char, "corporation_name"),
+      "allianceID" => Map.get(char, "alliance_id"),
+      "allianceName" => Map.get(char, "alliance_name")
+    }
+
+    # Filter out nil values and return as map
+    remove_nil_values(char_map)
+  end
+
+  defp remove_nil_values(map) do
+    map
+    |> Enum.reject(fn {_, v} -> is_nil(v) end)
+    |> Map.new()
+  end
+
+  defp find_new_characters(_new_chars, []) do
+    # If there are no cached characters, this might be the first run
+    # In that case, don't notify about all characters to avoid spamming
+    []
+  end
+
+  defp find_new_characters(new_chars, cached_chars) do
+    Enum.filter(new_chars, &new_character?(&1, cached_chars))
+  end
+
+  defp new_character?(char, cached_chars) do
+    char_id = Map.get(char, "character_id")
+    not character_exists_in_cache?(char_id, cached_chars)
+  end
+
+  defp character_exists_in_cache?(char_id, cached_chars) do
+    Enum.any?(cached_chars, fn c ->
+      Map.get(c, "character_id") == char_id
+    end)
+  end
+
+  defp transform_character_data(character_data) do
+    # Create a standardized format for the character
+    character_map = %{
+      "character_id" => Map.get(character_data, "eve_id"),
+      "name" => Map.get(character_data, "name"),
+      "corporationID" => Map.get(character_data, "corporation_id"),
+      # Using ticker as name
+      "corporationName" => Map.get(character_data, "corporation_ticker"),
+      "allianceID" => Map.get(character_data, "alliance_id"),
+      # Using ticker as name
+      "allianceName" => Map.get(character_data, "alliance_ticker")
+    }
+
+    # Remove nil values
+    remove_nil_values(character_map)
+  end
+
+  defp process_character_notification(char) do
+    Task.start(fn ->
+      try_send_character_notification(char)
+    end)
+  end
+
+  defp try_send_character_notification(char) do
+    try do
+      # Extract the character ID
+      character_id = NotificationHelpers.extract_character_id(char)
+      notify_character_if_needed(character_id, char)
+    rescue
+      e ->
+        Logger.error(
+          "[notify_new_tracked_characters] Error sending character notification: #{inspect(e)}"
+        )
+    end
+  end
+
+  defp notify_character_if_needed(character_id, char) do
+    determiner = WandererNotifier.Services.NotificationDeterminer
+
+    if determiner.should_notify_character?(character_id) do
+      send_notification_for_character(character_id, char)
+    else
+      Logger.debug(
+        "[notify_new_tracked_characters] Character with ID #{character_id} is not marked for notification"
+      )
+    end
+  end
+
+  defp send_notification_for_character(character_id, char) do
+    # Create the character notification data structure
+    character_info = %{
+      "character_id" => character_id,
+      "character_name" => NotificationHelpers.extract_character_name(char),
+      "corporation_name" => NotificationHelpers.extract_corporation_name(char)
+    }
+
+    send_character_notification(character_info)
+
+    Logger.info(
+      "[notify_new_tracked_characters] Sent notification for character #{character_info["character_name"]} (ID: #{character_id})"
+    )
+  end
+
+  defp transform_nested_character(char) do
+    # Extract the character data from the nested structure
+    character_data = Map.get(char, "character", %{})
+
+    Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
+
+    # Create a standardized format for the character
+    transformed = transform_character_data(character_data)
+
+    Logger.debug("[parse_characters_response] Transformed character: #{inspect(transformed)}")
+
+    transformed
   end
 end

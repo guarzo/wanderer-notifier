@@ -35,7 +35,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Configure Cachex with optimized settings
     cachex_options = [
       # Set a higher limit for maximum entries (default is often too low)
-      limit: 10000,
+      limit: 10_000,
 
       # Configure memory limits (in bytes) - 256MB
       max_size: 256 * 1024 * 1024,
@@ -65,16 +65,17 @@ defmodule WandererNotifier.Cache.Repository do
     # Get the configured cache directory
     configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
 
-    cond do
-      # Check if we're in a dev container
+    # Check if we're in a dev container
+    in_dev_environment =
       String.contains?(File.cwd!(), "dev-container") or
-          String.contains?(File.cwd!(), "workspaces") ->
-        # Use a directory in the current workspace
-        Path.join(File.cwd!(), "tmp/cache")
+        String.contains?(File.cwd!(), "workspaces")
 
+    if in_dev_environment do
+      # Use a directory in the current workspace
+      Path.join(File.cwd!(), "tmp/cache")
+    else
       # Otherwise use the configured directory (for production)
-      true ->
-        configured_dir
+      configured_dir
     end
   end
 
@@ -179,23 +180,7 @@ defmodule WandererNotifier.Cache.Repository do
           value
 
         {:ok, nil} ->
-          # Treat nil value as a cache miss and return nil
-          # Special handling for map:systems and map:characters keys
-          if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
-            # For these keys, initialize with empty array without warning
-            Logger.debug("[CacheRepo] Initializing #{key} with empty array")
-            Cachex.put(@cache_name, key, [])
-            []
-          else
-            # For static_info keys, just return nil without warning
-            if String.starts_with?(key, "static_info:") do
-              Logger.debug("[CacheRepo] Cache miss for static info key: #{key}")
-            else
-              Logger.debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
-            end
-
-            nil
-          end
+          handle_nil_result(key, exists_result)
 
         {:error, error} ->
           Logger.error("[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}")
@@ -206,6 +191,29 @@ defmodule WandererNotifier.Cache.Repository do
           nil
       end
     end)
+  end
+
+  # Handle nil results from cache to reduce nesting in get/1
+  defp handle_nil_result(key, exists_result) do
+    # Special handling for map:systems and map:characters keys
+    if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
+      # For these keys, initialize with empty array without warning
+      Logger.debug("[CacheRepo] Initializing #{key} with empty array")
+      Cachex.put(@cache_name, key, [])
+      []
+    else
+      log_cache_miss(key)
+      nil
+    end
+  end
+
+  # Log cache misses appropriately based on key type
+  defp log_cache_miss(key) do
+    if String.starts_with?(key, "static_info:") do
+      Logger.debug("[CacheRepo] Cache miss for static info key: #{key}")
+    else
+      Logger.debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
+    end
   end
 
   @doc """

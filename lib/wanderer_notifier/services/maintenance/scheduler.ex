@@ -37,7 +37,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       end
 
     # Log status every 24 hours (86400 seconds)
-    if now - state.last_status_time > 86400 do
+    if now - state.last_status_time > 86_400 do
       log_service_status(now - state.service_start_time)
       %{new_state | last_status_time: now}
     else
@@ -92,31 +92,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         {:ok, characters} ->
           Logger.info("Characters updated: #{length(characters)} characters found")
           # Verify the characters were actually stored in cache
-          updated_cache = CacheRepo.get("map:characters")
-
-          Logger.debug(
-            "Post-update cache verification - map:characters contains: #{inspect(updated_cache)}"
-          )
-
-          if updated_cache == nil || updated_cache == [] do
-            Logger.warning(
-              "Characters were updated but cache appears empty. Forcing manual cache update."
-            )
-
-            CacheRepo.set(
-              "map:characters",
-              characters,
-              WandererNotifier.Config.Timings.characters_cache_ttl()
-            )
-
-            # Double-check the cache again
-            final_cache = CacheRepo.get("map:characters")
-
-            Logger.debug(
-              "After manual cache update - map:characters contains: #{inspect(final_cache)}"
-            )
-          end
-
+          verify_and_update_characters_cache(characters)
           %{state | last_characters_update: now, characters_count: length(characters)}
 
         {:error, reason} ->
@@ -130,10 +106,36 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     end
   end
 
+  # Verify characters are stored in cache and force update if needed
+  defp verify_and_update_characters_cache(characters) do
+    updated_cache = CacheRepo.get("map:characters")
+
+    Logger.debug(
+      "Post-update cache verification - map:characters contains: #{inspect(updated_cache)}"
+    )
+
+    if updated_cache == nil || updated_cache == [] do
+      Logger.warning(
+        "Characters were updated but cache appears empty. Forcing manual cache update."
+      )
+
+      CacheRepo.set(
+        "map:characters",
+        characters,
+        WandererNotifier.Config.Timings.characters_cache_ttl()
+      )
+
+      # Double-check the cache again
+      final_cache = CacheRepo.get("map:characters")
+
+      Logger.debug("After manual cache update - map:characters contains: #{inspect(final_cache)}")
+    end
+  end
+
   # Log service status
   defp log_service_status(uptime_seconds) do
-    days = div(uptime_seconds, 86400)
-    hours = div(rem(uptime_seconds, 86400), 3600)
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 
@@ -141,7 +143,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     # Create a deduplication key based on a time window (e.g., hourly)
     # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86400)
+    current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window
@@ -208,8 +210,8 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Calculate uptime
     uptime_seconds = :os.system_time(:second) - Process.get(:service_start_time, 0)
 
-    days = div(uptime_seconds, 86400)
-    hours = div(rem(uptime_seconds, 86400), 3600)
+    days = div(uptime_seconds, 86_400)
+    hours = div(rem(uptime_seconds, 86_400), 3600)
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 
@@ -217,7 +219,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     # Create a deduplication key based on a time window
     # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86400)
+    current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window

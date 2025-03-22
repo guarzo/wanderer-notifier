@@ -38,7 +38,10 @@ defmodule WandererNotifier.Services.Maintenance do
         state
     catch
       type, error ->
-        Logger.error("Error during initial maintenance checks: #{inspect(type)}, #{inspect(error)}")
+        Logger.error(
+          "Error during initial maintenance checks: #{inspect(type)}, #{inspect(error)}"
+        )
+
         state
     end
 
@@ -51,17 +54,18 @@ defmodule WandererNotifier.Services.Maintenance do
     schedule_tick()
 
     # Run the maintenance tasks safely
-    new_state = try do
-      Scheduler.tick(state)
-    rescue
-      e ->
-        Logger.error("Error during maintenance tick: #{inspect(e)}")
-        state
-    catch
-      type, error ->
-        Logger.error("Error during maintenance tick: #{inspect(type)}, #{inspect(error)}")
-        state
-    end
+    new_state =
+      try do
+        Scheduler.tick(state)
+      rescue
+        e ->
+          Logger.error("Error during maintenance tick: #{inspect(e)}")
+          state
+      catch
+        type, error ->
+          Logger.error("Error during maintenance tick: #{inspect(type)}, #{inspect(error)}")
+          state
+      end
 
     {:noreply, new_state}
   end

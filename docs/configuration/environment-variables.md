@@ -64,8 +64,6 @@ This document provides a comprehensive reference for all environment variables u
 | ---------------------- | --------------------------- | -------------------------------- |
 | `ZKILL_BASE_URL`       | ZKillboard API base URL     | `https://zkillboard.com`         |
 | `ESI_BASE_URL`         | ESI API base URL            | `https://esi.evetech.net/latest` |
-| `CORP_TOOLS_API_URL`   | Corporation tools API URL   | -                                |
-| `CORP_TOOLS_API_TOKEN` | Corporation tools API token | -                                |
 
 ## Development Configuration
 

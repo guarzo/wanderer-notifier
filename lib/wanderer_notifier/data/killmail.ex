@@ -20,36 +20,47 @@ defmodule WandererNotifier.Data.Killmail do
 
   @impl Access
   def fetch(killmail, key) do
+    cond do
+      direct_killmail_key?(key) ->
+        fetch_direct_property(killmail, key)
+
+      has_esi_data?(killmail) ->
+        fetch_from_esi_data(killmail, key)
+
+      true ->
+        :error
+    end
+  end
+
+  # Check if the key is a direct property of the killmail
+  defp direct_killmail_key?(key) do
+    key in ["killmail_id", "zkb", "esi_data"]
+  end
+
+  # Check if the killmail has ESI data
+  defp has_esi_data?(killmail) do
+    not is_nil(killmail.esi_data)
+  end
+
+  # Fetch direct property from the killmail
+  defp fetch_direct_property(killmail, key) do
+    value =
+      case key do
+        "killmail_id" -> killmail.killmail_id
+        "zkb" -> killmail.zkb
+        "esi_data" -> killmail.esi_data
+      end
+
+    {:ok, value}
+  end
+
+  # Fetch a key from the ESI data
+  defp fetch_from_esi_data(killmail, key) do
+    # Handle special cases for victim and attackers explicitly
     case key do
-      "killmail_id" ->
-        {:ok, killmail.killmail_id}
-
-      "zkb" ->
-        {:ok, killmail.zkb}
-
-      "esi_data" ->
-        {:ok, killmail.esi_data}
-
-      "victim" ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, "victim")
-        else
-          :error
-        end
-
-      "attackers" ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, "attackers")
-        else
-          :error
-        end
-
-      _ ->
-        if killmail.esi_data do
-          Map.fetch(killmail.esi_data, key)
-        else
-          :error
-        end
+      "victim" -> Map.fetch(killmail.esi_data, "victim")
+      "attackers" -> Map.fetch(killmail.esi_data, "attackers")
+      _ -> Map.fetch(killmail.esi_data, key)
     end
   end
 

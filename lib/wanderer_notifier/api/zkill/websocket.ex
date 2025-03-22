@@ -23,16 +23,21 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     update_startup_status()
 
     # Start the WebSocket connection
-    case WebSockex.start_link(url, __MODULE__, %{
-      parent: parent,
-      connected: false,
-      reconnects: 0,
-      reconnect_history: [],
-      circuit_open: false,
-      last_circuit_reset: System.os_time(:second),
-      url: url,
-      startup_time: System.os_time(:second)
-    }, [retry_initial_connection: true]) do
+    case WebSockex.start_link(
+           url,
+           __MODULE__,
+           %{
+             parent: parent,
+             connected: false,
+             reconnects: 0,
+             reconnect_history: [],
+             circuit_open: false,
+             last_circuit_reset: System.os_time(:second),
+             url: url,
+             startup_time: System.os_time(:second)
+           },
+           retry_initial_connection: true
+         ) do
       {:ok, pid} ->
         Logger.info("Successfully initialized zKillboard WebSocket with PID: #{inspect(pid)}")
         {:ok, pid}
@@ -121,10 +126,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     # Check if we've received any messages in the last 5 minutes
     now = DateTime.utc_now()
-    no_messages = case last_message_time do
-      nil -> true
-      time -> DateTime.diff(now, time, :second) > 300  # 5 minutes
-    end
+
+    no_messages =
+      case last_message_time do
+        nil -> true
+        # 5 minutes
+        time -> DateTime.diff(now, time, :second) > 300
+      end
 
     if no_messages && state.connected do
       # No messages for too long, connection might be stale
@@ -132,9 +140,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
       # Send a test ping to verify connection
       Logger.info("Sending manual ping to test WebSocket connection")
+
       case WebSockex.send_frame(self(), :ping) do
         :ok ->
           Logger.debug("Manual ping sent successfully")
+
         {:error, reason} ->
           Logger.error("Failed to send manual ping: #{inspect(reason)}")
           # Connection is definitely bad, initiate a reconnect
@@ -145,7 +155,8 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     end
 
     # Schedule the next heartbeat check
-    Process.send_after(self(), :check_heartbeat, 60_000)  # Check every minute
+    # Check every minute
+    Process.send_after(self(), :check_heartbeat, 60_000)
     {:ok, state}
   end
 
@@ -195,9 +206,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         "Received unexpected ping format from zKill: #{inspect(ping_frame)}"
       end
 
-    Logger.debug(
-      "#{ping_log_message}. Sending heartbeat pong response."
-    )
+    Logger.debug("#{ping_log_message}. Sending heartbeat pong response.")
 
     # Send heartbeat immediately
     payload = Jason.encode!(%{"action" => "pong"})
@@ -208,6 +217,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   defp process_text_frame(raw_msg, state) do
     # Update timestamp of last received message for monitoring
     now = DateTime.utc_now()
+
     try do
       Stats.update_websocket(%{
         connected: true,
@@ -217,8 +227,6 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     rescue
       e -> Logger.error("Failed to update websocket status: #{inspect(e)}")
     end
-
-
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->

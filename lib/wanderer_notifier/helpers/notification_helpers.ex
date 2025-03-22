@@ -12,36 +12,51 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   """
   @spec extract_character_id(map()) :: String.t() | nil
   def extract_character_id(character) when is_map(character) do
-    # Extract character ID - only accept numeric IDs
-    cond do
-      # Check top level character_id
-      is_binary(character["character_id"]) && is_valid_numeric_id?(character["character_id"]) ->
-        character["character_id"]
+    # Try extracting from different possible locations in order of preference
+    character_id =
+      check_top_level_id(character) ||
+        check_nested_character_id(character)
 
-      # Check top level eve_id
-      is_binary(character["eve_id"]) && is_valid_numeric_id?(character["eve_id"]) ->
-        character["eve_id"]
+    # Log error if no valid ID was found
+    if is_nil(character_id) do
+      Logger.error(
+        "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
+      )
+    end
 
-      # Check nested character object
-      is_map(character["character"]) && is_binary(character["character"]["eve_id"]) &&
-          is_valid_numeric_id?(character["character"]["eve_id"]) ->
-        character["character"]["eve_id"]
+    character_id
+  end
 
-      is_map(character["character"]) && is_binary(character["character"]["character_id"]) &&
-          is_valid_numeric_id?(character["character"]["character_id"]) ->
-        character["character"]["character_id"]
+  # Check for valid ID at the top level of the character map
+  defp check_top_level_id(character) do
+    # Check character_id first, then eve_id
+    check_valid_id(character, "character_id") ||
+      check_valid_id(character, "eve_id")
+  end
 
-      is_map(character["character"]) && is_binary(character["character"]["id"]) &&
-          is_valid_numeric_id?(character["character"]["id"]) ->
-        character["character"]["id"]
+  # Check for valid ID in nested character object
+  defp check_nested_character_id(character) do
+    # Return nil if there's no nested character object
+    nested = character["character"]
 
-      # No valid numeric ID found
-      true ->
-        Logger.error(
-          "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
-        )
+    if is_map(nested) do
+      # Check each possible key in the nested object
+      check_valid_id(nested, "eve_id") ||
+        check_valid_id(nested, "character_id") ||
+        check_valid_id(nested, "id")
+    else
+      nil
+    end
+  end
 
-        nil
+  # Helper to check if a specific key contains a valid numeric ID
+  defp check_valid_id(map, key) do
+    value = map[key]
+
+    if is_binary(value) && valid_numeric_id?(value) do
+      value
+    else
+      nil
     end
   end
 
@@ -53,22 +68,31 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   """
   @spec extract_character_name(map(), String.t()) :: String.t()
   def extract_character_name(character, default \\ "Unknown Character") when is_map(character) do
-    cond do
-      character["character_name"] != nil ->
-        character["character_name"]
+    # Try extracting name from different locations in order of preference
+    name = check_top_level_name(character) || check_nested_character_name(character)
 
-      character["name"] != nil ->
-        character["name"]
+    if name do
+      name
+    else
+      # Fall back to using character ID if available
+      character_id = extract_character_id(character)
+      if character_id, do: "Character #{character_id}", else: default
+    end
+  end
 
-      is_map(character["character"]) && character["character"]["name"] != nil ->
-        character["character"]["name"]
+  # Check for name at the top level of the character map
+  defp check_top_level_name(character) do
+    character["character_name"] || character["name"]
+  end
 
-      is_map(character["character"]) && character["character"]["character_name"] != nil ->
-        character["character"]["character_name"]
+  # Check for name in nested character object
+  defp check_nested_character_name(character) do
+    nested = character["character"]
 
-      true ->
-        character_id = extract_character_id(character)
-        if character_id, do: "Character #{character_id}", else: default
+    if is_map(nested) do
+      nested["name"] || nested["character_name"]
+    else
+      nil
     end
   end
 
@@ -180,15 +204,15 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   ## Returns
   true if the string is a valid numeric ID, false otherwise
   """
-  @spec is_valid_numeric_id?(String.t() | any()) :: boolean()
-  def is_valid_numeric_id?(id) when is_binary(id) do
+  @spec valid_numeric_id?(String.t() | any()) :: boolean()
+  def valid_numeric_id?(id) when is_binary(id) do
     case Integer.parse(id) do
       {num, ""} when num > 0 -> true
       _ -> false
     end
   end
 
-  def is_valid_numeric_id?(_), do: false
+  def valid_numeric_id?(_), do: false
 
   @doc """
   Sends a test system notification using a real system from the cache.
@@ -215,7 +239,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     # Select a random wormhole system if available, or any system if no wormholes
     selected_system =
       tracked_systems
-      |> Enum.filter(&is_wormhole_system?/1)
+      |> Enum.filter(&wormhole_system?/1)
       |> case do
         [] ->
           # No wormhole systems, just pick any system
@@ -259,7 +283,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     Logger.info("- solar_system_id: #{enriched_system.solar_system_id}")
     Logger.info("- name: #{enriched_system.name}")
     Logger.info("- type_description: #{enriched_system.type_description}")
-    Logger.info("- is_wormhole?: #{MapSystem.is_wormhole?(enriched_system)}")
+    Logger.info("- is_wormhole?: #{MapSystem.wormhole?(enriched_system)}")
     Logger.info("- statics: #{inspect(enriched_system.statics)}")
 
     # Send notification with the enriched system struct directly
@@ -276,39 +300,52 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
     # Try to get systems from the "map:systems" cache key
-    case CacheRepo.get("map:systems") do
-      systems when is_list(systems) and length(systems) > 0 ->
-        systems
+    get_systems_from_main_cache(CacheRepo) || get_systems_from_individual_caches(CacheRepo)
+  end
 
-      _ ->
-        # Try to get system IDs and then fetch individual systems
-        case CacheRepo.get("map:system_ids") do
-          ids when is_list(ids) and length(ids) > 0 ->
-            # Get all systems by ID
-            ids
-            |> Enum.map(fn id ->
-              case CacheRepo.get("map:system:#{id}") do
-                nil -> nil
-                system -> system
-              end
-            end)
-            |> Enum.filter(&(&1 != nil))
-
-          _ ->
-            # No systems found
-            []
-        end
+  defp get_systems_from_main_cache(cache_repo) do
+    case cache_repo.get("map:systems") do
+      systems when is_list(systems) and length(systems) > 0 -> systems
+      _ -> nil
     end
   end
 
+  defp get_systems_from_individual_caches(cache_repo) do
+    system_ids = get_valid_system_ids(cache_repo)
+
+    if system_ids do
+      fetch_individual_systems(cache_repo, system_ids)
+    else
+      # No systems found
+      []
+    end
+  end
+
+  defp get_valid_system_ids(cache_repo) do
+    case cache_repo.get("map:system_ids") do
+      ids when is_list(ids) and length(ids) > 0 -> ids
+      _ -> nil
+    end
+  end
+
+  defp fetch_individual_systems(cache_repo, ids) do
+    ids
+    |> Enum.map(fn id -> fetch_system_by_id(cache_repo, id) end)
+    |> Enum.filter(&(&1 != nil))
+  end
+
+  defp fetch_system_by_id(cache_repo, id) do
+    cache_repo.get("map:system:#{id}")
+  end
+
   # Check if a system is a wormhole system
-  defp is_wormhole_system?(system) when is_map(system) do
+  defp wormhole_system?(system) when is_map(system) do
     # Check system ID range (31000000-31999999 is J-space)
     system_id = get_system_id(system)
     is_integer(system_id) && system_id >= 31_000_000 && system_id < 32_000_000
   end
 
-  defp is_wormhole_system?(_), do: false
+  defp wormhole_system?(_), do: false
 
   # Get system ID from either a MapSystem struct or a map
   defp get_system_id(system) do
@@ -329,5 +366,4 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
         nil
     end
   end
-
 end

@@ -198,7 +198,7 @@ defmodule WandererNotifier.ChartService do
   def send_chart_to_discord(image_binary, title, description, channel_id)
       when is_binary(image_binary) do
     # Check if the binary is actually a URL
-    if is_url(image_binary) do
+    if url?(image_binary) do
       # It's a URL, use it directly in an embed
       chart_url = image_binary
       Logger.debug("URL detected for chart - using in embed: #{title}")
@@ -284,7 +284,7 @@ defmodule WandererNotifier.ChartService do
   end
 
   # Helper to check if a binary is a URL
-  defp is_url(binary) do
+  defp url?(binary) do
     String.starts_with?(binary, "http://") or String.starts_with?(binary, "https://")
   end
 
@@ -338,15 +338,20 @@ defmodule WandererNotifier.ChartService do
     end
   end
 
-  # Creates a chart via POST request when configuration is too large for URL
-  defp create_chart_via_post(chart_map, width, height, background_color) do
-    # Create the full chart configuration with dimensions and background
+  # Creates a chart via POST with custom dimensions and background color
+  defp create_chart_via_post(chart_config, width, height, background_color) do
+    Logger.debug("Creating chart via POST request with custom dimensions")
+
+    # Prepare the full configuration with custom dimensions
     full_config = %{
-      "chart" => chart_map,
-      "width" => width,
-      "height" => height,
-      "backgroundColor" => background_color,
-      "format" => "png"
+      chart: chart_config,
+      options: %{
+        width: width,
+        height: height,
+        devicePixelRatio: 2.0,
+        format: "png",
+        backgroundColor: background_color
+      }
     }
 
     # Send the POST request to QuickChart API
@@ -361,35 +366,45 @@ defmodule WandererNotifier.ChartService do
     case Jason.encode(full_config) do
       {:ok, json_body} ->
         # Make the HTTP POST request
-        case HttpClient.request("POST", post_url, headers, json_body) do
-          {:ok, %{status_code: 200, body: response_body}} ->
-            # Parse the response to get the chart URL
-            case Jason.decode(response_body) do
-              {:ok, %{"success" => true, "url" => chart_url}} ->
-                Logger.debug("Successfully created chart via POST request")
-                {:ok, chart_url}
-
-              {:ok, %{"success" => false, "message" => message}} ->
-                Logger.error("QuickChart API error: #{message}")
-                {:error, "QuickChart API error: #{message}"}
-
-              {:error, reason} ->
-                Logger.error("Failed to parse QuickChart response: #{inspect(reason)}")
-                {:error, "Failed to parse QuickChart response"}
-            end
-
-          {:ok, %{status_code: status, body: error_body}} ->
-            Logger.error("QuickChart API returned #{status}: #{error_body}")
-            {:error, "QuickChart API error (HTTP #{status})"}
-
-          {:error, reason} ->
-            Logger.error("HTTP request to QuickChart failed: #{inspect(reason)}")
-            {:error, "HTTP request to QuickChart failed"}
-        end
+        make_chart_post_request(post_url, headers, json_body)
 
       {:error, reason} ->
         Logger.error("Failed to encode chart configuration for POST: #{inspect(reason)}")
         {:error, "Failed to encode chart configuration for POST"}
+    end
+  end
+
+  # Helper function to make the POST request to the chart service
+  defp make_chart_post_request(url, headers, body) do
+    case HttpClient.request("POST", url, headers, body) do
+      {:ok, %{status_code: 200, body: response_body}} ->
+        # Parse the response to get the chart URL
+        parse_chart_response(response_body)
+
+      {:ok, %{status_code: status, body: error_body}} ->
+        Logger.error("QuickChart API returned #{status}: #{error_body}")
+        {:error, "QuickChart API error (HTTP #{status})"}
+
+      {:error, reason} ->
+        Logger.error("HTTP request to QuickChart failed: #{inspect(reason)}")
+        {:error, "HTTP request to QuickChart failed"}
+    end
+  end
+
+  # Helper function to parse the chart service response
+  defp parse_chart_response(response_body) do
+    case Jason.decode(response_body) do
+      {:ok, %{"success" => true, "url" => chart_url}} ->
+        Logger.debug("Successfully created chart via POST request")
+        {:ok, chart_url}
+
+      {:ok, %{"success" => false, "message" => message}} ->
+        Logger.error("QuickChart API error: #{message}")
+        {:error, "QuickChart API error: #{message}"}
+
+      {:error, reason} ->
+        Logger.error("Failed to parse QuickChart response: #{inspect(reason)}")
+        {:error, "Failed to parse QuickChart response"}
     end
   end
 

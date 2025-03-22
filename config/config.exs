@@ -53,15 +53,14 @@ config :logger, :module_levels, %{
 
 # Nostrum compile-time configuration
 config :nostrum,
-  gateway_intents: [:guilds, :guild_messages],
-  num_shards: :auto,
-  request_guild_members: false,
-  caches: [
-    # Required cache
-    :guilds,
-    # Required cache
-    :guild_channels
-  ]
+  token: "intentionally invalid for runtime config only",
+  gateway_intents: [],
+  cache_guilds: false,
+  cache_users: false,
+  cache_channels: false,
+  caches: [],
+  # Disable ffmpeg warnings since we're not using voice features
+  ffmpeg: false
 
 # Add backoff configuration to help with rate limiting
 config :nostrum, :gateway,

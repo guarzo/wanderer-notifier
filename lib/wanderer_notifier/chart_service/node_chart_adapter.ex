@@ -1,7 +1,7 @@
 defmodule WandererNotifier.ChartService.NodeChartAdapter do
   @moduledoc """
   Adapter for generating charts using the Node.js Chart.js service.
-  
+
   This adapter communicates with a Node.js service that uses Chart.js to generate
   charts server-side. It handles the HTTP communication and data conversion between
   Elixir and the Node.js service.
@@ -15,7 +15,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
   # Configuration
   @tmp_chart_dir "/tmp/wanderer_notifier_charts"
-  
+
   # Get the chart service URL from the manager
   defp get_chart_service_url do
     # If the manager is running, get the URL from it
@@ -23,21 +23,23 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
       try do
         # Add timeout to prevent hanging if the manager is not responding
         case GenServer.call(WandererNotifier.ChartService.ChartServiceManager, :get_url, 1000) do
-          url when is_binary(url) -> 
+          url when is_binary(url) ->
             url
-          _ -> 
+
+          _ ->
             Logger.warning("ChartServiceManager returned invalid URL, using default")
             "http://localhost:3001"
         end
       rescue
         # Just handle general exceptions
-        e -> 
+        e ->
           Logger.warning("Error getting URL from ChartServiceManager: #{inspect(e)}")
           "http://localhost:3001"
       catch
         :exit, {:timeout, _} ->
           Logger.warning("Timeout getting URL from ChartServiceManager")
           "http://localhost:3001"
+
         :exit, reason ->
           Logger.warning("Exit when getting URL from ChartServiceManager: #{inspect(reason)}")
           "http://localhost:3001"
@@ -65,7 +67,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
       {:ok, %{chart: chart_map, width: width, height: height, background_color: bg_color}} ->
         # Call the chart service
         call_chart_service_generate(chart_map, width, height, bg_color)
-        
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -134,10 +136,10 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
       {:ok, %{chart: chart_map, width: width, height: height, background_color: bg_color}} ->
         # Generate a proper filename with extension
         final_filename = ChartConfigHandler.generate_filename(filename)
-        
+
         # Call the chart service
         call_chart_service_save(chart_map, final_filename, width, height, bg_color)
-        
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -193,7 +195,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
     try do
       # Ensure the temporary directory exists
       File.mkdir_p!(@tmp_chart_dir)
-      
+
       # filename has already been processed by ChartConfigHandler.generate_filename
 
       # Prepare the request body
@@ -216,7 +218,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
               # Use the file path returned by the service
               # We could copy to our own directory, but we'll just use the service's path
               # _local_path = Path.join(@tmp_chart_dir, final_filename)
-              
+
               {:ok, file_path}
 
             {:ok, %{"success" => false, "message" => message}} ->

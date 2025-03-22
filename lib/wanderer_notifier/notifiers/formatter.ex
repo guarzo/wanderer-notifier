@@ -92,12 +92,10 @@ defmodule WandererNotifier.Notifiers.Formatter do
     cond do
       # List with destination info
       Enum.all?(statics, &(is_map(&1) and Map.has_key?(&1, "destination"))) ->
-        statics
-        |> Enum.map(fn
+        Enum.map_join(statics, ", ", fn
           %{"name" => name, "destination" => %{"short_name" => short_name}} ->
             "#{name} (#{short_name})"
         end)
-        |> Enum.join(", ")
 
       # Simple string list
       Enum.all?(statics, &is_binary/1) ->

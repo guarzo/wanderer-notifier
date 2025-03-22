@@ -42,12 +42,6 @@ defmodule WandererNotifier.Core.Config do
       default_enabled: true,
       description: "Character tracking notifications"
     },
-    corp_tools: %{
-      enabled_var: "ENABLE_CORP_TOOLS",
-      channel_var: "DISCORD_CORP_TOOLS_CHANNEL_ID",
-      default_enabled: false,
-      description: "Corporation tools integration"
-    },
     map_tools: %{
       enabled_var: "ENABLE_MAP_TOOLS",
       channel_var: "DISCORD_MAP_TOOLS_CHANNEL_ID",
@@ -123,20 +117,6 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns the EVE Corp Tools API URL from the environment.
-  """
-  def corp_tools_api_url do
-    Application.get_env(:wanderer_notifier, :corp_tools_api_url)
-  end
-
-  @doc """
-  Returns the EVE Corp Tools API token from the environment.
-  """
-  def corp_tools_api_token do
-    Application.get_env(:wanderer_notifier, :corp_tools_api_token)
-  end
-
-  @doc """
   Returns whether a specific feature is enabled based on its environment variable.
 
   ## Parameters
@@ -169,13 +149,6 @@ defmodule WandererNotifier.Core.Config do
   """
   def charts_enabled? do
     feature_enabled?(:charts)
-  end
-
-  @doc """
-  Returns whether corp tools functionality is enabled.
-  """
-  def corp_tools_enabled? do
-    feature_enabled?(:corp_tools)
   end
 
   @doc """
@@ -288,25 +261,23 @@ defmodule WandererNotifier.Core.Config do
   def notifier_api_token do
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-    cond do
+    if env == :prod do
       # Production mode: strictly use baked-in token, never fall back to env vars
-      env == :prod ->
-        token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+      token = Application.get_env(:wanderer_notifier, :notifier_api_token)
 
-        if is_binary(token) && token != "" do
-          token
-        else
-          message =
-            "Missing baked-in notifier API token in production. Token should be compiled into the release."
+      if is_binary(token) && token != "" do
+        token
+      else
+        message =
+          "Missing baked-in notifier API token in production. Token should be compiled into the release."
 
-          Logger.error(message)
-          # In production, return a dummy token that will fail validation
-          "invalid-prod-token-missing"
-        end
-
+        Logger.error(message)
+        # In production, return a dummy token that will fail validation
+        "invalid-prod-token-missing"
+      end
+    else
       # Development mode: always use environment variable
-      true ->
-        get_token_from_env()
+      get_token_from_env()
     end
   end
 
@@ -354,15 +325,13 @@ defmodule WandererNotifier.Core.Config do
   def license_manager_api_url do
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
-    cond do
+    if env == :prod do
       # In production, always use the default URL for security
-      env == :prod ->
-        @default_license_manager_url
-
+      @default_license_manager_url
+    else
       # In development/test, allow override from environment variable
-      true ->
-        Application.get_env(:wanderer_notifier, :license_manager_api_url) ||
-          @default_license_manager_url
+      Application.get_env(:wanderer_notifier, :license_manager_api_url) ||
+        @default_license_manager_url
     end
   end
 
@@ -498,7 +467,7 @@ defmodule WandererNotifier.Core.Config do
   """
   def systems_cache_ttl do
     # 24 hours in seconds
-    86400
+    86_400
   end
 
   @doc """
@@ -507,7 +476,7 @@ defmodule WandererNotifier.Core.Config do
   """
   def static_info_cache_ttl do
     # 7 days in seconds
-    7 * 86400
+    7 * 86_400
   end
 
   @doc """
@@ -521,8 +490,7 @@ defmodule WandererNotifier.Core.Config do
         |> Atom.to_string()
         |> String.replace("_", " ")
         |> String.split()
-        |> Enum.map(&String.capitalize/1)
-        |> Enum.join(" ")
+        |> Enum.map_join(" ", &String.capitalize/1)
 
       feature_data = %{
         name: feature_key,
