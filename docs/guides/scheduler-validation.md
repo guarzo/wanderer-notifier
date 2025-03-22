@@ -124,6 +124,82 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 - Logs the number of systems updated
 - Stores results in cache with appropriate TTL
 
+### 5. Killmail Aggregation Scheduler
+
+**Module:** `WandererNotifier.Schedulers.KillmailAggregationScheduler`
+
+**What it does:**
+
+- Aggregates killmail data into daily, weekly, and monthly statistics
+- Generates statistics for tracked characters based on their killmails
+
+**When it runs:**
+
+- Time-based scheduler, runs once a day at 03:00 UTC
+- Hour is configurable via environment variable `:killmail_aggregation_schedule_hour`
+- Minute is configurable via environment variable `:killmail_aggregation_schedule_minute`
+
+**Enabled check:**
+
+- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailAggregationScheduler.persistence_enabled?()`)
+
+**Implementation details:**
+
+- Uses `WandererNotifier.Resources.KillmailAggregation.aggregate_statistics/2` to generate statistics
+- Special handling for weekly (Mondays) and monthly (1st of month) aggregation
+- Logs results and any errors encountered during aggregation
+
+### 6. Killmail Retention Scheduler
+
+**Module:** `WandererNotifier.Schedulers.KillmailRetentionScheduler`
+
+**What it does:**
+
+- Cleans up old killmails based on retention policy
+- Removes individual killmail records older than the retention period
+
+**When it runs:**
+
+- Time-based scheduler, runs once a day at 04:00 UTC
+- Hour is configurable via environment variable `:killmail_retention_schedule_hour`
+- Minute is configurable via environment variable `:killmail_retention_schedule_minute`
+
+**Enabled check:**
+
+- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailRetentionScheduler.persistence_enabled?()`)
+
+**Implementation details:**
+
+- Uses `WandererNotifier.Resources.KillmailAggregation.cleanup_old_killmails/1` to remove old records
+- Respects the retention period set in application configuration
+- Logs the number of records cleaned up or any errors
+
+### 7. Killmail Chart Scheduler
+
+**Module:** `WandererNotifier.Schedulers.KillmailChartScheduler`
+
+**What it does:**
+
+- Generates and sends weekly character kill charts to Discord
+- Shows the top 20 characters by number of kills in the past week
+
+**When it runs:**
+
+- Time-based scheduler, runs once a week on Sunday (day 7) at 18:00 UTC
+- Hour is configurable via environment variable `:killmail_chart_schedule_hour`
+- Minute is configurable via environment variable `:killmail_chart_schedule_minute`
+
+**Enabled check:**
+
+- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailChartScheduler.persistence_enabled?()`)
+
+**Implementation details:**
+
+- Only executes on Sundays (day 7 of the week)
+- Uses `WandererNotifier.ChartService.KillmailChartAdapter.send_weekly_kills_chart_to_discord/4` to generate and send charts
+- Gets Discord channel ID from `WandererNotifier.Core.Config.discord_channel_id_for_charts/0`
+- Handles errors gracefully with detailed logging
+
 ## Scheduler Initialization and Management
 
 Schedulers are initialized and managed through:

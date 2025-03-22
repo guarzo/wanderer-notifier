@@ -5,11 +5,13 @@ import Dashboard from "./components/Dashboard";
 import ChartDashboard from "./components/ChartDashboard";
 import MapToolsDashboard from "./components/MapToolsDashboard";
 import DebugDashboard from "./components/DebugDashboard";
+import ChartsDashboard from "./components/ChartsDashboard";
 import { FaChartBar, FaHome, FaMap, FaBug } from "react-icons/fa";
 
 function App() {
   const [corpToolsEnabled, setCorpToolsEnabled] = useState(false);
   const [mapToolsEnabled, setMapToolsEnabled] = useState(false);
+  const [persistenceEnabled, setPersistenceEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,12 +21,14 @@ function App() {
       .then(data => {
         setCorpToolsEnabled(data.corp_tools_enabled);
         setMapToolsEnabled(data.map_tools_enabled);
+        setPersistenceEnabled(data.persistence_enabled);
         setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching config:', error);
         setCorpToolsEnabled(false);
         setMapToolsEnabled(false);
+        setPersistenceEnabled(false);
         setLoading(false);
       });
   }, []);
@@ -34,6 +38,9 @@ function App() {
       <p className="text-lg">Loading application...</p>
     </div>;
   }
+
+  // Determine whether to show charts link (if either map tools or persistence is enabled)
+  const showChartsLink = mapToolsEnabled || persistenceEnabled;
 
   return (
     <Router>
@@ -46,6 +53,12 @@ function App() {
                 <FaHome />
                 <span>Home</span>
               </Link>
+              {showChartsLink && (
+                <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
+                  <FaChartBar />
+                  <span>Charts</span>
+                </Link>
+              )}
               <Link to="/debug" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                 <FaBug />
                 <span>Debug</span>
@@ -57,11 +70,12 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/debug" element={<DebugDashboard />} />
+          <Route path="/charts" element={<ChartsDashboard />} />
           
           {/* Legacy routes for backward compatibility */}
           <Route path="/corp-tools" element={<Navigate to="/debug" replace />} />
           <Route path="/map-tools" element={<Navigate to="/debug" replace />} />
-          <Route path="/charts-dashboard" element={<Navigate to="/debug" replace />} />
+          <Route path="/charts-dashboard" element={<Navigate to="/charts" replace />} />
         </Routes>
       </div>
     </Router>

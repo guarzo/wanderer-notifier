@@ -5,6 +5,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   use Plug.Router
   require Logger
   alias WandererNotifier.ChartService.ActivityChartAdapter
+  alias WandererNotifier.ChartService.KillmailChartAdapter
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Web.Controllers.ActivityChartController
@@ -23,7 +24,8 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       200,
       Jason.encode!(%{
         tps_charts_enabled: Config.tps_charts_enabled?(),
-        map_tools_enabled: Config.map_tools_enabled?()
+        map_tools_enabled: Config.map_tools_enabled?(),
+        persistence_enabled: Config.killmail_persistence_enabled?()
       })
     )
   end
@@ -398,6 +400,136 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       |> send_resp(
         404,
         Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
+      )
+    end
+  end
+
+  # Killmail chart routes
+
+  # Generate a killmail chart
+  get "/killmail/generate/weekly_kills" do
+    if Config.killmail_persistence_enabled?() do
+      Logger.info("Generating weekly kills chart")
+
+      case KillmailChartAdapter.generate_weekly_kills_chart([]) do
+        {:ok, chart_url} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              chart_url: chart_url
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to generate weekly kills chart: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Send a killmail chart to Discord
+  get "/killmail/send-to-discord/weekly_kills" do
+    if Config.killmail_persistence_enabled?() do
+      title = conn.params["title"] || "Weekly Character Kills"
+      description = conn.params["description"] || "Top 20 characters by kills in the past week"
+      channel_id = conn.params["channel_id"]
+
+      Logger.info("Sending weekly kills chart to Discord with title: #{title}")
+
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord(title, description, channel_id) do
+        :ok ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Chart sent to Discord successfully"
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send chart to Discord: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Send all killmail charts to Discord
+  get "/killmail/send-all" do
+    if Config.killmail_persistence_enabled?() do
+      Logger.info("Sending all killmail charts to Discord")
+
+      # Currently only weekly kills chart is available
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord() do
+        :ok ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "All killmail charts sent to Discord successfully"
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send all killmail charts to Discord: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
       )
     end
   end

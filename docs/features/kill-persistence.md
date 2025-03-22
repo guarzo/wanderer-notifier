@@ -759,3 +759,108 @@ defmodule WandererNotifier.Services.KillProcessor do
   # ... existing code ...
 end
 ```
+
+## Killmail Charts
+
+### Weekly Character Kill Charts
+
+A new feature has been added to generate and send weekly charts showing the top 20 characters by number of kills. This feature builds on the kill persistence infrastructure and provides visual insights into character performance.
+
+### Implementation Components
+
+#### 1. `KillmailChartAdapter`
+
+```elixir
+defmodule WandererNotifier.ChartService.KillmailChartAdapter do
+  @moduledoc """
+  Adapter for generating charts from killmail data.
+
+  This module provides functions to create and send charts based on killmail statistics,
+  including weekly character performance charts.
+  """
+
+  require Logger
+  alias WandererNotifier.ChartService.ChartService
+
+  @doc """
+  Generates a chart showing the top characters by kills for the past week.
+
+  ## Parameters
+    - options: Map of options including:
+      - limit: Maximum number of characters to include (default: 20)
+
+  ## Returns
+    - {:ok, chart_url} if successful
+    - {:error, reason} if chart generation fails
+  """
+  def generate_weekly_kills_chart(options \\ %{})
+
+  @doc """
+  Sends a weekly kills chart to Discord.
+
+  ## Parameters
+    - title: Chart title
+    - description: Chart description
+    - channel_id: Discord channel ID to send to (optional)
+    - options: Additional options for chart generation
+
+  ## Returns
+    - {:ok, response} if successful
+    - {:error, reason} if sending fails
+  """
+  def send_weekly_kills_chart_to_discord(title, description, channel_id, options \\ %{})
+end
+```
+
+#### 2. `KillmailChartScheduler`
+
+```elixir
+defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
+  @moduledoc """
+  Schedules and processes weekly killmail charts.
+
+  This scheduler is responsible for generating and sending character kill charts
+  at the end of each week. It uses the weekly aggregated statistics to generate
+  a visual representation of character performance.
+  """
+
+  # Run weekly on Sunday (day 7) at 18:00 UTC
+  @default_hour 18
+  @default_minute 0
+
+  # Only runs when persistence is enabled
+  def persistence_enabled? do
+    Application.get_env(:wanderer_notifier, :persistence, [])
+    |> Keyword.get(:enabled, false)
+  end
+end
+```
+
+### User Experience
+
+The weekly character kill charts provide a visual representation of character performance, showing:
+
+- Top 20 characters by number of kills in the past week
+- Clean bar chart visualization for easy comparison
+- Weekly summary sent automatically to the configured Discord channel
+- Charts are generated every Sunday at 18:00 UTC
+
+### Configuration
+
+The kill chart scheduler is automatically enabled when persistence is enabled. Additional configuration options:
+
+```elixir
+config :wanderer_notifier, :killmail_charts,
+  discord_channel_id: "your_channel_id",
+  limit: 20  # Number of characters to include in the chart
+```
+
+### Future Enhancements
+
+Potential future enhancements for killmail charts include:
+
+- Monthly summary charts
+- Ship type distribution charts
+- ISK efficiency charts (ISK destroyed vs lost)
+- Region activity heatmaps
+- Customizable chart scheduling and delivery options

@@ -194,6 +194,14 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
+  Returns whether killmail persistence is enabled.
+  """
+  def killmail_persistence_enabled? do
+    Application.get_env(:wanderer_notifier, :persistence, [])
+    |> Keyword.get(:enabled, false)
+  end
+
+  @doc """
   Returns the chart service port from the environment.
   Defaults to 3001 if not specified.
   """

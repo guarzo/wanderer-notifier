@@ -401,29 +401,8 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {/* TPS Charts - Only shown if enabled */}
-            {status?.features?.enabled?.tps_charts && (
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">TPS Charts</span>
-                <div className="flex items-center space-x-2">
-                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                    Enabled
-                  </span>
-                  <button
-                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                    onClick={() => window.open('/charts', '_blank')}
-                  >
-                    <FaChartBar />
-                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View TPS Charts
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {/* Activity Charts - Only shown if enabled */}
-            {status?.features?.enabled?.activity_charts && (
+            {/* Activity Charts - Only shown if Map Tools is enabled */}
+            {status?.features?.enabled?.map_tools_enabled && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
                 <span className="font-medium text-gray-700">Activity Charts</span>
                 <div className="flex items-center space-x-2">
@@ -436,12 +415,35 @@ export default function Dashboard() {
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Activity Charts
+                      View Charts
                     </div>
                   </button>
                 </div>
               </div>
             )}
+            
+            {/* Killmail Charts - Only shown if Persistence is enabled */}
+            {status?.features?.enabled?.persistence_enabled && (
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
+                <span className="font-medium text-gray-700">Killmail Charts</span>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                    Enabled
+                  </span>
+                  <button
+                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
+                    onClick={() => window.open('/charts', '_blank')}
+                  >
+                    <FaChartBar />
+                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      View Charts
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Add any other features here */}
           </div>
         </section>
 
