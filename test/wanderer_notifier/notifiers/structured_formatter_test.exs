@@ -62,18 +62,18 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         "solar_system_id" => 30_002_082,
         "solar_system_name" => "Jita",
         "victim" => %{
-          "character_id" => 12345,
+          "character_id" => 12_345,
           "character_name" => "Test Victim",
-          "ship_type_id" => 34562,
+          "ship_type_id" => 34_562,
           "ship_type_name" => "Nyx",
           "corporation_name" => "Test Corp",
           "alliance_name" => "Test Alliance"
         },
         "attackers" => [
           %{
-            "character_id" => 67890,
+            "character_id" => 67_890,
             "character_name" => "Test Attacker",
-            "ship_type_id" => 11987,
+            "ship_type_id" => 11_987,
             "ship_type_name" => "Rifter",
             "corporation_name" => "Attacker Corp",
             "final_blow" => true
@@ -140,9 +140,9 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "TSTC",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: "TSTA",
         tracked: true
       }
@@ -217,7 +217,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
             }
           }
         ],
-        sun_type_id: 45041
+        sun_type_id: 45_041
       }
 
       result = StructuredFormatter.format_system_notification(system)
@@ -366,7 +366,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       }
 
       # 1 day, 1 hour, 1 minute, 30 seconds
-      uptime = 86400 + 3600 + 60 + 30
+      uptime = 86_400 + 3_600 + 60 + 30
 
       result =
         StructuredFormatter.format_system_status_message(

@@ -24,7 +24,7 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
 
   describe "add_system_to_tracked/2" do
     test "adds system with integer ID" do
-      result = CacheHelpers.add_system_to_tracked(12345, %{name: "Test System"})
+      result = CacheHelpers.add_system_to_tracked(12_345, %{name: "Test System"})
       assert result == :ok
     end
 
@@ -34,8 +34,8 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
     end
 
     test "handles adding duplicate system IDs" do
-      CacheHelpers.add_system_to_tracked(12345, %{name: "Test System"})
-      result = CacheHelpers.add_system_to_tracked(12345, %{name: "Test System Updated"})
+      CacheHelpers.add_system_to_tracked(12_345, %{name: "Test System"})
+      result = CacheHelpers.add_system_to_tracked(12_345, %{name: "Test System Updated"})
       assert result == :ok
     end
   end
@@ -43,10 +43,10 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
   describe "remove_system_from_tracked/1" do
     test "removes system when it exists in tracked list" do
       # Add a system first
-      CacheHelpers.add_system_to_tracked(12345, %{name: "Test System"})
+      CacheHelpers.add_system_to_tracked(12_345, %{name: "Test System"})
 
       # Then remove it
-      result = CacheHelpers.remove_system_from_tracked(12345)
+      result = CacheHelpers.remove_system_from_tracked(12_345)
       assert result == :ok
     end
 
@@ -57,7 +57,7 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
 
     test "handles string ID for removal" do
       # Add with integer ID
-      CacheHelpers.add_system_to_tracked(12345, %{name: "Test System"})
+      CacheHelpers.add_system_to_tracked(12_345, %{name: "Test System"})
 
       # Remove with string ID
       result = CacheHelpers.remove_system_from_tracked("12345")
@@ -84,7 +84,7 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
 
   describe "add_character_to_tracked/2" do
     test "adds character with integer ID" do
-      result = CacheHelpers.add_character_to_tracked(12345, %{name: "Test Character"})
+      result = CacheHelpers.add_character_to_tracked(12_345, %{name: "Test Character"})
       assert result == :ok
     end
 
@@ -94,8 +94,8 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
     end
 
     test "handles adding duplicate character IDs" do
-      CacheHelpers.add_character_to_tracked(12345, %{name: "Test Character"})
-      result = CacheHelpers.add_character_to_tracked(12345, %{name: "Test Character Updated"})
+      CacheHelpers.add_character_to_tracked(12_345, %{name: "Test Character"})
+      result = CacheHelpers.add_character_to_tracked(12_345, %{name: "Test Character Updated"})
       assert result == :ok
     end
   end
@@ -103,10 +103,10 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
   describe "remove_character_from_tracked/1" do
     test "removes character when it exists in tracked list" do
       # Add a character first
-      CacheHelpers.add_character_to_tracked(12345, %{name: "Test Character"})
+      CacheHelpers.add_character_to_tracked(12_345, %{name: "Test Character"})
 
       # Then remove it
-      result = CacheHelpers.remove_character_from_tracked(12345)
+      result = CacheHelpers.remove_character_from_tracked(12_345)
       assert result == :ok
     end
 
@@ -117,7 +117,7 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
 
     test "handles string ID for removal" do
       # Add with integer ID
-      CacheHelpers.add_character_to_tracked(12345, %{name: "Test Character"})
+      CacheHelpers.add_character_to_tracked(12_345, %{name: "Test Character"})
 
       # Remove with string ID
       result = CacheHelpers.remove_character_from_tracked("12345")

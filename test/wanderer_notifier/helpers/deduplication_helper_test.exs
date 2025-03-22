@@ -58,7 +58,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
     end
 
     test "handles string system IDs" do
-      system_id = "31000002"
+      system_id = "31_000_002"
       assert {:ok, :new} = DeduplicationHelper.check_and_mark_system(system_id)
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_system(system_id)
     end
@@ -72,7 +72,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
 
   describe "check_and_mark_character/1" do
     test "handles integer character IDs" do
-      character_id = 12345
+      character_id = 12_345
       assert {:ok, :new} = DeduplicationHelper.check_and_mark_character(character_id)
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_character(character_id)
     end
@@ -92,7 +92,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
     end
 
     test "handles string kill IDs" do
-      kill_id = "987654321"
+      kill_id = "987_654_321"
       assert {:ok, :new} = DeduplicationHelper.check_and_mark_kill(kill_id)
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_kill(kill_id)
     end
@@ -103,13 +103,13 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
       # Mark some entries
       DeduplicationHelper.check_and_mark("test:clear1")
       DeduplicationHelper.check_and_mark_system(30_000_142)
-      DeduplicationHelper.check_and_mark_character(12345)
+      DeduplicationHelper.check_and_mark_character(12_345)
       DeduplicationHelper.check_and_mark_kill(123_456_789)
 
       # They should all be duplicates
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark("test:clear1")
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_system(30_000_142)
-      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_character(12345)
+      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_character(12_345)
       assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark_kill(123_456_789)
 
       # Clear all entries
@@ -118,7 +118,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
       # Now they should all be new again
       assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:clear1")
       assert {:ok, :new} = DeduplicationHelper.check_and_mark_system(30_000_142)
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark_character(12345)
+      assert {:ok, :new} = DeduplicationHelper.check_and_mark_character(12_345)
       assert {:ok, :new} = DeduplicationHelper.check_and_mark_kill(123_456_789)
     end
   end
