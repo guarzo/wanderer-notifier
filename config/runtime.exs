@@ -68,3 +68,34 @@ config :wanderer_notifier, :host, System.get_env("HOST", "localhost")
 config :wanderer_notifier, :port, String.to_integer(System.get_env("PORT", "4000"))
 
 config :wanderer_notifier, :scheme, System.get_env("SCHEME", "http")
+
+# Configure persistence feature
+persistence_enabled =
+  case System.get_env("ENABLE_PERSISTENCE", "false") do
+    "true" -> true
+    _ -> false
+  end
+
+# Parse retention days with safer handling
+retention_days =
+  case Integer.parse(System.get_env("PERSISTENCE_RETENTION_DAYS", "180")) do
+    {days, _} -> days
+    :error -> 180
+  end
+
+config :wanderer_notifier, :persistence,
+  enabled: persistence_enabled,
+  retention_period_days: retention_days,
+  # Daily at midnight
+  aggregation_schedule: System.get_env("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
+
+# Conditionally configure database connection if persistence is enabled
+if persistence_enabled do
+  config :wanderer_notifier, WandererNotifier.Repo,
+    username: System.get_env("POSTGRES_USER", "postgres"),
+    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+    hostname: System.get_env("POSTGRES_HOST", "postgres"),
+    database: System.get_env("POSTGRES_DB", "wanderer_notifier_#{config_env()}"),
+    port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
+    pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))
+end

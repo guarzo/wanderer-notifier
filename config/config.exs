@@ -69,6 +69,27 @@ config :nostrum, :gateway,
     max: 120_000
   ]
 
+# Configure Ecto timestamps
+config :wanderer_notifier, WandererNotifier.Repo, migration_timestamps: [type: :utc_datetime_usec]
+
+# Configure persistence feature defaults
+config :wanderer_notifier, :persistence,
+  enabled: false,
+  retention_period_days: 180,
+  # Daily at midnight (minute 0, hour 0, any day, any month, any day of week)
+  aggregation_schedule: "0 0 * * *"
+
+# Configure Ash APIs
+config :wanderer_notifier, :ash_apis, [
+  WandererNotifier.Resources.Api
+]
+
+# Configure compatible foreign key types for Ash relationships
+# This must be set at compile time
+config :ash, :compatible_foreign_key_types, [
+  {Ash.Type.UUID, Ash.Type.Integer}
+]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

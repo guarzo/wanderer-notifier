@@ -1,16 +1,10 @@
 {
   "name": "Notifier Dev Container",
 
-  // Build instructions (which Dockerfile, build context, etc.)
-  "build": {
-    "context": "..",
-    "dockerfile": "Dockerfile",
-    "args": {
-      "USERNAME": "elixir",
-      "NODE_VERSION": "20.x",
-      "INSTALL_ELIXIR_LS": "true"
-    }
-  },
+  // Use docker-compose for container configuration
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
 
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway",
@@ -24,20 +18,25 @@
   },
 
   // Add port forwarding configuration
-  "forwardPorts": [4000, 4111, 3001],
+  "forwardPorts": [4000, 4111, 3001, 5432],
 
   "remoteUser": "elixir",
   "updateRemoteUserUID": false,
-  "mounts": [
-    "source=claude-code-bashhistory,target=/commandhistory,type=volume",
-    "source=claude-code-config,target=/home/elixir/.claude,type=volume",
-    "source=elixir-ls-cache,target=/home/elixir/.elixir-ls,type=volume"
-  ],
+  
+  // Set environment variables
   "remoteEnv": {
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/elixir/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
+  
+  // Optional environment variables - enable to activate postgres
+  "containerEnv": {
+    // Uncomment to enable persistence in development
+    // "ENABLE_PERSISTENCE": "true"
+  },
+  
+  // Custom configurations for VS Code
   "customizations": {
     "vscode": {
       "extensions": [

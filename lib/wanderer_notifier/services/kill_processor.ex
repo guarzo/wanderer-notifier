@@ -10,6 +10,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   # App-specific aliases
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Resources.KillmailPersistence
 
   # Cache keys for recent kills
   @recent_kills_cache_key "zkill:recent_kills"
@@ -195,6 +196,18 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp process_new_kill(%Killmail{} = killmail, kill_id, state) do
     # Store the kill in the cache
     update_recent_kills(killmail)
+
+    # Persist killmail if the feature is enabled and related to tracked character
+    # This is non-blocking and failures won't affect the notification flow
+    Task.start(fn ->
+      try do
+        KillmailPersistence.maybe_persist_killmail(killmail)
+      rescue
+        e ->
+          Logger.error("[KillProcessor] Error in persistence task: #{Exception.message(e)}")
+          Logger.debug("[KillProcessor] #{Exception.format_stacktrace()}")
+      end
+    end)
 
     # Process the kill for notification (removed check for backup_kills_processing)
     case enrich_and_notify(killmail) do

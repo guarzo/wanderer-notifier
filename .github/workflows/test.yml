@@ -14,6 +14,7 @@ jobs:
       # Add environment variables for testing
       DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       MIX_ENV: "test"
+      CACHE_DIR: "/tmp/wanderer_notifier_cache"
 
     steps:
       - uses: actions/checkout@v3
@@ -35,6 +36,9 @@ jobs:
 
       - name: Install dependencies
         run: mix deps.get
+
+      - name: Clean and recompile Ash (to ensure correct config)
+        run: mix deps.clean ash ash_postgres --build && mix deps.compile
 
       - name: Check formatting (non-blocking)
         run: mix format --check-formatted
