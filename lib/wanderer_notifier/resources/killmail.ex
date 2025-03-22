@@ -117,7 +117,7 @@ defmodule WandererNotifier.Resources.Killmail do
 
       change(
         before_action(fn changeset ->
-          Ash.Changeset.set_attribute(changeset, :processed_at, DateTime.utc_now())
+          Ash.Changeset.change_attribute(changeset, :processed_at, DateTime.utc_now())
         end)
       )
     end
