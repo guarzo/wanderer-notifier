@@ -16,21 +16,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Use a path that works in both dev container and production
     cache_dir = determine_cache_dir()
 
-    # Ensure the directory exists
-    case File.mkdir_p(cache_dir) do
-      :ok ->
-        Logger.info("Using cache directory: #{cache_dir}")
-
-      {:error, reason} ->
-        Logger.warning(
-          "Failed to create cache directory at #{cache_dir}: #{inspect(reason)}. Falling back to temporary directory."
-        )
-
-        # Fall back to a temporary directory that should be writable
-        cache_dir = System.tmp_dir!() |> Path.join("wanderer_notifier_cache")
-        File.mkdir_p!(cache_dir)
-        Logger.info("Using fallback cache directory: #{cache_dir}")
-    end
+    # Ensure the directory exists with more robust error handling
+    cache_dir = ensure_cache_directory(cache_dir)
 
     # Configure Cachex with optimized settings
     cachex_options = [
@@ -49,6 +36,23 @@ defmodule WandererNotifier.Data.Cache.Repository do
       # Set fallback function for cache misses
       fallback: &handle_cache_miss/1
     ]
+
+    # Add disk persistence only if we have a valid cache directory
+    cachex_options =
+      if cache_dir do
+        disk_options = [
+          disk: [
+            path: cache_dir,
+            # 1 minute
+            sync_interval: 60_000,
+            sync_on_terminate: true
+          ]
+        ]
+
+        Keyword.merge(cachex_options, disk_options)
+      else
+        cachex_options
+      end
 
     # Start Cachex with explicit name to ensure it can be referenced by the GenServer
     cachex_result =
@@ -75,6 +79,56 @@ defmodule WandererNotifier.Data.Cache.Repository do
       error ->
         # Return the error so supervision can handle it properly
         error
+    end
+  end
+
+  # Helper to ensure the cache directory exists with robust error handling
+  defp ensure_cache_directory(cache_dir) do
+    Logger.info("Attempting to create or verify cache directory: #{cache_dir}")
+
+    # Make sure parent directories exist
+    parent_dir = Path.dirname(cache_dir)
+
+    parent_result =
+      if parent_dir != cache_dir do
+        Logger.debug("Creating parent directory structure: #{parent_dir}")
+        File.mkdir_p(parent_dir)
+      else
+        :ok
+      end
+
+    # Now try to create the actual cache directory
+    result =
+      case parent_result do
+        :ok -> File.mkdir_p(cache_dir)
+        error -> error
+      end
+
+    case result do
+      :ok ->
+        Logger.info("Using cache directory: #{cache_dir}")
+        cache_dir
+
+      {:error, reason} ->
+        Logger.warning(
+          "Failed to create cache directory at #{cache_dir}: #{inspect(reason)}. Falling back to temporary directory."
+        )
+
+        # Fall back to a temporary directory that should be writable
+        tmp_dir = System.tmp_dir!() |> Path.join("wanderer_notifier_cache")
+
+        case File.mkdir_p(tmp_dir) do
+          :ok ->
+            Logger.info("Using fallback cache directory: #{tmp_dir}")
+            tmp_dir
+
+          {:error, tmp_reason} ->
+            Logger.error(
+              "Failed to create temporary cache directory: #{inspect(tmp_reason)}. Using in-memory cache only."
+            )
+
+            nil
+        end
     end
   end
 

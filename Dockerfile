@@ -45,7 +45,8 @@ RUN apt-get update -y && \
 WORKDIR /app
 
 # Create data directory for persistence
-RUN mkdir -p /app/data/cache
+RUN mkdir -p /app/data/cache && \
+    chmod -R 777 /app/data
 
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
