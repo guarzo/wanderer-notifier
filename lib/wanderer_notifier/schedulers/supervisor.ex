@@ -31,12 +31,47 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       if kill_charts_enabled?() do
         Logger.info("Kill charts feature enabled, adding killmail schedulers")
 
-        schedulers ++
-          [
-            {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
-            {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
-            {WandererNotifier.Schedulers.KillmailChartScheduler, []}
-          ]
+        # Add a brief delay to ensure the Repo is fully started
+        Process.sleep(500)
+
+        # Verify database connection is available
+        db_ready? =
+          try do
+            case WandererNotifier.Repo.health_check() do
+              {:ok, ping_time} ->
+                Logger.info("Database connection verified - ping time: #{ping_time}ms")
+                true
+
+              {:error, reason} ->
+                Logger.error("Database connection check failed: #{inspect(reason)}")
+
+                Logger.warning(
+                  "Starting without killmail schedulers due to database connection failure"
+                )
+
+                false
+            end
+          rescue
+            e ->
+              Logger.error("Database health check failed with exception: #{Exception.message(e)}")
+
+              Logger.warning(
+                "Starting without killmail schedulers due to database connection failure"
+              )
+
+              false
+          end
+
+        if db_ready? do
+          schedulers ++
+            [
+              {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
+              {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
+              {WandererNotifier.Schedulers.KillmailChartScheduler, []}
+            ]
+        else
+          schedulers
+        end
       else
         schedulers
       end

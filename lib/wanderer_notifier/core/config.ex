@@ -165,15 +165,14 @@ defmodule WandererNotifier.Core.Config do
   Uses both new flag (ENABLE_KILL_CHARTS) and legacy flag (persistence) for backward compatibility.
   """
   def kill_charts_enabled? do
-    feature_enabled?(:kill_charts) || killmail_persistence_enabled?()
+    feature_enabled?(:kill_charts)
   end
 
   @doc """
   Returns whether killmail persistence is enabled.
   """
   def killmail_persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+    feature_enabled?(:kill_charts)
   end
 
   @doc """

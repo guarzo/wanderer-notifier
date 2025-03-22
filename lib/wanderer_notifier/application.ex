@@ -51,7 +51,26 @@ defmodule WandererNotifier.Application do
     log_startup_info(env)
 
     # Start the supervisor and schedule startup message
-    start_supervisor_and_notify()
+    result = start_supervisor_and_notify()
+
+    # Check database health if kill charts feature is enabled
+    if kill_charts_enabled?() do
+      Task.start(fn ->
+        # Give the repo time to connect
+        Process.sleep(1000)
+
+        case WandererNotifier.Repo.health_check() do
+          {:ok, ping_time} ->
+            Logger.info("Database health check successful - ping time: #{ping_time}ms")
+
+          {:error, reason} ->
+            Logger.error("Database health check failed: #{inspect(reason)}")
+            Logger.error("Make sure PostgreSQL is running and properly configured")
+        end
+      end)
+    end
+
+    result
   end
 
   # Start development tools if in dev environment
@@ -178,7 +197,8 @@ defmodule WandererNotifier.Application do
   end
 
   defp get_children do
-    children = [
+    # Basic children that don't depend on database
+    base_children = [
       {WandererNotifier.NoopConsumer, []},
       # Start the License Manager
       {WandererNotifier.Core.License, []},
@@ -195,21 +215,21 @@ defmodule WandererNotifier.Application do
       # Start the Maintenance service
       {WandererNotifier.Services.Maintenance, []},
       # Start the Web Server
-      {WandererNotifier.Web.Server, []},
-      # Start the Scheduler Supervisor
-      {WandererNotifier.Schedulers.Supervisor, []}
+      {WandererNotifier.Web.Server, []}
     ]
 
     # Conditionally add Postgres repo to supervision tree
+    # before the scheduler supervisor to ensure proper initialization order
     children =
       if kill_charts_enabled?() do
         Logger.info("Kill charts feature enabled - starting database connection")
-        children ++ [WandererNotifier.Repo]
+        base_children ++ [WandererNotifier.Repo]
       else
-        children
+        base_children
       end
 
-    children
+    # Add the scheduler supervisor last to ensure all dependencies are started first
+    children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
   end
 
   # Check if kill charts feature is enabled

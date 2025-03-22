@@ -69,9 +69,9 @@ config :wanderer_notifier, :port, String.to_integer(System.get_env("PORT", "4000
 
 config :wanderer_notifier, :scheme, System.get_env("SCHEME", "http")
 
-# Configure persistence feature
-persistence_enabled =
-  case System.get_env("ENABLE_PERSISTENCE", "false") do
+# Configure kill charts feature
+kill_charts_enabled =
+  case System.get_env("ENABLE_KILL_CHARTS", "false") do
     "true" -> true
     _ -> false
   end
@@ -84,13 +84,13 @@ retention_days =
   end
 
 config :wanderer_notifier, :persistence,
-  enabled: persistence_enabled,
+  enabled: kill_charts_enabled,
   retention_period_days: retention_days,
   # Daily at midnight
   aggregation_schedule: System.get_env("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
 
-# Conditionally configure database connection if persistence is enabled
-if persistence_enabled do
+# Conditionally configure database connection if kill charts is enabled
+if kill_charts_enabled do
   config :wanderer_notifier, WandererNotifier.Repo,
     username: System.get_env("POSTGRES_USER", "postgres"),
     password: System.get_env("POSTGRES_PASSWORD", "postgres"),
