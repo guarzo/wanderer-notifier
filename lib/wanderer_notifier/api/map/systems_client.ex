@@ -182,7 +182,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   defp find_new_systems(fresh, cached) do
     # Handle both struct and map types in cached systems
-    Enum.filter(fresh, fn fresh_sys -> 
+    Enum.filter(fresh, fn fresh_sys ->
       not system_exists_in_cache?(fresh_sys, cached)
     end)
   end

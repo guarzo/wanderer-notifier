@@ -83,16 +83,14 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Get the configured cache directory
     configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
 
-    cond do
-      # Check if we're in a dev container
-      String.contains?(File.cwd!(), "dev-container") or
-          String.contains?(File.cwd!(), "workspaces") ->
-        # Use a directory in the current workspace
-        Path.join(File.cwd!(), "tmp/cache")
-
+    # Check if we're in a dev container
+    if String.contains?(File.cwd!(), "dev-container") or
+         String.contains?(File.cwd!(), "workspaces") do
+      # Use a directory in the current workspace
+      Path.join(File.cwd!(), "tmp/cache")
+    else
       # Otherwise use the configured directory (for production)
-      true ->
-        configured_dir
+      configured_dir
     end
   end
 
@@ -285,17 +283,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
       Logger.debug("[CacheRepo] Batch getting #{length(keys)} keys")
 
       # Implement our own batch get since Cachex doesn't provide get_many
-      results =
-        Enum.map(keys, fn key ->
-          case Cachex.get(@cache_name, key) do
-            {:ok, value} -> {key, value}
-            _ -> {key, nil}
-          end
-        end)
+      results = Enum.map(keys, &get_single_key/1)
 
       # Convert results to a map for easier access
       Map.new(results)
     end)
+  end
+  
+  # Helper function to get a single key from the cache
+  defp get_single_key(key) do
+    case Cachex.get(@cache_name, key) do
+      {:ok, value} -> {key, value}
+      _ -> {key, nil}
+    end
   end
 
   # Helper functions to process get results

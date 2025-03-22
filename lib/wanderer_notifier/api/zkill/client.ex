@@ -36,7 +36,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:ok, true} ->
             Logger.warning("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
             {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_true}}}
-            
+
           _ ->
             ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.killmail")
         end

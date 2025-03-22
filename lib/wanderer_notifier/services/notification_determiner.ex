@@ -80,7 +80,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     system_info = format_system_info(system_id)
 
     # Check if system is tracked through direct tracking or track_all policy
-    tracked = is_directly_tracked?(system_id_str) || is_tracked_via_track_all?(system_id_str)
+    tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
 
     # Log the tracking status with appropriate details
     log_tracking_status(tracked, system_info, system_id_str)
@@ -96,12 +96,12 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if system_name, do: "#{system_id} (#{system_name})", else: system_id
   end
 
-  defp is_directly_tracked?(system_id_str) do
+  defp directly_tracked?(system_id_str) do
     cache_key = "tracked:system:#{system_id_str}"
     WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
   end
 
-  defp is_tracked_via_track_all?(system_id_str) do
+  defp tracked_via_track_all?(system_id_str) do
     # Check if system exists in main cache and track_all is enabled
     system_cache_key = "map:system:#{system_id_str}"
     exists_in_cache = WandererNotifier.Data.Cache.Repository.get(system_cache_key) != nil
@@ -112,7 +112,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if tracked do
       Logger.debug("TRACKING: System #{system_info} is tracked ✅")
 
-      if is_directly_tracked?(system_id_str) do
+      if directly_tracked?(system_id_str) do
         Logger.debug(
           "TRACKING DETAIL: System is explicitly tracked (tracked:system:#{system_id_str}=true)"
         )
@@ -203,37 +203,51 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     )
   end
 
-  # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(kill_data, kill_id, all_character_ids) do
-    # Check victim
+  # Extract victim ID from kill data
+  defp extract_victim_id(kill_data) do
     victim = Map.get(kill_data, "victim") || Map.get(kill_data, :victim) || %{}
     victim_id = Map.get(victim, "character_id") || Map.get(victim, :character_id)
-    victim_id_str = if victim_id, do: to_string(victim_id), else: nil
+    if victim_id, do: to_string(victim_id), else: nil
+  end
 
-    # Log victim information for debugging
+  # Log victim information for debugging
+  defp log_victim_info(victim_id_str, kill_id) do
     if victim_id_str do
       Logger.debug("CHARACTER TRACKING: Victim ID in kill #{kill_id} is #{victim_id_str}")
     else
       Logger.debug("CHARACTER TRACKING: No victim character ID found in kill #{kill_id}")
     end
+  end
+
+  # Check if victim is tracked through direct cache lookup
+  defp check_direct_victim_tracking(victim_id_str) do
+    direct_cache_key = "tracked:character:#{victim_id_str}"
+    direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
+
+    if direct_tracked do
+      Logger.info(
+        "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
+      )
+      true
+    else
+      false
+    end
+  end
+
+  # Check if the victim in this kill is being tracked
+  defp check_victim_tracked(kill_data, kill_id, all_character_ids) do
+    # Extract and format victim ID
+    victim_id_str = extract_victim_id(kill_data)
+    
+    # Log victim information
+    log_victim_info(victim_id_str, kill_id)
 
     # Check if victim is tracked against eve_id list
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
-    # Also try direct cache lookup for victim
+    # Also try direct cache lookup for victim if not already tracked
     if !victim_tracked && victim_id_str do
-      direct_cache_key = "tracked:character:#{victim_id_str}"
-      direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
-
-      if direct_tracked do
-        Logger.info(
-          "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
-        )
-
-        true
-      else
-        victim_tracked
-      end
+      check_direct_victim_tracking(victim_id_str)
     else
       victim_tracked
     end
@@ -332,21 +346,17 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   @doc """
-  Determines if a system event should trigger a notification.
+  Determines if we should send a notification for a system.
 
   ## Parameters
-    - system_id: The ID of the system
+    - system_id: The system ID to check
 
   ## Returns
-    - true if the system is tracked
-    - false otherwise
+    - true if we should notify, false otherwise
   """
   def should_notify_system?(system_id) do
     # Check if system notifications are enabled globally
-    unless Features.enabled?(:tracked_systems_notifications) do
-      Logger.debug("NOTIFICATION DECISION: System notifications are disabled globally")
-      false
-    else
+    if Features.enabled?(:tracked_systems_notifications) do
       is_tracked = tracked_system?(system_id)
       system_name = get_system_name(system_id)
       system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
@@ -358,6 +368,9 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         Logger.debug("NOTIFICATION DECISION: System #{system_info} is not tracked")
         false
       end
+    else
+      Logger.debug("NOTIFICATION DECISION: System notifications are disabled globally")
+      false
     end
   end
 

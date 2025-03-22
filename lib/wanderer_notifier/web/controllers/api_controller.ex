@@ -437,109 +437,106 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   defp send_test_character_notification do
     Logger.info("TEST NOTIFICATION: Manually triggering a test character notification")
 
-    # Use CacheHelpers for consistency
-    tracked_characters = CacheHelpers.get_tracked_characters()
+    # Get tracked characters or use sample if none are available
+    tracked_characters = get_and_log_tracked_characters()
 
-    # Add additional debug logging
+    tracked_characters
+    |> get_valid_character_for_notification()
+    |> send_character_notification()
+  end
+
+  # Get tracked characters and log their count
+  defp get_and_log_tracked_characters do
+    tracked_characters = CacheHelpers.get_tracked_characters()
     Logger.debug("Fetched tracked characters from cache: #{inspect(tracked_characters)}")
     Logger.info("Found #{length(tracked_characters)} tracked characters")
+    tracked_characters
+  end
 
-    case tracked_characters do
-      [] ->
-        Logger.info("No tracked characters available, using sample character data")
-        # Create a sample character for testing
-        sample_character = %{
-          "character_id" => "1354830081",
-          "character_name" => "CCP Garthagk",
-          "corporation_id" => 98_356_193,
-          "corporation_ticker" => "CCP"
-        }
+  # Find a valid character or return a sample one
+  defp get_valid_character_for_notification(tracked_characters) do
+    valid_chars = Enum.filter(tracked_characters, &valid_eve_id?/1)
+    Logger.debug("Valid characters: #{length(valid_chars)} out of #{length(tracked_characters)}")
 
-        character_id = sample_character["character_id"]
-        character_name = sample_character["character_name"]
+    if Enum.empty?(valid_chars) do
+      create_sample_character()
+    else
+      Enum.random(valid_chars)
+    end
+  end
 
-        Logger.info(
-          "Using sample character #{character_name} (ID: #{character_id}) for test notification"
-        )
+  # Create a standard sample character for testing
+  defp create_sample_character do
+    Logger.info("Using sample character for notification")
 
-        WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [
-          sample_character
-        ])
+    %{
+      "character_id" => "1354830081",
+      "character_name" => "CCP Garthagk",
+      "corporation_id" => 98_356_193,
+      "corporation_ticker" => "CCP"
+    }
+  end
 
-        {:ok, character_id, character_name}
+  # Send notification with the provided character
+  defp send_character_notification(character) do
+    {character_id, character_name} = extract_character_details(character)
+    Logger.info("Using character #{character_name} (ID: #{character_id}) for test notification")
 
-      characters ->
-        valid_chars = Enum.filter(characters, &valid_eve_id?/1)
-        Logger.debug("Valid characters: #{length(valid_chars)} out of #{length(characters)}")
+    # Format the character for notification
+    formatted_character = format_character_for_notification(character)
 
-        case valid_chars do
-          [] ->
-            Logger.info("No characters with valid numeric EVE IDs, using sample character")
-            # Create a sample character for testing
-            sample_character = %{
-              "character_id" => "1354830081",
-              "character_name" => "CCP Garthagk",
-              "corporation_id" => 98_356_193,
-              "corporation_ticker" => "CCP"
-            }
+    # Send the notification
+    WandererNotifier.Notifiers.Factory.notify(
+      :send_new_tracked_character_notification,
+      [formatted_character]
+    )
 
-            character_id = sample_character["character_id"]
-            character_name = sample_character["character_name"]
+    {:ok, character_id, character_name}
+  end
 
-            Logger.info(
-              "Using sample character #{character_name} (ID: #{character_id}) for test notification"
-            )
+  # Extract character details
+  defp extract_character_details(character) do
+    character_id = extract_character_id(character)
+    character_name = extract_character_name(character)
 
-            WandererNotifier.Notifiers.Factory.notify(:send_new_tracked_character_notification, [
-              sample_character
-            ])
+    Logger.info(
+      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
+    )
 
-            {:ok, character_id, character_name}
+    {character_id, character_name}
+  end
 
-          valid_list ->
-            character = Enum.random(valid_list)
-            {character_id, character_name} = extract_character_details(character)
+  # Extract character ID from character data
+  defp extract_character_id(character) do
+    cond do
+      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+        character.eve_id
 
-            Logger.info(
-              "Using character #{character_name} (ID: #{character_id}) for test notification"
-            )
+      is_map(character) && Map.has_key?(character, "character_id") ->
+        character["character_id"]
 
-            # Create a properly formatted character map with string keys for the notifier
-            formatted_character = format_character_for_notification(character)
+      is_map(character) && Map.has_key?(character, "eve_id") ->
+        character["eve_id"]
 
-            result =
-              WandererNotifier.Notifiers.Factory.notify(
-                :send_new_tracked_character_notification,
-                [formatted_character]
-              )
+      true ->
+        nil
+    end
+  end
 
-            case result do
-              {:error, :invalid_character_id} ->
-                Logger.error("Failed - invalid character ID, falling back to sample")
-                # Fall back to sample character on error
-                sample_character = %{
-                  "character_id" => "1354830081",
-                  "character_name" => "CCP Garthagk",
-                  "corporation_id" => 98_356_193,
-                  "corporation_ticker" => "CCP"
-                }
+  # Extract character name from character data
+  defp extract_character_name(character) do
+    cond do
+      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+        character.name
 
-                character_id = sample_character["character_id"]
-                character_name = sample_character["character_name"]
+      is_map(character) && Map.has_key?(character, "character_name") ->
+        character["character_name"]
 
-                Logger.info("Using fallback character #{character_name} (ID: #{character_id})")
+      is_map(character) && Map.has_key?(character, "name") ->
+        character["name"]
 
-                WandererNotifier.Notifiers.Factory.notify(
-                  :send_new_tracked_character_notification,
-                  [sample_character]
-                )
-
-                {:ok, character_id, character_name}
-
-              _ ->
-                {:ok, character_id, character_name}
-            end
-        end
+      true ->
+        "Unknown"
     end
   end
 
@@ -551,87 +548,43 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       "[APIController] Formatting character for notification: #{inspect(character, pretty: true, limit: 300)}"
     )
 
-    # Use the Character struct's access behavior if it's already a Character struct
-    # Otherwise, extract fields directly
-    character_id =
-      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
-        character["eve_id"]
-      else
-        character["character_id"] || character["eve_id"]
-      end
-
-    character_name =
-      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
-        character["name"]
-      else
-        character["character_name"] || character["name"]
-      end
-
-    corporation_id =
-      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
-        character["corporation_id"]
-      else
-        character["corporation_id"]
-      end
-
-    corporation_ticker =
-      if is_struct(character) && character.__struct__ == WandererNotifier.Data.Character do
-        character["corporation_ticker"]
-      else
-        character["corporation_ticker"] || character["corporation_name"]
-      end
-
-    # Create a map with proper string keys expected by the formatter
     %{
-      "character_id" => character_id,
-      "character_name" => character_name,
-      "corporation_id" => corporation_id,
-      # Use corporation_ticker for consistency with API format
-      "corporation_ticker" => corporation_ticker
+      "character_id" => extract_character_id(character),
+      "character_name" => extract_character_name(character),
+      "corporation_id" => extract_corporation_id(character),
+      "corporation_ticker" => extract_corporation_ticker(character)
     }
   end
 
-  # Extract character details
-  defp extract_character_details(character) do
-    require Logger
+  # Extract corporation ID from character data
+  defp extract_corporation_id(character) do
+    cond do
+      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+        character.corporation_id
 
-    # Extract character ID and name based on the type of input
-    character_id =
-      cond do
-        is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-          character.eve_id
+      is_map(character) && Map.has_key?(character, "corporation_id") ->
+        character["corporation_id"]
 
-        is_map(character) && Map.has_key?(character, "character_id") ->
-          character["character_id"]
+      true ->
+        nil
+    end
+  end
 
-        is_map(character) && Map.has_key?(character, "eve_id") ->
-          character["eve_id"]
+  # Extract corporation ticker from character data
+  defp extract_corporation_ticker(character) do
+    cond do
+      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+        character.corporation_ticker
 
-        true ->
-          nil
-      end
+      is_map(character) && Map.has_key?(character, "corporation_ticker") ->
+        character["corporation_ticker"]
 
-    character_name =
-      cond do
-        is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-          character.name
+      is_map(character) && Map.has_key?(character, "corporation_name") ->
+        character["corporation_name"]
 
-        is_map(character) && Map.has_key?(character, "character_name") ->
-          character["character_name"]
-
-        is_map(character) && Map.has_key?(character, "name") ->
-          character["name"]
-
-        true ->
-          "Unknown"
-      end
-
-    # Add logging for debugging
-    Logger.info(
-      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
-    )
-
-    {character_id, character_name}
+      true ->
+        nil
+    end
   end
 
   #
@@ -639,41 +592,33 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   #
   defp valid_eve_id?(character) do
     cond do
-      is_binary(character["character_id"]) and
-          NotificationHelpers.valid_numeric_id?(character["character_id"]) ->
-        true
-
-      is_binary(character["eve_id"]) and
-          NotificationHelpers.valid_numeric_id?(character["eve_id"]) ->
-        true
-
-      is_map(character["character"]) ->
-        valid_nested?(character["character"])
-
-      true ->
-        false
+      has_valid_direct_id?(character) -> true
+      has_valid_nested_character?(character) -> true
+      true -> false
     end
   end
 
+  # Check if character has a valid ID directly in its map
+  defp has_valid_direct_id?(character) do
+    id_keys = ["character_id", "eve_id"]
+
+    Enum.any?(id_keys, fn key ->
+      is_binary(character[key]) && NotificationHelpers.valid_numeric_id?(character[key])
+    end)
+  end
+
+  # Check if character has a valid nested character map
+  defp has_valid_nested_character?(character) do
+    is_map(character["character"]) && valid_nested?(character["character"])
+  end
+
+  # Check if nested map has a valid ID
   defp valid_nested?(nested_map) do
-    # Because we can't call external functions in a guard,
-    # we just do normal boolean checks in the function body:
-    cond do
-      is_binary(nested_map["eve_id"]) and
-          NotificationHelpers.valid_numeric_id?(nested_map["eve_id"]) ->
-        true
+    id_keys = ["eve_id", "character_id", "id"]
 
-      is_binary(nested_map["character_id"]) and
-          NotificationHelpers.valid_numeric_id?(nested_map["character_id"]) ->
-        true
-
-      is_binary(nested_map["id"]) and
-          NotificationHelpers.valid_numeric_id?(nested_map["id"]) ->
-        true
-
-      true ->
-        false
-    end
+    Enum.any?(id_keys, fn key ->
+      is_binary(nested_map[key]) && NotificationHelpers.valid_numeric_id?(nested_map[key])
+    end)
   end
 
   # Catch-all route

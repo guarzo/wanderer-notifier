@@ -72,7 +72,7 @@ defmodule WandererNotifier.Api.Map.Characters do
       construct_characters_url(base_url_with_slug)
     end
   end
-  
+
   defp validate_config(base_url_with_slug, map_token) do
     cond do
       is_nil(base_url_with_slug) or base_url_with_slug == "" ->
@@ -80,12 +80,12 @@ defmodule WandererNotifier.Api.Map.Characters do
 
       is_nil(map_token) or map_token == "" ->
         {:error, "Map token is not configured"}
-        
+
       true ->
         {:ok, true}
     end
   end
-  
+
   defp construct_characters_url(base_url_with_slug) do
     # Parse the URL to separate the base URL from the slug
     uri = URI.parse(base_url_with_slug)
@@ -98,11 +98,11 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Get base host and construct the final URL
     base_host = get_base_host(uri)
     url = build_final_url(base_host, slug_id)
-    
+
     Logger.debug("[build_characters_url] Final URL: #{url}")
     {:ok, url}
   end
-  
+
   defp extract_slug_id(uri) do
     path = uri.path || ""
     path = String.trim_trailing(path, "/")
@@ -113,11 +113,11 @@ defmodule WandererNotifier.Api.Map.Characters do
     |> Enum.filter(fn part -> part != "" end)
     |> List.last() || ""
   end
-  
+
   defp get_base_host(uri) do
     "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
   end
-  
+
   defp build_final_url(base_host, slug_id) do
     if String.ends_with?(base_host, "/") do
       "#{base_host}api/map/characters?slug=#{URI.encode_www_form(slug_id)}"
@@ -247,7 +247,7 @@ defmodule WandererNotifier.Api.Map.Characters do
     notifier = NotifierFactory.get_notifier()
     notifier.send_new_tracked_character_notification(character_info)
   end
-  
+
   defp transform_legacy_character(char) do
     # Create map with all potential fields
     char_map = %{
@@ -258,38 +258,38 @@ defmodule WandererNotifier.Api.Map.Characters do
       "allianceID" => Map.get(char, "alliance_id"),
       "allianceName" => Map.get(char, "alliance_name")
     }
-    
+
     # Filter out nil values and return as map
     remove_nil_values(char_map)
   end
-  
+
   defp remove_nil_values(map) do
     map
     |> Enum.reject(fn {_, v} -> is_nil(v) end)
     |> Map.new()
   end
-  
+
   defp find_new_characters(_new_chars, []) do
     # If there are no cached characters, this might be the first run
     # In that case, don't notify about all characters to avoid spamming
     []
   end
-  
+
   defp find_new_characters(new_chars, cached_chars) do
     Enum.filter(new_chars, &new_character?(&1, cached_chars))
   end
-  
+
   defp new_character?(char, cached_chars) do
     char_id = Map.get(char, "character_id")
     not character_exists_in_cache?(char_id, cached_chars)
   end
-  
+
   defp character_exists_in_cache?(char_id, cached_chars) do
-    Enum.any?(cached_chars, fn c -> 
+    Enum.any?(cached_chars, fn c ->
       Map.get(c, "character_id") == char_id
     end)
   end
-  
+
   defp transform_character_data(character_data) do
     # Create a standardized format for the character
     character_map = %{
@@ -302,17 +302,17 @@ defmodule WandererNotifier.Api.Map.Characters do
       # Using ticker as name
       "allianceName" => Map.get(character_data, "alliance_ticker")
     }
-    
+
     # Remove nil values
     remove_nil_values(character_map)
   end
-  
+
   defp process_character_notification(char) do
-    Task.start(fn -> 
+    Task.start(fn ->
       try_send_character_notification(char)
     end)
   end
-  
+
   defp try_send_character_notification(char) do
     try do
       # Extract the character ID
@@ -325,10 +325,10 @@ defmodule WandererNotifier.Api.Map.Characters do
         )
     end
   end
-  
+
   defp notify_character_if_needed(character_id, char) do
     determiner = WandererNotifier.Services.NotificationDeterminer
-    
+
     if determiner.should_notify_character?(character_id) do
       send_notification_for_character(character_id, char)
     else
@@ -337,7 +337,7 @@ defmodule WandererNotifier.Api.Map.Characters do
       )
     end
   end
-  
+
   defp send_notification_for_character(character_id, char) do
     # Create the character notification data structure
     character_info = %{
@@ -352,7 +352,7 @@ defmodule WandererNotifier.Api.Map.Characters do
       "[notify_new_tracked_characters] Sent notification for character #{character_info["character_name"]} (ID: #{character_id})"
     )
   end
-  
+
   defp transform_nested_character(char) do
     # Extract the character data from the nested structure
     character_data = Map.get(char, "character", %{})

@@ -68,7 +68,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Check if we're in a dev container
     in_dev_environment = String.contains?(File.cwd!(), "dev-container") or
                          String.contains?(File.cwd!(), "workspaces")
-                       
+
     if in_dev_environment do
       # Use a directory in the current workspace
       Path.join(File.cwd!(), "tmp/cache")

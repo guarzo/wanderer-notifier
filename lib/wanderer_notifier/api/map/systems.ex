@@ -47,45 +47,75 @@ defmodule WandererNotifier.Api.Map.Systems do
     base_url_with_slug = Config.map_url()
     map_token = Config.map_token()
 
-    cond do
-      is_nil(base_url_with_slug) or base_url_with_slug == "" ->
-        {:error, "Map URL is not configured"}
+    # Validate required configuration
+    with :ok <- validate_map_url(base_url_with_slug),
+         :ok <- validate_map_token(map_token) do
+      # Build the URL with validated parameters
+      build_url_from_parameters(base_url_with_slug)
+    end
+  end
 
-      is_nil(map_token) or map_token == "" ->
-        {:error, "Map token is not configured"}
+  # Validate that map URL is configured
+  defp validate_map_url(nil), do: {:error, "Map URL is not configured"}
+  defp validate_map_url(""), do: {:error, "Map URL is not configured"}
+  defp validate_map_url(_url), do: :ok
 
-      true ->
-        # Parse the URL to separate the base URL from the slug
-        uri = URI.parse(base_url_with_slug)
-        Logger.debug("[build_systems_url] Parsed URI: #{inspect(uri)}")
+  # Validate that map token is configured
+  defp validate_map_token(nil), do: {:error, "Map token is not configured"}
+  defp validate_map_token(""), do: {:error, "Map token is not configured"}
+  defp validate_map_token(_token), do: :ok
 
-        # Extract the path which contains the slug
-        path = uri.path || ""
-        path = String.trim_trailing(path, "/")
-        Logger.debug("[build_systems_url] Extracted path: #{path}")
+  # Build URL from base URL with slug
+  defp build_url_from_parameters(base_url_with_slug) do
+    # Parse the URL to separate the base URL from the slug
+    uri = URI.parse(base_url_with_slug)
+    Logger.debug("[build_systems_url] Parsed URI: #{inspect(uri)}")
 
-        # Extract the slug id from the path
-        slug_id =
-          path
-          |> String.split("/")
-          |> Enum.filter(fn part -> part != "" end)
-          |> List.last() || ""
+    # Extract components
+    path = extract_path(uri)
+    slug_id = extract_slug_id(path)
+    base_host = build_base_host(uri)
 
-        Logger.debug("[build_systems_url] Extracted slug ID: #{slug_id}")
+    # Construct final URL
+    url = build_systems_api_url(base_host, slug_id)
 
-        # Get just the base host without the path
-        base_host = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+    Logger.info("[build_systems_url] Final URL: #{url}")
+    {:ok, url}
+  end
 
-        # Construct URL with the slug as a query parameter
-        url =
-          if String.ends_with?(base_host, "/") do
-            "#{base_host}api/map/systems?slug=#{URI.encode_www_form(slug_id)}"
-          else
-            "#{base_host}/api/map/systems?slug=#{URI.encode_www_form(slug_id)}"
-          end
+  # Extract the path which contains the slug
+  defp extract_path(uri) do
+    path = uri.path || ""
+    path = String.trim_trailing(path, "/")
+    Logger.debug("[build_systems_url] Extracted path: #{path}")
+    path
+  end
 
-        Logger.info("[build_systems_url] Final URL: #{url}")
-        {:ok, url}
+  # Extract the slug id from the path
+  defp extract_slug_id(path) do
+    slug_id =
+      path
+      |> String.split("/")
+      |> Enum.filter(fn part -> part != "" end)
+      |> List.last() || ""
+
+    Logger.debug("[build_systems_url] Extracted slug ID: #{slug_id}")
+    slug_id
+  end
+
+  # Build the base host portion of the URL
+  defp build_base_host(uri) do
+    "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+  end
+
+  # Build the complete systems API URL
+  defp build_systems_api_url(base_host, slug_id) do
+    encoded_slug = URI.encode_www_form(slug_id)
+
+    if String.ends_with?(base_host, "/") do
+      "#{base_host}api/map/systems?slug=#{encoded_slug}"
+    else
+      "#{base_host}/api/map/systems?slug=#{encoded_slug}"
     end
   end
 
@@ -206,26 +236,15 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   # This function is used as a fallback only when API data doesn't provide type information
   defp classify_system_by_id(id) when is_integer(id) do
-    # J-space systems have IDs in the 31xxxxxx range
     cond do
-      id >= 31_000_000 and id < 32_000_000 ->
-        # Classify wormhole system based on ID range
-        cond do
-          id < 31_000_006 -> "Thera"
-          id < 31_001_000 -> "Class 1"
-          id < 31_002_000 -> "Class 2"
-          id < 31_003_000 -> "Class 3"
-          id < 31_004_000 -> "Class 4"
-          id < 31_005_000 -> "Class 5"
-          id < 31_006_000 -> "Class 6"
-          true -> "Wormhole"
-        end
+      wormhole_id?(id) ->
+        classify_wormhole(id)
+
+      kspace_id?(id) ->
+        classify_kspace(id)
 
       id < 30_000_000 ->
         "Unknown"
-
-      id >= 30_000_000 and id < 31_000_000 ->
-        if rem(id, 1000) < 500, do: "Low-sec", else: "Null-sec"
 
       true ->
         "K-space"
@@ -234,32 +253,86 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   defp classify_system_by_id(_), do: "Unknown"
 
+  # Check if ID is in wormhole range
+  defp wormhole_id?(id) do
+    id >= 31_000_000 and id < 32_000_000
+  end
+
+  # Check if ID is in k-space range
+  defp kspace_id?(id) do
+    id >= 30_000_000 and id < 31_000_000
+  end
+
+  # Classify wormhole system based on ID range
+  defp classify_wormhole(id) do
+    cond do
+      id < 31_000_006 -> "Thera"
+      id < 31_001_000 -> "Class 1"
+      id < 31_002_000 -> "Class 2"
+      id < 31_003_000 -> "Class 3"
+      id < 31_004_000 -> "Class 4"
+      id < 31_005_000 -> "Class 5"
+      id < 31_006_000 -> "Class 6"
+      true -> "Wormhole"
+    end
+  end
+
+  # Classify k-space system (low-sec or null-sec)
+  defp classify_kspace(id) do
+    if rem(id, 1000) < 500, do: "Low-sec", else: "Null-sec"
+  end
+
   defp wormhole_system?(system) do
-    # First check solar_system_id which is the most reliable indicator
+    # Check various indicators to determine if this is a wormhole system
+    has_wormhole_id?(system) ||
+      has_wormhole_statics?(system) ||
+      has_wormhole_type_description?(system) ||
+      has_wormhole_name_pattern?(system)
+  end
+
+  # Check if the system has an ID in the wormhole range (most reliable indicator)
+  defp has_wormhole_id?(system) do
     solar_system_id = Map.get(system, "solar_system_id")
 
-    if is_integer(solar_system_id) and solar_system_id >= 31_000_000 and
-         solar_system_id < 32_000_000 do
-      true
-    else
-      # Fall back to checking staticInfo
-      case system do
-        %{"staticInfo" => %{"statics" => statics}} when is_list(statics) and statics != [] ->
-          true
+    is_integer(solar_system_id) &&
+      solar_system_id >= 31_000_000 &&
+      solar_system_id < 32_000_000
+  end
 
-        %{"staticInfo" => %{"typeDescription" => type_desc}} when is_binary(type_desc) ->
-          # Check if type description contains any wormhole class indicators
-          String.starts_with?(type_desc, "Class") or
-            String.contains?(type_desc, "Thera") or
-            String.contains?(type_desc, "Wormhole")
+  # Check if the system has wormhole statics defined
+  defp has_wormhole_statics?(system) do
+    case system do
+      %{"staticInfo" => %{"statics" => statics}} when is_list(statics) and statics != [] ->
+        true
 
-        _ ->
-          # Check the name for common wormhole patterns
-          name = Map.get(system, "original_name") || Map.get(system, "name") || ""
-          # J-space systems have names like J123456
-          String.match?(name, ~r/^J\d{6}$/)
-      end
+      _ ->
+        false
     end
+  end
+
+  # Check if the system has a wormhole type description
+  defp has_wormhole_type_description?(system) do
+    case system do
+      %{"staticInfo" => %{"typeDescription" => type_desc}} when is_binary(type_desc) ->
+        wormhole_type_description?(type_desc)
+
+      _ ->
+        false
+    end
+  end
+
+  # Check if a type description indicates a wormhole
+  defp wormhole_type_description?(type_desc) do
+    String.starts_with?(type_desc, "Class") ||
+      String.contains?(type_desc, "Thera") ||
+      String.contains?(type_desc, "Wormhole")
+  end
+
+  # Check if the system name matches wormhole naming patterns
+  defp has_wormhole_name_pattern?(system) do
+    name = Map.get(system, "original_name") || Map.get(system, "name") || ""
+    # J-space systems have names like J123456
+    String.match?(name, ~r/^J\d{6}$/)
   end
 
   defp extract_system_data(system) do
@@ -280,6 +353,170 @@ defmodule WandererNotifier.Api.Map.Systems do
     |> Map.new()
   end
 
+  # Find new systems by comparing fresh and cached data
+  # If there's no cached systems, this is probably the first run
+  defp find_added_systems(_fresh, []), do: []
+
+  defp find_added_systems(fresh, cached) do
+    fresh
+    |> Enum.filter(&system_not_in_cache?(&1, cached))
+  end
+
+  # Check if a system is not in the cache
+  defp system_not_in_cache?(fresh_sys, cached) do
+    fresh_id = Map.get(fresh_sys, "id")
+    !system_id_in_list?(fresh_id, cached)
+  end
+
+  # Check if a system ID exists in a list of systems
+  defp system_id_in_list?(system_id, system_list) do
+    Enum.any?(system_list, fn cached_sys ->
+      Map.get(cached_sys, "id") == system_id
+    end)
+  end
+
+  # Get system name from different possible fields
+  defp get_system_name(system) do
+    Map.get(system, "systemName") || Map.get(system, "alias") || "Unknown"
+  end
+
+  # Add static info to system data
+  defp add_static_info(system, system_id) do
+    case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id) do
+      {:ok, static_info} ->
+        Logger.info("[notify_new_systems] Successfully got static info for system #{system_id}")
+
+        # Extract the full static info data if available
+        static_info_data = Map.get(static_info, "data") || %{}
+
+        # Add the rich static info fields directly to the system
+        system
+        |> Map.put("statics", Map.get(static_info_data, "statics") || [])
+        |> Map.put(
+          "type_description",
+          Map.get(static_info_data, "type_description")
+        )
+        |> Map.put("class_title", Map.get(static_info_data, "class_title"))
+        |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
+        |> Map.put(
+          "is_shattered",
+          Map.get(static_info_data, "is_shattered")
+        )
+        |> Map.put("region_name", Map.get(static_info_data, "region_name"))
+        |> Map.put("staticInfo", %{
+          "typeDescription" =>
+            Map.get(static_info_data, "type_description") ||
+              Map.get(static_info_data, "class_title") ||
+              classify_system_by_id(system_id),
+          "statics" => Map.get(static_info_data, "statics") || [],
+          "effectName" => Map.get(static_info_data, "effect_name"),
+          "isShattered" => Map.get(static_info_data, "is_shattered")
+        })
+
+      {:error, reason} ->
+        Logger.warning(
+          "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
+        )
+
+        add_fallback_static_info(system, system_id)
+    end
+  end
+
+  # Add fallback static info when API call fails
+  defp add_fallback_static_info(system, system_id) do
+    # Try to use existing data first before falling back to ID-based classification
+    type_desc =
+      Map.get(system, "type_description") ||
+        Map.get(system, "class_title") ||
+        Map.get(system, "system_class") ||
+        classify_system_by_id(system_id)
+
+    Map.put(system, "staticInfo", %{
+      "typeDescription" => type_desc,
+      "statics" => []
+    })
+  end
+
+  # Create a basic staticInfo structure for systems without IDs
+  defp create_basic_static_info(system) do
+    Map.put(system, "staticInfo", %{
+      "typeDescription" => "Unknown",
+      "statics" => []
+    })
+  end
+
+  # Prepare system data with static info
+  defp prepare_system_data(system, system_name, system_id) do
+    if Map.has_key?(system, "staticInfo") do
+      # Already has static info, use it directly
+      Logger.info(
+        "[notify_new_systems] System already has static info: #{inspect(system["staticInfo"])}"
+      )
+
+      system
+    else
+      # Need to enrich the system with static info
+      Logger.info("[notify_new_systems] Enriching system with static info")
+
+      # Try to get static info if we have a valid system ID
+      system_with_static =
+        if system_id do
+          try do
+            add_static_info(system, system_id)
+          rescue
+            e ->
+              Logger.error("[notify_new_systems] Error getting static info: #{inspect(e)}")
+              add_fallback_static_info(system, system_id)
+          end
+        else
+          # No system ID, add a basic staticInfo
+          create_basic_static_info(system)
+        end
+
+      # Ensure we have the name fields set correctly
+      system_with_static
+      |> Map.put("system_name", system_name)
+      |> Map.put("systemName", system_name)
+      |> Map.put("name", system_name)
+      |> Map.put("system_id", system_id)
+      |> Map.put("systemId", system_id)
+      |> Map.put("id", system_id)
+    end
+  end
+
+  # Process notification for a single system
+  defp process_system_notification(system, track_all_systems) do
+    try do
+      system_name = get_system_name(system)
+      system_id = Map.get(system, "systemId")
+
+      # Check if this specific system should trigger a notification
+      if WandererNotifier.Services.NotificationDeterminer.should_notify_system?(system_id) do
+        # Prepare system data with static info
+        system_data = prepare_system_data(system, system_name, system_id)
+
+        # Send the notification with the enriched system data
+        notifier = NotifierFactory.get_notifier()
+        notifier.send_new_system_notification(system_data)
+
+        if track_all_systems do
+          Logger.info(
+            "[notify_new_systems] System #{system_name} added and tracked (track_all_systems=true)"
+          )
+        else
+          Logger.info("[notify_new_systems] New system #{system_name} discovered")
+        end
+      else
+        Logger.debug(
+          "[notify_new_systems] System #{system_name} (ID: #{system_id}) is not marked for notification"
+        )
+      end
+    rescue
+      e ->
+        Logger.error("[notify_new_systems] Error sending system notification: #{inspect(e)}")
+    end
+  end
+
   defp notify_new_systems(fresh_systems, cached_systems) do
     # Use the centralized notification determiner to check if system notifications are enabled
     if WandererNotifier.Services.NotificationDeterminer.should_notify_system?(nil) do
@@ -288,164 +525,14 @@ defmodule WandererNotifier.Api.Map.Systems do
       cached = cached_systems || []
 
       # Find systems that are in fresh but not in cached
-      # We compare by id because that's the unique identifier in the map API
-      added_systems =
-        if cached == [] do
-          # If there's no cached systems, this is probably the first run
-          # Don't notify about all systems to avoid spamming
-          []
-        else
-          fresh
-          |> Enum.filter(fn fresh_sys ->
-            !Enum.any?(cached, fn cached_sys ->
-              Map.get(fresh_sys, "id") == Map.get(cached_sys, "id")
-            end)
-          end)
-        end
+      added_systems = find_added_systems(fresh, cached)
 
       # Send notifications for added systems
       track_all_systems = Config.track_all_systems?()
 
       for system <- added_systems do
         Task.start(fn ->
-          try do
-            system_name = Map.get(system, "systemName") || Map.get(system, "alias") || "Unknown"
-            system_id = Map.get(system, "systemId")
-
-            # Check if this specific system should trigger a notification
-            if WandererNotifier.Services.NotificationDeterminer.should_notify_system?(system_id) do
-              # We need to ensure we're sending all the static information
-              # So we'll use the full system data instead of just a subset
-              system_data =
-                if Map.has_key?(system, "staticInfo") do
-                  # Already has static info, use it directly
-                  Logger.info(
-                    "[notify_new_systems] System already has static info: #{inspect(system["staticInfo"])}"
-                  )
-
-                  system
-                else
-                  # Need to enrich the system with static info
-                  Logger.info("[notify_new_systems] Enriching system with static info")
-
-                  # Try to get static info if we have a valid system ID
-                  system_with_static =
-                    if system_id do
-                      try do
-                        # Use system_static_info module to fetch rich static info
-                        case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(
-                               system_id
-                             ) do
-                          {:ok, static_info} ->
-                            Logger.info(
-                              "[notify_new_systems] Successfully got static info for system #{system_id}"
-                            )
-
-                            # Extract the full static info data if available
-                            static_info_data = Map.get(static_info, "data") || %{}
-
-                            # Add the rich static info fields directly to the system
-                            system =
-                              system
-                              |> Map.put("statics", Map.get(static_info_data, "statics") || [])
-                              |> Map.put(
-                                "type_description",
-                                Map.get(static_info_data, "type_description")
-                              )
-                              |> Map.put("class_title", Map.get(static_info_data, "class_title"))
-                              |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
-                              |> Map.put(
-                                "is_shattered",
-                                Map.get(static_info_data, "is_shattered")
-                              )
-                              |> Map.put("region_name", Map.get(static_info_data, "region_name"))
-
-                            # Also add the staticInfo structure needed by the notifier
-                            Map.put(system, "staticInfo", %{
-                              "typeDescription" =>
-                                Map.get(static_info_data, "type_description") ||
-                                  Map.get(static_info_data, "class_title") ||
-                                  classify_system_by_id(system_id),
-                              "statics" => Map.get(static_info_data, "statics") || [],
-                              "effectName" => Map.get(static_info_data, "effect_name"),
-                              "isShattered" => Map.get(static_info_data, "is_shattered")
-                            })
-
-                          {:error, reason} ->
-                            Logger.warning(
-                              "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
-                            )
-
-                            # Try to use existing data first before falling back to ID-based classification
-                            type_desc =
-                              Map.get(system, "type_description") ||
-                                Map.get(system, "class_title") ||
-                                Map.get(system, "system_class") ||
-                                classify_system_by_id(system_id)
-
-                            Map.put(system, "staticInfo", %{
-                              "typeDescription" => type_desc,
-                              "statics" => []
-                            })
-                        end
-                      rescue
-                        e ->
-                          Logger.error(
-                            "[notify_new_systems] Error getting static info: #{inspect(e)}"
-                          )
-
-                          # Try to use existing data first before falling back to ID-based classification
-                          type_desc =
-                            Map.get(system, "type_description") ||
-                              Map.get(system, "class_title") ||
-                              Map.get(system, "system_class") ||
-                              classify_system_by_id(system_id)
-
-                          Map.put(system, "staticInfo", %{
-                            "typeDescription" => type_desc,
-                            "statics" => []
-                          })
-                      end
-                    else
-                      # No system ID, add a basic staticInfo
-                      Map.put(system, "staticInfo", %{
-                        "typeDescription" => "Unknown",
-                        "statics" => []
-                      })
-                    end
-
-                  # Ensure we have the name fields set correctly
-                  system_with_static
-                  |> Map.put("system_name", system_name)
-                  |> Map.put("systemName", system_name)
-                  |> Map.put("name", system_name)
-                  |> Map.put("system_id", system_id)
-                  |> Map.put("systemId", system_id)
-                  |> Map.put("id", system_id)
-                end
-
-              # Send the notification with the enriched system data
-              notifier = NotifierFactory.get_notifier()
-              notifier.send_new_system_notification(system_data)
-
-              if track_all_systems do
-                Logger.info(
-                  "[notify_new_systems] System #{system_name} added and tracked (track_all_systems=true)"
-                )
-              else
-                Logger.info("[notify_new_systems] New system #{system_name} discovered")
-              end
-            else
-              Logger.debug(
-                "[notify_new_systems] System #{system_name} (ID: #{system_id}) is not marked for notification"
-              )
-            end
-          rescue
-            e ->
-              Logger.error(
-                "[notify_new_systems] Error sending system notification: #{inspect(e)}"
-              )
-          end
+          process_system_notification(system, track_all_systems)
         end)
       end
 

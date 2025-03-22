@@ -142,7 +142,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     activity_data_result = get_activity_data()
     process_activity_data(activity_data_result)
   end
-  
+
   defp process_activity_data({:ok, activity_data}) do
     # Get the channel ID for activity charts
     channel_id = get_channel_id()
@@ -150,35 +150,35 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
     # Send each chart and collect results
     results = generate_charts(activity_data, channel_id)
-    
+
     # Log the results
     log_chart_results(results)
-    
+
     # Return the results
     results
   end
-  
+
   defp process_activity_data({:error, reason}) do
     Logger.error("Failed to retrieve activity data: #{inspect(reason)}")
     []
   end
-  
+
   defp generate_charts(activity_data, channel_id) do
     Enum.map(@chart_configs, fn config ->
       Logger.info("Generating chart: #{config.type} - #{config.title}")
       {config.type, generate_chart(config, activity_data, channel_id)}
     end)
   end
-  
+
   defp generate_chart(config, activity_data, channel_id) do
     try do
       case config.type do
         :activity_summary ->
           generate_activity_summary(activity_data, config, channel_id)
-          
+
         :activity_timeline ->
           generate_activity_timeline(activity_data, channel_id)
-          
+
         _ ->
           {:error, "Unknown chart type: #{config.type}"}
       end
@@ -194,7 +194,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
         {:error, error_message}
     end
   end
-  
+
   defp generate_activity_summary(activity_data, config, channel_id) do
     WandererNotifier.ChartService.ActivityChartAdapter.send_chart_to_discord(
       activity_data,
@@ -204,7 +204,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
       channel_id
     )
   end
-  
+
   defp generate_activity_timeline(activity_data, channel_id) do
     case WandererNotifier.ChartService.ActivityChartAdapter.generate_activity_timeline_chart(
            activity_data
@@ -221,25 +221,25 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
         error
     end
   end
-  
+
   defp log_chart_results(results) do
     # Log individual results
     Enum.each(results, &log_chart_result/1)
-    
+
     # Log summary
     success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
     Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
   end
-  
+
   defp log_chart_result({type, {:ok, url, title}}) do
     Logger.info("Successfully sent #{type} chart to Discord: #{title}")
     Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
   end
-  
+
   defp log_chart_result({type, {:error, reason}}) do
     Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
   end
-  
+
   defp log_chart_result({type, result}) do
     Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
   end

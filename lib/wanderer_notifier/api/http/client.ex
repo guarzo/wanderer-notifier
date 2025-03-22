@@ -273,11 +273,11 @@ defmodule WandererNotifier.Api.Http.Client do
   # Log request failures, further simplifying the error handling
   defp log_request_failure(method_str, label, retry_count, reason) do
     log_level = if retry_count > 0, do: :error, else: :warning
-    
+
     message = "HTTP #{method_str} [#{label}] failed" <>
       if(retry_count > 0, do: " after #{retry_count + 1} attempts", else: "") <>
       ": #{inspect(reason)}"
-    
+
     case log_level do
       :error -> Logger.error(message)
       :warning -> Logger.warning(message)
@@ -398,7 +398,7 @@ defmodule WandererNotifier.Api.Http.Client do
       {:error, _reason} -> {:error, :invalid_json}
     end
   end
-  
+
   defp handle_success_response(body, false) do
     {:ok, body}
   end

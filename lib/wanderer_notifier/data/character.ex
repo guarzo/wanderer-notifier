@@ -129,19 +129,72 @@ defmodule WandererNotifier.Data.Character do
     raise "pop not implemented for immutable Character struct"
   end
 
-  @doc """
-  Creates a new Character struct from map API response data.
-  Validates required fields and standardizes the data structure.
+  # Extract character name from various field formats
+  defp extract_character_name(character_data, map_response) do
+    character_data["name"] ||
+      map_response["name"] ||
+      map_response["character_name"]
+  end
 
-  ## Parameters
-    - map_response: Raw API response data for a single character
+  # Extract character ID from various field formats
+  defp extract_character_id(character_data, map_response) do
+    character_data["eve_id"] ||
+      map_response["eve_id"] ||
+      map_response["id"] ||
+      map_response["character_id"]
+  end
 
-  ## Returns
-    - A new Character struct with standardized fields
+  # Extract corporation ID from various field formats
+  defp extract_corporation_id(character_data, map_response) do
+    corp_id_raw =
+      character_data["corporation_id"] ||
+        map_response["corporation_id"] ||
+        character_data["corporationID"] ||
+        map_response["corporationID"]
 
-  ## Raises
-    - ArgumentError: If required fields (eve_id, name) are missing
-  """
+    parse_integer(corp_id_raw)
+  end
+
+  # Extract corporation ticker from various field formats
+  defp extract_corporation_ticker(character_data, map_response) do
+    character_data["corporation_ticker"] ||
+      map_response["corporation_ticker"] ||
+      map_response["corporation_name"] ||
+      character_data["corporation_name"]
+  end
+
+  # Extract alliance ID from various field formats
+  defp extract_alliance_id(character_data, map_response) do
+    alliance_id_raw =
+      character_data["alliance_id"] ||
+        map_response["alliance_id"] ||
+        character_data["allianceID"] ||
+        map_response["allianceID"]
+
+    parse_integer(alliance_id_raw)
+  end
+
+  # Extract alliance ticker from various field formats
+  defp extract_alliance_ticker(character_data, map_response) do
+    character_data["alliance_ticker"] ||
+      map_response["alliance_ticker"] ||
+      map_response["alliance_name"] ||
+      character_data["alliance_name"]
+  end
+
+  # Validate required fields are present
+  defp validate_required_fields(eve_id, name) do
+    require Logger
+
+    unless eve_id && name do
+      Logger.error(
+        "[Character.new] Missing required fields: eve_id=#{inspect(eve_id)}, name=#{inspect(name)}"
+      )
+
+      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
+    end
+  end
+
   @spec new(map()) :: t()
   def new(map_response) when is_map(map_response) do
     require Logger
@@ -155,62 +208,20 @@ defmodule WandererNotifier.Data.Character do
     )
 
     # Extract required fields with clear validation
-    name =
-      character_data["name"] ||
-        map_response["name"] ||
-        map_response["character_name"]
-
-    # IMPORTANT: For character IDs, we prioritize eve_id as the canonical identifier
-    # and only fall back to character_id if eve_id is not available
-    eve_id =
-      character_data["eve_id"] ||
-        map_response["eve_id"] ||
-        map_response["id"] ||
-        map_response["character_id"]
+    name = extract_character_name(character_data, map_response)
+    eve_id = extract_character_id(character_data, map_response)
 
     # Log the extracted ID for debugging
     Logger.debug("[Character.new] Extracted eve_id: #{inspect(eve_id)} from data")
 
     # Validate required fields
-    unless eve_id && name do
-      Logger.error(
-        "[Character.new] Missing required fields: eve_id=#{inspect(eve_id)}, name=#{inspect(name)}"
-      )
+    validate_required_fields(eve_id, name)
 
-      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
-    end
-
-    # Parse corporation ID with explicit validation
-    corp_id_raw =
-      character_data["corporation_id"] ||
-        map_response["corporation_id"] ||
-        character_data["corporationID"] ||
-        map_response["corporationID"]
-
-    corporation_id = parse_integer(corp_id_raw)
-
-    # Look for corporation ticker in various formats
-    corporation_ticker =
-      character_data["corporation_ticker"] ||
-        map_response["corporation_ticker"] ||
-        map_response["corporation_name"] ||
-        character_data["corporation_name"]
-
-    # Parse alliance ID with explicit validation
-    alliance_id_raw =
-      character_data["alliance_id"] ||
-        map_response["alliance_id"] ||
-        character_data["allianceID"] ||
-        map_response["allianceID"]
-
-    alliance_id = parse_integer(alliance_id_raw)
-
-    # Look for alliance ticker in various formats
-    alliance_ticker =
-      character_data["alliance_ticker"] ||
-        map_response["alliance_ticker"] ||
-        map_response["alliance_name"] ||
-        character_data["alliance_name"]
+    # Extract additional fields
+    corporation_id = extract_corporation_id(character_data, map_response)
+    corporation_ticker = extract_corporation_ticker(character_data, map_response)
+    alliance_id = extract_alliance_id(character_data, map_response)
+    alliance_ticker = extract_alliance_ticker(character_data, map_response)
 
     # Create the struct with all fields
     %__MODULE__{

@@ -338,78 +338,75 @@ defmodule WandererNotifier.Services.Service do
   Dumps the current tracked systems data for debugging purposes.
   """
   def debug_tracked_systems do
+    # Get and analyze tracked systems
+    tracked_data = collect_tracked_systems_data()
+
+    # Verify test system tracking
+    test_system_id = "30000253"
+    test_system_data = analyze_test_system(tracked_data.tracked_systems, test_system_id)
+
+    # Return summary of findings
+    %{
+      tracked_systems_count: tracked_data.system_count,
+      raw_systems_count: tracked_data.raw_system_count,
+      test_system_found: test_system_data.matches != [],
+      test_system_details: test_system_data.matches
+    }
+  end
+
+  # Collect all tracked systems data
+  defp collect_tracked_systems_data do
+    # Fetch tracked systems and log count
     tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
     system_count = length(tracked_systems)
     Logger.info("DEBUG: Found #{system_count} tracked systems")
 
-    # Get raw data from cache for comparison
+    # Fetch raw systems from cache and log count
     raw_systems = WandererNotifier.Data.Cache.Repository.get("map:systems")
     raw_system_count = if is_list(raw_systems), do: length(raw_systems), else: 0
     Logger.info("DEBUG: Raw map:systems cache has #{raw_system_count} systems")
 
-    # Examine a few systems for structure
+    # Log and analyze system samples if available
     if system_count > 0 do
-      sample = Enum.take(tracked_systems, min(3, system_count))
-      Logger.info("DEBUG: Sample system structure: #{inspect(sample)}")
-
-      # Get the possible ID formats for each system
-      id_formats =
-        Enum.map(sample, fn system ->
-          %{
-            system: system,
-            formats: %{
-              raw: system,
-              solar_system_id_atom: is_map(system) && Map.get(system, :solar_system_id),
-              solar_system_id_string: is_map(system) && Map.get(system, "solar_system_id"),
-              system_id_atom: is_map(system) && Map.get(system, :system_id),
-              system_id_string: is_map(system) && Map.get(system, "system_id")
-            }
-          }
-        end)
-
-      Logger.info("DEBUG: ID formats: #{inspect(id_formats)}")
+      sample_systems(tracked_systems, system_count)
     end
 
-    # Check if the system being tested is in the list
-    # DAYP-G system ID from log
-    test_system_id = "30000253"
+    %{
+      tracked_systems: tracked_systems,
+      system_count: system_count,
+      raw_systems: raw_systems,
+      raw_system_count: raw_system_count
+    }
+  end
+
+  # Sample systems for debugging
+  defp sample_systems(tracked_systems, system_count) do
+    sample = Enum.take(tracked_systems, min(3, system_count))
+    Logger.info("DEBUG: Sample system structure: #{inspect(sample)}")
+
+    # Extract and log ID formats for sample systems
+    id_formats = extract_id_formats(sample)
+    Logger.info("DEBUG: ID formats: #{inspect(id_formats)}")
+  end
+
+  # Analyze test system
+  defp analyze_test_system(tracked_systems, test_system_id) do
     Logger.info("DEBUG: Checking if system #{test_system_id} is tracked")
 
-    matches =
-      Enum.filter(tracked_systems, fn system ->
-        case system do
-          %{solar_system_id: id} when not is_nil(id) -> to_string(id) == test_system_id
-          %{"solar_system_id" => id} when not is_nil(id) -> to_string(id) == test_system_id
-          %{system_id: id} when not is_nil(id) -> to_string(id) == test_system_id
-          %{"system_id" => id} when not is_nil(id) -> to_string(id) == test_system_id
-          id when is_integer(id) or is_binary(id) -> to_string(id) == test_system_id
-          _ -> false
-        end
-      end)
+    matches = find_test_system(tracked_systems, test_system_id)
 
-    if matches != [] do
+    if matches == [] do
+      Logger.info("DEBUG: System #{test_system_id} is NOT in the tracked systems list")
+    else
       Logger.info(
         "DEBUG: System #{test_system_id} IS in the tracked systems list: #{inspect(matches)}"
       )
-    else
-      Logger.info("DEBUG: System #{test_system_id} is NOT in the tracked systems list")
     end
 
-    # Try additional cache keys
-    system_ids_key = WandererNotifier.Data.Cache.Repository.get("map:system_ids")
+    # Check additional cache data
+    check_additional_cache_data(test_system_id)
 
-    specific_system_key =
-      WandererNotifier.Data.Cache.Repository.get("map:system:#{test_system_id}")
-
-    Logger.info("DEBUG: map:system_ids contains: #{inspect(system_ids_key)}")
-    Logger.info("DEBUG: map:system:#{test_system_id} contains: #{inspect(specific_system_key)}")
-
-    %{
-      tracked_systems_count: system_count,
-      raw_systems_count: raw_system_count,
-      test_system_found: matches != [],
-      test_system_details: matches
-    }
+    %{matches: matches}
   end
 
   # Schedule the next kill stats logging interval (every 5 minutes)
@@ -482,5 +479,59 @@ defmodule WandererNotifier.Services.Service do
       {:ok, character_info} -> Map.get(character_info, "name")
       _ -> "Unknown Character"
     end
+  end
+
+  # Extract ID formats from sample systems
+  defp extract_id_formats(sample) do
+    Enum.map(sample, fn system ->
+      %{
+        system: system,
+        formats: %{
+          raw: system,
+          solar_system_id_atom: is_map(system) && Map.get(system, :solar_system_id),
+          solar_system_id_string: is_map(system) && Map.get(system, "solar_system_id"),
+          system_id_atom: is_map(system) && Map.get(system, :system_id),
+          system_id_string: is_map(system) && Map.get(system, "system_id")
+        }
+      }
+    end)
+  end
+
+  # Find test system in tracked systems
+  defp find_test_system(tracked_systems, test_system_id) do
+    Logger.info("DEBUG: Checking if system #{test_system_id} is tracked")
+
+    Enum.filter(tracked_systems, fn system ->
+      system_matches_id?(system, test_system_id)
+    end)
+  end
+
+  # Check if system matches the test ID
+  defp system_matches_id?(%{solar_system_id: id}, test_id) when not is_nil(id),
+    do: to_string(id) == test_id
+
+  defp system_matches_id?(%{"solar_system_id" => id}, test_id) when not is_nil(id),
+    do: to_string(id) == test_id
+
+  defp system_matches_id?(%{system_id: id}, test_id) when not is_nil(id),
+    do: to_string(id) == test_id
+
+  defp system_matches_id?(%{"system_id" => id}, test_id) when not is_nil(id),
+    do: to_string(id) == test_id
+
+  defp system_matches_id?(id, test_id) when is_integer(id) or is_binary(id),
+    do: to_string(id) == test_id
+
+  defp system_matches_id?(_, _), do: false
+
+  # Check additional cache data for test system
+  defp check_additional_cache_data(test_system_id) do
+    system_ids_key = WandererNotifier.Data.Cache.Repository.get("map:system_ids")
+
+    specific_system_key =
+      WandererNotifier.Data.Cache.Repository.get("map:system:#{test_system_id}")
+
+    Logger.info("DEBUG: map:system_ids contains: #{inspect(system_ids_key)}")
+    Logger.info("DEBUG: map:system:#{test_system_id} contains: #{inspect(specific_system_key)}")
   end
 end

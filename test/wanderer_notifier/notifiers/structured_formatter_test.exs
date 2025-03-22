@@ -292,7 +292,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     test "raises for system without required fields" do
       # Create structs missing required fields
       system_with_only_name = struct(MapSystem, %{name: "Test System"})
-      system_with_only_id = struct(MapSystem, %{solar_system_id: 12345})
+      system_with_only_id = struct(MapSystem, %{solar_system_id: 12_345})
       empty_system = MapSystem.new(%{})
 
       # Test with missing system ID

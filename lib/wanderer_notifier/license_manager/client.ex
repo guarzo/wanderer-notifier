@@ -23,24 +23,31 @@ defmodule WandererNotifier.LicenseManager.Client do
   """
   def validate_bot(notifier_api_token, license_key) do
     url = "#{Config.license_manager_api_url()}/api/validate_bot"
-
+    
     # Log minimal request information without exposing sensitive data
     Logger.info("Making license validation request to License Manager API")
-
-    headers = [
+    
+    # Set up request parameters
+    headers = build_auth_headers(notifier_api_token)
+    body = %{"license_key" => license_key}
+    
+    Logger.debug("Sending HTTP request to License Manager API for bot validation...")
+    
+    # Make the API request and process the response
+    make_validation_request(url, body, headers)
+  end
+  
+  # Build authorization headers for API requests
+  defp build_auth_headers(api_token) do
+    [
       {"Content-Type", "application/json"},
       {"Accept", "application/json"},
-      {"Authorization", "Bearer #{notifier_api_token}"}
+      {"Authorization", "Bearer #{api_token}"}
     ]
-
-    # Create the request body with the license key
-    body = %{
-      "license_key" => license_key
-    }
-
-    Logger.debug("Sending HTTP request to License Manager API for bot validation...")
-
-    # Use our improved HTTP client
+  end
+  
+  # Make the actual API request for validation
+  defp make_validation_request(url, body, headers) do
     case HttpClient.post_json(url, body, headers,
            label: "LicenseManager.validate_bot",
            debug: true,
@@ -48,54 +55,71 @@ defmodule WandererNotifier.LicenseManager.Client do
          ) do
       {:ok, response} = result ->
         # Log minimal response information
-        Logger.debug(
-          "Received response from License Manager API with status: #{response.status_code}"
-        )
-
-        case HttpClient.handle_response(result) do
-          {:ok, decoded} ->
-            # Additional logging for easier debugging without exposing sensitive data
-            license_valid = decoded["license_valid"] || false
-
-            if license_valid do
-              Logger.info("License and bot validation successful - License is valid")
-            else
-              error_msg = decoded["message"] || "License is not valid"
-              Logger.warning("License and bot validation failed - #{error_msg}")
-            end
-
-            # Ensure the response contains both formats for compatibility
-            enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
-            {:ok, enhanced_response}
-
-          {:error, :unauthorized} ->
-            Logger.error("License Manager API: Invalid notifier API token (401)")
-            {:error, :invalid_notifier_token}
-
-          {:error, :forbidden} ->
-            Logger.error(
-              "License Manager API: Notifier is inactive or not associated with license (403)"
-            )
-
-            {:error, :notifier_not_authorized}
-
-          {:error, :not_found} ->
-            Logger.error("License Manager API: Notifier or license not found (404)")
-            {:error, :not_found}
-
-          error ->
-            Logger.error("License Manager API error: #{inspect(error)}")
-            {:error, :api_error}
-        end
-
+        Logger.debug("Received response from License Manager API with status: #{response.status_code}")
+        process_validation_response(result)
+        
       {:error, :connect_timeout} ->
         Logger.error("License Manager API request timed out")
         {:error, :request_failed}
-
+        
       {:error, reason} ->
         Logger.error("License Manager API request failed: #{inspect(reason)}")
         {:error, :request_failed}
     end
+  end
+  
+  # Process the validation response
+  defp process_validation_response(result) do
+    case HttpClient.handle_response(result) do
+      {:ok, decoded} ->
+        process_successful_validation(decoded)
+        
+      error ->
+        handle_validation_error(error)
+    end
+  end
+  
+  # Process a successful validation response
+  defp process_successful_validation(decoded) do
+    # Additional logging for easier debugging without exposing sensitive data
+    license_valid = decoded["license_valid"] || false
+    
+    log_validation_result(license_valid, decoded["message"])
+    
+    # Ensure the response contains both formats for compatibility
+    enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
+    {:ok, enhanced_response}
+  end
+  
+  # Log the validation result based on validity
+  defp log_validation_result(true, _message) do
+    Logger.info("License and bot validation successful - License is valid")
+  end
+  
+  defp log_validation_result(false, message) do
+    error_msg = message || "License is not valid"
+    Logger.warning("License and bot validation failed - #{error_msg}")
+  end
+  
+  # Handle various validation error types
+  defp handle_validation_error({:error, :unauthorized}) do
+    Logger.error("License Manager API: Invalid notifier API token (401)")
+    {:error, :invalid_notifier_token}
+  end
+  
+  defp handle_validation_error({:error, :forbidden}) do
+    Logger.error("License Manager API: Notifier is inactive or not associated with license (403)")
+    {:error, :notifier_not_authorized}
+  end
+  
+  defp handle_validation_error({:error, :not_found}) do
+    Logger.error("License Manager API: Notifier or license not found (404)")
+    {:error, :not_found}
+  end
+  
+  defp handle_validation_error(error) do
+    Logger.error("License Manager API error: #{inspect(error)}")
+    {:error, :api_error}
   end
 
   @doc """
@@ -112,118 +136,147 @@ defmodule WandererNotifier.LicenseManager.Client do
   def validate_license(license_key, notifier_api_token) do
     url = "#{Config.license_manager_api_url()}/api/validate_license"
     Logger.info("Making license validation request to License Manager API")
-
-    # Set the headers
-    headers = [
-      {"Content-Type", "application/json"},
-      {"Accept", "application/json"},
-      {"Authorization", "Bearer #{notifier_api_token}"}
-    ]
-
-    # Create the request body with the license key
-    body = %{
-      "license_key" => license_key
-    }
-
+    
+    # Prepare request parameters
+    headers = build_auth_headers(notifier_api_token)
+    body = %{"license_key" => license_key}
+    
     Logger.debug("Sending HTTP request to License Manager API for license validation...")
-
-    # Use a shorter timeout for the HTTP request
+    
+    # Make the request with error handling
+    safely_make_license_request(url, body, headers)
+  end
+  
+  # Make the license validation request with error handling
+  defp safely_make_license_request(url, body, headers) do
     try do
-      case HttpClient.post_json(url, body, headers,
-             label: "LicenseManager.validate_license",
-             timeout: 2500,
-             max_retries: 1,
-             debug: true
-           ) do
-        {:ok, _} = response ->
-          case HttpClient.handle_response(response) do
-            {:ok, decoded} ->
-              # Additional logging for easier debugging
-              Logger.debug("License validation response received")
-
-              # Check response structure and adapt to either {"valid": true/false} or {"license_valid": true/false} format
-              cond do
-                # Check for license_valid field (validate_bot endpoint format)
-                Map.has_key?(decoded, "license_valid") ->
-                  license_valid = decoded["license_valid"]
-
-                  if license_valid do
-                    Logger.info("License validation successful - License is valid")
-                  else
-                    error_msg = decoded["message"] || "License not valid"
-                    Logger.warning("License validation failed - #{error_msg}")
-                  end
-
-                  # Map to expected format for backward compatibility
-                  {:ok, Map.merge(decoded, %{"valid" => license_valid})}
-
-                # Check for valid field (validate_license endpoint format)
-                Map.has_key?(decoded, "valid") ->
-                  valid = decoded["valid"]
-                  bot_assigned = decoded["bot_assigned"] || false
-
-                  if valid do
-                    if bot_assigned do
-                      Logger.info(
-                        "License validation successful - License is valid and bot is assigned"
-                      )
-                    else
-                      Logger.warning(
-                        "License validation partial - License is valid but bot is not assigned"
-                      )
-                    end
-                  else
-                    error_msg = decoded["message"] || "License not valid"
-                    Logger.warning("License validation failed - #{error_msg}")
-                  end
-
-                  {:ok, decoded}
-
-                # Unknown response format
-                true ->
-                  Logger.warning(
-                    "Unrecognized license validation response format: #{inspect(decoded)}"
-                  )
-
-                  {:ok,
-                   Map.merge(decoded, %{
-                     "valid" => false,
-                     "message" => "Unrecognized response format"
-                   })}
-              end
-
-            {:error, :unauthorized} ->
-              Logger.error("License Manager API: Invalid notifier API token (401)")
-              {:error, "Invalid notifier API token"}
-
-            {:error, :forbidden} ->
-              Logger.error(
-                "License Manager API: Notifier is inactive or not associated with license (403)"
-              )
-
-              {:error, "Notifier not authorized"}
-
-            {:error, :not_found} ->
-              Logger.error("License Manager API: License not found (404)")
-              {:error, "License not found"}
-
-            {:error, reason} ->
-              Logger.error("License Manager API error: #{inspect(reason)}")
-              {:error, "API error: #{inspect(reason)}"}
-          end
-
-        {:error, :timeout} ->
-          Logger.error("License Manager API request timed out")
-          {:error, "Request timed out"}
-
-        {:error, reason} ->
-          Logger.error("License Manager API request failed: #{inspect(reason)}")
-          {:error, "Request failed: #{inspect(reason)}"}
-      end
+      make_license_validation_request(url, body, headers)
     rescue
       e ->
         Logger.error("Exception during license validation: #{inspect(e)}")
         {:error, "Exception: #{inspect(e)}"}
     end
+  end
+  
+  # Make the actual HTTP request for license validation
+  defp make_license_validation_request(url, body, headers) do
+    request_options = [
+      label: "LicenseManager.validate_license",
+      timeout: 2500,
+      max_retries: 1,
+      debug: true
+    ]
+    
+    case HttpClient.post_json(url, body, headers, request_options) do
+      {:ok, _} = response -> 
+        process_license_response(response)
+        
+      {:error, :timeout} ->
+        Logger.error("License Manager API request timed out")
+        {:error, "Request timed out"}
+        
+      {:error, reason} ->
+        Logger.error("License Manager API request failed: #{inspect(reason)}")
+        {:error, "Request failed: #{inspect(reason)}"}
+    end
+  end
+  
+  # Process the license validation response
+  defp process_license_response(response) do
+    case HttpClient.handle_response(response) do
+      {:ok, decoded} ->
+        Logger.debug("License validation response received")
+        process_decoded_license_data(decoded)
+        
+      error -> 
+        handle_license_error_response(error)
+    end
+  end
+  
+  # Process decoded license data based on its format
+  defp process_decoded_license_data(decoded) do
+    cond do
+      Map.has_key?(decoded, "license_valid") ->
+        process_license_valid_format(decoded)
+        
+      Map.has_key?(decoded, "valid") ->
+        process_valid_format(decoded)
+        
+      true ->
+        process_unknown_format(decoded)
+    end
+  end
+  
+  # Handle the license_valid format (from validate_bot endpoint)
+  defp process_license_valid_format(decoded) do
+    license_valid = decoded["license_valid"]
+    log_license_valid_result(license_valid, decoded["message"])
+    
+    # Map to expected format for backward compatibility
+    {:ok, Map.merge(decoded, %{"valid" => license_valid})}
+  end
+  
+  # Handle the valid format (from validate_license endpoint)
+  defp process_valid_format(decoded) do
+    valid = decoded["valid"]
+    bot_assigned = decoded["bot_assigned"] || false
+    
+    log_valid_format_result(valid, bot_assigned, decoded["message"])
+    {:ok, decoded}
+  end
+  
+  # Handle unknown response format
+  defp process_unknown_format(decoded) do
+    Logger.warning("Unrecognized license validation response format: #{inspect(decoded)}")
+    
+    {:ok, Map.merge(decoded, %{
+      "valid" => false,
+      "message" => "Unrecognized response format"
+    })}
+  end
+  
+  # Log license_valid format results
+  defp log_license_valid_result(true, _) do
+    Logger.info("License validation successful - License is valid")
+  end
+  
+  defp log_license_valid_result(false, message) do
+    error_msg = message || "License not valid"
+    Logger.warning("License validation failed - #{error_msg}")
+  end
+  
+  # Log valid format results
+  defp log_valid_format_result(true, true, _) do
+    Logger.info("License validation successful - License is valid and bot is assigned")
+  end
+  
+  defp log_valid_format_result(true, false, _) do
+    Logger.warning("License validation partial - License is valid but bot is not assigned")
+  end
+  
+  defp log_valid_format_result(false, _, message) do
+    error_msg = message || "License not valid"
+    Logger.warning("License validation failed - #{error_msg}")
+  end
+  
+  # Handle error responses
+  defp handle_license_error_response({:error, :unauthorized}) do
+    Logger.error("License Manager API: Invalid notifier API token (401)")
+    {:error, "Invalid notifier API token"}
+  end
+  
+  defp handle_license_error_response({:error, :forbidden}) do
+    Logger.error("License Manager API: Notifier is inactive or not associated with license (403)")
+    {:error, "Notifier not authorized"}
+  end
+  
+  defp handle_license_error_response({:error, :not_found}) do
+    Logger.error("License Manager API: License not found (404)")
+    {:error, "License not found"}
+  end
+  
+  defp handle_license_error_response({:error, reason}) do
+    Logger.error("License Manager API error: #{inspect(reason)}")
+    {:error, "API error: #{inspect(reason)}"}
   end
 end

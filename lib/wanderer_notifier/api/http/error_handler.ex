@@ -258,30 +258,39 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     {:error, domain_error}
   end
 
-  @doc """
-  Converts an HTTP status code to a standardized error type.
+  @client_errors %{
+    400 => :bad_request,
+    401 => :unauthorized,
+    403 => :forbidden,
+    404 => :not_found,
+    409 => :conflict,
+    415 => :unsupported_media_type,
+    429 => :rate_limited
+  }
 
-  ## Examples
-      iex> ErrorHandler.status_to_error(404)
-      :not_found
-
-      iex> ErrorHandler.status_to_error(500)
-      :server_error
-  """
   @spec status_to_error(integer()) :: error_type() | {:unexpected_status, integer()}
   def status_to_error(status) do
-    case status do
-      400 -> :bad_request
-      401 -> :unauthorized
-      403 -> :forbidden
-      404 -> :not_found
-      409 -> :conflict
-      415 -> :unsupported_media_type
-      429 -> :rate_limited
-      code when code in 400..499 -> :client_error
-      code when code in 500..599 -> :server_error
-      _ -> {:unexpected_status, status}
+    cond do
+      specific_error?(status) -> @client_errors[status]
+      client_error?(status) -> :client_error
+      server_error?(status) -> :server_error
+      true -> {:unexpected_status, status}
     end
+  end
+
+  # Check if the status is a specific named error
+  defp specific_error?(status) do
+    Map.has_key?(@client_errors, status)
+  end
+
+  # Check if the status is in the 400-499 range (client error)
+  defp client_error?(status) do
+    status in 400..499
+  end
+
+  # Check if the status is in the 500-599 range (server error)
+  defp server_error?(status) do
+    status in 500..599
   end
 
   @doc """
@@ -296,18 +305,36 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   """
   @spec error_to_type(any()) :: error_type()
   def error_to_type(reason) do
-    case reason do
-      :timeout -> :timeout
-      {:timeout, _} -> :timeout
-      :econnrefused -> :connection_error
-      {:econnrefused, _} -> :connection_error
-      :closed -> :connection_error
-      {:closed, _} -> :connection_error
-      :enetunreach -> :connection_error
-      :system_limit -> :connection_error
-      error when error in @error_types -> error
-      _ -> :connection_error
+    cond do
+      timeout_error?(reason) -> :timeout
+      connection_error?(reason) -> :connection_error
+      known_error_type?(reason) -> reason
+      true -> :connection_error
     end
+  end
+
+  # Check if the error is a timeout
+  defp timeout_error?(reason) do
+    reason == :timeout || match?({:timeout, _}, reason)
+  end
+
+  # Check if the error is a known connection error
+  defp connection_error?(reason) do
+    connection_errors = [
+      :econnrefused,
+      :closed,
+      :enetunreach,
+      :system_limit
+    ]
+
+    reason in connection_errors ||
+      match?({:econnrefused, _}, reason) ||
+      match?({:closed, _}, reason)
+  end
+
+  # Check if the error is a predefined error type
+  defp known_error_type?(reason) do
+    reason in @error_types
   end
 
   @doc """
@@ -424,33 +451,43 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     end
   end
 
-  # Discord-specific error handling
+  # Discord-specific error handling - main function
   defp handle_discord_error(status_or_error, body_or_reason) do
-    error =
-      if is_integer(status_or_error), do: status_to_error(status_or_error), else: status_or_error
+    # Convert HTTP status to error atom if needed
+    error = normalize_error(status_or_error)
 
+    # Extract Discord's error code
     error_code = extract_discord_error_code(body_or_reason)
 
-    case {error, error_code} do
-      {:unauthorized, _} ->
-        {:domain_error, :discord, {:unauthorized, :invalid_token}}
-
-      {:forbidden, _} ->
-        {:domain_error, :discord, {:forbidden, :missing_permissions}}
-
-      {:rate_limited, _} ->
-        {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
-
-      {:bad_request, 50_006} ->
-        {:domain_error, :discord, {:bad_request, :empty_message}}
-
-      {:bad_request, _} ->
-        {:domain_error, :discord, {:bad_request, error_code || :general}}
-
-      _ ->
-        {:domain_error, :discord, {error, error_code || :general}}
-    end
+    # Process the specific error
+    create_discord_error(error, error_code)
   end
+
+  # Normalize error by converting status to error atom if needed
+  defp normalize_error(status_or_error) when is_integer(status_or_error),
+    do: status_to_error(status_or_error)
+
+  defp normalize_error(error), do: error
+
+  # Pattern match on specific Discord error types
+  defp create_discord_error(:unauthorized, _),
+    do: {:domain_error, :discord, {:unauthorized, :invalid_token}}
+
+  defp create_discord_error(:forbidden, _),
+    do: {:domain_error, :discord, {:forbidden, :missing_permissions}}
+
+  defp create_discord_error(:rate_limited, _),
+    do: {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
+
+  defp create_discord_error(:bad_request, 50_006),
+    do: {:domain_error, :discord, {:bad_request, :empty_message}}
+
+  defp create_discord_error(:bad_request, error_code),
+    do: {:domain_error, :discord, {:bad_request, error_code || :general}}
+
+  # Fallback for all other error types
+  defp create_discord_error(error, error_code),
+    do: {:domain_error, :discord, {error, error_code || :general}}
 
   # Map API-specific error handling
   defp handle_map_error(status_or_error, body_or_reason) do
