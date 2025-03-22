@@ -2,23 +2,59 @@ name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
+    name: Build and test
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.14.x'
-          otp-version: '25.x'
+          elixir-version: "1.14.x"
+          otp-version: "25.x"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
       - name: Install dependencies
         run: mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
       - name: Run tests
         run: mix test
+
+      - name: Generate test coverage
+        run: mix test --cover
+
       - name: Run code quality checks
         run: mix credo
+
+  # Optionally you could add a matrix test job for multiple Elixir/OTP versions
+  # test-matrix:
+  #   name: Test with Elixir ${{ matrix.elixir }} and OTP ${{ matrix.otp }}
+  #   runs-on: ubuntu-latest
+  #   needs: test
+  #   strategy:
+  #     matrix:
+  #       elixir: ['1.13.x', '1.14.x']
+  #       otp: ['24.x', '25.x']
+  #   steps:
+  #     # Same steps as above but using matrix versions

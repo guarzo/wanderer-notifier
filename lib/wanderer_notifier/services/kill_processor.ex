@@ -665,37 +665,59 @@ defmodule WandererNotifier.Services.KillProcessor do
   end
 
   # Send the notification for a kill
-  defp send_kill_notification(enriched_killmail, kill_id) do
+  defp send_kill_notification(enriched_killmail, kill_id, is_test \\ false) do
     # Add detailed logging for kill notification
-    Logger.info("📝 NOTIFICATION PREP: Preparing to send notification for killmail #{kill_id}")
+    Logger.info(
+      "📝 NOTIFICATION PREP: Preparing to send notification for killmail #{kill_id}" <>
+        if(is_test, do: " (TEST NOTIFICATION)", else: "")
+    )
 
-    # Use the centralized deduplication check
-    case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:kill, kill_id) do
-      {:ok, :send} ->
-        # This is not a duplicate, send the notification
-        Logger.info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
-        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+    # For test notifications, bypass deduplication check
+    if is_test do
+      Logger.info(
+        "✅ TEST KILL: Sending test notification for killmail #{kill_id}, bypassing deduplication"
+      )
 
-        # Update statistics for notification sent
-        update_kill_stats(:notification_sent)
+      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
 
-        # Log the notification for tracking purposes
-        Logger.info(
-          "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
-        )
+      # Update statistics for notification sent
+      update_kill_stats(:notification_sent)
 
-      {:ok, :skip} ->
-        # This is a duplicate, skip the notification
-        Logger.info("🔄 DUPLICATE KILL: Killmail #{kill_id} notification already sent, skipping")
-        :ok
+      # Log the notification for tracking purposes
+      Logger.info(
+        "📢 TEST NOTIFICATION SENT: Killmail #{kill_id} test notification delivered successfully"
+      )
 
-      {:error, reason} ->
-        # Error during deduplication check, log it
-        Logger.error("⚠️ DEDUPLICATION ERROR: Failed to check killmail #{kill_id}: #{reason}")
-        # Default to sending the notification in case of errors
-        Logger.info("⚠️ FALLBACK: Sending notification despite deduplication error")
-        WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
-        :ok
+      :ok
+    else
+      # Use the centralized deduplication check for normal notifications
+      case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:kill, kill_id) do
+        {:ok, :send} ->
+          # This is not a duplicate, send the notification
+          Logger.info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
+          WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+
+          # Update statistics for notification sent
+          update_kill_stats(:notification_sent)
+
+          # Log the notification for tracking purposes
+          Logger.info(
+            "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
+          )
+
+        {:ok, :skip} ->
+          # This is a duplicate, skip the notification
+          Logger.info("🔄 DUPLICATE KILL: Killmail #{kill_id} notification already sent, skipping")
+          :ok
+
+        {:error, reason} ->
+          # Error during deduplication check, log it
+          Logger.error("⚠️ DEDUPLICATION ERROR: Failed to check killmail #{kill_id}: #{reason}")
+          # Default to sending the notification in case of errors
+          Logger.info("⚠️ FALLBACK: Sending notification despite deduplication error")
+          WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+          :ok
+      end
     end
   end
 
@@ -764,13 +786,65 @@ defmodule WandererNotifier.Services.KillProcessor do
       # Log what we're using for testing
       Logger.debug("Using kill data for test notification with kill_id: #{kill_id}")
 
-      # Directly call the notifier with the killmail struct
-      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(
-        recent_kill,
-        kill_id
-      )
+      # Make sure to enrich the killmail data before sending notification
+      # This will try to get real data from APIs first
+      enriched_kill = enrich_killmail_data(recent_kill)
 
-      {:ok, kill_id}
+      # Log the enriched data to help debug
+      victim = Killmail.get_victim(enriched_kill)
+      Logger.info("TEST NOTIFICATION: Enriched victim data: #{inspect(victim)}")
+
+      # Validate essential data is present - fail if not
+      case validate_killmail_data(enriched_kill) do
+        :ok ->
+          # Use the normal notification flow but bypass deduplication
+          Logger.info(
+            "TEST NOTIFICATION: Using normal notification flow for test kill notification"
+          )
+
+          send_kill_notification(enriched_kill, kill_id, true)
+          {:ok, kill_id}
+
+        {:error, reason} ->
+          # Data validation failed, return error
+          error_message = "Cannot send test notification: #{reason}"
+          Logger.error(error_message)
+
+          # Notify the user through Discord
+          WandererNotifier.Notifiers.Factory.notify(
+            :send_message,
+            [error_message]
+          )
+
+          {:error, error_message}
+      end
+    end
+  end
+
+  # Validate killmail has all required data for notification
+  defp validate_killmail_data(%Killmail{} = killmail) do
+    # Check victim data
+    victim = Killmail.get_victim(killmail)
+
+    # Check system name
+    esi_data = killmail.esi_data || %{}
+    system_name = Map.get(esi_data, "solar_system_name")
+
+    cond do
+      victim == nil ->
+        {:error, "Killmail is missing victim data"}
+
+      Map.get(victim, "character_name") == nil ->
+        {:error, "Victim is missing character name"}
+
+      Map.get(victim, "ship_type_name") == nil ->
+        {:error, "Victim is missing ship type name"}
+
+      system_name == nil ->
+        {:error, "Killmail is missing system name"}
+
+      true ->
+        :ok
     end
   end
 
@@ -791,6 +865,11 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Enrich with system name if needed
     esi_data = enrich_with_system_name(esi_data)
 
+    # Log for debugging
+    Logger.debug(
+      "[KillProcessor] System name after enrichment: #{Map.get(esi_data, "solar_system_name", "Not found")}"
+    )
+
     # Enrich victim data if available
     esi_data =
       if Map.has_key?(esi_data, "victim") do
@@ -798,6 +877,8 @@ defmodule WandererNotifier.Services.KillProcessor do
         enriched_victim = enrich_entity(victim)
         Map.put(esi_data, "victim", enriched_victim)
       else
+        # Log and continue without adding placeholder
+        Logger.warning("[KillProcessor] Missing victim data in killmail")
         esi_data
       end
 
@@ -808,6 +889,8 @@ defmodule WandererNotifier.Services.KillProcessor do
         enriched_attackers = Enum.map(attackers, &enrich_entity/1)
         Map.put(esi_data, "attackers", enriched_attackers)
       else
+        # Log and continue without adding placeholder
+        Logger.warning("[KillProcessor] Missing attackers data in killmail")
         esi_data
       end
 
@@ -891,13 +974,31 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Add system name to ESI data if missing
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
-    add_entity_info(
-      esi_data,
-      "solar_system_id",
-      "solar_system_name",
-      &WandererNotifier.Api.ESI.Service.get_system_info/1,
-      "Unknown System"
-    )
+    # First check if we already have a solar_system_name
+    if Map.has_key?(esi_data, "solar_system_name") do
+      # Already has a system name, no need to add it
+      esi_data
+    else
+      # Get the system ID
+      system_id = Map.get(esi_data, "solar_system_id")
+
+      if system_id do
+        # Use the get_system_name helper which has caching already implemented
+        system_name = get_system_name(system_id)
+
+        if system_name do
+          Map.put(esi_data, "solar_system_name", system_name)
+        else
+          # If no system name could be retrieved, just return the original data
+          Logger.debug("[KillProcessor] No system name found for ID #{system_id}")
+          esi_data
+        end
+      else
+        # No system ID available, leave the data as is
+        Logger.warning("[KillProcessor] No system ID available in killmail data")
+        esi_data
+      end
+    end
   end
 
   defp enrich_with_system_name(data), do: data
@@ -922,16 +1023,18 @@ defmodule WandererNotifier.Services.KillProcessor do
                 "System ID #{system_id} not found in ESI. This may be a J-space system or invalid data."
               )
 
-              "Unknown-#{system_id}"
+              nil
 
             error ->
               Logger.error("Failed to fetch system name for ID #{system_id}: #{inspect(error)}")
               nil
           end
 
-        # Update cache
-        updated_cache = Map.put(cache, system_id, system_name)
-        Process.put(@system_names_cache_key, updated_cache)
+        # Update cache if we got a name
+        if system_name do
+          updated_cache = Map.put(cache, system_id, system_name)
+          Process.put(@system_names_cache_key, updated_cache)
+        end
 
         system_name
 
