@@ -5,6 +5,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   use Plug.Router
   require Logger
   alias WandererNotifier.ChartService.ActivityChartAdapter
+  alias WandererNotifier.ChartService.KillmailChartAdapter
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Web.Controllers.ActivityChartController
@@ -22,16 +23,16 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     |> send_resp(
       200,
       Jason.encode!(%{
-        tps_charts_enabled: Config.tps_charts_enabled?(),
-        map_tools_enabled: Config.map_tools_enabled?()
+        map_tools_enabled: Config.map_charts_enabled?(),
+        kill_charts_enabled: Config.kill_charts_enabled?()
       })
     )
   end
 
   # Get character activity data
   get "/character-activity" do
-    # Check if map tools functionality is enabled
-    if Config.map_tools_enabled?() do
+    # Check if map charts functionality is enabled
+    if Config.map_charts_enabled?() do
       # Extract slug parameter if provided
       slug = conn.params["slug"]
 
@@ -85,235 +86,29 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       |> put_resp_content_type("application/json")
       |> send_resp(
         404,
-        Jason.encode!(%{status: "error", message: "Map Tools functionality is not enabled"})
+        Jason.encode!(%{status: "error", message: "Map Charts functionality is not enabled"})
       )
     end
   end
 
   # Generate a chart based on the provided type
   get "/generate" do
-    # Check if TPS charts functionality is enabled
-    if Config.tps_charts_enabled?() do
-      # Extract parameters from the query string
-      chart_type =
-        case conn.params["type"] do
-          "damage_final_blows" -> :damage_final_blows
-          "combined_losses" -> :combined_losses
-          "kill_activity" -> :kill_activity
-          "activity_summary" -> :activity_summary
-          "activity_timeline" -> :activity_timeline
-          "activity_distribution" -> :activity_distribution
-          _ -> :invalid
-        end
-
-      _title = conn.params["title"] || "EVE Online Chart"
-      _description = conn.params["description"] || "Generated chart"
-
-      if chart_type == :invalid do
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
-      else
-        # Determine which adapter to use based on chart type
-        chart_result =
-          case chart_type do
-            :damage_final_blows ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :combined_losses ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :kill_activity ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :activity_summary ->
-              # Get activity data first
-              case CharactersClient.get_character_activity() do
-                {:ok, data} -> ActivityChartAdapter.generate_activity_summary_chart(data)
-                _ -> {:error, "Failed to get activity data"}
-              end
-
-            :activity_timeline ->
-              # Get activity data first
-              case CharactersClient.get_character_activity() do
-                {:ok, data} -> ActivityChartAdapter.generate_activity_timeline_chart(data)
-                _ -> {:error, "Failed to get activity data"}
-              end
-
-            :activity_distribution ->
-              # Get activity data first
-              case CharactersClient.get_character_activity() do
-                {:ok, data} ->
-                  ActivityChartAdapter.generate_activity_distribution_chart(data)
-
-                _ ->
-                  {:error, "Failed to get activity data"}
-              end
-          end
-
-        case chart_result do
-          {:ok, url} ->
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
-
-          {:error, reason} ->
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              500,
-              Jason.encode!(%{
-                status: "error",
-                message: "Failed to generate chart",
-                reason: reason
-              })
-            )
-        end
-      end
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
-      )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "TPS charts functionality has been removed"})
+    )
   end
 
   # Send a chart to Discord
   get "/send-to-discord" do
-    # Check if TPS charts functionality is enabled
-    if Config.tps_charts_enabled?() do
-      # Extract parameters from the query string
-      chart_type =
-        case conn.params["type"] do
-          "damage_final_blows" -> :damage_final_blows
-          "combined_losses" -> :combined_losses
-          "kill_activity" -> :kill_activity
-          "activity_summary" -> :activity_summary
-          "activity_timeline" -> :activity_timeline
-          "activity_distribution" -> :activity_distribution
-          _ -> :invalid
-        end
-
-      title = conn.params["title"] || "EVE Online Chart"
-      description = conn.params["description"] || "Generated chart"
-
-      if chart_type == :invalid do
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
-      else
-        # Get the appropriate channel ID based on chart type
-        channel_id =
-          case chart_type do
-            type when type in [:activity_summary, :activity_timeline, :activity_distribution] ->
-              # Use the activity charts channel ID
-              channel = Config.discord_channel_id_for_activity_charts()
-              Logger.info("Using Discord channel ID for activity charts: #{channel}")
-              channel
-
-            _ ->
-              # For TPS charts, use the TPS charts channel or the main channel
-              channel = Config.discord_channel_id_for(:tps_charts)
-              Logger.info("Using Discord channel ID for TPS charts: #{channel}")
-              channel
-          end
-
-        # Determine which adapter to use based on chart type
-        result =
-          case chart_type do
-            :damage_final_blows ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :combined_losses ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :kill_activity ->
-              # TPS functionality has been removed
-              {:error, "TPS chart functionality has been removed"}
-
-            :activity_summary ->
-              # Get activity data first for chart generation
-              case CharactersClient.get_character_activity() do
-                {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord(
-                    data,
-                    title,
-                    "activity_summary",
-                    description,
-                    channel_id
-                  )
-
-                _ ->
-                  {:error, "Failed to get activity data"}
-              end
-
-            :activity_timeline ->
-              # Get activity data first for chart generation
-              case CharactersClient.get_character_activity() do
-                {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord(
-                    data,
-                    title,
-                    "activity_timeline",
-                    description,
-                    channel_id
-                  )
-
-                _ ->
-                  {:error, "Failed to get activity data"}
-              end
-
-            :activity_distribution ->
-              # Get activity data first for chart generation
-              case CharactersClient.get_character_activity() do
-                {:ok, data} ->
-                  ActivityChartAdapter.send_chart_to_discord(
-                    data,
-                    title,
-                    "activity_distribution",
-                    description,
-                    channel_id
-                  )
-
-                _ ->
-                  {:error, "Failed to get activity data"}
-              end
-          end
-
-        case result do
-          :ok ->
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(200, Jason.encode!(%{status: "ok", message: "Chart sent to Discord"}))
-
-          {:error, reason} ->
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              500,
-              Jason.encode!(%{
-                status: "error",
-                message: "Failed to send chart to Discord",
-                reason: reason
-              })
-            )
-        end
-      end
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
-      )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "TPS charts functionality has been removed"})
+    )
   end
 
   # Special route for sending all activity charts
@@ -321,7 +116,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     Logger.info("Forwarding request to send all activity charts to Discord")
 
     # Only allow this if map tools are enabled
-    if Config.map_tools_enabled?() do
+    if Config.map_charts_enabled?() do
       Logger.info("Forwarding request to activity controller send-all endpoint")
 
       # Get character activity data
@@ -387,17 +182,140 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
   # Get TPS data for debugging
   get "/debug-tps-structure" do
-    # Check if TPS charts functionality is enabled
-    if Config.tps_charts_enabled?() do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(%{status: "ok", message: "TPS charts enabled", data: %{}}))
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "TPS charts functionality has been removed"})
+    )
+  end
+
+  # Killmail chart routes
+
+  # Generate a killmail chart
+  get "/killmail/generate/weekly_kills" do
+    if Config.kill_charts_enabled?() do
+      Logger.info("Generating weekly kills chart")
+
+      case KillmailChartAdapter.generate_weekly_kills_chart([]) do
+        {:ok, chart_url} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              chart_url: chart_url
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to generate weekly kills chart: #{reason}"
+            })
+          )
+      end
     else
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "TPS charts functionality is not enabled"})
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Send a killmail chart to Discord
+  get "/killmail/send-to-discord/weekly_kills" do
+    if Config.kill_charts_enabled?() do
+      title = conn.params["title"] || "Weekly Character Kills"
+      description = conn.params["description"] || "Top 20 characters by kills in the past week"
+      channel_id = conn.params["channel_id"]
+
+      Logger.info("Sending weekly kills chart to Discord with title: #{title}")
+
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord(title, description, channel_id) do
+        :ok ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Chart sent to Discord successfully"
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send chart to Discord: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Send all killmail charts to Discord
+  get "/killmail/send-all" do
+    if Config.kill_charts_enabled?() do
+      Logger.info("Sending all killmail charts to Discord")
+
+      # Currently only weekly kills chart is available
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord() do
+        :ok ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "All killmail charts sent to Discord successfully"
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send all killmail charts to Discord: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
       )
     end
   end

@@ -90,6 +90,9 @@ config :ash, :compatible_foreign_key_types, [
   {Ash.Type.UUID, Ash.Type.Integer}
 ]
 
+# Configure Ecto repositories
+config :wanderer_notifier, ecto_repos: [WandererNotifier.Repo]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

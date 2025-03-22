@@ -42,29 +42,17 @@ defmodule WandererNotifier.Core.Config do
       default_enabled: true,
       description: "Character tracking notifications"
     },
-    map_tools: %{
-      enabled_var: "ENABLE_MAP_TOOLS",
-      channel_var: "DISCORD_MAP_TOOLS_CHANNEL_ID",
+    map_charts: %{
+      enabled_var: "ENABLE_MAP_CHARTS",
+      channel_var: "DISCORD_MAP_CHARTS_CHANNEL_ID",
       default_enabled: true,
-      description: "Map tools integration"
+      description: "Map-based activity charts"
     },
-    charts: %{
-      enabled_var: "ENABLE_CHARTS",
-      channel_var: "DISCORD_CHARTS_CHANNEL_ID",
-      default_enabled: true,
-      description: "Chart generation"
-    },
-    tps_charts: %{
-      enabled_var: "ENABLE_TPS_CHARTS",
-      channel_var: "DISCORD_TPS_CHARTS_CHANNEL_ID",
+    kill_charts: %{
+      enabled_var: "ENABLE_KILL_CHARTS",
+      channel_var: "DISCORD_KILL_CHARTS_CHANNEL_ID",
       default_enabled: false,
-      description: "TPS charts generation and notifications"
-    },
-    activity_charts: %{
-      enabled_var: "ENABLE_ACTIVITY_CHARTS",
-      channel_var: "DISCORD_ACTIVITY_CHARTS_CHANNEL_ID",
-      default_enabled: true,
-      description: "Activity charts generation and notifications"
+      description: "Killmail charts and history"
     }
   }
 
@@ -113,7 +101,7 @@ defmodule WandererNotifier.Core.Config do
   Returns the Discord channel ID specifically for activity charts.
   """
   def discord_channel_id_for_activity_charts do
-    discord_channel_id_for(:activity_charts)
+    discord_channel_id_for(:map_charts)
   end
 
   @doc """
@@ -145,17 +133,10 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns whether charts functionality is enabled.
+  Returns whether map charts functionality is enabled.
   """
-  def charts_enabled? do
-    feature_enabled?(:charts)
-  end
-
-  @doc """
-  Returns whether map tools functionality is enabled.
-  """
-  def map_tools_enabled? do
-    feature_enabled?(:map_tools)
+  def map_charts_enabled? do
+    feature_enabled?(:map_charts)
   end
 
   @doc """
@@ -180,17 +161,18 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns whether TPS charts are enabled.
+  Returns whether kill charts functionality is enabled.
+  Uses both new flag (ENABLE_KILL_CHARTS) and legacy flag (persistence) for backward compatibility.
   """
-  def tps_charts_enabled? do
-    feature_enabled?(:tps_charts)
+  def kill_charts_enabled? do
+    feature_enabled?(:kill_charts)
   end
 
   @doc """
-  Returns whether activity charts are enabled.
+  Returns whether killmail persistence is enabled.
   """
-  def activity_charts_enabled? do
-    feature_enabled?(:activity_charts)
+  def killmail_persistence_enabled? do
+    feature_enabled?(:kill_charts)
   end
 
   @doc """

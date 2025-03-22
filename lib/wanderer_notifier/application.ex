@@ -51,7 +51,35 @@ defmodule WandererNotifier.Application do
     log_startup_info(env)
 
     # Start the supervisor and schedule startup message
-    start_supervisor_and_notify()
+    result = start_supervisor_and_notify()
+
+    # Schedule a database health check if kill charts feature is enabled
+    schedule_database_health_check()
+
+    result
+  end
+
+  # Schedule a database health check if the kill charts feature is enabled
+  defp schedule_database_health_check do
+    if kill_charts_enabled?() do
+      Task.start(fn ->
+        # Give the repo time to connect
+        Process.sleep(1000)
+        perform_database_health_check()
+      end)
+    end
+  end
+
+  # Perform the actual database health check
+  defp perform_database_health_check do
+    case WandererNotifier.Repo.health_check() do
+      {:ok, ping_time} ->
+        Logger.info("Database health check successful - ping time: #{ping_time}ms")
+
+      {:error, reason} ->
+        Logger.error("Database health check failed: #{inspect(reason)}")
+        Logger.error("Make sure PostgreSQL is running and properly configured")
+    end
   end
 
   # Start development tools if in dev environment
@@ -89,9 +117,9 @@ defmodule WandererNotifier.Application do
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
     )
 
-    # Log persistence status
+    # Log kill charts status
     Logger.info(
-      "Database persistence: #{if persistence_enabled?(), do: "Enabled", else: "Disabled"}"
+      "Kill charts feature: #{if kill_charts_enabled?(), do: "Enabled", else: "Disabled"}"
     )
   end
 
@@ -178,7 +206,8 @@ defmodule WandererNotifier.Application do
   end
 
   defp get_children do
-    children = [
+    # Basic children that don't depend on database
+    base_children = [
       {WandererNotifier.NoopConsumer, []},
       # Start the License Manager
       {WandererNotifier.Core.License, []},
@@ -195,27 +224,26 @@ defmodule WandererNotifier.Application do
       # Start the Maintenance service
       {WandererNotifier.Services.Maintenance, []},
       # Start the Web Server
-      {WandererNotifier.Web.Server, []},
-      # Start the Scheduler Supervisor
-      {WandererNotifier.Schedulers.Supervisor, []}
+      {WandererNotifier.Web.Server, []}
     ]
 
     # Conditionally add Postgres repo to supervision tree
+    # before the scheduler supervisor to ensure proper initialization order
     children =
-      if persistence_enabled?() do
-        Logger.info("Persistence enabled - starting database connection")
-        children ++ [WandererNotifier.Repo]
+      if kill_charts_enabled?() do
+        Logger.info("Kill charts feature enabled - starting database connection")
+        base_children ++ [WandererNotifier.Repo]
       else
-        children
+        base_children
       end
 
-    children
+    # Add the scheduler supervisor last to ensure all dependencies are started first
+    children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
   end
 
-  # Check if persistence feature is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 
   defp start_watchers do

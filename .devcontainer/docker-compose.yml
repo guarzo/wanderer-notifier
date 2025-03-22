@@ -19,7 +19,7 @@ services:
       - CLAUDE_CONFIG_DIR=/home/elixir/.claude
       - POWERLEVEL9K_DISABLE_GITSTATUS=true
       # Postgres connection for development
-      - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
+      - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-true}
       - POSTGRES_HOST=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -40,8 +40,6 @@ services:
 
   postgres:
     image: postgres:14
-    profiles:
-      - persistence
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

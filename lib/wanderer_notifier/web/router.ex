@@ -9,6 +9,9 @@ defmodule WandererNotifier.Web.Router do
   alias WandererNotifier.Web.Controllers.ChartController
   alias WandererNotifier.Web.Controllers.ApiController
   alias WandererNotifier.Web.Controllers.DebugController
+  # MapController was removed as part of the consolidation
+  # alias WandererNotifier.Web.Controllers.MapController
+  alias WandererNotifier.Web.Controllers.ActivityChartController
 
   plug(Plug.Logger)
 
@@ -52,31 +55,36 @@ defmodule WandererNotifier.Web.Router do
   # Forward all other API requests to the API controller
   forward("/api", to: ApiController)
 
+  # Only add activity chart routes if map tools are enabled
+  if Config.map_charts_enabled?() do
+    forward("/activity", to: ActivityChartController)
+  end
+
   # React app routes - these need to be before other routes to ensure proper SPA routing
 
   # Map tools routes
   get "/map-tools" do
-    if Config.map_tools_enabled?() do
+    if Config.map_charts_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
       |> send_file(200, "priv/static/app/index.html")
     else
       conn
       |> put_resp_content_type("text/html")
-      |> send_resp(404, "Map Tools functionality is not enabled")
+      |> send_resp(404, "Map Charts functionality is not enabled")
     end
   end
 
   # Handle client-side routing for the React app - Map Tools
   get "/map-tools/*path" do
-    if Config.map_tools_enabled?() do
+    if Config.map_charts_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
       |> send_file(200, "priv/static/app/index.html")
     else
       conn
       |> put_resp_content_type("text/html")
-      |> send_resp(404, "Map Tools functionality is not enabled")
+      |> send_resp(404, "Map Charts functionality is not enabled")
     end
   end
 
@@ -167,6 +175,12 @@ defmodule WandererNotifier.Web.Router do
       |> send_resp(404, "Not found: #{conn.request_path}")
     end
   end
+
+  # Only add map routes if map tools are enabled
+  # MapController was removed as part of the feature consolidation
+  # if Config.map_charts_enabled?() do
+  #   forward("/map", to: MapController)
+  # end
 
   # Note: Helper functions were moved to the ApiController module
 end
