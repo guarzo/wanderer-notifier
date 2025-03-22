@@ -89,9 +89,9 @@ defmodule WandererNotifier.Application do
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
     )
 
-    # Log persistence status
+    # Log kill charts status
     Logger.info(
-      "Database persistence: #{if persistence_enabled?(), do: "Enabled", else: "Disabled"}"
+      "Kill charts feature: #{if kill_charts_enabled?(), do: "Enabled", else: "Disabled"}"
     )
   end
 
@@ -202,8 +202,8 @@ defmodule WandererNotifier.Application do
 
     # Conditionally add Postgres repo to supervision tree
     children =
-      if persistence_enabled?() do
-        Logger.info("Persistence enabled - starting database connection")
+      if kill_charts_enabled?() do
+        Logger.info("Kill charts feature enabled - starting database connection")
         children ++ [WandererNotifier.Repo]
       else
         children
@@ -212,10 +212,9 @@ defmodule WandererNotifier.Application do
     children
   end
 
-  # Check if persistence feature is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 
   defp start_watchers do

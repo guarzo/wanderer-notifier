@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation plan for persisting killmail information related to tracked characters in the WandererNotifier application. This feature will enable historical charting and analysis capabilities.
+This document outlines the implementation plan for persisting killmail information related to tracked characters in the WandererNotifier application. This feature enables historical charting and analysis capabilities, and is now referred to as "Kill Charts".
 
 ## Goals
 
@@ -10,8 +10,22 @@ This document outlines the implementation plan for persisting killmail informati
 - Use PostgreSQL for efficient data storage
 - Implement Ash Resources for a standardized data access layer
 - Create a well-designed data model optimized for historical querying
-- Enable future historical charting capabilities
-- Make persistence feature optional via environment variables
+- Enable killmail chart capabilities
+- Make kill charts feature optional via environment variables
+
+## Implementation Notes
+
+### Removed Chart Types
+
+As part of the consolidation of features, the following map-based chart types have been removed:
+
+- `activity_timeline` - Activity trends over time (removed)
+- `activity_distribution` - Distribution of activity types (removed)
+
+The application now supports only the following chart types:
+
+- `activity_summary` - Character Activity Summary
+- `weekly_kills` - Weekly Character Kills
 
 ## Data Model
 
@@ -701,6 +715,13 @@ config :wanderer_notifier, :persistence,
   enabled: true,
   retention_period_days: 180,
   aggregation_schedule: "0 0 * * *" # Daily at midnight
+```
+
+The kill charts feature can also be enabled directly with the newer feature flag:
+
+```elixir
+# Feature flags
+ENABLE_KILL_CHARTS=true
 ```
 
 ## Migration and Data Backfill Strategy

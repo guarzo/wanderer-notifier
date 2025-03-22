@@ -32,8 +32,7 @@
   
   // Optional environment variables - enable to activate postgres
   "containerEnv": {
-    // Uncomment to enable persistence in development
-    // "ENABLE_PERSISTENCE": "true"
+    "ENABLE_KILL_CHARTS": "true"
   },
   
   // Custom configurations for VS Code

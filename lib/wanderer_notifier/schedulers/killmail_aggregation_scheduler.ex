@@ -27,7 +27,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
   @impl true
   def execute(state) do
-    if persistence_enabled?() do
+    if kill_charts_enabled?() do
       Logger.info("#{inspect(@scheduler_name)}: Running killmail aggregation")
 
       # Get today's date
@@ -95,49 +95,35 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
   # Log aggregation results
   defp log_aggregation_results(daily, weekly, monthly) do
-    # Log daily result
-    case daily do
+    # Log each result type
+    log_period_result(daily, "Daily")
+    log_period_result(weekly, "Weekly", "(not end of week)")
+    log_period_result(monthly, "Monthly", "(not end of month)")
+  end
+
+  # Helper function to log results for a specific period
+  defp log_period_result(result, period_label, skip_reason \\ "") do
+    case result do
       {:ok, _} ->
-        Logger.info("#{inspect(@scheduler_name)}: Daily aggregation completed successfully")
-
-      {:error, _, reason} ->
-        Logger.error("#{inspect(@scheduler_name)}: Daily aggregation failed: #{inspect(reason)}")
-
-      :skipped ->
-        Logger.info("#{inspect(@scheduler_name)}: Daily aggregation skipped")
-    end
-
-    # Log weekly result
-    case weekly do
-      {:ok, _} ->
-        Logger.info("#{inspect(@scheduler_name)}: Weekly aggregation completed successfully")
-
-      {:error, _, reason} ->
-        Logger.error("#{inspect(@scheduler_name)}: Weekly aggregation failed: #{inspect(reason)}")
-
-      :skipped ->
-        Logger.info("#{inspect(@scheduler_name)}: Weekly aggregation skipped (not end of week)")
-    end
-
-    # Log monthly result
-    case monthly do
-      {:ok, _} ->
-        Logger.info("#{inspect(@scheduler_name)}: Monthly aggregation completed successfully")
+        Logger.info(
+          "#{inspect(@scheduler_name)}: #{period_label} aggregation completed successfully"
+        )
 
       {:error, _, reason} ->
         Logger.error(
-          "#{inspect(@scheduler_name)}: Monthly aggregation failed: #{inspect(reason)}"
+          "#{inspect(@scheduler_name)}: #{period_label} aggregation failed: #{inspect(reason)}"
         )
 
       :skipped ->
-        Logger.info("#{inspect(@scheduler_name)}: Monthly aggregation skipped (not end of month)")
+        Logger.info(
+          "#{inspect(@scheduler_name)}: #{period_label} aggregation skipped #{skip_reason}"
+        )
     end
   end
 
-  # Check if persistence is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 
   @impl true

@@ -404,7 +404,7 @@ export default function Dashboard() {
             {/* Activity Charts - Only shown if Map Tools is enabled */}
             {status?.features?.enabled?.map_tools_enabled && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Activity Charts</span>
+                <span className="font-medium text-gray-700">Map Charts</span>
                 <div className="flex items-center space-x-2">
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
@@ -422,8 +422,8 @@ export default function Dashboard() {
               </div>
             )}
             
-            {/* Killmail Charts - Only shown if Persistence is enabled */}
-            {status?.features?.enabled?.persistence_enabled && (
+            {/* Killmail Charts - Only shown if Kill Charts is enabled */}
+            {status?.features?.enabled?.kill_charts_enabled && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
                 <span className="font-medium text-gray-700">Killmail Charts</span>
                 <div className="flex items-center space-x-2">

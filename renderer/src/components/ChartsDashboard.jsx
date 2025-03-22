@@ -7,33 +7,30 @@ export default function ChartsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [features, setFeatures] = useState({
-    mapToolsEnabled: false,
-    persistenceEnabled: false
+    mapChartsEnabled: false,
+    killChartsEnabled: false
   });
   const [sendingAllCharts, setSendingAllCharts] = useState(false);
   const [sendAllSuccess, setSendAllSuccess] = useState(false);
   const [sendAllError, setSendAllError] = useState(null);
 
   useEffect(() => {
-    // Check available features
-    fetch('/charts/config')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
+    // Fetch the chart configuration
+    fetch('/api/chart/config')
+      .then(response => response.json())
       .then(data => {
         setFeatures({
-          mapToolsEnabled: data.map_tools_enabled || false,
-          persistenceEnabled: data.persistence_enabled || false
+          mapChartsEnabled: data.map_tools_enabled || false,
+          killChartsEnabled: data.kill_charts_enabled || false
         });
-        setLoading(false);
       })
       .catch(error => {
-        console.error('Error fetching feature configuration:', error);
-        setError(error.message);
-        setLoading(false);
+        console.error('Error fetching chart configuration:', error);
+        // Default to disabled if there's an error
+        setFeatures({
+          mapChartsEnabled: false,
+          killChartsEnabled: false
+        });
       });
   }, []);
 
@@ -133,22 +130,22 @@ export default function ChartsDashboard() {
 
       {/* Feature status indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className={`p-4 rounded-lg ${features.mapToolsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
+        <div className={`p-4 rounded-lg ${features.mapChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${features.mapToolsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="font-medium">Map Tools: {features.mapToolsEnabled ? 'Enabled' : 'Disabled'}</span>
+            <div className={`w-3 h-3 rounded-full mr-2 ${features.mapChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="font-medium">Map Charts: {features.mapChartsEnabled ? 'Enabled' : 'Disabled'}</span>
           </div>
         </div>
-        <div className={`p-4 rounded-lg ${features.persistenceEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
+        <div className={`p-4 rounded-lg ${features.killChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${features.persistenceEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="font-medium">Persistence: {features.persistenceEnabled ? 'Enabled' : 'Disabled'}</span>
+            <div className={`w-3 h-3 rounded-full mr-2 ${features.killChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="font-medium">Killmail Charts: {features.killChartsEnabled ? 'Enabled' : 'Disabled'}</span>
           </div>
         </div>
       </div>
 
       {/* Map Tools Charts Section (conditional) */}
-      {features.mapToolsEnabled && (
+      {features.mapChartsEnabled && (
         <div className="mb-12">
           <div className="mb-6 flex justify-between items-center">
             <h2 className="text-2xl font-semibold text-gray-800">Character Activity Charts</h2>
@@ -189,22 +186,12 @@ export default function ChartsDashboard() {
               description="Top 10 most active characters by connections, passages, and signatures"
               chartType="activity_summary"
             />
-            <ActivityChartCard 
-              title="Activity Timeline" 
-              description="Activity trends over time for the top 5 most active characters"
-              chartType="activity_timeline"
-            />
-            <ActivityChartCard 
-              title="Activity Distribution" 
-              description="Distribution of activity types across all characters"
-              chartType="activity_distribution"
-            />
           </div>
         </div>
       )}
 
       {/* Killmail Charts Section (conditional) */}
-      {features.persistenceEnabled && (
+      {features.killChartsEnabled && (
         <div className="mb-12">
           <div className="mb-6 flex justify-between items-center">
             <h2 className="text-2xl font-semibold text-gray-800">Killmail Charts</h2>
@@ -238,11 +225,11 @@ export default function ChartsDashboard() {
       )}
 
       {/* No features enabled message */}
-      {!features.mapToolsEnabled && !features.persistenceEnabled && (
+      {!features.mapChartsEnabled && !features.killChartsEnabled && (
         <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-6 text-center">
           <h3 className="text-lg font-medium text-yellow-800">No chart features are enabled</h3>
           <p className="mt-2 text-yellow-700">
-            Enable Map Tools or Persistence in your configuration to view available charts.
+            Enable Map Charts or Killmail Charts in your configuration to view available charts.
           </p>
         </div>
       )}

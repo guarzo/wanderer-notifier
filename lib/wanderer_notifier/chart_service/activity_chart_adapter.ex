@@ -239,362 +239,36 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   Generates a chart URL for activity timeline.
   Returns {:ok, url} on success, {:error, reason} on failure.
   """
-  def generate_activity_timeline_chart(activity_data) do
-    case prepare_activity_timeline_data(activity_data) do
-      {:ok, chart_data, title, options} ->
-        # Create chart configuration using the ChartConfig struct
-        case ChartConfig.new(
-               ChartTypes.line(),
-               chart_data,
-               title,
-               options
-             ) do
-          {:ok, config} -> ChartService.generate_chart_url(config)
-          {:error, reason} -> {:error, reason}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def generate_activity_timeline_chart(_activity_data) do
+    # This functionality has been removed
+    {:error, "Activity Timeline chart has been removed"}
   end
 
   @doc """
   Prepares chart data for activity timeline.
   Returns {:ok, chart_data, title, options} or {:error, reason}.
   """
-  def prepare_activity_timeline_data(activity_data) do
-    Logger.info("Preparing activity timeline data")
-
-    if activity_data == nil do
-      Logger.error("No activity data provided")
-      {:error, "No activity data provided"}
-    else
-      try do
-        # Extract timeline data
-        timeline = extract_timeline_data(activity_data)
-
-        if is_map(timeline) && map_size(timeline) > 0 do
-          create_timeline_chart_data(timeline)
-        else
-          {:error, "No timeline data available"}
-        end
-      rescue
-        e ->
-          Logger.error("Error preparing activity timeline data: #{inspect(e)}")
-          {:error, "Error preparing activity timeline data: #{inspect(e)}"}
-      end
-    end
-  end
-
-  # Extracts timeline data from the activity data
-  defp extract_timeline_data(activity_data) do
-    if is_map(activity_data) && Map.has_key?(activity_data, "timeline") do
-      activity_data["timeline"]
-    else
-      Logger.error("Invalid data format - couldn't extract timeline data")
-      %{}
-    end
-  end
-
-  # Creates chart data for activity timeline
-  defp create_timeline_chart_data(timeline) do
-    # Sort dates chronologically
-    sorted_dates =
-      timeline
-      |> Map.keys()
-      |> Enum.sort()
-
-    # Create date labels in a readable format
-    date_labels = Enum.map(sorted_dates, &format_date/1)
-
-    # Extract activity metrics for each date
-    {connections_data, passages_data, signatures_data} =
-      extract_timeline_metrics(timeline, sorted_dates)
-
-    # Define chart colors
-    {connection_color, passage_color, signature_color} = get_chart_colors()
-
-    # Create the chart data structure
-    chart_data = %{
-      "labels" => date_labels,
-      "datasets" => [
-        create_dataset("Connections", connection_color, connections_data),
-        create_dataset("Passages", passage_color, passages_data),
-        create_dataset("Signatures", signature_color, signatures_data)
-      ]
-    }
-
-    # Create chart options
-    options = create_timeline_chart_options()
-
-    {:ok, chart_data, "Activity Timeline", options}
-  end
-
-  # Extracts metrics from timeline for each date
-  defp extract_timeline_metrics(timeline, sorted_dates) do
-    connections_data =
-      Enum.map(sorted_dates, fn date ->
-        get_in(timeline, [date, "connections"]) || 0
-      end)
-
-    passages_data =
-      Enum.map(sorted_dates, fn date ->
-        get_in(timeline, [date, "passages"]) || 0
-      end)
-
-    signatures_data =
-      Enum.map(sorted_dates, fn date ->
-        get_in(timeline, [date, "signatures"]) || 0
-      end)
-
-    {connections_data, passages_data, signatures_data}
-  end
-
-  # Returns standard colors for chart elements
-  defp get_chart_colors do
-    # Blue
-    connection_color = "rgba(54, 162, 235, 0.8)"
-    # Red
-    passage_color = "rgba(255, 99, 132, 0.8)"
-    # Teal
-    signature_color = "rgba(75, 192, 192, 0.8)"
-
-    {connection_color, passage_color, signature_color}
-  end
-
-  # Creates a dataset for the timeline chart
-  defp create_dataset(label, color, data) do
-    %{
-      "label" => label,
-      "backgroundColor" => "#{color}2",
-      "borderColor" => color,
-      "borderWidth" => 2,
-      "pointBackgroundColor" => color,
-      "pointRadius" => 3,
-      "data" => data,
-      "fill" => true
-    }
-  end
-
-  # Creates options for the timeline chart
-  defp create_timeline_chart_options do
-    %{
-      "responsive" => true,
-      "maintainAspectRatio" => false,
-      "scales" => %{
-        "xAxes" => [
-          %{
-            "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
-            },
-            "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)"
-            },
-            "scaleLabel" => %{
-              "display" => true,
-              "labelString" => "Date",
-              "fontColor" => "rgb(255, 255, 255)"
-            }
-          }
-        ],
-        "yAxes" => [
-          %{
-            "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
-            },
-            "ticks" => %{
-              "beginAtZero" => true,
-              "fontColor" => "rgb(255, 255, 255)"
-            },
-            "scaleLabel" => %{
-              "display" => true,
-              "labelString" => "Count",
-              "fontColor" => "rgb(255, 255, 255)"
-            }
-          }
-        ]
-      },
-      "legend" => %{
-        "display" => true,
-        "position" => "top",
-        "labels" => %{
-          "fontColor" => "rgb(255, 255, 255)"
-        }
-      },
-      "title" => %{
-        "display" => true,
-        "text" => "Activity Timeline",
-        "fontColor" => "rgb(255, 255, 255)",
-        "fontSize" => 16
-      },
-      "tooltips" => %{
-        "mode" => "index",
-        "intersect" => false
-      }
-    }
+  def prepare_activity_timeline_data(_activity_data) do
+    # This functionality has been removed
+    {:error, "Activity Timeline chart has been removed"}
   end
 
   @doc """
   Generates a chart URL for activity distribution.
   Returns {:ok, url} on success, {:error, reason} on failure.
   """
-  def generate_activity_distribution_chart(activity_data) do
-    case prepare_activity_distribution_data(activity_data) do
-      {:ok, chart_data, title, options} ->
-        # Create chart configuration using the ChartConfig struct
-        case ChartConfig.new(
-               ChartTypes.pie(),
-               chart_data,
-               title,
-               options
-             ) do
-          {:ok, config} -> ChartService.generate_chart_url(config)
-          {:error, reason} -> {:error, reason}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def generate_activity_distribution_chart(_activity_data) do
+    # This functionality has been removed
+    {:error, "Activity Distribution chart has been removed"}
   end
 
   @doc """
   Prepares chart data for activity distribution.
   Returns {:ok, chart_data, title, options} or {:error, reason}.
   """
-  def prepare_activity_distribution_data(activity_data) do
-    Logger.info("Preparing activity distribution data")
-
-    if activity_data == nil do
-      Logger.error("No activity data provided")
-      {:error, "No activity data provided"}
-    else
-      try do
-        # Extract totals from the activity data
-        totals = extract_activity_totals(activity_data)
-
-        # Get the activity values
-        connections = Map.get(totals, "connections", 0)
-        passages = Map.get(totals, "passages", 0)
-        signatures = Map.get(totals, "signatures", 0)
-
-        total_activities = connections + passages + signatures
-
-        if total_activities > 0 do
-          create_distribution_chart_data(connections, passages, signatures)
-        else
-          {:error, "No activity data to display"}
-        end
-      rescue
-        e ->
-          Logger.error("Error preparing activity distribution data: #{inspect(e)}")
-          {:error, "Error preparing activity distribution data: #{inspect(e)}"}
-      end
-    end
-  end
-
-  # Extracts totals from various activity data formats
-  defp extract_activity_totals(activity_data) do
-    # First check if we have totals directly
-    if is_map(activity_data) && Map.has_key?(activity_data, "totals") do
-      activity_data["totals"]
-    else
-      extract_activity_totals_from_alternative_formats(activity_data)
-    end
-  end
-
-  # Handles alternative activity data formats
-  defp extract_activity_totals_from_alternative_formats(activity_data) do
-    # Check for direct metrics
-    has_direct_metrics =
-      is_map(activity_data) &&
-        Map.has_key?(activity_data, "connections") &&
-        Map.has_key?(activity_data, "passages") &&
-        Map.has_key?(activity_data, "signatures")
-
-    cond do
-      has_direct_metrics ->
-        # Extract direct metrics
-        %{
-          "connections" => activity_data["connections"],
-          "passages" => activity_data["passages"],
-          "signatures" => activity_data["signatures"]
-        }
-
-      # Check for character data to aggregate
-      is_map(activity_data) && is_list(activity_data["characters"]) ->
-        aggregate_character_activities(activity_data["characters"])
-
-      # Fallback to empty data
-      true ->
-        Logger.error("Invalid data format - couldn't extract activity totals")
-        %{"connections" => 0, "passages" => 0, "signatures" => 0}
-    end
-  end
-
-  # Aggregates activities across multiple characters
-  defp aggregate_character_activities(characters) do
-    Enum.reduce(
-      characters,
-      %{"connections" => 0, "passages" => 0, "signatures" => 0},
-      fn char, acc ->
-        %{
-          "connections" => acc["connections"] + Map.get(char, "connections", 0),
-          "passages" => acc["passages"] + Map.get(char, "passages", 0),
-          "signatures" => acc["signatures"] + Map.get(char, "signatures", 0)
-        }
-      end
-    )
-  end
-
-  # Creates chart data for activity distribution
-  defp create_distribution_chart_data(connections, passages, signatures) do
-    # Create chart data
-    chart_data = %{
-      "labels" => ["Connections", "Passages", "Signatures"],
-      "datasets" => [
-        %{
-          "data" => [connections, passages, signatures],
-          "backgroundColor" => [
-            # Blue
-            "rgba(54, 162, 235, 0.8)",
-            # Red
-            "rgba(255, 99, 132, 0.8)",
-            # Teal
-            "rgba(75, 192, 192, 0.8)"
-          ],
-          "borderColor" => [
-            "rgba(54, 162, 235, 1)",
-            "rgba(255, 99, 132, 1)",
-            "rgba(75, 192, 192, 1)"
-          ],
-          "borderWidth" => 1
-        }
-      ]
-    }
-
-    # Create options with responsive design and proper colors
-    options = %{
-      "responsive" => true,
-      "maintainAspectRatio" => false,
-      "plugins" => %{
-        "legend" => %{
-          "position" => "right",
-          "labels" => %{
-            "fontColor" => "rgb(255, 255, 255)"
-          }
-        },
-        "title" => %{
-          "display" => true,
-          "text" => "Activity Distribution",
-          "fontColor" => "rgb(255, 255, 255)"
-        },
-        "tooltip" => %{
-          "enabled" => true
-        }
-      }
-    }
-
-    {:ok, chart_data, "Activity Distribution", options}
+  def prepare_activity_distribution_data(_activity_data) do
+    # This functionality has been removed
+    {:error, "Activity Distribution chart has been removed"}
   end
 
   @doc """
@@ -664,10 +338,12 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         generate_activity_summary_chart(activity_data)
 
       "activity_timeline" ->
-        generate_activity_timeline_chart(activity_data)
+        # Return error for removed functionality
+        {:error, "Activity Timeline chart has been removed"}
 
       "activity_distribution" ->
-        generate_activity_distribution_chart(activity_data)
+        # Return error for removed functionality
+        {:error, "Activity Distribution chart has been removed"}
 
       _ ->
         {:error, "Unsupported chart type: #{chart_type}"}
@@ -678,8 +354,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   defp resolve_embed_title(nil, chart_type) do
     case chart_type do
       "activity_summary" -> "Character Activity Summary"
-      "activity_timeline" -> "Activity Over Time"
-      "activity_distribution" -> "Activity Distribution"
+      "activity_timeline" -> "Activity Timeline (Removed)"
+      "activity_distribution" -> "Activity Distribution (Removed)"
       _ -> "EVE Online Character Activity"
     end
   end
@@ -693,10 +369,10 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         "Top characters by connections, passages, and signatures in the last 24 hours"
 
       "activity_timeline" ->
-        "Character activity trends over time"
+        "This chart type has been removed"
 
       "activity_distribution" ->
-        "Distribution of character activity by type"
+        "This chart type has been removed"
 
       _ ->
         "Character activity in EVE Online"
@@ -742,42 +418,11 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     end)
   end
 
-  # Helper functions
-
-  # Formats a date string into a more human-readable format
-  defp format_date(date_str) when is_binary(date_str) do
-    case String.split(date_str, "-") do
-      [year, month, day] ->
-        month_name = get_month_name(month)
-
-        # Remove leading zero from day
-        day_num = String.to_integer(day)
-        "#{month_name} #{day_num}, #{year}"
-
-      _ ->
-        date_str
-    end
-  end
-
-  defp format_date(other), do: inspect(other)
-
-  # Returns month name from month number
-  defp get_month_name(month) do
-    month_names = %{
-      "01" => "Jan",
-      "02" => "Feb",
-      "03" => "Mar",
-      "04" => "Apr",
-      "05" => "May",
-      "06" => "Jun",
-      "07" => "Jul",
-      "08" => "Aug",
-      "09" => "Sep",
-      "10" => "Oct",
-      "11" => "Nov",
-      "12" => "Dec"
-    }
-
-    Map.get(month_names, month, month)
+  # Get chart colors for consistent visual identity
+  defp get_chart_colors do
+    connection_color = "rgba(54, 162, 235, 0.8)"
+    passage_color = "rgba(255, 99, 132, 0.8)"
+    signature_color = "rgba(75, 192, 192, 0.8)"
+    {connection_color, passage_color, signature_color}
   end
 end

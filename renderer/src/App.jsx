@@ -2,33 +2,30 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
 import Dashboard from "./components/Dashboard";
-import ChartDashboard from "./components/ChartDashboard";
-import MapToolsDashboard from "./components/MapToolsDashboard";
-import DebugDashboard from "./components/DebugDashboard";
 import ChartsDashboard from "./components/ChartsDashboard";
-import { FaChartBar, FaHome, FaMap, FaBug } from "react-icons/fa";
+import { FaChartBar, FaHome } from "react-icons/fa";
 
 function App() {
   const [corpToolsEnabled, setCorpToolsEnabled] = useState(false);
-  const [mapToolsEnabled, setMapToolsEnabled] = useState(false);
-  const [persistenceEnabled, setPersistenceEnabled] = useState(false);
+  const [mapChartsEnabled, setMapChartsEnabled] = useState(false);
+  const [killChartsEnabled, setKillChartsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Fetch configuration when component mounts
-    fetch('/charts/config')
+    fetch('/api/chart/config')
       .then(response => response.json())
       .then(data => {
         setCorpToolsEnabled(data.corp_tools_enabled);
-        setMapToolsEnabled(data.map_tools_enabled);
-        setPersistenceEnabled(data.persistence_enabled);
+        setMapChartsEnabled(data.map_tools_enabled);
+        setKillChartsEnabled(data.kill_charts_enabled);
         setLoading(false);
       })
       .catch(error => {
-        console.error('Error fetching config:', error);
+        console.error('Error fetching chart config:', error);
         setCorpToolsEnabled(false);
-        setMapToolsEnabled(false);
-        setPersistenceEnabled(false);
+        setMapChartsEnabled(false);
+        setKillChartsEnabled(false);
         setLoading(false);
       });
   }, []);
@@ -39,8 +36,8 @@ function App() {
     </div>;
   }
 
-  // Determine whether to show charts link (if either map tools or persistence is enabled)
-  const showChartsLink = mapToolsEnabled || persistenceEnabled;
+  // Determine whether to show charts link (if either map charts or kill charts is enabled)
+  const showChartsLink = mapChartsEnabled || killChartsEnabled;
 
   return (
     <Router>
@@ -59,23 +56,19 @@ function App() {
                   <span>Charts</span>
                 </Link>
               )}
-              <Link to="/debug" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
-                <FaBug />
-                <span>Debug</span>
-              </Link>
             </div>
           </div>
         </nav>
         
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/debug" element={<DebugDashboard />} />
           <Route path="/charts" element={<ChartsDashboard />} />
           
           {/* Legacy routes for backward compatibility */}
-          <Route path="/corp-tools" element={<Navigate to="/debug" replace />} />
-          <Route path="/map-tools" element={<Navigate to="/debug" replace />} />
+          <Route path="/corp-tools" element={<Navigate to="/" replace />} />
+          <Route path="/map-tools" element={<Navigate to="/" replace />} />
           <Route path="/charts-dashboard" element={<Navigate to="/charts" replace />} />
+          <Route path="/debug" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </Router>

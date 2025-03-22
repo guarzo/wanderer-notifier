@@ -64,7 +64,7 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **Enabled check:**
 
-- Only runs if `WandererNotifier.Core.Config.map_tools_enabled?()` returns true
+- Only runs if `WandererNotifier.Core.Config.map_charts_enabled?()` returns true
 
 **Implementation details:**
 
@@ -90,7 +90,7 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **Enabled check:**
 
-- Only runs if `WandererNotifier.Core.Config.map_tools_enabled?()` returns true
+- Only runs if `WandererNotifier.Core.Config.map_charts_enabled?()` returns true
 
 **Implementation details:**
 
@@ -116,7 +116,7 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **Enabled check:**
 
-- Only runs if `WandererNotifier.Core.Config.map_tools_enabled?()` returns true
+- Only runs if `WandererNotifier.Core.Config.map_charts_enabled?()` returns true
 
 **Implementation details:**
 
@@ -141,7 +141,7 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **Enabled check:**
 
-- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailAggregationScheduler.persistence_enabled?()`)
+- Only runs if `WandererNotifier.Core.Config.kill_charts_enabled?()` returns true
 
 **Implementation details:**
 
@@ -166,7 +166,7 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **Enabled check:**
 
-- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailRetentionScheduler.persistence_enabled?()`)
+- Only runs if `WandererNotifier.Core.Config.kill_charts_enabled?()` returns true
 
 **Implementation details:**
 
@@ -180,25 +180,26 @@ All schedulers implement the `WandererNotifier.Schedulers.Behaviour`, ensuring c
 
 **What it does:**
 
-- Generates and sends weekly character kill charts to Discord
-- Shows the top 20 characters by number of kills in the past week
+- Generates weekly character kill charts
+- Sends the charts to Discord for visibility
 
 **When it runs:**
 
-- Time-based scheduler, runs once a week on Sunday (day 7) at 18:00 UTC
+- Time-based scheduler, runs once a week on Sunday at 08:00 UTC
 - Hour is configurable via environment variable `:killmail_chart_schedule_hour`
 - Minute is configurable via environment variable `:killmail_chart_schedule_minute`
 
 **Enabled check:**
 
-- Only runs if persistence is enabled (`WandererNotifier.Schedulers.KillmailChartScheduler.persistence_enabled?()`)
+- Only runs if `WandererNotifier.Core.Config.kill_charts_enabled?()` returns true
 
 **Implementation details:**
 
 - Only executes on Sundays (day 7 of the week)
-- Uses `WandererNotifier.ChartService.KillmailChartAdapter.send_weekly_kills_chart_to_discord/4` to generate and send charts
-- Gets Discord channel ID from `WandererNotifier.Core.Config.discord_channel_id_for_charts/0`
-- Handles errors gracefully with detailed logging
+- Generates a chart of the top 20 characters by kills in the past week
+- Uses `WandererNotifier.ChartService.KillmailChartAdapter` to create the charts
+- Sends charts to Discord via configured channel ID for kill charts
+- Logs success or failure of chart generation and sending
 
 ## Scheduler Initialization and Management
 

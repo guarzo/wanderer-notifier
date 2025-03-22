@@ -24,7 +24,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
 
   @impl true
   def execute(state) do
-    if persistence_enabled?() do
+    if kill_charts_enabled?() do
       Logger.info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
 
       # Get the configured retention period
@@ -69,10 +69,9 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
     |> Keyword.get(:retention_period_days, 180)
   end
 
-  # Check if persistence is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 
   @impl true

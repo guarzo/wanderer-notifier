@@ -21,8 +21,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - :ignored if the killmail is not related to a tracked character
   """
   def maybe_persist_killmail(%KillmailStruct{} = killmail) do
-    # Check if persistence is enabled
-    if persistence_enabled?() do
+    # Check if kill charts feature is enabled
+    if kill_charts_enabled?() do
       # First check if the killmail involves any tracked characters
       with tracked_characters <- get_tracked_characters(),
            {character_id, character_name, role} <-
@@ -254,9 +254,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end)
   end
 
-  # Check if persistence feature is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 end

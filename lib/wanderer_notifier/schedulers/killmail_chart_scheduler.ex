@@ -24,7 +24,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
     default_minute: @default_minute,
     hour_env_var: :killmail_chart_schedule_hour,
     minute_env_var: :killmail_chart_schedule_minute,
-    enabled_check: &WandererNotifier.Schedulers.KillmailChartScheduler.persistence_enabled?/0
+    enabled_check: &WandererNotifier.Schedulers.KillmailChartScheduler.kill_charts_enabled?/0
   )
 
   @impl true
@@ -49,14 +49,14 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
   # Send the weekly kills chart
   defp send_weekly_kills_chart do
-    # Only proceed if killmail persistence is enabled
-    if Config.killmail_persistence_enabled?() do
+    # Only proceed if killmail charts are enabled
+    if Config.kill_charts_enabled?() do
       # Generate the chart title with the date range
       title = "Weekly Character Kills"
       description = "Top 20 characters by kills in the past week"
 
       # Get the appropriate Discord channel ID
-      channel_id = Config.discord_channel_id_for(:charts)
+      channel_id = Config.discord_channel_id_for(:kill_charts)
 
       try do
         # Use the adapter to send the chart
@@ -72,8 +72,8 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
           {:error, Exception.message(e)}
       end
     else
-      Logger.info("Killmail persistence is not enabled. Skipping weekly kills chart generation.")
-      {:error, "Killmail persistence is not enabled"}
+      Logger.info("Killmail charts are not enabled. Skipping weekly kills chart generation.")
+      {:error, "Killmail charts are not enabled"}
     end
   end
 
@@ -91,16 +91,15 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   end
 
   @doc """
-  Checks if the persistence feature is enabled.
+  Checks if the kill charts feature is enabled.
   This is used to determine if the scheduler should run.
 
   ## Returns
-    - true if persistence is enabled
+    - true if kill charts are enabled
     - false otherwise
   """
-  def persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  def kill_charts_enabled? do
+    Config.kill_charts_enabled?()
   end
 
   @impl true

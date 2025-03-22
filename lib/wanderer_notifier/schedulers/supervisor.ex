@@ -26,10 +26,10 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       {WandererNotifier.Schedulers.SystemUpdateScheduler, []}
     ]
 
-    # Add persistence-related schedulers if persistence is enabled
+    # Add kill charts-related schedulers if kill charts feature is enabled
     schedulers =
-      if persistence_enabled?() do
-        Logger.info("Persistence enabled, adding killmail schedulers")
+      if kill_charts_enabled?() do
+        Logger.info("Kill charts feature enabled, adding killmail schedulers")
 
         schedulers ++
           [
@@ -68,9 +68,8 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     end
   end
 
-  # Check if persistence is enabled
-  defp persistence_enabled? do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:enabled, false)
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 end
