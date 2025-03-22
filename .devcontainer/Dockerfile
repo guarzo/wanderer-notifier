@@ -1,5 +1,4 @@
-# Use a Debian-based Elixir image (NOT the alpine variant).
-FROM elixir:1.18.2-slim
+FROM elixir:otp-27
 
 # Define ARGs for customization
 ARG USERNAME=elixir
