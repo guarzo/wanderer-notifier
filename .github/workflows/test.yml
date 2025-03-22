@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Add environment variables for testing
-      DISCORD_BOT_TOKEN: "test_discord_token_for_ci"
+      DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       MIX_ENV: "test"
 
     steps:

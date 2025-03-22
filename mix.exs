@@ -39,6 +39,10 @@ defmodule WandererNotifier.MixProject do
       {:plug, "~> 1.17"},
       {:plug_cowboy, "~> 2.6"},
       {:mime, "~> 2.0"},
+      {:ecto_sql, "~> 3.10"},
+      {:postgrex, "~> 0.17"},
+      {:ash, "~> 2.17"},
+      {:ash_postgres, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test}
