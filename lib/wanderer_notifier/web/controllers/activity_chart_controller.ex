@@ -355,46 +355,46 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
     # Ensure we have activity data or fetch it
     activity_data = ensure_activity_data(activity_data)
-    
+
     # Generate and send the appropriate chart based on type
     generate_and_send_chart(chart_type, activity_data, channel_id)
   end
-  
+
   # Log information about the activity data
   defp log_activity_data_info(nil), do: Logger.info("Activity data type: nil")
-  
+
   defp log_activity_data_info(data) when is_map(data) do
     Logger.info("Activity data type: map with keys: #{inspect(Map.keys(data))}")
   end
-  
+
   defp log_activity_data_info(data) when is_list(data) do
     Logger.info("Activity data type: list with #{length(data)} items")
   end
-  
+
   defp log_activity_data_info(data) do
     Logger.info("Activity data type: #{inspect(data, limit: 50)}")
   end
-  
+
   # Ensure we have activity data or fetch it
   defp ensure_activity_data(nil) do
     Logger.info("Fetching character activity data from EVE Corp Tools API")
     fetch_activity_data()
   end
-  
+
   defp ensure_activity_data(existing_data), do: existing_data
-  
+
   # Fetch activity data from the API
   defp fetch_activity_data do
     case CharactersClient.get_character_activity() do
-      {:ok, data} -> 
+      {:ok, data} ->
         data
-        
+
       {:error, reason} ->
         Logger.error("Failed to fetch activity data: #{inspect(reason)}")
         nil
     end
   end
-  
+
   # Handle chart generation and sending based on chart type
   defp generate_and_send_chart(:activity_summary, activity_data, channel_id) do
     ActivityChartAdapter.send_chart_to_discord(
@@ -405,33 +405,35 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       channel_id
     )
   end
-  
+
   defp generate_and_send_chart(:activity_timeline, activity_data, channel_id) do
     # Use generate_ instead of send_ since that's what the adapter provides
     with {:ok, url} <- ActivityChartAdapter.generate_activity_timeline_chart(activity_data),
-         :ok <- WandererNotifier.ChartService.send_chart_to_discord(
-                  url,
-                  "Activity Timeline",
-                  "Activity over time",
-                  channel_id
-                ) do
+         :ok <-
+           WandererNotifier.ChartService.send_chart_to_discord(
+             url,
+             "Activity Timeline",
+             "Activity over time",
+             channel_id
+           ) do
       {:ok, url, "Activity Timeline"}
     end
   end
-  
+
   defp generate_and_send_chart(:activity_distribution, activity_data, channel_id) do
     # Use generate_ instead of send_ since that's what the adapter provides
     with {:ok, url} <- ActivityChartAdapter.generate_activity_distribution_chart(activity_data),
-         :ok <- WandererNotifier.ChartService.send_chart_to_discord(
-                  url,
-                  "Activity Distribution",
-                  "Distribution of activities",
-                  channel_id
-                ) do
+         :ok <-
+           WandererNotifier.ChartService.send_chart_to_discord(
+             url,
+             "Activity Distribution",
+             "Distribution of activities",
+             channel_id
+           ) do
       {:ok, url, "Activity Distribution"}
     end
   end
-  
+
   defp generate_and_send_chart(unknown_type, _activity_data, _channel_id) do
     {:error, "Unknown chart type: #{inspect(unknown_type)}"}
   end

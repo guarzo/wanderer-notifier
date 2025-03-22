@@ -30,7 +30,11 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_systems: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end
@@ -60,7 +64,11 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_systems_with_cache: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end
@@ -109,7 +117,11 @@ defmodule WandererNotifier.Api.Map.Client do
     rescue
       e ->
         Logger.error("[Map.Client] Error in update_tracked_characters: #{inspect(e)}")
-        Logger.error("[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+
+        Logger.error(
+          "[Map.Client] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        )
+
         {:error, {:exception, e}}
     end
   end

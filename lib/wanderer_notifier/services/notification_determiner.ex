@@ -228,6 +228,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       Logger.info(
         "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
       )
+
       true
     else
       false
@@ -238,7 +239,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   defp check_victim_tracked(kill_data, kill_id, all_character_ids) do
     # Extract and format victim ID
     victim_id_str = extract_victim_id(kill_data)
-    
+
     # Log victim information
     log_victim_info(victim_id_str, kill_id)
 

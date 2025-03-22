@@ -287,7 +287,6 @@ defmodule WandererNotifier.Core.License do
     {:noreply, new_state}
   end
 
-
   # Helper function to check if a feature is enabled based on state
   defp check_feature_enabled(feature, state) do
     case state do
@@ -314,7 +313,6 @@ defmodule WandererNotifier.Core.License do
       false
     end
   end
-
 
   defp schedule_refresh do
     Process.send_after(self(), :refresh, Timings.license_refresh_interval())

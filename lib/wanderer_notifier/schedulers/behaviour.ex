@@ -10,7 +10,9 @@ defmodule WandererNotifier.Schedulers.Behaviour do
   Executes the scheduled task.
   This is the main function that performs the actual work.
   """
-  @callback execute(state :: map()) :: {:ok, result :: any(), new_state :: map()} | {:error, reason :: any(), new_state :: map()}
+  @callback execute(state :: map()) ::
+              {:ok, result :: any(), new_state :: map()}
+              | {:error, reason :: any(), new_state :: map()}
 
   @doc """
   Determines if the scheduler should be enabled based on configuration.

@@ -357,16 +357,12 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Extract the character data from the nested structure
     character_data = Map.get(char, "character", %{})
 
-    Logger.debug(
-      "[parse_characters_response] Character data: #{inspect(character_data)}"
-    )
+    Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
 
     # Create a standardized format for the character
     transformed = transform_character_data(character_data)
 
-    Logger.debug(
-      "[parse_characters_response] Transformed character: #{inspect(transformed)}"
-    )
+    Logger.debug("[parse_characters_response] Transformed character: #{inspect(transformed)}")
 
     transformed
   end

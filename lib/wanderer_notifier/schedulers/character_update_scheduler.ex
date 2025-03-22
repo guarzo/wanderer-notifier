@@ -9,7 +9,6 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   require WandererNotifier.Schedulers.Factory
   require Logger
 
-
   alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo

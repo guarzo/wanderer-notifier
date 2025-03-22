@@ -216,7 +216,10 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         validate_static_info_data(direct_data)
 
       _ ->
-        Logger.error("[ResponseValidator] Unexpected static info response format: #{inspect(response_data)}")
+        Logger.error(
+          "[ResponseValidator] Unexpected static info response format: #{inspect(response_data)}"
+        )
+
         {:error, "Expected 'data' field in system static info response"}
     end
   end
@@ -225,7 +228,10 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
     if valid_static_info?(data) do
       {:ok, data}
     else
-      Logger.warning("[ResponseValidator] System static info has invalid format: #{inspect(data)}")
+      Logger.warning(
+        "[ResponseValidator] System static info has invalid format: #{inspect(data)}"
+      )
+
       {:error, "System static info has invalid format"}
     end
   end
@@ -275,10 +281,10 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   end
 
   defp valid_static_info?(info) do
-    is_map(info) and
-    is_list(Map.get(info, "statics", nil)) and
     # Check for required minimal fields per documentation
-    (Map.has_key?(info, "solar_system_id") or Map.has_key?(info, "class_title"))
+    is_map(info) and
+      is_list(Map.get(info, "statics", nil)) and
+      (Map.has_key?(info, "solar_system_id") or Map.has_key?(info, "class_title"))
   end
 
   # Helper to safely get a nested value with a default
@@ -291,6 +297,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
 
   # Helper functions for logging invalid examples
   defp log_invalid_system_example([]), do: :ok
+
   defp log_invalid_system_example(invalid_systems) do
     Logger.debug(
       "[ResponseValidator] Example invalid system: #{inspect(List.first(invalid_systems))}"
@@ -298,6 +305,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   end
 
   defp log_invalid_character_example([]), do: :ok
+
   defp log_invalid_character_example(invalid_characters) do
     Logger.debug(
       "[ResponseValidator] Example invalid character: #{inspect(List.first(invalid_characters))}"
@@ -305,6 +313,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   end
 
   defp log_invalid_activity_example([]), do: :ok
+
   defp log_invalid_activity_example(invalid_entries) do
     Logger.debug(
       "[ResponseValidator] Example invalid activity entry: #{inspect(List.first(invalid_entries))}"

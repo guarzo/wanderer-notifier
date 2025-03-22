@@ -67,7 +67,6 @@ defmodule WandererNotifier.Web.Router do
     end
   end
 
-
   # Handle client-side routing for the React app - Map Tools
   get "/map-tools/*path" do
     if Config.map_tools_enabled?() do

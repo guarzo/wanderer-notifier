@@ -49,7 +49,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Ensure system data is cached
   defp ensure_system_data_cached(system, system_id_str) do
-    unless CacheRepo.get("map:system:#{system_id_str}") do
+    if !CacheRepo.get("map:system:#{system_id_str}") do
       # Create and store system data
       system_data = create_system_data(system, system_id_str)
       CacheRepo.put("map:system:#{system_id_str}", system_data)
@@ -127,7 +127,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Add system to map cache if needed
   defp add_to_system_map_if_needed(system_id_str, system_data) do
-    unless CacheRepo.get("map:system:#{system_id_str}") do
+    if !CacheRepo.get("map:system:#{system_id_str}") do
       CacheRepo.put("map:system:#{system_id_str}", system_data)
     end
   end
@@ -236,7 +236,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Ensure character data is cached
   defp ensure_character_data_cached(character, character_id_str) do
-    unless CacheRepo.get("map:character:#{character_id_str}") do
+    if !CacheRepo.get("map:character:#{character_id_str}") do
       # Create and store character data
       character_data = create_character_data(character, character_id_str)
       CacheRepo.put("map:character:#{character_id_str}", character_data)
@@ -311,7 +311,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Add character to map cache if needed
   defp add_to_character_map_if_needed(character_id_str, character_data) do
-    unless CacheRepo.get("map:character:#{character_id_str}") do
+    if !CacheRepo.get("map:character:#{character_id_str}") do
       CacheRepo.put("map:character:#{character_id_str}", character_data)
     end
   end

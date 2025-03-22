@@ -38,7 +38,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
           {:ok, [Character.t()]} | {:error, term()}
   def update_tracked_characters(cached_characters \\ nil) do
     Logger.debug("[CharactersClient] Starting update of tracked characters")
-    
+
     with {:ok, _} <- check_characters_endpoint_availability(),
          {:ok, url} <- UrlBuilder.build_url("map/characters"),
          {:ok, body} <- fetch_characters_data(url) do
@@ -47,7 +47,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       {:error, {:http_error, _}} = error ->
         # HTTP errors already logged in fetch_characters_data
         error
-        
+
       {:error, reason} = error ->
         if is_tuple(reason) and tuple_size(reason) == 3 and elem(reason, 0) == :domain_error do
           # Domain errors (like unavailable endpoint) already logged
@@ -59,19 +59,19 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         end
     end
   end
-  
+
   # Fetch character data from the API
   defp fetch_characters_data(url) do
     headers = UrlBuilder.get_auth_headers()
-    
+
     case Client.get(url, headers) do
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
         {:ok, body}
-        
+
       {:ok, %{status_code: status_code}} ->
         Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
         {:error, {:http_error, status_code}}
-        
+
       {:error, reason} ->
         Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
         {:error, {:http_error, reason}}
@@ -216,57 +216,59 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       e -> handle_unexpected_activity_error(e)
     end
   end
-  
+
   # Build URL for character activity endpoint
   defp build_activity_url(slug) do
     case UrlBuilder.build_url("map/character-activity", %{days: 1}, slug) do
-      {:ok, url} -> {:ok, url}
+      {:ok, url} ->
+        {:ok, url}
+
       {:error, reason} ->
         Logger.error("[CharactersClient] Failed to build URL or headers: #{inspect(reason)}")
         {:error, reason}
     end
   end
-  
+
   # Fetch activity data from API
   defp fetch_activity_data(url) do
     headers = UrlBuilder.get_auth_headers()
-    
+
     case Client.get(url, headers) do
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
         {:ok, body}
-        
+
       {:ok, %{status_code: status_code}} ->
         Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
         # Determine if this error is retryable
         error_type = if status_code >= 500, do: :retriable, else: :permanent
         {:error, {error_type, {:http_error, status_code}}}
-        
+
       {:error, reason} ->
         Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
         # Network errors are generally retryable
         {:error, {:retriable, {:http_error, reason}}}
     end
   end
-  
+
   # Parse activity data from response body
   defp parse_activity_data(body) do
     case Jason.decode(body) do
       {:ok, parsed_json} ->
         # Extract and format activity data
         activity_data = extract_activity_data(parsed_json)
-        
+
         Logger.debug(
           "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
         )
-        
+
         {:ok, activity_data}
-        
+
       {:error, reason} ->
         log_json_parse_error(body, reason)
         {:error, {:json_parse_error, reason}}
     end
   end
-  
+
   # Extract activity data from parsed JSON with fallbacks for different formats
   defp extract_activity_data(parsed_json) do
     case parsed_json do
@@ -276,16 +278,14 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       _ -> []
     end
   end
-  
+
   # Log JSON parse error with sample of body
   defp log_json_parse_error(body, reason) do
     Logger.error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
-    
-    Logger.debug(
-      "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
-    )
+
+    Logger.debug("[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}...")
   end
-  
+
   # Handle unexpected errors during character activity fetch
   defp handle_unexpected_activity_error(error) do
     error_message = "Error fetching character activity: #{inspect(error)}"
@@ -313,10 +313,10 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       # Ensure we have lists to work with
       new_chars = new_characters || []
       cached_chars = cached_characters || []
-      
+
       # Find characters that are in new_chars but not in cached_chars
       added_characters = find_added_characters(new_chars, cached_chars)
-      
+
       # Notify about added characters
       notify_characters(added_characters)
     else
@@ -324,33 +324,35 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       {:ok, []}
     end
   end
-  
+
   # Find characters that exist in new list but not in cached list
-  defp find_added_characters(_new_chars, []), do: []  # No cached chars - first run, don't spam notifications
-  
+  # No cached chars - first run, don't spam notifications
+  defp find_added_characters(_new_chars, []), do: []
+
   defp find_added_characters(new_chars, cached_chars) do
     # Find characters by their eve_id that are in new but not in cached
     new_char_ids = MapSet.new(new_chars, & &1.eve_id)
     cached_char_ids = MapSet.new(cached_chars, & &1.eve_id)
-    
+
     # Get the difference (characters in new but not in cached)
     new_ids = MapSet.difference(new_char_ids, cached_char_ids)
-    
+
     # Return the full character structs for new characters
     Enum.filter(new_chars, fn char -> MapSet.member?(new_ids, char.eve_id) end)
   end
-  
+
   # Send notifications for each new character
-  defp notify_characters([]), do: {:ok, []}  # No new characters
-  
+  # No new characters
+  defp notify_characters([]), do: {:ok, []}
+
   defp notify_characters(added_characters) do
     Logger.info("[CharactersClient] Found #{length(added_characters)} new tracked characters")
-    
+
     Enum.each(added_characters, &send_character_notification_safely/1)
-    
+
     {:ok, added_characters}
   end
-  
+
   # Safely send a notification for a character, handling errors
   defp send_character_notification_safely(character) do
     try do

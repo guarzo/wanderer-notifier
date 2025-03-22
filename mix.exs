@@ -41,7 +41,7 @@ defmodule WandererNotifier.MixProject do
       {:mime, "~> 2.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:exsync, "~> 0.2", only: :dev},
-      {:mox, "~> 1.0", only: :test},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 

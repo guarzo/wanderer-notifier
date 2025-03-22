@@ -13,7 +13,8 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
   # Default chart settings
   @default_width 800
   @default_height 400
-  @default_background_color "rgb(47, 49, 54)"  # Discord dark theme
+  # Discord dark theme
+  @default_background_color "rgb(47, 49, 54)"
 
   @doc """
   Normalizes a chart configuration to ensure it's a proper ChartConfig struct.
@@ -63,7 +64,8 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
       options: extract_field(config, :options, "options", %{}),
       width: extract_field(config, :width, "width", @default_width),
       height: extract_field(config, :height, "height", @default_height),
-      background_color: extract_field(config, :background_color, "background_color", @default_background_color)
+      background_color:
+        extract_field(config, :background_color, "background_color", @default_background_color)
     }
   end
 
@@ -71,7 +73,6 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
   defp extract_field(config, atom_key, string_key, default \\ nil) do
     config[atom_key] || config[string_key] || default
   end
-
 
   @doc """
   Prepares a chart configuration for sending to the Node.js chart service.
@@ -93,12 +94,13 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
         chart_map = ChartConfig.to_json_map(chart_config)
 
         # Return formatted for node service
-        {:ok, %{
-          chart: chart_map,
-          width: chart_config.width,
-          height: chart_config.height,
-          background_color: chart_config.background_color
-        }}
+        {:ok,
+         %{
+           chart: chart_map,
+           width: chart_config.width,
+           height: chart_config.height,
+           background_color: chart_config.background_color
+         }}
 
       {:error, reason} ->
         {:error, reason}
@@ -119,9 +121,10 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
   """
   def generate_filename(filename \\ nil) do
     # Generate a unique filename if none provided
-    base_name = if is_nil(filename) || filename == "",
-      do: "chart_#{:os.system_time(:millisecond)}",
-      else: filename
+    base_name =
+      if is_nil(filename) || filename == "",
+        do: "chart_#{:os.system_time(:millisecond)}",
+        else: filename
 
     # Add .png extension if not present
     if String.ends_with?(base_name, ".png"),

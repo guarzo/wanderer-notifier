@@ -7,7 +7,8 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
 
   defmacro __using__(opts) do
     quote do
-      use WandererNotifier.Schedulers.BaseScheduler, name: unquote(Keyword.get(opts, :name, __CALLER__.module))
+      use WandererNotifier.Schedulers.BaseScheduler,
+        name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Default schedule time (hour and minute) if not specified
       @default_hour unquote(Keyword.get(opts, :default_hour, 12))

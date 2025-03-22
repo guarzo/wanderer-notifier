@@ -33,63 +33,63 @@ defmodule WandererNotifier.Application do
       start_full_application()
     end
   end
-  
+
   # Start the application with all components
   defp start_full_application do
     Logger.info("Starting WandererNotifier...")
-    
+
     # Get the environment from system environment variable
     env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
-    
+
     # Handle development-specific setup
     maybe_start_dev_tools(env)
-    
+
     # Set the environment in the application configuration
     Application.put_env(:wanderer_notifier, :env, env)
-    
+
     # Log application startup information
     log_startup_info(env)
-    
+
     # Start the supervisor and schedule startup message
     start_supervisor_and_notify()
   end
-  
+
   # Start development tools if in dev environment
   defp maybe_start_dev_tools(:dev) do
     Logger.info("Starting ExSync for hot code reloading")
-    
+
     case Application.ensure_all_started(:exsync) do
       {:ok, _} -> Logger.info("ExSync started successfully")
       {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
     end
-    
+
     # Start watchers for frontend asset rebuilding in development
     start_watchers()
   end
-  
+
   defp maybe_start_dev_tools(_other_env), do: :ok
-  
+
   # Log application startup information
   defp log_startup_info(env) do
     Logger.info("Starting WandererNotifier application...")
     Logger.info("Environment: #{env}")
-    
+
     # Log configuration details
     license_key = Config.license_key()
-    
+
     Logger.debug(
       "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
     )
-    
+
     Logger.debug(
       "License Manager: #{if Config.license_manager_api_url(), do: "Configured", else: "Not configured"}"
     )
-    
+
     Logger.debug(
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
     )
   end
-  
+
   # Start supervisor and schedule startup notification
   defp start_supervisor_and_notify do
     # Start the supervisor with all children including Nostrum.Consumer
@@ -98,13 +98,13 @@ defmodule WandererNotifier.Application do
         strategy: :one_for_one,
         name: WandererNotifier.Supervisor
       )
-    
+
     # Send startup message after a short delay to ensure all services are started
     Task.start(fn ->
       Process.sleep(2000)
       send_startup_message()
     end)
-    
+
     result
   end
 

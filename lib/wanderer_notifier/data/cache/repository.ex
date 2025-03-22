@@ -289,7 +289,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
       Map.new(results)
     end)
   end
-  
+
   # Helper function to get a single key from the cache
   defp get_single_key(key) do
     case Cachex.get(@cache_name, key) do

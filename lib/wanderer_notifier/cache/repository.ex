@@ -66,8 +66,9 @@ defmodule WandererNotifier.Cache.Repository do
     configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
 
     # Check if we're in a dev container
-    in_dev_environment = String.contains?(File.cwd!(), "dev-container") or
-                         String.contains?(File.cwd!(), "workspaces")
+    in_dev_environment =
+      String.contains?(File.cwd!(), "dev-container") or
+        String.contains?(File.cwd!(), "workspaces")
 
     if in_dev_environment do
       # Use a directory in the current workspace

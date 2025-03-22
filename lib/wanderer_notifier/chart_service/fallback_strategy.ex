@@ -14,15 +14,15 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   Options for fallback strategies
   """
   @type fallback_options :: [
-    # Function that will be called to attempt download
-    download_fn: (binary() -> {:ok, binary()} | {:error, any()}),
-    # Options for controlling the fallback behavior
-    max_retries: non_neg_integer(),
-    # Enable or disable specific fallback methods
-    enable_download: boolean(),
-    enable_quickchart: boolean(),
-    enable_placeholder: boolean()
-  ]
+          # Function that will be called to attempt download
+          download_fn: (binary() -> {:ok, binary()} | {:error, any()}),
+          # Options for controlling the fallback behavior
+          max_retries: non_neg_integer(),
+          # Enable or disable specific fallback methods
+          enable_download: boolean(),
+          enable_quickchart: boolean(),
+          enable_placeholder: boolean()
+        ]
 
   @doc """
   Executes a primary chart generation function with a fallback strategy.
@@ -37,10 +37,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
     - {:error, reason} if all methods fail
   """
   @spec with_fallback(
-    (-> {:ok, any()} | {:error, any()}),
-    (-> {:ok, any()} | {:error, any()}),
-    Keyword.t()
-  ) :: {:ok, any()} | {:error, any()}
+          (-> {:ok, any()} | {:error, any()}),
+          (-> {:ok, any()} | {:error, any()}),
+          Keyword.t()
+        ) :: {:ok, any()} | {:error, any()}
   def with_fallback(primary_fn, fallback_fn, _options \\ []) do
     # Try the primary function
     case primary_fn.() do
@@ -99,21 +99,24 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         # Exponential backoff - wait longer between retries
         if attempt < max_retries do
           # Sleep for 500ms, 1000ms, etc.
-          :timer.sleep(500 * (2 ** attempt))
+          :timer.sleep(500 * 2 ** attempt)
           do_download_with_retry(url, max_retries, attempt + 1)
         else
           {:error, "Failed to download chart image after #{attempt + 1} attempts: HTTP #{status}"}
         end
 
       {:error, reason} ->
-        Logger.error("Failed to download chart image: #{inspect(reason)}, attempt: #{attempt + 1}")
+        Logger.error(
+          "Failed to download chart image: #{inspect(reason)}, attempt: #{attempt + 1}"
+        )
 
         if attempt < max_retries do
           # Sleep for 500ms, 1000ms, etc.
-          :timer.sleep(500 * (2 ** attempt))
+          :timer.sleep(500 * 2 ** attempt)
           do_download_with_retry(url, max_retries, attempt + 1)
         else
-          {:error, "Failed to download chart image after #{attempt + 1} attempts: #{inspect(reason)}"}
+          {:error,
+           "Failed to download chart image after #{attempt + 1} attempts: #{inspect(reason)}"}
         end
     end
   end
@@ -137,12 +140,12 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
     - {:error, reason} if all methods fail
   """
   @spec with_comprehensive_fallback(
-    (-> {:ok, binary()} | {:error, any()}),
-    (-> {:ok, binary()} | {:error, any()}),
-    binary(),
-    binary(),
-    Keyword.t()
-  ) :: {:ok, binary()} | {:error, any()}
+          (-> {:ok, binary()} | {:error, any()}),
+          (-> {:ok, binary()} | {:error, any()}),
+          binary(),
+          binary(),
+          Keyword.t()
+        ) :: {:ok, binary()} | {:error, any()}
   def with_comprehensive_fallback(primary_fn, quickchart_fn, title, message, options \\ []) do
     enable_quickchart = Keyword.get(options, :enable_quickchart, true)
     enable_placeholder = Keyword.get(options, :enable_placeholder, true)
@@ -154,12 +157,29 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
 
       {:error, primary_reason} ->
         Logger.warning("Primary chart generation failed: #{inspect(primary_reason)}.")
-        try_fallbacks(quickchart_fn, title, message, options, primary_reason, enable_quickchart, enable_placeholder)
+
+        try_fallbacks(
+          quickchart_fn,
+          title,
+          message,
+          options,
+          primary_reason,
+          enable_quickchart,
+          enable_placeholder
+        )
     end
   end
 
   # Helper function to try fallback methods after primary fails
-  defp try_fallbacks(quickchart_fn, title, message, options, primary_reason, true, enable_placeholder) do
+  defp try_fallbacks(
+         quickchart_fn,
+         title,
+         message,
+         options,
+         primary_reason,
+         true,
+         enable_placeholder
+       ) do
     # Try QuickChart.io
     Logger.info("Falling back to QuickChart.io")
 
@@ -169,12 +189,27 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
 
       {:error, quickchart_reason} ->
         Logger.error("QuickChart.io fallback failed: #{inspect(quickchart_reason)}")
-        maybe_use_placeholder(enable_placeholder, title, message, primary_reason, quickchart_reason)
+
+        maybe_use_placeholder(
+          enable_placeholder,
+          title,
+          message,
+          primary_reason,
+          quickchart_reason
+        )
     end
   end
 
   # Skip QuickChart, go straight to placeholder or fail
-  defp try_fallbacks(_quickchart_fn, title, message, _options, primary_reason, false, enable_placeholder) do
+  defp try_fallbacks(
+         _quickchart_fn,
+         title,
+         message,
+         _options,
+         primary_reason,
+         false,
+         enable_placeholder
+       ) do
     Logger.info("QuickChart disabled. Falling back to placeholder chart")
     maybe_use_placeholder(enable_placeholder, title, message, primary_reason, nil)
   end
@@ -221,10 +256,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   def generate_placeholder_chart(title, message \\ "Chart data unavailable") do
     # This is a very simple 1x1 transparent PNG that we'll use as a fallback
     # In a real implementation, you might want to generate a more useful placeholder
-    transparent_png = <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0,
-      1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120,
-      156, 99, 250, 207, 0, 0, 3, 1, 1, 0, 39, 68, 107, 74, 0, 0, 0, 0, 73, 69, 78, 68,
-      174, 66, 96, 130>>
+    transparent_png =
+      <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8,
+        6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 250, 207, 0, 0,
+        3, 1, 1, 0, 39, 68, 107, 74, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130>>
 
     # Log that we're using the placeholder
     Logger.warning("Using placeholder chart for '#{title}': #{message}")

@@ -57,7 +57,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl true
       def handle_cast(:execute_now, %{disabled: true} = state) do
-        Logger.info("#{inspect(@scheduler_name)}: Skipping manually triggered execution (disabled)")
+        Logger.info(
+          "#{inspect(@scheduler_name)}: Skipping manually triggered execution (disabled)"
+        )
+
         {:noreply, state}
       end
 
@@ -77,7 +80,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       # Default handler for unexpected messages
       def handle_unexpected_message(message, state) do
-        Logger.warning("#{inspect(@scheduler_name)}: Received unexpected message: #{inspect(message)}")
+        Logger.warning(
+          "#{inspect(@scheduler_name)}: Received unexpected message: #{inspect(message)}"
+        )
+
         {:noreply, state}
       end
 

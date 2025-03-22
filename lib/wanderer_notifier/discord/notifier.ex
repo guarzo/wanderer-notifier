@@ -110,31 +110,31 @@ defmodule WandererNotifier.Discord.Notifier do
     recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
     process_kills_for_notification(recent_kills, message)
   end
-  
+
   # Process kills list for test notification
   defp process_kills_for_notification([], message) do
     # No recent kills available
     %{"content" => message, "embeds" => []}
   end
-  
+
   defp process_kills_for_notification(recent_kills, message) do
     recent_kill = List.first(recent_kills)
     kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
-    
+
     if kill_id do
       process_kill_with_id(recent_kill, kill_id)
     else
       %{"content" => message, "embeds" => []}
     end
   end
-  
+
   # Process a kill that has a valid ID
   defp process_kill_with_id(recent_kill, kill_id) do
     # Convert to Killmail struct if needed
     killmail = convert_to_killmail(recent_kill, kill_id)
     send_enriched_kill_embed(killmail, kill_id)
   end
-  
+
   # Convert kill data to a Killmail struct
   defp convert_to_killmail(kill_data, kill_id) do
     if is_struct(kill_data, Killmail) do

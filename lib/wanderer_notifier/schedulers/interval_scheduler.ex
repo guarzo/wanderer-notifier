@@ -7,7 +7,8 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
   defmacro __using__(opts) do
     quote do
-      use WandererNotifier.Schedulers.BaseScheduler, name: unquote(Keyword.get(opts, :name, __CALLER__.module))
+      use WandererNotifier.Schedulers.BaseScheduler,
+        name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Default interval is 1 hour (in milliseconds) if not specified
       @default_interval unquote(Keyword.get(opts, :default_interval, 60 * 60 * 1000))
@@ -89,7 +90,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
       defp schedule_next(interval) do
         if enabled?() do
           Process.send_after(self(), :execute, interval)
-          Logger.debug("#{inspect(@scheduler_name)}: Scheduled next execution in #{interval / 1000 / 60} minutes")
+
+          Logger.debug(
+            "#{inspect(@scheduler_name)}: Scheduled next execution in #{interval / 1000 / 60} minutes"
+          )
         else
           Logger.info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
         end

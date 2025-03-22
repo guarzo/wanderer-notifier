@@ -116,7 +116,6 @@ defmodule WandererNotifier.Core.Config do
     discord_channel_id_for(:activity_charts)
   end
 
-
   @doc """
   Returns whether a specific feature is enabled based on its environment variable.
 
@@ -151,7 +150,6 @@ defmodule WandererNotifier.Core.Config do
   def charts_enabled? do
     feature_enabled?(:charts)
   end
-
 
   @doc """
   Returns whether map tools functionality is enabled.

@@ -46,7 +46,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
         {:error, reason, state}
     end
   end
-  
+
   # Process each chart config and generate charts
   defp process_chart_configs(activity_data) do
     Enum.map(@chart_configs, fn config ->
@@ -55,7 +55,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
       {config.type, result}
     end)
   end
-  
+
   # Generate a chart based on its type and configuration
   defp generate_chart(config, activity_data) do
     try do
@@ -72,38 +72,38 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
         {:error, error_message}
     end
   end
-  
+
   # Handle different chart types
   defp generate_chart_by_type(:activity_summary, activity_data, title) do
     ActivityChartAdapter.send_chart_to_discord(activity_data, title)
   end
-  
+
   defp generate_chart_by_type(unknown_type, _activity_data, _title) do
     {:error, "Unknown chart type: #{unknown_type}"}
   end
-  
+
   # Process results and return appropriate response
   defp process_results(results, state) do
     # Log results
     Enum.each(results, &log_chart_result/1)
-    
+
     # Count successful charts
     success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
     Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
-    
+
     {:ok, results, state}
   end
-  
+
   # Log the result of each chart generation
   defp log_chart_result({type, result}) do
     case result do
       {:ok, url, title} ->
         Logger.info("Successfully sent #{type} chart to Discord: #{title}")
         Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
-        
+
       {:error, reason} ->
         Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
-        
+
       _ ->
         Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
     end

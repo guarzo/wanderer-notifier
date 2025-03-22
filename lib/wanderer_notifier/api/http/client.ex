@@ -245,7 +245,9 @@ defmodule WandererNotifier.Api.Http.Client do
     # Determine if we should retry
     if retry_count < config.max_retries and transient_error?(reason) do
       # Calculate exponential backoff with jitter
-      current_backoff = min(config.initial_backoff * :math.pow(2, retry_count), @default_max_backoff)
+      current_backoff =
+        min(config.initial_backoff * :math.pow(2, retry_count), @default_max_backoff)
+
       jitter = :rand.uniform(trunc(current_backoff * 0.2))
       actual_backoff = trunc(current_backoff + jitter)
 
@@ -274,9 +276,10 @@ defmodule WandererNotifier.Api.Http.Client do
   defp log_request_failure(method_str, label, retry_count, reason) do
     log_level = if retry_count > 0, do: :error, else: :warning
 
-    message = "HTTP #{method_str} [#{label}] failed" <>
-      if(retry_count > 0, do: " after #{retry_count + 1} attempts", else: "") <>
-      ": #{inspect(reason)}"
+    message =
+      "HTTP #{method_str} [#{label}] failed" <>
+        if(retry_count > 0, do: " after #{retry_count + 1} attempts", else: "") <>
+        ": #{inspect(reason)}"
 
     case log_level do
       :error -> Logger.error(message)
@@ -382,12 +385,23 @@ defmodule WandererNotifier.Api.Http.Client do
       code when code in 200..299 ->
         handle_success_response(body, decode_json)
 
-      401 -> {:error, :unauthorized}
-      403 -> {:error, :forbidden}
-      404 -> {:error, :not_found}
-      429 -> {:error, :rate_limited}
-      code when code in 500..599 -> {:error, :server_error}
-      _ -> {:error, {:unexpected_status, status}}
+      401 ->
+        {:error, :unauthorized}
+
+      403 ->
+        {:error, :forbidden}
+
+      404 ->
+        {:error, :not_found}
+
+      429 ->
+        {:error, :rate_limited}
+
+      code when code in 500..599 ->
+        {:error, :server_error}
+
+      _ ->
+        {:error, {:unexpected_status, status}}
     end
   end
 

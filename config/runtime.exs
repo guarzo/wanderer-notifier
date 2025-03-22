@@ -25,8 +25,6 @@ end
 config :nostrum,
   token: trimmed_token
 
-
-
 # Discord and Map Configuration
 config :wanderer_notifier,
   discord_bot_token: trimmed_token,

@@ -186,7 +186,7 @@ defmodule WandererNotifier.Data.Character do
   defp validate_required_fields(eve_id, name) do
     require Logger
 
-    unless eve_id && name do
+    if !(eve_id && name) do
       Logger.error(
         "[Character.new] Missing required fields: eve_id=#{inspect(eve_id)}, name=#{inspect(name)}"
       )
@@ -253,7 +253,7 @@ defmodule WandererNotifier.Data.Character do
   @spec from_map(map()) :: t()
   def from_map(attrs) when is_map(attrs) do
     # Validate required fields
-    unless Map.has_key?(attrs, :eve_id) && Map.has_key?(attrs, :name) do
+    if !(Map.has_key?(attrs, :eve_id) && Map.has_key?(attrs, :name)) do
       raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
     end
 

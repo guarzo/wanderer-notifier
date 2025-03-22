@@ -653,7 +653,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Send notification for new system
   defp send_notification(system) do
     # Skip if notifications are disabled
-    unless Config.system_notifications_enabled?() do
+    if !Config.system_notifications_enabled?() do
       Logger.debug("[send_notification] System notifications are disabled")
       return(:ok)
     end

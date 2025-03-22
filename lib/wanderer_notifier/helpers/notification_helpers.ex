@@ -13,44 +13,46 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @spec extract_character_id(map()) :: String.t() | nil
   def extract_character_id(character) when is_map(character) do
     # Try extracting from different possible locations in order of preference
-    character_id = 
-      check_top_level_id(character) || 
-      check_nested_character_id(character)
-    
+    character_id =
+      check_top_level_id(character) ||
+        check_nested_character_id(character)
+
     # Log error if no valid ID was found
     if is_nil(character_id) do
       Logger.error(
         "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
       )
     end
-    
+
     character_id
   end
-  
+
   # Check for valid ID at the top level of the character map
   defp check_top_level_id(character) do
     # Check character_id first, then eve_id
-    check_valid_id(character, "character_id") || 
-    check_valid_id(character, "eve_id")
+    check_valid_id(character, "character_id") ||
+      check_valid_id(character, "eve_id")
   end
-  
+
   # Check for valid ID in nested character object
   defp check_nested_character_id(character) do
     # Return nil if there's no nested character object
     nested = character["character"]
+
     if is_map(nested) do
       # Check each possible key in the nested object
-      check_valid_id(nested, "eve_id") || 
-      check_valid_id(nested, "character_id") || 
-      check_valid_id(nested, "id")
+      check_valid_id(nested, "eve_id") ||
+        check_valid_id(nested, "character_id") ||
+        check_valid_id(nested, "id")
     else
       nil
     end
   end
-  
+
   # Helper to check if a specific key contains a valid numeric ID
   defp check_valid_id(map, key) do
     value = map[key]
+
     if is_binary(value) && valid_numeric_id?(value) do
       value
     else
@@ -68,7 +70,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   def extract_character_name(character, default \\ "Unknown Character") when is_map(character) do
     # Try extracting name from different locations in order of preference
     name = check_top_level_name(character) || check_nested_character_name(character)
-    
+
     if name do
       name
     else
@@ -77,15 +79,16 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       if character_id, do: "Character #{character_id}", else: default
     end
   end
-  
+
   # Check for name at the top level of the character map
   defp check_top_level_name(character) do
     character["character_name"] || character["name"]
   end
-  
+
   # Check for name in nested character object
   defp check_nested_character_name(character) do
     nested = character["character"]
+
     if is_map(nested) do
       nested["name"] || nested["character_name"]
     else
@@ -309,7 +312,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
 
   defp get_systems_from_individual_caches(cache_repo) do
     system_ids = get_valid_system_ids(cache_repo)
-    
+
     if system_ids do
       fetch_individual_systems(cache_repo, system_ids)
     else

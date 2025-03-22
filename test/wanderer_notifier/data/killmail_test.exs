@@ -65,13 +65,14 @@ defmodule WandererNotifier.Data.KillmailTest do
     test "allows direct field access via string keys", %{killmail: killmail} do
       assert killmail["killmail_id"] == "12345"
       assert killmail["zkb"] == %{"totalValue" => 1_000_000_000, "points" => 100}
+
       assert killmail["esi_data"] == %{
-        "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
-        "solar_system_id" => 30_000_142,
-        "attackers" => [
-          %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
-        ]
-      }
+               "victim" => %{"character_id" => 93_847_759, "ship_type_id" => 33_470},
+               "solar_system_id" => 30_000_142,
+               "attackers" => [
+                 %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
+               ]
+             }
     end
 
     test "allows access to nested ESI data via string keys", %{killmail: killmail} do
@@ -85,9 +86,10 @@ defmodule WandererNotifier.Data.KillmailTest do
     end
 
     test "get_and_update allows modification of fields", %{killmail: killmail} do
-      {old_value, updated_killmail} = Access.get_and_update(killmail, "killmail_id", fn current ->
-        {current, "54321"}
-      end)
+      {old_value, updated_killmail} =
+        Access.get_and_update(killmail, "killmail_id", fn current ->
+          {current, "54321"}
+        end)
 
       assert old_value == "12345"
       assert updated_killmail.killmail_id == "54321"
@@ -122,11 +124,17 @@ defmodule WandererNotifier.Data.KillmailTest do
     end
 
     test "get_victim returns victim data", %{killmail: killmail} do
-      assert Killmail.get_victim(killmail) == %{"character_id" => 93_847_759, "ship_type_id" => 33_470}
+      assert Killmail.get_victim(killmail) == %{
+               "character_id" => 93_847_759,
+               "ship_type_id" => 33_470
+             }
     end
 
     test "get_attacker returns first attacker", %{killmail: killmail} do
-      assert Killmail.get_attacker(killmail) == %{"character_id" => 95_465_499, "ship_type_id" => 11_987}
+      assert Killmail.get_attacker(killmail) == %{
+               "character_id" => 95_465_499,
+               "ship_type_id" => 11_987
+             }
     end
 
     test "get_system_id returns solar system ID", %{killmail: killmail} do

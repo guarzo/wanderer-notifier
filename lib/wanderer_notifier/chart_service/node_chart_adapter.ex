@@ -25,6 +25,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
         case GenServer.call(WandererNotifier.ChartService.ChartServiceManager, :get_url, 1000) do
           url when is_binary(url) ->
             url
+
           _ ->
             Logger.warning("ChartServiceManager returned invalid URL, using default")
             "http://localhost:3001"
@@ -38,6 +39,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
         :exit, {:timeout, _} ->
           Logger.warning("Timeout getting URL from ChartServiceManager")
           "http://localhost:3001"
+
         :exit, reason ->
           Logger.warning("Exit when getting URL from ChartServiceManager: #{inspect(reason)}")
           "http://localhost:3001"

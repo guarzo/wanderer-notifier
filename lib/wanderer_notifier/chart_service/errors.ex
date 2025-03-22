@@ -84,14 +84,14 @@ defmodule WandererNotifier.ChartService.Errors do
   def to_exception({:error, reason}, error_type \\ nil) do
     # Determine which error type to use
     module = determine_error_module(error_type)
-    
+
     # Format the message based on reason type
     message = format_reason_message(reason)
-    
+
     # Create the exception struct
     struct(module, %{message: message, details: reason})
   end
-  
+
   # Determine which error module to use based on the error_type
   defp determine_error_module(nil), do: ConfigurationError
   defp determine_error_module(ConfigurationError), do: ConfigurationError
@@ -99,7 +99,7 @@ defmodule WandererNotifier.ChartService.Errors do
   defp determine_error_module(RenderingError), do: RenderingError
   defp determine_error_module(ServiceError), do: ServiceError
   defp determine_error_module(_), do: ConfigurationError
-  
+
   # Format the error message based on the reason type
   defp format_reason_message(reason) when is_binary(reason), do: reason
   defp format_reason_message(reason) when is_atom(reason), do: Atom.to_string(reason)

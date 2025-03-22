@@ -11,7 +11,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   @node_chart_service_path "chart-service"
   @default_port 3001
-  @restart_delay 5000 # 5 seconds between restart attempts
+  # 5 seconds between restart attempts
+  @restart_delay 5000
   @max_restart_attempts 5
 
   # Client API
@@ -60,14 +61,15 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       Logger.warning("Charts functionality is disabled. Chart service will not start.")
     end
 
-    {:ok, %{
-      port: port,
-      process: nil,
-      url: "http://localhost:#{port}",
-      status: if(WandererNotifier.Core.Config.charts_enabled?(), do: :starting, else: :disabled),
-      restart_attempts: 0,
-      last_started_at: nil
-    }}
+    {:ok,
+     %{
+       port: port,
+       process: nil,
+       url: "http://localhost:#{port}",
+       status: if(WandererNotifier.Core.Config.charts_enabled?(), do: :starting, else: :disabled),
+       restart_attempts: 0,
+       last_started_at: nil
+     }}
   end
 
   @impl true
@@ -102,11 +104,12 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     Logger.info("Manually restarting Node.js chart service")
     {:ok, process} = start_chart_service_process(state.port)
 
-    new_state = %{state |
-      process: process,
-      status: :running,
-      restart_attempts: 0,
-      last_started_at: DateTime.utc_now()
+    new_state = %{
+      state
+      | process: process,
+        status: :running,
+        restart_attempts: 0,
+        last_started_at: DateTime.utc_now()
     }
 
     {:reply, :ok, new_state}
@@ -128,11 +131,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           # Schedule a health check
           schedule_health_check()
 
-          {:noreply, %{state |
-            process: process,
-            status: :running,
-            last_started_at: DateTime.utc_now()
-          }}
+          {:noreply,
+           %{state | process: process, status: :running, last_started_at: DateTime.utc_now()}}
 
         {:error, reason} ->
           Logger.error("Failed to start Node.js chart service: #{inspect(reason)}")
@@ -182,7 +182,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       {:noreply, %{state | status: :disabled}}
     end
   end
-  
+
   # Handle chart service restart when charts are enabled
   defp handle_chart_service_restart(state) do
     if state.restart_attempts >= @max_restart_attempts do
@@ -191,55 +191,60 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       attempt_service_restart(state)
     end
   end
-  
+
   # Handle when maximum restart attempts have been reached
   defp handle_max_restart_attempts_reached(state) do
-    Logger.error("Maximum restart attempts (#{@max_restart_attempts}) reached for Node.js chart service")
+    Logger.error(
+      "Maximum restart attempts (#{@max_restart_attempts}) reached for Node.js chart service"
+    )
+
     # Reset restart attempts but keep status as failed
     {:noreply, %{state | restart_attempts: 0, status: :failed}}
   end
-  
+
   # Attempt to restart the chart service
   defp attempt_service_restart(state) do
-    Logger.info("Attempting to restart Node.js chart service (attempt #{state.restart_attempts + 1})")
-    
+    Logger.info(
+      "Attempting to restart Node.js chart service (attempt #{state.restart_attempts + 1})"
+    )
+
     # Stop existing process if still running
     if process_alive?(state.process, state) do
       stop_process(state.process)
     end
-    
+
     # Start a new process and handle the result
     case start_chart_service_process(state.port) do
-      {:ok, process} -> 
+      {:ok, process} ->
         handle_successful_restart(state, process)
-      {:error, reason} -> 
+
+      {:error, reason} ->
         handle_failed_restart(state, reason)
     end
   end
-  
+
   # Handle a successful service restart
   defp handle_successful_restart(state, process) do
     # Restart successful, reset attempts and schedule health check
     schedule_health_check()
-    
-    {:noreply, %{state |
-      process: process,
-      status: :running,
-      restart_attempts: 0,
-      last_started_at: DateTime.utc_now()
-    }}
+
+    {:noreply,
+     %{
+       state
+       | process: process,
+         status: :running,
+         restart_attempts: 0,
+         last_started_at: DateTime.utc_now()
+     }}
   end
-  
+
   # Handle a failed service restart
   defp handle_failed_restart(state, reason) do
     Logger.error("Failed to restart Node.js chart service: #{inspect(reason)}")
     # Increment restart attempts and schedule another attempt
     schedule_restart()
-    
-    {:noreply, %{state |
-      status: :failed,
-      restart_attempts: state.restart_attempts + 1
-    }}
+
+    {:noreply, %{state | status: :failed, restart_attempts: state.restart_attempts + 1}}
   end
 
   # Private helpers
@@ -262,7 +267,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       :timer.sleep(500)
 
       # Using a simple Bash command to start the service in the background
-      bash_cmd = "cd #{service_path} && export CHART_SERVICE_PORT=#{port} && node chart-generator.js > chart-service.log 2>&1 &"
+      bash_cmd =
+        "cd #{service_path} && export CHART_SERVICE_PORT=#{port} && node chart-generator.js > chart-service.log 2>&1 &"
 
       Logger.info("Starting chart service with bash command: #{bash_cmd}")
 
@@ -303,6 +309,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   # Removed unused function
 
   defp process_alive?(nil, _state), do: false
+
   defp process_alive?(port, state) when is_port(port) do
     try do
       # For our bash-launched service, we'll check if the service is responding
@@ -323,6 +330,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   end
 
   defp stop_process(nil), do: :ok
+
   defp stop_process(port) when is_port(port) do
     # Try to kill any running Node.js chart service processes
     System.cmd("bash", ["-c", "pkill -f 'node chart-generator.js' || true"])
@@ -345,7 +353,10 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           :ok
 
         {:ok, {{_, status, _}, _, body}} ->
-          Logger.warning("Health check for Node.js chart service returned status #{status}: #{inspect(body)}")
+          Logger.warning(
+            "Health check for Node.js chart service returned status #{status}: #{inspect(body)}"
+          )
+
           {:error, "Health check failed with status #{status}"}
 
         {:error, reason} ->

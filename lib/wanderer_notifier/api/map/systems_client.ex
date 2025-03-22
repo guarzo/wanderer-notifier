@@ -74,9 +74,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       end
 
     # Convert to MapSystem structs
-    Logger.debug(
-      "[SystemsClient] Parsing #{length(systems_data)} systems from API response"
-    )
+    Logger.debug("[SystemsClient] Parsing #{length(systems_data)} systems from API response")
 
     # Transform each system into a MapSystem struct
     systems = Enum.map(systems_data, &create_map_system/1)
@@ -109,9 +107,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp enrich_wormhole_system(map_system) do
     case SystemStaticInfo.enrich_system(map_system) do
       {:ok, enriched_system} ->
-        Logger.debug(
-          "[SystemsClient] Successfully enriched system #{map_system.name}"
-        )
+        Logger.debug("[SystemsClient] Successfully enriched system #{map_system.name}")
         enriched_system
 
       {:error, _reason} ->
@@ -177,6 +173,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     Logger.info(
       "[SystemsClient] No cached systems found; skipping new system notifications on startup"
     )
+
     []
   end
 
@@ -201,6 +198,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp log_added_systems([]), do: :ok
+
   defp log_added_systems(added_systems) do
     Logger.info("[SystemsClient] Found #{length(added_systems)} new systems to notify about")
   end

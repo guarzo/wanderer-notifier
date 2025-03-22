@@ -49,7 +49,9 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
     if token do
       Logger.debug("[UrlBuilder] Map token is available")
     else
-      Logger.warning("[UrlBuilder] Map token is NOT available - bearer token authentication will not be used")
+      Logger.warning(
+        "[UrlBuilder] Map token is NOT available - bearer token authentication will not be used"
+      )
     end
 
     headers = [
@@ -82,7 +84,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
     # Try to get the slug from config or extract from map_url
     slug =
       Config.map_name() ||
-      extract_slug_from_url(Config.map_url())
+        extract_slug_from_url(Config.map_url())
 
     if is_nil(slug) do
       Logger.error("[UrlBuilder] No map slug provided or configured")
