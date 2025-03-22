@@ -46,9 +46,9 @@ jobs:
       - name: Run tests
         run: mix test
 
-      - name: Generate test coverage
-        run: mix test --cover
-        continue-on-error: true
+      # - name: Generate test coverage
+      #   run: mix test --cover
+      #   continue-on-error: true
 
       - name: Run code quality checks
         run: mix credo
