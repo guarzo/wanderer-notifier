@@ -38,10 +38,9 @@ FROM debian:bullseye-slim
 
 # Install runtime dependencies
 RUN apt-get update -y && \
-    apt-get install -y libstdc++6 openssl ca-certificates ncurses-bin && \
+    apt-get install -y --no-install-recommends libstdc++6 openssl ca-certificates ncurses-bin && \
     apt-get clean && \
     rm -f /var/lib/apt/lists/*_*
-
 # Set working directory
 WORKDIR /app
 
