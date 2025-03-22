@@ -138,7 +138,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   defp get_tracked_characters do
     TrackedCharacter
     |> Query.load([:character_id, :character_name])
-    |> WandererNotifier.Resources.Api.read!()
+    |> WandererNotifier.Resources.Api.read()
   end
 
   # Aggregate statistics for a single character
@@ -171,7 +171,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
           :ship_type_id,
           :ship_type_name
         ])
-        |> WandererNotifier.Resources.Api.read!()
+        |> WandererNotifier.Resources.Api.read()
 
       Logger.info(
         "[KillmailAggregation] Found #{length(killmails)} killmails for character #{character.character_name}"
@@ -186,7 +186,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
         |> Query.filter(character_id: character_id)
         |> Query.filter(period_type: period_type)
         |> Query.filter(period_start: period_start)
-        |> WandererNotifier.Resources.Api.read!()
+        |> WandererNotifier.Resources.Api.read()
         |> List.first()
 
       # Create the statistics record or update existing
@@ -212,13 +212,13 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
           "[KillmailAggregation] Updating existing statistics for #{character.character_name}"
         )
 
-        KillmailStatistic.update!(existing_stat, statistic_attrs, :update_killmail_statistics)
+        WandererNotifier.Resources.Api.update(KillmailStatistic, existing_stat.id, statistic_attrs, action: :update)
       else
         Logger.info(
           "[KillmailAggregation] Creating new statistics for #{character.character_name}"
         )
 
-        KillmailStatistic.create!(statistic_attrs)
+        WandererNotifier.Resources.Api.create(KillmailStatistic, statistic_attrs, action: :create)
       end
 
       :ok
@@ -341,7 +341,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     batch_results =
       Enum.map(batch, fn killmail ->
         # Use proper destroy pattern for Ash resources
-        WandererNotifier.Resources.Api.destroy!(killmail)
+        WandererNotifier.Resources.Api.destroy(Killmail, killmail.id)
       end)
 
     # Count successes and errors

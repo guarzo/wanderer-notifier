@@ -84,6 +84,11 @@ config :wanderer_notifier, :ash_apis, [
   WandererNotifier.Resources.Api
 ]
 
+# Configure Ash Domains
+config :wanderer_notifier, ash_domains: [
+  WandererNotifier.Resources.Api
+]
+
 # Configure compatible foreign key types for Ash relationships
 # This must be set at compile time
 config :ash, :compatible_foreign_key_types, [

@@ -124,7 +124,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   defp get_tracked_characters do
     TrackedCharacter
     |> Query.load([:character_id, :character_name])
-    |> WandererNotifier.Resources.Api.read!()
+    |> WandererNotifier.Resources.Api.read()
   end
 
   # Get weekly statistics for tracked characters
@@ -152,7 +152,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       :period_start,
       :period_end
     ])
-    |> WandererNotifier.Resources.Api.read!()
+    |> WandererNotifier.Resources.Api.read()
   end
 
   # Gets top N characters sorted by kill count

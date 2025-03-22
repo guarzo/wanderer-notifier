@@ -5,7 +5,7 @@ defmodule WandererNotifier.MixProject do
     [
       app: :wanderer_notifier,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases(),
@@ -41,11 +41,10 @@ defmodule WandererNotifier.MixProject do
       {:mime, "~> 2.0"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, "~> 0.17"},
-      {:ash, "~> 2.17"},
-      {:ash_postgres, "~> 1.4"},
+      {:ash, "~> 3.4"},
+      {:ash_postgres, "~> 2.5"},
       {:decimal, "~> 2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:bunt, "~> 1.0.0"},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test},
       {:mock, "~> 0.3.0", only: :test}

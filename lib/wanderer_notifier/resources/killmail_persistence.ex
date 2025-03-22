@@ -86,7 +86,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
     try do
-      Killmail.list_for_character(character_id, from_date, to_date, limit)
+      WandererNotifier.Resources.Api.read(Killmail, 
+        action: :list_for_character, 
+        args: [character_id: character_id, from_date: from_date, to_date: to_date, limit: limit]
+      )
     rescue
       e ->
         Logger.error("[KillmailPersistence] Error fetching killmails: #{Exception.message(e)}")
@@ -223,8 +226,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Creates a new killmail record using Ash
   defp create_killmail_record(attrs) do
     # Use the Ash API for creation to ensure proper handling
-    attrs
-    |> Killmail.create!()
+    WandererNotifier.Resources.Api.create(Killmail, attrs, action: :create)
   end
 
   # Extracts kill time from the killmail

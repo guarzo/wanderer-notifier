@@ -4,6 +4,7 @@ defmodule WandererNotifier.Resources.Killmail do
   Stores killmail data related to tracked characters.
   """
   use Ash.Resource,
+    domain: nil,
     data_layer: AshPostgres.DataLayer,
     extensions: [
       AshPostgres.Resource
@@ -150,10 +151,12 @@ defmodule WandererNotifier.Resources.Killmail do
   end
 
   code_interface do
-    define_for(WandererNotifier.Resources.Api)
-    define(:get_by_killmail_id, args: [:killmail_id])
-    define(:list_for_character, args: [:character_id, :from_date, :to_date, :limit])
-    define(:create, args: [:attributes])
+    define(:get, action: :read)
+    define(:get_by_killmail_id, action: :get_by_killmail_id, args: [:killmail_id])
+    define(:list_for_character, action: :list_for_character, args: [:character_id, :from_date, :to_date, :limit])
+    define(:create, action: :create)
+    define(:update, action: :update)
+    define(:destroy, action: :destroy)
   end
 
   # Custom queries for the code interface

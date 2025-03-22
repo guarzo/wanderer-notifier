@@ -4,6 +4,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   Uses ETS as the data layer since this data is already cached in memory.
   """
   use Ash.Resource,
+    domain: nil,
     data_layer: Ash.DataLayer.Ets,
     extensions: []
 
@@ -41,6 +42,9 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   end
 
   code_interface do
-    define_for(WandererNotifier.Resources.Api)
+    define(:get, action: :read)
+    define(:create, action: :create)
+    define(:update, action: :update)
+    define(:destroy, action: :destroy)
   end
 end

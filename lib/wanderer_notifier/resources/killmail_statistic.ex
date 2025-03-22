@@ -4,6 +4,7 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
   Stores statistics about kills and deaths for tracked characters over different time periods.
   """
   use Ash.Resource,
+    domain: nil,
     data_layer: AshPostgres.DataLayer,
     extensions: [
       AshPostgres.Resource
@@ -191,10 +192,11 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
   end
 
   code_interface do
-    define_for(WandererNotifier.Resources.Api)
-    define(:by_character_and_period, args: [:character_id, :period_type, :start_date])
-    define(:for_character, args: [:character_id, :period_type, :limit])
-    define(:create, args: [:attributes])
-    define(:update, args: [:id, :attributes])
+    define(:get, action: :read)
+    define(:by_character_and_period, action: :by_character_and_period, args: [:character_id, :period_type, :start_date])
+    define(:for_character, action: :for_character, args: [:character_id, :period_type, :limit])
+    define(:create, action: :create)
+    define(:update, action: :update)
+    define(:destroy, action: :destroy)
   end
 end
