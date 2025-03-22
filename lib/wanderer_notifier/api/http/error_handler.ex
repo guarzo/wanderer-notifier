@@ -521,7 +521,7 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
       {:rate_limited, _} ->
         {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
 
-      {:bad_request, 50006} ->
+      {:bad_request, 50_006} ->
         {:domain_error, :discord, {:bad_request, :empty_message}}
 
       {:bad_request, _} ->
