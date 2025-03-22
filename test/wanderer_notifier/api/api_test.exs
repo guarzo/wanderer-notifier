@@ -26,7 +26,7 @@ defmodule WandererNotifier.ApiTest do
     # Test characters endpoint
     char_result = WandererNotifier.MockHTTP.get("https://api.example.com/characters", [], [])
     assert {:ok, %{status: 200, body: char_body}} = char_result
-    assert char_body["character_id"] == 12345
+    assert char_body["character_id"] == 12_345
     assert char_body["name"] == "Test Character"
   end
 end
