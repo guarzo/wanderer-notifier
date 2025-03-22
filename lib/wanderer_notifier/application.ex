@@ -88,6 +88,11 @@ defmodule WandererNotifier.Application do
     Logger.debug(
       "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
     )
+
+    # Log persistence status
+    Logger.info(
+      "Database persistence: #{if persistence_enabled?(), do: "Enabled", else: "Disabled"}"
+    )
   end
 
   # Start supervisor and schedule startup notification
@@ -173,7 +178,7 @@ defmodule WandererNotifier.Application do
   end
 
   defp get_children do
-    [
+    children = [
       {WandererNotifier.NoopConsumer, []},
       # Start the License Manager
       {WandererNotifier.Core.License, []},
@@ -194,6 +199,23 @@ defmodule WandererNotifier.Application do
       # Start the Scheduler Supervisor
       {WandererNotifier.Schedulers.Supervisor, []}
     ]
+
+    # Conditionally add Postgres repo to supervision tree
+    children =
+      if persistence_enabled?() do
+        Logger.info("Persistence enabled - starting database connection")
+        children ++ [WandererNotifier.Repo]
+      else
+        children
+      end
+
+    children
+  end
+
+  # Check if persistence feature is enabled
+  defp persistence_enabled? do
+    Application.get_env(:wanderer_notifier, :persistence, [])
+    |> Keyword.get(:enabled, false)
   end
 
   defp start_watchers do

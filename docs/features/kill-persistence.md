@@ -68,7 +68,7 @@ defmodule WandererNotifier.Resources.Killmail do
     attribute :character_role, :atom, constraints: [one_of: [:attacker, :victim]]
 
     # Character details duplicated for query efficiency
-    attribute :related_character_id, :integer
+    attribute :related_character_id, :integer, allow_nil?: false
     attribute :related_character_name, :string
 
     # Ship information
@@ -86,10 +86,9 @@ defmodule WandererNotifier.Resources.Killmail do
 
   relationships do
     belongs_to :character, WandererNotifier.Resources.TrackedCharacter,
-      attribute_writable?: true,
       define_field?: false,
-      source_attribute: :related_character_id,
-      destination_attribute: :character_id
+      destination_field: :character_id,
+      source_field: :related_character_id
   end
 
   indexes do
@@ -134,10 +133,15 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
     attribute :isk_lost, :decimal, default: 0
 
     # Activity breakdown by region
-    attribute :region_activity, :map
+    attribute :region_activity, :map, default: %{}
 
     # Ship type usage
-    attribute :ship_usage, :map
+    attribute :ship_usage, :map, default: %{}
+
+    # Additional statistics for reporting
+    attribute :top_victim_corps, :map, default: %{}
+    attribute :top_victim_ships, :map, default: %{}
+    attribute :detailed_ship_usage, :map, default: %{}
   end
 
   indexes do
@@ -169,6 +173,7 @@ end
    - Update Docker configuration to make Postgres container optional
    - Add environment variable controls for persistence feature
    - Modify application startup to conditionally start the Repo
+   - Update devcontainer configuration for development
 
 ### Phase 2: Core Implementation
 
@@ -218,6 +223,35 @@ end
     - Monitor query performance
     - Add health check endpoints
 
+## Development Environment
+
+### Devcontainer Configuration
+
+The devcontainer has been configured to support optional PostgreSQL persistence:
+
+1. A Docker Compose configuration (`docker-compose.yml`) defines both the app container and an optional Postgres container with a profile.
+2. The devcontainer.json file is configured to use this Docker Compose setup.
+3. The Postgres container is only started when the `persistence` profile is activated.
+4. Persistence can be enabled by uncommenting the `ENABLE_PERSISTENCE` environment variable in the devcontainer.json file.
+
+### Using Persistence in Development
+
+To enable persistence during development:
+
+1. Edit `.devcontainer/devcontainer.json` and uncomment:
+   ```json
+   "containerEnv": {
+     "ENABLE_PERSISTENCE": "true"
+   }
+   ```
+2. Rebuild the devcontainer to start with Postgres enabled
+3. Run database migrations:
+   ```shell
+   mix ecto.setup
+   ```
+
+For more details, see [Database Development Guide](../development/database.md).
+
 ## Killmail Persistence Service Implementation
 
 ### API Configuration Example
@@ -261,34 +295,41 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - :ignored if the killmail is not related to a tracked character
   """
   def maybe_persist_killmail(%KillmailStruct{} = killmail) do
-    # First check if the killmail involves any tracked characters
-    with tracked_characters <- get_tracked_characters(),
-         {character_id, character_name, role} <- find_tracked_character_in_killmail(killmail, tracked_characters),
-         true <- not is_nil(character_id) do
-      # We found a tracked character in the killmail, persist it
-      Logger.debug("[KillmailPersistence] Persisting killmail #{killmail.killmail_id} for character #{character_id}")
+    # Check if persistence is enabled
+    if persistence_enabled?() do
+      # First check if the killmail involves any tracked characters
+      with tracked_characters <- get_tracked_characters(),
+           {character_id, character_name, role} <- find_tracked_character_in_killmail(killmail, tracked_characters),
+           true <- not is_nil(character_id) do
+        # We found a tracked character in the killmail, persist it
+        Logger.debug("[KillmailPersistence] Persisting killmail #{killmail.killmail_id} for character #{character_id}")
 
-      # Transform the killmail struct to the Ash resource format
-      killmail_attrs = transform_killmail_to_resource(killmail, character_id, character_name, role)
+        # Transform the killmail struct to the Ash resource format
+        killmail_attrs = transform_killmail_to_resource(killmail, character_id, character_name, role)
 
-      # Insert into database via Ash framework
-      case create_killmail_record(killmail_attrs) do
-        {:ok, record} ->
-          Logger.info("[KillmailPersistence] Successfully persisted killmail #{killmail.killmail_id}")
-          {:ok, record}
+        # Insert into database via Ash framework
+        case create_killmail_record(killmail_attrs) do
+          {:ok, record} ->
+            Logger.info("[KillmailPersistence] Successfully persisted killmail #{killmail.killmail_id}")
+            {:ok, record}
 
-        {:error, error} ->
-          Logger.error("[KillmailPersistence] Failed to persist killmail #{killmail.killmail_id}: #{inspect(error)}")
-          {:error, error}
+          {:error, error} ->
+            Logger.error("[KillmailPersistence] Failed to persist killmail #{killmail.killmail_id}: #{inspect(error)}")
+            {:error, error}
+        end
+      else
+        _ ->
+          # Killmail doesn't involve a tracked character, ignore it
+          :ignored
       end
     else
-      _ ->
-        # Killmail doesn't involve a tracked character, ignore it
-        :ignored
+      # Persistence disabled, skip
+      :ignored
     end
   rescue
     exception ->
       Logger.error("[KillmailPersistence] Exception persisting killmail: #{Exception.message(exception)}")
+      Logger.error(Exception.format_stacktrace())
       {:error, exception}
   end
 
@@ -305,13 +346,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - List of killmail records
   """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
-    Killmail
-    |> Ash.Query.filter(related_character_id == ^character_id and
-                       kill_time >= ^from_date and
-                       kill_time <= ^to_date)
-    |> Ash.Query.sort(kill_time: :desc)
-    |> Ash.Query.limit(^limit)
-    |> Api.read!()
+    try do
+      Killmail.list_for_character(character_id, from_date, to_date, limit)
+    rescue
+      e ->
+        Logger.error("[KillmailPersistence] Error fetching killmails: #{Exception.message(e)}")
+        []
+    end
   end
 
   # Gets list of tracked characters from the cache
@@ -384,15 +425,15 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
     # Build the resource attributes map
     %{
-      killmail_id: killmail.killmail_id,
+      killmail_id: parse_integer(killmail.killmail_id),
       kill_time: kill_time,
-      solar_system_id: solar_system_id,
+      solar_system_id: parse_integer(solar_system_id),
       solar_system_name: solar_system_name,
-      total_value: total_value,
+      total_value: parse_decimal(total_value),
       character_role: role,
-      related_character_id: character_id,
+      related_character_id: parse_integer(character_id),
       related_character_name: character_name,
-      ship_type_id: ship_type_id,
+      ship_type_id: parse_integer(ship_type_id),
       ship_type_name: ship_type_name,
       zkb_data: zkb_data,
       victim_data: victim,
@@ -400,11 +441,32 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     }
   end
 
+  # Helper function to parse integer values, handling string inputs
+  defp parse_integer(nil), do: nil
+  defp parse_integer(value) when is_integer(value), do: value
+  defp parse_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, _} -> int
+      :error -> nil
+    end
+  end
+  defp parse_integer(_), do: nil
+
+  # Helper function to parse decimal values
+  defp parse_decimal(nil), do: nil
+  defp parse_decimal(value) when is_integer(value), do: Decimal.new(value)
+  defp parse_decimal(value) when is_float(value), do: Decimal.from_float(value)
+  defp parse_decimal(value) when is_binary(value) do
+    case Decimal.parse(value) do
+      {:ok, decimal} -> decimal
+      _ -> nil
+    end
+  end
+  defp parse_decimal(_), do: nil
+
   # Creates a new killmail record using Ash
   defp create_killmail_record(attrs) do
-    Killmail
-    |> Ash.Changeset.for_create(:create, attrs)
-    |> Api.create()
+    Killmail.create(attrs)
   end
 
   # Extracts kill time from the killmail
@@ -429,6 +491,12 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       to_string(attacker_id) == to_string(character_id)
     end)
   end
+
+  # Check if persistence feature is enabled
+  defp persistence_enabled? do
+    Application.get_env(:wanderer_notifier, :persistence, [])
+    |> Keyword.get(:enabled, false)
+  end
 end
 ```
 
@@ -443,17 +511,24 @@ version: "3.8"
 services:
   app:
     # Main application container
-    image: wanderer-notifier
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+      - MIX_ENV=${MIX_ENV:-prod}
+    ports:
+      - "${PORT:-4000}:4000"
     depends_on:
       postgres:
         condition: service_started
         required: false
+    volumes:
+      - app_data:/app/data
 
   postgres:
     image: postgres:14
@@ -465,8 +540,11 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
 
 volumes:
+  app_data:
   postgres_data:
 ```
 
@@ -491,7 +569,7 @@ defmodule WandererNotifier.Application do
     # Conditionally add Postgres repo to supervision tree
     children =
       if persistence_enabled?() do
-        children ++ [WandererNotifier.Repo]
+        children ++ [WandererNotifier.Repo, []]
       else
         children
       end
@@ -562,6 +640,9 @@ defmodule WandererNotifier.Repo.Migrations.CreateKillmailsTables do
 
       add :region_activity, :map
       add :ship_usage, :map
+      add :top_victim_corps, :map
+      add :top_victim_ships, :map
+      add :detailed_ship_usage, :map
 
       timestamps()
     end

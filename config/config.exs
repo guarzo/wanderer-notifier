@@ -69,6 +69,21 @@ config :nostrum, :gateway,
     max: 120_000
   ]
 
+# Configure Ecto timestamps
+config :wanderer_notifier, WandererNotifier.Repo, migration_timestamps: [type: :utc_datetime_usec]
+
+# Configure persistence feature defaults
+config :wanderer_notifier, :persistence,
+  enabled: false,
+  retention_period_days: 180,
+  # Daily at midnight
+  aggregation_schedule: "0 0 * * *"
+
+# Configure Ash APIs
+config :wanderer_notifier, :ash_apis, [
+  WandererNotifier.Resources.Api
+]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

@@ -1,38 +1,39 @@
+version: "3.8"
 services:
-  wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
-    container_name: wanderer_notifier
-    restart: unless-stopped
+  app:
+    # Main application container
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
-      # Required Configuration
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
-      - MAP_TOKEN=${MAP_TOKEN}
-      - LICENSE_KEY=${LICENSE_KEY}
-      - PORT=${PORT:-4000}
-      # - HOST=${HOST:-0.0.0.0}
+      - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+      - MIX_ENV=${MIX_ENV:-prod}
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - "${PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
     volumes:
-      - wanderer_data:/app/data
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-      restart_policy:
-        condition: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-4000}/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - app_data:/app/data
+
+  postgres:
+    image: postgres:14
+    profiles:
+      - persistence
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
 
 volumes:
-  wanderer_data: 
+  app_data:
+  postgres_data:
