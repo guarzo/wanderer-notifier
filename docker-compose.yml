@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
+      - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-false}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -24,7 +24,7 @@ services:
   postgres:
     image: postgres:14
     profiles:
-      - persistence
+      - kill_charts
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
