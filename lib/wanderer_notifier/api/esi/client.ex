@@ -118,10 +118,23 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    Logger.debug("[ESI] Fetching solar system #{system_id}")
+    Logger.info("[ESI] Attempting to fetch solar system #{system_id}")
 
-    HttpClient.get(url, headers, label: label)
-    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.solar_system")
+    result = HttpClient.get(url, headers, label: label)
+
+    case result do
+      {:ok, %{status: 404}} ->
+        Logger.warning("[ESI] Solar system ID #{system_id} not found (404)")
+        {:error, :not_found}
+
+      {:error, error} ->
+        Logger.error("[ESI] Failed to fetch solar system #{system_id}: #{inspect(error)}")
+        {:error, error}
+
+      response ->
+        Logger.info("[ESI] Successfully fetched solar system #{system_id}")
+        ErrorHandler.handle_http_response(response, domain: :esi, tag: "ESI.solar_system")
+    end
   end
 
   @doc """

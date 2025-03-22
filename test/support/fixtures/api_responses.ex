@@ -28,9 +28,9 @@ defmodule WandererNotifier.Test.Fixtures.ApiResponses do
 
   def esi_character_response do
     %{
-      "character_id" => 12345,
-      "corporation_id" => 67890,
-      "alliance_id" => 54321,
+      "character_id" => 12_345,
+      "corporation_id" => 67_890,
+      "alliance_id" => 54_321,
       "name" => "Test Character",
       "security_status" => 5.0
     }

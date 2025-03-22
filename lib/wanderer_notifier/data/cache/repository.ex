@@ -165,8 +165,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
   @impl true
   def handle_info(:check_cache, state) do
     # Get cache stats
-    {:ok, stats} = Cachex.stats(@cache_name)
-    Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+    stats_result = Cachex.stats(@cache_name)
+
+    # Handle stats result, which could be {:ok, stats} or {:error, :stats_disabled}
+    case stats_result do
+      {:ok, stats} ->
+        Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+
+      {:error, :stats_disabled} ->
+        Logger.debug("[CacheRepo] Cache stats are disabled")
+
+      other_error ->
+        Logger.warning("[CacheRepo] Failed to get cache stats: #{inspect(other_error)}")
+    end
 
     # Check systems and characters counts
     systems = get("map:systems") || []

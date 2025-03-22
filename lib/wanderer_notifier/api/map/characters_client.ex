@@ -43,23 +43,24 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     case check_characters_endpoint_availability() do
       {:ok, _} ->
         # Endpoint is available, proceed with update
-        with {:ok, url} <- UrlBuilder.build_url("map/characters"),
-             headers = UrlBuilder.get_auth_headers() do
-          # Make the API request directly to handle raw response
-          case Client.get(url, headers) do
-            {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
-              # Successfully got response, now parse it carefully
-              handle_character_response(body, cached_characters)
+        case UrlBuilder.build_url("map/characters") do
+          {:ok, url} ->
+            headers = UrlBuilder.get_auth_headers()
+            # Make the API request directly to handle raw response
+            case Client.get(url, headers) do
+              {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
+                # Successfully got response, now parse it carefully
+                handle_character_response(body, cached_characters)
 
-            {:ok, %{status_code: status_code}} when status_code != 200 ->
-              Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
-              {:error, {:http_error, status_code}}
+              {:ok, %{status_code: status_code}} when status_code != 200 ->
+                Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
+                {:error, {:http_error, status_code}}
 
-            {:error, reason} ->
-              Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
-              {:error, {:http_error, reason}}
-          end
-        else
+              {:error, reason} ->
+                Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
+                {:error, {:http_error, reason}}
+            end
+
           {:error, reason} ->
             Logger.error("[CharactersClient] Failed to build URL or headers: #{inspect(reason)}")
             {:error, reason}
@@ -209,52 +210,53 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   @spec get_character_activity(String.t() | nil) :: {:ok, list(map())} | {:error, term()}
   def get_character_activity(slug \\ nil) do
     try do
-      with {:ok, url} <- UrlBuilder.build_url("map/character-activity", %{days: 1}, slug),
-           headers = UrlBuilder.get_auth_headers() do
-        # Make the API request directly to handle raw response
-        case Client.get(url, headers) do
-          {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
-            # Successfully got response, now parse it carefully
-            case Jason.decode(body) do
-              {:ok, parsed_json} ->
-                # Extract activity data with fallbacks for different API formats
-                activity_data =
-                  case parsed_json do
-                    %{"data" => data} when is_list(data) -> data
-                    %{"activity" => activity} when is_list(activity) -> activity
-                    data when is_list(data) -> data
-                    _ -> []
-                  end
+      case UrlBuilder.build_url("map/character-activity", %{days: 1}, slug) do
+        {:ok, url} ->
+          headers = UrlBuilder.get_auth_headers()
+          # Make the API request directly to handle raw response
+          case Client.get(url, headers) do
+            {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
+              # Successfully got response, now parse it carefully
+              case Jason.decode(body) do
+                {:ok, parsed_json} ->
+                  # Extract activity data with fallbacks for different API formats
+                  activity_data =
+                    case parsed_json do
+                      %{"data" => data} when is_list(data) -> data
+                      %{"activity" => activity} when is_list(activity) -> activity
+                      data when is_list(data) -> data
+                      _ -> []
+                    end
 
-                Logger.debug(
-                  "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
-                )
+                  Logger.debug(
+                    "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
+                  )
 
-                # Return the validated activity data
-                {:ok, activity_data}
+                  # Return the validated activity data
+                  {:ok, activity_data}
 
-              {:error, reason} ->
-                Logger.error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
+                {:error, reason} ->
+                  Logger.error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
 
-                Logger.debug(
-                  "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
-                )
+                  Logger.debug(
+                    "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
+                  )
 
-                {:error, {:json_parse_error, reason}}
-            end
+                  {:error, {:json_parse_error, reason}}
+              end
 
-          {:ok, %{status_code: status_code}} when status_code != 200 ->
-            Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
-            # Determine if this error is retryable
-            error_type = if status_code >= 500, do: :retriable, else: :permanent
-            {:error, {error_type, {:http_error, status_code}}}
+            {:ok, %{status_code: status_code}} when status_code != 200 ->
+              Logger.error("[CharactersClient] API returned non-200 status: #{status_code}")
+              # Determine if this error is retryable
+              error_type = if status_code >= 500, do: :retriable, else: :permanent
+              {:error, {error_type, {:http_error, status_code}}}
 
-          {:error, reason} ->
-            Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
-            # Network errors are generally retryable
-            {:error, {:retriable, {:http_error, reason}}}
-        end
-      else
+            {:error, reason} ->
+              Logger.error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
+              # Network errors are generally retryable
+              {:error, {:retriable, {:http_error, reason}}}
+          end
+
         {:error, reason} ->
           Logger.error("[CharactersClient] Failed to build URL or headers: #{inspect(reason)}")
           {:error, reason}

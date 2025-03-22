@@ -92,71 +92,56 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   """
   @spec classify_error(http_error()) :: :transient | :permanent
   def classify_error(error) do
-    case error do
-      # Transient errors that can be retried
-      :timeout ->
-        :transient
-
-      :connection_error ->
-        :transient
-
-      :server_error ->
-        :transient
-
-      :rate_limited ->
-        :transient
-
-      {:econnrefused, _} ->
-        :transient
-
-      {:closed, _} ->
-        :transient
-
-      {:timeout, _} ->
-        :transient
-
-      :econnrefused ->
-        :transient
-
-      :enetunreach ->
-        :transient
-
-      :system_limit ->
-        :transient
-
-      # Permanent errors that cannot be retried
-      :not_found ->
-        :permanent
-
-      :unauthorized ->
-        :permanent
-
-      :forbidden ->
-        :permanent
-
-      :bad_request ->
-        :permanent
-
-      :json_error ->
-        :permanent
-
-      :unsupported_media_type ->
-        :permanent
-
-      :conflict ->
-        :permanent
-
-      :client_error ->
-        :permanent
-
-      # Domain-specific errors may be either
-      {:domain_error, domain, reason} ->
-        classify_domain_error(domain, reason)
-
-      # All other errors are assumed permanent by default
-      _ ->
-        :permanent
+    cond do
+      error in transient_errors() -> :transient
+      error in permanent_errors() -> :permanent
+      is_tuple(error) && elem(error, 0) in transient_tuple_errors() -> :transient
+      # Default to permanent for unknown errors
+      true -> :permanent
     end
+  end
+
+  # List of errors that are transient (can be retried)
+  defp transient_errors do
+    [
+      :timeout,
+      :connection_error,
+      :server_error,
+      :rate_limited,
+      :econnrefused,
+      :enetunreach,
+      :system_limit,
+      :connect_timeout,
+      :checkout_timeout,
+      :overload,
+      :service_unavailable
+    ]
+  end
+
+  # List of tuple errors where the first element indicates a transient error
+  defp transient_tuple_errors do
+    [
+      :econnrefused,
+      :closed,
+      :timeout,
+      :enetunreach,
+      :server_error
+    ]
+  end
+
+  # List of errors that are permanent (cannot be retried)
+  defp permanent_errors do
+    [
+      :not_found,
+      :unauthorized,
+      :forbidden,
+      :bad_request,
+      :json_error,
+      :unsupported_media_type,
+      :client_error,
+      :invalid_request,
+      :not_implemented
+    ]
   end
 
   @doc """
@@ -199,95 +184,53 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     # Log the response type to help with debugging
     Logger.debug("#{tag} Response type: #{inspect(response)}")
 
-    case response do
-      # Handle raw response map directly (most common case)
+    # Normalize response format to handle both direct maps and {:ok, map} tuples
+    normalized_response = normalize_response(response)
+
+    # Process based on status code
+    case normalized_response do
       %{status_code: status, body: body} when status in 200..299 ->
-        # Handle JSON string properly, whether it's already parsed or not
-        cond do
-          # If it's a binary (string) and we want to decode JSON
-          decode_json and is_binary(body) and body != "" ->
-            case Jason.decode(body) do
-              {:ok, data} ->
-                {:ok, data}
+        handle_success_response(body, decode_json, log_level, tag)
 
-              {:error, reason} ->
-                log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
-                {:error, :json_error}
-            end
-
-          # If we already have a map or other data structure and don't need JSON decoding
-          true ->
-            {:ok, body}
-        end
-
-      # Handle tuple response with :ok atom
-      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        # Handle JSON string properly, whether it's already parsed or not
-        cond do
-          # If it's a binary (string) and we want to decode JSON
-          decode_json and is_binary(body) and body != "" ->
-            case Jason.decode(body) do
-              {:ok, data} ->
-                {:ok, data}
-
-              {:error, reason} ->
-                log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
-                {:error, :json_error}
-            end
-
-          # If we already have a map or other data structure and don't need JSON decoding
-          true ->
-            {:ok, body}
-        end
-
-      # Handle raw response map for non-success status
       %{status_code: status, body: body} ->
-        error = status_to_error(status)
-        domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
+        handle_error_response(status, body, domain, log_level, tag)
 
-        log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
-        if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
-
-        {:error, domain_error}
-
-      # Handle tuple response for non-success status
-      {:ok, %{status_code: status, body: body}} ->
-        error = status_to_error(status)
-        domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
-
-        log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
-        if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
-
-        {:error, domain_error}
-
-      # Handle plain error tuple
-      {:error, reason} ->
-        handle_http_error(reason, opts)
-
-      # Fallback for any other response format - this is essential
-      other ->
-        log(log_level, "#{tag} Unexpected response format: #{inspect(other)}")
-
-        # Try to extract meaningful data if possible
-        cond do
-          is_map(other) and Map.has_key?(other, :body) and is_binary(other.body) ->
-            # Try to parse body as JSON
-            case Jason.decode(other.body) do
-              {:ok, data} -> {:ok, data}
-              _ -> {:ok, other.body}
-            end
-
-          is_binary(other) ->
-            # Try to parse as JSON string
-            case Jason.decode(other) do
-              {:ok, data} -> {:ok, data}
-              _ -> {:ok, other}
-            end
-
-          true ->
-            {:error, {:unexpected_format, other}}
-        end
+      {:error, _} = error ->
+        error
     end
+  end
+
+  # Normalize response to a consistent format
+  defp normalize_response({:ok, response_map}), do: response_map
+  defp normalize_response(response_map) when is_map(response_map), do: response_map
+  defp normalize_response(error), do: error
+
+  # Handle success responses (200-299 status codes)
+  defp handle_success_response(body, decode_json, log_level, tag) do
+    if decode_json and is_binary(body) and body != "" do
+      case Jason.decode(body) do
+        {:ok, data} ->
+          {:ok, data}
+
+        {:error, reason} ->
+          log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
+          {:error, :json_error}
+      end
+    else
+      # If we already have a map or other data structure and don't need JSON decoding
+      {:ok, body}
+    end
+  end
+
+  # Handle error responses (non 200-299 status codes)
+  defp handle_error_response(status, body, domain, log_level, tag) do
+    error = status_to_error(status)
+    domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
+
+    log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
+    if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
+
+    {:error, domain_error}
   end
 
   @doc """
@@ -437,29 +380,6 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
       :discord -> handle_discord_error(status_or_error, body_or_reason)
       :map -> handle_map_error(status_or_error, body_or_reason)
       _ -> status_or_error
-    end
-  end
-
-  # Domain-specific error classification
-  defp classify_domain_error(domain, reason) do
-    case domain do
-      :esi ->
-        case reason do
-          {:not_found, _} -> :permanent
-          {:bad_request, _} -> :permanent
-          {:server_error, _} -> :transient
-          _ -> :permanent
-        end
-
-      :discord ->
-        case reason do
-          {:rate_limited, _} -> :transient
-          {:server_error, _} -> :transient
-          _ -> :permanent
-        end
-
-      _ ->
-        :permanent
     end
   end
 

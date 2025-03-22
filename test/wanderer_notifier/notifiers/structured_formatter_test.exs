@@ -290,14 +290,24 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     end
 
     test "raises for system without required fields" do
+      # Create structs missing required fields
+      system_with_only_name = struct(MapSystem, %{name: "Test System"})
+      system_with_only_id = struct(MapSystem, %{solar_system_id: 12345})
+      empty_system = MapSystem.new(%{})
+
       # Test with missing system ID
       assert_raise RuntimeError, ~r/solar_system_id is missing/, fn ->
-        StructuredFormatter.format_system_notification(%MapSystem{name: "Test System"})
+        StructuredFormatter.format_system_notification(system_with_only_name)
       end
 
       # Test with missing name
       assert_raise RuntimeError, ~r/name is missing/, fn ->
-        StructuredFormatter.format_system_notification(%MapSystem{solar_system_id: "12345"})
+        StructuredFormatter.format_system_notification(system_with_only_id)
+      end
+
+      # Test with both fields missing (from new)
+      assert_raise RuntimeError, ~r/solar_system_id is missing|name is missing/, fn ->
+        StructuredFormatter.format_system_notification(empty_system)
       end
     end
   end

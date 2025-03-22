@@ -4,8 +4,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.CorpTools.CorpToolsClient
-  alias WandererNotifier.ChartService.TPSChartAdapter
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Core.Config
@@ -112,388 +110,114 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
   end
 
-  # Test EVE Corp Tools API integration
-  get "/test-corp-tools" do
-    case CorpToolsClient.health_check() do
-      :ok ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          200,
-          Jason.encode!(%{status: "ok", message: "EVE Corp Tools API is operational"})
-        )
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "EVE Corp Tools API health check failed",
-            reason: inspect(reason)
-          })
-        )
-    end
+  # Placeholder for all CorpTools-related endpoints (functionality removed)
+  match "/test-corp-tools" do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
-  # Get tracked entities from EVE Corp Tools API
-  get "/corp-tools/tracked" do
-    case CorpToolsClient.get_tracked_entities() do
-      {:ok, data} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(data))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "Failed to get tracked entities",
-            reason: inspect(reason)
-          })
-        )
-    end
-  end
-
-  # Get optimized TPS data for charts from EVE Corp Tools API
-  get "/corp-tools/recent-tps-data" do
-    case CorpToolsClient.get_recent_tps_data() do
-      {:ok, data} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(data))
-
-      {:loading, message} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "Failed to get recent TPS data",
-            reason: inspect(reason)
-          })
-        )
-    end
-  end
-
-  # Refresh TPS data on EVE Corp Tools API
-  get "/corp-tools/refresh-tps" do
-    case CorpToolsClient.refresh_tps_data() do
-      :ok ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", message: "TPS data refresh triggered"}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "Failed to trigger TPS data refresh",
-            reason: inspect(reason)
-          })
-        )
-    end
-  end
-
-  # Appraise loot using EVE Corp Tools API
-  post "/corp-tools/appraise-loot" do
-    {:ok, body, conn} = read_body(conn)
-
-    case CorpToolsClient.appraise_loot(body) do
-      {:ok, data} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(data))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "Failed to appraise loot",
-            reason: inspect(reason)
-          })
-        )
-    end
+  # Catch-all for all corp-tools endpoints
+  match "/corp-tools/*_" do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Special endpoint to handle all three TPS chart types
   get "/corp-tools/charts/:chart_type" do
-    chart_type =
-      case conn.params["chart_type"] do
-        "kills-by-ship-type" -> :kills_by_ship_type
-        "kills-by-month" -> :kills_by_month
-        "total-kills-value" -> :total_kills_value
-        _ -> :invalid
-      end
-
-    if chart_type == :invalid do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
-    else
-      # Call the appropriate function based on the chart type
-      chart_result =
-        case chart_type do
-          :kills_by_ship_type -> TPSChartAdapter.generate_kills_by_ship_type_chart()
-          :kills_by_month -> TPSChartAdapter.generate_kills_by_month_chart()
-          :total_kills_value -> TPSChartAdapter.generate_total_kills_value_chart()
-        end
-
-      case chart_result do
-        {:ok, url} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
-
-        {:error, reason} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            500,
-            Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
-          )
-      end
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Legacy endpoint for kills by ship type (keep for backward compatibility)
   get "/corp-tools/charts/kills-by-ship-type" do
-    case TPSChartAdapter.generate_kills_by_ship_type_chart() do
-      {:ok, url} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
-        )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Get chart for kills by month
   get "/corp-tools/charts/kills-by-month" do
-    case TPSChartAdapter.generate_kills_by_month_chart() do
-      {:ok, url} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
-        )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Get chart for total kills and value
   get "/corp-tools/charts/total-kills-value" do
-    case TPSChartAdapter.generate_total_kills_value_chart() do
-      {:ok, url} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{status: "ok", chart_url: url}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{status: "error", message: "Failed to generate chart", reason: reason})
-        )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Get all TPS charts in a single response
   get "/corp-tools/charts/all" do
-    charts = TPSChartAdapter.generate_all_charts()
-
-    if map_size(charts) > 0 do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(%{status: "ok", charts: charts}))
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        500,
-        Jason.encode!(%{status: "error", message: "Failed to generate any charts"})
-      )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Send a specific TPS chart to Discord
   get "/corp-tools/charts/send-to-discord/:chart_type" do
-    chart_type =
-      case conn.params["chart_type"] do
-        "kills-by-ship-type" -> :kills_by_ship_type
-        "kills-by-month" -> :kills_by_month
-        "total-kills-value" -> :total_kills_value
-        _ -> :invalid
-      end
-
-    if chart_type == :invalid do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
-    else
-      title =
-        case chart_type do
-          :kills_by_ship_type -> "Top Ship Types by Kills"
-          :kills_by_month -> "Kills by Month"
-          :total_kills_value -> "Kills and Value Over Time"
-        end
-
-      description =
-        case chart_type do
-          :kills_by_ship_type ->
-            "Shows the top 10 ship types used in kills over the last 12 months"
-
-          :kills_by_month ->
-            "Shows the number of kills per month over the last 12 months"
-
-          :total_kills_value ->
-            "Shows the number of kills and estimated value over time"
-        end
-
-      # Get the appropriate channel ID for TPS charts
-      channel_id = WandererNotifier.Core.Config.discord_channel_id_for(:tps_charts)
-      Logger.info("Using Discord channel ID for TPS charts: #{channel_id}")
-
-      case TPSChartAdapter.send_chart_to_discord(chart_type, title, description, channel_id) do
-        :ok ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(200, Jason.encode!(%{status: "ok", message: "Chart sent to Discord"}))
-
-        {:error, reason} ->
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            500,
-            Jason.encode!(%{
-              status: "error",
-              message: "Failed to send chart to Discord",
-              reason: reason
-            })
-          )
-      end
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Send all TPS charts to Discord
   get "/corp-tools/charts/send-all-to-discord" do
-    # Get the appropriate channel ID for TPS charts
-    channel_id = WandererNotifier.Core.Config.discord_channel_id_for(:tps_charts)
-    Logger.info("Using Discord channel ID for TPS charts: #{channel_id}")
-
-    results = TPSChartAdapter.send_all_charts_to_discord(channel_id)
-
-    # Check if any of the charts were sent successfully
-    any_success = Enum.any?(Map.values(results), fn result -> result == :ok end)
-
-    if any_success do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        200,
-        Jason.encode!(%{status: "ok", message: "Charts sent to Discord", results: results})
-      )
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        500,
-        Jason.encode!(%{
-          status: "error",
-          message: "Failed to send any charts to Discord",
-          results: results
-        })
-      )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Trigger the TPS chart scheduler manually
   get "/corp-tools/charts/trigger-scheduler" do
-    if Process.whereis(WandererNotifier.Schedulers.TPSChartScheduler) do
-      WandererNotifier.Schedulers.TPSChartScheduler.execute_now()
-
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(%{status: "ok", message: "TPS chart scheduler triggered"}))
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        500,
-        Jason.encode!(%{status: "error", message: "TPS chart scheduler not running"})
-      )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Debug endpoint to check TPS data structure
   get "/debug-tps-data" do
-    case CorpToolsClient.get_recent_tps_data() do
-      {:ok, data} ->
-        # Return the data structure with additional metadata
-        debug_info = %{
-          status: "ok",
-          has_data: not Enum.empty?(Map.keys(data)),
-          keys: Map.keys(data),
-          ship_types_count:
-            if(Map.has_key?(data, "KillsByShipType"),
-              do: map_size(data["KillsByShipType"]),
-              else: 0
-            ),
-          months_count:
-            if(Map.has_key?(data, "KillsByMonth"), do: map_size(data["KillsByMonth"]), else: 0),
-          total_value: Map.get(data, "TotalValue"),
-          raw_data: data
-        }
-
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(debug_info))
-
-      {:loading, message} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(206, Jason.encode!(%{status: "loading", message: message}))
-
-      {:error, reason} ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            status: "error",
-            message: "Failed to get TPS data",
-            reason: inspect(reason)
-          })
-        )
-    end
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      404,
+      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
+    )
   end
 
   # Helper functions

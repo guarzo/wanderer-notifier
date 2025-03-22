@@ -333,7 +333,10 @@ defmodule WandererNotifier.Data.Character do
   defp parse_integer(val) when is_integer(val), do: val
 
   defp parse_integer(val) when is_binary(val) do
-    case Integer.parse(val) do
+    # Remove underscores from strings like "67_890" before parsing
+    formatted_val = String.replace(val, "_", "")
+
+    case Integer.parse(formatted_val) do
       {int, _} ->
         int
 

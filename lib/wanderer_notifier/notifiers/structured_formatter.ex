@@ -103,38 +103,38 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   def format_kill_notification(%Killmail{} = killmail) do
     # Log the structure of the killmail for debugging
     log_killmail_data(killmail)
-    
+
     # Extract basic kill information
     kill_id = killmail.killmail_id
     kill_time = Map.get(killmail.esi_data || %{}, "killmail_time")
-    
+
     # Extract victim information
     victim_info = extract_victim_info(killmail)
-    
+
     # Extract system, value and attackers info
     kill_context = extract_kill_context(killmail)
-    
+
     # Final blow details
     final_blow_details = get_final_blow_details(killmail)
-    
+
     # Build notification fields
     fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
-    
+
     # Build a platform-agnostic structure
     build_kill_notification(
-      kill_id, 
-      kill_time, 
-      victim_info, 
-      kill_context, 
-      final_blow_details, 
+      kill_id,
+      kill_time,
+      victim_info,
+      kill_context,
+      final_blow_details,
       fields
     )
   end
-  
+
   # Log killmail data for debugging
   defp log_killmail_data(killmail) do
     Logger.debug("[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}")
-    
+
     # Check if we have all required fields
     has_victim = Killmail.get_victim(killmail) != nil
     has_system_name = Map.get(killmail.esi_data || %{}, "solar_system_name") != nil
@@ -143,22 +143,22 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "[StructuredFormatter] Killmail has_victim: #{has_victim}, has_system_name: #{has_system_name}"
     )
   end
-  
+
   # Extract victim information
   defp extract_victim_info(killmail) do
     victim = Killmail.get_victim(killmail) || %{}
-    
+
     victim_name = Map.get(victim, "character_name", "Unknown Pilot")
     victim_ship = Map.get(victim, "ship_type_name", "Unknown Ship")
     victim_corp = Map.get(victim, "corporation_name", "Unknown Corp")
     victim_alliance = Map.get(victim, "alliance_name")
     victim_ship_type_id = Map.get(victim, "ship_type_id")
     victim_character_id = Map.get(victim, "character_id")
-    
+
     # Log extracted values
     Logger.debug("[StructuredFormatter] Extracted victim_name: #{victim_name}")
     Logger.debug("[StructuredFormatter] Extracted victim_ship: #{victim_ship}")
-    
+
     %{
       name: victim_name,
       ship: victim_ship,
@@ -168,22 +168,22 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       character_id: victim_character_id
     }
   end
-  
+
   # Extract kill context (system, value, attackers)
   defp extract_kill_context(killmail) do
     # System name
     system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
     Logger.debug("[StructuredFormatter] Extracted system_name: #{system_name}")
-    
+
     # Kill value
     zkb = killmail.zkb || %{}
     kill_value = Map.get(zkb, "totalValue", 0)
     formatted_value = format_isk_value(kill_value)
-    
+
     # Attackers information
     attackers = Map.get(killmail.esi_data || %{}, "attackers", [])
     attackers_count = length(attackers)
-    
+
     %{
       system_name: system_name,
       formatted_value: formatted_value,
@@ -191,23 +191,24 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       is_npc_kill: Map.get(zkb, "npc", false) == true
     }
   end
-  
+
   # Get final blow details
   defp get_final_blow_details(killmail) do
     attackers = Map.get(killmail.esi_data || %{}, "attackers", [])
     zkb = killmail.zkb || %{}
-    
+
     # Find final blow attacker
-    final_blow_attacker = Enum.find(attackers, fn attacker ->
-      Map.get(attacker, "final_blow") in [true, "true"]
-    end)
-    
+    final_blow_attacker =
+      Enum.find(attackers, fn attacker ->
+        Map.get(attacker, "final_blow") in [true, "true"]
+      end)
+
     is_npc_kill = Map.get(zkb, "npc", false) == true
-    
+
     # Extract final blow details
     extract_final_blow_details(final_blow_attacker, is_npc_kill)
   end
-  
+
   # Build kill notification fields
   defp build_kill_notification_fields(victim_info, kill_context, final_blow_details) do
     base_fields = [
@@ -215,7 +216,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
       %{name: "Final Blow", value: final_blow_details.text, inline: true}
     ]
-    
+
     # Add alliance field if available
     if victim_info.alliance do
       base_fields ++ [%{name: "Alliance", value: victim_info.alliance, inline: true}]
@@ -223,17 +224,26 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       base_fields
     end
   end
-  
+
   # Build the kill notification structure
-  defp build_kill_notification(kill_id, kill_time, victim_info, kill_context, final_blow_details, fields) do
+  defp build_kill_notification(
+         kill_id,
+         kill_time,
+         victim_info,
+         kill_context,
+         _final_blow_details,
+         fields
+       ) do
+    Logger.debug("Building kill notification for kill #{kill_id}")
+
     # Determine author name
-    author_name = 
+    author_name =
       if victim_info.name == "Unknown Pilot" and victim_info.corp == "Unknown Corp" do
         "Kill in #{kill_context.system_name}"
       else
         "#{victim_info.name} (#{victim_info.corp})"
       end
-    
+
     # Determine author icon URL
     author_icon_url =
       if victim_info.name == "Unknown Pilot" and victim_info.corp == "Unknown Corp" do
@@ -245,7 +255,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
           nil
         end
       end
-    
+
     # Determine thumbnail URL
     thumbnail_url =
       if victim_info.ship_type_id do
@@ -253,12 +263,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       else
         nil
       end
-    
+
     # Build the notification
     %{
       type: :kill_notification,
       title: "Kill Notification",
-      description: "#{victim_info.name} lost a #{victim_info.ship} in #{kill_context.system_name}",
+      description:
+        "#{victim_info.name} lost a #{victim_info.ship} in #{kill_context.system_name}",
       color: @error_color,
       url: "https://zkillboard.com/kill/#{kill_id}/",
       timestamp: kill_time,
@@ -359,23 +370,29 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     # Validate required fields
     validate_system_fields(system)
-    
+
     # Log system details for debugging
     log_system_fields(system)
 
     # Generate basic notification elements
     is_wormhole = MapSystem.wormhole?(system)
     display_name = MapSystem.format_display_name(system)
-    
+
     # Generate title, description, color and icon
     notification_elements = generate_notification_elements(system, is_wormhole)
-    
+
     # Format statics list and system link
     formatted_statics = format_statics_list(system.static_details || system.statics)
     system_name_with_link = create_system_name_link(system, display_name)
-    
+
     # Build notification fields
-    fields = build_system_notification_fields(system, is_wormhole, formatted_statics, system_name_with_link)
+    fields =
+      build_system_notification_fields(
+        system,
+        is_wormhole,
+        formatted_statics,
+        system_name_with_link
+      )
 
     # Create the generic notification structure
     %{
@@ -391,20 +408,20 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       }
     }
   end
-  
+
   # Helper function to validate required system fields
   defp validate_system_fields(system) do
     if is_nil(system.solar_system_id) do
       Logger.error("[StructuredFormatter] Missing solar_system_id in MapSystem struct")
-      raise "Cannot format system notification: solar_system_id is missing"
+      raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
     end
 
     if is_nil(system.name) do
       Logger.error("[StructuredFormatter] Missing name in MapSystem struct")
-      raise "Cannot format system notification: name is missing"
+      raise "Cannot format system notification: name is missing in MapSystem struct"
     end
   end
-  
+
   # Helper function to log system fields for debugging
   defp log_system_fields(system) do
     Logger.debug("[StructuredFormatter] System struct fields:")
@@ -421,14 +438,16 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     Logger.debug("[StructuredFormatter] - static_details: #{inspect(system.static_details)}")
     Logger.debug("[StructuredFormatter] - system_type: #{inspect(system.system_type)}")
   end
-  
+
   # Generate notification elements (title, description, color, icon)
   defp generate_notification_elements(system, is_wormhole) do
     # Generate title and description
     title = generate_system_title(is_wormhole, system.class_title, system.type_description)
     Logger.debug("[StructuredFormatter] Generated title: #{inspect(title)}")
 
-    description = generate_system_description(is_wormhole, system.class_title, system.type_description)
+    description =
+      generate_system_description(is_wormhole, system.class_title, system.type_description)
+
     Logger.debug("[StructuredFormatter] Generated description: #{inspect(description)}")
 
     # Generate color and icon
@@ -437,7 +456,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
     Logger.debug("[StructuredFormatter] Determined icon URL: #{inspect(icon_url)}")
-    
+
     %{
       title: title,
       description: description,
@@ -445,18 +464,21 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       icon_url: icon_url
     }
   end
-  
+
   # Create system name with zkillboard link
   defp create_system_name_link(system, display_name) do
-    has_numeric_id = is_integer(system.solar_system_id) ||
-                    (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
-    
+    has_numeric_id =
+      is_integer(system.solar_system_id) ||
+        (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
+
     if has_numeric_id do
       # For numerical IDs, create a zkillboard link
       system_id_str = to_string(system.solar_system_id)
-      has_temp_and_original = system.temporary_name && system.temporary_name != "" && 
-                              system.original_name && system.original_name != ""
-      
+
+      has_temp_and_original =
+        system.temporary_name && system.temporary_name != "" &&
+          system.original_name && system.original_name != ""
+
       if has_temp_and_original do
         "[#{system.temporary_name} (#{system.original_name})](https://zkillboard.com/system/#{system_id_str}/)"
       else
@@ -467,49 +489,60 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       display_name
     end
   end
-  
+
   # Build notification fields
-  defp build_system_notification_fields(system, is_wormhole, formatted_statics, system_name_with_link) do
+  defp build_system_notification_fields(
+         system,
+         is_wormhole,
+         formatted_statics,
+         system_name_with_link
+       ) do
     Logger.debug("[StructuredFormatter] System name with link: #{inspect(system_name_with_link)}")
     Logger.debug("[StructuredFormatter] Is wormhole: #{is_wormhole}")
     Logger.debug("[StructuredFormatter] Formatted statics: #{inspect(formatted_statics)}")
 
     # Start with basic system field
     fields = [%{name: "System", value: system_name_with_link, inline: true}]
-    
+
     # Add various optional fields based on system properties
     fields = add_shattered_field(fields, is_wormhole, system.is_shattered)
     fields = add_statics_field(fields, is_wormhole, formatted_statics)
     fields = add_region_field(fields, system.region_name)
     fields = add_effect_field(fields, is_wormhole, system.effect_name)
-    
+
     fields
   end
-  
+
   # Add shattered field if applicable
   defp add_shattered_field(fields, true, true) do
     fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
   end
+
   defp add_shattered_field(fields, _, _), do: fields
-  
+
   # Add statics field if applicable
-  defp add_statics_field(fields, true, formatted_statics) when formatted_statics != nil and formatted_statics != "None" do
+  defp add_statics_field(fields, true, formatted_statics)
+       when formatted_statics != nil and formatted_statics != "None" do
     fields ++ [%{name: "Statics", value: formatted_statics, inline: true}]
   end
+
   defp add_statics_field(fields, _, _), do: fields
-  
+
   # Add region field if available
   defp add_region_field(fields, nil), do: fields
+
   defp add_region_field(fields, region_name) do
     encoded_region_name = URI.encode(region_name)
     region_link = "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
     fields ++ [%{name: "Region", value: region_link, inline: true}]
   end
-  
+
   # Add effect field if available for wormhole systems
-  defp add_effect_field(fields, true, effect_name) when effect_name != nil and effect_name != "" do
+  defp add_effect_field(fields, true, effect_name)
+       when effect_name != nil and effect_name != "" do
     fields ++ [%{name: "Effect", value: effect_name, inline: true}]
   end
+
   defp add_effect_field(fields, _, _), do: fields
 
   @doc """
@@ -716,22 +749,22 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp format_single_static(static) do
     log_unrecognized_static(static)
   end
-  
+
   # Helper function to check if static has destination info
   defp has_destination_info?(static) do
     Map.has_key?(static, "destination") || Map.has_key?(static, :destination)
   end
-  
+
   # Helper function to check if static has name info
   defp has_name_info?(static) do
     Map.has_key?(static, "name") || Map.has_key?(static, :name)
   end
-  
+
   # Helper function to get static name
   defp get_static_name(static) do
     Map.get(static, "name") || Map.get(static, :name)
   end
-  
+
   # Helper function to format static with destination info
   defp format_static_with_destination(static) do
     name = get_static_name(static)
@@ -744,12 +777,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       name
     end
   end
-  
+
   # Helper function to log unrecognized static format
   defp log_unrecognized_static(static) do
     Logger.warning(
       "[StructuredFormatter.format_single_static] Unrecognized static format: #{inspect(static)}"
     )
+
     nil
   end
 
@@ -810,7 +844,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     notification_info = get_notification_info(stats)
     formatted_features = format_feature_statuses(features_status)
 
-      # Prepare fields data as a map to reduce parameter count
+    # Prepare fields data as a map to reduce parameter count
     notification_data = %{
       title: title,
       description: description,
@@ -822,13 +856,14 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       notification_info: notification_info,
       formatted_features: formatted_features
     }
-    
+
     # Build the response structure
     build_status_notification(notification_data)
   end
-  
+
   # Format uptime for display
   defp format_uptime(nil), do: "🚀 Just started"
+
   defp format_uptime(uptime) do
     days = div(uptime, 86_400)
     hours = div(rem(uptime, 86_400), 3600)
@@ -836,18 +871,18 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     seconds = rem(uptime, 60)
     "⏱️ #{days}d #{hours}h #{minutes}m #{seconds}s"
   end
-  
+
   # Get license icon based on validity and premium status
   defp get_license_icon(license_status) do
     is_premium = Map.get(license_status, :premium, false)
-    
+
     if license_status.valid do
       if is_premium, do: "💎", else: "✅"
     else
       "❌"
     end
   end
-  
+
   # Get notification info string
   defp get_notification_info(stats) do
     if Map.has_key?(stats, :notifications) do
@@ -856,7 +891,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "No notifications sent yet"
     end
   end
-  
+
   # Extract and format feature statuses
   defp format_feature_statuses(features_status) do
     # Extract primary feature statuses
@@ -890,7 +925,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     ]
     |> Enum.join("\n")
   end
-  
+
   # Build the final status notification structure
   defp build_status_notification(data) do
     %{
@@ -936,7 +971,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     "Total: **#{total}** (Kills: **#{kills}**, Systems: **#{systems}**, Characters: **#{characters}**)"
   end
-  
+
   # Helper to get websocket status icon based on connection state and last message time
   defp get_websocket_status_icon(stats) do
     if Map.has_key?(stats, :websocket) do
@@ -946,17 +981,17 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "❓"
     end
   end
-  
+
   defp get_icon_by_connection_state(%{connected: false}), do: "🔴"
-  
+
   defp get_icon_by_connection_state(%{connected: true, last_message: nil}), do: "🟡"
-  
+
   defp get_icon_by_connection_state(%{connected: true, last_message: last_message}) do
     time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
-    
+
     cond do
       time_diff < 60 -> "🟢"
-      time_diff < 300 -> "🟡" 
+      time_diff < 300 -> "🟡"
       true -> "🟠"
     end
   end

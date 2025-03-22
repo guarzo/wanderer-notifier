@@ -19,7 +19,7 @@ defmodule WandererNotifier.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :nostrum],
       mod: {WandererNotifier.Application, []},
       included_applications: [],
       env: [],

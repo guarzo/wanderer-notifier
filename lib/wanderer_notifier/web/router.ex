@@ -53,17 +53,6 @@ defmodule WandererNotifier.Web.Router do
   forward("/api", to: ApiController)
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
-  get "/corp-tools" do
-    if Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/app/index.html")
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Corp Tools functionality is not enabled")
-    end
-  end
 
   # Map tools routes
   get "/map-tools" do
@@ -78,18 +67,6 @@ defmodule WandererNotifier.Web.Router do
     end
   end
 
-  # Handle client-side routing for the React app - Corp Tools
-  get "/corp-tools/*path" do
-    if Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/app/index.html")
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Corp Tools functionality is not enabled")
-    end
-  end
 
   # Handle client-side routing for the React app - Map Tools
   get "/map-tools/*path" do
@@ -104,43 +81,7 @@ defmodule WandererNotifier.Web.Router do
     end
   end
 
-  # Legacy routes for backward compatibility
-  get "/charts-dashboard" do
-    if Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_header("location", "/corp-tools")
-      |> send_resp(301, "Redirecting to /corp-tools")
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Corp Tools functionality is not enabled")
-    end
-  end
-
-  get "/charts-dashboard/*path" do
-    if Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_header("location", "/corp-tools")
-      |> send_resp(301, "Redirecting to /corp-tools")
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Corp Tools functionality is not enabled")
-    end
-  end
-
-  # Legacy TPS charts page - redirects to the new React dashboard
-  get "/tps-charts" do
-    if Config.corp_tools_enabled?() do
-      conn
-      |> put_resp_header("location", "/corp-tools")
-      |> send_resp(301, "Redirecting to /corp-tools")
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Corp Tools functionality is not enabled")
-    end
-  end
+  # Legacy routes are removed
 
   #
   # HEALTH CHECK ENDPOINT

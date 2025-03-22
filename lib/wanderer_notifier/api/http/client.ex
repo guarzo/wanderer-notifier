@@ -153,6 +153,14 @@ defmodule WandererNotifier.Api.Http.Client do
       log_request_debug(method, url, headers, body)
     end
 
+    # Create request config to reduce arity
+    request_config = %{
+      max_retries: max_retries,
+      initial_backoff: initial_backoff,
+      timeout: timeout,
+      label: label
+    }
+
     # Asynchronously handle the request with retries
     task =
       Task.async(fn ->
@@ -161,11 +169,8 @@ defmodule WandererNotifier.Api.Http.Client do
           url,
           headers,
           body,
-          max_retries,
-          initial_backoff,
-          0,
-          label,
-          timeout
+          request_config,
+          0
         )
       end)
 
@@ -181,22 +186,20 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   # Execute the request with retry logic
+  # Reduced parameters by using a config map
   defp do_request_with_retry(
          method,
          url,
          headers,
          body,
-         max_retries,
-         backoff,
-         retry_count,
-         label,
-         timeout
+         config,
+         retry_count
        ) do
     options = [
       hackney: [
         follow_redirect: true,
-        recv_timeout: timeout,
-        connect_timeout: div(timeout, 2)
+        recv_timeout: config.timeout,
+        connect_timeout: div(config.timeout, 2)
       ]
     ]
 
@@ -205,7 +208,7 @@ defmodule WandererNotifier.Api.Http.Client do
     case HTTPoison.request(method, url, body, headers, options) do
       {:ok, response = %{status_code: status_code}} ->
         # Only log at debug level for successful responses
-        Logger.debug("HTTP #{method_str} [#{label}] => status #{status_code}")
+        Logger.debug("HTTP #{method_str} [#{config.label}] => status #{status_code}")
 
         # Return a consistent response format
         {:ok,
@@ -216,47 +219,69 @@ defmodule WandererNotifier.Api.Http.Client do
          }}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
-        # Determine if we should retry
-        if retry_count < max_retries and transient_error?(reason) do
-          # Calculate exponential backoff with jitter
-          current_backoff = min(backoff * :math.pow(2, retry_count), @default_max_backoff)
-          jitter = :rand.uniform(trunc(current_backoff * 0.2))
-          actual_backoff = trunc(current_backoff + jitter)
+        handle_request_error(
+          method_str,
+          url,
+          headers,
+          body,
+          config,
+          retry_count,
+          reason
+        )
+    end
+  end
 
-          Logger.warning(
-            "HTTP #{method_str} [#{label}] failed: #{inspect(reason)}. Retrying in #{actual_backoff}ms (attempt #{retry_count + 1}/#{max_retries})"
-          )
+  # Handle request errors and implement retry logic
+  # This reduces the nesting depth in do_request_with_retry
+  defp handle_request_error(
+         method_str,
+         url,
+         headers,
+         body,
+         config,
+         retry_count,
+         reason
+       ) do
+    # Determine if we should retry
+    if retry_count < config.max_retries and transient_error?(reason) do
+      # Calculate exponential backoff with jitter
+      current_backoff = min(config.initial_backoff * :math.pow(2, retry_count), @default_max_backoff)
+      jitter = :rand.uniform(trunc(current_backoff * 0.2))
+      actual_backoff = trunc(current_backoff + jitter)
 
-          :timer.sleep(actual_backoff)
+      Logger.warning(
+        "HTTP #{method_str} [#{config.label}] failed: #{inspect(reason)}. Retrying in #{actual_backoff}ms (attempt #{retry_count + 1}/#{config.max_retries})"
+      )
 
-          do_request_with_retry(
-            method,
-            url,
-            headers,
-            body,
-            max_retries,
-            backoff,
-            retry_count + 1,
-            label,
-            timeout
-          )
-        else
-          log_level = if retry_count > 0, do: :error, else: :warning
+      :timer.sleep(actual_backoff)
 
-          logger_fn =
-            case log_level do
-              :error -> &Logger.error/1
-              :warning -> &Logger.warning/1
-              _ -> &Logger.debug/1
-            end
+      do_request_with_retry(
+        method_str,
+        url,
+        headers,
+        body,
+        config,
+        retry_count + 1
+      )
+    else
+      log_request_failure(method_str, config.label, retry_count, reason)
+      # Consider all HTTP errors as recoverable for the caller
+      {:error, reason}
+    end
+  end
 
-          logger_fn.(
-            "HTTP #{method_str} [#{label}] failed#{if retry_count > 0, do: " after #{retry_count + 1} attempts", else: ""}: #{inspect(reason)}"
-          )
-
-          # Consider all HTTP errors as recoverable for the caller
-          {:error, reason}
-        end
+  # Log request failures, further simplifying the error handling
+  defp log_request_failure(method_str, label, retry_count, reason) do
+    log_level = if retry_count > 0, do: :error, else: :warning
+    
+    message = "HTTP #{method_str} [#{label}] failed" <>
+      if(retry_count > 0, do: " after #{retry_count + 1} attempts", else: "") <>
+      ": #{inspect(reason)}"
+    
+    case log_level do
+      :error -> Logger.error(message)
+      :warning -> Logger.warning(message)
+      _ -> Logger.debug(message)
     end
   end
 
@@ -328,7 +353,7 @@ defmodule WandererNotifier.Api.Http.Client do
   """
   def handle_response(response, decode_json \\ true)
 
-  def handle_response(response = {:ok, %{status_code: status, body: body}}, decode_json) do
+  def handle_response({:ok, %{status_code: status, body: body}} = response, decode_json) do
     # Log curl command example for debugging when needed
     curl_example =
       case response do
@@ -343,40 +368,38 @@ defmodule WandererNotifier.Api.Http.Client do
       # Forward to ResponseHandler which can handle JSON responses consistently
       WandererNotifier.Api.Http.ResponseHandler.handle_response(response, curl_example)
     else
-      # Handle non-JSON responses or errors in this module
-      case status do
-        code when code in 200..299 ->
-          if decode_json do
-            case Jason.decode(body) do
-              {:ok, parsed} -> {:ok, parsed}
-              {:error, _reason} -> {:error, :invalid_json}
-            end
-          else
-            {:ok, body}
-          end
-
-        401 ->
-          {:error, :unauthorized}
-
-        403 ->
-          {:error, :forbidden}
-
-        404 ->
-          {:error, :not_found}
-
-        429 ->
-          {:error, :rate_limited}
-
-        code when code in 500..599 ->
-          {:error, :server_error}
-
-        _ ->
-          {:error, {:unexpected_status, status}}
-      end
+      handle_response_by_status(status, body, decode_json)
     end
   end
 
   def handle_response({:error, reason}, _decode_json) do
     {:error, reason}
+  end
+
+  # Split out the status code handling to reduce complexity and nesting
+  defp handle_response_by_status(status, body, decode_json) do
+    case status do
+      code when code in 200..299 ->
+        handle_success_response(body, decode_json)
+
+      401 -> {:error, :unauthorized}
+      403 -> {:error, :forbidden}
+      404 -> {:error, :not_found}
+      429 -> {:error, :rate_limited}
+      code when code in 500..599 -> {:error, :server_error}
+      _ -> {:error, {:unexpected_status, status}}
+    end
+  end
+
+  # Handle success response with optional JSON parsing
+  defp handle_success_response(body, true) do
+    case Jason.decode(body) do
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, _reason} -> {:error, :invalid_json}
+    end
+  end
+  
+  defp handle_success_response(body, false) do
+    {:ok, body}
   end
 end

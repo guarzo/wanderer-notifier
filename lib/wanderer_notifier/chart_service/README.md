@@ -57,16 +57,6 @@ error_response = Errors.format_response({:error, reason})
 ## Adapters
 Adapters are responsible only for data preparation, extracting and transforming domain-specific data into chart-ready formats. They use the ChartService for rendering and delivery.
 
-### TPSChartAdapter
-Prepares data for Time, Pilots, and Ships charts.
-
-```elixir
-# Generate a chart for kills by ship type
-TPSChartAdapter.generate_kills_by_ship_type_chart()
-
-# Send all TPS charts to Discord
-TPSChartAdapter.send_all_charts_to_discord()
-```
 
 ### ActivityChartAdapter
 Prepares data for character activity charts.

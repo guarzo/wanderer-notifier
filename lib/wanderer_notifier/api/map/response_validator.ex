@@ -31,11 +31,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
           )
 
           # Log one example of an invalid system for debugging
-          if length(invalid_systems) > 0 do
-            Logger.debug(
-              "[ResponseValidator] Example invalid system: #{inspect(List.first(invalid_systems))}"
-            )
-          end
+          log_invalid_system_example(invalid_systems)
 
           {:error, "Some systems have invalid data format"}
         end
@@ -89,11 +85,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
           )
 
           # Log one example of an invalid character for debugging
-          if length(invalid_characters) > 0 do
-            Logger.debug(
-              "[ResponseValidator] Example invalid character: #{inspect(List.first(invalid_characters))}"
-            )
-          end
+          log_invalid_character_example(invalid_characters)
 
           {:error, "Some characters have invalid data format"}
         end
@@ -147,11 +139,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
           )
 
           # Log one example of an invalid entry for debugging
-          if length(invalid_entries) > 0 do
-            Logger.debug(
-              "[ResponseValidator] Example invalid activity entry: #{inspect(List.first(invalid_entries))}"
-            )
-          end
+          log_invalid_activity_example(invalid_entries)
 
           {:error, "Some activity entries have invalid data format"}
         end
@@ -196,47 +184,49 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   """
   def validate_system_static_info_response(response) do
     # First ensure we have a map data structure
-    response_data =
-      cond do
-        is_binary(response) ->
-          # Sometimes the response might still be a string, try to decode it
-          case Jason.decode(response) do
-            {:ok, decoded} -> decoded
-            {:error, _} -> %{}
-          end
+    response_data = normalize_response_data(response)
+    validate_static_info_format(response_data)
+  end
 
-        is_map(response) ->
-          response
+  defp normalize_response_data(response) do
+    cond do
+      is_binary(response) ->
+        # Sometimes the response might still be a string, try to decode it
+        case Jason.decode(response) do
+          {:ok, decoded} -> decoded
+          {:error, _} -> %{}
+        end
 
-        true ->
-          %{}
-      end
+      is_map(response) ->
+        response
 
-    # Now handle the various response formats
+      true ->
+        %{}
+    end
+  end
+
+  defp validate_static_info_format(response_data) do
     case response_data do
       %{"data" => data} when is_map(data) ->
-        # This is the documented and expected format
-        if valid_static_info?(data) do
-          {:ok, data}
-        else
-          Logger.warning("[ResponseValidator] System static info has invalid format: #{inspect(data)}")
-          {:error, "System static info has invalid format"}
-        end
+        validate_static_info_data(data)
 
       # If we just have the expected fields at the top level (sometimes API returns this format)
       %{"statics" => _} = direct_data ->
         Logger.warning("[ResponseValidator] Top-level static info format detected")
-
-        if valid_static_info?(direct_data) do
-          {:ok, direct_data}
-        else
-          Logger.warning("[ResponseValidator] System static info has invalid format: #{inspect(direct_data)}")
-          {:error, "System static info has invalid format"}
-        end
+        validate_static_info_data(direct_data)
 
       _ ->
         Logger.error("[ResponseValidator] Unexpected static info response format: #{inspect(response_data)}")
         {:error, "Expected 'data' field in system static info response"}
+    end
+  end
+
+  defp validate_static_info_data(data) do
+    if valid_static_info?(data) do
+      {:ok, data}
+    else
+      Logger.warning("[ResponseValidator] System static info has invalid format: #{inspect(data)}")
+      {:error, "System static info has invalid format"}
     end
   end
 
@@ -297,5 +287,27 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
       nil -> default
       val -> val
     end
+  end
+
+  # Helper functions for logging invalid examples
+  defp log_invalid_system_example([]), do: :ok
+  defp log_invalid_system_example(invalid_systems) do
+    Logger.debug(
+      "[ResponseValidator] Example invalid system: #{inspect(List.first(invalid_systems))}"
+    )
+  end
+
+  defp log_invalid_character_example([]), do: :ok
+  defp log_invalid_character_example(invalid_characters) do
+    Logger.debug(
+      "[ResponseValidator] Example invalid character: #{inspect(List.first(invalid_characters))}"
+    )
+  end
+
+  defp log_invalid_activity_example([]), do: :ok
+  defp log_invalid_activity_example(invalid_entries) do
+    Logger.debug(
+      "[ResponseValidator] Example invalid activity entry: #{inspect(List.first(invalid_entries))}"
+    )
   end
 end

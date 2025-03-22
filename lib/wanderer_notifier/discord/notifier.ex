@@ -157,25 +157,33 @@ defmodule WandererNotifier.Discord.Notifier do
   defp process_test_embed(title, description, url, color) do
     recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
 
-    if recent_kills != [] do
-      recent_kill = List.first(recent_kills)
-      kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
+    if recent_kills == [] do
+      build_embed_payload(title, description, url, color)
+    else
+      process_embed_with_kill(title, description, url, color, recent_kills)
+    end
+  end
 
-      if kill_id do
-        # Convert to Killmail struct if needed
-        killmail =
-          if is_struct(recent_kill, Killmail) do
-            recent_kill
-          else
-            Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
-          end
+  # Helper function to process an embed with kill data
+  defp process_embed_with_kill(title, description, url, color, recent_kills) do
+    recent_kill = List.first(recent_kills)
+    kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
 
-        send_enriched_kill_embed(killmail, kill_id)
-      else
-        build_embed_payload(title, description, url, color)
-      end
+    if kill_id do
+      # Convert to Killmail struct if needed
+      killmail = convert_to_killmail_struct(recent_kill)
+      send_enriched_kill_embed(killmail, kill_id)
     else
       build_embed_payload(title, description, url, color)
+    end
+  end
+
+  # Helper function to convert a kill to a Killmail struct if needed
+  defp convert_to_killmail_struct(recent_kill) do
+    if is_struct(recent_kill, Killmail) do
+      recent_kill
+    else
+      Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
     end
   end
 
@@ -255,6 +263,7 @@ defmodule WandererNotifier.Discord.Notifier do
   defp get_system_name(system_id) do
     case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
+      {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil
     end
   end
@@ -337,84 +346,7 @@ defmodule WandererNotifier.Discord.Notifier do
            ) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
-          Logger.info("[Discord] Processing new system notification for system ID: #{system_id}")
-
-          try do
-            Stats.increment(:systems)
-          rescue
-            _ -> :ok
-          end
-
-          # Check if this is the first system notification since startup
-          is_first_notification = Stats.is_first_notification?(:system)
-
-          # Mark that we've sent the first notification if this is it
-          if is_first_notification do
-            Stats.mark_notification_sent(:system)
-            Logger.info("[Discord] Sending first system notification in enriched format")
-          end
-
-          # For first notification or with valid license, use enriched format
-          if is_first_notification || License.status().valid do
-            # Create notification with StructuredFormatter
-            generic_notification = StructuredFormatter.format_system_notification(system)
-            discord_embed = StructuredFormatter.to_discord_format(generic_notification)
-
-            # Add recent kills to the embed if available and system is a wormhole
-            if WandererNotifier.Data.MapSystem.wormhole?(system) do
-              solar_system_id = system.solar_system_id
-
-              recent_kills =
-                WandererNotifier.Services.KillProcessor.get_recent_kills()
-                |> Enum.filter(fn kill ->
-                  kill_system_id = get_in(kill, ["esi_data", "solar_system_id"])
-                  kill_system_id == solar_system_id
-                end)
-
-              # Update the embed with recent kills if available
-              if recent_kills && recent_kills != [] do
-                # We found recent kills in this system, add them to the embed
-                recent_kills_field = %{
-                  "name" => "Recent Kills",
-                  "value" => format_recent_kills_list(recent_kills),
-                  "inline" => false
-                }
-
-                # Add the field to the existing embed
-                updated_embed =
-                  Map.update(discord_embed, "fields", [recent_kills_field], fn fields ->
-                    fields ++ [recent_kills_field]
-                  end)
-
-                # Send the updated embed
-                NotifierFactory.notify(:send_discord_embed, [updated_embed, :general])
-              else
-                # No recent kills, send the embed as is
-                NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
-              end
-            else
-              # Not a wormhole system or no recent kills, send the embed as is
-              NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
-            end
-          else
-            # For non-licensed users after first message, send plain text
-            Logger.info("[Discord] License not valid, sending plain text system notification")
-
-            # Create plain text message using struct fields directly
-            display_name = WandererNotifier.Data.MapSystem.format_display_name(system)
-            type_desc = WandererNotifier.Data.MapSystem.get_type_description(system)
-
-            message = "New System Discovered: #{display_name} - #{type_desc}"
-
-            # Add statics for wormhole systems
-            if WandererNotifier.Data.MapSystem.wormhole?(system) && length(system.statics) > 0 do
-              statics_text = format_statics_list(system.statics)
-              updated_message = "#{message} - Statics: #{statics_text}"
-              send_message(updated_message, :system_tracking)
-            else
-              send_message(message, :system_tracking)
-            end
-          end
+          handle_new_system_notification(system, system_id)
 
         {:ok, :skip} ->
           # This is a duplicate, skip notification
@@ -432,6 +364,100 @@ defmodule WandererNotifier.Discord.Notifier do
           # Recursively call self with same system data
           send_new_system_notification(system)
       end
+    end
+  end
+
+  # Handle sending a new system notification after deduplication check
+  defp handle_new_system_notification(system, system_id) do
+    Logger.info("[Discord] Processing new system notification for system ID: #{system_id}")
+
+    try do
+      Stats.increment(:systems)
+    rescue
+      _ -> :ok
+    end
+
+    # Check if this is the first system notification since startup
+    is_first_notification = Stats.is_first_notification?(:system)
+
+    # Mark that we've sent the first notification if this is it
+    if is_first_notification do
+      Stats.mark_notification_sent(:system)
+      Logger.info("[Discord] Sending first system notification in enriched format")
+    end
+
+    # For first notification or with valid license, use enriched format
+    if is_first_notification || License.status().valid do
+      send_enriched_system_notification(system)
+    else
+      send_plain_system_notification(system)
+    end
+  end
+
+  # Send an enriched system notification with full formatting
+  defp send_enriched_system_notification(system) do
+    # Create notification with StructuredFormatter
+    generic_notification = StructuredFormatter.format_system_notification(system)
+    discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+
+    # Add recent kills to the embed if available and system is a wormhole
+    if WandererNotifier.Data.MapSystem.wormhole?(system) do
+      maybe_add_recent_kills_to_embed(discord_embed, system.solar_system_id)
+    else
+      # Not a wormhole system, send the embed as is
+      NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+    end
+  end
+
+  # Check for recent kills in the system and add them to the embed if found
+  defp maybe_add_recent_kills_to_embed(discord_embed, solar_system_id) do
+    recent_kills =
+      WandererNotifier.Services.KillProcessor.get_recent_kills()
+      |> Enum.filter(fn kill ->
+        kill_system_id = get_in(kill, ["esi_data", "solar_system_id"])
+        kill_system_id == solar_system_id
+      end)
+
+    # Update the embed with recent kills if available
+    if recent_kills && recent_kills != [] do
+      # We found recent kills in this system, add them to the embed
+      recent_kills_field = %{
+        "name" => "Recent Kills",
+        "value" => format_recent_kills_list(recent_kills),
+        "inline" => false
+      }
+
+      # Add the field to the existing embed
+      updated_embed =
+        Map.update(discord_embed, "fields", [recent_kills_field], fn fields ->
+          fields ++ [recent_kills_field]
+        end)
+
+      # Send the updated embed
+      NotifierFactory.notify(:send_discord_embed, [updated_embed, :general])
+    else
+      # No recent kills, send the embed as is
+      NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+    end
+  end
+
+  # Send a plain text system notification for non-licensed users
+  defp send_plain_system_notification(system) do
+    Logger.info("[Discord] License not valid, sending plain text system notification")
+
+    # Create plain text message using struct fields directly
+    display_name = WandererNotifier.Data.MapSystem.format_display_name(system)
+    type_desc = WandererNotifier.Data.MapSystem.get_type_description(system)
+
+    message = "New System Discovered: #{display_name} - #{type_desc}"
+
+    # Add statics for wormhole systems
+    if WandererNotifier.Data.MapSystem.wormhole?(system) && length(system.statics) > 0 do
+      statics_text = format_statics_list(system.statics)
+      updated_message = "#{message} - Statics: #{statics_text}"
+      send_message(updated_message, :system_tracking)
+    else
+      send_message(message, :system_tracking)
     end
   end
 
@@ -492,57 +518,74 @@ defmodule WandererNotifier.Discord.Notifier do
     else
       url = build_url()
 
-      # Create form data with file and JSON payload
-      boundary = "----------------------------#{:rand.uniform(999_999_999)}"
+      {_boundary, body, file_headers} =
+        prepare_file_upload(filename, file_data, title, description)
 
-      # Create JSON part with embed if title/description provided
-      json_payload =
-        if title || description do
-          embed = %{
-            "title" => title || filename,
-            "description" => description || "",
-            "color" => @default_embed_color
-          }
+      send_multipart_request(url, file_headers, body)
+    end
+  end
 
-          Jason.encode!(%{"embeds" => [embed]})
-        else
-          "{}"
-        end
+  # Prepare the multipart data for file upload
+  defp prepare_file_upload(filename, file_data, title, description) do
+    # Create form data with file and JSON payload
+    boundary = "----------------------------#{:rand.uniform(999_999_999)}"
 
-      # Build multipart request body
-      body = [
-        "--#{boundary}\r\n",
-        "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n",
-        json_payload,
-        "\r\n--#{boundary}\r\n",
-        "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n",
-        "Content-Type: application/octet-stream\r\n\r\n",
-        file_data,
-        "\r\n--#{boundary}--\r\n"
-      ]
+    # Prepare JSON payload
+    json_payload = create_file_json_payload(filename, title, description)
 
-      # Custom headers for multipart request
-      file_headers = [
-        {"Content-Type", "multipart/form-data; boundary=#{boundary}"},
-        {"Authorization", "Bot #{bot_token()}"}
-      ]
+    # Build multipart request body
+    body = [
+      "--#{boundary}\r\n",
+      "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n",
+      json_payload,
+      "\r\n--#{boundary}\r\n",
+      "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n",
+      "Content-Type: application/octet-stream\r\n\r\n",
+      file_data,
+      "\r\n--#{boundary}--\r\n"
+    ]
 
-      case HttpClient.request("POST", url, file_headers, body) do
-        {:ok, %{status_code: status}} when status in 200..299 ->
-          Logger.info("Successfully sent file to Discord, status: #{status}")
-          :ok
+    # Custom headers for multipart request
+    file_headers = [
+      {"Content-Type", "multipart/form-data; boundary=#{boundary}"},
+      {"Authorization", "Bot #{bot_token()}"}
+    ]
 
-        {:ok, %{status_code: status, body: response_body}} ->
-          Logger.error(
-            "Failed to send file to Discord: status=#{status}, body=#{inspect(response_body)}"
-          )
+    {boundary, body, file_headers}
+  end
 
-          {:error, "Discord API error: #{status}"}
+  # Create the JSON payload for file upload
+  defp create_file_json_payload(filename, title, description) do
+    if title || description do
+      embed = %{
+        "title" => title || filename,
+        "description" => description || "",
+        "color" => @default_embed_color
+      }
 
-        {:error, reason} ->
-          Logger.error("Error sending file to Discord: #{inspect(reason)}")
-          {:error, reason}
-      end
+      Jason.encode!(%{"embeds" => [embed]})
+    else
+      "{}"
+    end
+  end
+
+  # Send a multipart request
+  defp send_multipart_request(url, headers, body) do
+    case HttpClient.request("POST", url, headers, body) do
+      {:ok, %{status_code: status}} when status in 200..299 ->
+        Logger.info("Successfully sent file to Discord, status: #{status}")
+        :ok
+
+      {:ok, %{status_code: status, body: response_body}} ->
+        Logger.error(
+          "Failed to send file to Discord: status=#{status}, body=#{inspect(response_body)}"
+        )
+
+        {:error, "Discord API error: #{status}"}
+
+      {:error, reason} ->
+        Logger.error("Error sending file to Discord: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 

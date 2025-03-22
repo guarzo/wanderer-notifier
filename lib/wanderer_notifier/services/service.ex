@@ -471,6 +471,7 @@ defmodule WandererNotifier.Services.Service do
   defp get_system_name(system_id) do
     case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
+      {:error, :not_found} -> "Unknown System (ID: #{system_id})"
       _ -> "Unknown System"
     end
   end

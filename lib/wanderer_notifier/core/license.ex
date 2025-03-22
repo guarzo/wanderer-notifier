@@ -242,31 +242,14 @@ defmodule WandererNotifier.Core.License do
 
   @impl true
   def handle_call({:feature_enabled, feature}, _from, state) do
-    is_enabled =
-      case state do
-        %{valid: true, details: details}
-        when is_map(details) and is_map_key(details, "features") ->
-          features = details["features"]
-
-          if is_list(features) do
-            enabled = Enum.member?(features, to_string(feature))
-
-            Logger.debug(
-              "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
-            )
-
-            enabled
-          else
-            Logger.debug("Feature check: #{feature} - disabled (features not a list)")
-            false
-          end
-
-        _ ->
-          Logger.debug("Feature check: #{feature} - disabled (invalid license)")
-          false
-      end
-
+    is_enabled = check_feature_enabled(feature, state)
     {:reply, is_enabled, state}
+  end
+
+  @impl true
+  def handle_call(:valid, _from, state) do
+    # Return if license is valid (has been validated)
+    {:reply, state.validated, state}
   end
 
   @impl true
@@ -284,11 +267,17 @@ defmodule WandererNotifier.Core.License do
           premium
 
         _ ->
-          Logger.debug("Premium check: not premium (invalid license)")
+          Logger.debug("Premium check: not premium (invalid license state)")
           false
       end
 
     {:reply, is_premium, state}
+  end
+
+  @impl true
+  def handle_call({:set_status, status}, _from, state) do
+    # Update license status
+    {:reply, :ok, Map.put(state, :validated, status)}
   end
 
   @impl true
@@ -297,6 +286,35 @@ defmodule WandererNotifier.Core.License do
     new_state = do_validate()
     {:noreply, new_state}
   end
+
+
+  # Helper function to check if a feature is enabled based on state
+  defp check_feature_enabled(feature, state) do
+    case state do
+      %{valid: true, details: details}
+      when is_map(details) and is_map_key(details, "features") ->
+        check_features_list(feature, details["features"])
+
+      _ ->
+        Logger.debug("Feature check: #{feature} - disabled (invalid license)")
+        false
+    end
+  end
+
+  # Helper function to check if a feature is in the features list
+  defp check_features_list(feature, features) do
+    if is_list(features) do
+      enabled = Enum.member?(features, to_string(feature))
+
+      Logger.debug("Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}")
+
+      enabled
+    else
+      Logger.debug("Feature check: #{feature} - disabled (features not a list)")
+      false
+    end
+  end
+
 
   defp schedule_refresh do
     Process.send_after(self(), :refresh, Timings.license_refresh_interval())

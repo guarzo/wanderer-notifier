@@ -235,7 +235,7 @@ All configuration is managed through environment variables in the `.env` file. A
    - `ENABLE_KILL_NOTIFICATIONS`: Enable kill notifications (default: `true`)
    - `ENABLE_SYSTEM_NOTIFICATIONS`: Enable system tracking notifications (default: `true`)
    - `ENABLE_CHARACTER_NOTIFICATIONS`: Enable character tracking notifications (default: `true`)
-   - `ENABLE_TPS_CHARTS`: Enable TPS charts (default: `false`)
+
    - `ENABLE_MAP_CHARTS`: Enable map/activity charts (default: `false`)
    - `ENABLE_CHARTS`: General charts functionality (default: `false`)
    - `TRACK_ALL_SYSTEMS`: Track all systems instead of specific ones (default: `false`)
@@ -248,8 +248,6 @@ All configuration is managed through environment variables in the `.env` file. A
    - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications (defaults to main channel)
    - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications (defaults to main channel)
    - `DISCORD_CHARTS_CHANNEL_ID`: Channel for general chart notifications (defaults to main channel)
-   - `DISCORD_TPS_CHARTS_CHANNEL_ID`: Channel for TPS chart notifications (defaults to main channel)
-   - `DISCORD_MAP_CHARTS_CHANNEL_ID`: Channel for map chart notifications (defaults to main channel)
 
    _Note_: The `DISCORD_CORP_TOOLS_CHANNEL_ID` and `DISCORD_MAP_TOOLS_CHANNEL_ID` variables are being gradually replaced by `DISCORD_TPS_CHARTS_CHANNEL_ID` and `DISCORD_MAP_CHARTS_CHANNEL_ID` respectively, but are still supported for backward compatibility.
 

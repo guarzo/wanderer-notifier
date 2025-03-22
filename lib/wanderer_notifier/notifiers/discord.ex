@@ -518,69 +518,85 @@ defmodule WandererNotifier.Notifiers.Discord do
       handle_test_mode("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")
     else
       # Build the form data for the file upload
-      file_content = File.read!(file_path)
-      filename = Path.basename(file_path)
+      send_real_file(file_path, title, description, feature)
+    end
+  end
 
-      # Prepare the payload with content if title or description is provided
-      payload_json =
-        if title || description do
-          content =
-            case {title, description} do
-              {nil, nil} -> ""
-              {title, nil} -> title
-              {nil, description} -> description
-              {title, description} -> "#{title}\n#{description}"
-            end
+  # Helper function to send a real file in production mode
+  defp send_real_file(file_path, title, description, feature) do
+    file_content = File.read!(file_path)
+    filename = Path.basename(file_path)
 
-          Jason.encode!(%{"content" => content})
-        else
-          Jason.encode!(%{})
+    # Prepare the payload and other components
+    payload_json = prepare_file_payload(title, description)
+
+    {url, headers, body} =
+      prepare_multipart_request(file_path, filename, file_content, payload_json, feature)
+
+    # Send the request
+    case HTTPoison.post(url, body, headers) do
+      {:ok, %{status_code: status}} when status in 200..299 ->
+        Logger.info("Discord file sent successfully with status #{status}")
+
+        # Use the increment/1 function with a specific key instead of the undefined increment_file_sent/0
+        Stats.increment("discord_files_sent")
+        {:ok, Jason.decode!(body)}
+
+      {:ok, %{status_code: status, body: body}} ->
+        Logger.error("Discord file send failed with status #{status}: #{body}")
+        {:error, "HTTP #{status}: #{body}"}
+
+      {:error, reason} ->
+        Logger.error("Discord file request failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  # Prepare payload JSON for file upload
+  defp prepare_file_payload(title, description) do
+    if title || description do
+      content =
+        case {title, description} do
+          {nil, nil} -> ""
+          {title, nil} -> title
+          {nil, description} -> description
+          {title, description} -> "#{title}\n#{description}"
         end
 
-      # Prepare the URL and headers
-      channel = channel_id_for_feature(feature)
-      url = "#{@base_url}/#{channel}/messages"
-
-      headers = [
-        {"Authorization", "Bot #{bot_token()}"},
-        {"User-Agent", "WandererNotifier/1.0"}
-      ]
-
-      # Use HTTPoison directly for multipart requests
-      boundary =
-        "------------------------#{:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)}"
-
-      # Create multipart body manually
-      body =
-        "--#{boundary}\r\n" <>
-          "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n" <>
-          "Content-Type: application/octet-stream\r\n\r\n" <>
-          file_content <>
-          "\r\n--#{boundary}\r\n" <>
-          "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n" <>
-          payload_json <>
-          "\r\n--#{boundary}--\r\n"
-
-      # Add content-type header with boundary
-      headers = [{"Content-Type", "multipart/form-data; boundary=#{boundary}"} | headers]
-
-      # Send the request
-      case HTTPoison.post(url, body, headers) do
-        {:ok, %{status_code: status_code, body: _response_body}} when status_code in 200..299 ->
-          Logger.info("Successfully sent file to Discord")
-          :ok
-
-        {:ok, %{status_code: status_code, body: response_body}} ->
-          error_msg = "Failed to send file to Discord: HTTP #{status_code}, #{response_body}"
-          Logger.error(error_msg)
-          {:error, error_msg}
-
-        {:error, %HTTPoison.Error{reason: reason}} ->
-          error_msg = "Failed to send file to Discord: #{inspect(reason)}"
-          Logger.error(error_msg)
-          {:error, error_msg}
-      end
+      Jason.encode!(%{"content" => content})
+    else
+      Jason.encode!(%{})
     end
+  end
+
+  # Prepare multipart request components
+  defp prepare_multipart_request(_file_path, filename, file_content, payload_json, feature) do
+    # Create unique boundary
+    boundary = "------------------------#{:rand.uniform(999_999_999_999)}"
+
+    # Prepare the URL and headers
+    channel = channel_id_for_feature(feature)
+    url = "#{@base_url}/#{channel}/messages"
+
+    # Generate boundary and headers
+    headers = [
+      {"Authorization", "Bot #{bot_token()}"},
+      {"User-Agent", "WandererNotifier/1.0"},
+      {"Content-Type", "multipart/form-data; boundary=#{boundary}"}
+    ]
+
+    # Create multipart body manually
+    body =
+      "--#{boundary}\r\n" <>
+        "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n" <>
+        "Content-Type: application/octet-stream\r\n\r\n" <>
+        file_content <>
+        "\r\n--#{boundary}\r\n" <>
+        "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n" <>
+        payload_json <>
+        "\r\n--#{boundary}--\r\n"
+
+    {url, headers, body}
   end
 
   @doc """
