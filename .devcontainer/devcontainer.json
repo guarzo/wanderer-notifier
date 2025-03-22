@@ -1,0 +1,92 @@
+{
+  "name": "Notifier Dev Container",
+
+  // Use docker-compose for container configuration
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway",
+    "-v", "/var/run/docker.sock:/var/run/docker.sock"
+  ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "networkArgs": ["--add-host=host.docker.internal:host-gateway"]
+    }
+  },
+
+  // Add port forwarding configuration
+  "forwardPorts": [4000, 4111, 3001, 5432],
+
+  "remoteUser": "elixir",
+  "updateRemoteUserUID": false,
+  
+  // Set environment variables
+  "remoteEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/elixir/.claude",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
+  },
+  
+  // Optional environment variables - enable to activate postgres
+  "containerEnv": {
+    // Uncomment to enable persistence in development
+    // "ENABLE_PERSISTENCE": "true"
+  },
+  
+  // Custom configurations for VS Code
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls",
+        "esbenp.prettier-vscode",
+        "pantajoe.vscode-elixir-credo",
+        "ms-vsliveshare.vsliveshare",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": null,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          },
+          "zsh": {
+            "path": "zsh"
+          }
+        },
+        "[elixir]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "JakeBecker.elixir-ls"
+        },
+        "elixirLS.suggestSpecs": true,
+        "elixirLS.dialyzerEnabled": true,
+        "elixirLS.signatureAfterComplete": true,
+        "elixirLS.fetchDeps": true,
+        "elixirLS.enableTestLenses": true,
+        "explorer.fileNesting.enabled": true,
+        "explorer.fileNesting.patterns": {
+          "mix.exs": "mix.lock"
+        },
+        "cSpell.words": [
+          "Credo",
+          "devcontainer",
+          "elixir",
+          "inotify",
+          "wanderer"
+        ]
+      }
+    }
+  },
+
+  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install"
+}

@@ -1,0 +1,60 @@
+version: "3.8"
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        USERNAME: elixir
+        NODE_VERSION: 20.x
+        INSTALL_ELIXIR_LS: "true"
+    volumes:
+      - ..:/workspace:cached
+      - claude-code-bashhistory:/commandhistory
+      - claude-code-config:/home/elixir/.claude
+      - elixir-ls-cache:/home/elixir/.elixir-ls
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - CLAUDE_CONFIG_DIR=/home/elixir/.claude
+      - POWERLEVEL9K_DISABLE_GITSTATUS=true
+      # Postgres connection for development
+      - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wanderer_notifier_dev
+    command: sleep infinity
+    user: elixir
+    ports:
+      - "4000:4000" # Main application
+      - "4111:4111" # Dev server
+      - "3001:3001" # Chart service
+    # This allows the container to access host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
+
+  postgres:
+    image: postgres:14
+    profiles:
+      - persistence
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wanderer_notifier_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    # Make sure postgres keeps running
+    restart: unless-stopped
+
+volumes:
+  claude-code-bashhistory:
+  claude-code-config:
+  elixir-ls-cache:
+  postgres_data:

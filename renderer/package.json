@@ -1,0 +1,40 @@
+{
+  "name": "react_app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "watch": "vite build --watch --minify false --emptyOutDir false --mode development",
+    "lint": "eslint .",
+    "postbuild": "rm -rf ../priv/static/app && cp -r dist ../priv/static/app",
+    "preview": "vite preview",
+    "chart-service": "node chart-service/chart-generator.js"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.0.14",
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^6.30.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@tailwindcss/postcss": "^4.0.14",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "nodemon": "^3.0.3",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.0.14",
+    "vite": "^6.2.0"
+  }
+}

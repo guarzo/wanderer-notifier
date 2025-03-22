@@ -1,0 +1,39 @@
+version: "3.8"
+services:
+  app:
+    # Main application container
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - ENABLE_PERSISTENCE=${ENABLE_PERSISTENCE:-false}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+      - MIX_ENV=${MIX_ENV:-prod}
+    ports:
+      - "${PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
+    volumes:
+      - app_data:/app/data
+
+  postgres:
+    image: postgres:14
+    profiles:
+      - persistence
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+volumes:
+  app_data:
+  postgres_data:

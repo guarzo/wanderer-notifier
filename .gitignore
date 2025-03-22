@@ -1,0 +1,44 @@
+# Build artifacts
+.cursor
+notes
+node_modules/
+repomix.*
+.cursor
+/priv/charts/node_modules
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+chart-service/node_modules/
+
+# Crash dumps and archives
+erl_crash.dump
+*.ez
+
+# Compiled files (BEAM bytecode)
+*.beam
+
+# Application config secrets (should not be committed)
+config/*.secret.exs
+
+# Environment and tool files
+.env
+.tool-versions
+
+# Editor/IDE directories and swap files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Elixir language server artifacts
+.elixir_ls/
+
+# Cache directory
+/tmp/
+
+# Don't ignore priv directory
+priv/static/app/**/*
+!/priv/
+!/priv/templates/

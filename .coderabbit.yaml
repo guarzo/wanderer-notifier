@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+early_access: true  
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true 
+  high_level_summary: true
+  poem: true                      
+  review_status: true              
+  collapse_walkthrough: false      
+  path_filters:
+    - "!node_modules/**"   # Ignore dependencies
+    - "!dist/**"           # Ignore build output
+    - "!**/*.min.js"       # Ignore minified files
+    - "!**/*.bundle.js"    # Ignore bundled assets
+    - "!.notes/**"
+    - "!.cursor/**"
+
+  path_instructions:
+    # Global project guidelines (apply to all files)
+    - path: "**/*"
+      instructions: |
+        **General Code Quality** – Ensure the code follows global best practices:
+        - Keep functions and modules small and focused (single responsibility).
+        - Use consistent naming conventions and meaningful identifiers for clarity.
+        - Look for unused code or files that can be removed
+        - Avoid duplicate code – refactor common logic into reusable functions.
+        - Maintain code readability (proper indentation, avoid deep nesting of code).
+        - Write comments where necessary to explain intent, but keep code self-explanatory.
+        - Use early exit strategy, avoid else use pattern matching
+
+  auto_review:
+    enabled: true        # Enable automatic AI review on pull requests
+    drafts: false        # Skip reviews on draft PRs (only review ready PRs)
+    base_branches: ["main", "develop"]  # Only run auto-reviews for PRs targeting these branches (adjust to your workflow)
+
+chat:
+  auto_reply: true  # Enable the AI to answer follow-up questions in PR comments

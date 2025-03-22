@@ -1,0 +1,27 @@
+[Unit]
+Description=WandererNotifier Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=wanderer
+Group=wanderer
+WorkingDirectory=/opt/wanderer_notifier
+Environment=LANG=en_US.UTF-8
+Environment=MIX_ENV=prod
+EnvironmentFile=/opt/wanderer_notifier/etc/environment
+ExecStart=/opt/wanderer_notifier/bin/wanderer_notifier start
+ExecStop=/opt/wanderer_notifier/bin/wanderer_notifier stop
+Restart=on-failure
+RestartSec=5
+RemainAfterExit=no
+SyslogIdentifier=wanderer_notifier
+
+# Increase security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target 
