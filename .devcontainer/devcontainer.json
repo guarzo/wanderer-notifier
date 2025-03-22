@@ -32,7 +32,11 @@
   
   // Optional environment variables - enable to activate postgres
   "containerEnv": {
-    "ENABLE_KILL_CHARTS": "true"
+    "ENABLE_KILL_CHARTS": "true",
+    "POSTGRES_HOST": "postgres",
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_PASSWORD": "postgres",
+    "POSTGRES_DB": "wanderer_notifier_dev"
   },
   
   // Custom configurations for VS Code
@@ -64,8 +68,7 @@
           }
         },
         "[elixir]": {
-          "editor.formatOnSave": true,
-          "editor.defaultFormatter": "JakeBecker.elixir-ls"
+          "editor.formatOnSave": true
         },
         "elixirLS.suggestSpecs": true,
         "elixirLS.dialyzerEnabled": true,
@@ -87,5 +90,7 @@
     }
   },
 
-  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install"
+  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install && chmod +x /workspace/.devcontainer/db-init.sh",
+  
+  "postStartCommand": "/workspace/.devcontainer/db-init.sh"
 }

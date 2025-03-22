@@ -228,11 +228,12 @@ defmodule WandererNotifier.Application do
     ]
 
     # Conditionally add Postgres repo to supervision tree
-    # before the scheduler supervisor to ensure proper initialization order
     children =
       if kill_charts_enabled?() do
         Logger.info("Kill charts feature enabled - starting database connection")
-        base_children ++ [WandererNotifier.Repo]
+
+        # Add the repo with restart: :transient so the app doesn't crash if DB is unavailable
+        base_children ++ [{WandererNotifier.Repo, [restart: :transient]}]
       else
         base_children
       end

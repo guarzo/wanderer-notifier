@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     unzip \
     gnupg \
+    postgresql-client \
     # Optionally add any other tools you need, e.g. vim, wget...
     && curl -sL https://deb.nodesource.com/setup_${NODE_VERSION} | bash - \
     && apt-get install -y --no-install-recommends nodejs inotify-tools \

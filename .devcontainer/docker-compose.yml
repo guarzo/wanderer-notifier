@@ -35,7 +35,7 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
         required: false
 
   postgres:
@@ -50,6 +50,12 @@ services:
       - "5432:5432"
     # Make sure postgres keeps running
     restart: unless-stopped
+    # Add healthcheck to ensure PostgreSQL is actually ready
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   claude-code-bashhistory:

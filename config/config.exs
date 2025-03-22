@@ -74,7 +74,7 @@ config :wanderer_notifier, WandererNotifier.Repo, migration_timestamps: [type: :
 
 # Configure persistence feature defaults
 config :wanderer_notifier, :persistence,
-  enabled: false,
+  enabled: true,
   retention_period_days: 180,
   # Daily at midnight (minute 0, hour 0, any day, any month, any day of week)
   aggregation_schedule: "0 0 * * *"
