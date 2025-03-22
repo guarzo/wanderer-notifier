@@ -45,6 +45,7 @@ defmodule WandererNotifier.MixProject do
       {:ash_postgres, "~> 1.4"},
       {:decimal, "~> 2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:bunt, "~> 1.0.0"},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test}
     ]

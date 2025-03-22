@@ -6,8 +6,7 @@ defmodule WandererNotifier.Resources.Killmail do
   use Ash.Resource,
     data_layer: AshPostgres.DataLayer,
     extensions: [
-      AshPostgres.Resource,
-      AshPostgres.Sort
+      AshPostgres.Resource
     ]
 
   # Predefine atoms to ensure they exist at compile time
@@ -124,26 +123,29 @@ defmodule WandererNotifier.Resources.Killmail do
     end
 
     read :get_by_killmail_id do
-      argument :killmail_id, :integer, allow_nil?: false
-      filter expr(killmail_id == ^arg(:killmail_id))
+      argument(:killmail_id, :integer, allow_nil?: false)
+      filter(expr(killmail_id == ^arg(:killmail_id)))
     end
 
     read :list_for_character do
-      argument :character_id, :integer, allow_nil?: false
-      argument :from_date, :utc_datetime_usec, allow_nil?: false
-      argument :to_date, :utc_datetime_usec, allow_nil?: false
-      argument :limit, :integer, default: 10
+      argument(:character_id, :integer, allow_nil?: false)
+      argument(:from_date, :utc_datetime_usec, allow_nil?: false)
+      argument(:to_date, :utc_datetime_usec, allow_nil?: false)
+      argument(:limit, :integer, default: 10)
 
-      filter expr(
-        related_character_id == ^arg(:character_id) and
-          kill_time >= ^arg(:from_date) and
-          kill_time <= ^arg(:to_date)
+      filter(
+        expr(
+          related_character_id == ^arg(:character_id) and
+            kill_time >= ^arg(:from_date) and
+            kill_time <= ^arg(:to_date)
+        )
       )
 
-      # Changed from `order [{:kill_time, :desc}]`
-      sort [kill_time: :desc]
-
-      limit expr(^arg(:limit))
+      prepare(fn query, _context ->
+        query
+        |> Ash.Query.sort(kill_time: :desc)
+        |> Ash.Query.limit(arg(:limit))
+      end)
     end
   end
 

@@ -84,6 +84,11 @@ config :wanderer_notifier, :ash_apis, [
   WandererNotifier.Resources.Api
 ]
 
+# Configure compatible foreign key types for Ash relationships
+config :ash, :compatible_foreign_key_types, [
+  {Ash.Type.UUID, Ash.Type.Integer}
+]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

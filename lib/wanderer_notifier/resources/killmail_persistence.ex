@@ -8,7 +8,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias Ash.Api
 
   @doc """
   Persists killmail data if it's related to a tracked character.
@@ -103,31 +102,35 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Looks for tracked characters in the killmail
   # Returns {character_id, character_name, role} if found, nil otherwise
   defp find_tracked_character_in_killmail(%KillmailStruct{} = killmail, tracked_characters) do
-    # Check if a tracked character is the victim
+    find_tracked_victim(killmail, tracked_characters) ||
+      find_tracked_attacker(killmail, tracked_characters)
+  end
+
+  # Looks for a tracked character as the victim
+  defp find_tracked_victim(%KillmailStruct{} = killmail, tracked_characters) do
     victim = KillmailStruct.get_victim(killmail)
     victim_character_id = victim && Map.get(victim, "character_id")
 
-    if victim_character_id && is_tracked_character?(victim_character_id, tracked_characters) do
+    if victim_character_id && tracked_character?(victim_character_id, tracked_characters) do
       {victim_character_id, Map.get(victim, "character_name"), :victim}
-    else
-      # Check if a tracked character is among the attackers
-      attackers = KillmailStruct.get(killmail, "attackers") || []
-
-      Enum.find_value(attackers, fn attacker ->
-        attacker_character_id = Map.get(attacker, "character_id")
-
-        if attacker_character_id &&
-             is_tracked_character?(attacker_character_id, tracked_characters) do
-          {attacker_character_id, Map.get(attacker, "character_name"), :attacker}
-        else
-          nil
-        end
-      end)
     end
   end
 
+  # Looks for a tracked character among the attackers
+  defp find_tracked_attacker(%KillmailStruct{} = killmail, tracked_characters) do
+    attackers = KillmailStruct.get(killmail, "attackers") || []
+
+    Enum.find_value(attackers, fn attacker ->
+      attacker_character_id = Map.get(attacker, "character_id")
+
+      if attacker_character_id && tracked_character?(attacker_character_id, tracked_characters) do
+        {attacker_character_id, Map.get(attacker, "character_name"), :attacker}
+      end
+    end)
+  end
+
   # Checks if a character ID is in the list of tracked characters
-  defp is_tracked_character?(character_id, tracked_characters) do
+  defp tracked_character?(character_id, tracked_characters) do
     Enum.any?(tracked_characters, fn tracked ->
       tracked["character_id"] == character_id ||
         to_string(tracked["character_id"]) == to_string(character_id)
@@ -210,7 +213,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   defp parse_decimal(value) when is_binary(value) do
     case Decimal.parse(value) do
-      {:ok, decimal} -> decimal
+      {decimal, ""} -> decimal
       _ -> nil
     end
   end
@@ -220,9 +223,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Creates a new killmail record using Ash
   defp create_killmail_record(attrs) do
     # Use the Ash API for creation to ensure proper handling
-    Killmail
-    |> Ash.Changeset.for_create(:create, attrs)
-    |> Api.create()
+    attrs
+    |> Killmail.create!()
   end
 
   # Extracts kill time from the killmail

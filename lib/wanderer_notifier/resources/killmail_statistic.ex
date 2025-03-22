@@ -6,8 +6,7 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
   use Ash.Resource,
     data_layer: AshPostgres.DataLayer,
     extensions: [
-      AshPostgres.Resource,
-      AshPostgres.Sort
+      AshPostgres.Resource
     ]
 
   # Predefine atoms to ensure they exist at compile time
@@ -123,7 +122,7 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
   end
 
   actions do
-    defaults([:create, :read, :update, :destroy])
+    defaults([:read, :destroy])
 
     create :create do
       primary?(true)
@@ -182,16 +181,19 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
       argument(:limit, :integer, default: 10)
 
       filter(expr(character_id == ^arg(:character_id) and period_type == ^arg(:period_type)))
-      # Changed from `default_sort [{:period_start, :desc}]`
-      sort default: [period_start: :desc]
-      limit(expr(^arg(:limit)))
+
+      prepare(fn query, _context ->
+        query
+        |> Ash.Query.sort(period_start: :desc)
+        |> Ash.Query.limit(arg(:limit))
+      end)
     end
   end
 
   code_interface do
     define_for(WandererNotifier.Resources.Api)
-    define(:get_by_character_and_period, args: [:character_id, :period_type, :start_date])
-    define(:list_for_character, args: [:character_id, :period_type, :limit])
+    define(:by_character_and_period, args: [:character_id, :period_type, :start_date])
+    define(:for_character, args: [:character_id, :period_type, :limit])
     define(:create, args: [:attributes])
     define(:update, args: [:id, :attributes])
   end

@@ -25,7 +25,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   relationships do
     has_many(:killmails, WandererNotifier.Resources.Killmail,
-      destination_attribute: :related_character_id
+      destination_attribute: :related_character_id,
+      validate_destination_attribute?: false
     )
   end
 
@@ -34,7 +35,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   calculations do
   end
-
 
   actions do
     defaults([:create, :read, :update, :destroy])
