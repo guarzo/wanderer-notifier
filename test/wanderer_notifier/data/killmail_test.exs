@@ -12,7 +12,7 @@ defmodule WandererNotifier.Data.KillmailTest do
     end
 
     test "creates a valid killmail struct with three arguments" do
-      esi_data = %{"solar_system_id" => 30000142}
+      esi_data = %{"solar_system_id" => 30_000_142}
       killmail = Killmail.new("12345", %{"totalValue" => 1_000_000}, esi_data)
       assert %Killmail{} = killmail
       assert killmail.killmail_id == "12345"
@@ -27,8 +27,8 @@ defmodule WandererNotifier.Data.KillmailTest do
         "killmail_id" => 123_456_789,
         "zkb" => %{"hash" => "abcd1234", "totalValue" => 1_000_000.0},
         "esi_data" => %{
-          "victim" => %{"character_id" => 98765, "ship_type_id" => 12345},
-          "attackers" => [%{"character_id" => 54321, "ship_type_id" => 67890}],
+          "victim" => %{"character_id" => 98_765, "ship_type_id" => 12_345},
+          "attackers" => [%{"character_id" => 54_321, "ship_type_id" => 67_890}],
           "solar_system_id" => 30_000_142
         }
       }

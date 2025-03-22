@@ -7,9 +7,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       map = %{
         "eve_id" => "12345",
         "name" => "Test Character",
-        "corporation_id" => "67890",
+        "corporation_id" => "67_890",
         "corporation_ticker" => "CORP",
-        "alliance_id" => "54321",
+        "alliance_id" => "54_321",
         "alliance_ticker" => "ALLY"
       }
 
@@ -18,9 +18,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       assert %Character{} = character
       assert character.eve_id == "12345"
       assert character.name == "Test Character"
-      assert character.corporation_id == 67890
+      assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
-      assert character.alliance_id == 54321
+      assert character.alliance_id == 54_321
       assert character.alliance_ticker == "ALLY"
       assert character.tracked == true
     end
@@ -30,7 +30,7 @@ defmodule WandererNotifier.Data.CharacterTest do
         "character" => %{
           "eve_id" => "12345",
           "name" => "Nested Character",
-          "corporation_id" => "67890",
+          "corporation_id" => "67_890",
           "corporation_ticker" => "CORP"
         }
       }
@@ -40,7 +40,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       assert %Character{} = character
       assert character.eve_id == "12345"
       assert character.name == "Nested Character"
-      assert character.corporation_id == 67890
+      assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
       assert character.tracked == true
     end
@@ -49,9 +49,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       map = %{
         "id" => "12345",
         "character_name" => "Alt Field Character",
-        "corporationID" => "67890",
+        "corporationID" => "67_890",
         "corporation_name" => "CORP",
-        "allianceID" => "54321",
+        "allianceID" => "54_321",
         "alliance_name" => "ALLY"
       }
 
@@ -60,9 +60,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       assert %Character{} = character
       assert character.eve_id == "12345"
       assert character.name == "Alt Field Character"
-      assert character.corporation_id == 67890
+      assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
-      assert character.alliance_id == 54321
+      assert character.alliance_id == 54_321
       assert character.alliance_ticker == "ALLY"
     end
 
@@ -101,9 +101,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       map = %{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "CORP",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: "ALLY",
         tracked: false
       }
@@ -113,9 +113,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       assert %Character{} = character
       assert character.eve_id == "12345"
       assert character.name == "Test Character"
-      assert character.corporation_id == 67890
+      assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
-      assert character.alliance_id == 54321
+      assert character.alliance_id == 54_321
       assert character.alliance_ticker == "ALLY"
       assert character.tracked == false
     end
@@ -136,9 +136,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "CORP",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: "ALLY",
         tracked: true
       }
@@ -149,15 +149,15 @@ defmodule WandererNotifier.Data.CharacterTest do
     test "fetch/2 retrieves struct fields with atom keys", %{character: character} do
       assert {:ok, "12345"} = Character.fetch(character, :eve_id)
       assert {:ok, "Test Character"} = Character.fetch(character, :name)
-      assert {:ok, 67890} = Character.fetch(character, :corporation_id)
+      assert {:ok, 67_890} = Character.fetch(character, :corporation_id)
     end
 
     test "fetch/2 retrieves special field mappings with string keys", %{character: character} do
       assert {:ok, "12345"} = Character.fetch(character, "character_id")
       assert {:ok, "12345"} = Character.fetch(character, "id")
-      assert {:ok, 67890} = Character.fetch(character, "corporationID")
+      assert {:ok, 67_890} = Character.fetch(character, "corporationID")
       assert {:ok, "CORP"} = Character.fetch(character, "corporationName")
-      assert {:ok, 54321} = Character.fetch(character, "allianceID")
+      assert {:ok, 54_321} = Character.fetch(character, "allianceID")
       assert {:ok, "ALLY"} = Character.fetch(character, "allianceName")
     end
 
@@ -191,7 +191,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: "ALLY"
       }
 
@@ -213,7 +213,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: ""
       }
 
@@ -226,7 +226,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "CORP"
       }
 
@@ -248,7 +248,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: ""
       }
 
@@ -261,9 +261,9 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "CORP",
-        alliance_id: 54321,
+        alliance_id: 54_321,
         alliance_ticker: "ALLY"
       }
 
@@ -274,7 +274,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = %Character{
         eve_id: "12345",
         name: "Test Character",
-        corporation_id: 67890,
+        corporation_id: 67_890,
         corporation_ticker: "CORP"
       }
 
