@@ -62,7 +62,11 @@ function App() {
         
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/charts" element={<ChartsDashboard />} />
+          {/* Only render charts route if at least one chart type is enabled, otherwise redirect to home */}
+          <Route 
+            path="/charts" 
+            element={showChartsLink ? <ChartsDashboard /> : <Navigate to="/" replace />} 
+          />
           
           {/* Legacy routes for backward compatibility */}
           <Route path="/corp-tools" element={<Navigate to="/" replace />} />

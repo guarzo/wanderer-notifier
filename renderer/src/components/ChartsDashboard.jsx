@@ -23,14 +23,17 @@ export default function ChartsDashboard() {
           mapChartsEnabled: data.map_tools_enabled || false,
           killChartsEnabled: data.kill_charts_enabled || false
         });
+        setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching chart configuration:', error);
+        setError(`Failed to load chart configuration: ${error.message}`);
         // Default to disabled if there's an error
         setFeatures({
           mapChartsEnabled: false,
           killChartsEnabled: false
         });
+        setLoading(false);
       });
   }, []);
 
@@ -150,6 +153,7 @@ export default function ChartsDashboard() {
           <div className="mb-6 flex justify-between items-center">
             <h2 className="text-2xl font-semibold text-gray-800">Character Activity Charts</h2>
             <button 
+              type="button"
               onClick={sendAllActivityCharts}
               disabled={sendingAllCharts}
               className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
@@ -196,6 +200,7 @@ export default function ChartsDashboard() {
           <div className="mb-6 flex justify-between items-center">
             <h2 className="text-2xl font-semibold text-gray-800">Killmail Charts</h2>
             <button 
+              type="button"
               onClick={sendAllKillmailCharts}
               disabled={sendingAllCharts}
               className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50"

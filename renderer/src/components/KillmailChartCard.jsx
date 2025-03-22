@@ -10,6 +10,12 @@ function KillmailChartCard({ title, description, chartType }) {
   const [debugInfo, setDebugInfo] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Helper function to add timestamp to URL for cache busting
+  const addTimestampToUrl = (url) => {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}cache=${Date.now()}`;
+  };
+
   const generateChart = (forceRefresh = false) => {
     setLoading(true);
     setError(null);
@@ -30,7 +36,7 @@ function KillmailChartCard({ title, description, chartType }) {
         console.log(`Chart data received:`, data);
         if (data.status === 'ok' && data.chart_url) {
           // Add a timestamp to ensure the browser doesn't use cached image
-          const urlWithCache = `${data.chart_url}${data.chart_url.includes('?') ? '&' : '?'}cache=${Date.now()}`;
+          const urlWithCache = addTimestampToUrl(data.chart_url);
           setChartUrl(urlWithCache);
           console.log(`Chart URL set to: ${urlWithCache}`);
           setRetryCount(0); // Reset retry count on success
@@ -100,7 +106,7 @@ function KillmailChartCard({ title, description, chartType }) {
     if (chartUrl) {
       // Extract the base URL without cache parameters
       const baseUrl = chartUrl.split('?')[0];
-      const newUrl = `${baseUrl}?t=${Date.now()}`;
+      const newUrl = addTimestampToUrl(baseUrl);
       
       setDebugInfo(`Trying to load: ${newUrl}`);
       
@@ -135,7 +141,7 @@ function KillmailChartCard({ title, description, chartType }) {
                 console.error(`Failed to load image from ${chartUrl}:`, e);
                 if (retryCount < 3) {
                   // Try to load with a new URL on error
-                  const newSrc = `${chartUrl.split('?')[0]}?t=${Date.now()}`;
+                  const newSrc = addTimestampToUrl(chartUrl.split('?')[0]);
                   console.log(`Retrying with new URL: ${newSrc}`);
                   e.target.src = newSrc;
                   setRetryCount(prev => prev + 1);
@@ -148,6 +154,7 @@ function KillmailChartCard({ title, description, chartType }) {
             />
             <div className="absolute top-2 right-2 flex space-x-1">
               <button
+                type="button"
                 onClick={retryWithDirectUrl}
                 className="p-1 bg-gray-800 text-white rounded-full opacity-50 hover:opacity-100"
                 title="Debug chart loading"
@@ -155,6 +162,7 @@ function KillmailChartCard({ title, description, chartType }) {
                 <FaBug size={12} />
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setRetryCount(0);
                   generateChart(true);
@@ -177,6 +185,7 @@ function KillmailChartCard({ title, description, chartType }) {
               </div>
             ) : (
               <button 
+                type="button"
                 onClick={() => {
                   setRetryCount(0);
                   generateChart(true);
@@ -212,6 +221,7 @@ function KillmailChartCard({ title, description, chartType }) {
       <div className="p-4 border-t bg-gray-50">
         <div className="flex justify-between">
           <button 
+            type="button"
             onClick={() => {
               setRetryCount(0);
               generateChart(true);
@@ -224,6 +234,7 @@ function KillmailChartCard({ title, description, chartType }) {
           </button>
           
           <button 
+            type="button"
             onClick={sendToDiscord}
             disabled={!chartUrl || sending}
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors flex items-center space-x-1 disabled:opacity-50"

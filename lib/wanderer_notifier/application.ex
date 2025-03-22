@@ -53,24 +53,33 @@ defmodule WandererNotifier.Application do
     # Start the supervisor and schedule startup message
     result = start_supervisor_and_notify()
 
-    # Check database health if kill charts feature is enabled
+    # Schedule a database health check if kill charts feature is enabled
+    schedule_database_health_check()
+
+    result
+  end
+
+  # Schedule a database health check if the kill charts feature is enabled
+  defp schedule_database_health_check do
     if kill_charts_enabled?() do
       Task.start(fn ->
         # Give the repo time to connect
         Process.sleep(1000)
-
-        case WandererNotifier.Repo.health_check() do
-          {:ok, ping_time} ->
-            Logger.info("Database health check successful - ping time: #{ping_time}ms")
-
-          {:error, reason} ->
-            Logger.error("Database health check failed: #{inspect(reason)}")
-            Logger.error("Make sure PostgreSQL is running and properly configured")
-        end
+        perform_database_health_check()
       end)
     end
+  end
 
-    result
+  # Perform the actual database health check
+  defp perform_database_health_check do
+    case WandererNotifier.Repo.health_check() do
+      {:ok, ping_time} ->
+        Logger.info("Database health check successful - ping time: #{ping_time}ms")
+
+      {:error, reason} ->
+        Logger.error("Database health check failed: #{inspect(reason)}")
+        Logger.error("Make sure PostgreSQL is running and properly configured")
+    end
   end
 
   # Start development tools if in dev environment
