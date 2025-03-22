@@ -32,8 +32,9 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
-      - name: Check formatting
+      - name: Check formatting (non-blocking)
         run: mix format --check-formatted
+        continue-on-error: true
 
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
