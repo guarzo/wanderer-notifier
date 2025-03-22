@@ -15,7 +15,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     uuid_primary_key(:id)
 
     attribute(:character_id, :integer, allow_nil?: false)
-    attribute(:character_name, :string)
+    attribute(:character_name, :string, allow_nil?: false)
     attribute(:corporation_id, :integer)
     attribute(:corporation_name, :string)
     attribute(:alliance_id, :integer)
