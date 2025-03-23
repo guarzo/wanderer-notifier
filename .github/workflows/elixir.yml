@@ -1,3 +1,5 @@
+name: elixir
+
   - name: Setup elixir
     uses: erlef/setup-beam@v1
     with:
