@@ -440,6 +440,7 @@ defmodule WandererNotifier.Services.Service do
             formats: %{
               raw: character,
               character_id_atom: is_map(character) && Map.get(character, :character_id),
+              # Only using character_id as part of standardization across the codebase
               character_id_string: is_map(character) && Map.get(character, "character_id")
             }
           }
