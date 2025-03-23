@@ -1229,29 +1229,30 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Extract character ID from character data
   defp extract_character_id(char) do
     cond do
-      # First try character_id
-      is_map(char) && Map.has_key?(char, :character_id) &&
-          not is_nil(Map.get(char, :character_id)) ->
-        to_string(Map.get(char, :character_id))
+      is_map(char) -> extract_id_from_map(char)
+      is_binary(char) || is_integer(char) -> to_string(char)
+      true -> nil
+    end
+  end
 
-      is_map(char) && Map.has_key?(char, "character_id") &&
-          not is_nil(Map.get(char, "character_id")) ->
-        to_string(Map.get(char, "character_id"))
+  # Helper to extract ID from map with various possible keys
+  defp extract_id_from_map(char) do
+    # Try each possible key format in order of preference
+    character_id_atom = get_value_if_exists(char, :character_id)
+    character_id_string = get_value_if_exists(char, "character_id")
+    id_atom = get_value_if_exists(char, :id)
+    id_string = get_value_if_exists(char, "id")
 
-      # Then try id
-      is_map(char) && Map.has_key?(char, :id) && not is_nil(Map.get(char, :id)) ->
-        to_string(Map.get(char, :id))
+    # Return the first non-nil value found
+    character_id_atom || character_id_string || id_atom || id_string || nil
+  end
 
-      is_map(char) && Map.has_key?(char, "id") && not is_nil(Map.get(char, "id")) ->
-        to_string(Map.get(char, "id"))
-
-      # Direct value case
-      is_binary(char) || is_integer(char) ->
-        to_string(char)
-
-      # No ID found
-      true ->
-        nil
+  # Helper to safely get and convert a value if the key exists and value isn't nil
+  defp get_value_if_exists(map, key) do
+    if Map.has_key?(map, key) && !is_nil(Map.get(map, key)) do
+      to_string(Map.get(map, key))
+    else
+      nil
     end
   end
 end

@@ -16,7 +16,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
 
   @sample_zkill_response [
     %{
-      "killmail_id" => 12345,
+      "killmail_id" => 12_345,
       "zkb" => %{
         "hash" => "abcdef123456",
         "totalValue" => 1_000_000_000
@@ -90,7 +90,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
         )
 
         # Verify ESI service was called
-        assert_called(WandererNotifier.Api.ESI.Service.get_killmail(12345, "abcdef123456"))
+        assert_called(WandererNotifier.Api.ESI.Service.get_killmail(12_345, "abcdef123456"))
 
         # Verify persistence was called
         assert_called(WandererNotifier.Resources.KillmailPersistence.maybe_persist_killmail(:_))
@@ -130,7 +130,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
            get: fn key ->
              cond do
                key == "zkill:character_kills:#{@sample_character_id}:1" ->
-                 {:ok, @sample_zkill_response}
+                 @sample_zkill_response
 
                key == "esi:killmail:12345" ->
                  @sample_esi_data
@@ -139,7 +139,8 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
                  nil
              end
            end,
-           set: fn _, _, _ -> :ok end
+           set: fn _, _, _ -> :ok end,
+           delete: fn _ -> :ok end
          ]},
         {WandererNotifier.Api.ESI.Service, [],
          [

@@ -26,42 +26,61 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     - {:error, reason} if chart generation fails
   """
   def generate_weekly_kills_chart(options \\ %{}) do
-    # Handle both map and integer arguments
-    limit =
-      case options do
-        limit when is_integer(limit) -> limit
-        %{} = opts -> Map.get(opts, :limit, 20)
-        _ -> 20
-      end
-
+    # Extract limit from options
+    limit = extract_limit_from_options(options)
     Logger.info("Generating weekly kills chart (limit: #{limit})")
 
     # Prepare chart data
     case prepare_weekly_kills_data(limit) do
       {:ok, chart_data, title, chart_options} ->
-        # If we have stats with data
-        if length(Map.get(chart_data, "labels", [])) > 1 ||
-             (length(Map.get(chart_data, "labels", [])) == 1 &&
-                hd(Map.get(chart_data, "labels")) != "No Data") do
-          # Create chart configuration that can be passed to generate_chart_url
-          chart_config = %{
-            type: chart_data["type"] || "horizontalBar",
-            data: chart_data,
-            title: title,
-            options: chart_options
-          }
-
-          # Generate URL from the config
-          case ChartService.generate_chart_url(chart_config) do
-            {:ok, url} -> {:ok, url}
-            {:error, reason} -> {:error, reason}
-          end
-        else
-          # Use a fixed error URL rather than trying to generate a chart
-          {:ok,
-           "https://quickchart.io/chart?c={type:%27bar%27,data:{labels:[%27No%20Data%27],datasets:[{label:%27No%20weekly%20kill%20statistics%20available%27,data:[0]}]}}&bkg=rgb(47,49,54)&width=800&height=400"}
-        end
+        generate_chart_from_data(chart_data, title, chart_options)
     end
+  end
+
+  # Helper to extract limit from options
+  defp extract_limit_from_options(options) do
+    case options do
+      limit when is_integer(limit) -> limit
+      %{} = opts -> Map.get(opts, :limit, 20)
+      _ -> 20
+    end
+  end
+
+  # Helper to generate chart from prepared data
+  defp generate_chart_from_data(chart_data, title, chart_options) do
+    # Check if we have meaningful data
+    if has_meaningful_data?(chart_data) do
+      generate_real_chart(chart_data, title, chart_options)
+    else
+      # Use a fixed error URL for empty data
+      generate_empty_chart()
+    end
+  end
+
+  # Check if chart data has meaningful content
+  defp has_meaningful_data?(chart_data) do
+    labels = Map.get(chart_data, "labels", [])
+    length(labels) > 1 || (length(labels) == 1 && hd(labels) != "No Data")
+  end
+
+  # Generate a chart with real data
+  defp generate_real_chart(chart_data, title, chart_options) do
+    # Create chart configuration
+    chart_config = %{
+      type: chart_data["type"] || "horizontalBar",
+      data: chart_data,
+      title: title,
+      options: chart_options
+    }
+
+    # Generate URL from the config
+    ChartService.generate_chart_url(chart_config)
+  end
+
+  # Generate an empty chart with error message
+  defp generate_empty_chart do
+    {:ok,
+     "https://quickchart.io/chart?c={type:%27bar%27,data:{labels:[%27No%20Data%27],datasets:[{label:%27No%20weekly%20kill%20statistics%20available%27,data:[0]}]}}&bkg=rgb(47,49,54)&width=800&height=400"}
   end
 
   @doc """

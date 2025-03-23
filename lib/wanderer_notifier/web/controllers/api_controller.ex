@@ -169,6 +169,40 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Tracking & Characters #
   ####################
 
+  # New endpoint for getting kill stats
+  get "/character-kills/stats" do
+    Logger.info("Character kills stats endpoint called")
+
+    # Check if kill charts is enabled
+    if Config.kill_charts_enabled?() do
+      # Get stats using KillmailPersistence
+      stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        200,
+        Jason.encode!(%{
+          success: true,
+          tracked_characters: stats.tracked_characters,
+          total_kills: stats.total_kills
+        })
+      )
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          success: false,
+          message: "Kill charts feature is not enabled",
+          tracked_characters: 0,
+          total_kills: 0
+        })
+      )
+    end
+  end
+
   # Fetch character kills endpoint - simplified for just loading all tracked characters
   get "/character-kills" do
     Logger.info("Character kills fetch endpoint called")

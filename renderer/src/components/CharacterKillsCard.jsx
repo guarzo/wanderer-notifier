@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FaCircleNotch, 
   FaUsers,
   FaCheckCircle,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaInfoCircle
 } from 'react-icons/fa';
 
 function CharacterKillsCard({ title, description }) {
@@ -11,6 +12,32 @@ function CharacterKillsCard({ title, description }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [stats, setStats] = useState(null);
+  const [trackedInfo, setTrackedInfo] = useState(null);
+  const [loadingInfo, setLoadingInfo] = useState(false);
+
+  // Fetch tracked characters and killmail counts when component mounts
+  useEffect(() => {
+    fetchTrackedInfo();
+  }, []);
+
+  const fetchTrackedInfo = async () => {
+    try {
+      setLoadingInfo(true);
+      const response = await fetch(`/api/character-kills/stats`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setTrackedInfo(data);
+      console.log("Tracked info loaded:", data);
+    } catch (error) {
+      console.error('Error fetching tracked info:', error);
+    } finally {
+      setLoadingInfo(false);
+    }
+  };
 
   const fetchAllCharacterKills = async () => {
     try {
@@ -45,6 +72,11 @@ function CharacterKillsCard({ title, description }) {
         setStats(data.details);
         setSuccess("Successfully loaded kill data for tracked characters");
         
+        // Refresh the tracked info stats after successful load
+        setTimeout(() => {
+          fetchTrackedInfo();
+        }, 1000);
+        
         setTimeout(() => {
           setSuccess(null);
         }, 5000);
@@ -65,6 +97,19 @@ function CharacterKillsCard({ title, description }) {
         <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
         <p className="text-sm text-gray-600 mt-1">{description}</p>
       </div>
+      
+      {/* Tracked info display */}
+      {trackedInfo && (
+        <div className="px-4 py-3 bg-gray-50 border-b">
+          <div className="flex items-center text-sm text-gray-700">
+            <FaInfoCircle className="mr-2 text-indigo-500" />
+            <div>
+              <span className="font-medium">{trackedInfo.tracked_characters || 0}</span> characters tracked with 
+              <span className="font-medium ml-1">{trackedInfo.total_kills || 0}</span> kills stored
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="p-4">
         {/* Main action button */}

@@ -131,99 +131,133 @@ defmodule WandererNotifier.Services.CharacterKillsService do
   def fetch_and_persist_all_tracked_character_kills(limit \\ 25, page \\ 1) do
     # Get all tracked characters using the Helpers module that gets from all sources
     tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
-
-    # Log counts
-    Logger.info(
-      "[CharacterKillsService] Found #{length(tracked_characters)} tracked characters from CacheHelpers"
-    )
+    log_tracked_characters(tracked_characters)
 
     # Continue with processing the tracked characters list
     if Enum.empty?(tracked_characters) do
       Logger.warning("[CharacterKillsService] No tracked characters found in any source")
       {:ok, %{processed: 0, persisted: 0, characters: 0}}
     else
-      # Process each character with a delay between requests
-      results =
-        Enum.map(tracked_characters, fn character ->
-          # Extract the character ID - this is the only field we need
-          character_id =
-            case character do
-              # Handle struct with character_id key
-              %{character_id: id} -> id
-              # If the character is a string directly (like in the sample)
-              id when is_binary(id) -> id
-              id when is_integer(id) -> id
-              _ -> nil
-            end
+      process_tracked_characters(tracked_characters, limit, page)
+    end
+  end
 
-          # Skip invalid character IDs
-          if is_nil(character_id) do
-            Logger.warning(
-              "[CharacterKillsService] Skipping character with invalid ID: #{inspect(character)}"
-            )
+  # Log information about tracked characters
+  defp log_tracked_characters(tracked_characters) do
+    character_count = length(tracked_characters)
+    sample = Enum.take(tracked_characters, min(5, character_count))
 
-            {:error, :invalid_character_id}
-          else
-            Logger.info("[CharacterKillsService] Processing character ID: #{character_id}")
+    Logger.info(
+      "[CharacterKillsService] Found #{character_count} tracked characters from CacheHelpers. Sample: #{inspect(sample)}"
+    )
+  end
 
-            throttle_request()
+  # Process all tracked characters and return aggregated results
+  defp process_tracked_characters(tracked_characters, limit, page) do
+    # Process each character with a delay between requests
+    results = Enum.map(tracked_characters, &process_single_character(&1, limit, page))
 
-            try do
-              fetch_and_persist_character_kills(character_id, limit, page)
-            rescue
-              e ->
-                Logger.error(
-                  "[CharacterKillsService] Error processing character #{character_id}: #{inspect(e)}"
-                )
+    # Check for critical ZKill API errors
+    zkill_api_errors = find_api_errors(results)
 
-                {:error, {:exception, e}}
-            catch
-              kind, reason ->
-                Logger.error(
-                  "[CharacterKillsService] Caught #{kind} while processing character #{character_id}: #{inspect(reason)}"
-                )
+    if Enum.empty?(zkill_api_errors) do
+      aggregate_successful_results(results, tracked_characters)
+    else
+      # Return the first ZKill API error
+      List.first(zkill_api_errors)
+    end
+  end
 
-                {:error, {kind, reason}}
-            end
-          end
-        end)
+  # Process a single character and return the result
+  defp process_single_character(character, limit, page) do
+    # Extract the character ID
+    character_id = extract_character_id(character)
 
-      # Check for critical ZKill API errors
-      zkill_api_errors =
-        Enum.filter(results, fn
-          {:error, {:domain_error, :zkill, {:api_error, _}}} -> true
-          _ -> false
-        end)
+    # Skip invalid character IDs
+    if is_nil(character_id) do
+      Logger.warning(
+        "[CharacterKillsService] Skipping character with invalid ID: #{inspect(character)}"
+      )
 
-      if !Enum.empty?(zkill_api_errors) do
-        # Return the first ZKill API error
-        List.first(zkill_api_errors)
-      else
-        # Aggregate the results
-        successes =
-          Enum.filter(results, fn
-            {:ok, _} -> true
-            _ -> false
-          end)
+      {:error, :invalid_character_id}
+    else
+      fetch_character_kills_safely(character_id, limit, page)
+    end
+  end
 
-        if Enum.empty?(successes) do
-          {:error, "No characters processed successfully"}
-        else
-          # Calculate totals from successful results
-          total_processed =
-            Enum.reduce(successes, 0, fn {:ok, %{processed: p}}, acc -> acc + p end)
+  # Extract character ID from various character formats
+  defp extract_character_id(character) do
+    case character do
+      # Handle struct with character_id key
+      %{character_id: id} -> id
+      # Handle map with string keys
+      %{"character_id" => id} -> id
+      # If the character is a string directly
+      id when is_binary(id) -> id
+      id when is_integer(id) -> id
+      _ -> nil
+    end
+  end
 
-          total_persisted =
-            Enum.reduce(successes, 0, fn {:ok, %{persisted: p}}, acc -> acc + p end)
+  # Safely fetch kills for a character with error handling
+  defp fetch_character_kills_safely(character_id, limit, page) do
+    Logger.info("[CharacterKillsService] Processing character ID: #{character_id}")
+    throttle_request()
 
-          {:ok,
-           %{
-             processed: total_processed,
-             persisted: total_persisted,
-             characters: length(tracked_characters)
-           }}
-        end
-      end
+    try do
+      fetch_and_persist_character_kills(character_id, limit, page)
+    rescue
+      e ->
+        Logger.error(
+          "[CharacterKillsService] Error processing character #{character_id}: #{inspect(e)}"
+        )
+
+        {:error, {:exception, e}}
+    catch
+      kind, reason ->
+        Logger.error(
+          "[CharacterKillsService] Caught #{kind} while processing character #{character_id}: #{inspect(reason)}"
+        )
+
+        {:error, {kind, reason}}
+    end
+  end
+
+  # Find API errors in results
+  defp find_api_errors(results) do
+    Enum.filter(results, fn
+      {:error, {:domain_error, :zkill, {:api_error, _}}} -> true
+      _ -> false
+    end)
+  end
+
+  # Aggregate successful results
+  defp aggregate_successful_results(results, tracked_characters) do
+    # Filter successful results
+    successes =
+      Enum.filter(results, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
+    if Enum.empty?(successes) do
+      {:error, "No characters processed successfully"}
+    else
+      # Calculate totals from successful results
+      total_processed = Enum.reduce(successes, 0, fn {:ok, %{processed: p}}, acc -> acc + p end)
+      total_persisted = Enum.reduce(successes, 0, fn {:ok, %{persisted: p}}, acc -> acc + p end)
+
+      # Log summary of success
+      Logger.info(
+        "[CharacterKillsService] Successfully processed #{total_processed} kills and persisted #{total_persisted} kills for #{length(tracked_characters)} characters"
+      )
+
+      {:ok,
+       %{
+         processed: total_processed,
+         persisted: total_persisted,
+         characters: length(tracked_characters)
+       }}
     end
   end
 
@@ -240,98 +274,121 @@ defmodule WandererNotifier.Services.CharacterKillsService do
     already_processed = CacheRepo.get(processed_cache_key) || MapSet.new()
 
     # Filter out kills we've already processed
-    unprocessed_kills =
+    unprocessed_kills = filter_unprocessed_kills(kills, already_processed)
+
+    # Process unprocessed kills
+    {results, _updated_processed} =
+      process_unprocessed_kills(unprocessed_kills, already_processed)
+
+    # Count the results
+    processed = length(unprocessed_kills)
+    persisted = count_persisted_results(results)
+
+    # Return processed and persisted counts
+    {:ok, %{processed: processed, persisted: persisted}}
+  end
+
+  # Filter out kills that have already been processed
+  defp filter_unprocessed_kills(kills, already_processed) do
+    unprocessed =
       Enum.filter(kills, fn kill ->
         kill_id = Map.get(kill, "killmail_id")
         !MapSet.member?(already_processed, kill_id)
       end)
 
-    if length(unprocessed_kills) < length(kills) do
+    if length(unprocessed) < length(kills) do
       Logger.info(
-        "[CharacterKillsService] Skipping #{length(kills) - length(unprocessed_kills)} already processed kills"
+        "[CharacterKillsService] Skipping #{length(kills) - length(unprocessed)} already processed kills"
       )
     end
 
-    # Process each unprocessed kill
-    results =
-      if Enum.empty?(unprocessed_kills) do
-        # All kills were already processed
-        []
-      else
-        # Track newly processed kills
-        newly_processed_set = MapSet.new()
+    unprocessed
+  end
 
-        # Use an accumulator tuple with results and updated set
-        {results, updated_processed} =
-          Enum.reduce(unprocessed_kills, {[], newly_processed_set}, fn kill,
-                                                                       {acc_results,
-                                                                        acc_processed} ->
-            # Extract kill_id and hash for lookups
-            kill_id = Map.get(kill, "killmail_id")
-            zkb_data = Map.get(kill, "zkb", %{})
+  # Process the list of unprocessed kills
+  defp process_unprocessed_kills([], _already_processed), do: {[], MapSet.new()}
 
-            if is_nil(kill_id) do
-              Logger.warning("[CharacterKillsService] Kill without ID: #{inspect(kill)}")
-              # Add error result but don't update processed set
-              {[{:error, :missing_kill_id} | acc_results], acc_processed}
-            else
-              # Add to newly processed set immediately to prevent concurrent processing
-              CacheRepo.set("processed:killmail:#{kill_id}", true, 86400)
+  defp process_unprocessed_kills(unprocessed_kills, already_processed) do
+    # Track newly processed kills
+    newly_processed_set = MapSet.new()
 
-              # Add this kill_id to our processed set
-              updated_set = MapSet.put(acc_processed, kill_id)
+    # Process each kill and collect results and processed IDs
+    {results, updated_processed} =
+      Enum.reduce(unprocessed_kills, {[], newly_processed_set}, &process_single_kill/2)
 
-              # Get ESI data to enrich the killmail
-              case get_esi_data(kill_id, Map.get(zkb_data, "hash")) do
-                {:ok, esi_data} ->
-                  # Create Killmail struct using the same structure as used by the websocket processor
-                  killmail = WandererNotifier.Data.Killmail.new(kill_id, zkb_data, esi_data)
+    # Update the global processed cache with new kill IDs
+    update_processed_cache(already_processed, updated_processed)
 
-                  # Use the shared persistence logic from KillmailPersistence with error handling
-                  result = safely_persist_killmail(killmail)
+    {results, updated_processed}
+  end
 
-                  process_result =
-                    case result do
-                      {:ok, _} -> {:ok, :persisted}
-                      :ignored -> {:ok, :ignored}
-                      {:error, reason} -> {:error, reason}
-                    end
+  # Process a single kill and return updated results and processed set
+  defp process_single_kill(kill, {acc_results, acc_processed}) do
+    kill_id = Map.get(kill, "killmail_id")
+    zkb_data = Map.get(kill, "zkb", %{})
 
-                  # Add to results list and return updated set
-                  {[process_result | acc_results], updated_set}
+    if is_nil(kill_id) do
+      Logger.warning("[CharacterKillsService] Kill without ID: #{inspect(kill)}")
+      # Add error result but don't update processed set
+      {[{:error, :missing_kill_id} | acc_results], acc_processed}
+    else
+      # Add to newly processed set immediately to prevent concurrent processing
+      # 24 hour cache
+      CacheRepo.set("processed:killmail:#{kill_id}", true, 86_400)
 
-                {:error, reason} = error ->
-                  Logger.error(
-                    "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
-                  )
+      # Add this kill_id to our processed set
+      updated_set = MapSet.put(acc_processed, kill_id)
 
-                  # Add error to results but keep the kill in processed set
-                  {[error | acc_results], updated_set}
-              end
-            end
-          end)
+      handle_kill_processing(kill_id, zkb_data, acc_results, updated_set)
+    end
+  end
 
-        # Update the global processed cache with new kill IDs
-        updated_processed_total = MapSet.union(already_processed, updated_processed)
-        # 24 hour cache
-        CacheRepo.set(processed_cache_key, updated_processed_total, 86400)
+  # Handle the actual kill processing after validation
+  defp handle_kill_processing(kill_id, zkb_data, acc_results, updated_set) do
+    # Get ESI data to enrich the killmail
+    case get_esi_data(kill_id, Map.get(zkb_data, "hash")) do
+      {:ok, esi_data} ->
+        # Create Killmail struct using the same structure as used by the websocket processor
+        killmail = WandererNotifier.Data.Killmail.new(kill_id, zkb_data, esi_data)
 
-        # Return the results list
-        results
-      end
+        # Use the shared persistence logic from KillmailPersistence with error handling
+        result = safely_persist_killmail(killmail)
 
-    # Count the results
-    processed = length(unprocessed_kills)
+        process_result =
+          case result do
+            {:ok, _} -> {:ok, :persisted}
+            :ignored -> {:ok, :ignored}
+            {:error, reason} -> {:error, reason}
+          end
 
-    persisted =
-      Enum.count(results, fn
-        {:ok, :persisted} -> true
-        {:ok, :persisted_with_warning} -> true
-        _ -> false
-      end)
+        # Add to results list and return updated set
+        {[process_result | acc_results], updated_set}
 
-    # Return processed and persisted counts
-    {:ok, %{processed: processed, persisted: persisted}}
+      {:error, reason} = error ->
+        Logger.error(
+          "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
+        )
+
+        # Add error to results but keep the kill in processed set
+        {[error | acc_results], updated_set}
+    end
+  end
+
+  # Update the global processed cache with new kill IDs
+  defp update_processed_cache(already_processed, updated_processed) do
+    processed_cache_key = "processed:killmails:global"
+    updated_processed_total = MapSet.union(already_processed, updated_processed)
+    # 24 hour cache
+    CacheRepo.set(processed_cache_key, updated_processed_total, 86_400)
+  end
+
+  # Count the number of persisted results
+  defp count_persisted_results(results) do
+    Enum.count(results, fn
+      {:ok, :persisted} -> true
+      {:ok, :persisted_with_warning} -> true
+      _ -> false
+    end)
   end
 
   # Get ESI data for a killmail using shared ESI service
@@ -341,33 +398,44 @@ defmodule WandererNotifier.Services.CharacterKillsService do
       Logger.warning("[CharacterKillsService] Kill #{kill_id} is missing hash")
       {:error, :missing_kill_hash}
     else
-      cache_key = "esi:killmail:#{kill_id}"
+      get_esi_data_with_hash(kill_id, kill_hash)
+    end
+  end
 
-      if CacheRepo.exists?(cache_key) do
-        Logger.debug("[CharacterKillsService] Using cached ESI data for kill #{kill_id}")
-        # Return properly formatted - ensure we return {:ok, data}
-        {:ok, CacheRepo.get(cache_key)}
-      else
-        # Throttle ESI requests
-        throttle_request()
+  # Get ESI data when we have a valid hash
+  defp get_esi_data_with_hash(kill_id, kill_hash) do
+    cache_key = "esi:killmail:#{kill_id}"
 
-        # Use the shared ESI service
-        Logger.debug("[CharacterKillsService] Fetching ESI data for kill #{kill_id}")
+    if CacheRepo.exists?(cache_key) do
+      # Use cached data
+      Logger.debug("[CharacterKillsService] Using cached ESI data for kill #{kill_id}")
+      {:ok, CacheRepo.get(cache_key)}
+    else
+      # Fetch data from ESI
+      fetch_esi_data(kill_id, kill_hash, cache_key)
+    end
+  end
 
-        case ESIService.get_killmail(kill_id, kill_hash) do
-          {:ok, esi_data} ->
-            # Cache the ESI data directly, not the tuple
-            CacheRepo.set(cache_key, esi_data, @cache_ttl_seconds)
-            {:ok, esi_data}
+  # Fetch ESI data from the API
+  defp fetch_esi_data(kill_id, kill_hash, cache_key) do
+    # Throttle ESI requests
+    throttle_request()
 
-          {:error, reason} = error ->
-            Logger.error(
-              "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
-            )
+    # Use the shared ESI service
+    Logger.debug("[CharacterKillsService] Fetching ESI data for kill #{kill_id}")
 
-            error
-        end
-      end
+    case ESIService.get_killmail(kill_id, kill_hash) do
+      {:ok, esi_data} ->
+        # Cache the ESI data
+        CacheRepo.set(cache_key, esi_data, @cache_ttl_seconds)
+        {:ok, esi_data}
+
+      {:error, reason} = error ->
+        Logger.error(
+          "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
+        )
+
+        error
     end
   end
 

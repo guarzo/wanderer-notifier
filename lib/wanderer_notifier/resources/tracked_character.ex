@@ -1,15 +1,18 @@
 defmodule WandererNotifier.Resources.TrackedCharacter do
   @moduledoc """
   Ash resource representing a tracked character.
-  Uses ETS as the data layer since this data is already cached in memory.
+  Uses Postgres as the data layer for persistence.
   """
   use Ash.Resource,
     domain: WandererNotifier.Resources.Api,
-    data_layer: Ash.DataLayer.Ets,
-    extensions: []
+    data_layer: AshPostgres.DataLayer,
+    extensions: [
+      AshPostgres.Resource
+    ]
 
-  ets do
-    private?(false)
+  postgres do
+    table("tracked_characters")
+    repo(WandererNotifier.Repo)
   end
 
   attributes do
@@ -22,6 +25,10 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     attribute(:alliance_id, :integer)
     attribute(:alliance_name, :string)
     attribute(:tracked_since, :utc_datetime_usec, default: &DateTime.utc_now/0)
+  end
+
+  identities do
+    identity(:unique_character_id, [:character_id])
   end
 
   relationships do

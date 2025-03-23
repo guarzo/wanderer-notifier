@@ -159,57 +159,18 @@ defmodule WandererNotifier.Api.Map.Characters do
   defp parse_characters_response(body) do
     Logger.debug("[parse_characters_response] Raw body: #{body}")
 
+    case decode_json(body) do
+      {:ok, data} -> process_decoded_data(data)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Helper to decode JSON with error handling
+  defp decode_json(body) do
     case Jason.decode(body) do
       {:ok, data} ->
         Logger.debug("[parse_characters_response] Decoded data: #{inspect(data)}")
-
-        case data do
-          %{"data" => characters} when is_list(characters) ->
-            # API returns a "data" array containing character objects with nested "character" data
-            Logger.debug(
-              "[parse_characters_response] Parsed characters from data array: #{length(characters)}"
-            )
-
-            Logger.debug(
-              "[parse_characters_response] First raw character: #{inspect(List.first(characters))}"
-            )
-
-            # Transform the characters to match the expected format for the rest of the application
-            transformed_characters = Enum.map(characters, &transform_nested_character/1)
-
-            Logger.debug(
-              "[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}"
-            )
-
-            {:ok, transformed_characters}
-
-          characters when is_list(characters) ->
-            # Direct array of characters
-            Logger.debug("[parse_characters_response] Parsed characters: #{length(characters)}")
-
-            # Transform raw characters into standardized format
-            transformed_characters =
-              Enum.map(characters, fn char ->
-                transform_character_data(char)
-              end)
-
-            {:ok, transformed_characters}
-
-          %{} ->
-            # Handle empty response
-            Logger.warning(
-              "[parse_characters_response] Unexpected response format, no characters found: #{inspect(data)}"
-            )
-
-            {:ok, []}
-
-          _ ->
-            Logger.error(
-              "[parse_characters_response] Unexpected response format: #{inspect(data)}"
-            )
-
-            {:error, "Unexpected response format"}
-        end
+        {:ok, data}
 
       {:error, reason} ->
         Logger.error(
@@ -218,6 +179,62 @@ defmodule WandererNotifier.Api.Map.Characters do
 
         {:error, "Failed to parse JSON response"}
     end
+  end
+
+  # Process the decoded data based on format
+  defp process_decoded_data(data) do
+    cond do
+      # Case 1: Nested characters in data array
+      is_map(data) && Map.has_key?(data, "data") && is_list(data["data"]) ->
+        process_nested_characters(data["data"])
+
+      # Case 2: Direct array of characters
+      is_list(data) ->
+        process_direct_characters(data)
+
+      # Case 3: Empty or unexpected map
+      is_map(data) ->
+        Logger.warning(
+          "[parse_characters_response] Unexpected response format, no characters found: #{inspect(data)}"
+        )
+
+        {:ok, []}
+
+      # Case 4: Completely unexpected format
+      true ->
+        Logger.error("[parse_characters_response] Unexpected response format: #{inspect(data)}")
+        {:error, "Unexpected response format"}
+    end
+  end
+
+  # Process characters nested in a data array
+  defp process_nested_characters(characters) do
+    Logger.debug(
+      "[parse_characters_response] Parsed characters from data array: #{length(characters)}"
+    )
+
+    Logger.debug(
+      "[parse_characters_response] First raw character: #{inspect(List.first(characters))}"
+    )
+
+    # Transform the characters to match the expected format
+    transformed_characters = Enum.map(characters, &transform_nested_character/1)
+
+    Logger.debug(
+      "[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}"
+    )
+
+    {:ok, transformed_characters}
+  end
+
+  # Process a direct array of characters
+  defp process_direct_characters(characters) do
+    Logger.debug("[parse_characters_response] Parsed characters: #{length(characters)}")
+
+    # Transform raw characters into standardized format
+    transformed_characters = Enum.map(characters, &transform_character_data/1)
+
+    {:ok, transformed_characters}
   end
 
   defp update_cache(new_characters, _cached_characters) do
@@ -234,37 +251,31 @@ defmodule WandererNotifier.Api.Map.Characters do
       Logger.info("[update_cache] Sample from updated cache: #{inspect(sample)}")
     end
 
-    # Sync with TrackedCharacter Ash resource - with improved logging
-    Logger.info("[update_cache] Starting synchronization with Ash resource in background process")
+    # Sync with TrackedCharacter Ash resource synchronously - no more background process
+    Logger.info("[update_cache] Starting synchronization with Ash resource")
 
-    spawn(fn ->
-      try do
-        Process.flag(:trap_exit, true)
-        Logger.info("[update_cache] Background sync process started")
-
-        case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
-          {:ok, stats} ->
-            Logger.info(
-              "[update_cache] Successfully synced characters to Ash resource: #{inspect(stats)}"
-            )
-
-          {:error, reason} ->
-            Logger.error(
-              "[update_cache] Failed to sync characters to Ash resource: #{inspect(reason)}"
-            )
-        end
-      rescue
-        e ->
-          Logger.error(
-            "[update_cache] Exception in background sync process: #{Exception.message(e)}\n#{Exception.format_stacktrace()}"
+    # Run sync synchronously
+    try do
+      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+        {:ok, stats} ->
+          Logger.info(
+            "[update_cache] Successfully synced characters to Ash resource: #{inspect(stats)}"
           )
-      catch
-        kind, reason ->
+
+        {:error, reason} ->
           Logger.error(
-            "[update_cache] Caught #{kind} in background sync process: #{inspect(reason)}"
+            "[update_cache] Failed to sync characters to Ash resource: #{inspect(reason)}"
           )
       end
-    end)
+    rescue
+      e ->
+        Logger.error(
+          "[update_cache] Exception in sync process: #{Exception.message(e)}\n#{Exception.format_stacktrace()}"
+        )
+    catch
+      kind, reason ->
+        Logger.error("[update_cache] Caught #{kind} in sync process: #{inspect(reason)}")
+    end
 
     {:ok, new_characters}
   end

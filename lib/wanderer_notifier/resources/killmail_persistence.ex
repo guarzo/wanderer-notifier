@@ -10,7 +10,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
   # Cache TTL for processed kill IDs - 24 hours
-  @processed_kills_ttl_seconds 86400
+  @processed_kills_ttl_seconds 86_400
 
   @doc """
   Persists killmail data if it's related to a tracked character.
@@ -25,79 +25,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   """
   def maybe_persist_killmail(%KillmailStruct{} = killmail) do
     # Check if kill charts feature is enabled
-    if kill_charts_enabled?() do
-      # Get the killmail ID as a string for consistent handling
-      killmail_id_str = to_string(killmail.killmail_id)
+    enabled = kill_charts_enabled?()
+    Logger.info("[KillmailPersistence] Kill charts feature enabled: #{enabled}")
 
-      # Check our processed kills cache first to avoid duplicate processing
-      # This is a global cache key not specific to any character
-      cache_key = "processed:killmail:#{killmail_id_str}"
-
-      if CacheRepo.exists?(cache_key) do
-        # We've already processed this killmail
-        Logger.debug(
-          "[KillmailPersistence] Killmail #{killmail_id_str} already processed, skipping"
-        )
-
-        {:ok, :already_processed}
-      else
-        # Set the killmail as being processed to prevent concurrent processing
-        CacheRepo.set(cache_key, true, @processed_kills_ttl_seconds)
-
-        # Continue with the normal flow
-        tracked_characters = get_tracked_characters()
-
-        case find_tracked_character_in_killmail(killmail, tracked_characters) do
-          {character_id, character_name, role} ->
-            # We found a tracked character in the killmail
-            str_character_id = to_string(character_id)
-
-            # Do a fast DB check to see if this specific character-killmail combination exists
-            # Skip the cache layer here since we want accuracy
-            already_exists =
-              check_killmail_exists_in_database(killmail.killmail_id, character_id, role)
-
-            if already_exists do
-              Logger.debug(
-                "[KillmailPersistence] Killmail #{killmail_id_str} already exists for character #{str_character_id} as #{role}, skipping"
-              )
-
-              # Already processed and stored
-              {:ok, :already_exists}
-            else
-              # Not in DB, proceed with persistence
-              Logger.info(
-                "[KillmailPersistence] Persisting killmail #{killmail_id_str} for character #{str_character_id}"
-              )
-
-              # Transform and persist the killmail
-              killmail_attrs =
-                transform_killmail_to_resource(killmail, character_id, character_name, role)
-
-              case create_killmail_record(killmail_attrs) do
-                {:ok, record} ->
-                  Logger.info(
-                    "[KillmailPersistence] Successfully persisted killmail #{killmail_id_str}"
-                  )
-
-                  {:ok, record}
-
-                {:error, error} ->
-                  Logger.error(
-                    "[KillmailPersistence] Failed to persist killmail #{killmail_id_str}: #{inspect(error)}"
-                  )
-
-                  {:error, error}
-              end
-            end
-
-          nil ->
-            # Killmail doesn't involve a tracked character
-            :ignored
-        end
-      end
+    if enabled do
+      persist_if_not_already_processed(killmail)
     else
-      # Persistence disabled, skip
+      Logger.debug("[KillmailPersistence] Kill charts feature disabled, skipping persistence")
       :ignored
     end
   rescue
@@ -108,6 +42,120 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
       Logger.error(Exception.format_stacktrace())
       {:error, exception}
+  end
+
+  # Checks if a killmail has already been processed and persists it if not
+  defp persist_if_not_already_processed(killmail) do
+    killmail_id_str = to_string(killmail.killmail_id)
+    cache_key = "processed:killmail:#{killmail_id_str}"
+
+    if CacheRepo.exists?(cache_key) do
+      Logger.debug(
+        "[KillmailPersistence] Killmail #{killmail_id_str} already processed, skipping"
+      )
+
+      {:ok, :already_processed}
+    else
+      # Mark killmail as being processed to prevent concurrent processing
+      CacheRepo.set(cache_key, true, @processed_kills_ttl_seconds)
+      process_killmail_with_tracked_characters(killmail, killmail_id_str)
+    end
+  end
+
+  # Processes a killmail against tracked characters
+  defp process_killmail_with_tracked_characters(killmail, killmail_id_str) do
+    tracked_characters = get_tracked_characters()
+
+    Logger.info(
+      "[KillmailPersistence] Found #{length(tracked_characters)} tracked characters to check against killmail #{killmail_id_str}"
+    )
+
+    case find_tracked_character_in_killmail(killmail, tracked_characters) do
+      {character_id, character_name, role} ->
+        handle_tracked_character_found(
+          killmail,
+          killmail_id_str,
+          character_id,
+          character_name,
+          role
+        )
+
+      nil ->
+        Logger.debug(
+          "[KillmailPersistence] No tracked character found in killmail #{killmail_id_str}, ignoring"
+        )
+
+        :ignored
+    end
+  end
+
+  # Handles the case when a tracked character is found in a killmail
+  defp handle_tracked_character_found(
+         killmail,
+         killmail_id_str,
+         character_id,
+         character_name,
+         role
+       ) do
+    str_character_id = to_string(character_id)
+
+    Logger.info(
+      "[KillmailPersistence] Found tracked character #{character_name} (#{str_character_id}) in killmail #{killmail_id_str} as #{role}"
+    )
+
+    # Check if this specific character-killmail combination already exists
+    already_exists = check_killmail_exists_in_database(killmail.killmail_id, character_id, role)
+
+    if already_exists do
+      Logger.debug(
+        "[KillmailPersistence] Killmail #{killmail_id_str} already exists for character #{str_character_id} as #{role}, skipping"
+      )
+
+      {:ok, :already_exists}
+    else
+      persist_new_killmail(
+        killmail,
+        killmail_id_str,
+        character_id,
+        character_name,
+        role,
+        str_character_id
+      )
+    end
+  end
+
+  # Persists a new killmail record
+  defp persist_new_killmail(
+         killmail,
+         killmail_id_str,
+         character_id,
+         character_name,
+         role,
+         str_character_id
+       ) do
+    Logger.info(
+      "[KillmailPersistence] Persisting killmail #{killmail_id_str} for character #{str_character_id}"
+    )
+
+    # Transform and persist the killmail
+    killmail_attrs = transform_killmail_to_resource(killmail, character_id, character_name, role)
+
+    Logger.debug(
+      "[KillmailPersistence] Transformed killmail #{killmail_id_str} to: #{inspect(killmail_attrs)}"
+    )
+
+    case create_killmail_record(killmail_attrs) do
+      {:ok, record} ->
+        Logger.info("[KillmailPersistence] Successfully persisted killmail #{killmail_id_str}")
+        {:ok, record}
+
+      {:error, error} ->
+        Logger.error(
+          "[KillmailPersistence] Failed to persist killmail #{killmail_id_str}: #{inspect(error)}"
+        )
+
+        {:error, error}
+    end
   end
 
   @doc """
@@ -362,5 +410,53 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Check if kill charts feature is enabled
   defp kill_charts_enabled? do
     WandererNotifier.Core.Config.kill_charts_enabled?()
+  end
+
+  @doc """
+  Gets statistics about tracked characters and their killmails.
+
+  ## Returns
+    - Map containing tracked_characters (count), total_kills (count)
+  """
+  def get_tracked_kills_stats do
+    try do
+      # Get the number of tracked characters from the cache
+      tracked_characters = get_tracked_characters()
+      character_count = length(tracked_characters)
+
+      # Count the total number of killmails in the database
+      case count_total_killmails() do
+        {:ok, total_kills} ->
+          %{
+            tracked_characters: character_count,
+            total_kills: total_kills
+          }
+
+        {:error, _} ->
+          %{
+            tracked_characters: character_count,
+            total_kills: 0
+          }
+      end
+    rescue
+      e ->
+        Logger.error("[KillmailPersistence] Error getting stats: #{Exception.message(e)}")
+        %{tracked_characters: 0, total_kills: 0}
+    end
+  end
+
+  # Count total number of killmails in the database
+  defp count_total_killmails do
+    # Use a query that will return records and then count them
+    query = Ash.Query.new(Killmail)
+
+    case WandererNotifier.Resources.Api.read(query) do
+      {:ok, records} ->
+        {:ok, length(records)}
+
+      error ->
+        Logger.error("[KillmailPersistence] Error counting killmails: #{inspect(error)}")
+        {:error, "Failed to count killmails"}
+    end
   end
 end
