@@ -18,7 +18,7 @@ services:
       - NODE_OPTIONS=--max-old-space-size=4096
       - CLAUDE_CONFIG_DIR=/home/elixir/.claude
       - POWERLEVEL9K_DISABLE_GITSTATUS=true
-      # Postgres connection for development
+      # PostgreSQL connection settings
       - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-true}
       - POSTGRES_HOST=postgres
       - POSTGRES_USER=postgres
@@ -36,7 +36,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-        required: false
 
   postgres:
     image: postgres:16

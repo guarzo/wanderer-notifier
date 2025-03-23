@@ -30,9 +30,7 @@
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
   
-  // Optional environment variables - enable to activate postgres
   "containerEnv": {
-    "ENABLE_KILL_CHARTS": "true",
     "POSTGRES_HOST": "postgres",
     "POSTGRES_USER": "postgres",
     "POSTGRES_PASSWORD": "postgres",
