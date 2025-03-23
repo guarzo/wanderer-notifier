@@ -302,10 +302,12 @@ defmodule WandererNotifier.Discord.Notifier do
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Data.Character) do
     if env() == :test do
-      handle_test_mode("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character.eve_id}")
+      handle_test_mode(
+        "DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character.character_id}"
+      )
     else
       # Extract character ID for deduplication check
-      character_id = character.eve_id
+      character_id = character.character_id
 
       # Check if this is a duplicate notification
       case WandererNotifier.Services.NotificationDeterminer.check_deduplication(

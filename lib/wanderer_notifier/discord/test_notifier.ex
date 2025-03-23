@@ -44,7 +44,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_new_tracked_character_notification(character) when is_map(character) do
-    character_id = Map.get(character, "character_id") || Map.get(character, "eve_id")
+    character_id = Map.get(character, "character_id") || Map.get(character, :character_id)
     Logger.info("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
     :ok
   end

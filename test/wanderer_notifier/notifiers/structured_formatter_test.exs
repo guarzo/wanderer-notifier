@@ -138,7 +138,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     test "formats a character notification correctly" do
       # Create a test character
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "TSTC",
@@ -174,7 +174,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     test "handles character without corporation data" do
       # Create a test character without corporation
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         tracked: true
       }

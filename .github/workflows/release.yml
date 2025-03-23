@@ -66,11 +66,21 @@ jobs:
           # This may be redundant if the postbuild script works
           cp -r renderer/dist/* priv/static/app/ || true
 
-      - name: Set up BEAM
+      - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.18"
           otp-version: "27"
+
+      - name: Clean dependencies
+        run: |
+          mix deps.clean --all
+          rm -rf _build
+
+      - name: Get dependencies and compile
+        run: |
+          mix deps.get --only prod
+          mix deps.compile --force
 
       - name: Update version in mix.exs
         run: |
@@ -78,12 +88,8 @@ jobs:
           sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
           cat mix.exs
 
-      - name: Install dependencies and build release
+      - name: Compile application
         run: |
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get --only prod
-          mix deps.compile
           mix release
 
       - name: Set up Docker Buildx

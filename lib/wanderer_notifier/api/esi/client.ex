@@ -26,16 +26,16 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches character info from ESI.
   """
-  def get_character_info(eve_id) do
-    url = "#{@base_url}/characters/#{eve_id}/"
-    label = "ESI.character-#{eve_id}"
+  def get_character_info(character_id) do
+    url = "#{@base_url}/characters/#{character_id}/"
+    label = "ESI.character-#{character_id}"
 
     headers = default_headers()
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.character")
     |> case do
-      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      {:ok, data} -> {:ok, Map.put(data, "character_id", character_id)}
       error -> error
     end
   end
@@ -43,16 +43,16 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches corporation info from ESI.
   """
-  def get_corporation_info(eve_id) do
-    url = "#{@base_url}/corporations/#{eve_id}/"
-    label = "ESI.corporation-#{eve_id}"
+  def get_corporation_info(corporation_id) do
+    url = "#{@base_url}/corporations/#{corporation_id}/"
+    label = "ESI.corporation-#{corporation_id}"
 
     headers = default_headers()
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.corporation")
     |> case do
-      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      {:ok, data} -> {:ok, Map.put(data, "corporation_id", corporation_id)}
       error -> error
     end
   end
@@ -60,16 +60,16 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches alliance info from ESI.
   """
-  def get_alliance_info(eve_id) do
-    url = "#{@base_url}/alliances/#{eve_id}/"
-    label = "ESI.alliance-#{eve_id}"
+  def get_alliance_info(alliance_id) do
+    url = "#{@base_url}/alliances/#{alliance_id}/"
+    label = "ESI.alliance-#{alliance_id}"
 
     headers = default_headers()
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.alliance")
     |> case do
-      {:ok, data} -> {:ok, Map.put(data, "eve_id", eve_id)}
+      {:ok, data} -> {:ok, Map.put(data, "alliance_id", alliance_id)}
       error -> error
     end
   end

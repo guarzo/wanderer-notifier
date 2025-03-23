@@ -187,9 +187,9 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     all_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
 
     Enum.map(all_characters, fn char ->
-      # Only use eve_id for consistency
-      eve_id = Map.get(char, "eve_id") || Map.get(char, :eve_id)
-      if eve_id, do: to_string(eve_id), else: nil
+      # Use character_id for consistency
+      character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
+      if character_id, do: to_string(character_id), else: nil
     end)
     |> Enum.reject(&is_nil/1)
   end
@@ -243,7 +243,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     # Log victim information
     log_victim_info(victim_id_str, kill_id)
 
-    # Check if victim is tracked against eve_id list
+    # Check if victim is tracked against character_id list
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
     # Also try direct cache lookup for victim if not already tracked

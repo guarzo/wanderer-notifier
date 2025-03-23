@@ -8,8 +8,16 @@ defmodule WandererNotifier.Api.ZKill.Client do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 
-  @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
-  # ^ Adjust or move this to config so that zKill sees you as a real user.
+  # Update user agent to a more proper and identifiable value for ZKill
+  @user_agent "WandererNotifier/1.0 (github.com/your-username/wanderer-notifier)"
+
+  # Rate limiting settings
+  # Slightly over 1 second to respect ZKill's rate limit
+  @rate_limit_ms 1100
+
+  # Maximum retries for transient errors
+  @max_retries 3
+  @retry_backoff_ms 2000
 
   @doc """
   Retrieves a single killmail from zKillboard by ID.
@@ -140,6 +148,148 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
       error ->
         ErrorHandler.handle_http_error(error, domain: :zkill, tag: "ZKill.system")
+    end
+  end
+
+  @doc """
+  Gets recent kill information for a specific character from zKillboard.
+
+  ## Parameters
+  - `character_id`: The character ID to find kills for
+  - `limit`: Maximum number of kills to retrieve (defaults to 25)
+  - `page`: Page number for pagination (defaults to 1)
+
+  ## Returns
+  - `{:ok, kills}`: List of kills for the character
+  - `{:error, reason}`: If an error occurred
+
+  ## Example
+      iex> WandererNotifier.Api.ZKill.Client.get_character_kills(12345)
+      {:ok, [%{...}, %{...}]}
+  """
+  def get_character_kills(character_id, limit \\ 25, page \\ 1) do
+    # Validate character_id is a valid integer
+    character_id_str = to_string(character_id)
+
+    case validate_character_id(character_id, character_id_str) do
+      {:ok, validated_id} ->
+        # Add rate limiting delay
+        :timer.sleep(@rate_limit_ms)
+
+        # According to zKillboard API docs, the correct format is:
+        # https://zkillboard.com/api/characterID/ID/
+        url = "https://zkillboard.com/api/characterID/#{validated_id}/page/#{page}/"
+        label = "ZKill.character_kills-#{validated_id}-page-#{page}"
+
+        headers = [
+          {"User-Agent", @user_agent},
+          {"Accept", "application/json"}
+        ]
+
+        Logger.info(
+          "[ZKill] Requesting character kills for #{validated_id} (limit: #{limit}, page: #{page})"
+        )
+
+        # Attempt request with retries for transient errors
+        get_character_kills_with_retry(url, headers, label, validated_id, limit, 0)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Validates character ID format
+  defp validate_character_id(character_id, character_id_str) do
+    cond do
+      character_id == nil or character_id_str == "" ->
+        Logger.error("[ZKill] Invalid character ID: #{inspect(character_id)}")
+        {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_missing}}}
+
+      !is_integer(character_id) && !Regex.match?(~r/^\d+$/, character_id_str) ->
+        Logger.error("[ZKill] Character ID is not a valid integer: #{inspect(character_id)}")
+        {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_format}}}
+
+      true ->
+        # Convert to integer if it's a string of digits
+        validated_id =
+          if is_binary(character_id_str),
+            do: String.to_integer(character_id_str),
+            else: character_id
+
+        {:ok, validated_id}
+    end
+  end
+
+  # Private helper function to handle retries for transient errors
+  defp get_character_kills_with_retry(url, headers, label, character_id, limit, retry_count) do
+    case make_http_request(url, headers, label) do
+      {:ok, result} ->
+        {:ok, Enum.take(result, limit)}
+
+      {:error, error} ->
+        handle_retry_logic(error, url, headers, label, character_id, limit, retry_count)
+    end
+  end
+
+  # Makes the HTTP request and processes the response
+  defp make_http_request(url, headers, label) do
+    case HttpClient.get(url, headers, label: label) do
+      {:ok, _} = response ->
+        process_http_response(response)
+
+      {:error, error} ->
+        {:error, ErrorHandler.handle_http_error(error, domain: :zkill, tag: "ZKill.character")}
+    end
+  end
+
+  # Processes the HTTP response
+  defp process_http_response(response) do
+    case ErrorHandler.handle_http_response(response, domain: :zkill, tag: "ZKill.character") do
+      {:ok, parsed} when is_list(parsed) ->
+        {:ok, parsed}
+
+      {:ok, []} ->
+        {:ok, []}
+
+      {:ok, other} ->
+        process_unexpected_response(other)
+
+      {:error, error} ->
+        {:error, ErrorHandler.handle_http_error(error, domain: :zkill, tag: "ZKill.character")}
+    end
+  end
+
+  # Processes unexpected response formats
+  defp process_unexpected_response(response) do
+    Logger.warning("[ZKill] Unexpected response format from zKill")
+    Logger.warning("[ZKill] Response data: #{inspect(response)}")
+
+    if Map.has_key?(response, "error") do
+      error_msg = Map.get(response, "error")
+      Logger.error("[ZKill] API returned error: #{error_msg}")
+      {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
+    else
+      Logger.warning("[ZKill] Response keys: #{inspect(Map.keys(response))}")
+      {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
+    end
+  end
+
+  # Handles retry logic for failed requests
+  defp handle_retry_logic(error, url, headers, label, character_id, limit, retry_count) do
+    if ErrorHandler.retryable?(error) && retry_count < @max_retries do
+      Logger.warning("[ZKill] Transient error, retrying (#{retry_count + 1}/#{@max_retries})")
+      :timer.sleep(@retry_backoff_ms)
+
+      get_character_kills_with_retry(
+        url,
+        headers,
+        label,
+        character_id,
+        limit,
+        retry_count + 1
+      )
+    else
+      {:error, error}
     end
   end
 end

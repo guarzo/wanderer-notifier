@@ -250,8 +250,8 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
     is_map(character) and
       is_map(Map.get(character, "character", %{})) and
       is_binary(get_in(character, ["character", "name"], "")) and
-      (is_binary(get_in(character, ["character", "eve_id"], "")) or
-         is_integer(get_in(character, ["character", "eve_id"], 0)))
+      (is_binary(get_in(character, ["character", "character_id"], "")) or
+         is_integer(get_in(character, ["character", "character_id"], 0)))
   end
 
   # Support legacy character format
@@ -265,8 +265,8 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
     is_map(activity) and
       is_map(Map.get(activity, "character", %{})) and
       is_binary(get_in(activity, ["character", "name"], "")) and
-      (is_binary(get_in(activity, ["character", "eve_id"], "")) or
-         is_integer(get_in(activity, ["character", "eve_id"], 0))) and
+      (is_binary(get_in(activity, ["character", "character_id"], "")) or
+         is_integer(get_in(activity, ["character", "character_id"], 0))) and
       is_integer(Map.get(activity, "signatures", 0)) and
       is_integer(Map.get(activity, "connections", 0)) and
       is_integer(Map.get(activity, "passages", 0))

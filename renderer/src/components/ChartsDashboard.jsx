@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaSync, FaDiscord, FaChartBar, FaExclamationTriangle, FaCircleNotch } from 'react-icons/fa';
 import ActivityChartCard from './ActivityChartCard';
 import KillmailChartCard from './KillmailChartCard';
+import CharacterKillsCard from './CharacterKillsCard';
 
 export default function ChartsDashboard() {
   const [loading, setLoading] = useState(true);
@@ -15,26 +16,32 @@ export default function ChartsDashboard() {
   const [sendAllError, setSendAllError] = useState(null);
 
   useEffect(() => {
-    // Fetch the chart configuration
-    fetch('/api/chart/config')
-      .then(response => response.json())
-      .then(data => {
-        setFeatures({
-          mapChartsEnabled: data.map_tools_enabled || false,
-          killChartsEnabled: data.kill_charts_enabled || false
+    try {
+      // Fetch the chart configuration
+      fetch('/charts/config')
+        .then(response => response.json())
+        .then(data => {
+          setFeatures({
+            mapChartsEnabled: data.map_tools_enabled || false,
+            killChartsEnabled: data.kill_charts_enabled || false
+          });
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error fetching chart configuration:', error);
+          setError(`Failed to load chart configuration: ${error.message}`);
+          // Default to disabled if there's an error
+          setFeatures({
+            mapChartsEnabled: false,
+            killChartsEnabled: false
+          });
+          setLoading(false);
         });
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error('Error fetching chart configuration:', error);
-        setError(`Failed to load chart configuration: ${error.message}`);
-        // Default to disabled if there's an error
-        setFeatures({
-          mapChartsEnabled: false,
-          killChartsEnabled: false
-        });
-        setLoading(false);
-      });
+    } catch (err) {
+      console.error('Unhandled error in chart config fetch:', err);
+      setError(`Unhandled error: ${err.message}`);
+      setLoading(false);
+    }
   }, []);
 
   const sendAllActivityCharts = () => {
@@ -218,13 +225,17 @@ export default function ChartsDashboard() {
             </button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             <KillmailChartCard 
               title="Weekly Character Kills" 
               description="Top 20 characters by kills in the past week"
               chartType="weekly_kills"
             />
-            {/* Add more killmail chart types here in the future */}
+            
+            <CharacterKillsCard
+              title="Character Kill History" 
+              description="Fetch and store historical kills for tracked characters"
+            />
           </div>
         </div>
       )}

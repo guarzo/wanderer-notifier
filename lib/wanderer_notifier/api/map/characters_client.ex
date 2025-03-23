@@ -112,7 +112,10 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         characters =
           Enum.map(characters_data, fn char_data ->
             try do
-              Character.new(char_data)
+              # Always use map format to create Character
+              # Transform eve_id from map API to character_id for internal use
+              formatted_data = transform_map_api_character(char_data)
+              Character.new(formatted_data)
             rescue
               e in ArgumentError ->
                 Logger.warning("[CharactersClient] Failed to parse character: #{inspect(e)}")
@@ -330,15 +333,15 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   defp find_added_characters(_new_chars, []), do: []
 
   defp find_added_characters(new_chars, cached_chars) do
-    # Find characters by their eve_id that are in new but not in cached
-    new_char_ids = MapSet.new(new_chars, & &1.eve_id)
-    cached_char_ids = MapSet.new(cached_chars, & &1.eve_id)
+    # Find characters by their character_id that are in new but not in cached
+    new_char_ids = MapSet.new(new_chars, & &1.character_id)
+    cached_char_ids = MapSet.new(cached_chars, & &1.character_id)
 
     # Get the difference (characters in new but not in cached)
     new_ids = MapSet.difference(new_char_ids, cached_char_ids)
 
     # Return the full character structs for new characters
-    Enum.filter(new_chars, fn char -> MapSet.member?(new_ids, char.eve_id) end)
+    Enum.filter(new_chars, fn char -> MapSet.member?(new_ids, char.character_id) end)
   end
 
   # Send notifications for each new character
@@ -389,5 +392,31 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
     # Send notification via factory
     NotifierFactory.notify(:send_discord_embed, [discord_format, :character_tracking])
+  end
+
+  defp transform_map_api_character(char_data) do
+    # Handle nested character structure
+    character_data =
+      if is_map(char_data["character"]) do
+        char_data["character"]
+      else
+        char_data
+      end
+
+    # IMPORTANT: Convert eve_id from map API to character_id
+    # The map API uses eve_id but our application uses character_id consistently
+    # After this transformation, we should never see eve_id again in the application
+    eve_id = character_data["eve_id"]
+
+    if !eve_id do
+      Logger.warning(
+        "[CharactersClient] Map API character data missing eve_id: #{inspect(character_data)}"
+      )
+    end
+
+    # Create a new map with character_id instead of eve_id
+    # This ensures consistent field naming throughout the application
+    char_data
+    |> Map.put("character_id", eve_id)
   end
 end

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Resources.Killmail do
   Stores killmail data related to tracked characters.
   """
   use Ash.Resource,
-    domain: nil,
+    domain: WandererNotifier.Resources.Api,
     data_layer: AshPostgres.DataLayer,
     extensions: [
       AshPostgres.Resource
@@ -52,6 +52,7 @@ defmodule WandererNotifier.Resources.Killmail do
   end
 
   identities do
+    identity(:unique_killmail, [:killmail_id, :character_role, :related_character_id])
   end
 
   relationships do
@@ -89,6 +90,7 @@ defmodule WandererNotifier.Resources.Killmail do
     create :create do
       primary?(true)
 
+      # Accept all attributes needed for a killmail record
       accept([
         :killmail_id,
         :kill_time,
@@ -107,25 +109,36 @@ defmodule WandererNotifier.Resources.Killmail do
         :attacker_data
       ])
 
-      argument(:killmail_id, :integer, allow_nil?: false)
-
-      argument(:character_role, :atom,
-        allow_nil?: false,
-        constraints: [one_of: @character_roles]
-      )
-
-      argument(:related_character_id, :integer, allow_nil?: false)
-
-      change(
-        before_action(fn changeset ->
-          Ash.Changeset.change_attribute(changeset, :processed_at, DateTime.utc_now())
-        end)
-      )
+      # Set the processed_at timestamp
+      change(fn changeset, _context ->
+        Ash.Changeset.change_attribute(changeset, :processed_at, DateTime.utc_now())
+      end)
     end
 
     read :get_by_killmail_id do
       argument(:killmail_id, :integer, allow_nil?: false)
       filter(expr(killmail_id == ^arg(:killmail_id)))
+    end
+
+    read :exists_with_character do
+      argument(:killmail_id, :integer, allow_nil?: false)
+      argument(:character_id, :integer, allow_nil?: false)
+      argument(:character_role, :atom, allow_nil?: false)
+
+      filter(
+        expr(
+          killmail_id == ^arg(:killmail_id) and
+            related_character_id == ^arg(:character_id) and
+            character_role == ^arg(:character_role)
+        )
+      )
+
+      # Just check for existence
+      prepare(fn query, _context ->
+        query
+        |> Ash.Query.select([:id])
+        |> Ash.Query.limit(1)
+      end)
     end
 
     read :list_for_character do
@@ -153,7 +166,17 @@ defmodule WandererNotifier.Resources.Killmail do
   code_interface do
     define(:get, action: :read)
     define(:get_by_killmail_id, action: :get_by_killmail_id, args: [:killmail_id])
-    define(:list_for_character, action: :list_for_character, args: [:character_id, :from_date, :to_date, :limit])
+
+    define(:exists_with_character,
+      action: :exists_with_character,
+      args: [:killmail_id, :character_id, :character_role]
+    )
+
+    define(:list_for_character,
+      action: :list_for_character,
+      args: [:character_id, :from_date, :to_date, :limit]
+    )
+
     define(:create, action: :create)
     define(:update, action: :update)
     define(:destroy, action: :destroy)

@@ -13,7 +13,7 @@ function App() {
 
   useEffect(() => {
     // Fetch configuration when component mounts
-    fetch('/api/chart/config')
+    fetch('/charts/config')
       .then(response => response.json())
       .then(data => {
         setCorpToolsEnabled(data.corp_tools_enabled);

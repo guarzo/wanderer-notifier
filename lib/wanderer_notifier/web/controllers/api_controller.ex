@@ -8,15 +8,50 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.License
+  alias WandererNotifier.Services.CharacterKillsService
+
+  # Module attributes
+  @api_version "1.0.0"
+  @service_start_time System.monotonic_time(:millisecond)
 
   plug(:match)
   plug(:dispatch)
 
+  ####################
+  # Health and Status #
+  ####################
+
   # Health check endpoint
   get "/health" do
+    # Get the start time for response time measurement
+    start_time = System.monotonic_time(:millisecond)
+
+    # Get the service uptime
+    uptime_ms = System.monotonic_time(:millisecond) - @service_start_time
+    uptime_seconds = div(uptime_ms, 1000)
+    uptime_minutes = div(uptime_seconds, 60)
+    uptime_hours = div(uptime_minutes, 60)
+    uptime_days = div(uptime_hours, 24)
+
+    # Calculate response time
+    response_time = System.monotonic_time(:millisecond) - start_time
+
+    # Prepare the health response
+    health_response = %{
+      status: "ok",
+      version: @api_version,
+      uptime: %{
+        days: uptime_days,
+        hours: rem(uptime_hours, 24),
+        minutes: rem(uptime_minutes, 60),
+        seconds: rem(uptime_seconds, 60)
+      },
+      response_time_ms: response_time
+    }
+
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(200, Jason.encode!(%{status: "ok"}))
+    |> send_resp(200, Jason.encode!(health_response))
   end
 
   # Status endpoint for the dashboard
@@ -130,94 +165,130 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     )
   end
 
-  # Special endpoint to handle all three TPS chart types
-  get "/corp-tools/charts/:chart_type" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
+  ####################
+  # Tracking & Characters #
+  ####################
+
+  # New endpoint for getting kill stats
+  get "/character-kills/stats" do
+    Logger.info("Character kills stats endpoint called")
+
+    # Check if kill charts is enabled
+    if Config.kill_charts_enabled?() do
+      # Get stats using KillmailPersistence
+      stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        200,
+        Jason.encode!(%{
+          success: true,
+          tracked_characters: stats.tracked_characters,
+          total_kills: stats.total_kills
+        })
+      )
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          success: false,
+          message: "Kill charts feature is not enabled",
+          tracked_characters: 0,
+          total_kills: 0
+        })
+      )
+    end
   end
 
-  # Legacy endpoint for kills by ship type (keep for backward compatibility)
-  get "/corp-tools/charts/kills-by-ship-type" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+  # Fetch character kills endpoint - simplified for just loading all tracked characters
+  get "/character-kills" do
+    Logger.info("Character kills fetch endpoint called")
 
-  # Get chart for kills by month
-  get "/corp-tools/charts/kills-by-month" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+    # Get query parameters
+    conn_params = conn.query_params
+    all_characters = Map.get(conn_params, "all", "false") |> parse_boolean()
+    limit = Map.get(conn_params, "limit", "25") |> parse_integer(25)
+    page = Map.get(conn_params, "page", "1") |> parse_integer(1)
 
-  # Get chart for total kills and value
-  get "/corp-tools/charts/total-kills-value" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+    # Check if kill charts is enabled
+    if Config.kill_charts_enabled?() do
+      if all_characters do
+        # Fetch kills for all tracked characters
+        Logger.info("Fetching kills for all tracked characters")
 
-  # Get all TPS charts in a single response
-  get "/corp-tools/charts/all" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+        case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, page) do
+          {:ok, stats} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              200,
+              Jason.encode!(%{
+                success: true,
+                message: "Character kills fetched and processed successfully",
+                details: stats
+              })
+            )
 
-  # Send a specific TPS chart to Discord
-  get "/corp-tools/charts/send-to-discord/:chart_type" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+          {:error, {:domain_error, :zkill, {:api_error, error_msg}}} ->
+            # Handle ZKill API errors specifically
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              502,
+              Jason.encode!(%{
+                success: false,
+                message: "ZKill API error",
+                details: error_msg
+              })
+            )
 
-  # Send all TPS charts to Discord
-  get "/corp-tools/charts/send-all-to-discord" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
+          {:error, reason} ->
+            # Better error details
+            error_message =
+              case reason do
+                {:domain_error, domain, details} -> "Error from #{domain}: #{inspect(details)}"
+                _ -> inspect(reason)
+              end
 
-  # Trigger the TPS chart scheduler manually
-  get "/corp-tools/charts/trigger-scheduler" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
-  end
-
-  # Debug endpoint to check TPS data structure
-  get "/debug-tps-data" do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      404,
-      Jason.encode!(%{status: "error", message: "CorpTools functionality has been removed"})
-    )
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                success: false,
+                message: "Failed to fetch and process character kills",
+                details: "Error: #{error_message}"
+              })
+            )
+        end
+      else
+        # Simplified to redirect to all=true
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          400,
+          Jason.encode!(%{
+            success: false,
+            message: "This endpoint only supports fetching all characters",
+            details: "Please use ?all=true parameter"
+          })
+        )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          success: false,
+          message: "Kill charts feature is not enabled",
+          details: "Enable the ENABLE_KILL_CHARTS environment variable to use this feature"
+        })
+      )
+    end
   end
 
   # Helper functions
@@ -227,6 +298,28 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     do: min(100, round(current / limit * 100))
 
   defp calculate_percentage(_, _), do: 0
+
+  # Helper functions for parameter parsing
+
+  # Safely parses an integer value with fallback
+  defp parse_integer(value, default)
+  defp parse_integer(nil, default), do: default
+  defp parse_integer(value, _default) when is_integer(value), do: value
+
+  defp parse_integer(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, _} -> int
+      :error -> default
+    end
+  end
+
+  # Parse boolean helper
+  defp parse_boolean(value, default \\ false)
+  defp parse_boolean(nil, default), do: default
+  defp parse_boolean(value, _default) when is_boolean(value), do: value
+  defp parse_boolean("true", _default), do: true
+  defp parse_boolean("1", _default), do: true
+  defp parse_boolean(_, _default), do: false
 
   # Test kill notification endpoint
   get "/test-notification" do
@@ -455,7 +548,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Find a valid character or return a sample one
   defp get_valid_character_for_notification(tracked_characters) do
-    valid_chars = Enum.filter(tracked_characters, &valid_eve_id?/1)
+    valid_chars = Enum.filter(tracked_characters, &valid_character_id?/1)
     Logger.debug("Valid characters: #{length(valid_chars)} out of #{length(tracked_characters)}")
 
     if Enum.empty?(valid_chars) do
@@ -510,13 +603,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   defp extract_character_id(character) do
     cond do
       is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-        character.eve_id
+        character.character_id
 
       is_map(character) && Map.has_key?(character, "character_id") ->
         character["character_id"]
-
-      is_map(character) && Map.has_key?(character, "eve_id") ->
-        character["eve_id"]
 
       true ->
         nil
@@ -548,8 +638,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       "[APIController] Formatting character for notification: #{inspect(character, pretty: true, limit: 300)}"
     )
 
+    # Always prioritize EVE ID
+    character_id = extract_character_id(character)
+
     %{
-      "character_id" => extract_character_id(character),
+      "character_id" => character_id,
       "character_name" => extract_character_name(character),
       "corporation_id" => extract_corporation_id(character),
       "corporation_ticker" => extract_corporation_ticker(character)
@@ -588,9 +681,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   end
 
   #
-  # Validate EVE ID
+  # Validate character ID
   #
-  defp valid_eve_id?(character) do
+  defp valid_character_id?(character) do
     cond do
       has_valid_direct_id?(character) -> true
       has_valid_nested_character?(character) -> true
@@ -600,7 +693,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Check if character has a valid ID directly in its map
   defp has_valid_direct_id?(character) do
-    id_keys = ["character_id", "eve_id"]
+    # Only check character_id
+    id_keys = ["character_id"]
 
     Enum.any?(id_keys, fn key ->
       is_binary(character[key]) && NotificationHelpers.valid_numeric_id?(character[key])
@@ -614,11 +708,238 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Check if nested map has a valid ID
   defp valid_nested?(nested_map) do
-    id_keys = ["eve_id", "character_id", "id"]
+    # Only check character_id keys
+    id_keys = ["character_id", "id"]
 
     Enum.any?(id_keys, fn key ->
       is_binary(nested_map[key]) && NotificationHelpers.valid_numeric_id?(nested_map[key])
     end)
+  end
+
+  # Return list of tracked characters
+  get "/tracked-characters" do
+    try do
+      # Get tracked characters with more robust error handling
+      tracked_characters =
+        try do
+          # Use CacheHelpers to get a properly formatted list
+          WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+        rescue
+          e ->
+            Logger.error("Error getting tracked characters: #{inspect(e)}")
+            []
+        end
+
+      # Log how many characters we found
+      Logger.info("Returning #{length(tracked_characters)} tracked characters")
+
+      # Ensure each character has at least the required ID and name fields
+      formatted_characters =
+        Enum.map(tracked_characters, fn character ->
+          case character do
+            # String ID case
+            id when is_binary(id) or is_integer(id) ->
+              %{
+                character_id: to_string(id),
+                character_name: "Character #{id}"
+              }
+
+            # Map case but needs normalization
+            %{} = char_map ->
+              # Extract ID from various possible keys
+              id =
+                char_map[:character_id] || char_map["character_id"] ||
+                  char_map[:id] || char_map["id"]
+
+              # Extract name from various possible keys
+              name =
+                char_map[:character_name] || char_map["character_name"] ||
+                  char_map[:name] || char_map["name"] ||
+                  "Character #{id}"
+
+              # Return a standardized map
+              %{
+                character_id: id && to_string(id),
+                character_name: name
+              }
+
+            # Unknown format, return empty map with log
+            other ->
+              Logger.warning("Unknown character format: #{inspect(other)}")
+              %{character_id: nil, character_name: "Unknown"}
+          end
+        end)
+        |> Enum.filter(fn %{character_id: id} -> id != nil end)
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        200,
+        Jason.encode!(%{
+          success: true,
+          characters: formatted_characters
+        })
+      )
+    rescue
+      e ->
+        Logger.error("Error in tracked-characters endpoint: #{inspect(e)}")
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            success: false,
+            message: "Internal server error",
+            error: inspect(e)
+          })
+        )
+    end
+  end
+
+  #####################
+  # ZKill Integration  #
+  #####################
+
+  # Sync tracked characters from cache to Ash resource
+  get "/sync-characters" do
+    Logger.info("Triggering sync of tracked characters from cache to Ash resource")
+
+    # Inspect the map cache first
+    cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    Logger.info("Found #{length(cached_characters)} characters in map cache")
+
+    # Log some sample characters to check their format
+    if length(cached_characters) > 0 do
+      sample = Enum.take(cached_characters, min(5, length(cached_characters)))
+      Logger.info("Sample characters from cache: #{inspect(sample)}")
+    end
+
+    # Call the sync function
+    case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+      {:ok, stats} ->
+        # Get count after sync
+        ash_count_result =
+          WandererNotifier.Resources.TrackedCharacter
+          |> WandererNotifier.Resources.Api.read()
+
+        ash_count =
+          case ash_count_result do
+            {:ok, chars} -> length(chars)
+            _ -> 0
+          end
+
+        Logger.info("After sync: Ash resource now has #{ash_count} characters")
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            success: true,
+            message: "Characters synced successfully",
+            details: Map.put(stats, :ash_count, ash_count)
+          })
+        )
+
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            success: false,
+            message: "Failed to sync characters",
+            details: inspect(reason)
+          })
+        )
+    end
+  end
+
+  # Force sync map characters to Ash resource and vice versa
+  get "/force-sync-characters" do
+    Logger.info("Triggering forced character synchronization")
+
+    # Get all relevant caches
+    map_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+
+    tracked_characters_cache =
+      WandererNotifier.Data.Cache.Repository.get("tracked:characters") || []
+
+    all_from_helper = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+
+    # Get characters from the Ash resource
+    ash_result =
+      WandererNotifier.Resources.TrackedCharacter
+      |> WandererNotifier.Resources.Api.read()
+
+    ash_characters =
+      case ash_result do
+        {:ok, chars} -> chars
+        _ -> []
+      end
+
+    # Log the current state of all caches
+    Logger.info("Before sync: map:characters has #{length(map_characters)} characters")
+
+    Logger.info(
+      "Before sync: tracked:characters has #{length(tracked_characters_cache)} characters"
+    )
+
+    Logger.info(
+      "Before sync: CacheHelpers.get_tracked_characters() returns #{length(all_from_helper)} characters"
+    )
+
+    Logger.info("Before sync: Ash resource has #{length(ash_characters)} characters")
+
+    # Perform the sync operation directly (not in a spawned process)
+    sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_cache()
+
+    # Get counts after sync
+    ash_result_after =
+      WandererNotifier.Resources.TrackedCharacter
+      |> WandererNotifier.Resources.Api.read()
+
+    ash_count_after =
+      case ash_result_after do
+        {:ok, chars} -> length(chars)
+        _ -> 0
+      end
+
+    response_data =
+      case sync_result do
+        {:ok, stats} ->
+          %{
+            success: true,
+            message: "Character synchronization completed successfully",
+            details: %{
+              map_cache_count: length(map_characters),
+              tracked_cache_count: length(tracked_characters_cache),
+              helper_combined_count: length(all_from_helper),
+              ash_count_before: length(ash_characters),
+              ash_count_after: ash_count_after,
+              sync_stats: stats
+            }
+          }
+
+        {:error, reason} ->
+          %{
+            success: false,
+            message: "Character synchronization failed",
+            details: %{
+              error: inspect(reason),
+              map_cache_count: length(map_characters),
+              tracked_cache_count: length(tracked_characters_cache),
+              helper_combined_count: length(all_from_helper),
+              ash_count_before: length(ash_characters),
+              ash_count_after: ash_count_after
+            }
+          }
+      end
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response_data))
   end
 
   # Catch-all route

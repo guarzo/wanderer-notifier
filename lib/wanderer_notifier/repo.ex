@@ -6,6 +6,40 @@ defmodule WandererNotifier.Repo do
   require Logger
 
   @doc """
+  Required by Ash framework for transaction handling.
+  Returns whether atomic actions should be disabled.
+  For now, we're disabling atomic actions since we don't need them.
+  """
+  def disable_atomic_actions?, do: true
+
+  @doc """
+  Required by Ash framework for transaction handling.
+  Determines whether or not transactions should be preferred.
+  """
+  def prefer_transaction?, do: true
+
+  @doc """
+  Called by Ash.Postgres when a transaction begins.
+  """
+  def on_transaction_begin(_opts), do: :ok
+
+  @doc """
+  Called by Ash.Postgres when a transaction rolls back.
+  """
+  def on_transaction_rollback(_opts, _err), do: :ok
+
+  @doc """
+  Called by Ash.Postgres when a transaction commits.
+  """
+  def on_transaction_commit(_opts), do: :ok
+
+  @doc """
+  Required by Ash.Postgres for constraint handling.
+  Returns the default constraint match type for a given constraint type.
+  """
+  def default_constraint_match_type(_constraint_type, _name), do: :exact
+
+  @doc """
   Performs a health check on the database connection.
   Returns {:ok, ping_time_ms} if successful or {:error, reason} if not.
   """

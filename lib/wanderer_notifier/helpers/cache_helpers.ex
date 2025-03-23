@@ -201,17 +201,29 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Format a character for logging purposes
   defp format_character_for_logging(char) when is_map(char) do
-    eve_id = extract_character_eve_id(char)
-    "#{inspect(char)} with eve_id: #{eve_id}"
+    character_id = extract_character_id(char)
+    "#{inspect(char)} with character_id: #{character_id}"
   end
 
   defp format_character_for_logging(char) do
     "#{inspect(char)}"
   end
 
-  # Extract the EVE ID from a character map
-  defp extract_character_eve_id(char) do
-    find_id_from_keys(char, [:eve_id, "eve_id"])
+  # Helper functions to extract character ID from different formats
+  defp extract_character_id(char) when is_map(char) do
+    extract_character_id_from_map(char)
+  end
+
+  defp extract_character_id(char) when is_integer(char) or is_binary(char) do
+    to_string(char)
+  end
+
+  defp extract_character_id(_), do: nil
+
+  # Extract from map with atom or string keys
+  defp extract_character_id_from_map(map) when is_map(map) do
+    id = find_id_from_keys(map, [:character_id, "character_id"])
+    if id, do: to_string(id), else: nil
   end
 
   @doc """
@@ -430,23 +442,6 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
     # Combine lists
     list1 ++ unique_list2
-  end
-
-  # Helper functions to extract character ID from different formats
-  defp extract_character_id(char) when is_map(char) do
-    extract_character_id_from_map(char)
-  end
-
-  defp extract_character_id(char) when is_integer(char) or is_binary(char) do
-    to_string(char)
-  end
-
-  defp extract_character_id(_), do: nil
-
-  # Extract from map with atom or string keys
-  defp extract_character_id_from_map(map) when is_map(map) do
-    id = find_id_from_keys(map, [:eve_id, :character_id, "eve_id", "character_id"])
-    if id, do: to_string(id), else: nil
   end
 
   # Generic entity removal function (DRY principle)

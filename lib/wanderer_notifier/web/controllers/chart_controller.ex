@@ -197,7 +197,23 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     if Config.kill_charts_enabled?() do
       Logger.info("Generating weekly kills chart")
 
-      case KillmailChartAdapter.generate_weekly_kills_chart([]) do
+      # Parse limit parameter with default of 20
+      limit =
+        case conn.params["limit"] do
+          nil ->
+            20
+
+          val when is_binary(val) ->
+            case Integer.parse(val) do
+              {num, _} -> num
+              :error -> 20
+            end
+
+          _ ->
+            20
+        end
+
+      case KillmailChartAdapter.generate_weekly_kills_chart(limit) do
         {:ok, chart_url} ->
           conn
           |> put_resp_content_type("application/json")
@@ -205,6 +221,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             200,
             Jason.encode!(%{
               status: "ok",
+              title: "Character Activity Chart",
               chart_url: chart_url
             })
           )
@@ -240,9 +257,30 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       description = conn.params["description"] || "Top 20 characters by kills in the past week"
       channel_id = conn.params["channel_id"]
 
+      # Parse limit parameter with default of 20
+      limit =
+        case conn.params["limit"] do
+          nil ->
+            20
+
+          val when is_binary(val) ->
+            case Integer.parse(val) do
+              {num, _} -> num
+              :error -> 20
+            end
+
+          _ ->
+            20
+        end
+
       Logger.info("Sending weekly kills chart to Discord with title: #{title}")
 
-      case KillmailChartAdapter.send_weekly_kills_chart_to_discord(title, description, channel_id) do
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord(
+             title,
+             description,
+             channel_id,
+             limit
+           ) do
         :ok ->
           conn
           |> put_resp_content_type("application/json")

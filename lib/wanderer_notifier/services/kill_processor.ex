@@ -268,12 +268,20 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Extract victim information from killmail
   defp extract_victim_info(killmail, _kill_id) do
-    victim_id = get_in(killmail.esi_data || %{}, ["victim", "character_id"])
-    victim_ship_id = get_in(killmail.esi_data || %{}, ["victim", "ship_type_id"])
+    victim_map = killmail.esi_data || %{}
 
-    Logger.debug(
-      "VICTIM ID EXTRACT: Using character_id #{victim_id} from killmail, will match against eve_id in tracked characters"
-    )
+    # Extract the victim's character ID if available
+    victim_id = Map.get(victim_map, "character_id") || Map.get(victim_map, :character_id)
+
+    if victim_id do
+      Logger.debug(
+        "VICTIM ID EXTRACT: Using character_id #{victim_id} from killmail, will match against character IDs in tracked characters"
+      )
+    else
+      Logger.debug("VICTIM ID EXTRACT: No character_id found in killmail victim")
+    end
+
+    victim_ship_id = get_in(victim_map, ["ship_type_id"])
 
     %{
       victim_id: victim_id,
@@ -359,22 +367,18 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp get_tracked_character_ids(tracked_characters) do
     tracked_char_ids =
       tracked_characters
-      |> Enum.map(fn char ->
-        case char do
-          %{eve_id: id} when not is_nil(id) -> to_string(id)
-          %{"eve_id" => id} when not is_nil(id) -> to_string(id)
-          _ -> nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
+      |> Enum.map(&extract_character_id/1)
+      |> Enum.reject(&is_nil/1)
       |> MapSet.new()
 
     # Log some tracked character IDs for debugging
     sample_tracked_ids =
-      MapSet.to_list(tracked_char_ids) |> Enum.take(min(5, MapSet.size(tracked_char_ids)))
+      tracked_char_ids
+      |> MapSet.to_list()
+      |> Enum.take(min(5, MapSet.size(tracked_char_ids)))
 
     Logger.info(
-      "TRACKING DEBUG: Using #{MapSet.size(tracked_char_ids)} character IDs from eve_id field. Sample: #{inspect(sample_tracked_ids)}"
+      "TRACKING DEBUG: Using #{MapSet.size(tracked_char_ids)} character IDs. Sample: #{inspect(sample_tracked_ids)}"
     )
 
     tracked_char_ids
@@ -385,7 +389,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   defp check_if_victim_tracked(victim_id_str, tracked_char_ids) do
     Logger.info(
-      "VICTIM TRACKING CHECK: Checking victim ID #{victim_id_str} against #{MapSet.size(tracked_char_ids)} tracked character eve_ids"
+      "VICTIM TRACKING CHECK: Checking victim ID #{victim_id_str} against #{MapSet.size(tracked_char_ids)} tracked character IDs"
     )
 
     # Check if the victim ID is in our tracked characters set
@@ -1220,5 +1224,35 @@ defmodule WandererNotifier.Services.KillProcessor do
     Logger.info("Triggering special debug for system ID: #{system_id}")
     # Send the message to the main Service module
     Process.send(WandererNotifier.Service, {:debug_special_system, system_id}, [])
+  end
+
+  # Extract character ID from character data
+  defp extract_character_id(char) do
+    cond do
+      is_map(char) -> extract_id_from_map(char)
+      is_binary(char) || is_integer(char) -> to_string(char)
+      true -> nil
+    end
+  end
+
+  # Helper to extract ID from map with various possible keys
+  defp extract_id_from_map(char) do
+    # Try each possible key format in order of preference
+    character_id_atom = get_value_if_exists(char, :character_id)
+    character_id_string = get_value_if_exists(char, "character_id")
+    id_atom = get_value_if_exists(char, :id)
+    id_string = get_value_if_exists(char, "id")
+
+    # Return the first non-nil value found
+    character_id_atom || character_id_string || id_atom || id_string || nil
+  end
+
+  # Helper to safely get and convert a value if the key exists and value isn't nil
+  defp get_value_if_exists(map, key) do
+    if Map.has_key?(map, key) && !is_nil(Map.get(map, key)) do
+      to_string(Map.get(map, key))
+    else
+      nil
+    end
   end
 end
