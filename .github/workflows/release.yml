@@ -37,20 +37,26 @@ jobs:
           echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
           echo "vtag=${VTAG}" >> "$GITHUB_OUTPUT"
           echo "major_vtag=${MAJOR_VTAG}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          
           echo "Generated Elixir version: ${VERSION}"
           echo "Generated Docker version: ${DOCKER_VERSION}"
           echo "Generated v-tag: ${VTAG}"
           echo "Generated major v-tag: ${MAJOR_VTAG}"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Short SHA: ${SHORT_SHA}"
 
       - name: Create Git tag for release
         run: |
           VERSION="${{ github.event.inputs.release_version }}"
+          SHORT_SHA="${{ steps.version.outputs.short_sha }}"
+          VTAG="${{ steps.version.outputs.vtag }}"
+          GIT_TAG="${VTAG}-${SHORT_SHA}"
+          
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git tag -a "v${VERSION}" -m "Release v${VERSION}"
-          git push origin "v${VERSION}"
-          echo "Created and pushed tag v${VERSION}"
+          git tag -a "${GIT_TAG}" -m "Release ${GIT_TAG}"
+          git push origin "${GIT_TAG}"
+          echo "Created and pushed tag ${GIT_TAG}"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
