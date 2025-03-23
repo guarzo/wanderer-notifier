@@ -99,6 +99,8 @@ jobs:
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
           load: true
+          # Force overwrite existing tags
+          push-args: --force
 
       # Test the Docker image to verify it can start
       - name: Test Docker image
