@@ -3,6 +3,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   Ash resource representing a tracked character.
   Uses Postgres as the data layer for persistence.
   """
+  require Logger
+
   use Ash.Resource,
     domain: WandererNotifier.Resources.Api,
     data_layer: AshPostgres.DataLayer,
@@ -460,7 +462,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # First, verify we can write to the database
     with :ok <- verify_database_permissions(),
-         {:ok, deleted_count} <- delete_existing_characters(),
+         {:ok, _deleted_count} <- delete_existing_characters(),
          {:ok, stats} <- sync_characters_from_cache() do
       Logger.info("[TrackedCharacter] Force sync completed: #{inspect(stats)}")
       {:ok, stats}
@@ -539,7 +541,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # Now perform a clean sync
     case sync_from_cache() do
-      {:ok, stats} = result -> result
+      {:ok, _stats} = result -> result
       error -> error
     end
   end

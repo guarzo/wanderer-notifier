@@ -179,6 +179,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
+
   @doc """
   Checks if a killmail already exists in the database for the specified character and role.
   Uses both cache and database checks.
@@ -209,27 +210,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         CacheRepo.set(cache_key, exists, @processed_kills_ttl_seconds)
 
         exists
-    end
-  end
-
-  @doc """
-  Checks directly in the database if a killmail exists for a specific character and role.
-  Bypasses caching for accuracy.
-
-  ## Parameters
-    - killmail_id: The killmail ID to check
-    - character_id: The character ID to check
-    - role: The role (attacker/victim) to check
-
-  ## Returns
-    - true if the killmail exists
-    - false if it doesn't exist
-  """
-  def check_killmail_exists_in_database(killmail_id, character_id, role) do
-    case Killmail.exists_with_character(killmail_id, character_id, role) do
-      {:ok, []} -> false
-      {:ok, _} -> true
-      {:error, _} -> false
     end
   end
 
