@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { FaCircleNotch, FaDiscord, FaExclamationTriangle, FaBug, FaSync } from 'react-icons/fa';
+import { FaCircleNotch, FaDiscord, FaExclamationTriangle, FaBug, FaSync, FaChartBar, FaSearch, FaUsers } from 'react-icons/fa';
 
 function KillmailChartCard({ title, description, chartType }) {
   const [chartUrl, setChartUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [aggregating, setAggregating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [debugData, setDebugData] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
   // Helper function to add timestamp to URL for cache busting
@@ -99,6 +102,187 @@ function KillmailChartCard({ title, description, chartType }) {
       })
       .finally(() => {
         setSending(false);
+      });
+  };
+
+  // Function to trigger data aggregation
+  const triggerAggregation = () => {
+    setAggregating(true);
+    setSuccess(null);
+    setError(null);
+    setDebugInfo(null);
+    
+    console.log('Triggering killmail data aggregation...');
+    
+    fetch(`/charts/killmail/aggregate?type=weekly`)
+      .then(response => {
+        console.log(`Aggregation response status: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('Aggregation result:', data);
+        if (data.status === 'ok') {
+          setSuccess('Data aggregation completed successfully! Refreshing chart...');
+          
+          // Refresh the chart after successful aggregation
+          setTimeout(() => {
+            generateChart(true);
+          }, 1000);
+          
+          // Clear success message after 5 seconds
+          setTimeout(() => {
+            setSuccess(null);
+          }, 5000);
+        } else {
+          setDebugInfo(JSON.stringify(data, null, 2));
+          throw new Error(data.message || 'Failed to aggregate data');
+        }
+      })
+      .catch(error => {
+        console.error('Error during data aggregation:', error);
+        setError(`Aggregation error: ${error.message}`);
+      })
+      .finally(() => {
+        setAggregating(false);
+      });
+  };
+
+  // Function to sync characters from cache to database
+  const syncCharacters = () => {
+    setSyncing(true);
+    setSuccess(null);
+    setError(null);
+    setDebugInfo(null);
+    
+    console.log('Syncing tracked characters...');
+    
+    fetch(`/charts/killmail/sync-characters`)
+      .then(response => {
+        console.log(`Character sync response status: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('Character sync result:', data);
+        if (data.status === 'ok') {
+          setSuccess(`Successfully synced ${data.details.synced_successfully} characters from cache! You can now run aggregation.`);
+          
+          // Update debug info with detailed results
+          setDebugInfo(JSON.stringify(data, null, 2));
+          
+          // Clear success message after 5 seconds
+          setTimeout(() => {
+            setSuccess(null);
+          }, 5000);
+        } else {
+          setDebugInfo(JSON.stringify(data, null, 2));
+          throw new Error(data.message || 'Failed to sync characters');
+        }
+      })
+      .catch(error => {
+        console.error('Error during character sync:', error);
+        setError(`Character sync error: ${error.message}`);
+      })
+      .finally(() => {
+        setSyncing(false);
+      });
+  };
+  
+  // Function to run the complete workflow: sync → aggregate → refresh
+  const runFullWorkflow = async () => {
+    setSuccess(null);
+    setError(null);
+    setDebugInfo(null);
+    setSyncing(true);
+    
+    try {
+      // Step 1: Sync characters
+      console.log('Starting full workflow: Step 1 - Syncing characters');
+      setSuccess('Step 1/3: Syncing characters from cache to database...');
+      
+      const syncResponse = await fetch('/charts/killmail/sync-characters');
+      if (!syncResponse.ok) {
+        throw new Error(`Character sync failed: ${syncResponse.status}`);
+      }
+      
+      const syncData = await syncResponse.json();
+      if (syncData.status !== 'ok') {
+        throw new Error(syncData.message || 'Failed to sync characters');
+      }
+      
+      console.log('Character sync completed successfully');
+      
+      // Step 2: Run aggregation
+      console.log('Starting full workflow: Step 2 - Running aggregation');
+      setSuccess('Step 2/3: Running weekly aggregation...');
+      setAggregating(true);
+      
+      const aggregateResponse = await fetch('/charts/killmail/aggregate?type=weekly');
+      if (!aggregateResponse.ok) {
+        throw new Error(`Aggregation failed: ${aggregateResponse.status}`);
+      }
+      
+      const aggregateData = await aggregateResponse.json();
+      if (aggregateData.status !== 'ok') {
+        throw new Error(aggregateData.message || 'Failed to aggregate data');
+      }
+      
+      console.log('Aggregation completed successfully');
+      
+      // Step 3: Refresh chart
+      console.log('Starting full workflow: Step 3 - Refreshing chart');
+      setSuccess('Step 3/3: Refreshing chart...');
+      setLoading(true);
+      
+      // Wait briefly to ensure aggregation has fully completed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate the chart
+      await generateChart(true);
+      
+      // Final success message
+      setSuccess('Full workflow completed successfully! The chart now shows the latest data.');
+      
+      // Clear success message after 10 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 10000);
+      
+    } catch (error) {
+      console.error('Error in workflow:', error);
+      setError(`Workflow error: ${error.message}`);
+    } finally {
+      setSyncing(false);
+      setAggregating(false);
+      setLoading(false);
+    }
+  };
+  
+  // Function to fetch debug data
+  const fetchDebugData = () => {
+    setDebugData(null); // Clear previous data
+    setDebugInfo("Loading debug information...");
+    
+    fetch(`/charts/killmail/debug`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('Debug data:', data);
+        setDebugData(data);
+        setDebugInfo(JSON.stringify(data, null, 2));
+      })
+      .catch(error => {
+        console.error('Error fetching debug data:', error);
+        setDebugInfo(`Error fetching debug data: ${error.message}`);
       });
   };
 
@@ -199,6 +383,34 @@ function KillmailChartCard({ title, description, chartType }) {
         )}
       </div>
       
+      {/* Display debug data summary if available */}
+      {debugData && (
+        <div className="px-4 py-3 bg-gray-50 border-y">
+          <h4 className="font-medium text-gray-800 mb-2">Database Status</h4>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="bg-blue-50 p-2 rounded">
+              <span className="font-medium">Killmails:</span> {debugData.counts.killmails}
+            </div>
+            <div className="bg-green-50 p-2 rounded">
+              <span className="font-medium">Statistics:</span> {debugData.counts.statistics}
+            </div>
+            {debugData.counts.tracked_characters_db !== undefined && (
+              <div className="bg-yellow-50 p-2 rounded">
+                <span className="font-medium">Characters (DB):</span> {debugData.counts.tracked_characters_db}
+              </div>
+            )}
+            {debugData.counts.tracked_characters_cache !== undefined && (
+              <div className="bg-pink-50 p-2 rounded">
+                <span className="font-medium">Characters (Cache):</span> {debugData.counts.tracked_characters_cache}
+              </div>
+            )}
+            <div className="bg-purple-50 p-2 rounded col-span-2">
+              <span className="font-medium">Periods:</span> {Object.keys(debugData.counts.by_period || {}).join(', ')}
+            </div>
+          </div>
+        </div>
+      )}
+      
       {error && (
         <div className="px-4 py-2 bg-red-100 text-red-700 flex items-center">
           <FaExclamationTriangle className="mr-2 flex-shrink-0" />
@@ -219,7 +431,7 @@ function KillmailChartCard({ title, description, chartType }) {
       )}
       
       <div className="p-4 border-t bg-gray-50">
-        <div className="flex justify-between">
+        <div className="flex flex-wrap gap-2">
           <button 
             type="button"
             onClick={() => {
@@ -230,7 +442,46 @@ function KillmailChartCard({ title, description, chartType }) {
             className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors disabled:opacity-50 flex items-center"
           >
             {loading ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaSync className="mr-1" />}
-            <span>Refresh</span>
+            <span>Refresh Chart</span>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={syncCharacters}
+            disabled={syncing}
+            className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors disabled:opacity-50 flex items-center"
+          >
+            {syncing ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaUsers className="mr-1" />}
+            <span>Sync Characters</span>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={triggerAggregation}
+            disabled={aggregating}
+            className="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center"
+          >
+            {aggregating ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaChartBar className="mr-1" />}
+            <span>Run Aggregation</span>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={runFullWorkflow}
+            disabled={syncing || aggregating}
+            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center"
+          >
+            {(syncing || aggregating) ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaSync className="mr-1" />}
+            <span>Run Full Workflow</span>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={fetchDebugData}
+            className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors flex items-center"
+          >
+            <FaSearch className="mr-1" />
+            <span>View Database Status</span>
           </button>
           
           <button 

@@ -358,6 +358,237 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     end
   end
 
+  # Debug endpoint to check killmail and statistics counts
+  get "/killmail/debug" do
+    if Config.kill_charts_enabled?() do
+      Logger.info("Debug endpoint called for killmail aggregation")
+
+      # Perform diagnostic queries
+      try do
+        # Check total killmail records
+        killmail_query = "SELECT COUNT(*) FROM killmails"
+        {:ok, %{rows: [[total_killmails]]}} = WandererNotifier.Repo.query(killmail_query)
+
+        # Check total statistics records
+        stats_query = "SELECT COUNT(*) FROM killmail_statistics"
+        {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(stats_query)
+
+        # Check stats by period
+        period_query =
+          "SELECT period_type, COUNT(*) FROM killmail_statistics GROUP BY period_type"
+
+        {:ok, period_results} = WandererNotifier.Repo.query(period_query)
+
+        # Check recent killmails
+        recent_query =
+          "SELECT killmail_id, related_character_name, character_role, kill_time, solar_system_name FROM killmails ORDER BY kill_time DESC LIMIT 5"
+
+        {:ok, recent_results} = WandererNotifier.Repo.query(recent_query)
+
+        # Format the period results
+        period_counts =
+          period_results.rows
+          |> Enum.map(fn [period, count] ->
+            {period, count}
+          end)
+          |> Enum.into(%{})
+
+        # Format recent killmails
+        recent_killmails =
+          recent_results.rows
+          |> Enum.map(fn [killmail_id, character_name, role, kill_time, system_name] ->
+            %{
+              killmail_id: killmail_id,
+              character_name: character_name,
+              role: role,
+              kill_time: kill_time,
+              system_name: system_name
+            }
+          end)
+
+        # Count tracked characters in database
+        char_query = "SELECT COUNT(*) FROM tracked_characters"
+        {:ok, %{rows: [[total_chars]]}} = WandererNotifier.Repo.query(char_query)
+
+        # Count characters in cache
+        cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+
+        # Send the diagnostic info
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            status: "ok",
+            message: "Diagnostic information for killmail aggregation",
+            counts: %{
+              killmails: total_killmails,
+              statistics: total_stats,
+              tracked_characters_db: total_chars,
+              tracked_characters_cache: length(cached_characters),
+              by_period: period_counts
+            },
+            recent_killmails: recent_killmails
+          })
+        )
+      rescue
+        e ->
+          Logger.error("Error in killmail debug endpoint: #{Exception.message(e)}")
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              status: "error",
+              message: "Error retrieving diagnostic information",
+              error: Exception.message(e)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Force sync tracked characters from cache to the database
+  get "/killmail/sync-characters" do
+    if Config.kill_charts_enabled?() do
+      Logger.info("Forcing character sync from cache to database")
+
+      cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+      Logger.info("Found #{length(cached_characters)} characters in cache")
+
+      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+        {:ok, result} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Characters synced successfully",
+              details: %{
+                characters_in_cache: length(cached_characters),
+                synced_successfully: result.successes,
+                sync_failures: result.failures
+              }
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to sync characters",
+              details: inspect(reason)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Trigger manual aggregation of killmail data
+  get "/killmail/aggregate" do
+    if Config.kill_charts_enabled?() do
+      # Get the aggregation type from query params, defaulting to "weekly"
+      period_type_str = Map.get(conn.params, "type", "weekly")
+
+      # Convert to atom safely
+      period_type =
+        case period_type_str do
+          "daily" -> :daily
+          "weekly" -> :weekly
+          "monthly" -> :monthly
+          # Default to weekly
+          _ -> :weekly
+        end
+
+      Logger.info("Manually triggering #{period_type} killmail aggregation")
+
+      # Calculate appropriate date based on period type
+      today = Date.utc_today()
+
+      target_date =
+        case period_type do
+          :daily ->
+            today
+
+          :weekly ->
+            # Get the start of the current week (Monday)
+            days_since_monday = Date.day_of_week(today) - 1
+            Date.add(today, -days_since_monday)
+
+          :monthly ->
+            # Start of the current month
+            %{today | day: 1}
+        end
+
+      # Run the aggregation
+      case WandererNotifier.Resources.KillmailAggregation.aggregate_statistics(
+             period_type,
+             target_date
+           ) do
+        :ok ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Successfully aggregated #{period_type} killmail data",
+              period_type: period_type,
+              target_date: Date.to_string(target_date)
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to aggregate killmail data: #{inspect(reason)}",
+              period_type: period_type,
+              target_date: Date.to_string(target_date)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
   # Catch-all route
   match _ do
     conn

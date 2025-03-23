@@ -136,9 +136,12 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
 
   # Get all tracked characters
   defp get_tracked_characters do
-    TrackedCharacter
-    |> Query.load([:character_id, :character_name])
-    |> WandererNotifier.Resources.Api.read()
+    case TrackedCharacter
+         |> Query.load([:character_id, :character_name])
+         |> WandererNotifier.Resources.Api.read() do
+      {:ok, characters} -> characters
+      _ -> []
+    end
   end
 
   # Aggregate statistics for a single character
@@ -155,7 +158,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
 
     try do
       # Find all kills for this character in the date range
-      killmails =
+      result =
         Killmail
         |> Query.filter(related_character_id: character_id)
         |> Query.filter(kill_time: [>=: start_datetime])
@@ -173,6 +176,23 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
         ])
         |> WandererNotifier.Resources.Api.read()
 
+      killmails =
+        case result do
+          {:ok, records} ->
+            Logger.info(
+              "[KillmailAggregation] Successfully queried #{length(records)} killmails for character #{character.character_name}"
+            )
+
+            records
+
+          error ->
+            Logger.error(
+              "[KillmailAggregation] Error querying killmails for character #{character.character_name}: #{inspect(error)}"
+            )
+
+            []
+        end
+
       Logger.info(
         "[KillmailAggregation] Found #{length(killmails)} killmails for character #{character.character_name}"
       )
@@ -180,14 +200,37 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       # Calculate statistics
       stats = calculate_statistics(killmails)
 
+      # Log statistics summary
+      Logger.info(
+        "[KillmailAggregation] Statistics for #{character.character_name}: " <>
+          "kills=#{stats.kills_count}, deaths=#{stats.deaths_count}, " <>
+          "isk_destroyed=#{Decimal.to_string(stats.isk_destroyed)}, " <>
+          "regions=#{map_size(stats.region_activity)}, ships=#{map_size(stats.ship_usage)}"
+      )
+
       # Try to find an existing statistic record for this period
-      existing_stat =
+      result =
         KillmailStatistic
         |> Query.filter(character_id: character_id)
         |> Query.filter(period_type: period_type)
         |> Query.filter(period_start: period_start)
         |> WandererNotifier.Resources.Api.read()
-        |> List.first()
+
+      existing_stat =
+        case result do
+          {:ok, [stat | _]} ->
+            stat
+
+          {:ok, []} ->
+            nil
+
+          error ->
+            Logger.error(
+              "[KillmailAggregation] Error finding existing stats for character #{character.character_name}: #{inspect(error)}"
+            )
+
+            nil
+        end
 
       # Create the statistics record or update existing
       statistic_attrs = %{
@@ -212,16 +255,49 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
           "[KillmailAggregation] Updating existing statistics for #{character.character_name}"
         )
 
-        WandererNotifier.Resources.Api.update(KillmailStatistic, existing_stat.id, statistic_attrs, action: :update)
+        result =
+          WandererNotifier.Resources.Api.update(
+            KillmailStatistic,
+            existing_stat.id,
+            statistic_attrs,
+            action: :update
+          )
+
+        case result do
+          {:ok, _updated} ->
+            Logger.info(
+              "[KillmailAggregation] Successfully updated statistics for #{character.character_name}"
+            )
+
+            :ok
+
+          error ->
+            Logger.error("[KillmailAggregation] Error updating statistics: #{inspect(error)}")
+            {:error, error}
+        end
       else
         Logger.info(
           "[KillmailAggregation] Creating new statistics for #{character.character_name}"
         )
 
-        WandererNotifier.Resources.Api.create(KillmailStatistic, statistic_attrs, action: :create)
-      end
+        result =
+          WandererNotifier.Resources.Api.create(KillmailStatistic, statistic_attrs,
+            action: :create
+          )
 
-      :ok
+        case result do
+          {:ok, _created} ->
+            Logger.info(
+              "[KillmailAggregation] Successfully created statistics for #{character.character_name}"
+            )
+
+            :ok
+
+          error ->
+            Logger.error("[KillmailAggregation] Error creating statistics: #{inspect(error)}")
+            {:error, error}
+        end
+      end
     rescue
       e ->
         Logger.error(

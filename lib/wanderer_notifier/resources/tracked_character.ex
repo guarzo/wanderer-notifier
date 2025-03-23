@@ -63,9 +63,9 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
         # Process each tracked character
         results =
           Enum.map(cached_characters, fn char_data ->
-            # Extract character ID using the helper function
+            # Extract character ID directly instead of using the helper function
             character_id =
-              case WandererNotifier.Helpers.CacheHelpers.extract_character_id(char_data) do
+              case extract_character_id_from_data(char_data) do
                 nil ->
                   Logger.warning(
                     "[TrackedCharacter] Unable to extract character ID from #{inspect(char_data)}"
@@ -96,43 +96,28 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
               {:error, :invalid_character_id}
             else
-              # Get character details
-              character_name =
-                cond do
-                  is_map(char_data) && Map.has_key?(char_data, :name) ->
-                    char_data.name
+              # Extract character name if available
+              character_name = extract_character_name(char_data)
 
-                  is_map(char_data) && Map.has_key?(char_data, "name") ->
-                    char_data["name"]
-
-                  is_map(char_data) && Map.has_key?(char_data, :character_name) ->
-                    char_data.character_name
-
-                  is_map(char_data) && Map.has_key?(char_data, "character_name") ->
-                    char_data["character_name"]
-
-                  true ->
-                    "Unknown"
-                end
-
+              # Log character details for debugging
               Logger.debug(
                 "[TrackedCharacter] Processing character ID: #{character_id}, Name: #{character_name}"
               )
 
               # Check if character already exists in the Ash resource using string comparison
               str_char_id = to_string(character_id)
-              query = "character_id=#{str_char_id}"
 
-              case WandererNotifier.Resources.TrackedCharacter
-                   |> Ash.Query.for_read(:read, %{filter: query})
-                   |> WandererNotifier.Resources.Api.read() do
+              # Use the read function to look for existing character
+              case WandererNotifier.Resources.Api.read(__MODULE__,
+                     filter: [character_id: [eq: character_id]]
+                   ) do
                 {:ok, [existing | _]} ->
                   # Character exists, update if needed
                   changes = %{}
 
-                  # Update name if it's different
+                  # Update name if it's different and not nil
                   changes =
-                    if character_name != "Unknown" && character_name != existing.character_name do
+                    if character_name && character_name != existing.character_name do
                       Logger.debug(
                         "[TrackedCharacter] Updating name for character #{character_id}: #{existing.character_name} -> #{character_name}"
                       )
@@ -148,7 +133,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                       "[TrackedCharacter] Updating character: #{character_name} (#{character_id})"
                     )
 
-                    WandererNotifier.Resources.TrackedCharacter.update(existing, changes)
+                    WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
                   else
                     {:ok, :unchanged}
                   end
@@ -156,16 +141,16 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                 {:ok, []} ->
                   # Character doesn't exist, create it
                   Logger.info(
-                    "[TrackedCharacter] Creating new character: #{character_name} (#{character_id})"
+                    "[TrackedCharacter] Creating new character: #{character_name || "Unknown"} (#{character_id})"
                   )
 
-                  WandererNotifier.Resources.TrackedCharacter.create(%{
+                  WandererNotifier.Resources.Api.create(__MODULE__, %{
                     character_id: character_id,
-                    character_name: character_name,
-                    corporation_id: nil,
-                    corporation_name: nil,
-                    alliance_id: nil,
-                    alliance_name: nil
+                    character_name: character_name || "Unknown Character",
+                    corporation_id: extract_corporation_id(char_data),
+                    corporation_name: extract_corporation_name(char_data),
+                    alliance_id: extract_alliance_id(char_data),
+                    alliance_name: extract_alliance_name(char_data)
                   })
 
                 {:error, reason} ->
@@ -195,6 +180,64 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
         {:ok, %{successes: successes, failures: failures}}
       end)
     end
+
+    # Helper functions for extracting character information
+    defp extract_character_id_from_data(char_data) do
+      cond do
+        # Handle Character struct
+        is_struct(char_data) && Map.has_key?(char_data, :character_id) ->
+          to_string(char_data.character_id)
+
+        # Handle map with string/atom keys
+        is_map(char_data) &&
+            (Map.has_key?(char_data, "character_id") || Map.has_key?(char_data, :character_id)) ->
+          char_id = char_data["character_id"] || char_data[:character_id]
+          if char_id, do: to_string(char_id), else: nil
+
+        # Handle direct ID (integer or string)
+        is_integer(char_data) || is_binary(char_data) ->
+          to_string(char_data)
+
+        # No matching format
+        true ->
+          nil
+      end
+    end
+
+    defp extract_character_name(char_data) when is_map(char_data) do
+      char_data["name"] ||
+        char_data[:name] ||
+        char_data["character_name"] ||
+        char_data[:character_name]
+    end
+
+    defp extract_character_name(_), do: nil
+
+    defp extract_corporation_id(char_data) when is_map(char_data) do
+      corp_id = char_data["corporation_id"] || char_data[:corporation_id]
+      if is_binary(corp_id), do: String.to_integer(corp_id), else: corp_id
+    end
+
+    defp extract_corporation_id(_), do: nil
+
+    defp extract_corporation_name(char_data) when is_map(char_data) do
+      char_data["corporation_name"] || char_data[:corporation_name]
+    end
+
+    defp extract_corporation_name(_), do: nil
+
+    defp extract_alliance_id(char_data) when is_map(char_data) do
+      alliance_id = char_data["alliance_id"] || char_data[:alliance_id]
+      if is_binary(alliance_id), do: String.to_integer(alliance_id), else: alliance_id
+    end
+
+    defp extract_alliance_id(_), do: nil
+
+    defp extract_alliance_name(char_data) when is_map(char_data) do
+      char_data["alliance_name"] || char_data[:alliance_name]
+    end
+
+    defp extract_alliance_name(_), do: nil
   end
 
   code_interface do
