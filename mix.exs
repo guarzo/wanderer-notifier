@@ -9,7 +9,8 @@ defmodule WandererNotifier.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases(),
-      elixirc_paths: elixirc_paths(Mix.env())
+      elixirc_paths: elixirc_paths(Mix.env()),
+      overrides: overrides()
     ]
   end
 
@@ -60,6 +61,12 @@ defmodule WandererNotifier.MixProject do
         validate_compile_env: false,
         overlays: ["rel/overlays"]
       ]
+    ]
+  end
+
+  defp overrides do
+    [
+      {:ranch, "2.1.0", override: true}
     ]
   end
 end

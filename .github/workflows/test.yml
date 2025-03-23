@@ -34,8 +34,15 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
 
+      - name: Clean dependencies
+        run: |
+          mix deps.clean --all
+          rm -rf _build
+
       - name: Install dependencies
-        run: mix deps.get
+        run: |
+          mix deps.get
+          mix deps.compile --force
 
       - name: Clean and recompile Ash (to ensure correct config)
         run: mix deps.clean ash ash_postgres --build && mix deps.compile
