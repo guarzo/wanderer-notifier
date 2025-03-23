@@ -89,21 +89,11 @@ config :wanderer_notifier, :persistence,
   # Daily at midnight
   aggregation_schedule: System.get_env("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
 
-# Conditionally configure database connection if kill charts is enabled
-if kill_charts_enabled do
-  config :wanderer_notifier, WandererNotifier.Repo,
-    username: System.get_env("POSTGRES_USER", "postgres"),
-    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-    hostname: System.get_env("POSTGRES_HOST", "postgres"),
-    database: System.get_env("POSTGRES_DB", "wanderer_notifier_#{config_env()}"),
-    port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
-    pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))
-else
-  config :wanderer_notifier, WandererNotifier.Repo,
-    username: System.get_env("POSTGRES_USER", "postgres"),
-    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-    hostname: System.get_env("POSTGRES_HOST", "postgres"),
-    database: System.get_env("POSTGRES_DB", "wanderer_notifier_#{config_env()}"),
-    port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
-    pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))
-end
+# Always configure database connection regardless of kill charts setting
+config :wanderer_notifier, WandererNotifier.Repo,
+  username: System.get_env("POSTGRES_USER", "postgres"),
+  password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+  hostname: System.get_env("POSTGRES_HOST", "postgres"),
+  database: System.get_env("POSTGRES_DB", "wanderer_notifier_#{config_env()}"),
+  port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
+  pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))

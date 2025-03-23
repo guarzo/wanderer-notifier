@@ -27,16 +27,20 @@ jobs:
           # Create a valid Elixir version string
           VERSION="${{ github.event.inputs.release_version }}"
           DOCKER_VERSION="${{ github.event.inputs.release_version }}-${DATE}-${SHORT_SHA}"
-          # Extract the major version number and create a v-prefixed tag
+          # Extract the major and minor version numbers and create v-prefixed tags
           MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
-          VTAG="v${MAJOR_VERSION}"
+          MINOR_VERSION=$(echo "$VERSION" | cut -d. -f2)
+          VTAG="v${MAJOR_VERSION}.${MINOR_VERSION}"
+          MAJOR_VTAG="v${MAJOR_VERSION}"
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
           echo "vtag=${VTAG}" >> "$GITHUB_OUTPUT"
+          echo "major_vtag=${MAJOR_VTAG}" >> "$GITHUB_OUTPUT"
           echo "Generated Elixir version: ${VERSION}"
           echo "Generated Docker version: ${DOCKER_VERSION}"
           echo "Generated v-tag: ${VTAG}"
+          echo "Generated major v-tag: ${MAJOR_VTAG}"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Create Git tag for release

@@ -28,7 +28,7 @@ This document provides a comprehensive reference for all environment variables u
 | `ENABLE_KILL_NOTIFICATIONS`      | Enable kill notifications                    | `true`  |
 | `ENABLE_SYSTEM_NOTIFICATIONS`    | Enable system tracking notifications         | `true`  |
 | `ENABLE_CHARACTER_NOTIFICATIONS` | Enable character tracking notifications      | `true`  |
-| `ENABLE_KILL_CHARTS`             | Enable kill charts                            | `false` |
+| `ENABLE_KILL_CHARTS`             | Enable displaying and sending kill charts    | `false` |
 | `ENABLE_MAP_CHARTS`              | Enable map charts                            | `false` |
 | `TRACK_ALL_SYSTEMS`              | Track all systems instead of specific ones   | `false` |
 | `PROCESS_ALL_KILLS`              | Process kills from all systems (for testing) | `false` |
@@ -42,7 +42,7 @@ This document provides a comprehensive reference for all environment variables u
 | `DISCORD_SYSTEM_CHANNEL_ID`     | Channel for system tracking notifications    | Main channel     |
 | `DISCORD_CHARACTER_CHANNEL_ID`  | Channel for character tracking notifications | Main channel     |
 | `DISCORD_CHARTS_CHANNEL_ID`     | Channel for general chart notifications      | Main channel     |
-| `DISCORD_KILL_CHARTS_CHANNEL_ID`| Channel for kill chart notifications         | Main channel     |
+| `DISCORD_KILL_CHARTS_CHANNEL_ID`| Channel for kill chart notifications         ]| Main channel     |
 | `DISCORD_MAP_CHARTS_CHANNEL_ID` | Channel for map chart notifications          | Main channel     |
 
 ## API URLs
@@ -71,6 +71,18 @@ This document provides a comprehensive reference for all environment variables u
 | `PUBLIC_URL`         | Public URL for the application | Constructed from host, port, and scheme |
 | `HOST`               | Application host               | `localhost`                             |
 | `SCHEME`             | HTTP scheme (http/https)       | `http`                                  |
+
+## Database Configuration
+
+| Variable                     | Description                                  | Default                           |
+| ---------------------------- | -------------------------------------------- | --------------------------------- |
+| `POSTGRES_HOST`              | PostgreSQL host                              | `postgres`                        |
+| `POSTGRES_PORT`              | PostgreSQL port                              | `5432`                            |
+| `POSTGRES_USER`              | PostgreSQL user                              | `postgres`                        |
+| `POSTGRES_PASSWORD`          | PostgreSQL password                          | `postgres`                        |
+| `POSTGRES_DB`                | PostgreSQL database name                     | `wanderer_notifier_#{config_env}` |
+| `POSTGRES_POOL_SIZE`         | PostgreSQL connection pool size              | `10`                              |
+| `PERSISTENCE_RETENTION_DAYS` | Days to retain killmail data                 | `180`                             |
 
 ## Environment-Specific Configuration
 
