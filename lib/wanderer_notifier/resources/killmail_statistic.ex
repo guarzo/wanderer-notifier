@@ -144,12 +144,29 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
         :top_victim_ships,
         :detailed_ship_usage
       ])
+
+      # Add a change function to set the timestamps
+      change(fn changeset, _context ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        changeset
+        |> Ash.Changeset.force_change_attribute(:inserted_at, now)
+        |> Ash.Changeset.force_change_attribute(:updated_at, now)
+      end)
     end
 
     update :update do
       primary?(true)
 
       accept([
+        # Period information
+        :period_type,
+        :period_start,
+        :period_end,
+        # Character information
+        :character_id,
+        :character_name,
+        # Statistics
         :kills_count,
         :deaths_count,
         :isk_destroyed,
@@ -160,6 +177,16 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
         :top_victim_ships,
         :detailed_ship_usage
       ])
+
+      require_atomic?(false)
+      # Update the updated_at timestamp
+      change(fn changeset, _context ->
+        Ash.Changeset.force_change_attribute(
+          changeset,
+          :updated_at,
+          DateTime.utc_now() |> DateTime.truncate(:second)
+        )
+      end)
     end
 
     read :by_character_and_period do

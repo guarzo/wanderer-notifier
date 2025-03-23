@@ -6,7 +6,8 @@ import {
   FaExclamationTriangle,
   FaInfoCircle,
   FaChartBar,
-  FaCalendarAlt
+  FaCalendarAlt,
+  FaRegCalendar
 } from 'react-icons/fa';
 
 function CharacterKillsCard({ title, description }) {
@@ -20,7 +21,6 @@ function CharacterKillsCard({ title, description }) {
   const [aggregationInfo, setAggregationInfo] = useState(null);
   const [aggregationStats, setAggregationStats] = useState(null);
 
-  // Fetch tracked characters and killmail counts when component mounts
   useEffect(() => {
     fetchTrackedInfo();
     fetchAggregationStats();
@@ -30,11 +30,9 @@ function CharacterKillsCard({ title, description }) {
     try {
       setLoadingInfo(true);
       const response = await fetch(`/api/character-kills/stats`);
-      
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      
       const data = await response.json();
       setTrackedInfo(data);
       console.log("Tracked info loaded:", data);
@@ -48,13 +46,10 @@ function CharacterKillsCard({ title, description }) {
   const fetchAggregationStats = async () => {
     try {
       const response = await fetch(`/api/killmail-aggregation-stats`);
-      
       if (!response.ok) {
-        // Don't throw error for this as it's optional info
         console.log(`Aggregation stats not available: ${response.status}`);
         return;
       }
-      
       const data = await response.json();
       if (data.success) {
         setAggregationStats(data.stats);
@@ -72,7 +67,6 @@ function CharacterKillsCard({ title, description }) {
       setSuccess(null);
       setStats(null);
 
-      // Simple API call to trigger kill data loading for all tracked characters
       const url = `/api/character-kills?all=true`;
       console.log(`Triggering kill data loading: ${url}`);
       
@@ -96,13 +90,10 @@ function CharacterKillsCard({ title, description }) {
       
       if (data.success) {
         setStats(data.details);
-        setSuccess("Successfully loaded kill data for tracked characters");
-        
-        // Refresh the tracked info stats after successful load
+        setSuccess("Successfully loaded kill data");
         setTimeout(() => {
           fetchTrackedInfo();
         }, 1000);
-        
         setTimeout(() => {
           setSuccess(null);
         }, 5000);
@@ -137,13 +128,10 @@ function CharacterKillsCard({ title, description }) {
       
       if (data.status === 'ok') {
         setAggregationInfo(data);
-        setSuccess(`Successfully completed ${periodType} aggregation for ${data.target_date}`);
-        
-        // Refresh aggregation stats
+        setSuccess(`Aggregation completed for ${data.target_date}`);
         setTimeout(() => {
           fetchAggregationStats();
         }, 1000);
-        
         setTimeout(() => {
           setSuccess(null);
         }, 5000);
@@ -165,34 +153,32 @@ function CharacterKillsCard({ title, description }) {
         <p className="text-sm text-gray-600 mt-1">{description}</p>
       </div>
       
-      {/* Tracked info display */}
       {trackedInfo && (
         <div className="px-4 py-3 bg-gray-50 border-b">
           <div className="flex items-center text-sm text-gray-700">
             <FaInfoCircle className="mr-2 text-indigo-500" />
             <div>
-              <span className="font-medium">{trackedInfo.tracked_characters || 0}</span> characters tracked with 
-              <span className="font-medium ml-1">{trackedInfo.total_kills || 0}</span> kills stored
+              <span className="font-medium">{trackedInfo.tracked_characters || 0}</span> tracked, 
+              <span className="font-medium ml-1">{trackedInfo.total_kills || 0}</span> kills
             </div>
           </div>
         </div>
       )}
       
-      {/* Aggregation stats display */}
       {aggregationStats && (
         <div className="px-4 py-3 bg-gray-100 border-b">
           <div className="flex items-center text-sm text-gray-700">
             <FaChartBar className="mr-2 text-purple-500" />
             <div>
-              <span className="font-medium">{aggregationStats.aggregated_characters || 0}</span> characters have 
-              <span className="font-medium ml-1">{aggregationStats.total_stats || 0}</span> aggregated statistics
+              <span className="font-medium">{aggregationStats.aggregated_characters || 0}</span> characters, 
+              <span className="font-medium ml-1">{aggregationStats.total_stats || 0}</span> stats
             </div>
           </div>
           {aggregationStats.last_aggregation && (
             <div className="mt-1 flex items-center text-sm text-gray-700">
               <FaCalendarAlt className="mr-2 text-purple-500" />
               <div>
-                Last aggregation: <span className="font-medium">{aggregationStats.last_aggregation}</span>
+                Last: <span className="font-medium">{aggregationStats.last_aggregation}</span>
               </div>
             </div>
           )}
@@ -200,90 +186,75 @@ function CharacterKillsCard({ title, description }) {
       )}
       
       <div className="p-4">
-        {/* Main action buttons section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          {/* Kill data loading button */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <button
             onClick={fetchAllCharacterKills}
             disabled={loading}
-            className="px-4 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+            title="Load Kill Data"
+            className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition flex items-center justify-center disabled:opacity-50"
           >
-            {loading ? (
-              <FaCircleNotch className="animate-spin mr-2" />
-            ) : (
-              <FaUsers className="mr-2" />
-            )}
-            <span>Load Kill Data for All Tracked Characters</span>
+            {loading ? <FaCircleNotch className="animate-spin" /> : <FaUsers />}
           </button>
-          
-          {/* Aggregation section */}
-          <div className="flex flex-col">
+          <div className="flex space-x-2">
             <button
               onClick={() => triggerAggregation('weekly')}
               disabled={aggregating}
-              className="px-4 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+              title="Weekly Aggregation"
+              className="p-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition flex items-center justify-center disabled:opacity-50"
             >
-              {aggregating ? (
-                <FaCircleNotch className="animate-spin mr-2" />
-              ) : (
-                <FaChartBar className="mr-2" />
-              )}
-              <span>Run Weekly Aggregation</span>
+              {aggregating ? <FaCircleNotch className="animate-spin" /> : <FaChartBar />}
             </button>
-            
-            {/* Additional aggregation buttons in a row */}
-            <div className="flex justify-between mt-2">
-              <button
-                onClick={() => triggerAggregation('daily')}
-                disabled={aggregating}
-                className="px-2 py-1 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors disabled:opacity-50 text-sm flex-1 mr-1 flex items-center justify-center"
-              >
-                <span>Daily</span>
-              </button>
-              <button
-                onClick={() => triggerAggregation('monthly')}
-                disabled={aggregating}
-                className="px-2 py-1 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors disabled:opacity-50 text-sm flex-1 ml-1 flex items-center justify-center"
-              >
-                <span>Monthly</span>
-              </button>
-            </div>
+            <button
+              onClick={() => triggerAggregation('daily')}
+              disabled={aggregating}
+              title="Daily Aggregation"
+              className="p-3 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition flex items-center justify-center disabled:opacity-50"
+            >
+              <FaRegCalendar />
+            </button>
+            <button
+              onClick={() => triggerAggregation('monthly')}
+              disabled={aggregating}
+              title="Monthly Aggregation"
+              className="p-3 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition flex items-center justify-center disabled:opacity-50"
+            >
+              <FaCalendarAlt />
+            </button>
           </div>
         </div>
 
-        {/* Status messages */}
         {success && (
           <div className="mb-4 p-3 bg-green-100 text-green-700 rounded flex items-center">
             <FaCheckCircle className="mr-2" />
-            <span>{success}</span>
+            <span className="text-sm">{success}</span>
           </div>
         )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded flex items-center">
             <FaExclamationTriangle className="mr-2" />
-            <span>{error}</span>
+            <span className="text-sm">{error}</span>
           </div>
         )}
 
-        {/* Aggregation result display */}
         {aggregationInfo && (
           <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded">
             <h4 className="font-medium text-gray-800 mb-2 flex items-center">
               <FaChartBar className="mr-2 text-purple-500" />
-              Aggregation Results
+              <span className="text-sm">Aggregation Results</span>
             </h4>
-            <div className="text-sm text-gray-700">
-              <p>Successfully aggregated <span className="font-medium">{aggregationInfo.period_type}</span> statistics for <span className="font-medium">{aggregationInfo.target_date}</span></p>
+            <div className="text-xs text-gray-700">
+              <p>
+                Aggregated <span className="font-medium">{aggregationInfo.period_type}</span> stats for <span className="font-medium">{aggregationInfo.target_date}</span>
+              </p>
             </div>
           </div>
         )}
 
-        {/* Simple stats display if available */}
         {stats && (
           <div className="mt-4 border-t pt-4">
-            <h4 className="font-medium text-gray-800 mb-2">Kill Load Results</h4>
-            <div className="bg-gray-50 p-3 rounded-md text-sm">
+            <h4 className="font-medium text-gray-800 mb-2 text-sm">Kill Load Results</h4>
+            <div className="bg-gray-50 p-3 rounded-md text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="font-medium">Processed:</span> {stats.processed} kills
@@ -305,4 +276,4 @@ function CharacterKillsCard({ title, description }) {
   );
 }
 
-export default CharacterKillsCard; 
+export default CharacterKillsCard;

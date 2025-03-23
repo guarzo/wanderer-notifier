@@ -224,7 +224,9 @@ defmodule WandererNotifier.Application do
       # Start the Maintenance service
       {WandererNotifier.Services.Maintenance, []},
       # Start the Web Server
-      {WandererNotifier.Web.Server, []}
+      {WandererNotifier.Web.Server, []},
+      # Add automatic sync for cached characters to database (runs every 15 minutes)
+      {WandererNotifier.Workers.CharacterSyncWorker, []}
     ]
 
     # Conditionally add Postgres repo to supervision tree

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaSync, FaDiscord, FaChartBar, FaExclamationTriangle, FaCircleNotch } from 'react-icons/fa';
+import { FaCircleNotch, FaDiscord, FaExclamationTriangle } from 'react-icons/fa';
 import ActivityChartCard from './ActivityChartCard';
 import KillmailChartCard from './KillmailChartCard';
 import CharacterKillsCard from './CharacterKillsCard';
@@ -17,7 +17,6 @@ export default function ChartsDashboard() {
 
   useEffect(() => {
     try {
-      // Fetch the chart configuration
       fetch('/charts/config')
         .then(response => response.json())
         .then(data => {
@@ -30,7 +29,6 @@ export default function ChartsDashboard() {
         .catch(error => {
           console.error('Error fetching chart configuration:', error);
           setError(`Failed to load chart configuration: ${error.message}`);
-          // Default to disabled if there's an error
           setFeatures({
             mapChartsEnabled: false,
             killChartsEnabled: false
@@ -61,7 +59,6 @@ export default function ChartsDashboard() {
       .then(data => {
         if (data.status === 'ok') {
           setSendAllSuccess(true);
-          // Clear success message after 5 seconds
           setTimeout(() => setSendAllSuccess(false), 5000);
         } else {
           throw new Error(data.message || 'Failed to send all charts to Discord');
@@ -93,7 +90,6 @@ export default function ChartsDashboard() {
       .then(data => {
         if (data.status === 'ok') {
           setSendAllSuccess(true);
-          // Clear success message after 5 seconds
           setTimeout(() => setSendAllSuccess(false), 5000);
         } else {
           throw new Error(data.message || 'Failed to send all charts to Discord');
@@ -134,11 +130,10 @@ export default function ChartsDashboard() {
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Charts Dashboard</h1>
         <p className="text-gray-600">
-          Generate and send various charts to Discord channels
+          Generate and send charts to Discord channels
         </p>
       </div>
 
-      {/* Feature status indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className={`p-4 rounded-lg ${features.mapChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
@@ -154,7 +149,6 @@ export default function ChartsDashboard() {
         </div>
       </div>
 
-      {/* Map Tools Charts Section (conditional) */}
       {features.mapChartsEnabled && (
         <div className="mb-12">
           <div className="mb-6 flex justify-between items-center">
@@ -163,17 +157,12 @@ export default function ChartsDashboard() {
               type="button"
               onClick={sendAllActivityCharts}
               disabled={sendingAllCharts}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
+              title="Send all activity charts to Discord"
+              className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors flex items-center justify-center disabled:opacity-50"
             >
               {sendingAllCharts ? 
-                <span className="flex items-center">
-                  <FaCircleNotch className="animate-spin mr-2" />
-                  Sending... 
-                </span> : 
-                <span className="flex items-center">
-                  <FaDiscord className="mr-2" />
-                  Send All to Discord
-                </span>
+                <FaCircleNotch className="animate-spin" /> : 
+                <FaDiscord />
               }
             </button>
           </div>
@@ -201,7 +190,6 @@ export default function ChartsDashboard() {
         </div>
       )}
 
-      {/* Killmail Charts Section (conditional) */}
       {features.killChartsEnabled && (
         <div className="mb-12">
           <div className="mb-6 flex justify-between items-center">
@@ -210,17 +198,12 @@ export default function ChartsDashboard() {
               type="button"
               onClick={sendAllKillmailCharts}
               disabled={sendingAllCharts}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
+              title="Send all killmail charts to Discord"
+              className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors flex items-center justify-center disabled:opacity-50"
             >
               {sendingAllCharts ? 
-                <span className="flex items-center">
-                  <FaCircleNotch className="animate-spin mr-2" />
-                  Sending... 
-                </span> : 
-                <span className="flex items-center">
-                  <FaDiscord className="mr-2" />
-                  Send All to Discord
-                </span>
+                <FaCircleNotch className="animate-spin" /> : 
+                <FaDiscord />
               }
             </button>
           </div>
@@ -240,8 +223,7 @@ export default function ChartsDashboard() {
         </div>
       )}
 
-      {/* No features enabled message */}
-      {!features.mapChartsEnabled && !features.killChartsEnabled && (
+      {(!features.mapChartsEnabled && !features.killChartsEnabled) && (
         <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-6 text-center">
           <h3 className="text-lg font-medium text-yellow-800">No chart features are enabled</h3>
           <p className="mt-2 text-yellow-700">
@@ -251,4 +233,4 @@ export default function ChartsDashboard() {
       )}
     </div>
   );
-} 
+}

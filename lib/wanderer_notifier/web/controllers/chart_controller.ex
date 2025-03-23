@@ -509,6 +509,49 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     end
   end
 
+  # Force-sync characters (destructive operation that clears and rebuilds)
+  get "/killmail/force-sync-characters" do
+    if Config.kill_charts_enabled?() do
+      Logger.warning("Forcing destructive character sync from cache to database")
+
+      case WandererNotifier.Resources.TrackedCharacter.force_sync_from_cache() do
+        {:ok, result} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Characters force-synced successfully (database was cleared first)",
+              details: result
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to force-sync characters",
+              details: inspect(reason)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
   # Trigger manual aggregation of killmail data
   get "/killmail/aggregate" do
     if Config.kill_charts_enabled?() do
