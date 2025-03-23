@@ -78,7 +78,7 @@ def character_notifications_enabled?(), do: feature_enabled?(:character_notifica
 | `character_notifications` | `ENABLE_CHARACTER_NOTIFICATIONS` | `true`  | Character tracking notifications                 |
 | `charts`                  | `ENABLE_CHARTS`                  | `false` | Master switch for chart generation               |
 | `map_charts`              | `ENABLE_MAP_CHARTS`              | `true`  | Map-based activity charts                        |
-| `kill_charts`             | `ENABLE_KILL_CHARTS`             | `false` | Killmail charts and history                      |
+| `kill_charts`             | `ENABLE_KILL_CHARTS`             | `false` | Controls displaying and sending killmail charts  |
 | `node_chart_service`      | `ENABLE_NODE_CHART_SERVICE`      | `false` | Use Node.js chart service instead of QuickCharts |
 
 - Note: Some chart types have been removed. The `map_charts` feature now only supports the activity_summary chart type.

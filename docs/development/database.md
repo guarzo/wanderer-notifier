@@ -4,30 +4,17 @@ This document provides guidance on working with the PostgreSQL database for deve
 
 ## Overview
 
-WandererNotifier uses PostgreSQL with Ash Framework for persistence of killmail data. The database is optional and can be enabled or disabled via environment variables.
+WandererNotifier uses PostgreSQL with Ash Framework for persistence of killmail data. The database is required for the application to function properly, but kill charts functionality can be enabled or disabled via the `ENABLE_KILL_CHARTS` environment variable.
 
 ## Setting Up Development Environment
 
-### Enabling Persistence in Devcontainer
+### PostgreSQL in Development
 
-The development container is configured to support optional PostgreSQL persistence. To enable it:
+The development container is configured to use PostgreSQL. The database container will always start with the devcontainer:
 
-1. Open the `.devcontainer/devcontainer.json` file
-2. Find the `containerEnv` section and uncomment the `ENABLE_PERSISTENCE` line:
-
-```json
-"containerEnv": {
-  "ENABLE_PERSISTENCE": "true"
-}
-```
-
-3. Rebuild or restart the devcontainer to apply the changes
-
-When persistence is enabled, the devcontainer will:
-
-- Start a Postgres container (using the `persistence` profile in Docker Compose)
-- Configure the application to connect to the database
-- Start the Repo supervisor in the application
+1. The Docker Compose configuration includes a PostgreSQL container
+2. The application will automatically connect to the database
+3. The database is used for persistence regardless of whether kill charts are enabled
 
 ### Database Migrations
 
@@ -109,7 +96,7 @@ The database connection is configured in the following files:
 
 The following environment variables control database behavior:
 
-- `ENABLE_KILL_CHARTS` - Set to "true" to enable kill charts, which will enable the db
+- `ENABLE_KILL_CHARTS` - Set to "true" to enable kill charts functionality
 - `POSTGRES_HOST` - Hostname of the PostgreSQL server (default: "postgres")
 - `POSTGRES_PORT` - Port of the PostgreSQL server (default: "5432")
 - `POSTGRES_USER` - Username for PostgreSQL (default: "postgres")
@@ -131,9 +118,8 @@ mix ecto.create
 
 If you encounter connection errors, check:
 
-1. The `ENABLE_KILL_CHARTS` variable is set to "true"
-2. The Postgres container is running (check with `docker ps`)
-3. The connection details (host, port, username, password) are correct
+1. The Postgres container is running (check with `docker ps`)
+2. The connection details (host, port, username, password) are correct
 
 ### Database Not Starting
 

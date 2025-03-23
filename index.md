@@ -32,7 +32,7 @@ For a streamlined installation that creates the necessary directory and files au
 curl -fsSL https://gist.githubusercontent.com/guarzo/3f05f3c57005c3cf3585869212caecfe/raw/wanderer-notifier-setup.sh | bash
 ```
 
-Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container.
+Once the script finishes, update the `wanderer-notifier/.env` file with your configuration values, then run the container. The setup includes a PostgreSQL database which is now required for the application to function properly.
 
 ### Manual Setup
 
@@ -78,8 +78,10 @@ Create a file named `docker-compose.yml` with the following content:
 ```yaml
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
+    image: guarzo/wanderer-notifier:v1.1
     container_name: wanderer_notifier
+    # Run database migration on startup
+    command: sh -c 'sleep 5 && /app/bin/wanderer_notifier eval "WandererNotifier.Release.createdb()" && /app/bin/wanderer_notifier eval "WandererNotifier.Release.migrate()" && /app/bin/wanderer_notifier start'
     restart: unless-stopped
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
@@ -87,10 +89,20 @@ services:
       - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
       - MAP_TOKEN=${MAP_TOKEN}
       - LICENSE_KEY=${LICENSE_KEY}
+      # PostgreSQL configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wanderer_notifier
+      # Optional: Enable kill charts feature (uses the database)
+      - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-false}
     ports:
       - 4000:4000
     volumes:
       - wanderer_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-4000}/health"]
       interval: 30s
@@ -103,8 +115,25 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: notifier-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wanderer_notifier
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   wanderer_data:
+  postgres_data:
 ```
 
 #### 4. Run It
@@ -129,4 +158,4 @@ Your notifier is now up and running, delivering alerts to your Discord channel a
 
 [Learn more about notification types](./notifications.html)
 
- [View on GitHub](https://github.com/guarzo/wanderer-notifier) 
+[View on GitHub](https://github.com/guarzo/wanderer-notifier)
