@@ -12,26 +12,29 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   """
   @spec extract_character_id(map()) :: String.t() | nil
   def extract_character_id(character) when is_map(character) do
-    # Try extracting from different possible locations in order of preference
-    character_id =
-      check_top_level_id(character) ||
-        check_nested_character_id(character)
+    # Handle Character struct specially
+    if is_struct(character, WandererNotifier.Data.Character) do
+      character.character_id
+    else
+      # Try extracting from different possible locations in order of preference
+      character_id =
+        check_top_level_id(character) ||
+          check_nested_character_id(character)
 
-    # Log error if no valid ID was found
-    if is_nil(character_id) do
-      Logger.error(
-        "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
-      )
+      # Log error if no valid ID was found
+      if is_nil(character_id) do
+        Logger.error(
+          "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
+        )
+      end
+
+      character_id
     end
-
-    character_id
   end
 
   # Check for valid ID at the top level of the character map
   defp check_top_level_id(character) do
-    # Check character_id first, then eve_id
-    check_valid_id(character, "character_id") ||
-      check_valid_id(character, "eve_id")
+    check_valid_id(character, "character_id")
   end
 
   # Check for valid ID in nested character object
@@ -40,9 +43,8 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     nested = character["character"]
 
     if is_map(nested) do
-      # Check each possible key in the nested object
-      check_valid_id(nested, "eve_id") ||
-        check_valid_id(nested, "character_id") ||
+      # Check key in the nested object
+      check_valid_id(nested, "character_id") ||
         check_valid_id(nested, "id")
     else
       nil

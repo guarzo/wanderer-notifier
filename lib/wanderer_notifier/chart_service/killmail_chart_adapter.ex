@@ -9,32 +9,58 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   require Logger
   require Ash.Query
   alias WandererNotifier.ChartService
-  alias WandererNotifier.ChartService.ChartConfig
-  alias WandererNotifier.ChartService.ChartTypes
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter
   alias Ash.Query
 
   @doc """
-  Generates a chart showing top characters by kills for the past week.
-  Returns {:ok, url} on success, {:error, reason} on failure.
-  """
-  def generate_weekly_kills_chart(limit \\ 20) do
-    case prepare_weekly_kills_data(limit) do
-      {:ok, chart_data, title, options} ->
-        # Create chart configuration using the ChartConfig struct
-        case ChartConfig.new(
-               ChartTypes.horizontal_bar(),
-               chart_data,
-               title,
-               options
-             ) do
-          {:ok, config} -> ChartService.generate_chart_url(config)
-          {:error, reason} -> {:error, reason}
-        end
+  Generates a chart showing the top characters by kills for the past week.
 
-      {:error, reason} ->
-        {:error, reason}
+  ## Parameters
+    - options: Map of options including:
+      - limit: Maximum number of characters to include (default: 20)
+      or directly an integer representing the limit
+
+  ## Returns
+    - {:ok, chart_url} if successful
+    - {:error, reason} if chart generation fails
+  """
+  def generate_weekly_kills_chart(options \\ %{}) do
+    # Handle both map and integer arguments
+    limit =
+      case options do
+        limit when is_integer(limit) -> limit
+        %{} = opts -> Map.get(opts, :limit, 20)
+        _ -> 20
+      end
+
+    Logger.info("Generating weekly kills chart (limit: #{limit})")
+
+    # Prepare chart data
+    case prepare_weekly_kills_data(limit) do
+      {:ok, chart_data, title, chart_options} ->
+        # If we have stats with data
+        if length(Map.get(chart_data, "labels", [])) > 1 ||
+             (length(Map.get(chart_data, "labels", [])) == 1 &&
+                hd(Map.get(chart_data, "labels")) != "No Data") do
+          # Create chart configuration that can be passed to generate_chart_url
+          chart_config = %{
+            type: chart_data["type"] || "horizontalBar",
+            data: chart_data,
+            title: title,
+            options: chart_options
+          }
+
+          # Generate URL from the config
+          case ChartService.generate_chart_url(chart_config) do
+            {:ok, url} -> {:ok, url}
+            {:error, reason} -> {:error, reason}
+          end
+        else
+          # Use a fixed error URL rather than trying to generate a chart
+          {:ok,
+           "https://quickchart.io/chart?c={type:%27bar%27,data:{labels:[%27No%20Data%27],datasets:[{label:%27No%20weekly%20kill%20statistics%20available%27,data:[0]}]}}&bkg=rgb(47,49,54)&width=800&height=400"}
+        end
     end
   end
 
@@ -69,13 +95,23 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         {:ok, chart_data, "Weekly Character Kills", options}
       else
         Logger.warning("No weekly statistics available for tracked characters", [])
-        {:error, "No weekly statistics available"}
+
+        # Create an empty chart with a message instead of returning an error
+        empty_chart_data = create_empty_chart_data("No kill statistics available yet")
+        options = create_empty_chart_options()
+
+        {:ok, empty_chart_data, "Weekly Character Kills", options}
       end
     rescue
       e ->
         Logger.error("Error preparing weekly kills data: #{Exception.message(e)}")
         Logger.error(Exception.format_stacktrace())
-        {:error, "Error preparing weekly kills data: #{Exception.message(e)}"}
+
+        # Even for errors, create an empty chart with an error message
+        empty_chart_data = create_empty_chart_data("Error loading chart data")
+        options = create_empty_chart_options()
+
+        {:ok, empty_chart_data, "Weekly Character Kills", options}
     end
   end
 
@@ -122,9 +158,19 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   # Get all tracked characters
   defp get_tracked_characters do
-    TrackedCharacter
-    |> Query.load([:character_id, :character_name])
-    |> WandererNotifier.Resources.Api.read()
+    case TrackedCharacter
+         |> Query.load([:character_id, :character_name])
+         |> WandererNotifier.Resources.Api.read() do
+      {:ok, characters} ->
+        characters
+
+      {:error, error} ->
+        Logger.error("Error fetching tracked characters: #{inspect(error)}")
+        []
+
+      _ ->
+        []
+    end
   end
 
   # Get weekly statistics for tracked characters
@@ -138,21 +184,31 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     week_start = Date.add(today, -days_since_monday)
 
     # Query for weekly stats for these characters - using proper Ash.Query filter syntax
-    KillmailStatistic
-    |> Query.filter(character_id: [in: character_ids])
-    |> Query.filter(period_type: :weekly)
-    |> Query.filter(period_start: week_start)
-    |> Query.load([
-      :character_id,
-      :character_name,
-      :kills_count,
-      :deaths_count,
-      :isk_destroyed,
-      :isk_lost,
-      :period_start,
-      :period_end
-    ])
-    |> WandererNotifier.Resources.Api.read()
+    case KillmailStatistic
+         |> Query.filter(character_id: [in: character_ids])
+         |> Query.filter(period_type: :weekly)
+         |> Query.filter(period_start: week_start)
+         |> Query.load([
+           :character_id,
+           :character_name,
+           :kills_count,
+           :deaths_count,
+           :isk_destroyed,
+           :isk_lost,
+           :period_start,
+           :period_end
+         ])
+         |> WandererNotifier.Resources.Api.read() do
+      {:ok, stats} ->
+        stats
+
+      {:error, error} ->
+        Logger.error("Error fetching weekly stats: #{inspect(error)}")
+        []
+
+      _ ->
+        []
+    end
   end
 
   # Gets top N characters sorted by kill count
@@ -170,7 +226,18 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     # Convert Decimal to float for charting
     isk_destroyed_data =
       Enum.map(stats, fn stat ->
-        Decimal.to_float(stat.isk_destroyed) / 1_000_000.0
+        case stat.isk_destroyed do
+          nil ->
+            0.0
+
+          decimal ->
+            # Safely convert to float, handling potential errors
+            try do
+              Decimal.to_float(decimal) / 1_000_000.0
+            rescue
+              _ -> 0.0
+            end
+        end
       end)
 
     {character_labels, kills_data, isk_destroyed_data}
@@ -273,5 +340,68 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "intersect" => false
       }
     }
+  end
+
+  defp create_empty_chart_data(message) do
+    %{
+      "type" => "horizontalBar",
+      "labels" => ["No Data"],
+      "datasets" => [
+        %{
+          "label" => "Kills",
+          "backgroundColor" => "rgba(255, 99, 132, 0.2)",
+          "borderColor" => "rgba(255, 99, 132, 0.2)",
+          "borderWidth" => 1,
+          "data" => [0],
+          "yAxisID" => "kills"
+        },
+        %{
+          "label" => "ISK Destroyed (Millions)",
+          "backgroundColor" => "rgba(54, 162, 235, 0.2)",
+          "borderColor" => "rgba(54, 162, 235, 0.2)",
+          "borderWidth" => 1,
+          "data" => [0],
+          "yAxisID" => "isk"
+        }
+      ],
+      "options" => %{
+        "plugins" => %{
+          "annotation" => %{
+            "annotations" => [
+              %{
+                "type" => "label",
+                "content" => message,
+                "font" => %{
+                  "size" => 24,
+                  "weight" => "bold",
+                  "color" => "rgba(255, 255, 255, 0.8)"
+                },
+                "position" => %{
+                  "x" => "50%",
+                  "y" => "50%"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  end
+
+  # Creates options for the weekly kills chart when there's no data available
+  defp create_empty_chart_options do
+    base_options = create_weekly_kills_chart_options()
+
+    Map.put(base_options, "plugins", %{
+      "datalabels" => %{
+        "display" => false
+      },
+      "title" => %{
+        "display" => true,
+        "text" => "No Killmail Data Available",
+        "fontColor" => "rgb(255, 255, 255)",
+        "fontSize" => 16
+      }
+    })
   end
 end

@@ -19,7 +19,7 @@ defmodule WandererNotifier.Data.Character do
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
           # EVE Online character ID (primary identifier)
-          eve_id: String.t(),
+          character_id: String.t(),
           # Character name
           name: String.t(),
           # Corporation ID
@@ -35,7 +35,7 @@ defmodule WandererNotifier.Data.Character do
         }
 
   defstruct [
-    :eve_id,
+    :character_id,
     :name,
     :corporation_id,
     :corporation_ticker,
@@ -51,8 +51,8 @@ defmodule WandererNotifier.Data.Character do
   Allows accessing fields with map["key"] syntax.
 
   ## Examples
-      iex> character = %Character{eve_id: "123", name: "Test"}
-      iex> character["eve_id"]
+      iex> character = %Character{character_id: "123", name: "Test"}
+      iex> character["character_id"]
       "123"
       iex> character["name"]
       "Test"
@@ -65,12 +65,9 @@ defmodule WandererNotifier.Data.Character do
   def fetch(struct, key) when is_binary(key) do
     # Handle special field name conversions
     case key do
-      # Handle special case for character_id which is accessed in the API controller
-      "character_id" ->
-        {:ok, struct.eve_id}
-
+      # No longer needed - eve_id is only used at map API conversion point
       "id" ->
-        {:ok, struct.eve_id}
+        {:ok, struct.character_id}
 
       "corporationID" ->
         {:ok, struct.corporation_id}
@@ -99,7 +96,7 @@ defmodule WandererNotifier.Data.Character do
   Implements the Access behaviour get method.
 
   ## Examples
-      iex> character = %Character{eve_id: "123", name: "Test"}
+      iex> character = %Character{character_id: "123", name: "Test"}
       iex> character["missing_key", :default]
       :default
   """
@@ -134,14 +131,6 @@ defmodule WandererNotifier.Data.Character do
     character_data["name"] ||
       map_response["name"] ||
       map_response["character_name"]
-  end
-
-  # Extract character ID from various field formats
-  defp extract_character_id(character_data, map_response) do
-    character_data["eve_id"] ||
-      map_response["eve_id"] ||
-      map_response["id"] ||
-      map_response["character_id"]
   end
 
   # Extract corporation ID from various field formats
@@ -183,15 +172,16 @@ defmodule WandererNotifier.Data.Character do
   end
 
   # Validate required fields are present
-  defp validate_required_fields(eve_id, name) do
+  defp validate_required_fields(character_id, name) do
     require Logger
 
-    if !(eve_id && name) do
+    if !(character_id && name) do
       Logger.error(
-        "[Character.new] Missing required fields: eve_id=#{inspect(eve_id)}, name=#{inspect(name)}"
+        "[Character.new] Missing required fields: character_id=#{inspect(character_id)}, name=#{inspect(name)}"
       )
 
-      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
+      raise ArgumentError,
+            "Missing required fields for Character: character_id and name are required"
     end
   end
 
@@ -207,15 +197,19 @@ defmodule WandererNotifier.Data.Character do
       "[Character.new] Processing character data: #{inspect(map_response, limit: 500)}"
     )
 
-    # Extract required fields with clear validation
+    # Handle map API conversion - we expect character_id to already be populated
+    # from eve_id at the API client layer if map response contained eve_id
+    character_id =
+      character_data["character_id"] || map_response["character_id"] || map_response["id"]
+
+    # Extract name
     name = extract_character_name(character_data, map_response)
-    eve_id = extract_character_id(character_data, map_response)
 
     # Log the extracted ID for debugging
-    Logger.debug("[Character.new] Extracted eve_id: #{inspect(eve_id)} from data")
+    Logger.debug("[Character.new] Extracted character_id: #{inspect(character_id)}")
 
     # Validate required fields
-    validate_required_fields(eve_id, name)
+    validate_required_fields(character_id, name)
 
     # Extract additional fields
     corporation_id = extract_corporation_id(character_data, map_response)
@@ -225,7 +219,7 @@ defmodule WandererNotifier.Data.Character do
 
     # Create the struct with all fields
     %__MODULE__{
-      eve_id: eve_id,
+      character_id: character_id,
       name: name,
       corporation_id: corporation_id,
       corporation_ticker: corporation_ticker,
@@ -253,8 +247,9 @@ defmodule WandererNotifier.Data.Character do
   @spec from_map(map()) :: t()
   def from_map(attrs) when is_map(attrs) do
     # Validate required fields
-    if !(Map.has_key?(attrs, :eve_id) && Map.has_key?(attrs, :name)) do
-      raise ArgumentError, "Missing required fields for Character: eve_id and name are required"
+    if !(Map.has_key?(attrs, :character_id) && Map.has_key?(attrs, :name)) do
+      raise ArgumentError,
+            "Missing required fields for Character: character_id and name are required"
     end
 
     struct(__MODULE__, attrs)
@@ -326,8 +321,8 @@ defmodule WandererNotifier.Data.Character do
   @spec validate(t()) :: {:ok, t()} | {:error, String.t()}
   def validate(%__MODULE__{} = character) do
     cond do
-      is_nil(character.eve_id) ->
-        {:error, "Character is missing required eve_id field"}
+      is_nil(character.character_id) ->
+        {:error, "Character is missing required character_id field"}
 
       is_nil(character.name) ->
         {:error, "Character is missing required name field"}

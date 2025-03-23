@@ -5,7 +5,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "new/1" do
     test "creates a character from map with standard fields" do
       map = %{
-        "eve_id" => "12345",
+        "character_id" => "12345",
         "name" => "Test Character",
         "corporation_id" => "67_890",
         "corporation_ticker" => "CORP",
@@ -16,7 +16,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = Character.new(map)
 
       assert %Character{} = character
-      assert character.eve_id == "12345"
+      assert character.character_id == "12345"
       assert character.name == "Test Character"
       assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
@@ -28,7 +28,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     test "creates a character from nested character data" do
       map = %{
         "character" => %{
-          "eve_id" => "12345",
+          "character_id" => "12345",
           "name" => "Nested Character",
           "corporation_id" => "67_890",
           "corporation_ticker" => "CORP"
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = Character.new(map)
 
       assert %Character{} = character
-      assert character.eve_id == "12345"
+      assert character.character_id == "12345"
       assert character.name == "Nested Character"
       assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
@@ -58,7 +58,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = Character.new(map)
 
       assert %Character{} = character
-      assert character.eve_id == "12345"
+      assert character.character_id == "12345"
       assert character.name == "Alt Field Character"
       assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
@@ -68,7 +68,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "handles tracked field" do
       map = %{
-        "eve_id" => "12345",
+        "character_id" => "12345",
         "name" => "Untracked Character",
         "tracked" => false
       }
@@ -85,7 +85,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       end
 
       assert_raise ArgumentError, fn ->
-        Character.new(%{"eve_id" => "12345"})
+        Character.new(%{"character_id" => "12345"})
       end
     end
 
@@ -99,7 +99,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "from_map/1" do
     test "creates a character from map with exact field names" do
       map = %{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "CORP",
@@ -111,7 +111,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       character = Character.from_map(map)
 
       assert %Character{} = character
-      assert character.eve_id == "12345"
+      assert character.character_id == "12345"
       assert character.name == "Test Character"
       assert character.corporation_id == 67_890
       assert character.corporation_ticker == "CORP"
@@ -126,7 +126,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       end
 
       assert_raise ArgumentError, fn ->
-        Character.from_map(%{eve_id: "12345"})
+        Character.from_map(%{character_id: "12345"})
       end
     end
   end
@@ -134,7 +134,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "Access behaviour" do
     setup do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "CORP",
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     end
 
     test "fetch/2 retrieves struct fields with atom keys", %{character: character} do
-      assert {:ok, "12345"} = Character.fetch(character, :eve_id)
+      assert {:ok, "12345"} = Character.fetch(character, :character_id)
       assert {:ok, "Test Character"} = Character.fetch(character, :name)
       assert {:ok, 67_890} = Character.fetch(character, :corporation_id)
     end
@@ -167,7 +167,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     end
 
     test "get/2 retrieves values with default", %{character: character} do
-      assert Character.get(character, :eve_id) == "12345"
+      assert Character.get(character, :character_id) == "12345"
       assert Character.get(character, "character_id") == "12345"
       assert Character.get(character, :non_existent) == nil
       assert Character.get(character, :non_existent, "default") == "default"
@@ -189,7 +189,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "has_alliance?/1" do
     test "returns true when alliance data is present" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         alliance_id: 54_321,
         alliance_ticker: "ALLY"
@@ -200,7 +200,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "returns false when alliance data is missing" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         alliance_id: nil,
         alliance_ticker: nil
@@ -211,7 +211,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "returns false when alliance ticker is empty" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         alliance_id: 54_321,
         alliance_ticker: ""
@@ -224,7 +224,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "has_corporation?/1" do
     test "returns true when corporation data is present" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "CORP"
@@ -235,7 +235,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "returns false when corporation data is missing" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: nil,
         corporation_ticker: nil
@@ -246,7 +246,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "returns false when corporation ticker is empty" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: ""
@@ -259,7 +259,7 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "format_name/1" do
     test "formats name with corporation and alliance" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "CORP",
@@ -272,7 +272,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "formats name with corporation only" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character",
         corporation_id: 67_890,
         corporation_ticker: "CORP"
@@ -283,7 +283,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "formats name with no corporation or alliance" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character"
       }
 
@@ -292,7 +292,7 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "handles nil name" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: nil
       }
 
@@ -303,31 +303,59 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "validate/1" do
     test "returns ok for valid character" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: "Test Character"
       }
 
       assert {:ok, ^character} = Character.validate(character)
     end
 
-    test "returns error for missing eve_id" do
+    test "returns error for missing character_id" do
       character = %Character{
-        eve_id: nil,
+        character_id: nil,
         name: "Test Character"
       }
 
       assert {:error, message} = Character.validate(character)
-      assert message =~ "missing required eve_id"
+      assert message =~ "missing required character_id"
     end
 
     test "returns error for missing name" do
       character = %Character{
-        eve_id: "12345",
+        character_id: "12345",
         name: nil
       }
 
       assert {:error, message} = Character.validate(character)
       assert message =~ "missing required name"
+    end
+  end
+
+  describe "accessing fields" do
+    test "no longer provides eve_id compatibility" do
+      character = %Character{
+        character_id: "12345",
+        name: "Test Character"
+      }
+
+      # The eve_id compatibility function was removed
+      assert_raise UndefinedFunctionError, fn ->
+        Character.eve_id(character)
+      end
+
+      # Direct struct field access should fail
+      assert_raise KeyError, fn ->
+        character.eve_id
+      end
+
+      # Access protocol with eve_id key should return error
+      assert :error = Character.fetch(character, "eve_id")
+      assert nil == Character.get(character, "eve_id")
+
+      # But character_id always works
+      assert character.character_id == "12345"
+      assert {:ok, "12345"} = Character.fetch(character, "character_id")
+      assert "12345" == Character.get(character, "character_id")
     end
   end
 end

@@ -298,13 +298,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   """
   def format_character_notification(%Character{} = character) do
     Logger.info(
-      "[StructuredFormatter] Processing Character notification for: #{character.name} (#{character.eve_id})"
+      "[StructuredFormatter] Processing Character notification for: #{character.name} (#{character.character_id})"
     )
 
     # Log all character fields to diagnose issues
     Logger.info("[StructuredFormatter] Character struct fields:")
     Logger.info("[StructuredFormatter] - name: #{inspect(character.name)}")
-    Logger.info("[StructuredFormatter] - eve_id: #{inspect(character.eve_id)}")
+    Logger.info("[StructuredFormatter] - character_id: #{inspect(character.character_id)}")
     Logger.info("[StructuredFormatter] - corporation_id: #{inspect(character.corporation_id)}")
 
     Logger.info(
@@ -328,13 +328,14 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       color: @info_color,
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
       thumbnail: %{
-        url: "https://imageserver.eveonline.com/Character/#{character.eve_id}_128.jpg"
+        url: "https://imageserver.eveonline.com/Character/#{character.character_id}_128.jpg"
       },
       fields:
         [
           %{
             name: "Character",
-            value: "[#{character.name}](https://zkillboard.com/character/#{character.eve_id}/)",
+            value:
+              "[#{character.name}](https://zkillboard.com/character/#{character.character_id}/)",
             inline: true
           }
         ] ++

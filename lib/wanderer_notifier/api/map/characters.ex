@@ -184,11 +184,14 @@ defmodule WandererNotifier.Api.Map.Characters do
             {:ok, transformed_characters}
 
           characters when is_list(characters) ->
-            # Direct array of characters fallback
+            # Direct array of characters
             Logger.debug("[parse_characters_response] Parsed characters: #{length(characters)}")
 
-            # Transform the characters to match the expected format for the rest of the application
-            transformed_characters = Enum.map(characters, &transform_legacy_character/1)
+            # Transform raw characters into standardized format
+            transformed_characters =
+              Enum.map(characters, fn char ->
+                transform_character_data(char)
+              end)
 
             {:ok, transformed_characters}
 
@@ -218,7 +221,51 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp update_cache(new_characters, _cached_characters) do
+    # Update the cache
     CacheRepo.set("map:characters", new_characters, Timings.characters_cache_ttl())
+
+    Logger.info(
+      "[update_cache] Updated map:characters cache with #{length(new_characters)} characters"
+    )
+
+    # Log a sample of characters for debugging
+    if length(new_characters) > 0 do
+      sample = Enum.take(new_characters, min(2, length(new_characters)))
+      Logger.info("[update_cache] Sample from updated cache: #{inspect(sample)}")
+    end
+
+    # Sync with TrackedCharacter Ash resource - with improved logging
+    Logger.info("[update_cache] Starting synchronization with Ash resource in background process")
+
+    spawn(fn ->
+      try do
+        Process.flag(:trap_exit, true)
+        Logger.info("[update_cache] Background sync process started")
+
+        case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+          {:ok, stats} ->
+            Logger.info(
+              "[update_cache] Successfully synced characters to Ash resource: #{inspect(stats)}"
+            )
+
+          {:error, reason} ->
+            Logger.error(
+              "[update_cache] Failed to sync characters to Ash resource: #{inspect(reason)}"
+            )
+        end
+      rescue
+        e ->
+          Logger.error(
+            "[update_cache] Exception in background sync process: #{Exception.message(e)}\n#{Exception.format_stacktrace()}"
+          )
+      catch
+        kind, reason ->
+          Logger.error(
+            "[update_cache] Caught #{kind} in background sync process: #{inspect(reason)}"
+          )
+      end
+    end)
+
     {:ok, new_characters}
   end
 
@@ -246,21 +293,6 @@ defmodule WandererNotifier.Api.Map.Characters do
   defp send_character_notification(character_info) do
     notifier = NotifierFactory.get_notifier()
     notifier.send_new_tracked_character_notification(character_info)
-  end
-
-  defp transform_legacy_character(char) do
-    # Create map with all potential fields
-    char_map = %{
-      "character_id" => Map.get(char, "id"),
-      "name" => Map.get(char, "name"),
-      "corporationID" => Map.get(char, "corporation_id"),
-      "corporationName" => Map.get(char, "corporation_name"),
-      "allianceID" => Map.get(char, "alliance_id"),
-      "allianceName" => Map.get(char, "alliance_name")
-    }
-
-    # Filter out nil values and return as map
-    remove_nil_values(char_map)
   end
 
   defp remove_nil_values(map) do
@@ -291,16 +323,29 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp transform_character_data(character_data) do
-    # Create a standardized format for the character
+    # IMPORTANT: Convert eve_id from map API to character_id
+    # The map API uses eve_id but our application uses character_id consistently
+    # After this transformation, we should never see eve_id again in the application
+    eve_id = Map.get(character_data, "eve_id")
+
+    if is_nil(eve_id) do
+      Logger.warning(
+        "[transform_character_data] Character data missing eve_id: #{inspect(character_data)}"
+      )
+    end
+
     character_map = %{
-      "character_id" => Map.get(character_data, "eve_id"),
-      "name" => Map.get(character_data, "name"),
-      "corporationID" => Map.get(character_data, "corporation_id"),
-      # Using ticker as name
-      "corporationName" => Map.get(character_data, "corporation_ticker"),
-      "allianceID" => Map.get(character_data, "alliance_id"),
-      # Using ticker as name
-      "allianceName" => Map.get(character_data, "alliance_ticker")
+      # Convert eve_id to character_id for consistent field naming in the app
+      "character_id" => eve_id,
+      "character_name" =>
+        Map.get(character_data, "name") || Map.get(character_data, "character_name"),
+      "corporation_id" => Map.get(character_data, "corporation_id"),
+      "corporation_name" =>
+        Map.get(character_data, "corporation_name") ||
+          Map.get(character_data, "corporation_ticker"),
+      "alliance_id" => Map.get(character_data, "alliance_id"),
+      "alliance_name" =>
+        Map.get(character_data, "alliance_name") || Map.get(character_data, "alliance_ticker")
     }
 
     # Remove nil values
@@ -354,16 +399,13 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp transform_nested_character(char) do
-    # Extract the character data from the nested structure
-    character_data = Map.get(char, "character", %{})
+    # The API might return data in a nested structure with a "character" key
+    # or it might return a flat structure with the data directly in the map
+    character_data = Map.get(char, "character", char)
 
     Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
 
-    # Create a standardized format for the character
-    transformed = transform_character_data(character_data)
-
-    Logger.debug("[parse_characters_response] Transformed character: #{inspect(transformed)}")
-
-    transformed
+    # Transform the data to use consistent field names, prioritizing eve_id
+    transform_character_data(character_data)
   end
 end

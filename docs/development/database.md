@@ -109,7 +109,7 @@ The database connection is configured in the following files:
 
 The following environment variables control database behavior:
 
-- `ENABLE_PERSISTENCE` - Set to "true" to enable persistence
+- `ENABLE_KILL_CHARTS` - Set to "true" to enable kill charts, which will enable the db
 - `POSTGRES_HOST` - Hostname of the PostgreSQL server (default: "postgres")
 - `POSTGRES_PORT` - Port of the PostgreSQL server (default: "5432")
 - `POSTGRES_USER` - Username for PostgreSQL (default: "postgres")
@@ -131,7 +131,7 @@ mix ecto.create
 
 If you encounter connection errors, check:
 
-1. The `ENABLE_PERSISTENCE` variable is set to "true"
+1. The `ENABLE_KILL_CHARTS` variable is set to "true"
 2. The Postgres container is running (check with `docker ps`)
 3. The connection details (host, port, username, password) are correct
 

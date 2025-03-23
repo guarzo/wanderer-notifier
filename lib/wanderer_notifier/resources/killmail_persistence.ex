@@ -9,6 +9,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
+  # Cache TTL for processed kill IDs - 24 hours
+  @processed_kills_ttl_seconds 86400
+
   @doc """
   Persists killmail data if it's related to a tracked character.
 
@@ -23,40 +26,75 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   def maybe_persist_killmail(%KillmailStruct{} = killmail) do
     # Check if kill charts feature is enabled
     if kill_charts_enabled?() do
-      # First check if the killmail involves any tracked characters
-      with tracked_characters <- get_tracked_characters(),
-           {character_id, character_name, role} <-
-             find_tracked_character_in_killmail(killmail, tracked_characters),
-           true <- not is_nil(character_id) do
-        # We found a tracked character in the killmail, persist it
+      # Get the killmail ID as a string for consistent handling
+      killmail_id_str = to_string(killmail.killmail_id)
+
+      # Check our processed kills cache first to avoid duplicate processing
+      # This is a global cache key not specific to any character
+      cache_key = "processed:killmail:#{killmail_id_str}"
+
+      if CacheRepo.exists?(cache_key) do
+        # We've already processed this killmail
         Logger.debug(
-          "[KillmailPersistence] Persisting killmail #{killmail.killmail_id} for character #{character_id}"
+          "[KillmailPersistence] Killmail #{killmail_id_str} already processed, skipping"
         )
 
-        # Transform the killmail struct to the Ash resource format
-        killmail_attrs =
-          transform_killmail_to_resource(killmail, character_id, character_name, role)
-
-        # Insert into database via Ash framework
-        case create_killmail_record(killmail_attrs) do
-          {:ok, record} ->
-            Logger.info(
-              "[KillmailPersistence] Successfully persisted killmail #{killmail.killmail_id}"
-            )
-
-            {:ok, record}
-
-          {:error, error} ->
-            Logger.error(
-              "[KillmailPersistence] Failed to persist killmail #{killmail.killmail_id}: #{inspect(error)}"
-            )
-
-            {:error, error}
-        end
+        {:ok, :already_processed}
       else
-        _ ->
-          # Killmail doesn't involve a tracked character, ignore it
-          :ignored
+        # Set the killmail as being processed to prevent concurrent processing
+        CacheRepo.set(cache_key, true, @processed_kills_ttl_seconds)
+
+        # Continue with the normal flow
+        tracked_characters = get_tracked_characters()
+
+        case find_tracked_character_in_killmail(killmail, tracked_characters) do
+          {character_id, character_name, role} ->
+            # We found a tracked character in the killmail
+            str_character_id = to_string(character_id)
+
+            # Do a fast DB check to see if this specific character-killmail combination exists
+            # Skip the cache layer here since we want accuracy
+            already_exists =
+              check_killmail_exists_in_database(killmail.killmail_id, character_id, role)
+
+            if already_exists do
+              Logger.debug(
+                "[KillmailPersistence] Killmail #{killmail_id_str} already exists for character #{str_character_id} as #{role}, skipping"
+              )
+
+              # Already processed and stored
+              {:ok, :already_exists}
+            else
+              # Not in DB, proceed with persistence
+              Logger.info(
+                "[KillmailPersistence] Persisting killmail #{killmail_id_str} for character #{str_character_id}"
+              )
+
+              # Transform and persist the killmail
+              killmail_attrs =
+                transform_killmail_to_resource(killmail, character_id, character_name, role)
+
+              case create_killmail_record(killmail_attrs) do
+                {:ok, record} ->
+                  Logger.info(
+                    "[KillmailPersistence] Successfully persisted killmail #{killmail_id_str}"
+                  )
+
+                  {:ok, record}
+
+                {:error, error} ->
+                  Logger.error(
+                    "[KillmailPersistence] Failed to persist killmail #{killmail_id_str}: #{inspect(error)}"
+                  )
+
+                  {:error, error}
+              end
+            end
+
+          nil ->
+            # Killmail doesn't involve a tracked character
+            :ignored
+        end
       end
     else
       # Persistence disabled, skip
@@ -73,6 +111,60 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @doc """
+  Checks directly in the database if a killmail exists for a specific character and role.
+  Bypasses caching for accuracy.
+
+  ## Parameters
+    - killmail_id: The killmail ID to check
+    - character_id: The character ID to check
+    - role: The role (attacker/victim) to check
+
+  ## Returns
+    - true if the killmail exists
+    - false if it doesn't exist
+  """
+  def check_killmail_exists_in_database(killmail_id, character_id, role) do
+    case Killmail.exists_with_character(killmail_id, character_id, role) do
+      {:ok, []} -> false
+      {:ok, _} -> true
+      {:error, _} -> false
+    end
+  end
+
+  @doc """
+  Checks if a killmail already exists in the database for the specified character and role.
+  Uses both cache and database checks.
+
+  ## Parameters
+    - killmail_id: The killmail ID to check
+    - character_id: The character ID to check
+    - role: The role (attacker/victim) to check
+
+  ## Returns
+    - true if the killmail exists
+    - false if it doesn't exist
+  """
+  def killmail_exists_for_character?(killmail_id, character_id, role) do
+    # First check in-memory cache
+    cache_key = "exists:killmail:#{killmail_id}:#{character_id}:#{role}"
+
+    case CacheRepo.get(cache_key) do
+      true ->
+        # Found in cache - already exists
+        true
+
+      _ ->
+        # Not in cache, check database
+        exists = check_killmail_exists_in_database(killmail_id, character_id, role)
+
+        # Cache the result
+        CacheRepo.set(cache_key, exists, @processed_kills_ttl_seconds)
+
+        exists
+    end
+  end
+
+  @doc """
   Gets all killmails for a specific character within a date range.
 
   ## Parameters
@@ -86,8 +178,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
     try do
-      WandererNotifier.Resources.Api.read(Killmail, 
-        action: :list_for_character, 
+      WandererNotifier.Resources.Api.read(Killmail,
+        action: :list_for_character,
         args: [character_id: character_id, from_date: from_date, to_date: to_date, limit: limit]
       )
     rescue
@@ -177,9 +269,12 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
           }
       end
 
-    # Build the resource attributes map
+    # Ensure killmail_id is properly parsed
+    parsed_killmail_id = parse_integer(killmail.killmail_id)
+
+    # Build the resource attributes map with explicit killmail_id
     %{
-      killmail_id: parse_integer(killmail.killmail_id),
+      killmail_id: parsed_killmail_id,
       kill_time: kill_time,
       solar_system_id: parse_integer(solar_system_id),
       solar_system_name: solar_system_name,
@@ -225,8 +320,16 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Creates a new killmail record using Ash
   defp create_killmail_record(attrs) do
-    # Use the Ash API for creation to ensure proper handling
-    WandererNotifier.Resources.Api.create(Killmail, attrs, action: :create)
+    # Create the record with proper error handling
+    case WandererNotifier.Resources.Api.create(Killmail, attrs) do
+      {:ok, record} ->
+        {:ok, record}
+
+      {:error, error} ->
+        # Log the error details and return error
+        Logger.error("[KillmailPersistence] Create killmail error: #{inspect(error)}")
+        {:error, error}
+    end
   end
 
   # Extracts kill time from the killmail

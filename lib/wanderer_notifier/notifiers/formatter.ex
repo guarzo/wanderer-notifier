@@ -14,8 +14,8 @@ defmodule WandererNotifier.Notifiers.Formatter do
         character_data["character_id"]
 
       # Standard API format
-      get_in(character_data, ["character", "eve_id"]) ->
-        get_in(character_data, ["character", "eve_id"])
+      get_in(character_data, ["character", "character_id"]) ->
+        get_in(character_data, ["character", "character_id"])
 
       # No character ID found
       true ->
