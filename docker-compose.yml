@@ -1,39 +1,77 @@
 version: "3.8"
 services:
-  app:
-    # Main application container
-    build:
-      context: .
-      dockerfile: Dockerfile
+  wanderer_notifier:
+    image: guarzo/wanderer-notifier:latest
+    container_name: notifier
+    env_file:
+      - ./.env-notifier
+    restart: unless-stopped
     environment:
-      - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-false}
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
-      - MIX_ENV=${MIX_ENV:-prod}
+      PORT: "4000"
+      # Keep the working PostgreSQL hostname
+      POSTGRES_HOST: "postgres"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: "wanderer_notifier_dev"
+      # Explicitly enable kill charts
+      ENABLE_KILL_CHARTS: "true"
+      # Keep debug logging for now
+      LOG_LEVEL: "debug"
     ports:
       - "${PORT:-4000}:4000"
     depends_on:
-      postgres:
-        condition: service_started
-        required: false
+      - postgres_notifier
+    labels:
+      virtual.host: "notifier.zoolanders.space"
+      virtual.port: "4000"
+      virtual.tls-email: "guarzo.eve@gmail.com"
     volumes:
-      - app_data:/app/data
+      - wanderer_data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-4000}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      notifier-internal:
+        aliases:
+          - app
+      web: {}
 
-  postgres:
-    image: postgres:14
-    profiles:
-      - kill_charts
+  postgres_notifier:
+    image: postgres:16-alpine
+    container_name: notifier-postgres
+    restart: unless-stopped
+    networks:
+      notifier-internal:
+        aliases:
+          - postgres
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-wanderer_notifier}
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=wanderer_notifier_dev
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
 
 volumes:
-  app_data:
+  wanderer_data:
   postgres_data:
+    external: true
+
+networks:
+  notifier-internal:
+    internal: true
+  web:
+    external: true

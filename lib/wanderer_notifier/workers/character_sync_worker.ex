@@ -48,34 +48,45 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   defp run_sync do
     Logger.info("[CharacterSyncWorker] Running periodic character sync...")
 
-    # Get character counts
-    cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
-
-    # Only run if we have characters in the cache
-    if length(cached_characters) > 0 do
-      Logger.info(
-        "[CharacterSyncWorker] Syncing #{length(cached_characters)} characters from cache to database"
-      )
-
-      # Run the sync
-      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
-        {:ok, result} ->
-          Logger.info("[CharacterSyncWorker] Sync completed: #{inspect(result)}")
-          {:ok, result}
-
-        {:error, reason} ->
-          Logger.error("[CharacterSyncWorker] Sync failed: #{inspect(reason)}")
-          {:error, reason}
-      end
+    # Check if kill charts feature is enabled first
+    if !kill_charts_enabled?() do
+      Logger.info("[CharacterSyncWorker] Kill charts feature is disabled, skipping sync")
+      {:ok, :disabled_feature}
     else
-      Logger.info("[CharacterSyncWorker] No characters in cache, skipping sync")
-      {:ok, :no_characters}
+      # Get character counts
+      cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+
+      # Only run if we have characters in the cache
+      if length(cached_characters) > 0 do
+        Logger.info(
+          "[CharacterSyncWorker] Syncing #{length(cached_characters)} characters from cache to database"
+        )
+
+        # Run the sync
+        case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+          {:ok, result} ->
+            Logger.info("[CharacterSyncWorker] Sync completed: #{inspect(result)}")
+            {:ok, result}
+
+          {:error, reason} ->
+            Logger.error("[CharacterSyncWorker] Sync failed: #{inspect(reason)}")
+            {:error, reason}
+        end
+      else
+        Logger.info("[CharacterSyncWorker] No characters in cache, skipping sync")
+        {:ok, :no_characters}
+      end
     end
   rescue
     e ->
       Logger.error("[CharacterSyncWorker] Error during sync: #{Exception.message(e)}")
       Logger.debug("[CharacterSyncWorker] #{Exception.format_stacktrace()}")
       {:error, e}
+  end
+
+  # Check if kill charts feature is enabled
+  defp kill_charts_enabled? do
+    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 
   # Schedule next sync with default interval

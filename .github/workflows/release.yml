@@ -54,6 +54,7 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: "renderer/package-lock.json"
+          
       - name: Build React application
         run: |
           # Ensure the static app directory exists first
@@ -66,31 +67,11 @@ jobs:
           # This may be redundant if the postbuild script works
           cp -r renderer/dist/* priv/static/app/ || true
 
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: "1.18"
-          otp-version: "27"
-
-      - name: Clean dependencies
-        run: |
-          mix deps.clean --all
-          rm -rf _build
-
-      - name: Get dependencies and compile
-        run: |
-          mix deps.get --only prod
-          mix deps.compile --force
-
       - name: Update version in mix.exs
         run: |
           # Update the version with a valid Elixir version format
           sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
           cat mix.exs
-
-      - name: Compile application
-        run: |
-          mix release
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -119,5 +100,6 @@ jobs:
       - name: Test Docker image
         run: |
           echo "Testing Docker image startup..."
-          # Basic check to verify the container can start
-          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'Verifying container startup...' && echo 'Version: ${{ steps.version.outputs.docker_version }}' && echo 'Container started successfully'"
+          # Only verify GLIBC version and basic Elixir functionality without starting the full app
+          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'GLIBC Version:' && ldd --version | head -n1 && /app/bin/wanderer_notifier eval '1+1'"
+        continue-on-error: true

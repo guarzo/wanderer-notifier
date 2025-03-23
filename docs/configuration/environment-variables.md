@@ -28,8 +28,7 @@ This document provides a comprehensive reference for all environment variables u
 | `ENABLE_KILL_NOTIFICATIONS`      | Enable kill notifications                    | `true`  |
 | `ENABLE_SYSTEM_NOTIFICATIONS`    | Enable system tracking notifications         | `true`  |
 | `ENABLE_CHARACTER_NOTIFICATIONS` | Enable character tracking notifications      | `true`  |
-| `ENABLE_CHARTS`                  | Enable chart generation                      | `false` |
-| `ENABLE_TPS_CHARTS`              | Enable TPS charts                            | `false` |
+| `ENABLE_KILL_CHARTS`             | Enable kill charts                            | `false` |
 | `ENABLE_MAP_CHARTS`              | Enable map charts                            | `false` |
 | `TRACK_ALL_SYSTEMS`              | Track all systems instead of specific ones   | `false` |
 | `PROCESS_ALL_KILLS`              | Process kills from all systems (for testing) | `false` |
@@ -43,20 +42,8 @@ This document provides a comprehensive reference for all environment variables u
 | `DISCORD_SYSTEM_CHANNEL_ID`     | Channel for system tracking notifications    | Main channel     |
 | `DISCORD_CHARACTER_CHANNEL_ID`  | Channel for character tracking notifications | Main channel     |
 | `DISCORD_CHARTS_CHANNEL_ID`     | Channel for general chart notifications      | Main channel     |
-| `DISCORD_TPS_CHARTS_CHANNEL_ID` | Channel for TPS chart notifications          | Main channel     |
+| `DISCORD_KILL_CHARTS_CHANNEL_ID`| Channel for kill chart notifications         | Main channel     |
 | `DISCORD_MAP_CHARTS_CHANNEL_ID` | Channel for map chart notifications          | Main channel     |
-
-## Slack Webhook Configuration
-
-| Variable                       | Description                                  | Default Fallback |
-| ------------------------------ | -------------------------------------------- | ---------------- |
-| `SLACK_WEBHOOK_URL`            | Main Slack webhook URL                       | - (optional)     |
-| `SLACK_KILL_WEBHOOK_URL`       | Webhook for kill notifications               | Main webhook     |
-| `SLACK_SYSTEM_WEBHOOK_URL`     | Webhook for system tracking notifications    | Main webhook     |
-| `SLACK_CHARACTER_WEBHOOK_URL`  | Webhook for character tracking notifications | Main webhook     |
-| `SLACK_CHARTS_WEBHOOK_URL`     | Webhook for general chart notifications      | Main webhook     |
-| `SLACK_TPS_CHARTS_WEBHOOK_URL` | Webhook for TPS chart notifications          | Main webhook     |
-| `SLACK_MAP_CHARTS_WEBHOOK_URL` | Webhook for map chart notifications          | Main webhook     |
 
 ## API URLs
 
@@ -91,8 +78,6 @@ The following configuration options are used in specific environments:
 
 | Variable            | Description                          | Default |
 | ------------------- | ------------------------------------ | ------- |
-| `DEBUG_PANEL`       | Enable debug panel in development    | `false` |
-| `ENABLE_CHARTS`     | Enable chart generation capabilities | `false` |
 | `TRACK_ALL_SYSTEMS` | Track all systems (for testing)      | `false` |
 | `PROCESS_ALL_KILLS` | Process all kills (for testing)      | `false` |
 

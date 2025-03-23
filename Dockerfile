@@ -1,7 +1,7 @@
 # ----------------------------------------
 # 1. BUILD STAGE
 # ----------------------------------------
-FROM elixir:otp-27 AS builder
+FROM elixir:1.18-otp-27-slim AS builder
 
 # Install build dependencies
 RUN apt-get update -y && \
@@ -28,13 +28,13 @@ RUN mix deps.get --only prod
 # Copy application code
 COPY . .
 
-# Compile the application
+# Compile the application and create release
 RUN mix do compile, release
 
 # ----------------------------------------
 # 2. RUNTIME STAGE
 # ----------------------------------------
-FROM elixir:otp-27-slim
+FROM elixir:1.18-otp-27-slim
 
 # Install runtime dependencies
 RUN apt-get update -y && \
