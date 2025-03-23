@@ -14,16 +14,26 @@ on:
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
+# Permissions required for GitHub Pages
 permissions:
   contents: write
+  pages: write
+  id-token: write
+  deployments: write
 
 jobs:
-  build-and-deploy:
+  # Build job
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 🛎️
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for proper deployment
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+        
       - name: Create Image Directories
         run: |
           mkdir -p assets/images
@@ -66,10 +76,21 @@ jobs:
             echo "Creating placeholder for dashboard.png"
             convert -size 800x600 canvas:white -font Arial -pointsize 20 -fill black -annotate +30+30 "Wanderer Notifier Dashboard" assets/images/dashboard.png
           fi
-
-      - name: Deploy 🚀
-        uses: JamesIves/github-pages-deploy-action@v4
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
         with:
-          folder: .
-          branch: gh-pages
-          clean: true 
+          path: '.'
+
+  # Deployment job
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2 

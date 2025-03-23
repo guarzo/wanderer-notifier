@@ -61,13 +61,12 @@ defmodule WandererNotifier.Application do
 
   # Schedule a database health check if the kill charts feature is enabled
   defp schedule_database_health_check do
-    if kill_charts_enabled?() do
-      Task.start(fn ->
-        # Give the repo time to connect
-        Process.sleep(1000)
-        perform_database_health_check()
-      end)
-    end
+    # Always schedule a database health check since PostgreSQL is now required
+    Task.start(fn ->
+      # Give the repo time to connect
+      Process.sleep(1000)
+      perform_database_health_check()
+    end)
   end
 
   # Perform the actual database health check
@@ -121,6 +120,9 @@ defmodule WandererNotifier.Application do
     Logger.info(
       "Kill charts feature: #{if kill_charts_enabled?(), do: "Enabled", else: "Disabled"}"
     )
+
+    # Log database status
+    Logger.info("PostgreSQL database: Required and will be connected")
   end
 
   # Start supervisor and schedule startup notification
@@ -226,22 +228,13 @@ defmodule WandererNotifier.Application do
       # Start the Web Server
       {WandererNotifier.Web.Server, []},
       # Add automatic sync for cached characters to database (runs every 15 minutes)
-      {WandererNotifier.Workers.CharacterSyncWorker, []}
+      {WandererNotifier.Workers.CharacterSyncWorker, []},
+      # Always start the Database Repository
+      {WandererNotifier.Repo, [restart: :transient]}
     ]
 
-    # Conditionally add Postgres repo to supervision tree
-    children =
-      if kill_charts_enabled?() do
-        Logger.info("Kill charts feature enabled - starting database connection")
-
-        # Add the repo with restart: :transient so the app doesn't crash if DB is unavailable
-        base_children ++ [{WandererNotifier.Repo, [restart: :transient]}]
-      else
-        base_children
-      end
-
     # Add the scheduler supervisor last to ensure all dependencies are started first
-    children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
+    base_children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
   end
 
   # Check if kill charts feature is enabled
