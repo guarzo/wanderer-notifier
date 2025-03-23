@@ -246,36 +246,72 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             )
 
           {:error, reason} ->
-            # Better error details
-            error_message =
-              case reason do
-                {:domain_error, domain, details} -> "Error from #{domain}: #{inspect(details)}"
-                _ -> inspect(reason)
-              end
-
             conn
             |> put_resp_content_type("application/json")
             |> send_resp(
               500,
               Jason.encode!(%{
                 success: false,
-                message: "Failed to fetch and process character kills",
-                details: "Error: #{error_message}"
+                message: "Failed to fetch character kills",
+                details: inspect(reason)
               })
             )
         end
       else
-        # Simplified to redirect to all=true
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          400,
-          Jason.encode!(%{
-            success: false,
-            message: "This endpoint only supports fetching all characters",
-            details: "Please use ?all=true parameter"
-          })
-        )
+        # Handle case for single character ID
+        character_id = Map.get(conn_params, "character_id")
+
+        if character_id do
+          # Convert string to integer if possible
+          character_id_int =
+            case Integer.parse(character_id) do
+              {id, _} -> id
+              :error -> character_id
+            end
+
+          Logger.info("Fetching kills for character ID #{character_id_int}")
+
+          case CharacterKillsService.fetch_and_persist_character_kills(
+                 character_id_int,
+                 limit,
+                 page
+               ) do
+            {:ok, stats} ->
+              conn
+              |> put_resp_content_type("application/json")
+              |> send_resp(
+                200,
+                Jason.encode!(%{
+                  success: true,
+                  message: "Character kills fetched and processed successfully",
+                  details: stats
+                })
+              )
+
+            {:error, reason} ->
+              conn
+              |> put_resp_content_type("application/json")
+              |> send_resp(
+                500,
+                Jason.encode!(%{
+                  success: false,
+                  message: "Failed to fetch character kills",
+                  details: inspect(reason)
+                })
+              )
+          end
+        else
+          # No character ID provided and all=false
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              success: false,
+              message: "No character ID provided"
+            })
+          )
+        end
       end
     else
       conn
@@ -284,8 +320,125 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         403,
         Jason.encode!(%{
           success: false,
-          message: "Kill charts feature is not enabled",
-          details: "Enable the ENABLE_KILL_CHARTS environment variable to use this feature"
+          message: "Kill charts feature is not enabled"
+        })
+      )
+    end
+  end
+
+  # Get aggregation statistics
+  get "/killmail-aggregation-stats" do
+    Logger.info("Killmail aggregation stats endpoint called")
+
+    # Check if kill charts is enabled
+    if Config.kill_charts_enabled?() do
+      try do
+        # Get total statistics count
+        query = "SELECT COUNT(*) FROM killmail_statistics"
+        {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(query)
+
+        # Get count of characters with aggregated stats
+        query = "SELECT COUNT(DISTINCT character_id) FROM killmail_statistics"
+        {:ok, %{rows: [[aggregated_characters]]}} = WandererNotifier.Repo.query(query)
+
+        # Get the most recent aggregation date
+        query = "SELECT MAX(inserted_at) FROM killmail_statistics"
+        {:ok, %{rows: [[last_aggregation]]}} = WandererNotifier.Repo.query(query)
+
+        # Format the date nicely if it exists
+        formatted_date =
+          if last_aggregation do
+            # Convert to human-readable format
+            DateTime.from_naive!(last_aggregation, "Etc/UTC")
+            |> DateTime.to_string()
+          else
+            nil
+          end
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            success: true,
+            stats: %{
+              total_stats: total_stats,
+              aggregated_characters: aggregated_characters,
+              last_aggregation: formatted_date
+            }
+          })
+        )
+      rescue
+        e ->
+          Logger.error("Error fetching aggregation stats: #{Exception.message(e)}")
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              success: false,
+              message: "Error fetching aggregation statistics",
+              error: Exception.message(e)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          success: false,
+          message: "Kill charts feature is not enabled"
+        })
+      )
+    end
+  end
+
+  # Sync tracked characters from cache to database
+  get "/sync-tracked-characters" do
+    Logger.info("Sync tracked characters endpoint called")
+
+    if Config.kill_charts_enabled?() do
+      # Try to sync characters
+      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+        {:ok, result} ->
+          # Get the counts from the result
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              success: true,
+              message: "Successfully synced tracked characters",
+              details: %{
+                successes: result.successes,
+                failures: result.failures
+              }
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              success: false,
+              message: "Failed to sync tracked characters",
+              details: inspect(reason)
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          success: false,
+          message: "Kill charts feature is not enabled"
         })
       )
     end

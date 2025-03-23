@@ -179,6 +179,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
+
   @doc """
   Checks if a killmail already exists in the database for the specified character and role.
   Uses both cache and database checks.
@@ -211,6 +212,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         exists
     end
   end
+
 
   @doc """
   Gets all killmails for a specific character within a date range.

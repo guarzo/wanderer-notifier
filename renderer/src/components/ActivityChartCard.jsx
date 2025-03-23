@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaCircleNotch, FaDiscord, FaExclamationTriangle, FaBug, FaSync } from 'react-icons/fa';
+import { FaCircleNotch, FaDiscord, FaExclamationTriangle, FaBug, FaSync, FaPlus } from 'react-icons/fa';
 
 function ActivityChartCard({ title, description, chartType }) {
   const [chartUrl, setChartUrl] = useState(null);
@@ -27,13 +27,12 @@ function ActivityChartCard({ title, description, chartType }) {
         return response.json();
       })
       .then(data => {
-        console.log(`Chart data received:`, data);
+        console.log('Chart data received:', data);
         if (data.status === 'ok' && data.chart_url) {
-          // Add a timestamp to ensure the browser doesn't use cached image
           const urlWithCache = `${data.chart_url}${data.chart_url.includes('?') ? '&' : '?'}cache=${Date.now()}`;
           setChartUrl(urlWithCache);
-          console.log(`Chart URL set to: ${urlWithCache}`);
-          setRetryCount(0); // Reset retry count on success
+          console.log('Chart URL set to:', urlWithCache);
+          setRetryCount(0);
         } else {
           setDebugInfo(JSON.stringify(data, null, 2));
           throw new Error(data.message || 'Failed to generate chart');
@@ -42,8 +41,6 @@ function ActivityChartCard({ title, description, chartType }) {
       .catch(error => {
         console.error(`Error generating ${chartType} chart:`, error);
         setError(error.message);
-        
-        // Auto-retry with exponential backoff if we haven't tried too many times
         if (retryCount < 2) {
           console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
           const timeout = Math.pow(2, retryCount) * 1000;
@@ -58,7 +55,6 @@ function ActivityChartCard({ title, description, chartType }) {
       });
   };
 
-  // Try to generate the chart when the component mounts
   useEffect(() => {
     generateChart();
   }, []);
@@ -78,11 +74,7 @@ function ActivityChartCard({ title, description, chartType }) {
       .then(data => {
         if (data.status === 'ok') {
           setSuccess('Chart sent to Discord successfully!');
-          
-          // Clear success message after 5 seconds
-          setTimeout(() => {
-            setSuccess(null);
-          }, 5000);
+          setTimeout(() => setSuccess(null), 5000);
         } else {
           throw new Error(data.message || 'Failed to send chart to Discord');
         }
@@ -98,13 +90,9 @@ function ActivityChartCard({ title, description, chartType }) {
 
   const retryWithDirectUrl = () => {
     if (chartUrl) {
-      // Extract the base URL without cache parameters
       const baseUrl = chartUrl.split('?')[0];
       const newUrl = `${baseUrl}?t=${Date.now()}`;
-      
       setDebugInfo(`Trying to load: ${newUrl}`);
-      
-      // For debugging - create a new img element and try loading directly
       const img = new Image();
       img.onload = () => {
         setDebugInfo(`Image loaded successfully via direct URL: ${newUrl}`);
@@ -134,13 +122,11 @@ function ActivityChartCard({ title, description, chartType }) {
               onError={(e) => {
                 console.error(`Failed to load image from ${chartUrl}:`, e);
                 if (retryCount < 3) {
-                  // Try to load with a new URL on error
                   const newSrc = `${chartUrl.split('?')[0]}?t=${Date.now()}`;
                   console.log(`Retrying with new URL: ${newSrc}`);
                   e.target.src = newSrc;
                   setRetryCount(prev => prev + 1);
                 } else {
-                  // After several failures, show the error state
                   setChartUrl(null);
                   setError("Failed to load chart image. Try generating again.");
                 }
@@ -149,20 +135,20 @@ function ActivityChartCard({ title, description, chartType }) {
             <div className="absolute top-2 right-2 flex space-x-1">
               <button
                 onClick={retryWithDirectUrl}
-                className="p-1 bg-gray-800 text-white rounded-full opacity-50 hover:opacity-100"
                 title="Debug chart loading"
+                className="p-2 bg-gray-800 text-white rounded-full opacity-75 hover:opacity-100 transition"
               >
-                <FaBug size={12} />
+                <FaBug size={14} />
               </button>
               <button
                 onClick={() => {
                   setRetryCount(0);
                   generateChart(true);
                 }}
-                className="p-1 bg-gray-800 text-white rounded-full opacity-50 hover:opacity-100"
                 title="Force refresh chart"
+                className="p-2 bg-gray-800 text-white rounded-full opacity-75 hover:opacity-100 transition"
               >
-                <FaSync size={12} />
+                <FaSync size={14} />
               </button>
             </div>
           </div>
@@ -181,9 +167,10 @@ function ActivityChartCard({ title, description, chartType }) {
                   setRetryCount(0);
                   generateChart(true);
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                title="Generate Chart"
+                className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition"
               >
-                Generate Chart
+                <FaPlus size={16} />
               </button>
             )}
           </div>
@@ -192,7 +179,7 @@ function ActivityChartCard({ title, description, chartType }) {
       
       {error && (
         <div className="px-4 py-2 bg-red-100 text-red-700 flex items-center">
-          <FaExclamationTriangle className="mr-2 flex-shrink-0" />
+          <FaExclamationTriangle className="mr-2" />
           <span className="text-sm">{error}</span>
         </div>
       )}
@@ -210,26 +197,25 @@ function ActivityChartCard({ title, description, chartType }) {
       )}
       
       <div className="p-4 border-t bg-gray-50">
-        <div className="flex justify-between">
+        <div className="flex justify-end space-x-2">
           <button 
             onClick={() => {
               setRetryCount(0);
               generateChart(true);
             }}
             disabled={loading}
-            className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors disabled:opacity-50 flex items-center"
+            title="Refresh"
+            className="p-2 bg-gray-200 text-gray-800 rounded-full hover:bg-gray-300 transition disabled:opacity-50"
           >
-            {loading ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaSync className="mr-1" />}
-            <span>Refresh</span>
+            {loading ? <FaCircleNotch className="h-4 w-4 animate-spin" /> : <FaSync />}
           </button>
-          
           <button 
             onClick={sendToDiscord}
             disabled={!chartUrl || sending}
-            className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors flex items-center space-x-1 disabled:opacity-50"
+            title="Send to Discord"
+            className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {sending ? <FaCircleNotch className="h-3 w-3 mr-1 animate-spin" /> : <FaDiscord className="mr-1" />}
-            <span>Send to Discord</span>
+            {sending ? <FaCircleNotch className="h-4 w-4 animate-spin" /> : <FaDiscord />}
           </button>
         </div>
       </div>
@@ -237,4 +223,4 @@ function ActivityChartCard({ title, description, chartType }) {
   );
 }
 
-export default ActivityChartCard; 
+export default ActivityChartCard;

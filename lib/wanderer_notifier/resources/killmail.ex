@@ -111,7 +111,12 @@ defmodule WandererNotifier.Resources.Killmail do
 
       # Set the processed_at timestamp
       change(fn changeset, _context ->
-        Ash.Changeset.change_attribute(changeset, :processed_at, DateTime.utc_now())
+        now = DateTime.utc_now()
+
+        changeset
+        |> Ash.Changeset.change_attribute(:processed_at, now)
+        |> Ash.Changeset.force_change_attribute(:inserted_at, now |> DateTime.truncate(:second))
+        |> Ash.Changeset.force_change_attribute(:updated_at, now |> DateTime.truncate(:second))
       end)
     end
 
