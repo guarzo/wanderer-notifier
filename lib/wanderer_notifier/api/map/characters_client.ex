@@ -142,6 +142,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
           Timings.characters_cache_ttl()
         )
 
+        # Persist tracked characters to database immediately
+        # This eliminates reliance on periodic sync from CharacterSyncWorker
+        persist_result = persist_tracked_characters(tracked_characters)
+        Logger.debug("[CharactersClient] Database persistence result: #{inspect(persist_result)}")
+
         # Find and notify about new characters
         _ = notify_new_tracked_characters(tracked_characters, cached_characters)
 
@@ -418,5 +423,34 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     # This ensures consistent field naming throughout the application
     char_data
     |> Map.put("character_id", eve_id)
+  end
+
+  # New function to persist tracked characters immediately to database
+  defp persist_tracked_characters(tracked_characters) do
+    # Only proceed if character tracking and kill charts features are enabled
+    if Config.character_tracking_enabled?() && Config.kill_charts_enabled?() do
+      Logger.info("[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database")
+
+      # Use TrackedCharacter resource to handle database persistence
+      try do
+        case WandererNotifier.Resources.TrackedCharacter.sync_from_characters(tracked_characters) do
+          {:ok, stats} ->
+            Logger.info("[CharactersClient] Successfully persisted characters: #{inspect(stats)}")
+            {:ok, stats}
+
+          {:error, reason} = error ->
+            Logger.error("[CharactersClient] Failed to persist characters: #{inspect(reason)}")
+            error
+        end
+      rescue
+        e ->
+          Logger.error("[CharactersClient] Exception persisting characters: #{Exception.message(e)}")
+          Logger.error("[CharactersClient] #{Exception.format_stacktrace()}")
+          {:error, e}
+      end
+    else
+      Logger.debug("[CharactersClient] Character tracking or kill charts disabled, skipping database persistence")
+      {:ok, :feature_disabled}
+    end
   end
 end

@@ -198,18 +198,54 @@ defmodule WandererNotifier.Services.KillProcessor do
     update_recent_kills(killmail)
 
     # Persist killmail if the feature is enabled and related to tracked character
-    # This is non-blocking and failures won't affect the notification flow
-    Task.start(fn ->
-      try do
-        KillmailPersistence.maybe_persist_killmail(killmail)
-      rescue
-        e ->
-          Logger.error("[KillProcessor] Error in persistence task: #{Exception.message(e)}")
-          Logger.debug("[KillProcessor] #{Exception.format_stacktrace()}")
-      end
-    end)
+    # Changed from asynchronous Task to synchronous call for data consistency
+    persist_result = persist_killmail_synchronously(killmail)
 
-    # Process the kill for notification (removed check for backup_kills_processing)
+    # Log the persistence result
+    case persist_result do
+      {:ok, _} ->
+        Logger.info("[KillProcessor] Successfully persisted killmail #{kill_id}")
+
+      :ignored ->
+        Logger.debug("[KillProcessor] Killmail #{kill_id} not relevant for persistence, ignoring")
+
+      {:error, reason} ->
+        Logger.error("[KillProcessor] Error persisting killmail #{kill_id}: #{inspect(reason)}")
+    end
+
+    # Only continue with notification if persistence succeeded or was ignored
+    # This ensures database and notifications stay in sync
+    case persist_result do
+      {:ok, _} ->
+        process_killmail_notification(killmail, kill_id, state)
+
+      :ignored ->
+        # For ignored killmails (not relevant to tracked characters), we still notify
+        process_killmail_notification(killmail, kill_id, state)
+
+      {:error, _} ->
+        # If persistence failed, we don't notify
+        # This prevents notifications for data that wasn't persisted
+        Logger.warning("[KillProcessor] Skipping notification for killmail #{kill_id} due to persistence failure")
+        state
+    end
+  end
+
+  # Helper function to handle killmail persistence synchronously
+  defp persist_killmail_synchronously(killmail) do
+    try do
+      KillmailPersistence.maybe_persist_killmail(killmail)
+    rescue
+      e ->
+        Logger.error("[KillProcessor] Error in persistence: #{Exception.message(e)}")
+        Logger.debug("[KillProcessor] #{Exception.format_stacktrace()}")
+        {:error, e}
+    end
+  end
+
+  # Helper function to process killmail notification
+  defp process_killmail_notification(killmail, kill_id, state) do
+    # Process the kill for notification
     case enrich_and_notify(killmail) do
       :ok ->
         # Mark kill as processed in state
@@ -218,7 +254,7 @@ defmodule WandererNotifier.Services.KillProcessor do
         end)
 
       {:error, reason} ->
-        Logger.error("Error processing kill #{kill_id}: #{reason}")
+        Logger.error("[KillProcessor] Error processing kill #{kill_id}: #{reason}")
         state
     end
   end

@@ -217,6 +217,8 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
       # Start the Cache Repository
       {WandererNotifier.Data.Cache.Repository, []},
+      # Start the Cache Monitor to ensure consistency
+      {WandererNotifier.Cache.Monitor, []},
       # Start the Chart Service Manager (if enabled)
       {WandererNotifier.ChartService.ChartServiceManager, []},
       # Start the Deduplication Helper

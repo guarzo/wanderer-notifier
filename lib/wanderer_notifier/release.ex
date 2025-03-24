@@ -14,11 +14,15 @@ defmodule WandererNotifier.Release do
     Logger.info("Checking if database exists...")
 
     for repo <- repos() do
-      with {:error, error} <- repo.__adapter__().storage_up(repo.config()) do
-        Logger.warning("Failed to create database: #{inspect(error)}")
-      else
-        :ok -> Logger.info("Database created successfully")
-        {:error, :already_up} -> Logger.info("Database already exists")
+      case repo.__adapter__().storage_up(repo.config()) do
+        :ok -> 
+          Logger.info("Database created successfully")
+        
+        {:error, :already_up} -> 
+          Logger.info("Database already exists")
+        
+        {:error, error} -> 
+          Logger.warning("Failed to create database: #{inspect(error)}")
       end
     end
   end

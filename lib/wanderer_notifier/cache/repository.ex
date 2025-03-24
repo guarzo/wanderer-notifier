@@ -360,4 +360,128 @@ defmodule WandererNotifier.Cache.Repository do
   defp length_of(value) when is_map(value), do: map_size(value)
   defp length_of(value) when is_binary(value), do: byte_size(value)
   defp length_of(_), do: 0
+
+  @doc """
+  Updates cache after a successful database write to ensure consistency.
+  This should be called after any database operation that might affect cached data.
+
+  ## Parameters
+    - key: The cache key to update
+    - value: The new value to store in cache
+    - ttl: Optional time-to-live in seconds
+
+  ## Returns
+    - {:ok, true} if cache was updated successfully
+    - {:error, reason} if there was an error
+  """
+  def update_after_db_write(key, value, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      Logger.debug(
+        "[CacheRepo] Updating cache after DB write for key: #{key}, storing #{length_of(value)} items"
+      )
+
+      result =
+        if ttl do
+          # Set with TTL if provided
+          ttl_ms = ttl * 1000
+          Cachex.put(@cache_name, key, value, ttl: ttl_ms)
+        else
+          # Otherwise just put without TTL
+          Cachex.put(@cache_name, key, value)
+        end
+
+      case result do
+        {:ok, true} ->
+          Logger.debug("[CacheRepo] Successfully updated cache after DB write for key: #{key}")
+          {:ok, true}
+
+        _ ->
+          Logger.error(
+            "[CacheRepo] Failed to update cache after DB write for key: #{key}, result: #{inspect(result)}"
+          )
+
+          {:error, result}
+      end
+    end)
+  end
+
+  @doc """
+  Gets a value from the cache and updates it atomically.
+  This is useful for making concurrent updates to cached values.
+
+  ## Parameters
+    - key: The cache key to update
+    - update_fun: A function that takes the current value and returns {get_value, new_value}
+    - ttl: Optional time-to-live in seconds for the updated value
+
+  ## Returns
+    - {get_value, result} where result is the result of the update operation
+  """
+  def get_and_update(key, update_fun, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      Logger.debug("[CacheRepo] Atomic get_and_update for key: #{key}")
+
+      # First get the current value
+      current_value = get(key)
+
+      # Apply the update function
+      {get_value, new_value} = update_fun.(current_value)
+
+      # Update the cache
+      result =
+        if ttl do
+          set(key, new_value, ttl)
+        else
+          put(key, new_value)
+        end
+
+      {get_value, result}
+    end)
+  end
+
+  @doc """
+  Synchronizes a cache key with database via provided function.
+  The db_read_fun should fetch data from database and return {:ok, value} or {:error, reason}.
+  Optionally accepts a TTL in seconds.
+
+  ## Returns
+    - {:ok, value} if synchronized successfully
+    - {:error, reason} if there was an error
+  """
+  def sync_with_db(key, db_read_fun, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      Logger.debug("[CacheRepo] Synchronizing cache key '#{key}' with database")
+
+      # Read from database
+      case db_read_fun.() do
+        {:ok, value} ->
+          # Update cache with value from database
+          update_cache_from_db(key, value, ttl)
+          
+        {:error, reason} = error ->
+          Logger.error("[CacheRepo] Database read failed during cache sync: #{inspect(reason)}")
+          error
+      end
+    end)
+  end
+  
+  # Helper to update cache with value from database
+  defp update_cache_from_db(key, value, ttl) do
+    # Choose appropriate cache update method based on TTL
+    result = if ttl, do: set(key, value, ttl), else: put(key, value)
+    
+    # Handle result of cache update
+    handle_cache_update_result(key, value, result)
+  end
+  
+  # Handle the result of a cache update operation
+  defp handle_cache_update_result(key, value, {:ok, true}) do
+    Logger.debug("[CacheRepo] Successfully synchronized cache key '#{key}' with database")
+    {:ok, value}
+  end
+  
+  defp handle_cache_update_result(_key, _value, error) do
+    Logger.error("[CacheRepo] Failed to update cache during database sync: #{inspect(error)}")
+    {:error, :cache_update_failed}
+  end
 end

@@ -56,9 +56,32 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
       {:ok, :already_processed}
     else
-      # Mark killmail as being processed to prevent concurrent processing
-      CacheRepo.set(cache_key, true, @processed_kills_ttl_seconds)
-      process_killmail_with_tracked_characters(killmail, killmail_id_str)
+      process_new_killmail(killmail, killmail_id_str, cache_key)
+    end
+  end
+
+  # Process a new killmail that hasn't been seen before
+  defp process_new_killmail(killmail, killmail_id_str, cache_key) do
+    # Mark killmail as being processed to prevent concurrent processing
+    # Use atomic operation to avoid race conditions
+    mark_result = CacheRepo.get_and_update(cache_key, fn current_value ->
+      if current_value do
+        # Another process has marked this killmail for processing
+        {current_value, current_value}
+      else
+        # Mark it as being processed
+        {nil, true}
+      end
+    end, @processed_kills_ttl_seconds)
+    
+    # Only proceed if we successfully marked it
+    case mark_result do
+      nil -> 
+        # Process the killmail
+        process_killmail_with_tracked_characters(killmail, killmail_id_str)
+      _ -> 
+        # Another process already marked this killmail
+        {:ok, :concurrent_processing}
     end
   end
 
@@ -147,6 +170,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     case create_killmail_record(killmail_attrs) do
       {:ok, record} ->
         Logger.info("[KillmailPersistence] Successfully persisted killmail #{killmail_id_str}")
+
+        # Update cache with recent killmails for this character
+        update_character_killmails_cache(str_character_id)
+
+        # Also update recent killmails cache
+        update_recent_killmails_cache(killmail)
+
         {:ok, record}
 
       {:error, error} ->
@@ -460,5 +490,46 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         Logger.error("[KillmailPersistence] Error counting killmails: #{inspect(error)}")
         {:error, "Failed to count killmails"}
     end
+  end
+
+  # Updates the character's recent killmails cache after a new killmail is persisted
+  defp update_character_killmails_cache(character_id) do
+    require Ash.Query
+    cache_key = "character:#{character_id}:recent_kills"
+
+    # Function to get recent killmails from database
+    db_read_fun = fn ->
+      # Get last 10 killmails for this character from the database
+      Killmail
+      |> Ash.Query.filter(related_character_id: character_id)
+      |> Ash.Query.sort(kill_time: :desc)
+      |> Ash.Query.limit(10)
+      |> WandererNotifier.Resources.Api.read()
+    end
+
+    # Synchronize cache with database - use 30 minute TTL for recent killmails
+    CacheRepo.sync_with_db(cache_key, db_read_fun, 1800)
+  end
+
+  # Updates the global recent killmails cache
+  defp update_recent_killmails_cache(%KillmailStruct{} = killmail) do
+    cache_key = "zkill:recent_kills"
+
+    # Update the cache of recent killmail IDs
+    CacheRepo.get_and_update(cache_key, fn current_ids ->
+      current_ids = current_ids || []
+
+      # Add the new killmail ID to the front of the list
+      updated_ids =
+        [killmail.killmail_id | current_ids]
+        |> Enum.uniq()
+        |> Enum.take(10) # Keep only the 10 most recent
+
+      {current_ids, updated_ids}
+    end, 3600) # 1 hour TTL
+
+    # Also store the individual killmail
+    individual_key = "#{cache_key}:#{killmail.killmail_id}"
+    CacheRepo.update_after_db_write(individual_key, killmail, 3600)
   end
 end

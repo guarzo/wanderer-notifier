@@ -1,14 +1,16 @@
 defmodule WandererNotifier.Workers.CharacterSyncWorker do
   @moduledoc """
-  GenServer that periodically syncs characters from cache to database.
-  This worker ensures that character data in the cache is properly persisted
-  to the database at regular intervals, preventing inconsistencies.
+  GenServer that periodically validates character data consistency between cache and database.
+
+  This worker has been refactored to focus on validation rather than being the primary sync mechanism.
+  The primary sync now happens immediately when characters are received from the Map API.
+  This worker serves as a fallback and validation mechanism to ensure consistency.
   """
   use GenServer
   require Logger
 
-  # 15 minutes in milliseconds
-  @sync_interval 15 * 60 * 1000
+  # Change from 15 minutes to 1 hour for validation checks
+  @sync_interval 60 * 60 * 1000
 
   # Start the GenServer
   def start_link(args) do
@@ -17,9 +19,9 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
 
   @impl true
   def init(_args) do
-    # Schedule immediate sync
-    # Wait 5 seconds after startup before first sync
-    schedule_sync(5000)
+    # Schedule first validation check after 10 minutes
+    # This gives the system time to perform direct syncs first
+    schedule_sync(10 * 60 * 1000)
 
     # Return initial state
     {:ok, %{last_sync: nil, sync_count: 0}}
@@ -27,8 +29,8 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
 
   @impl true
   def handle_info(:sync, state) do
-    # Perform the sync
-    result = run_sync()
+    # Perform the validation
+    result = run_validation()
 
     # Update state with new sync time and result
     new_state = %{
@@ -37,51 +39,148 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
       last_result: result
     }
 
-    # Schedule next sync
+    # Schedule next validation
     schedule_sync()
 
     # Return updated state
     {:noreply, new_state}
   end
 
-  # Run the character sync
-  defp run_sync do
-    Logger.info("[CharacterSyncWorker] Running periodic character sync...")
+  # Run the character validation
+  defp run_validation do
+    Logger.info("[CharacterSyncWorker] Running periodic character consistency validation...")
 
     # Check if kill charts feature is enabled first
-    if !kill_charts_enabled?() do
-      Logger.info("[CharacterSyncWorker] Kill charts feature is disabled, skipping sync")
-      {:ok, :disabled_feature}
+    if kill_charts_enabled?() do
+      validate_characters_if_available()
     else
-      # Get character counts
-      cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
-
-      # Only run if we have characters in the cache
-      if length(cached_characters) > 0 do
-        Logger.info(
-          "[CharacterSyncWorker] Syncing #{length(cached_characters)} characters from cache to database"
-        )
-
-        # Run the sync
-        case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
-          {:ok, result} ->
-            Logger.info("[CharacterSyncWorker] Sync completed: #{inspect(result)}")
-            {:ok, result}
-
-          {:error, reason} ->
-            Logger.error("[CharacterSyncWorker] Sync failed: #{inspect(reason)}")
-            {:error, reason}
-        end
-      else
-        Logger.info("[CharacterSyncWorker] No characters in cache, skipping sync")
-        {:ok, :no_characters}
-      end
+      Logger.info("[CharacterSyncWorker] Kill charts feature is disabled, skipping validation")
+      {:ok, :disabled_feature}
     end
   rescue
     e ->
-      Logger.error("[CharacterSyncWorker] Error during sync: #{Exception.message(e)}")
+      Logger.error("[CharacterSyncWorker] Error during validation: #{Exception.message(e)}")
       Logger.debug("[CharacterSyncWorker] #{Exception.format_stacktrace()}")
       {:error, e}
+  end
+  
+  # Validate characters if they are available in cache
+  defp validate_characters_if_available do
+    # Get character counts
+    cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+
+    # Only run if we have characters in the cache
+    if length(cached_characters) > 0 do
+      Logger.info(
+        "[CharacterSyncWorker] Validating consistency of #{length(cached_characters)} characters between cache and database"
+      )
+
+      perform_character_validation(cached_characters)
+    else
+      Logger.info("[CharacterSyncWorker] No characters in cache, skipping validation")
+      {:ok, :no_characters}
+    end
+  end
+  
+  # Perform actual validation on characters
+  defp perform_character_validation(cached_characters) do
+    case validate_character_consistency(cached_characters) do
+      {:ok, %{missing: 0, different: 0}} ->
+        Logger.info("[CharacterSyncWorker] Cache and database are consistent")
+        {:ok, :consistent}
+
+      {:ok, %{missing: missing, different: different}} ->
+        handle_inconsistencies(cached_characters, missing, different)
+
+      {:error, reason} ->
+        Logger.error("[CharacterSyncWorker] Validation failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+  
+  # Handle inconsistencies between cache and database
+  defp handle_inconsistencies(cached_characters, missing, different) do
+    if missing > 0 || different > 0 do
+      Logger.warning("[CharacterSyncWorker] Inconsistencies found: #{missing} missing, #{different} different")
+      # Run sync to fix inconsistencies
+      sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
+      Logger.info("[CharacterSyncWorker] Auto-fixed inconsistencies: #{inspect(sync_result)}")
+      {:ok, %{inconsistent: true, sync_result: sync_result}}
+    else
+      Logger.info("[CharacterSyncWorker] Cache and database are consistent")
+      {:ok, :consistent}
+    end
+  end
+
+  # Perform consistency validation between cache and database
+  defp validate_character_consistency(cached_characters) do
+    try do
+      # Get all tracked characters from database
+      case WandererNotifier.Resources.TrackedCharacter.list_all() do
+        {:ok, db_characters} ->
+          # Compare cache and database
+          comparison_result = compare_characters(cached_characters, db_characters)
+          {:ok, comparison_result}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    rescue
+      e ->
+        Logger.error("[CharacterSyncWorker] Error fetching database characters: #{Exception.message(e)}")
+        {:error, e}
+    end
+  end
+
+  # Compare characters in cache and database
+  defp compare_characters(cached_characters, db_characters) do
+    # Create maps for faster lookup
+    cached_map = Map.new(cached_characters, fn char -> {to_string(char.character_id), char} end)
+    db_map = Map.new(db_characters, fn char -> {to_string(char.character_id), char} end)
+
+    # Find characters in cache but not in database
+    missing_in_db =
+      cached_map
+      |> Map.keys()
+      |> Enum.filter(fn char_id -> not Map.has_key?(db_map, char_id) end)
+      |> length()
+
+    # Find characters with different data
+    different_data =
+      cached_map
+      |> Map.keys()
+      |> Enum.filter(fn char_id -> 
+        # Only check characters that exist in both maps
+        if Map.has_key?(db_map, char_id) do
+          cached_char = cached_map[char_id]
+          db_char = db_map[char_id]
+
+          # Compare important fields
+          cached_char.name != db_char.character_name ||
+            (extract_corp_id(cached_char) != db_char.corporation_id &&
+             not is_nil(extract_corp_id(cached_char)))
+        else
+          false
+        end
+      end)
+      |> length()
+
+    # Return comparison stats
+    %{
+      cached_count: map_size(cached_map),
+      db_count: map_size(db_map),
+      missing: missing_in_db,
+      different: different_data
+    }
+  end
+
+  # Helper to extract corporation ID from character struct
+  defp extract_corp_id(character) do
+    cond do
+      is_map_key(character, :corporation_id) -> character.corporation_id
+      is_map_key(character, "corporation_id") -> character["corporation_id"]
+      true -> nil
+    end
   end
 
   # Check if kill charts feature is enabled

@@ -303,28 +303,41 @@ defmodule WandererNotifier.Data.Cache.Repository do
   The TTL is preserved for the key.
   """
   def get_and_update(key, update_fn) do
-    retry_with_backoff(fn ->
-      Logger.debug("[CacheRepo] Getting and updating value for key: #{key}")
+    # Use the atomic transaction for consistency
+    Cachex.transaction(@cache_name, [key], fn worker ->
+      # Get the current value
+      current_value = Cachex.get!(worker, key)
 
-      # Get the current value and TTL
-      current_value = get(key)
-      current_ttl = ttl(key)
+      # Apply the update function to get the new value and return value
+      {return_value, new_value} = update_fn.(current_value)
 
-      # Apply the update function to get the new value
-      {new_value, result} = update_fn.(current_value)
+      # Store the new value
+      Cachex.put(worker, key, new_value)
 
-      # Store the new value with the same TTL if it exists
-      if current_ttl && current_ttl > 0 do
-        # Convert from milliseconds to seconds for our set function
-        ttl_seconds = div(current_ttl, 1000)
-        set(key, new_value, ttl_seconds)
-      else
-        # No TTL, just store the value permanently
-        put(key, new_value)
-      end
+      # Return the function's return value
+      return_value
+    end)
+  end
 
-      # Return the result from the update function
-      result
+  @doc """
+  Gets and updates a value in the cache with an optional TTL.
+  Accepts a key, an update function, and a TTL value in seconds.
+  The update function should take the current value and return a tuple {return_value, new_value}.
+  """
+  def get_and_update(key, update_fn, ttl) do
+    # Use the atomic transaction for consistency
+    Cachex.transaction(@cache_name, [key], fn worker ->
+      # Get the current value
+      current_value = Cachex.get!(worker, key)
+
+      # Apply the update function to get the new value and return value
+      {return_value, new_value} = update_fn.(current_value)
+
+      # Store the new value with TTL
+      Cachex.put(worker, key, new_value, ttl: :timer.seconds(ttl))
+
+      # Return the function's return value
+      return_value
     end)
   end
 
@@ -571,4 +584,52 @@ defmodule WandererNotifier.Data.Cache.Repository do
   defp length_of(value) when is_map(value), do: map_size(value)
   defp length_of(value) when is_binary(value), do: byte_size(value)
   defp length_of(_), do: 0
+
+  @doc """
+  Synchronizes the cache with the database.
+  Takes a key, a function to read from the database, and a TTL (time-to-live) in seconds.
+  The db_read_fun is a function that fetches the data from the database.
+  """
+  def sync_with_db(key, db_read_fun, ttl) do
+    # Don't use a transaction here to avoid holding locks during DB access
+    try do
+      # Fetch fresh data from the database
+      db_result = db_read_fun.()
+      
+      # Store the result in cache with TTL
+      cache_db_result(key, db_result, ttl)
+    rescue
+      e ->
+        Logger.error("[CacheRepo] Error syncing cache with DB for key #{key}: #{Exception.message(e)}")
+        {:error, :sync_failed}
+    end
+  end
+
+  # Helper to cache database query results with appropriate handling
+  defp cache_db_result(key, {:ok, data}, ttl) do
+    # Cache successful DB read with TTL
+    Cachex.put(@cache_name, key, data, ttl: :timer.seconds(ttl))
+    {:ok, data}
+  end
+  
+  defp cache_db_result(_key, {:error, _} = error, _ttl) do
+    # Don't cache errors, but return them
+    error
+  end
+  
+  defp cache_db_result(key, data, ttl) do
+    # For direct returns (not {:ok, data}), cache the direct value
+    Cachex.put(@cache_name, key, data, ttl: :timer.seconds(ttl))
+    {:ok, data}
+  end
+
+  @doc """
+  Updates the cache after a database write operation.
+  This can be used to ensure cache consistency after DB writes.
+  Takes a key, the new value to store, and a TTL in seconds.
+  """
+  def update_after_db_write(key, value, ttl) do
+    # Put the new value in the cache with TTL
+    Cachex.put(@cache_name, key, value, ttl: :timer.seconds(ttl))
+  end
 end
