@@ -29,6 +29,7 @@ config :logger,
 # Console logger configuration
 config :logger, :console,
   format: "$time [$level] $message\n",
+  metadata: [:trace_id],
   colors: [
     debug: :cyan,
     info: :green,

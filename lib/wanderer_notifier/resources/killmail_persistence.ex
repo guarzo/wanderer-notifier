@@ -13,10 +13,31 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   @doc """
   Checks if kill charts feature is enabled.
+  Only logs the status once at startup.
   """
   def kill_charts_enabled? do
     enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
-    AppLogger.persistence_info("Kill charts feature status", %{enabled: enabled})
+
+    # Only log feature status if we haven't logged it before
+    if !Process.get(:kill_charts_status_logged) do
+      status_text = if enabled, do: "enabled", else: "disabled"
+      AppLogger.persistence_info("Kill charts feature status: #{status_text}", %{enabled: enabled})
+
+      # Mark as logged to avoid future log messages
+      Process.put(:kill_charts_status_logged, true)
+    end
+
+    enabled
+  end
+
+  @doc """
+  Explicitly logs the current kill charts feature status.
+  Use this function only when you specifically want to know the status.
+  """
+  def log_kill_charts_status do
+    enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
+    status_text = if enabled, do: "enabled", else: "disabled"
+    AppLogger.persistence_info("Kill charts feature status: #{status_text}", %{enabled: enabled})
     enabled
   end
 

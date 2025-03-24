@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [testMessage, setTestMessage] = useState(null);
+  const [dbStats, setDbStats] = useState(null);
 
   // On mount, fetch dashboard status
   useEffect(() => {
@@ -38,11 +39,37 @@ export default function Dashboard() {
       console.log("Status data received:", data);
       setStatus(data);
       setError(null);
+
+      // If kill charts is enabled, also fetch database stats
+      if (data?.features?.enabled?.kill_charts_enabled) {
+        await fetchDbStats();
+      }
     } catch (err) {
       console.error("Error fetching status:", err);
       setError("Failed to load dashboard data. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Fetch database statistics
+  async function fetchDbStats() {
+    try {
+      console.log("Fetching database statistics...");
+      const response = await fetch("/api/db-stats");
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log("Database stats received:", data);
+      if (data.success) {
+        setDbStats(data.stats);
+      } else {
+        console.warn("Failed to get database stats:", data.message);
+      }
+    } catch (err) {
+      console.error("Error fetching database stats:", err);
+      // We don't set the main error state here to avoid blocking the entire dashboard
     }
   }
 
@@ -266,6 +293,75 @@ export default function Dashboard() {
           </div>
         </section>
 
+        {/* Database Statistics */}
+        {status?.features?.enabled?.kill_charts_enabled && (
+          <section>
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
+              <FaChartBar className="text-purple-600" />
+              <span>Database Statistics</span>
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Total Tracked Characters */}
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-600 mb-1">
+                  Tracked Characters in Database
+                </h4>
+                <p className="text-2xl font-bold text-gray-700">
+                  {dbStats?.killmail?.tracked_characters || status?.features?.usage?.tracked_characters?.current || 0}
+                </p>
+              </div>
+
+              {/* Total Killmails */}
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-600 mb-1">
+                  Total Killmails Stored
+                </h4>
+                <p className="text-2xl font-bold text-gray-700">
+                  {dbStats?.killmail?.total_kills || 0}
+                </p>
+              </div>
+
+              {/* Database Health */}
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-600 mb-1">
+                  Database Connection
+                </h4>
+                {dbStats?.db_health ? (
+                  <div>
+                    <p className="flex items-center mt-1">
+                      {dbStats.db_health.status === "connected" ? (
+                        <>
+                          <FaCheckCircle className="text-green-500 mr-2" />
+                          <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                            Connected
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <FaTimes className="text-red-500 mr-2" />
+                          <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded">
+                            Error
+                          </span>
+                        </>
+                      )}
+                    </p>
+                    {dbStats.db_health.ping_ms && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Ping: {dbStats.db_health.ping_ms}ms
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="flex items-center mt-1">
+                    <FaCircleNotch className="text-gray-400 mr-2 animate-spin" />
+                    <span className="text-gray-500">Checking...</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* License Status */}
         <section>
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
@@ -402,7 +498,7 @@ export default function Dashboard() {
             </div>
             
             {/* Activity Charts - Only shown if Map Tools is enabled */}
-            {status?.features?.enabled?.map_tools_enabled && (
+            {status?.features?.enabled?.map_charts_enabled && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
                 <span className="font-medium text-gray-700">Map Charts</span>
                 <div className="flex items-center space-x-2">
