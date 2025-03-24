@@ -1,22 +1,22 @@
 import Config
 
-# Configure logger with JSON formatting for production
+# Configure logger with basic settings - using string keys for metadata
 config :logger,
   level: :info,
-  backends: [:console, {LoggerFileBackend, :error_log}]
+  format: "$time [$level] $message $metadata\n",
+  metadata: [],
+  backends: [:console]
 
-# Console logs as JSON for easier parsing by log management systems
+# Console logger configuration
 config :logger, :console,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
-  metadata: [:category, :trace_id, :module, :function]
-
-# Error logs with file rotation
-config :logger, :error_log,
-  path: "/var/log/wanderer_notifier/error.log",
-  level: :error,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
-  metadata: [:category, :trace_id, :module, :function],
-  rotate: %{max_bytes: 10_485_760, keep: 5}
+  format: "$time [$level] $message $metadata\n",
+  metadata: [],
+  colors: [
+    debug: :cyan,
+    info: :green,
+    warn: :yellow,
+    error: :red
+  ]
 
 # Module-specific log levels for production
 # More restrictive to reduce log spam
