@@ -12,18 +12,26 @@ defmodule WandererNotifier.Release do
   Creates the database if it doesn't exist.
   """
   def createdb do
-    AppLogger.persistence_info("Checking if database exists")
+    Logger.info("Checking if database exists")
 
     for repo <- repos() do
-      case repo.__adapter__().storage_up(repo.config()) do
-        :ok ->
-          AppLogger.persistence_info("Database created successfully")
+      try do
+        case repo.__adapter__().storage_up(repo.config()) do
+          :ok ->
+            Logger.info("Database created successfully")
 
-        {:error, :already_up} ->
-          AppLogger.persistence_info("Database already exists")
+          {:error, :already_up} ->
+            Logger.info("Database already exists")
 
-        {:error, error} ->
-          AppLogger.persistence_warn("Failed to create database", error: inspect(error))
+          {:error, {:logger, _}} ->
+            Logger.info("Database status check completed with logger initialization warning")
+
+          {:error, error} ->
+            Logger.warn("Failed to create database: #{inspect(error)}")
+        end
+      rescue
+        e ->
+          Logger.error("Exception during database creation: #{inspect(e)}")
       end
     end
   end

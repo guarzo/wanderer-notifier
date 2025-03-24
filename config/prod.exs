@@ -1,20 +1,30 @@
 import Config
 
-# Configure logger with JSON formatting for production
+# Configure logger with standard formatting for production
+# Don't start Logger.Supervisor during application start
 config :logger,
+  handle_otp_reports: false,
+  handle_sasl_reports: false,
+  utc_log: true,
   level: :info,
   backends: [:console, {LoggerFileBackend, :error_log}]
 
-# Console logs as JSON for easier parsing by log management systems
+# Console logs with readable format
 config :logger, :console,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
-  metadata: [:category, :trace_id, :module, :function]
+  format: "$time [$level] [$category] $message $metadata\n",
+  metadata: [:category, :trace_id, :module, :function],
+  colors: [
+    debug: :cyan,
+    info: :green,
+    warn: :yellow,
+    error: :red
+  ]
 
 # Error logs with file rotation
 config :logger, :error_log,
   path: "/var/log/wanderer_notifier/error.log",
   level: :error,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
+  format: "$time [$level] [$category] $message $metadata\n",
   metadata: [:category, :trace_id, :module, :function],
   rotate: %{max_bytes: 10_485_760, keep: 5}
 
