@@ -447,9 +447,9 @@ defmodule WandererNotifier.Services.SystemTracker do
   defp process_systems(%{"data" => data}) when is_list(data) do
     AppLogger.processor_debug("Processing systems from API response", %{count: length(data)})
 
-    # Check if we should track K-Space systems in addition to wormhole systems
-    track_all_systems = Config.track_kspace_systems?()
-    AppLogger.processor_debug("K-Space systems tracking setting", %{enabled: track_all_systems})
+    # Check if we should track all systems or just wormhole systems
+    track_all_systems = Config.track_all_systems?()
+    AppLogger.processor_debug("Track all systems setting", %{enabled: track_all_systems})
 
     # Process systems from the map API
     processed =

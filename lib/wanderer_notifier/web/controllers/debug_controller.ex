@@ -128,7 +128,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
               "time" ->
                 %{
-                  last_run: DateTime.utc_now() |> DateTime.add(-:rand.uniform(86_400), :second),
+                  last_run: DateTime.utc_now() |> DateTime.add(-:rand.uniform(86400), :second),
                   hour: config[:hour],
                   minute: config[:minute],
                   success_count: :rand.uniform(20),

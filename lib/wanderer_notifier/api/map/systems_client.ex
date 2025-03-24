@@ -83,13 +83,13 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     systems = Enum.map(systems_data, &create_map_system/1)
 
     # Filter systems based on configuration
-    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
+    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
 
     tracked_systems =
       if track_all_systems do
         systems
       else
-        # Only track wormhole systems if K-Space tracking is disabled
+        # Only track wormhole systems if track_all_systems is false
         Enum.filter(systems, &MapSystem.wormhole?/1)
       end
 
@@ -98,7 +98,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     AppLogger.api_info(
       "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes) " <>
-        "out of #{length(systems)} total systems (tracking K-Space=#{track_all_systems})"
+        "out of #{length(systems)} total systems (track_all_systems=#{track_all_systems})"
     )
 
     # Cache systems and notify about new ones

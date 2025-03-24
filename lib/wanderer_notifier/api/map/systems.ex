@@ -210,12 +210,12 @@ defmodule WandererNotifier.Api.Map.Systems do
       end)
 
     # Filter systems based on configuration
-    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
+    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
 
     processed_systems =
       systems_with_static_info
       |> Enum.filter(fn system ->
-        # If K-Space tracking is enabled, include all systems
+        # If track_all_systems is true, include all systems
         # Otherwise only include wormhole systems
         track_all_systems || wormhole_system?(system)
       end)
@@ -226,7 +226,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
     Logger.info(
       "[process_system_list] Tracking #{length(processed_systems)} systems (#{wormhole_count} wormholes) " <>
-        "out of #{length(systems)} total systems (tracking K-Space=#{track_all_systems})"
+        "out of #{length(systems)} total systems (track_all_systems=#{track_all_systems})"
     )
 
     {:ok, processed_systems}
@@ -517,7 +517,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
         if track_all_systems do
           Logger.info(
-            "[notify_new_systems] System #{system_name} added and tracked (tracking K-Space=true)"
+            "[notify_new_systems] System #{system_name} added and tracked (track_all_systems=true)"
           )
         else
           AppLogger.api_info("[notify_new_systems] New system #{system_name} discovered")
@@ -546,7 +546,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       added_systems = find_added_systems(fresh, cached)
 
       # Send notifications for added systems
-      track_all_systems = Config.track_kspace_systems?()
+      track_all_systems = Config.track_all_systems?()
 
       for system <- added_systems do
         Task.start(fn ->

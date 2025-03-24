@@ -422,8 +422,8 @@ defmodule WandererNotifier.Core.Config do
   end
 
   @doc """
-  Returns whether K-Space (non-wormhole) systems should be tracked in addition to wormhole systems.
-  By default, only wormhole systems are tracked unless explicitly enabled.
+  Returns whether all systems should be tracked.
+  By default, only specific systems are tracked unless explicitly enabled.
   """
   def track_kspace_systems? do
     case System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS") do

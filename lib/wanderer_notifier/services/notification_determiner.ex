@@ -136,35 +136,27 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - false otherwise
   """
   def tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
-    # If system notifications are disabled but kill notifications are enabled,
-    # we still want to check if the system is tracked for kill notification purposes
-    if !WandererNotifier.Core.Config.system_notifications_enabled?() &&
-         !Features.kill_notifications_enabled?() do
-      # System notifications disabled and kill notifications are also disabled, so nothing is tracked
-      false
-    else
-      # Convert system_id to string for consistent comparison
-      system_id_str = to_string(system_id)
+    # Convert system_id to string for consistent comparison
+    system_id_str = to_string(system_id)
 
-      # Get system information for logging
-      system_info = format_system_info(system_id)
+    # Get system information for logging
+    system_info = format_system_info(system_id)
 
-      # Check if system is tracked through direct tracking or track_all policy
-      tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
+    # Check if system is tracked through direct tracking or track_all policy
+    tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
 
-      # Use batch logger for system tracking checks
-      WandererNotifier.Logger.BatchLogger.count_event(:system_tracked, %{
-        system_id: system_id_str,
-        tracked: tracked
-      })
+    # Use batch logger for system tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:system_tracked, %{
+      system_id: system_id_str,
+      tracked: tracked
+    })
 
-      # Only log detailed info if system is tracked
-      if tracked do
-        log_tracking_status(tracked, system_info, system_id_str)
-      end
-
-      tracked
+    # Only log detailed info if system is tracked
+    if tracked do
+      log_tracking_status(tracked, system_info, system_id_str)
     end
+
+    tracked
   end
 
   def tracked_system?(_), do: false
@@ -181,10 +173,10 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   defp tracked_via_track_all?(system_id_str) do
-    # Check if system exists in main cache and K-Space tracking is enabled
+    # Check if system exists in main cache and track_all is enabled
     system_cache_key = "map:system:#{system_id_str}"
     exists_in_cache = WandererNotifier.Data.Cache.Repository.get(system_cache_key) != nil
-    Features.track_kspace_systems?() && exists_in_cache
+    Features.track_all_systems?() && exists_in_cache
   end
 
   defp log_tracking_status(tracked, system_info, system_id_str) do
@@ -198,7 +190,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         if directly_tracked?(system_id_str) do
           "explicit tracking"
         else
-          "ENABLE_TRACK_KSPACE_SYSTEMS setting"
+          "TRACK_ALL_SYSTEMS setting"
         end
 
       AppLogger.processor_debug("System is tracked via #{tracking_method}",
@@ -221,41 +213,33 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - false otherwise
   """
   def has_tracked_character?(killmail) do
-    # If character notifications are disabled but kill notifications are enabled,
-    # we still want to check for tracked characters for kill notification purposes
-    if !WandererNotifier.Core.Config.character_notifications_enabled?() &&
-         !Features.kill_notifications_enabled?() do
-      # Character notifications disabled and kill notifications are also disabled, nothing is tracked
-      false
+    # Handle different killmail formats
+    kill_data = extract_kill_data(killmail)
+    kill_id = extract_kill_id(killmail)
+
+    # Use batch logger for character tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:character_tracked, %{
+      kill_id: kill_id
+    })
+
+    # Get all tracked character IDs for comparison
+    all_character_ids = get_all_tracked_character_ids()
+
+    # For debugging, log sample character IDs (but less frequently)
+    if :rand.uniform(10) == 1 do
+      log_sample_character_ids(all_character_ids)
+    end
+
+    # Check if victim is tracked
+    victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
+
+    if victim_tracked do
+      # Early return if victim is tracked
+      AppLogger.processor_info("Found tracked victim", kill_id: kill_id)
+      true
     else
-      # Handle different killmail formats
-      kill_data = extract_kill_data(killmail)
-      kill_id = extract_kill_id(killmail)
-
-      # Use batch logger for character tracking checks
-      WandererNotifier.Logger.BatchLogger.count_event(:character_tracked, %{
-        kill_id: kill_id
-      })
-
-      # Get all tracked character IDs for comparison
-      all_character_ids = get_all_tracked_character_ids()
-
-      # For debugging, log sample character IDs (but less frequently)
-      if :rand.uniform(10) == 1 do
-        log_sample_character_ids(all_character_ids)
-      end
-
-      # Check if victim is tracked
-      victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
-
-      if victim_tracked do
-        # Early return if victim is tracked
-        AppLogger.processor_info("Found tracked victim", kill_id: kill_id)
-        true
-      else
-        # Check if any attacker is tracked
-        check_attackers_tracked(kill_data, kill_id, all_character_ids)
-      end
+      # Check if any attacker is tracked
+      check_attackers_tracked(kill_data, kill_id, all_character_ids)
     end
   end
 
@@ -305,7 +289,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if victim_id, do: to_string(victim_id), else: nil
   end
 
-  # Victim tracking logs removed - these are too verbose
+  # Victim tracking logs removed - these are too verbose 
   # and happen on every kill
   defp log_victim_info(_victim_id_str, _kill_id) do
     # No longer logging victim info - too verbose

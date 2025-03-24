@@ -87,76 +87,49 @@ defmodule WandererNotifier.Services.KillmailComparison do
   """
   def analyze_missing_kills(character_id, kill_ids) when is_list(kill_ids) do
     # Fetch detailed information about missing kills from zKillboard
-    kills_info = Enum.map(kill_ids, fn kill_id -> analyze_single_kill(character_id, kill_id) end)
+    kills_info =
+      Enum.map(kill_ids, fn kill_id ->
+        case ZKillboardApi.get_killmail(kill_id) do
+          {:ok, kill_data} ->
+            Logger.info("ZKB Data for #{kill_id}: #{inspect(kill_data)}")
+
+            # Get the hash from ZKB data
+            hash = get_in(kill_data, ["zkb", "hash"])
+
+            # Fetch ESI data
+            case WandererNotifier.Api.ESI.Service.get_killmail(kill_id, hash) do
+              {:ok, esi_data} ->
+                Logger.info("ESI Data for #{kill_id}: #{inspect(esi_data)}")
+                # Merge ZKB and ESI data
+                merged_data = Map.merge(kill_data, esi_data)
+                Logger.info("Merged Data for #{kill_id}: #{inspect(merged_data)}")
+
+                # Add basic analysis of why we might have missed it
+                analysis = analyze_kill_miss_reason(merged_data, character_id)
+                %{kill_id: kill_id, reason: analysis}
+
+              {:error, esi_error} ->
+                Logger.error("Failed to get ESI data for #{kill_id}: #{inspect(esi_error)}")
+                %{kill_id: kill_id, reason: :fetch_failed}
+            end
+
+          _ ->
+            %{kill_id: kill_id, reason: :fetch_failed}
+        end
+      end)
 
     # Group by reason and format for JSON
-    grouped_analysis = group_kills_by_reason(kills_info)
+    grouped_analysis =
+      Enum.group_by(kills_info, fn %{reason: reason} -> reason end)
+      |> Enum.map(fn {reason, kills} ->
+        %{
+          reason: reason,
+          count: length(kills),
+          examples: Enum.map(kills, fn %{kill_id: id} -> id end)
+        }
+      end)
 
     {:ok, grouped_analysis}
-  end
-
-  # Analyze a single kill to determine why it might be missing
-  defp analyze_single_kill(character_id, kill_id) do
-    case ZKillboardApi.get_killmail(kill_id) do
-      {:ok, kill_data} ->
-        log_zkb_data(kill_id, kill_data)
-        process_kill_data(character_id, kill_id, kill_data)
-
-      _ ->
-        %{kill_id: kill_id, reason: :fetch_failed}
-    end
-  end
-
-  # Log ZKB data for a kill
-  defp log_zkb_data(kill_id, kill_data) do
-    Logger.info("ZKB Data for #{kill_id}: #{inspect(kill_data)}")
-  end
-
-  # Process kill data from ZKB and ESI
-  defp process_kill_data(character_id, kill_id, kill_data) do
-    # Get the hash from ZKB data
-    hash = get_in(kill_data, ["zkb", "hash"])
-
-    # Fetch ESI data
-    case WandererNotifier.Api.ESI.Service.get_killmail(kill_id, hash) do
-      {:ok, esi_data} ->
-        process_esi_data(character_id, kill_id, kill_data, esi_data)
-
-      {:error, esi_error} ->
-        log_esi_fetch_error(kill_id, esi_error)
-        %{kill_id: kill_id, reason: :fetch_failed}
-    end
-  end
-
-  # Process ESI data for a kill
-  defp process_esi_data(character_id, kill_id, kill_data, esi_data) do
-    Logger.info("ESI Data for #{kill_id}: #{inspect(esi_data)}")
-
-    # Merge ZKB and ESI data
-    merged_data = Map.merge(kill_data, esi_data)
-    Logger.info("Merged Data for #{kill_id}: #{inspect(merged_data)}")
-
-    # Add basic analysis of why we might have missed it
-    analysis = analyze_kill_miss_reason(merged_data, character_id)
-    %{kill_id: kill_id, reason: analysis}
-  end
-
-  # Log ESI fetch error
-  defp log_esi_fetch_error(kill_id, error) do
-    Logger.error("Failed to get ESI data for #{kill_id}: #{inspect(error)}")
-  end
-
-  # Group kills by reason for analysis
-  defp group_kills_by_reason(kills_info) do
-    kills_info
-    |> Enum.group_by(fn %{reason: reason} -> reason end)
-    |> Enum.map(fn {reason, kills} ->
-      %{
-        reason: reason,
-        count: length(kills),
-        examples: Enum.map(kills, fn %{kill_id: id} -> id end)
-      }
-    end)
   end
 
   @doc """
@@ -172,141 +145,99 @@ defmodule WandererNotifier.Services.KillmailComparison do
     # Get kills from zKillboard - it already returns recent kills
     case ZKillboardApi.get_character_kills(character_id) do
       {:ok, zkill_kills} ->
-        log_zkill_response(character_id, zkill_kills)
-        process_kill_comparison(character_id, zkill_kills)
+        # Log the raw zkill response for debugging
+        AppLogger.processor_info("Raw ZKillboard response", %{
+          character_id: character_id,
+          total_kills: length(zkill_kills),
+          first_kill: List.first(zkill_kills),
+          last_kill: List.last(zkill_kills)
+        })
+
+        # Get our database kills for comparison
+        our_kills = get_our_kills(character_id)
+
+        # Log raw database kills
+        AppLogger.processor_info("Raw database kills", %{
+          character_id: character_id,
+          total_kills: length(our_kills),
+          first_kill: if(length(our_kills) > 0, do: List.first(our_kills), else: nil),
+          last_kill: if(length(our_kills) > 0, do: List.last(our_kills), else: nil)
+        })
+
+        # Filter zkill kills to last 24 hours
+        now = DateTime.utc_now()
+        yesterday = DateTime.add(now, -24 * 60 * 60, :second)
+
+        AppLogger.processor_info("Time window", %{
+          now: now,
+          yesterday: yesterday,
+          now_iso: DateTime.to_iso8601(now),
+          yesterday_iso: DateTime.to_iso8601(yesterday)
+        })
+
+        filtered_zkill_kills =
+          zkill_kills
+          |> Enum.filter(fn kill ->
+            # Log each kill's time before parsing
+            AppLogger.processor_debug("Processing kill", %{
+              kill_id: kill["killmail_id"],
+              raw_time: kill["killmail_time"]
+            })
+
+            case DateTime.from_iso8601(kill["killmail_time"]) do
+              {:ok, kill_time, _} ->
+                comparison = DateTime.compare(kill_time, yesterday)
+                comparison in [:gt, :eq]
+
+              error ->
+                AppLogger.processor_error("Failed to parse kill time", %{
+                  kill_id: kill["killmail_id"],
+                  kill_time: kill["killmail_time"],
+                  error: inspect(error)
+                })
+
+                false
+            end
+          end)
+
+        # Convert our kills to a map for easier lookup
+        our_kill_map = Map.new(our_kills, fn kill -> {kill.killmail_id, kill} end)
+
+        # Find missing and extra kills
+        {missing_kills, extra_kills} =
+          analyze_kill_differences(filtered_zkill_kills, our_kill_map)
+
+        # Calculate statistics
+        our_kill_count = map_size(our_kill_map)
+        zkill_kill_count = length(filtered_zkill_kills)
+        missing_count = length(missing_kills)
+        extra_count = length(extra_kills)
+
+        # Calculate percentage match and analysis
+        {percentage_match, analysis} =
+          calculate_match_stats(our_kill_count, zkill_kill_count, missing_count, extra_count)
+
+        {:ok,
+         %{
+           our_kills: our_kill_count,
+           zkill_kills: zkill_kill_count,
+           missing_kills: missing_kills,
+           extra_kills: extra_kills,
+           comparison: %{
+             total_difference: missing_count + extra_count,
+             percentage_match: percentage_match,
+             analysis: analysis
+           }
+         }}
 
       {:error, reason} ->
-        log_zkill_fetch_error(character_id, reason)
+        AppLogger.processor_error("Failed to fetch ZKillboard kills", %{
+          character_id: character_id,
+          error: inspect(reason)
+        })
+
         {:error, reason}
     end
-  end
-
-  # Log ZKill API response details
-  defp log_zkill_response(character_id, zkill_kills) do
-    AppLogger.processor_info("Raw ZKillboard response", %{
-      character_id: character_id,
-      total_kills: length(zkill_kills),
-      first_kill: List.first(zkill_kills),
-      last_kill: List.last(zkill_kills)
-    })
-  end
-
-  # Log error from ZKill API
-  defp log_zkill_fetch_error(character_id, reason) do
-    AppLogger.processor_error("Failed to fetch ZKillboard kills", %{
-      character_id: character_id,
-      error: inspect(reason)
-    })
-  end
-
-  # Process the kill comparison between ZKill and our database
-  defp process_kill_comparison(character_id, zkill_kills) do
-    # Get our database kills for comparison
-    our_kills = get_our_kills(character_id)
-    log_database_kills(character_id, our_kills)
-
-    # Get time window and filter zkill kills
-    {now, yesterday} = get_comparison_time_window()
-    log_time_window(now, yesterday)
-
-    # Filter zkill kills to last 24 hours
-    filtered_zkill_kills = filter_kills_by_time(zkill_kills, yesterday)
-
-    # Process and return comparison results
-    generate_comparison_results(our_kills, filtered_zkill_kills)
-  end
-
-  # Log our database kills
-  defp log_database_kills(character_id, our_kills) do
-    AppLogger.processor_info("Raw database kills", %{
-      character_id: character_id,
-      total_kills: length(our_kills),
-      first_kill: if(length(our_kills) > 0, do: List.first(our_kills), else: nil),
-      last_kill: if(length(our_kills) > 0, do: List.last(our_kills), else: nil)
-    })
-  end
-
-  # Get the time window for comparison
-  defp get_comparison_time_window do
-    now = DateTime.utc_now()
-    yesterday = DateTime.add(now, -24 * 60 * 60, :second)
-    {now, yesterday}
-  end
-
-  # Log the time window used for comparison
-  defp log_time_window(now, yesterday) do
-    AppLogger.processor_info("Time window", %{
-      now: now,
-      yesterday: yesterday,
-      now_iso: DateTime.to_iso8601(now),
-      yesterday_iso: DateTime.to_iso8601(yesterday)
-    })
-  end
-
-  # Filter kills by time window
-  defp filter_kills_by_time(kills, cutoff_date) do
-    kills
-    |> Enum.filter(fn kill -> kill_after_date?(kill, cutoff_date) end)
-  end
-
-  # Check if a kill is after a given date
-  defp kill_after_date?(kill, date) do
-    # Log each kill's time before parsing
-    AppLogger.processor_debug("Processing kill", %{
-      kill_id: kill["killmail_id"],
-      raw_time: kill["killmail_time"]
-    })
-
-    case DateTime.from_iso8601(kill["killmail_time"]) do
-      {:ok, kill_time, _} ->
-        comparison = DateTime.compare(kill_time, date)
-        comparison in [:gt, :eq]
-
-      error ->
-        log_kill_time_parse_error(kill, error)
-        false
-    end
-  end
-
-  # Log error when parsing kill time fails
-  defp log_kill_time_parse_error(kill, error) do
-    AppLogger.processor_error("Failed to parse kill time", %{
-      kill_id: kill["killmail_id"],
-      kill_time: kill["killmail_time"],
-      error: inspect(error)
-    })
-  end
-
-  # Generate the final comparison results
-  defp generate_comparison_results(our_kills, filtered_zkill_kills) do
-    # Convert our kills to a map for easier lookup
-    our_kill_map = Map.new(our_kills, fn kill -> {kill.killmail_id, kill} end)
-
-    # Find missing and extra kills
-    {missing_kills, extra_kills} = analyze_kill_differences(filtered_zkill_kills, our_kill_map)
-
-    # Calculate statistics
-    our_kill_count = map_size(our_kill_map)
-    zkill_kill_count = length(filtered_zkill_kills)
-    missing_count = length(missing_kills)
-    extra_count = length(extra_kills)
-
-    # Calculate percentage match and analysis
-    {percentage_match, analysis} =
-      calculate_match_stats(our_kill_count, zkill_kill_count, missing_count, extra_count)
-
-    {:ok,
-     %{
-       our_kills: our_kill_count,
-       zkill_kills: zkill_kill_count,
-       missing_kills: missing_kills,
-       extra_kills: extra_kills,
-       comparison: %{
-         total_difference: missing_count + extra_count,
-         percentage_match: percentage_match,
-         analysis: analysis
-       }
-     }}
   end
 
   @doc """
@@ -469,7 +400,38 @@ defmodule WandererNotifier.Services.KillmailComparison do
     # This helps prevent overwhelming the ZKillboard API
     characters
     |> Task.async_stream(
-      fn character -> process_character_breakdown(character, start_datetime, end_datetime) end,
+      fn character ->
+        character_id = extract_character_id(character)
+        character_name = extract_character_name(character)
+
+        AppLogger.processor_debug("Processing character breakdown", %{
+          character_id: character_id,
+          character_name: character_name
+        })
+
+        # Skip if no character_id
+        if character_id do
+          # Add a small delay between characters to further reduce API load
+          # even with low concurrency
+          Process.sleep(500)
+
+          case get_character_comparison(
+                 character_id,
+                 character_name,
+                 start_datetime,
+                 end_datetime
+               ) do
+            {:ok, comparison_data} -> comparison_data
+            _ -> nil
+          end
+        else
+          AppLogger.processor_warn("Skipping character with invalid ID", %{
+            character: inspect(character)
+          })
+
+          nil
+        end
+      end,
       max_concurrency: 2,
       timeout: 60_000
     )
@@ -478,49 +440,6 @@ defmodule WandererNotifier.Services.KillmailComparison do
       _ -> false
     end)
     |> Enum.map(fn {:ok, result} -> result end)
-  end
-
-  # Process a single character for breakdown
-  defp process_character_breakdown(character, start_datetime, end_datetime) do
-    character_id = extract_character_id(character)
-    character_name = extract_character_name(character)
-
-    AppLogger.processor_debug("Processing character breakdown", %{
-      character_id: character_id,
-      character_name: character_name
-    })
-
-    # Skip if no character_id
-    if is_nil(character_id) do
-      log_invalid_character(character)
-      nil
-    else
-      get_character_breakdown(character_id, character_name, start_datetime, end_datetime)
-    end
-  end
-
-  # Log when skipping an invalid character
-  defp log_invalid_character(character) do
-    AppLogger.processor_warn("Skipping character with invalid ID", %{
-      character: inspect(character)
-    })
-  end
-
-  # Get character breakdown with rate limiting
-  defp get_character_breakdown(character_id, character_name, start_datetime, end_datetime) do
-    # Add a small delay between characters to further reduce API load
-    # even with low concurrency
-    Process.sleep(500)
-
-    case get_character_comparison(
-           character_id,
-           character_name,
-           start_datetime,
-           end_datetime
-         ) do
-      {:ok, comparison_data} -> comparison_data
-      _ -> nil
-    end
   end
 
   # Private functions
@@ -562,7 +481,83 @@ defmodule WandererNotifier.Services.KillmailComparison do
     case WandererNotifier.Services.ZKillboardApi.get_character_kills(character_id) do
       {:ok, kills} ->
         Logger.info("Got #{length(kills)} kills from ZKillboard")
-        process_kills(kills, start_date, end_date)
+
+        # For each kill, check date first, then fetch ESI data only if needed
+        filtered_kills =
+          kills
+          |> Task.async_stream(
+            fn kill ->
+              # First check if we have this kill cached
+              cache_key = "esi:killmail:#{kill["killmail_id"]}"
+
+              case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+                nil ->
+                  # Not in cache, fetch from ESI
+                  case WandererNotifier.Api.ESI.Service.get_killmail(
+                         kill["killmail_id"],
+                         get_in(kill, ["zkb", "hash"])
+                       ) do
+                    {:ok, esi_data} ->
+                      # Cache the ESI data for 24 hours
+                      WandererNotifier.Data.Cache.Repository.set(cache_key, esi_data, 86_400)
+
+                      # Check if this kill is in our date range
+                      case DateTime.from_iso8601(esi_data["killmail_time"]) do
+                        {:ok, kill_date, _} ->
+                          if DateTime.compare(kill_date, start_date) in [:gt, :eq] and
+                               DateTime.compare(kill_date, end_date) in [:lt, :eq] do
+                            {:ok, Map.merge(kill, esi_data)}
+                          else
+                            :skip
+                          end
+
+                        error ->
+                          Logger.error(
+                            "Failed to parse kill time for #{kill["killmail_id"]}: #{inspect(error)}"
+                          )
+
+                          :skip
+                      end
+
+                    {:error, reason} ->
+                      Logger.error(
+                        "Failed to get ESI data for kill #{kill["killmail_id"]}: #{inspect(reason)}"
+                      )
+
+                      :skip
+                  end
+
+                esi_data ->
+                  # Found in cache, check date range
+                  case DateTime.from_iso8601(esi_data["killmail_time"]) do
+                    {:ok, kill_date, _} ->
+                      if DateTime.compare(kill_date, start_date) in [:gt, :eq] and
+                           DateTime.compare(kill_date, end_date) in [:lt, :eq] do
+                        {:ok, Map.merge(kill, esi_data)}
+                      else
+                        :skip
+                      end
+
+                    error ->
+                      Logger.error(
+                        "Failed to parse cached kill time for #{kill["killmail_id"]}: #{inspect(error)}"
+                      )
+
+                      :skip
+                  end
+              end
+            end,
+            max_concurrency: 5,
+            timeout: 30_000
+          )
+          |> Stream.filter(fn
+            {:ok, {:ok, _kill}} -> true
+            _ -> false
+          end)
+          |> Stream.map(fn {:ok, {:ok, kill}} -> kill end)
+          |> Enum.to_list()
+
+        {:ok, filtered_kills}
 
       error ->
         AppLogger.processor_error("Error fetching kills from ZKill", %{
@@ -571,79 +566,6 @@ defmodule WandererNotifier.Services.KillmailComparison do
         })
 
         error
-    end
-  end
-
-  # Process the kills to filter them by date and fetch ESI data if needed
-  defp process_kills(kills, start_date, end_date) do
-    # For each kill, check date first, then fetch ESI data only if needed
-    filtered_kills =
-      kills
-      |> Task.async_stream(
-        fn kill -> process_single_kill(kill, start_date, end_date) end,
-        max_concurrency: 5,
-        timeout: 30_000
-      )
-      |> Stream.filter(fn
-        {:ok, {:ok, _kill}} -> true
-        _ -> false
-      end)
-      |> Stream.map(fn {:ok, {:ok, kill}} -> kill end)
-      |> Enum.to_list()
-
-    {:ok, filtered_kills}
-  end
-
-  # Process a single kill, checking if it's in the date range
-  defp process_single_kill(kill, start_date, end_date) do
-    # First check if we have this kill cached
-    cache_key = "esi:killmail:#{kill["killmail_id"]}"
-
-    case WandererNotifier.Data.Cache.Repository.get(cache_key) do
-      nil -> fetch_and_check_kill(kill, cache_key, start_date, end_date)
-      esi_data -> check_cached_kill(kill, esi_data, start_date, end_date)
-    end
-  end
-
-  # Fetch a kill from ESI and check if it's in the date range
-  defp fetch_and_check_kill(kill, cache_key, start_date, end_date) do
-    # Not in cache, fetch from ESI
-    case WandererNotifier.Api.ESI.Service.get_killmail(
-           kill["killmail_id"],
-           get_in(kill, ["zkb", "hash"])
-         ) do
-      {:ok, esi_data} ->
-        # Cache the ESI data for 24 hours
-        WandererNotifier.Data.Cache.Repository.set(cache_key, esi_data, 86_400)
-        check_kill_in_date_range(kill, esi_data, start_date, end_date)
-
-      {:error, reason} ->
-        Logger.error("Failed to get ESI data for kill #{kill["killmail_id"]}: #{inspect(reason)}")
-
-        :skip
-    end
-  end
-
-  # Check if a kill from cache is in the date range
-  defp check_cached_kill(kill, esi_data, start_date, end_date) do
-    check_kill_in_date_range(kill, esi_data, start_date, end_date)
-  end
-
-  # Check if a kill is in the requested date range
-  defp check_kill_in_date_range(kill, esi_data, start_date, end_date) do
-    case DateTime.from_iso8601(esi_data["killmail_time"]) do
-      {:ok, kill_date, _} ->
-        if DateTime.compare(kill_date, start_date) in [:gt, :eq] and
-             DateTime.compare(kill_date, end_date) in [:lt, :eq] do
-          {:ok, Map.merge(kill, esi_data)}
-        else
-          :skip
-        end
-
-      error ->
-        Logger.error("Failed to parse kill time for #{kill["killmail_id"]}: #{inspect(error)}")
-
-        :skip
     end
   end
 
@@ -675,23 +597,21 @@ defmodule WandererNotifier.Services.KillmailComparison do
   end
 
   defp generate_analysis(our_count, zkill_count, missing_count, extra_count) do
-    if perfect_match?(our_count, zkill_count, missing_count, extra_count) do
-      "Perfect match - all kills are accounted for"
-    else
-      generate_mismatch_analysis(missing_count, extra_count)
-    end
-  end
+    cond do
+      our_count == zkill_count and missing_count == 0 and extra_count == 0 ->
+        "Perfect match - all kills are accounted for"
 
-  defp perfect_match?(our_count, zkill_count, missing_count, extra_count) do
-    our_count == zkill_count and missing_count == 0 and extra_count == 0
-  end
+      missing_count > 0 and extra_count == 0 ->
+        "Missing kills only - we're not capturing all kills"
 
-  defp generate_mismatch_analysis(missing_count, extra_count) do
-    case {missing_count > 0, extra_count > 0} do
-      {true, false} -> "Missing kills only - we're not capturing all kills"
-      {false, true} -> "Extra kills only - we have kills that zKill doesn't"
-      {true, true} -> "Both missing and extra kills - potential processing issues"
-      _ -> "Unexpected state - needs investigation"
+      missing_count == 0 and extra_count > 0 ->
+        "Extra kills only - we have kills that zKill doesn't"
+
+      missing_count > 0 and extra_count > 0 ->
+        "Both missing and extra kills - potential processing issues"
+
+      true ->
+        "Unexpected state - needs investigation"
     end
   end
 
@@ -732,7 +652,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
         :valid_kill
 
       # Check if the kill is too old (might have been before tracking started)
-      old_kill?(kill_data) ->
+      is_old_kill?(kill_data) ->
         AppLogger.processor_info("Kill classified as too old", %{
           kill_id: kill_data["killmail_id"],
           kill_time: kill_data["killmail_time"]
@@ -750,7 +670,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
         :npc_kill
 
       # Check if it's a structure kill
-      structure_kill?(kill_data) ->
+      is_structure_kill?(kill_data) ->
         AppLogger.processor_info("Kill classified as structure kill", %{
           kill_id: kill_data["killmail_id"],
           victim_category: get_in(kill_data, ["victim", "category_id"])
@@ -759,7 +679,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
         :structure_kill
 
       # Check if it's a pod kill
-      pod_kill?(kill_data) ->
+      is_pod_kill?(kill_data) ->
         AppLogger.processor_info("Kill classified as pod kill", %{
           kill_id: kill_data["killmail_id"],
           victim_ship_type: get_in(kill_data, ["victim", "ship_type_id"])
@@ -777,7 +697,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     end
   end
 
-  defp old_kill?(kill_data) do
+  defp is_old_kill?(kill_data) do
     case kill_data["killmail_time"] do
       nil ->
         false
@@ -793,7 +713,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     end
   end
 
-  defp structure_kill?(kill_data) do
+  defp is_structure_kill?(kill_data) do
     victim = kill_data["victim"] || %{}
     # Structure categories in EVE
     # 65 is the structure category
@@ -801,7 +721,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     victim["category_id"] in structure_categories
   end
 
-  defp pod_kill?(kill_data) do
+  defp is_pod_kill?(kill_data) do
     victim = kill_data["victim"] || %{}
     # 670 is the Capsule (pod) type ID
     victim["ship_type_id"] == 670
@@ -902,83 +822,39 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Extract character ID from character data
   defp extract_character_id(character) do
-    extract_character_id_by_type(character)
-  end
-
-  # Handle different types of character data for ID extraction
-  defp extract_character_id_by_type(character) when is_struct(character) do
-    extract_id_from_struct(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_map(character) do
-    extract_id_from_map(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_binary(character) do
-    character
-  end
-
-  defp extract_character_id_by_type(character) when is_integer(character) do
-    to_string(character)
-  end
-
-  defp extract_character_id_by_type(_) do
-    nil
-  end
-
-  # Extract ID from a struct
-  defp extract_id_from_struct(struct) do
-    if Map.has_key?(struct, :character_id) do
-      struct.character_id
-    else
-      nil
-    end
-  end
-
-  # Extract ID from a map
-  defp extract_id_from_map(map) do
     cond do
-      Map.has_key?(map, "character_id") -> map["character_id"]
-      Map.has_key?(map, :character_id) -> map.character_id
+      is_struct(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_map(character) && Map.has_key?(character, "character_id") -> character["character_id"]
+      is_map(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_binary(character) -> character
+      is_integer(character) -> to_string(character)
       true -> nil
     end
   end
 
   # Extract character name from character data
   defp extract_character_name(character) do
-    extract_character_name_by_type(character)
-  end
-
-  # Handle different types of character data for name extraction
-  defp extract_character_name_by_type(character) when is_struct(character) do
-    extract_name_from_struct(character)
-  end
-
-  defp extract_character_name_by_type(character) when is_map(character) do
-    extract_name_from_map(character)
-  end
-
-  defp extract_character_name_by_type(_) do
-    "Unknown Character"
-  end
-
-  # Extract name from a struct
-  defp extract_name_from_struct(struct) do
     cond do
-      Map.has_key?(struct, :character_name) -> struct.character_name
-      Map.has_key?(struct, :name) -> struct.name
-      true -> "Unknown Character"
-    end
-  end
+      is_struct(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
 
-  # Extract name from a map
-  defp extract_name_from_map(map) do
-    cond do
-      Map.has_key?(map, "character_name") -> map["character_name"]
-      Map.has_key?(map, "name") -> map["name"]
-      Map.has_key?(map, :character_name) -> map.character_name
-      Map.has_key?(map, :name) -> map.name
-      true -> "Unknown Character"
+      is_struct(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      is_map(character) && Map.has_key?(character, "character_name") ->
+        character["character_name"]
+
+      is_map(character) && Map.has_key?(character, "name") ->
+        character["name"]
+
+      is_map(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_map(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      true ->
+        "Unknown Character"
     end
   end
 
@@ -1073,7 +949,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
       # 2 hours
       "24h" -> 7200
       # 4 hours
-      "7d" -> 14_400
+      "7d" -> 14400
       # 30 minutes default
       _ -> 1800
     end

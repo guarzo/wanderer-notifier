@@ -877,83 +877,39 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Extract character ID
   defp extract_character_id(character) do
-    extract_character_id_by_type(character)
-  end
-
-  # Handle different types of character data for ID extraction
-  defp extract_character_id_by_type(character) when is_struct(character) do
-    extract_id_from_struct(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_map(character) do
-    extract_id_from_map(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_binary(character) do
-    character
-  end
-
-  defp extract_character_id_by_type(character) when is_integer(character) do
-    to_string(character)
-  end
-
-  defp extract_character_id_by_type(_) do
-    nil
-  end
-
-  # Extract ID from a struct
-  defp extract_id_from_struct(struct) do
-    if Map.has_key?(struct, :character_id) do
-      struct.character_id
-    else
-      nil
-    end
-  end
-
-  # Extract ID from a map
-  defp extract_id_from_map(map) do
     cond do
-      Map.has_key?(map, "character_id") -> map["character_id"]
-      Map.has_key?(map, :character_id) -> map.character_id
+      is_struct(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_map(character) && Map.has_key?(character, "character_id") -> character["character_id"]
+      is_map(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_binary(character) -> character
+      is_integer(character) -> to_string(character)
       true -> nil
     end
   end
 
   # Extract character name
   defp extract_character_name(character) do
-    extract_character_name_by_type(character)
-  end
-
-  # Handle different types of character data for name extraction
-  defp extract_character_name_by_type(character) when is_struct(character) do
-    extract_name_from_struct(character)
-  end
-
-  defp extract_character_name_by_type(character) when is_map(character) do
-    extract_name_from_map(character)
-  end
-
-  defp extract_character_name_by_type(_) do
-    "Unknown Character"
-  end
-
-  # Extract name from a struct
-  defp extract_name_from_struct(struct) do
     cond do
-      Map.has_key?(struct, :character_name) -> struct.character_name
-      Map.has_key?(struct, :name) -> struct.name
-      true -> "Unknown Character"
-    end
-  end
+      is_struct(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
 
-  # Extract name from a map
-  defp extract_name_from_map(map) do
-    cond do
-      Map.has_key?(map, "character_name") -> map["character_name"]
-      Map.has_key?(map, "name") -> map["name"]
-      Map.has_key?(map, :character_name) -> map.character_name
-      Map.has_key?(map, :name) -> map.name
-      true -> "Unknown Character"
+      is_struct(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      is_map(character) && Map.has_key?(character, "character_name") ->
+        character["character_name"]
+
+      is_map(character) && Map.has_key?(character, "name") ->
+        character["name"]
+
+      is_map(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_map(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      true ->
+        "Unknown Character"
     end
   end
 
@@ -1636,9 +1592,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       {start_datetime, end_datetime} =
         case cache_type do
           "1h" -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
-          "4h" -> {DateTime.utc_now() |> DateTime.add(-14_400, :second), DateTime.utc_now()}
-          "12h" -> {DateTime.utc_now() |> DateTime.add(-43_200, :second), DateTime.utc_now()}
-          "24h" -> {DateTime.utc_now() |> DateTime.add(-86_400, :second), DateTime.utc_now()}
+          "4h" -> {DateTime.utc_now() |> DateTime.add(-14400, :second), DateTime.utc_now()}
+          "12h" -> {DateTime.utc_now() |> DateTime.add(-43200, :second), DateTime.utc_now()}
+          "24h" -> {DateTime.utc_now() |> DateTime.add(-86400, :second), DateTime.utc_now()}
           "7d" -> {DateTime.utc_now() |> DateTime.add(-604_800, :second), DateTime.utc_now()}
           _ -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
         end
