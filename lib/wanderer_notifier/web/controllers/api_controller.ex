@@ -986,7 +986,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   end
 
   # Return list of tracked characters
-  get "/tracked-characters" do
+  get "/characters" do
     try do
       # Get tracked characters with more robust error handling
       tracked_characters =
@@ -1042,27 +1042,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(
-        200,
-        Jason.encode!(%{
-          success: true,
-          characters: formatted_characters
-        })
-      )
+      |> send_resp(200, Jason.encode!(formatted_characters))
     rescue
       e ->
-        AppLogger.api_error("Error in tracked-characters endpoint: #{inspect(e)}")
+        AppLogger.api_error("Error in characters endpoint: #{inspect(e)}")
 
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(
-          500,
-          Jason.encode!(%{
-            success: false,
-            message: "Internal server error",
-            error: inspect(e)
-          })
-        )
+        |> send_resp(500, Jason.encode!([]))
     end
   end
 
@@ -1210,6 +1197,231 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     |> put_resp_content_type("application/json")
     |> send_resp(200, Jason.encode!(response_data))
   end
+
+  # Compare kills for a character within a date range
+  get "/kills/compare" do
+    try do
+      # Log raw query parameters
+      AppLogger.api_info("Raw query parameters received", %{
+        params: conn.query_params,
+        param_details: %{
+          character_id: %{
+            value: conn.query_params["character_id"],
+            type: get_type(conn.query_params["character_id"])
+          },
+          start_date: %{
+            value: conn.query_params["start_date"],
+            type: get_type(conn.query_params["start_date"])
+          },
+          end_date: %{
+            value: conn.query_params["end_date"],
+            type: get_type(conn.query_params["end_date"])
+          }
+        }
+      })
+
+      # Extract and validate query parameters
+      %{
+        "character_id" => character_id,
+        "start_date" => start_date_str,
+        "end_date" => end_date_str
+      } = conn.query_params
+
+      AppLogger.api_info("Kill comparison requested", %{
+        character_id: character_id,
+        start_date_str: start_date_str,
+        end_date_str: end_date_str,
+        param_details: %{
+          start_date_length: String.length(start_date_str),
+          end_date_length: String.length(end_date_str),
+          character_id_type: get_type(character_id),
+          start_date_type: get_type(start_date_str),
+          end_date_type: get_type(end_date_str)
+        }
+      })
+
+      # Parse dates with better error handling
+      with {character_id_int, ""} <- Integer.parse(character_id),
+           {:ok, start_date} <- parse_date_string(start_date_str),
+           {:ok, end_date} <- parse_date_string(end_date_str) do
+        AppLogger.api_info("Parsed parameters for kill comparison", %{
+          character_id: character_id_int,
+          start_date: inspect(start_date),
+          end_date: inspect(end_date)
+        })
+
+        case WandererNotifier.Services.KillmailComparison.compare_killmails(
+               character_id_int,
+               start_date,
+               end_date
+             ) do
+          {:ok, comparison_result} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(200, Jason.encode!(comparison_result))
+
+          {:error, reason} ->
+            AppLogger.api_error("Error comparing kills", %{
+              error: inspect(reason),
+              character_id: character_id_int,
+              start_date: inspect(start_date),
+              end_date: inspect(end_date)
+            })
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{error: "Failed to compare kills", details: inspect(reason)})
+            )
+        end
+      else
+        :error ->
+          AppLogger.api_error("Invalid character ID format", %{character_id: character_id})
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(400, Jason.encode!(%{error: "Invalid character ID format"}))
+
+        {:error, reason} ->
+          AppLogger.api_error("Error parsing dates", %{
+            error: inspect(reason),
+            start_date: start_date_str,
+            end_date: end_date_str
+          })
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(400, Jason.encode!(%{error: "Invalid date format"}))
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error in kills/compare endpoint", %{
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{error: "Internal server error", details: Exception.message(e)})
+        )
+    end
+  end
+
+  # Helper function to parse date strings in YYYYMMDDHHmm format
+  defp parse_date_string(
+         <<year::binary-size(4), month::binary-size(2), day::binary-size(2), hour::binary-size(2),
+           minute::binary-size(2)>> = date_str
+       ) do
+    AppLogger.api_info("Attempting to parse YYYYMMDDHHmm format", %{
+      raw_string: date_str,
+      components: %{
+        year: year,
+        month: month,
+        day: day,
+        hour: hour,
+        minute: minute
+      }
+    })
+
+    with {year_int, ""} <- Integer.parse(year),
+         {month_int, ""} <- Integer.parse(month),
+         {day_int, ""} <- Integer.parse(day),
+         {hour_int, ""} <- Integer.parse(hour),
+         {minute_int, ""} <- Integer.parse(minute) do
+      AppLogger.api_debug("Successfully parsed date components", %{
+        parsed_components: %{
+          year: year_int,
+          month: month_int,
+          day: day_int,
+          hour: hour_int,
+          minute: minute_int
+        }
+      })
+
+      case NaiveDateTime.new(year_int, month_int, day_int, hour_int, minute_int, 0) do
+        {:ok, naive_dt} ->
+          AppLogger.api_debug("Created NaiveDateTime", %{
+            naive_datetime: inspect(naive_dt)
+          })
+
+          case DateTime.from_naive(naive_dt, "Etc/UTC") do
+            {:ok, datetime_utc} ->
+              AppLogger.api_info("Successfully created UTC DateTime", %{
+                final_datetime: inspect(datetime_utc)
+              })
+
+              {:ok, datetime_utc}
+
+            error ->
+              AppLogger.api_error("Failed to convert to UTC DateTime", %{
+                error: inspect(error),
+                naive_datetime: inspect(naive_dt)
+              })
+
+              error
+          end
+
+        error ->
+          AppLogger.api_error("Failed to create NaiveDateTime", %{
+            error: inspect(error),
+            components: %{
+              year: year_int,
+              month: month_int,
+              day: day_int,
+              hour: hour_int,
+              minute: minute_int
+            }
+          })
+
+          error
+      end
+    else
+      error ->
+        AppLogger.api_error("Failed to parse date components", %{
+          error: inspect(error),
+          raw_string: date_str
+        })
+
+        {:error, :invalid_format}
+    end
+  end
+
+  defp parse_date_string(date_str) do
+    AppLogger.api_info("Attempting to parse as ISO8601", %{
+      raw_string: date_str
+    })
+
+    case DateTime.from_iso8601(date_str) do
+      {:ok, datetime, offset} ->
+        AppLogger.api_info("Successfully parsed ISO8601 date", %{
+          datetime: inspect(datetime),
+          offset: offset
+        })
+
+        {:ok, datetime}
+
+      error ->
+        AppLogger.api_error("Failed to parse ISO8601 date", %{
+          error: inspect(error),
+          raw_string: date_str
+        })
+
+        error
+    end
+  end
+
+  # Helper function to get the type of a value
+  defp get_type(value) when is_binary(value), do: "string"
+  defp get_type(value) when is_integer(value), do: "integer"
+  defp get_type(value) when is_float(value), do: "float"
+  defp get_type(value) when is_boolean(value), do: "boolean"
+  defp get_type(value) when is_nil(value), do: "nil"
+  defp get_type(value) when is_map(value), do: "map"
+  defp get_type(value) when is_list(value), do: "list"
+  defp get_type(value), do: inspect(value.__struct__)
 
   # Catch-all route
   match _ do

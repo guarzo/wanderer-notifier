@@ -244,6 +244,69 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
       Jason.encode!(%{status: "ok", message: "All schedulers triggered for execution"})
     )
   end
+  
+  # Toggle debug logging endpoint
+  get "/toggle-debug-logging" do
+    # Check the current state of debug logging
+    current_state = System.get_env("WANDERER_DEBUG_LOGGING")
+    new_state = current_state != "true"
+    
+    # Toggle the state
+    AppLogger.enable_debug_logging(new_state)
+    
+    # Log the change
+    AppLogger.config_info("Debug logging toggled", 
+      enabled: new_state,
+      previous_state: current_state
+    )
+    
+    # Return response
+    response = %{
+      success: true,
+      debug_logging_enabled: new_state,
+      message: "Debug logging set to #{new_state}"
+    }
+    
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
+  
+  # Test logger metadata endpoint
+  get "/test-logger" do
+    # Test all forms of metadata
+    AppLogger.api_info("Test with map metadata", %{
+      test_key: "test value",
+      numeric: 123,
+      boolean: true,
+      nested_map: %{inner: "value"},
+      list: [1, 2, 3]
+    })
+    
+    AppLogger.api_info("Test with keyword list metadata", 
+      test_key: "test value",
+      numeric: 123,
+      boolean: true,
+      list: [1, 2, 3]
+    )
+    
+    AppLogger.api_info("Test with regular list metadata", [
+      "first item",
+      "second item",
+      %{map_in_list: true}
+    ])
+    
+    # Return response
+    response = %{
+      success: true,
+      message: "Logger test complete, check server logs",
+      debug_enabled: System.get_env("WANDERER_DEBUG_LOGGING") == "true"
+    }
+    
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
 
   # Catch-all route
   match _ do
