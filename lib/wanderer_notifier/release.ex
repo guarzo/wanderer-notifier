@@ -12,18 +12,26 @@ defmodule WandererNotifier.Release do
   Creates the database if it doesn't exist.
   """
   def createdb do
-    AppLogger.persistence_info("Checking if database exists")
+    Logger.info("Checking if database exists")
 
     for repo <- repos() do
-      case repo.__adapter__().storage_up(repo.config()) do
-        :ok ->
-          AppLogger.persistence_info("Database created successfully")
+      try do
+        case repo.__adapter__().storage_up(repo.config()) do
+          :ok ->
+            Logger.info("Database created successfully")
 
-        {:error, :already_up} ->
-          AppLogger.persistence_info("Database already exists")
+          {:error, :already_up} ->
+            Logger.info("Database already exists")
 
-        {:error, error} ->
-          AppLogger.persistence_warn("Failed to create database", error: inspect(error))
+          {:error, {:logger, _}} ->
+            Logger.info("Database status check completed with logger initialization warning")
+
+          {:error, error} ->
+            Logger.warn("Failed to create database: #{inspect(error)}")
+        end
+      rescue
+        e ->
+          Logger.error("Exception during database creation: #{inspect(e)}")
       end
     end
   end
@@ -32,24 +40,56 @@ defmodule WandererNotifier.Release do
   Runs pending migrations.
   """
   def migrate do
-    AppLogger.persistence_info("Running migrations")
+    Logger.info("Running migrations")
 
     for repo <- repos() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
+      try do
+        case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true)) do
+          {:ok, _, _} ->
+            Logger.info("Migrations for #{inspect(repo)} completed successfully")
+
+          {:error, {:logger, _}} = error ->
+            # Handle logger error but continue with migrations
+            Logger.info("Migration completed with logger warning: #{inspect(error)}")
+
+          other ->
+            Logger.info("Migration returned: #{inspect(other)}")
+        end
+      rescue
+        e ->
+          Logger.error("Exception during migration: #{inspect(e)}")
+          # Re-raise to stop the migration process with proper error
+          reraise e, __STACKTRACE__
+      end
     end
 
-    AppLogger.persistence_info("Migrations completed successfully")
+    Logger.info("All migrations completed")
   end
 
   @doc """
   Rollback migrations.
   """
   def rollback(repo, version) do
-    AppLogger.persistence_info("Rolling back migrations", target_version: version)
+    Logger.info("Rolling back migrations to version #{version}")
 
-    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+    try do
+      case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version)) do
+        {:ok, _, _} ->
+          Logger.info("Rollback to version #{version} completed successfully")
 
-    AppLogger.persistence_info("Rollback completed")
+        {:error, {:logger, _}} = error ->
+          # Handle logger error but continue
+          Logger.info("Rollback completed with logger warning: #{inspect(error)}")
+
+        other ->
+          Logger.info("Rollback returned: #{inspect(other)}")
+      end
+    rescue
+      e ->
+        Logger.error("Exception during rollback: #{inspect(e)}")
+        # Re-raise to stop the rollback process with proper error
+        reraise e, __STACKTRACE__
+    end
   end
 
   defp repos do
