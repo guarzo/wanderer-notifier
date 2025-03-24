@@ -477,59 +477,10 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp get_system_id_from_killmail(%Killmail{} = killmail) do
     # Use the Killmail module's helper
     system_id = Killmail.get_system_id(killmail)
-
-    # Special debug for DAYP-G system (30000253)
-    if system_id == 30_000_253 or system_id == "30000253" do
-      Logger.info("SPECIAL DEBUG: Found DAYP-G system ID: #{system_id}")
-
-      # Force the service to debug tracked systems
-      WandererNotifier.Services.Service.debug_tracked_systems()
-
-      # Test a manual notification for this system
-      handle_dayp_test_notification(killmail, system_id)
-    end
-
     system_id
   end
 
   defp get_system_id_from_killmail(_), do: nil
-
-  # Special handler for DAYP-G system notifications for debugging
-  defp handle_dayp_test_notification(killmail, system_id) do
-    try do
-      # Get system name
-      system_name = get_system_name(system_id)
-      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
-
-      # Log the special case
-      Logger.info(
-        "DAYP-G TEST: Attempting to manually send notification for kill in #{system_info}"
-      )
-
-      # Get the enriched killmail data
-      enriched_killmail = enrich_killmail_data(killmail)
-
-      # Force a notification
-      kill_id = killmail.killmail_id
-
-      # Send the notification
-      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
-
-      Logger.info("DAYP-G TEST: Manually sent notification for kill #{kill_id} in #{system_info}")
-
-      # Update stats
-      update_kill_stats(:notification_sent)
-
-      :ok
-    rescue
-      e ->
-        Logger.error(
-          "DAYP-G TEST ERROR: Failed to send manual notification: #{Exception.message(e)}"
-        )
-
-        {:error, Exception.message(e)}
-    end
-  end
 
   # Send the notification for a kill
   defp send_kill_notification(enriched_killmail, kill_id) do

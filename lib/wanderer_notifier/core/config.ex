@@ -51,13 +51,13 @@ defmodule WandererNotifier.Core.Config do
     map_tools: %{
       enabled_var: "ENABLE_MAP_TOOLS",
       channel_var: "DISCORD_MAP_TOOLS_CHANNEL_ID",
-      default_enabled: true,
+      default_enabled: false,
       description: "Map tools integration"
     },
     charts: %{
       enabled_var: "ENABLE_CHARTS",
       channel_var: "DISCORD_CHARTS_CHANNEL_ID",
-      default_enabled: true,
+      default_enabled: false,
       description: "Chart generation"
     },
     tps_charts: %{
@@ -69,7 +69,7 @@ defmodule WandererNotifier.Core.Config do
     activity_charts: %{
       enabled_var: "ENABLE_ACTIVITY_CHARTS",
       channel_var: "DISCORD_ACTIVITY_CHARTS_CHANNEL_ID",
-      default_enabled: true,
+      default_enabled: false,
       description: "Activity charts generation and notifications"
     }
   }
