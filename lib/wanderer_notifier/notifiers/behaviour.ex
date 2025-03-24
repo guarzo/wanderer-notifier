@@ -42,6 +42,11 @@ defmodule WandererNotifier.Notifiers.Behaviour do
   @callback send_new_system_notification(system :: map()) :: :ok | {:error, any()}
 
   @doc """
+  Sends a notification about a killmail.
+  """
+  @callback send_kill_notification(kill_data :: map()) :: :ok | {:error, any()}
+
+  @doc """
   Sends a rich embed message for an enriched killmail.
   """
   @callback send_enriched_kill_embed(enriched_kill :: map(), kill_id :: integer()) ::

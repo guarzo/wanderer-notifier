@@ -4,7 +4,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   Uses ETS for fast lookups and automatic expiration of entries.
   """
   use GenServer
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # TTL for deduplication entries - 12 hours by default for better protection against restarts
   @dedup_ttl 12 * 60 * 60 * 1000
@@ -29,14 +29,8 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   - `{:ok, :new}` if this is a new notification (not a duplicate)
   - `{:ok, :duplicate}` if this is a duplicate notification
   """
-  def check_and_mark_system(system_id) when is_binary(system_id) or is_integer(system_id) do
-    system_id_str = to_string(system_id)
-    key = "system:#{system_id_str}"
-
-    # Log more details about the system deduplication check
-    Logger.debug("[DeduplicationHelper] Checking system deduplication for ID: #{system_id_str}")
-
-    check_and_mark(key)
+  def check_system_notification(system_id) do
+    GenServer.call(__MODULE__, {:check_system, system_id})
   end
 
   @doc """
@@ -53,9 +47,25 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
     key = "character:#{character_id_str}"
 
     # Log more details about the character deduplication check
-    Logger.debug(
-      "[DeduplicationHelper] Checking character deduplication for ID: #{character_id_str}"
-    )
+    AppLogger.cache_debug("Checking character deduplication", character_id: character_id_str)
+
+    check_and_mark(key)
+  end
+
+  @doc """
+  Checks if a notification for a system with the given ID was recently sent.
+  If not, marks the system as notified.
+
+  Returns:
+  - `{:ok, :new}` if this is a new notification (not a duplicate)
+  - `{:ok, :duplicate}` if this is a duplicate notification
+  """
+  def check_and_mark_system(system_id) when is_binary(system_id) or is_integer(system_id) do
+    system_id_str = to_string(system_id)
+    key = "system:#{system_id_str}"
+
+    # Log more details about the system deduplication check
+    AppLogger.cache_debug("Checking system deduplication", system_id: system_id_str)
 
     check_and_mark(key)
   end
@@ -73,7 +83,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
     key = "kill:#{kill_id_str}"
 
     # Log detailed debugging information for kill notifications
-    Logger.info("[DeduplicationHelper] Checking kill deduplication for ID: #{kill_id_str}")
+    AppLogger.kill_info("Checking kill deduplication", kill_id: kill_id_str)
 
     # Check in the ETS table
     result = check_and_mark(key)
@@ -81,17 +91,13 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
     # Log the result with more details
     case result do
       {:ok, :new} ->
-        Logger.info("[DeduplicationHelper] Kill #{kill_id_str} is new, notification allowed")
+        AppLogger.kill_info("Kill is new, notification allowed", kill_id: kill_id_str)
 
       {:ok, :duplicate} ->
-        Logger.info(
-          "[DeduplicationHelper] Kill #{kill_id_str} is a duplicate, notification skipped"
-        )
+        AppLogger.kill_info("Kill is a duplicate, notification skipped", kill_id: kill_id_str)
 
       _ ->
-        Logger.warning(
-          "[DeduplicationHelper] Unexpected result for kill check: #{inspect(result)}"
-        )
+        AppLogger.kill_warn("Unexpected result for kill check", result: inspect(result))
     end
 
     result
@@ -109,7 +115,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
     try do
       # Make sure the table exists before trying to use it
       if :ets.info(@dedup_table) == :undefined do
-        Logger.error("[DeduplicationHelper] ETS table doesn't exist, creating it now")
+        AppLogger.cache_error("ETS table doesn't exist, creating it now")
         create_dedup_table()
       end
 
@@ -128,10 +134,9 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
       end
     rescue
       e ->
-        Logger.error("[DeduplicationHelper] Error in deduplication check: #{inspect(e)}")
-
-        Logger.error(
-          "[DeduplicationHelper] Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}"
+        AppLogger.cache_error("Error in deduplication check",
+          error: inspect(e),
+          stacktrace: inspect(Process.info(self(), :current_stacktrace))
         )
 
         # If there's an error, allow the notification to proceed
@@ -143,7 +148,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   Handles the expiration message for a deduplication key.
   """
   def handle_clear_key(key) do
-    Logger.debug("[DeduplicationHelper] Clearing expired deduplication key: #{key}")
+    AppLogger.cache_debug("Clearing expired deduplication key", key: key)
     :ets.delete(@dedup_table, key)
     :ok
   end
@@ -154,7 +159,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   def clear_all do
     if :ets.info(@dedup_table) != :undefined do
       :ets.delete_all_objects(@dedup_table)
-      Logger.info("[DeduplicationHelper] Cleared all deduplication entries")
+      AppLogger.cache_info("Cleared all deduplication entries")
     end
 
     :ok
@@ -170,20 +175,38 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
       write_concurrency: true
     ])
 
-    Logger.info("[DeduplicationHelper] Created new deduplication table")
+    AppLogger.cache_info("Created new deduplication table")
+  end
+
+  @doc """
+  Checks if a notification is a duplicate based on the notification type and identifier.
+
+  Returns:
+  - `true` if it's a duplicate
+  - `false` if it's not a duplicate
+  """
+  def duplicate?(notification_type, identifier) do
+    GenServer.call(__MODULE__, {:is_duplicate, notification_type, identifier})
+  end
+
+  @doc """
+  Marks a notification as processed to prevent duplicates for a period of time.
+  """
+  def mark_as_processed(notification_type, identifier) do
+    GenServer.cast(__MODULE__, {:mark_processed, notification_type, identifier})
   end
 
   # Server callbacks
 
   @impl true
   def init(_opts) do
-    Logger.info("[DeduplicationHelper] Initializing notification deduplication table")
+    AppLogger.cache_info("Initializing notification deduplication table")
 
     # Create ETS table for deduplication if it doesn't already exist
     if :ets.info(@dedup_table) == :undefined do
       create_dedup_table()
     else
-      Logger.debug("[DeduplicationHelper] Deduplication table already exists")
+      AppLogger.cache_debug("Deduplication table already exists")
     end
 
     {:ok, %{}}
@@ -192,6 +215,76 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   @impl true
   def handle_info({:clear_dedup_key, key}, state) do
     handle_clear_key(key)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_call({:check_system, system_id}, _from, state) do
+    system_id_str = to_string(system_id)
+    key = "system:#{system_id_str}"
+
+    # Log more details about the system deduplication check
+    AppLogger.cache_debug("Checking system deduplication", system_id: system_id_str)
+
+    result = check_and_mark(key)
+
+    case result do
+      {:ok, :new} ->
+        AppLogger.cache_info("System notification is new, marking as processed")
+        mark_as_processed("system", system_id)
+        {:reply, {:ok, :new}, state}
+
+      {:ok, :duplicate} ->
+        AppLogger.cache_info("System notification is a duplicate, marking as processed")
+        mark_as_processed("system", system_id)
+        {:reply, {:ok, :duplicate}, state}
+
+      _ ->
+        AppLogger.cache_warn("Unexpected result for system check", result: inspect(result))
+        {:reply, result, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:is_duplicate, notification_type, identifier}, _from, state) do
+    key = "#{notification_type}:#{to_string(identifier)}"
+
+    # Log more details about the deduplication check
+    AppLogger.cache_debug("Checking deduplication",
+      notification_type: notification_type,
+      identifier: identifier
+    )
+
+    result = check_and_mark(key)
+
+    case result do
+      {:ok, :new} ->
+        AppLogger.cache_info("Notification is new, marking as processed")
+        mark_as_processed(notification_type, identifier)
+        {:reply, false, state}
+
+      {:ok, :duplicate} ->
+        AppLogger.cache_info("Notification is a duplicate, marking as processed")
+        mark_as_processed(notification_type, identifier)
+        {:reply, true, state}
+
+      _ ->
+        AppLogger.cache_warn("Unexpected result for deduplication check", result: inspect(result))
+        {:reply, false, state}
+    end
+  end
+
+  @impl true
+  def handle_cast({:mark_processed, notification_type, identifier}, state) do
+    key = "#{notification_type}:#{to_string(identifier)}"
+
+    # Log more details about marking as processed
+    AppLogger.cache_info("Marking notification as processed",
+      notification_type: notification_type,
+      identifier: identifier
+    )
+
+    :ets.delete(@dedup_table, key)
     {:noreply, state}
   end
 end

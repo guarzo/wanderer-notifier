@@ -5,6 +5,7 @@ defmodule WandererNotifier.Notifiers.Discord do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.License
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Api.Http.Client, as: HttpClient
@@ -40,7 +41,7 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Helper function to handle test mode logging and response
   defp handle_test_mode(log_message) do
-    if @verbose_logging, do: Logger.info(log_message)
+    if @verbose_logging, do: AppLogger.processor_debug("Test mode", message: log_message)
     :ok
   end
 
@@ -67,7 +68,108 @@ defmodule WandererNotifier.Notifiers.Discord do
     ]
   end
 
-  # -- HELPER FUNCTIONS --
+  # -- GENSERVER CALLBACKS --
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_opts) do
+    AppLogger.startup_info("Starting Discord notifier")
+
+    # Initialize state
+    initial_state = %{
+      rate_limit_remaining: 5,
+      rate_limit_reset: 0,
+      last_notification_time: System.os_time(:second),
+      queued_messages: [],
+      in_test_mode: env() == :test
+    }
+
+    # Schedule the queue processor
+    schedule_queue_processing()
+
+    {:ok, initial_state}
+  end
+
+  # Schedule queue processing - run every 5 seconds
+  defp schedule_queue_processing do
+    Process.send_after(self(), :process_queue, 5_000)
+  end
+
+  # Queue a Discord message to be sent, respecting rate limits
+  defp queue_discord_message(message, feature, state) do
+    # Add the message to the queue with feature
+    updated_queue = state.queued_messages ++ [{message, feature}]
+
+    # Return updated state with new queue
+    {:noreply, %{state | queued_messages: updated_queue}}
+  end
+
+  # Format a kill embed from kill data
+  defp format_kill_embed(kill_data) do
+    # Extract essential data from the kill
+    kill_id = get_in(kill_data, ["killmail_id"]) || "unknown"
+    victim = get_in(kill_data, ["victim"]) || %{}
+    victim_name = Map.get(victim, "character_name", "Unknown Pilot")
+    victim_ship = Map.get(victim, "ship_type_name", "Unknown Ship")
+    system_name = get_in(kill_data, ["solar_system_name"]) || "Unknown System"
+
+    # Create a simple embed for the kill
+    %{
+      "title" => "Kill Notification",
+      "description" => "#{victim_name} lost a #{victim_ship} in #{system_name}",
+      "color" => 0xE74C3C,
+      "url" => "https://zkillboard.com/kill/#{kill_id}/",
+      "footer" => %{
+        "text" => "Kill ID: #{kill_id}"
+      }
+    }
+  end
+
+  # -- IMPLEMENTATION METHODS --
+
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_kill_notification(kill_data) do
+    AppLogger.processor_debug("Received kill notification request",
+      kill_id: get_in(kill_data, ["killmail_id"]) || "unknown"
+    )
+
+    # Enqueue the notification to respect rate limits
+    GenServer.cast(__MODULE__, {:send_kill_notification, kill_data})
+    :ok
+  end
+
+  # Handle incoming kill notification
+  @impl true
+  def handle_cast({:send_kill_notification, kill_data}, state) do
+    try do
+      # Extract kill ID for logging
+      kill_id = get_in(kill_data, ["killmail_id"]) || "unknown"
+
+      AppLogger.processor_info("Processing kill notification", kill_id: kill_id)
+
+      # Format the kill data as an embed
+      embed = format_kill_embed(kill_data)
+
+      # Queue the embed for sending
+      queue_discord_message(embed, :kill, state)
+    rescue
+      e ->
+        AppLogger.processor_error("Error processing kill notification",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        # Continue with unchanged state
+        {:noreply, state}
+    end
+  end
+
+  # Add more handle_cast implementations for other notification types...
+
+  # -- Other functions with updated logging --
 
   # -- MESSAGE SENDING --
 
@@ -128,7 +230,9 @@ defmodule WandererNotifier.Notifiers.Discord do
         color \\ @default_embed_color,
         feature \\ :general
       ) do
-    Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
+    AppLogger.processor_debug(
+      "Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}"
+    )
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK EMBED: #{title} - #{description}")
@@ -140,7 +244,7 @@ defmodule WandererNotifier.Notifiers.Discord do
           build_embed_payload(title, description, url, color)
         end
 
-      Logger.info("Discord embed payload built, sending to Discord API")
+      AppLogger.processor_info("Discord embed payload built, sending to Discord API")
       send_payload(payload, feature)
     end
   end
@@ -190,7 +294,7 @@ defmodule WandererNotifier.Notifiers.Discord do
       payload = %{"embeds" => [embed]}
 
       # Log the payload for debugging
-      Logger.debug(
+      AppLogger.processor_debug(
         "[Discord] Sending Discord embed payload: #{inspect(payload, pretty: true, limit: 5000)}"
       )
 
@@ -259,7 +363,10 @@ defmodule WandererNotifier.Notifiers.Discord do
     # Mark first notification if applicable
     if is_first_notification do
       Stats.mark_notification_sent(:kill)
-      Logger.info("Sending first kill notification in enriched format (startup message)")
+
+      AppLogger.processor_info(
+        "Sending first kill notification in enriched format (startup message)"
+      )
     end
 
     # Use the structured formatter to create the notification
@@ -270,7 +377,9 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Send a plain text kill notification
   defp send_plain_kill_notification(victim_info) do
-    Logger.info("License not valid, sending plain text kill notification instead of rich embed")
+    AppLogger.processor_info(
+      "License not valid, sending plain text kill notification instead of rich embed"
+    )
 
     message =
       "Kill Alert: #{victim_info.name} lost a #{victim_info.ship} in #{victim_info.system}."
@@ -330,8 +439,11 @@ defmodule WandererNotifier.Notifiers.Discord do
   # Log and prepare character data for notification
   defp prepare_and_log_character_data(character) do
     # Log the character data
-    Logger.info("[Discord] Processing character notification")
-    Logger.debug("[Discord] Raw character data: #{inspect(character, pretty: true, limit: 5000)}")
+    AppLogger.processor_info("[Discord] Processing character notification")
+
+    AppLogger.processor_debug(
+      "[Discord] Raw character data: #{inspect(character, pretty: true, limit: 5000)}"
+    )
 
     # Check notification status and convert character
     is_first_notification = Stats.is_first_notification?(:character)
@@ -339,7 +451,10 @@ defmodule WandererNotifier.Notifiers.Discord do
     # Mark first notification if applicable
     if is_first_notification do
       Stats.mark_notification_sent(:character)
-      Logger.info("[Discord] Sending first character notification in enriched format")
+
+      AppLogger.processor_info(
+        "[Discord] Sending first character notification in enriched format"
+      )
     end
 
     # Prepare character data
@@ -379,7 +494,9 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Send plain text character notification
   defp send_plain_character_notification(character_struct) do
-    Logger.info("[Discord] License not valid, sending plain text character notification")
+    AppLogger.processor_info(
+      "[Discord] License not valid, sending plain text character notification"
+    )
 
     # Create plain text message with corporation info if available
     corporation_info = format_corporation_info(character_struct)
@@ -409,8 +526,11 @@ defmodule WandererNotifier.Notifiers.Discord do
       try_increment_stats_for_system()
 
       # Log the system data
-      Logger.info("[Discord] Processing system notification")
-      Logger.debug("[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}")
+      AppLogger.processor_info("[Discord] Processing system notification")
+
+      AppLogger.processor_debug(
+        "[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}"
+      )
 
       # Prepare system and notification status
       {is_first_notification, system_struct} = prepare_system_notification(system)
@@ -449,7 +569,7 @@ defmodule WandererNotifier.Notifiers.Discord do
     # Mark that we've sent the first notification if this is it
     if is_first_notification do
       Stats.mark_notification_sent(:system)
-      Logger.info("[Discord] Sending first system notification in enriched format")
+      AppLogger.processor_info("[Discord] Sending first system notification in enriched format")
     end
 
     {is_first_notification, system_struct}
@@ -472,7 +592,9 @@ defmodule WandererNotifier.Notifiers.Discord do
   # Send plain text system notification
   defp send_plain_system_notification(system_struct) do
     # Log license status
-    Logger.info("[Discord] License not valid, sending plain text system notification")
+    AppLogger.processor_info(
+      "[Discord] License not valid, sending plain text system notification"
+    )
 
     # Create plain text message
     message = format_plain_system_message(system_struct)
@@ -503,21 +625,24 @@ defmodule WandererNotifier.Notifiers.Discord do
     url = build_url(feature)
     json_payload = Jason.encode!(payload)
 
-    Logger.info("Sending Discord API request to URL: #{url} for feature: #{inspect(feature)}")
-    Logger.debug("Discord API payload: #{inspect(payload, pretty: true)}")
+    AppLogger.processor_info(
+      "Sending Discord API request to URL: #{url} for feature: #{inspect(feature)}"
+    )
+
+    AppLogger.processor_debug("Discord API payload: #{inspect(payload, pretty: true)}")
 
     case HttpClient.request("POST", url, headers(), json_payload) do
       {:ok, %{status_code: status}} when status in 200..299 ->
-        Logger.info("Discord API request successful with status #{status}")
+        AppLogger.processor_info("Discord API request successful with status #{status}")
         :ok
 
       {:ok, %{status_code: status, body: body}} ->
-        Logger.error("Discord API request failed with status #{status}")
-        Logger.error("Discord API error response: #{body}")
+        AppLogger.processor_error("Discord API request failed with status #{status}")
+        AppLogger.processor_error("Discord API error response: #{body}")
         {:error, body}
 
       {:error, err} ->
-        Logger.error("Discord API request error: #{inspect(err)}")
+        AppLogger.processor_error("Discord API request error: #{inspect(err)}")
         {:error, err}
     end
   end
@@ -539,7 +664,7 @@ defmodule WandererNotifier.Notifiers.Discord do
   """
   @impl WandererNotifier.Notifiers.Behaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil, feature \\ :general) do
-    Logger.info("Discord.Notifier.send_file called with filename: #{filename}")
+    AppLogger.processor_info("Discord.Notifier.send_file called with filename: #{filename}")
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
@@ -567,7 +692,11 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Rename the existing send_file function to send_file_path to avoid conflicts
   def send_file_path(file_path, title \\ nil, description \\ nil, feature \\ :general) do
-    Logger.info("Discord.Notifier.send_file_path called with file: #{file_path}")
+    AppLogger.processor_info("Discord.Notifier.send_file_path called",
+      file_path: file_path,
+      title: title,
+      feature: feature
+    )
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{file_path} - #{title || "No title"}")
@@ -591,18 +720,22 @@ defmodule WandererNotifier.Notifiers.Discord do
     # Send the request
     case HTTPoison.post(url, body, headers) do
       {:ok, %{status_code: status}} when status in 200..299 ->
-        Logger.info("Discord file sent successfully with status #{status}")
+        AppLogger.processor_info("Discord file sent successfully", status: status)
 
         # Use the increment/1 function with a specific key instead of the undefined increment_file_sent/0
         Stats.increment("discord_files_sent")
         {:ok, Jason.decode!(body)}
 
       {:ok, %{status_code: status, body: body}} ->
-        Logger.error("Discord file send failed with status #{status}: #{body}")
+        AppLogger.processor_error("Discord file send failed",
+          status: status,
+          response: body
+        )
+
         {:error, "HTTP #{status}: #{body}"}
 
       {:error, reason} ->
-        Logger.error("Discord file request failed: #{inspect(reason)}")
+        AppLogger.processor_error("Discord file request failed", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -709,8 +842,11 @@ defmodule WandererNotifier.Notifiers.Discord do
       try_increment_stats()
 
       # Log and check if this is the first notification
-      Logger.info("[Discord] Processing system notification")
-      Logger.debug("[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}")
+      AppLogger.processor_info("[Discord] Processing system notification")
+
+      AppLogger.processor_debug(
+        "[Discord] Raw system data: #{inspect(system, pretty: true, limit: 5000)}"
+      )
 
       # Get notification status
       {is_first_notification, system_struct} = prepare_mapped_system_notification(system)
@@ -741,7 +877,7 @@ defmodule WandererNotifier.Notifiers.Discord do
     # Mark that we've sent the first notification if this is it
     if is_first_notification do
       Stats.mark_notification_sent(:system)
-      Logger.info("[Discord] Sending first system notification in enriched format")
+      AppLogger.processor_info("[Discord] Sending first system notification in enriched format")
     end
 
     # Convert to MapSystem struct if not already
@@ -765,17 +901,23 @@ defmodule WandererNotifier.Notifiers.Discord do
   # Enrich a wormhole system with static info
   defp enrich_wormhole_system(system_struct) do
     # Log system properties for wormhole check
-    Logger.info("[Discord] Checking system for wormhole enrichment")
-    Logger.info("[Discord] - is_wormhole?: #{MapSystem.wormhole?(system_struct)}")
-    Logger.info("[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}")
-    Logger.info("[Discord] - type_description: #{inspect(system_struct.type_description)}")
-    Logger.info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
+    AppLogger.processor_info("[Discord] Checking system for wormhole enrichment")
+
+    AppLogger.processor_info("[Discord] - is_wormhole?",
+      is_wormhole: MapSystem.wormhole?(system_struct)
+    )
+
+    AppLogger.processor_info("[Discord] - System details",
+      solar_system_id: inspect(system_struct.solar_system_id),
+      type_description: inspect(system_struct.type_description),
+      system_type: inspect(system_struct.system_type)
+    )
 
     if MapSystem.wormhole?(system_struct) && system_struct.solar_system_id do
       enrich_with_static_info(system_struct)
     else
-      Logger.info(
-        "[Discord] System not a wormhole or missing solar_system_id, skipping enrichment"
+      AppLogger.processor_info(
+        "System not a wormhole or missing solar_system_id, skipping enrichment"
       )
 
       system_struct
@@ -784,14 +926,14 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Enrich system with static info
   defp enrich_with_static_info(system_struct) do
-    Logger.info(
-      "[Discord] Enriching wormhole system with static info: #{system_struct.solar_system_id}"
+    AppLogger.processor_info("Enriching wormhole system with static info",
+      solar_system_id: system_struct.solar_system_id
     )
 
-    Logger.info("[Discord] Calling SystemStaticInfo.enrich_system")
+    AppLogger.processor_info("[Discord] Calling SystemStaticInfo.enrich_system")
 
     enrichment_result = WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(system_struct)
-    Logger.info("[Discord] Enrichment result: #{inspect(enrichment_result)}")
+    AppLogger.processor_info("[Discord] Enrichment result", result: inspect(enrichment_result))
 
     case enrichment_result do
       {:ok, enriched_system} ->
@@ -799,33 +941,56 @@ defmodule WandererNotifier.Notifiers.Discord do
         enriched_system
 
       {:error, reason} ->
-        Logger.warning("[Discord] Failed to enrich system with static info: #{inspect(reason)}")
+        AppLogger.processor_warn("[Discord] Failed to enrich system with static info",
+          error: inspect(reason)
+        )
+
         system_struct
     end
   end
 
   # Log enriched system details
   defp log_enriched_system_details(enriched_system) do
-    Logger.info("[Discord] Successfully enriched system with static info")
-    Logger.info("[Discord] Enriched statics: #{inspect(enriched_system.statics)}")
-    Logger.info("[Discord] Enriched static_details: #{inspect(enriched_system.static_details)}")
-    Logger.info("[Discord] Enriched class_title: #{inspect(enriched_system.class_title)}")
+    AppLogger.processor_info("[Discord] Successfully enriched system with static info")
+    AppLogger.processor_info("[Discord] Enriched statics: #{inspect(enriched_system.statics)}")
+
+    AppLogger.processor_info(
+      "[Discord] Enriched static_details: #{inspect(enriched_system.static_details)}"
+    )
+
+    AppLogger.processor_info(
+      "[Discord] Enriched class_title: #{inspect(enriched_system.class_title)}"
+    )
   end
 
   # Log general system properties
   defp log_enriched_system(system_struct) do
-    Logger.info("[Discord] Enriched MapSystem struct:")
-    Logger.info("[Discord] - name: #{inspect(system_struct.name)}")
-    Logger.info("[Discord] - original_name: #{inspect(system_struct.original_name)}")
-    Logger.info("[Discord] - temporary_name: #{inspect(system_struct.temporary_name)}")
-    Logger.info("[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}")
-    Logger.info("[Discord] - type_description: #{inspect(system_struct.type_description)}")
-    Logger.info("[Discord] - statics: #{inspect(system_struct.statics)}")
-    Logger.info("[Discord] - static_details: #{inspect(system_struct.static_details)}")
-    Logger.info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
-    Logger.info("[Discord] - class_title: #{inspect(system_struct.class_title)}")
-    Logger.info("[Discord] - effect_name: #{inspect(system_struct.effect_name)}")
-    Logger.info("[Discord] - region_name: #{inspect(system_struct.region_name)}")
+    AppLogger.processor_info("[Discord] Enriched MapSystem struct:")
+    AppLogger.processor_info("[Discord] - name: #{inspect(system_struct.name)}")
+    AppLogger.processor_info("[Discord] - original_name: #{inspect(system_struct.original_name)}")
+
+    AppLogger.processor_info(
+      "[Discord] - temporary_name: #{inspect(system_struct.temporary_name)}"
+    )
+
+    AppLogger.processor_info(
+      "[Discord] - solar_system_id: #{inspect(system_struct.solar_system_id)}"
+    )
+
+    AppLogger.processor_info(
+      "[Discord] - type_description: #{inspect(system_struct.type_description)}"
+    )
+
+    AppLogger.processor_info("[Discord] - statics: #{inspect(system_struct.statics)}")
+
+    AppLogger.processor_info(
+      "[Discord] - static_details: #{inspect(system_struct.static_details)}"
+    )
+
+    AppLogger.processor_info("[Discord] - system_type: #{inspect(system_struct.system_type)}")
+    AppLogger.processor_info("[Discord] - class_title: #{inspect(system_struct.class_title)}")
+    AppLogger.processor_info("[Discord] - effect_name: #{inspect(system_struct.effect_name)}")
+    AppLogger.processor_info("[Discord] - region_name: #{inspect(system_struct.region_name)}")
   end
 
   # Send an enriched mapped system notification
@@ -844,7 +1009,9 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Send a plain text mapped system notification
   defp send_plain_mapped_system_notification(system_struct) do
-    Logger.info("[Discord] License not valid, sending plain text system notification")
+    AppLogger.processor_info(
+      "[Discord] License not valid, sending plain text system notification"
+    )
 
     # Create plain text message using struct fields directly
     formatted_name = MapSystem.format_display_name(system_struct)
@@ -890,7 +1057,10 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # Format a list of recent kills for system notification
   defp format_recent_kills_list(kills) when is_list(kills) do
-    Logger.info("[Discord.format_recent_kills_list] Formatting #{length(kills)} kills")
+    AppLogger.processor_info(
+      "[Discord.format_recent_kills_list] Formatting #{length(kills)} kills"
+    )
+
     Enum.map_join(kills, "\n", &format_single_kill/1)
   end
 
@@ -946,7 +1116,7 @@ defmodule WandererNotifier.Notifiers.Discord do
   defp format_single_kill(kill) do
     # Extract kill ID
     kill_id = extract_kill_id(kill)
-    Logger.debug("[Discord.format_recent_kills_list] Processing kill ID: #{kill_id}")
+    AppLogger.processor_debug("[Discord.format_recent_kills_list] Processing kill ID: #{kill_id}")
 
     # Extract victim data
     {victim_name, ship_name} = extract_victim_data(kill)
@@ -957,11 +1127,5 @@ defmodule WandererNotifier.Notifiers.Discord do
 
     # Create formatted string with zkillboard link
     "[#{victim_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_name}#{formatted_value}"
-  end
-
-  # -- GenServer callback for behaviour --
-  @impl GenServer
-  def init(init_arg) do
-    {:ok, init_arg}
   end
 end

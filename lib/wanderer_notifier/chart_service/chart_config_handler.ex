@@ -9,6 +9,7 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
 
   alias WandererNotifier.ChartService.ChartConfig
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Default chart settings
   @default_width 800
@@ -51,7 +52,7 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
   end
 
   def normalize_config(invalid_config) do
-    Logger.error("Invalid chart configuration provided: #{inspect(invalid_config)}")
+    AppLogger.processor_error("Invalid chart configuration provided", config: inspect(invalid_config))
     {:error, "Invalid chart configuration format"}
   end
 

@@ -10,6 +10,8 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
       use WandererNotifier.Schedulers.BaseScheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
+      alias WandererNotifier.Logger, as: AppLogger
+
       # Default schedule time (hour and minute) if not specified
       @default_hour unquote(Keyword.get(opts, :default_hour, 12))
       @default_minute unquote(Keyword.get(opts, :default_minute, 0))
@@ -39,13 +41,16 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
 
       @impl true
       def handle_info(:execute, %{disabled: true} = state) do
-        Logger.info("#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)")
+        AppLogger.scheduler_info(
+          "#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)"
+        )
+
         {:noreply, state}
       end
 
       @impl true
       def handle_info(:execute, state) do
-        Logger.info("#{inspect(@scheduler_name)}: Running scheduled execution")
+        AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running scheduled execution")
 
         case execute(state) do
           {:ok, _result, new_state} ->
@@ -55,7 +60,10 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
             {:noreply, %{new_state | last_run: DateTime.utc_now()}}
 
           {:error, reason, new_state} ->
-            Logger.error("#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}")
+            AppLogger.scheduler_error(
+              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
+            )
+
             # Schedule next execution even if this one failed
             schedule_next_run(new_state.hour, new_state.minute)
             # Update last run timestamp
@@ -80,14 +88,17 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
           # Calculate milliseconds until next run
           milliseconds_until_next_run = DateTime.diff(next_run, now, :millisecond)
 
-          Logger.info(
-            "#{inspect(@scheduler_name)}: Scheduled next execution at #{DateTime.to_string(next_run)} (in #{div(milliseconds_until_next_run, 60000)} minutes)"
+          AppLogger.scheduler_info(
+            "Scheduled next execution",
+            scheduler: inspect(@scheduler_name),
+            next_run: DateTime.to_string(next_run),
+            minutes_until: div(milliseconds_until_next_run, 60_000)
           )
 
           # Schedule the next run
           Process.send_after(self(), :execute, milliseconds_until_next_run)
         else
-          Logger.info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
+          AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
         end
       end
 

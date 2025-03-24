@@ -4,6 +4,7 @@ defmodule WandererNotifier.Notifiers.Factory do
   Provides a unified way to get the appropriate notifier based on configuration.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Returns the appropriate notifier module based on the current environment and configuration.
@@ -36,7 +37,7 @@ defmodule WandererNotifier.Notifiers.Factory do
 
     # Add debug logging for character notifications
     if function == :send_new_tracked_character_notification do
-      Logger.debug("Sending character notification with: #{inspect(args)}")
+      AppLogger.processor_debug("Sending character notification", args: inspect(args))
     end
 
     apply(notifier, function, args)

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   Handles fetching, caching, and notifications for systems.
   """
 
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   use GenServer
 
   alias WandererNotifier.Api.Http.Client
@@ -17,7 +17,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
-    Logger.debug("[update_systems] Starting systems update")
+    AppLogger.processor_debug("Starting systems update")
 
     with {:ok, systems_url} <- build_systems_url(),
          {:ok, body} <- fetch_get_body(systems_url),
@@ -26,7 +26,7 @@ defmodule WandererNotifier.Services.SystemTracker do
       process_fresh_systems(fresh_systems, cached_systems)
     else
       {:error, msg} = err ->
-        Logger.error("[update_systems] error: #{inspect(msg)}")
+        AppLogger.processor_error("Systems update failed", error: inspect(msg))
         err
     end
   end
@@ -34,7 +34,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Process the fresh systems data
   defp process_fresh_systems(fresh_systems, cached_systems) do
     if fresh_systems == [] do
-      Logger.warning("[update_systems] Received empty system list. Retaining existing cache.")
+      AppLogger.processor_warn("Received empty system list", action: "Retaining existing cache")
       {:ok, fresh_systems}
     else
       # Get and process cached systems
@@ -47,21 +47,22 @@ defmodule WandererNotifier.Services.SystemTracker do
     # Use provided cached_systems or fetch from cache
     systems_from_cache = if cached_systems != nil, do: cached_systems, else: get_all_systems()
 
-    Logger.debug(
-      "[update_systems] Found #{length(fresh_systems)} wormhole systems (previously had #{length(systems_from_cache)})"
+    AppLogger.processor_debug("Processing systems update",
+      fresh_count: length(fresh_systems),
+      cached_count: length(systems_from_cache)
     )
 
     # Log cache details for debugging
-    Logger.debug(
-      "[update_systems] Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}"
+    AppLogger.processor_debug(
+      "Cache key: map:systems, cached_systems type: #{inspect(systems_from_cache)}"
     )
 
     # Process new systems if cached systems exist
     if systems_from_cache != [] do
       process_new_systems(fresh_systems, systems_from_cache)
     else
-      Logger.debug(
-        "[update_systems] No cached systems found; skipping new system notifications on startup."
+      AppLogger.processor_debug(
+        "No cached systems found; skipping new system notifications on startup."
       )
     end
 
@@ -78,11 +79,11 @@ defmodule WandererNotifier.Services.SystemTracker do
 
     # Handle notifications for new systems
     if new_systems != [] do
-      Logger.info("[update_systems] Found #{length(new_systems)} new systems to notify about")
+      AppLogger.processor_info("Found #{length(new_systems)} new systems to notify about")
 
       Enum.each(new_systems, &send_notification/1)
     else
-      Logger.debug("[update_systems] No new systems found since last update")
+      AppLogger.processor_debug("No new systems found since last update")
     end
   end
 
@@ -97,7 +98,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Update the cache with fresh systems data
   defp update_systems_cache(fresh_systems) do
-    Logger.debug("[update_systems] Updating systems cache with #{length(fresh_systems)} systems")
+    AppLogger.processor_debug("Updating systems cache with #{length(fresh_systems)} systems")
 
     # Store each system individually with its system_id as the key
     Enum.each(fresh_systems, fn system ->
@@ -119,9 +120,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
     if is_list(system_ids) and length(system_ids) > 0 do
       # If we have cached system IDs, use them to fetch systems efficiently with batch get
-      Logger.debug(
-        "[get_all_systems] Using #{length(system_ids)} cached system IDs for batch lookup"
-      )
+      AppLogger.processor_debug("Using #{length(system_ids)} cached system IDs for batch lookup")
 
       # Construct cache keys for all system IDs
       cache_keys = Enum.map(system_ids, &"map:system:#{&1}")
@@ -135,13 +134,13 @@ defmodule WandererNotifier.Services.SystemTracker do
       |> Enum.map(fn key -> Map.get(systems_map, key) end)
     else
       # Fallback to using the all systems cache (may be slower)
-      Logger.debug("[get_all_systems] No cached system IDs, using direct cache lookup")
+      AppLogger.processor_debug("No cached system IDs, using direct cache lookup")
       CacheRepo.get("map:systems") || []
     end
   end
 
   defp build_systems_url do
-    Logger.debug("[build_systems_url] Building systems URL from map configuration")
+    AppLogger.processor_debug("Building systems URL from map configuration")
 
     # Check if the URL has already been cached in the process dictionary
     cached = Process.get(:systems_url_cache)
@@ -154,7 +153,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
       # Compare the cached and current environment results
       if current_env_result == cached_env_result do
-        Logger.debug("[build_systems_url] Using cached systems URL: #{url}")
+        AppLogger.processor_debug("Using cached systems URL: #{url}")
         {:ok, url}
       else
         # Environment changed, rebuild URL
@@ -200,11 +199,11 @@ defmodule WandererNotifier.Services.SystemTracker do
         # Cache the result with the current environment state
         Process.put(:systems_url_cache, {systems_url, env_result})
 
-        Logger.debug("[build_systems_url] Successfully built systems URL: #{systems_url}")
+        AppLogger.processor_debug("Successfully built systems URL: #{systems_url}")
         {:ok, systems_url}
 
       {:error, reason} = err ->
-        Logger.error("[build_systems_url] Failed to build systems URL: #{inspect(reason)}")
+        AppLogger.processor_error("Failed to build systems URL: #{inspect(reason)}")
         err
     end
   end
@@ -343,7 +342,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
     # Only include the system if it's a wormhole or if we're tracking all systems
     if is_wormhole or track_all_systems do
-      Logger.debug("[process_systems] Including #{system_type} system: #{system_id}")
+      AppLogger.processor_debug("Including #{system_type} system: #{system_id}")
 
       # Format system name
       system_name = format_system_name(temporary_name, original_name, static_info_data, system_id)
@@ -367,8 +366,8 @@ defmodule WandererNotifier.Services.SystemTracker do
       # Create the final map
       create_system_map(system_info)
     else
-      Logger.debug(
-        "[process_systems] Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)"
+      AppLogger.processor_debug(
+        "Skipping non-wormhole system: #{system_id} (TRACK_ALL_SYSTEMS=false)"
       )
 
       nil
@@ -381,8 +380,8 @@ defmodule WandererNotifier.Services.SystemTracker do
       original_name = item["original_name"] || item["OriginalName"]
       temporary_name = item["temporary_name"] || item["TemporaryName"]
 
-      Logger.debug(
-        "[process_systems] Including system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=true)"
+      AppLogger.processor_debug(
+        "Including system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=true)"
       )
 
       %{
@@ -394,8 +393,8 @@ defmodule WandererNotifier.Services.SystemTracker do
         "is_wormhole" => false
       }
     else
-      Logger.debug(
-        "[process_systems] Skipping system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=false)"
+      AppLogger.processor_debug(
+        "Skipping system with unknown type: #{system_id} (TRACK_ALL_SYSTEMS=false)"
       )
 
       nil
@@ -440,11 +439,11 @@ defmodule WandererNotifier.Services.SystemTracker do
   end
 
   defp process_systems(%{"data" => data}) when is_list(data) do
-    Logger.debug("[process_systems] Processing #{length(data)} systems from API response")
+    AppLogger.processor_debug("Processing #{length(data)} systems from API response")
 
     # Check if we should track all systems or just wormhole systems
     track_all_systems = Config.track_all_systems?()
-    Logger.debug("[process_systems] TRACK_ALL_SYSTEMS=#{track_all_systems}")
+    AppLogger.processor_debug("TRACK_ALL_SYSTEMS=#{track_all_systems}")
 
     # Process systems from the map API
     processed =
@@ -453,7 +452,7 @@ defmodule WandererNotifier.Services.SystemTracker do
       # Remove nil entries
       |> Enum.filter(& &1)
 
-    Logger.debug("[process_systems] Processed #{length(processed)} systems after filtering")
+    AppLogger.processor_debug("Processed #{length(processed)} systems after filtering")
 
     {:ok, processed}
   end
@@ -489,7 +488,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
       _ ->
         # Invalid cache value (nil or unexpected type)
-        Logger.warning("[Systems] Invalid cache value for #{cache_key}, fetching fresh data")
+        AppLogger.processor_warn("Invalid cache value for #{cache_key}, fetching fresh data")
         fetch_and_cache_system_info(url, system_id)
     end
   end
@@ -550,10 +549,10 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Log map configuration values
   defp log_map_configuration(config) do
-    Logger.debug("[validate_map_env] Validating map configuration:")
-    Logger.debug("[validate_map_env] - map_url_with_name: #{inspect(config.map_url_with_name)}")
-    Logger.debug("[validate_map_env] - map_url_base: #{inspect(config.map_url_base)}")
-    Logger.debug("[validate_map_env] - map_name: #{inspect(config.map_name)}")
+    AppLogger.processor_debug("Validating map configuration:")
+    AppLogger.processor_debug("- map_url_with_name: #{inspect(config.map_url_with_name)}")
+    AppLogger.processor_debug("- map_url_base: #{inspect(config.map_url_base)}")
+    AppLogger.processor_debug("- map_name: #{inspect(config.map_name)}")
   end
 
   # Choose the appropriate URL based on available configuration
@@ -595,31 +594,28 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Use URL with name directly
   defp use_url_with_name(url) do
-    Logger.debug("[validate_map_env] Using MAP_URL_WITH_NAME: #{url}")
+    AppLogger.processor_debug("Using MAP_URL_WITH_NAME: #{url}")
     url
   end
 
   # Combine URL base and name
   defp combine_url_and_name(base, name) do
     url = "#{base}/#{name}"
-    Logger.debug("[validate_map_env] Using combined MAP_URL and MAP_NAME: #{url}")
+    AppLogger.processor_debug("Using combined MAP_URL and MAP_NAME: #{url}")
     url
   end
 
   # Use URL base directly
   defp use_url_base(url) do
-    Logger.debug("[validate_map_env] Using MAP_URL: #{url}")
+    AppLogger.processor_debug("Using MAP_URL: #{url}")
     url
   end
 
   # Log an error when map URL is not configured
   defp log_map_config_error do
-    Logger.error("[validate_map_env] Map URL is not configured")
-
-    Logger.error(
-      "[validate_map_env] Please set MAP_URL_WITH_NAME or both MAP_URL and MAP_NAME environment variables"
+    AppLogger.processor_error("Map URL is not configured", 
+      message: "Please set MAP_URL_WITH_NAME or both MAP_URL and MAP_NAME environment variables"
     )
-
     nil
   end
 
@@ -632,20 +628,17 @@ defmodule WandererNotifier.Services.SystemTracker do
     cond do
       # Check if the URL has a scheme (http:// or https://)
       uri.scheme == nil ->
-        Logger.error(
-          "[validate_map_env] Map URL is missing scheme (http:// or https://): #{map_url}"
-        )
-
+        AppLogger.processor_error("Map URL is missing scheme", url: map_url)
         {:error, "Map URL is missing scheme"}
 
       # Check if the URL has a host
       uri.host == nil ->
-        Logger.error("[validate_map_env] Map URL is missing host: #{map_url}")
+        AppLogger.processor_error("Map URL is missing host", url: map_url)
         {:error, "Map URL is missing host"}
 
       # URL is valid
       true ->
-        Logger.debug("[validate_map_env] Map URL is valid: #{map_url}")
+        AppLogger.processor_debug("Map URL is valid", url: map_url)
         {:ok, map_url}
     end
   end
@@ -654,13 +647,13 @@ defmodule WandererNotifier.Services.SystemTracker do
   defp send_notification(system) do
     # Skip if notifications are disabled
     if !Config.system_notifications_enabled?() do
-      Logger.debug("[send_notification] System notifications are disabled")
+      AppLogger.processor_debug("System notifications are disabled")
       return(:ok)
     end
 
     # Log the system data
-    Logger.debug(
-      "[send_notification] Sending notification for system: #{inspect(system, pretty: true, limit: 2000)}"
+    AppLogger.processor_info(
+      "Sending notification for system: #{inspect(system, pretty: true, limit: 2000)}"
     )
 
     # Ensure we're working with a MapSystem struct
@@ -687,7 +680,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     cond do
       # Already a MapSystem struct
       is_struct(system, MapSystem) ->
-        Logger.info("[send_notification] Using MapSystem struct")
+        AppLogger.processor_info("Using MapSystem struct")
         enrich_system(system)
 
       # Map with system ID
@@ -696,7 +689,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
       # Unhandled type
       true ->
-        Logger.warning("[send_notification] Unknown system type: #{inspect(system)}")
+        AppLogger.processor_warn("Unknown system type: #{inspect(system)}")
         system
     end
   end
@@ -706,16 +699,14 @@ defmodule WandererNotifier.Services.SystemTracker do
     system_id = extract_system_id_from_map(system)
 
     if system_id do
-      Logger.info(
-        "[send_notification] Converting map to MapSystem struct for system #{system_id}"
-      )
+      AppLogger.processor_info("Converting map to MapSystem struct for system #{system_id}")
 
       # Convert to MapSystem struct and enrich
       system
       |> MapSystem.new()
       |> enrich_system()
     else
-      Logger.warning("[send_notification] Cannot convert to MapSystem: missing system ID")
+      AppLogger.processor_warn("Cannot convert to MapSystem: missing system ID")
       system
     end
   end
@@ -739,14 +730,14 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Handle duplicate system notification
   defp handle_duplicate_system(system_id) do
-    Logger.info("[send_notification] Skipping duplicate system notification for ID: #{system_id}")
+    AppLogger.processor_info("Skipping duplicate system notification for ID: #{system_id}")
     :ok
   end
 
   # Send system notification
   defp send_system_notification(enriched_system, system_id) do
     # Log notification
-    Logger.info("[send_notification] Processing new system notification for ID: #{system_id}")
+    AppLogger.processor_info("Processing new system notification for ID: #{system_id}")
 
     # Get system name
     system_name = extract_system_name(enriched_system)
@@ -830,14 +821,14 @@ defmodule WandererNotifier.Services.SystemTracker do
     if system != nil do
       case SystemStaticInfo.enrich_system(system) do
         {:ok, enriched_system} ->
-          Logger.debug("[SystemTracker] Successfully enriched system #{system.name}")
+          AppLogger.processor_debug("Successfully enriched system #{system.name}")
           enriched_system
 
         {:error, reason} ->
-          Logger.warning(
-            "[SystemTracker] Failed to enrich system #{system.name}: #{inspect(reason)}"
+          AppLogger.processor_warn("Failed to enrich system", 
+            system_name: system.name, 
+            reason: inspect(reason)
           )
-
           system
       end
     else
@@ -847,7 +838,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   @impl true
   def init(_args) do
-    Logger.info("[SystemTracker] Initializing system tracker service")
+    AppLogger.processor_info("Initializing system tracker service")
 
     # Schedule the initial systems update
     schedule_systems_update()
@@ -857,7 +848,7 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   @impl true
   def handle_info(:update_systems, state) do
-    Logger.debug("[SystemTracker] Starting systems update...")
+    AppLogger.processor_debug("Starting systems update...")
 
     # Get existing systems first for comparison
     cached_systems = CacheRepo.get("map:systems") || []
@@ -867,8 +858,8 @@ defmodule WandererNotifier.Services.SystemTracker do
       {:ok, fresh_systems} ->
         # Note: SystemsClient already handles notifications for new systems
 
-        Logger.info(
-          "[SystemTracker] Systems updated successfully with #{length(fresh_systems)} systems"
+        AppLogger.processor_info(
+          "Systems updated successfully with #{length(fresh_systems)} systems"
         )
 
         # Schedule the next update
@@ -876,7 +867,7 @@ defmodule WandererNotifier.Services.SystemTracker do
         {:noreply, state}
 
       {:error, reason} ->
-        Logger.error("[SystemTracker] Failed to update systems: #{inspect(reason)}")
+        AppLogger.processor_error("Failed to update systems: #{inspect(reason)}")
 
         # Schedule next update even if this one failed
         schedule_systems_update()

@@ -6,6 +6,7 @@ defmodule WandererNotifier.Services.Maintenance do
   use GenServer
   require Logger
   alias WandererNotifier.Services.Maintenance.Scheduler
+  alias WandererNotifier.Logger, as: AppLogger
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -28,18 +29,23 @@ defmodule WandererNotifier.Services.Maintenance do
       characters_count: 0
     }
 
+    # Convert state to keyword list for logging
+    state_kw = Enum.map(state, fn {k, v} -> {k, v} end)
+    AppLogger.maintenance_info("Starting maintenance service", state_kw)
+
     # Perform initial checks safely
     try do
       Scheduler.do_initial_checks(state)
     rescue
       e ->
-        Logger.error("Error during initial maintenance checks: #{inspect(e)}")
+        AppLogger.maintenance_error("Initial maintenance checks failed", error: inspect(e))
         # Return the base state if checks fail
         state
     catch
       type, error ->
-        Logger.error(
-          "Error during initial maintenance checks: #{inspect(type)}, #{inspect(error)}"
+        AppLogger.maintenance_error("Initial maintenance error caught",
+          error_type: inspect(type),
+          error: inspect(error)
         )
 
         state
@@ -53,17 +59,27 @@ defmodule WandererNotifier.Services.Maintenance do
     # Schedule the next tick
     schedule_tick()
 
+    AppLogger.maintenance_debug("Running maintenance tick",
+      uptime_seconds: :os.system_time(:second) - state.service_start_time,
+      systems_count: state.systems_count,
+      characters_count: state.characters_count
+    )
+
     # Run the maintenance tasks safely
     new_state =
       try do
         Scheduler.tick(state)
       rescue
         e ->
-          Logger.error("Error during maintenance tick: #{inspect(e)}")
+          AppLogger.maintenance_error("Maintenance tick failed", error: inspect(e))
           state
       catch
         type, error ->
-          Logger.error("Error during maintenance tick: #{inspect(type)}, #{inspect(error)}")
+          AppLogger.maintenance_error("Maintenance tick error caught",
+            error_type: inspect(type),
+            error: inspect(error)
+          )
+
           state
       end
 

@@ -4,6 +4,7 @@ defmodule WandererNotifier.Core.Features do
   Provides functions to check if specific features are enabled.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.License
 
   # Define feature flags
@@ -88,10 +89,16 @@ defmodule WandererNotifier.Core.Features do
 
         if system_notifications_enabled? do
           # If enabled in config, continue with normal license check
-          Logger.debug("[Features] System notifications are enabled (default), checking license")
+          AppLogger.config_debug(
+            "[Features] System notifications are enabled (default), checking license"
+          )
+
           check_license_for_feature(feature)
         else
-          Logger.debug("[Features] System notifications are explicitly disabled in configuration")
+          AppLogger.config_debug(
+            "[Features] System notifications are explicitly disabled in configuration"
+          )
+
           false
         end
 
@@ -284,5 +291,19 @@ defmodule WandererNotifier.Core.Features do
     rescue
       _ -> false
     end
+  end
+
+  @doc """
+  Convenience function to check if system notifications are enabled.
+  """
+  def system_notifications_enabled? do
+    WandererNotifier.Core.Config.system_notifications_enabled?()
+  end
+
+  @doc """
+  Convenience function to check if character notifications are enabled.
+  """
+  def character_notifications_enabled? do
+    WandererNotifier.Core.Config.character_notifications_enabled?()
   end
 end

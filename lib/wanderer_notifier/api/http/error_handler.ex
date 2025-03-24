@@ -28,37 +28,24 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
       end
   end
   ```
+
+  ## Common error types
+
+  - `:connection_error` - Failed to connect to the server
+  - `:timeout` - Request timed out
+  - `:server_error` - Server returned 5xx status code
+  - `:client_error` - Client error (4xx other than specific ones below)
+  - `:not_found` - Resource not found (404)
+  - `:unauthorized` - Authentication failed (401)
+  - `:forbidden` - Authorization failed (403)
+  - `:rate_limited` - Too many requests (429)
+  - `:bad_request` - Invalid request (400)
+  - `:json_error` - Failed to parse JSON response
+  - `:unsupported_media_type` - Media type not supported (415)
+  - `:conflict` - Resource conflict (409)
   """
   require Logger
-
-  # Common error types that can be returned from HTTP operations:
-  #
-  # - :connection_error - Failed to connect to the server
-  # - :timeout - Request timed out
-  # - :server_error - Server returned 5xx status code
-  # - :client_error - Client error (4xx other than specific ones below)
-  # - :not_found - Resource not found (404)
-  # - :unauthorized - Authentication failed (401)
-  # - :forbidden - Authorization failed (403)
-  # - :rate_limited - Too many requests (429)
-  # - :bad_request - Invalid request (400)
-  # - :json_error - Failed to parse JSON response
-  # - :unsupported_media_type - Media type not supported (415)
-  # - :conflict - Resource conflict (409)
-  @error_types [
-    :connection_error,
-    :timeout,
-    :server_error,
-    :client_error,
-    :not_found,
-    :unauthorized,
-    :forbidden,
-    :rate_limited,
-    :bad_request,
-    :json_error,
-    :unsupported_media_type,
-    :conflict
-  ]
+  alias WandererNotifier.Logger, as: AppLogger
 
   @type error_type ::
           :connection_error
@@ -182,7 +169,7 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     tag = Keyword.get(opts, :tag, "HTTP")
 
     # Log the response type to help with debugging
-    Logger.debug("#{tag} Response type: #{inspect(response)}")
+    AppLogger.api_debug("Processing response", tag: tag, response_type: inspect(response))
 
     # Normalize response format to handle both direct maps and {:ok, map} tuples
     normalized_response = normalize_response(response)
@@ -213,7 +200,7 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
           {:ok, data}
 
         {:error, reason} ->
-          log(log_level, "#{tag} JSON decode error: #{inspect(reason)}")
+          log_http_error(log_level, "JSON decode error", tag: tag, error: inspect(reason))
           {:error, :json_error}
       end
     else
@@ -227,8 +214,15 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     error = status_to_error(status)
     domain_error = if domain, do: domain_specific_error(domain, status, body), else: error
 
-    log(log_level, "#{tag} Request failed with status #{status}: #{inspect(error)}")
-    if body != "", do: log(:debug, "#{tag} Response body: #{inspect(body)}")
+    log_http_error(log_level, "Request failed",
+      tag: tag,
+      status: status,
+      error: inspect(error)
+    )
+
+    if body != "" do
+      AppLogger.api_debug("Response body", tag: tag, body: inspect(body))
+    end
 
     {:error, domain_error}
   end
@@ -251,279 +245,117 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
     tag = Keyword.get(opts, :tag, "HTTP")
 
     error = error_to_type(reason)
-    domain_error = if domain, do: domain_specific_error(domain, error, reason), else: error
+    domain_error = if domain, do: domain_specific_error(domain, nil, nil, error), else: error
 
-    log(log_level, "#{tag} Request failed: #{inspect(reason)}")
+    log_http_error(log_level, "Request error",
+      tag: tag,
+      error_type: inspect(error),
+      reason: inspect(reason)
+    )
 
     {:error, domain_error}
   end
 
-  @client_errors %{
-    400 => :bad_request,
-    401 => :unauthorized,
-    403 => :forbidden,
-    404 => :not_found,
-    409 => :conflict,
-    415 => :unsupported_media_type,
-    429 => :rate_limited
-  }
+  # Helper functions to convert error reasons to standard error types
+  defp error_to_type(:econnrefused), do: :connection_error
+  defp error_to_type(:enetunreach), do: :connection_error
+  defp error_to_type(:timeout), do: :timeout
+  defp error_to_type(:connect_timeout), do: :timeout
+  defp error_to_type(:checkout_timeout), do: :timeout
+  defp error_to_type({:closed, _}), do: :connection_error
+  defp error_to_type({:timeout, _}), do: :timeout
+  defp error_to_type({:timeout, _, _}), do: :timeout
+  defp error_to_type(error) when is_atom(error), do: error
+  defp error_to_type(_), do: :connection_error
 
-  @spec status_to_error(integer()) :: error_type() | {:unexpected_status, integer()}
-  def status_to_error(status) do
-    cond do
-      specific_error?(status) -> @client_errors[status]
-      client_error?(status) -> :client_error
-      server_error?(status) -> :server_error
-      true -> {:unexpected_status, status}
+  # Convert HTTP status codes to standard error types
+  defp status_to_error(400), do: :bad_request
+  defp status_to_error(401), do: :unauthorized
+  defp status_to_error(403), do: :forbidden
+  defp status_to_error(404), do: :not_found
+  defp status_to_error(409), do: :conflict
+  defp status_to_error(415), do: :unsupported_media_type
+  defp status_to_error(429), do: :rate_limited
+  defp status_to_error(status) when status >= 500 and status < 600, do: :server_error
+  defp status_to_error(status) when status >= 400 and status < 500, do: :client_error
+  defp status_to_error(status), do: {:unexpected_status, status}
+
+  # Domain-specific error handling with enriched information
+  defp domain_specific_error(domain, status, body, error_type \\ nil)
+
+  defp domain_specific_error(:esi, status, body, error_type) do
+    error_from_body = extract_esi_error(body)
+    error_from_status = error_type || status_to_error(status)
+
+    case error_from_body do
+      nil -> error_from_status
+      error -> {:domain_error, :esi, error}
     end
   end
 
-  # Check if the status is a specific named error
-  defp specific_error?(status) do
-    Map.has_key?(@client_errors, status)
+  defp domain_specific_error(:zkill, status, _body, error_type) do
+    error_from_status = error_type || status_to_error(status)
+    {:domain_error, :zkill, error_from_status}
   end
 
-  # Check if the status is in the 400-499 range (client error)
-  defp client_error?(status) do
-    status in 400..499
+  defp domain_specific_error(:map, status, _body, error_type) do
+    error_from_status = error_type || status_to_error(status)
+    {:domain_error, :map, error_from_status}
   end
 
-  # Check if the status is in the 500-599 range (server error)
-  defp server_error?(status) do
-    status in 500..599
-  end
+  defp domain_specific_error(:discord, status, body, error_type) do
+    # Extract Discord error code and message if available
+    discord_error = extract_discord_error(body)
+    error_from_status = error_type || status_to_error(status)
 
-  @doc """
-  Converts various error reasons to standardized error types.
-
-  ## Examples
-      iex> ErrorHandler.error_to_type(:timeout)
-      :timeout
-
-      iex> ErrorHandler.error_to_type({:econnrefused, nil})
-      :connection_error
-  """
-  @spec error_to_type(any()) :: error_type()
-  def error_to_type(reason) do
-    cond do
-      timeout_error?(reason) -> :timeout
-      connection_error?(reason) -> :connection_error
-      known_error_type?(reason) -> reason
-      true -> :connection_error
+    case discord_error do
+      nil -> {:domain_error, :discord, error_from_status}
+      error -> {:domain_error, :discord, error}
     end
   end
 
-  # Check if the error is a timeout
-  defp timeout_error?(reason) do
-    reason == :timeout || match?({:timeout, _}, reason)
+  defp domain_specific_error(domain, status, _body, error_type) do
+    error_from_status = error_type || status_to_error(status)
+    {:domain_error, domain, error_from_status}
   end
 
-  # Check if the error is a known connection error
-  defp connection_error?(reason) do
-    connection_errors = [
-      :econnrefused,
-      :closed,
-      :enetunreach,
-      :system_limit
-    ]
+  # Extract error information from ESI response body
+  defp extract_esi_error(nil), do: nil
 
-    reason in connection_errors ||
-      match?({:econnrefused, _}, reason) ||
-      match?({:closed, _}, reason)
-  end
-
-  # Check if the error is a predefined error type
-  defp known_error_type?(reason) do
-    reason in @error_types
-  end
-
-  @doc """
-  Annotates an error with additional context.
-
-  ## Examples
-      iex> ErrorHandler.annotate_error(:timeout, :esi_api, :get_killmail)
-      {:domain_error, :esi_api, {:timeout, :get_killmail}}
-  """
-  @spec annotate_error(http_error(), atom(), any()) ::
-          {:domain_error, atom(), {http_error(), any()}}
-  def annotate_error(error, domain, context) do
-    {:domain_error, domain, {error, context}}
-  end
-
-  @doc """
-  Enriches data with additional information from the response headers.
-
-  Options:
-  - :extract - A list of header names to extract
-  - :transform - A function to transform the data with the extracted headers
-
-  ## Examples
-      iex> ErrorHandler.enrich_with_headers({:ok, %{data: "example"}}, [{"X-Pages", "5"}], extract: ["X-Pages"], transform: fn data, headers -> Map.put(data, :pages, headers["X-Pages"]) end)
-      {:ok, %{data: "example", pages: "5"}}
-  """
-  @spec enrich_with_headers({:ok, map()}, list(), Keyword.t()) :: {:ok, map()}
-  def enrich_with_headers({:ok, data}, headers, opts) do
-    extract = Keyword.get(opts, :extract, [])
-    transform = Keyword.get(opts, :transform)
-
-    # Convert headers to a map for easier access
-    header_map = headers_to_map(headers, extract)
-
-    # Transform the data if a transform function is provided
-    if transform && is_function(transform, 2) do
-      {:ok, transform.(data, header_map)}
-    else
-      # Default transformation just merges headers into the data
-      {:ok, Map.merge(data, %{headers: header_map})}
-    end
-  end
-
-  def enrich_with_headers(error, _headers, _opts), do: error
-
-  # Converts a list of headers to a map, filtering by the list of keys to extract
-  defp headers_to_map(headers, extract) do
-    headers
-    |> Enum.filter(fn {key, _} ->
-      normalized_key = normalize_header_key(key)
-      extract == [] or normalized_key in extract
-    end)
-    |> Enum.map(fn {key, value} -> {normalize_header_key(key), value} end)
-    |> Enum.into(%{})
-  end
-
-  # Normalizes header keys to a consistent format
-  defp normalize_header_key(key) do
-    key
-    |> to_string()
-    |> String.downcase()
-    |> String.replace("-", "_")
-  end
-
-  # Domain-specific error handling, extensible for different API domains
-  defp domain_specific_error(domain, status_or_error, body_or_reason) do
-    case domain do
-      :esi -> handle_esi_error(status_or_error, body_or_reason)
-      :zkill -> handle_zkill_error(status_or_error, body_or_reason)
-      :discord -> handle_discord_error(status_or_error, body_or_reason)
-      :map -> handle_map_error(status_or_error, body_or_reason)
-      _ -> status_or_error
-    end
-  end
-
-  # ESI-specific error handling
-  defp handle_esi_error(status_or_error, body_or_reason) do
-    error =
-      if is_integer(status_or_error), do: status_to_error(status_or_error), else: status_or_error
-
-    case {error, body_or_reason} do
-      {:not_found, _} ->
-        {:domain_error, :esi, {:not_found, :resource_not_found}}
-
-      {:server_error, _} when is_binary(body_or_reason) ->
-        if String.contains?(body_or_reason, "database timeout") do
-          {:domain_error, :esi, {:server_error, :database_timeout}}
-        else
-          {:domain_error, :esi, {:server_error, :general}}
-        end
-
-      {:rate_limited, _} ->
-        {:domain_error, :esi, {:rate_limited, :esi_rate_limit}}
-
-      _ ->
-        {:domain_error, :esi, {error, :general}}
-    end
-  end
-
-  # zKill-specific error handling
-  defp handle_zkill_error(status_or_error, body_or_reason) do
-    error =
-      if is_integer(status_or_error), do: status_to_error(status_or_error), else: status_or_error
-
-    case {error, body_or_reason} do
-      {:not_found, _} ->
-        {:domain_error, :zkill, {:not_found, :killmail_not_found}}
-
-      {:server_error, _} ->
-        {:domain_error, :zkill, {:server_error, :zkill_api_error}}
-
-      _ ->
-        {:domain_error, :zkill, {error, :general}}
-    end
-  end
-
-  # Discord-specific error handling - main function
-  defp handle_discord_error(status_or_error, body_or_reason) do
-    # Convert HTTP status to error atom if needed
-    error = normalize_error(status_or_error)
-
-    # Extract Discord's error code
-    error_code = extract_discord_error_code(body_or_reason)
-
-    # Process the specific error
-    create_discord_error(error, error_code)
-  end
-
-  # Normalize error by converting status to error atom if needed
-  defp normalize_error(status_or_error) when is_integer(status_or_error),
-    do: status_to_error(status_or_error)
-
-  defp normalize_error(error), do: error
-
-  # Pattern match on specific Discord error types
-  defp create_discord_error(:unauthorized, _),
-    do: {:domain_error, :discord, {:unauthorized, :invalid_token}}
-
-  defp create_discord_error(:forbidden, _),
-    do: {:domain_error, :discord, {:forbidden, :missing_permissions}}
-
-  defp create_discord_error(:rate_limited, _),
-    do: {:domain_error, :discord, {:rate_limited, :discord_rate_limit}}
-
-  defp create_discord_error(:bad_request, 50_006),
-    do: {:domain_error, :discord, {:bad_request, :empty_message}}
-
-  defp create_discord_error(:bad_request, error_code),
-    do: {:domain_error, :discord, {:bad_request, error_code || :general}}
-
-  # Fallback for all other error types
-  defp create_discord_error(error, error_code),
-    do: {:domain_error, :discord, {error, error_code || :general}}
-
-  # Map API-specific error handling
-  defp handle_map_error(status_or_error, body_or_reason) do
-    error =
-      if is_integer(status_or_error), do: status_to_error(status_or_error), else: status_or_error
-
-    case {error, body_or_reason} do
-      {:not_found, _} ->
-        {:domain_error, :map, {:not_found, :resource_not_found}}
-
-      {:server_error, _} ->
-        {:domain_error, :map, {:server_error, :map_api_error}}
-
-      _ ->
-        {:domain_error, :map, {error, :general}}
-    end
-  end
-
-  # Helper to extract Discord error codes
-  defp extract_discord_error_code(body) when is_binary(body) do
+  defp extract_esi_error(body) when is_binary(body) do
     case Jason.decode(body) do
-      {:ok, %{"code" => code}} when is_integer(code) -> code
+      {:ok, %{"error" => error}} -> error
       _ -> nil
     end
   end
 
-  defp extract_discord_error_code(_), do: nil
+  defp extract_esi_error(_), do: nil
 
-  # Helper for consistent logging
-  defp log(level, message) do
+  # Extract error information from Discord API response
+  defp extract_discord_error(nil), do: nil
+
+  defp extract_discord_error(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{"code" => code, "message" => message}} ->
+        %{code: code, message: message}
+
+      {:ok, %{"message" => message}} ->
+        %{message: message}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp extract_discord_error(_), do: nil
+
+  # Helper function for structured logging at different levels
+  defp log_http_error(level, message, metadata) when level in [:debug, :info, :warn, :error] do
     case level do
-      :debug -> Logger.debug(message)
-      :info -> Logger.info(message)
-      :warning -> Logger.warning(message)
-      :error -> Logger.error(message)
-      _ -> Logger.debug(message)
+      :debug -> AppLogger.api_debug(message, metadata)
+      :info -> AppLogger.api_info(message, metadata)
+      :warn -> AppLogger.api_warn(message, metadata)
+      :error -> AppLogger.api_error(message, metadata)
     end
   end
 end

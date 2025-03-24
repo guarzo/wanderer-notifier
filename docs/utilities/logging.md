@@ -17,7 +17,35 @@ config :logger,
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:module, :function, :trace_id]
+  metadata: [:module, :function, :trace_id, :category]
+```
+
+For structured logging in JSON format (recommended for production):
+
+```elixir
+config :logger, :console,
+  format: {WandererNotifier.Logger.JsonFormatter, :format},
+  metadata: [:module, :function, :trace_id, :category]
+```
+
+## Enhanced Logger Module
+
+The application provides `WandererNotifier.Logger` to standardize logging across the codebase:
+
+```elixir
+alias WandererNotifier.Logger, as: AppLogger
+
+# Category-specific logging with metadata
+AppLogger.kill_info("Processing killmail",
+  kill_id: "12345",
+  system_name: "Jita"
+)
+
+# Exception logging with stack traces
+AppLogger.exception(:error, "API", "Failed to fetch data", exception)
+
+# Adding trace IDs for operation correlation
+AppLogger.with_trace_id(operation: "process_killmail")
 ```
 
 ## Log Levels
@@ -33,38 +61,55 @@ The application uses the following log levels consistently:
 
 ## Log Categories
 
-WandererNotifier uses special tags in log messages to categorize and filter logs:
+WandererNotifier uses standard categories in log messages for filtering and organization:
 
-| Category Tag        | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `[API TRACE]`       | API interactions with external services      |
-| `[WEBSOCKET TRACE]` | WebSocket connection and message handling    |
-| `[CACHE TRACE]`     | Cache operations and performance             |
-| `[PROCESSOR TRACE]` | Message processing and transformation        |
-| `[KILLMAIL TRACE]`  | Killmail-specific handling and notifications |
-| `[FORMATTER TRACE]` | Discord message formatting and delivery      |
-| `[SCHEDULER TRACE]` | Scheduled task execution                     |
-| `[CONFIG TRACE]`    | Configuration loading and validation         |
-| `[STARTUP TRACE]`   | Application startup events                   |
+| Category      | Description                               |
+| ------------- | ----------------------------------------- |
+| `API`         | API interactions with external services   |
+| `WEBSOCKET`   | WebSocket connection and message handling |
+| `KILL`        | Killmail processing and notifications     |
+| `PERSISTENCE` | Database operations and data storage      |
+| `CACHE`       | Cache operations and performance          |
+| `PROCESSOR`   | Message processing and transformation     |
+| `STARTUP`     | Application startup events                |
+| `CONFIG`      | Configuration loading and validation      |
+| `MAINTENANCE` | Maintenance tasks and health checks       |
+| `SCHEDULER`   | Scheduled task execution                  |
 
-Example:
+Examples:
 
 ```
-2023-06-01 12:34:56.789 [module=WebSocket][WEBSOCKET TRACE][info] Connected to zkillboard WebSocket
+[API] Fetching character data (character_id=12345, trace_id=abc123)
+[KILL] Processing killmail (kill_id=67890, system_name="Jita")
 ```
 
-## Contextual Logging
+## Structured Metadata
 
-The logging system enriches log entries with contextual information:
+The logging system enriches log entries with contextual information as metadata:
 
 ```elixir
-Logger.metadata(
-  module: __MODULE__,
-  function: "#{function}/#{arity}",
-  trace_id: trace_id
+AppLogger.api_info("Fetching character data",
+  character_id: character_id,
+  method: "GET",
+  endpoint: "/characters/#{character_id}/",
+  cache_status: "miss"
 )
+```
 
-Logger.info("[API TRACE] Fetching character data for ID #{character_id}")
+This produces structured output that can be easily filtered and analyzed:
+
+```json
+{
+  "timestamp": "2023-07-15T12:34:56.789Z",
+  "level": "info",
+  "message": "[API] Fetching character data",
+  "category": "API",
+  "character_id": 12345,
+  "method": "GET",
+  "endpoint": "/characters/12345/",
+  "cache_status": "miss",
+  "trace_id": "7a8b9c0d1e2f3g4h"
+}
 ```
 
 ## Trace IDs
@@ -73,45 +118,11 @@ Trace IDs are used to correlate related log entries across different components:
 
 ```elixir
 def process_message(message) do
-  trace_id = generate_trace_id()
-  Logger.metadata(trace_id: trace_id)
+  trace_id = AppLogger.with_trace_id(operation: "process_message")
 
-  Logger.info("[PROCESSOR TRACE] Processing message")
+  AppLogger.processor_info("Processing message")
   # Processing logic...
-  Logger.info("[PROCESSOR TRACE] Message processing complete")
-end
-
-defp generate_trace_id do
-  Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
-end
-```
-
-## Structured Logging Helper
-
-The `WandererNotifier.Logger` module provides helpers for consistent log formatting:
-
-```elixir
-defmodule WandererNotifier.Logger do
-  require Logger
-
-  def api_trace(message, metadata \\ []) do
-    log(:info, "[API TRACE] #{message}", metadata)
-  end
-
-  def websocket_trace(message, metadata \\ []) do
-    log(:info, "[WEBSOCKET TRACE] #{message}", metadata)
-  end
-
-  def cache_trace(message, metadata \\ []) do
-    log(:debug, "[CACHE TRACE] #{message}", metadata)
-  end
-
-  # Additional helper methods for other trace types...
-
-  defp log(level, message, metadata) do
-    metadata = Keyword.merge(Logger.metadata(), metadata)
-    Logger.log(level, message, metadata)
-  end
+  AppLogger.processor_info("Message processing complete")
 end
 ```
 
@@ -122,8 +133,7 @@ Errors are logged with detailed information to facilitate troubleshooting:
 ```elixir
 rescue
   error ->
-    stacktrace = Exception.format_stacktrace(__STACKTRACE__)
-    Logger.error("[API TRACE] Failed to fetch data: #{inspect(error)}\n#{stacktrace}")
+    AppLogger.exception(:error, "API", "Failed to fetch data", error)
     {:error, :api_error}
 end
 ```
@@ -133,23 +143,28 @@ end
 API interactions are logged with request and response details:
 
 ```elixir
-def api_request_trace(method, url, headers, body \\ nil) do
+def api_request(method, url, headers, body \\ nil) do
   sanitized_headers = sanitize_headers(headers)
-  Logger.debug(fn ->
-    "[API TRACE] Request: #{method} #{url}\nHeaders: #{inspect(sanitized_headers)}\nBody: #{inspect(body)}"
-  end)
-end
 
-def api_response_trace(status, headers, body) do
-  sanitized_headers = sanitize_headers(headers)
-  Logger.debug(fn ->
-    "[API TRACE] Response: Status #{status}\nHeaders: #{inspect(sanitized_headers)}\nBody: #{inspect(body)}"
-  end)
+  AppLogger.api_debug("Making API request",
+    method: method,
+    url: url,
+    headers: sanitized_headers,
+    body: body
+  )
+
+  # Make the request...
+
+  AppLogger.api_debug("Received API response",
+    status: status,
+    headers: sanitized_headers,
+    body: response_body
+  )
 end
 
 defp sanitize_headers(headers) do
   Enum.map(headers, fn
-    {key, value} when key in ["Authorization", "authorization"] ->
+    {key, _value} when key in ["Authorization", "authorization"] ->
       {key, "[REDACTED]"}
     header ->
       header
@@ -165,8 +180,8 @@ The application configures log file rotation to prevent unbounded growth:
 config :logger, :error_log,
   path: "/var/log/wanderer_notifier/error.log",
   level: :error,
-  format: "$date $time $metadata[$level] $message\n",
-  metadata: [:module, :function, :trace_id],
+  format: {WandererNotifier.Logger.JsonFormatter, :format},
+  metadata: [:module, :function, :trace_id, :category],
   rotate: %{max_bytes: 10_485_760, keep: 5}
 ```
 
@@ -175,9 +190,11 @@ config :logger, :error_log,
 The application logs comprehensive information at startup:
 
 ```elixir
-Logger.info("[STARTUP TRACE] Starting WandererNotifier v#{Application.spec(:wanderer_notifier, :vsn)}")
-Logger.info("[CONFIG TRACE] Environment: #{Mix.env()}")
-Logger.info("[CONFIG TRACE] Features enabled: #{inspect(enabled_features())}")
+AppLogger.startup_info("Starting application",
+  version: Application.spec(:wanderer_notifier, :vsn),
+  environment: Mix.env(),
+  features_enabled: enabled_features()
+)
 ```
 
 ## Runtime Logging Configuration
@@ -203,55 +220,30 @@ The application takes care to avoid logging sensitive information:
 def log_authentication(token) do
   # DON'T: Logger.info("Using token: #{token}")
   # DO:
-  Logger.info("Authentication initiated with token: [REDACTED]")
+  AppLogger.api_info("Authentication initiated", token: "[REDACTED]")
 end
 ```
-
-## Log Analysis
-
-Logs are designed to be easily parsed and analyzed using standard tools:
-
-1. **Grep Patterns** - Logs use consistent patterns for easy filtering:
-
-   ```bash
-   grep "\[API TRACE\]" logs/application.log
-   ```
-
-2. **JSON Formatting** (optional) - Logs can be output in JSON format for advanced analysis:
-   ```elixir
-   config :logger, :console,
-     format: {WandererNotifier.Logger.JsonFormatter, :format},
-     metadata: [:module, :function, :trace_id, :category]
-   ```
 
 ## Performance Considerations
 
 The application implements performance-aware logging:
 
 ```elixir
-# Avoid expensive operations when the level won't be logged
-Logger.debug(fn -> "Computed value: #{expensive_computation()}" end)
-
-# Rate-limited logging for frequent events
-if should_log?(:websocket_message) do
-  Logger.debug("[WEBSOCKET TRACE] Received message: #{inspect(message)}")
-end
-
-defp should_log?(event_type) do
-  # Implement rate limiting based on event type
-end
+# Lazy evaluation for expensive logs
+AppLogger.lazy_log(:debug, "CACHE", fn ->
+  "Cache stats: #{inspect(calculate_expensive_stats())}"
+end)
 ```
 
 ## Best Practices
 
-1. **Use Appropriate Levels** - Select the correct log level based on message importance
-2. **Include Context** - Always include relevant context (IDs, types, status)
-3. **Use Categories** - Apply consistent category tags for filtering
-4. **Be Concise** - Keep log messages clear and to the point
-5. **Avoid Noise** - Don't log routine operations at info level during normal operation
-6. **Correlate Events** - Use trace IDs to link related operations
-7. **Sanitize Data** - Never log sensitive information like tokens or credentials
-8. **Performance Aware** - Use lazy logging for expensive operations
+1. **Use Category Helpers** - Always use the appropriate category helper method
+2. **Include Metadata** - Put context in metadata, not in message strings
+3. **Proper Log Levels** - Use the right level for each type of information
+4. **Consolidate Logs** - Group related information in a single log entry
+5. **Add Trace IDs** - For multi-step operations to enable correlation
+6. **Be Concise** - Keep messages clear and to the point
+7. **Avoid String Interpolation** - Use structured metadata instead
 
 ## Environment Variables
 

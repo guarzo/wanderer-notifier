@@ -82,53 +82,107 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Update characters from the map
   defp update_characters(state, now, force \\ false) do
+    # Check if character tracking is enabled
     if Features.tracked_characters_notifications_enabled?() do
-      Logger.info("Updating characters (force=#{force})...")
+      update_tracked_characters(state, now, force)
+    else
+      Logger.debug("Character tracking is disabled, skipping update")
+      return_state_with_updated_timestamp(state, now)
+    end
+  end
 
-      cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
-      Logger.debug("Retrieved cached characters before update: #{inspect(cached_characters)}")
+  # Process tracked characters update
+  defp update_tracked_characters(state, now, force) do
+    Logger.info("Updating characters (force=#{force})...")
 
-      case MapClient.update_tracked_characters(cached_characters) do
+    # Get cached characters and ensure they're in the right format
+    cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
+    cached_characters_safe = normalize_cached_characters(cached_characters)
+
+    Logger.debug("Retrieved cached characters before update: #{inspect(cached_characters_safe)}")
+
+    # Update characters through the MapClient with exception handling
+    try do
+      case MapClient.update_tracked_characters(cached_characters_safe) do
         {:ok, characters} ->
-          Logger.info("Characters updated: #{length(characters)} characters found")
-          # Verify the characters were actually stored in cache
-          verify_and_update_characters_cache(characters)
-          %{state | last_characters_update: now, characters_count: length(characters)}
+          handle_successful_character_update(state, now, characters)
 
         {:error, reason} ->
           Logger.error("Failed to update characters: #{inspect(reason)}")
-          # Return original state with updated timestamp to prevent rapid retries
-          %{state | last_characters_update: now}
+          return_state_with_updated_timestamp(state, now)
       end
-    else
-      Logger.debug("Character tracking is disabled, skipping update")
-      %{state | last_characters_update: now}
+    rescue
+      e ->
+        # Catch any exception, log it, and return the state with updated timestamp
+        Logger.error("Exception while updating characters: #{Exception.message(e)}")
+        Logger.debug("Stacktrace: #{inspect(Process.info(self(), :current_stacktrace))}")
+        # Return original state with updated timestamp to prevent rapid retries
+        return_state_with_updated_timestamp(state, now)
     end
+  end
+
+  # Normalize cached characters to ensure it's a list or nil
+  defp normalize_cached_characters(cached_characters) do
+    ensure_list(cached_characters)
+  end
+
+  # Helper function to ensure we're working with a list
+  defp ensure_list(nil), do: []
+  defp ensure_list(list) when is_list(list), do: list
+  defp ensure_list({:ok, list}) when is_list(list), do: list
+  defp ensure_list({:error, _}), do: []
+  defp ensure_list(_), do: []
+
+  # Handle successful character update
+  defp handle_successful_character_update(state, now, characters) do
+    # Ensure characters is a list
+    characters_list = ensure_list(characters)
+
+    Logger.info("Characters updated: #{length(characters_list)} characters found")
+
+    # Verify the characters were actually stored in cache
+    verify_and_update_characters_cache(characters_list)
+
+    # Return updated state
+    %{state | last_characters_update: now, characters_count: length(characters_list)}
+  end
+
+  # Helper to return state with updated timestamp
+  defp return_state_with_updated_timestamp(state, now) do
+    %{state | last_characters_update: now}
   end
 
   # Verify characters are stored in cache and force update if needed
   defp verify_and_update_characters_cache(characters) do
+    # Ensure we're working with a list
+    characters_list = ensure_list(characters)
+
     updated_cache = CacheRepo.get("map:characters")
+    # Ensure the cache result is a list
+    cache_list = ensure_list(updated_cache)
 
     Logger.debug(
-      "Post-update cache verification - map:characters contains: #{inspect(updated_cache)}"
+      "Post-update cache verification - map:characters contains: #{length(cache_list)} characters"
     )
 
-    if updated_cache == nil || updated_cache == [] do
+    if cache_list == [] do
       Logger.warning(
         "Characters were updated but cache appears empty. Forcing manual cache update."
       )
 
       CacheRepo.set(
         "map:characters",
-        characters,
-        WandererNotifier.Config.Timings.characters_cache_ttl()
+        characters_list,
+        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
       )
 
       # Double-check the cache again
       final_cache = CacheRepo.get("map:characters")
+      final_cache_list = ensure_list(final_cache)
 
-      Logger.debug("After manual cache update - map:characters contains: #{inspect(final_cache)}")
+      Logger.debug(
+        "After manual cache update - map:characters contains: #{length(final_cache_list)} characters"
+      )
     end
   end
 
