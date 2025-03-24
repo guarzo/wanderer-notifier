@@ -3,7 +3,7 @@ defmodule WandererNotifier.Repo do
     otp_app: :wanderer_notifier,
     adapter: Ecto.Adapters.Postgres
 
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Required by Ash framework for transaction handling.
@@ -57,16 +57,16 @@ defmodule WandererNotifier.Repo do
             {:ok, ping_time}
 
           {:error, error} ->
-            Logger.error("Database health check failed: #{inspect(error)}")
+            AppLogger.persistence_error("Database health check failed", error: inspect(error))
             {:error, error}
         end
       rescue
         e ->
-          Logger.error("Database health check exception: #{Exception.message(e)}")
+          AppLogger.persistence_error("Database health check exception", error: Exception.message(e))
           {:error, e}
       end
     else
-      Logger.error("Database health check failed: Repo not started")
+      AppLogger.persistence_error("Database health check failed", reason: "Repo not started")
       {:error, "Repo not started"}
     end
   end

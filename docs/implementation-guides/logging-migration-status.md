@@ -26,8 +26,8 @@ We've implemented a new structured logging approach using `WandererNotifier.Logg
 Based on the latest scan:
 
 - Total Elixir files: 101
-- Already using AppLogger: 74
-- Files needing migration: 2 (making great progress!)
+- Already using AppLogger: 75
+- Files needing migration: 1 (nearly complete!)
 
 ## Files Updated
 
@@ -48,6 +48,7 @@ Based on the latest scan:
 - [x] `lib/wanderer_notifier/discord/notifier.ex`
 - [x] `lib/wanderer_notifier/workers/character_sync_worker.ex`
 - [x] `lib/wanderer_notifier/discord/test_notifier.ex`
+- [x] `lib/wanderer_notifier/repo.ex`
 
 ## How to Continue the Migration
 
