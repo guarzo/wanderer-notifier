@@ -134,33 +134,91 @@ defmodule WandererNotifier.Services.CharacterKillsService do
   def fetch_and_persist_all_tracked_character_kills(limit \\ 25, page \\ 1) do
     # Get all tracked characters using the Helpers module that gets from all sources
     tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
-    log_tracked_characters(tracked_characters)
+
+    start_time = System.monotonic_time(:millisecond)
+
+    # Log detailed information about tracked characters
+    character_count = length(tracked_characters)
+
+    AppLogger.processor_info(
+      "Starting killmail fetch for all tracked characters",
+      character_count: character_count,
+      limit_per_character: limit,
+      page: page
+    )
 
     # Continue with processing the tracked characters list
     if Enum.empty?(tracked_characters) do
       AppLogger.processor_warn("No tracked characters found in any source")
       {:ok, %{processed: 0, persisted: 0, characters: 0}}
     else
-      process_tracked_characters(tracked_characters, limit, page)
+      # Add estimated time based on count
+      estimated_time_seconds = character_count * (@rate_limit_ms / 1000)
+
+      AppLogger.processor_info(
+        "Beginning batch character processing",
+        estimated_completion_time_seconds: Float.round(estimated_time_seconds, 1),
+        estimated_completion_time_minutes: Float.round(estimated_time_seconds / 60, 1),
+        started_at: DateTime.utc_now() |> DateTime.to_string(),
+        cache_ttl_seconds: @cache_ttl_seconds
+      )
+
+      result = process_tracked_characters(tracked_characters, limit, page)
+
+      # Calculate elapsed time
+      end_time = System.monotonic_time(:millisecond)
+      duration_seconds = (end_time - start_time) / 1000
+
+      # Log duration information
+      case result do
+        {:ok, stats} ->
+          AppLogger.processor_info(
+            "Completed killmail fetch for all characters",
+            elapsed_seconds: Float.round(duration_seconds, 2),
+            characters_processed: stats.characters,
+            avg_seconds_per_character:
+              Float.round(duration_seconds / max(stats.characters, 1), 2),
+            completion_time: DateTime.utc_now() |> DateTime.to_string()
+          )
+
+        {:error, _} ->
+          AppLogger.processor_error(
+            "Failed to complete killmail fetch for all characters",
+            elapsed_seconds: Float.round(duration_seconds, 2),
+            completion_time: DateTime.utc_now() |> DateTime.to_string()
+          )
+      end
+
+      result
     end
-  end
-
-  # Log information about tracked characters
-  defp log_tracked_characters(tracked_characters) do
-    character_count = length(tracked_characters)
-    sample = Enum.take(tracked_characters, min(5, character_count))
-
-    AppLogger.processor_info(
-      "Found tracked characters from CacheHelpers",
-      count: character_count,
-      sample: inspect(sample)
-    )
   end
 
   # Process all tracked characters and return aggregated results
   defp process_tracked_characters(tracked_characters, limit, page) do
     # Process each character with a delay between requests
-    results = Enum.map(tracked_characters, &process_single_character(&1, limit, page))
+    total_count = length(tracked_characters)
+
+    # Process each character with progress tracking
+    {results, _} =
+      Enum.reduce(tracked_characters, {[], 0}, fn character, {acc_results, index} ->
+        # Calculate progress percentage
+        progress_pct = Float.round(index / total_count * 100, 1)
+
+        if rem(index, 5) == 0 do
+          AppLogger.processor_info(
+            "Character batch progress update",
+            completed: index,
+            total: total_count,
+            progress_percentage: "#{progress_pct}%"
+          )
+        end
+
+        # Process the character
+        result = process_single_character(character, limit, page)
+
+        # Return updated accumulator
+        {[result | acc_results], index + 1}
+      end)
 
     # Check for critical ZKill API errors
     zkill_api_errors = find_api_errors(results)
@@ -187,7 +245,33 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
       {:error, :invalid_character_id}
     else
-      fetch_character_kills_safely(character_id, limit, page)
+      # Add log to track individual character progress
+      AppLogger.processor_info("Fetching kills for individual character in batch",
+        character_id: character_id,
+        limit: limit,
+        page: page,
+        cache_ttl: @cache_ttl_seconds
+      )
+
+      result = fetch_character_kills_safely(character_id, limit, page)
+
+      # Log the result of this individual character's processing
+      case result do
+        {:ok, stats} ->
+          AppLogger.processor_info("Completed processing character in batch",
+            character_id: character_id,
+            processed: stats.processed,
+            persisted: stats.persisted
+          )
+
+        {:error, reason} ->
+          AppLogger.processor_warn("Failed to process character in batch",
+            character_id: character_id,
+            reason: inspect(reason)
+          )
+      end
+
+      result
     end
   end
 
@@ -258,19 +342,43 @@ defmodule WandererNotifier.Services.CharacterKillsService do
       total_processed = Enum.reduce(successes, 0, fn {:ok, %{processed: p}}, acc -> acc + p end)
       total_persisted = Enum.reduce(successes, 0, fn {:ok, %{persisted: p}}, acc -> acc + p end)
 
-      # Log summary of success
+      # Calculate percentage of processed kills that were actually persisted (new)
+      persisted_percentage =
+        if total_processed > 0 do
+          Float.round(total_persisted / total_processed * 100, 1)
+        else
+          0.0
+        end
+
+      successful_characters = length(successes)
+      failed_characters = length(tracked_characters) - successful_characters
+
+      # Add intermediate progress info
       AppLogger.processor_info(
-        "Successfully processed and persisted kills",
-        processed: total_processed,
-        persisted: total_persisted,
-        character_count: length(tracked_characters)
+        "Character processing completed",
+        success_rate:
+          "#{Float.round(successful_characters / length(tracked_characters) * 100, 1)}%",
+        successful: successful_characters,
+        failed: failed_characters,
+        total: length(tracked_characters)
+      )
+
+      # Log summary of success with more details
+      AppLogger.processor_info(
+        "Summary of killmail fetch process",
+        characters_processed: successful_characters,
+        characters_attempted: length(tracked_characters),
+        kills_processed: total_processed,
+        new_kills_persisted: total_persisted,
+        already_existing_kills: total_processed - total_persisted,
+        new_kills_percentage: "#{persisted_percentage}%"
       )
 
       {:ok,
        %{
          processed: total_processed,
          persisted: total_persisted,
-         characters: length(tracked_characters)
+         characters: successful_characters
        }}
     end
   end
@@ -289,7 +397,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
     processed_cache_key = "processed:killmails:global"
     already_processed = CacheRepo.get(processed_cache_key) || MapSet.new()
 
-    # Filter out kills we've already processed
+    # Filter out kills that have already been processed
     unprocessed_kills = filter_unprocessed_kills(kills, already_processed)
 
     # Process unprocessed kills
@@ -306,17 +414,25 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Filter out kills that have already been processed
   defp filter_unprocessed_kills(kills, already_processed) do
+    total_kills = length(kills)
+
     unprocessed =
       Enum.filter(kills, fn kill ->
         kill_id = Map.get(kill, "killmail_id")
         !MapSet.member?(already_processed, kill_id)
       end)
 
-    if length(unprocessed) < length(kills) do
+    skipped_count = total_kills - length(unprocessed)
+
+    if skipped_count > 0 do
+      skipped_percentage = Float.round(skipped_count / total_kills * 100, 1)
+
       AppLogger.processor_info(
-        "Skipping already processed kills",
-        skipped_count: length(kills) - length(unprocessed),
-        total_count: length(kills)
+        "Found previously processed kills",
+        total_kills: total_kills,
+        already_processed_count: skipped_count,
+        new_kills_count: length(unprocessed),
+        skipped_percentage: "#{skipped_percentage}%"
       )
     end
 

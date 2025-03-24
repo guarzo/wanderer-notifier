@@ -4,7 +4,6 @@ defmodule WandererNotifier.Release do
   Used in production for migrations and database setup.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
 
   @app :wanderer_notifier
 
@@ -27,7 +26,7 @@ defmodule WandererNotifier.Release do
             Logger.info("Database status check completed with logger initialization warning")
 
           {:error, error} ->
-            Logger.warn("Failed to create database: #{inspect(error)}")
+            Logger.warning("Failed to create database: #{inspect(error)}")
         end
       rescue
         e ->
@@ -103,7 +102,7 @@ defmodule WandererNotifier.Release do
           repos
 
         :error ->
-          Logger.warn("Could not find ecto_repos configuration, using default")
+          Logger.warning("Could not find ecto_repos configuration, using default")
           [WandererNotifier.Repo]
       end
     rescue

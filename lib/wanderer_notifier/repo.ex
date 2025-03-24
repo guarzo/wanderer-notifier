@@ -6,6 +6,22 @@ defmodule WandererNotifier.Repo do
   alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
+  Returns a list of PostgreSQL extensions that have already been installed.
+  This is used by AshPostgres.MigrationGenerator for code generation.
+  """
+  def installed_extensions do
+    case Ecto.Adapters.SQL.query(__MODULE__, "SELECT extname FROM pg_extension") do
+      {:ok, result} ->
+        Enum.map(result.rows, fn [ext] -> ext end)
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
+  end
+
+  @doc """
   Required by Ash framework for transaction handling.
   Returns whether atomic actions should be disabled.
   For now, we're disabling atomic actions since we don't need them.

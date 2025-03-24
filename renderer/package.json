@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "watch": "vite build --watch --minify false --emptyOutDir false --mode development",
+    "dev:watch": "npm run watch & npx onchange 'dist/**/*' -- cp -r dist/* ../priv/static/app/",
+    "dev:sync": "node watch-and-copy.js",
+    "sync": "node watch-sync.js",
     "lint": "eslint .",
     "postbuild": "rm -rf ../priv/static/app && cp -r dist ../priv/static/app",
     "preview": "vite preview",
@@ -33,6 +36,7 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^15.15.0",
     "nodemon": "^3.0.3",
+    "onchange": "^7.1.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.14",
     "vite": "^6.2.0"

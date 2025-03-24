@@ -35,6 +35,27 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     case prepare_weekly_kills_data(limit) do
       {:ok, chart_data, title, chart_options} ->
         generate_chart_from_data(chart_data, title, chart_options)
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to prepare weekly kills data", error: inspect(reason))
+        generate_empty_chart()
+    end
+  end
+
+  @doc """
+  Generates a chart showing only ISK destroyed for tracked characters.
+  """
+  def generate_weekly_isk_chart(options \\ %{}) do
+    limit = extract_limit_from_options(options)
+    AppLogger.kill_info("Generating weekly ISK destroyed chart", limit: limit)
+
+    case prepare_weekly_isk_data(limit) do
+      {:ok, chart_data, title, chart_options} ->
+        generate_chart_from_data(chart_data, title, chart_options)
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to prepare weekly ISK data", error: inspect(reason))
+        generate_empty_chart()
     end
   end
 
@@ -107,11 +128,17 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         )
 
         # Extract chart elements
-        {character_labels, kills_data, isk_destroyed_data} = extract_kill_metrics(top_characters)
+        {character_labels, kills_data, _, solo_kills_data, final_blows_data} =
+          extract_kill_metrics(top_characters)
 
-        # Create chart data structure
+        # Create chart data structure for kills only
         chart_data =
-          create_weekly_kills_chart_data(character_labels, kills_data, isk_destroyed_data)
+          create_weekly_kills_only_chart_data(
+            character_labels,
+            kills_data,
+            solo_kills_data,
+            final_blows_data
+          )
 
         options = create_weekly_kills_chart_options()
 
@@ -120,7 +147,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         AppLogger.kill_warn("No weekly statistics available for tracked characters")
 
         # Create an empty chart with a message instead of returning an error
-        empty_chart_data = create_empty_chart_data("No kill statistics available yet")
+        empty_chart_data = create_empty_kills_chart_data("No kill statistics available yet")
         options = create_empty_chart_options()
 
         {:ok, empty_chart_data, "Weekly Character Kills", options}
@@ -132,11 +159,57 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
 
-        # Even for errors, create an empty chart with an error message
-        empty_chart_data = create_empty_chart_data("Error loading chart data")
+        {:error, "Error preparing weekly kills data: #{Exception.message(e)}"}
+    end
+  end
+
+  @doc """
+  Prepares chart data for the weekly ISK destroyed chart.
+  Returns {:ok, chart_data, title, options} or {:error, reason}.
+  """
+  def prepare_weekly_isk_data(limit) do
+    AppLogger.kill_info("Preparing weekly ISK destroyed chart data")
+
+    try do
+      # Get tracked characters
+      tracked_characters = get_tracked_characters()
+
+      # Get weekly statistics for these characters
+      weekly_stats = get_weekly_stats(tracked_characters)
+
+      if length(weekly_stats) > 0 do
+        # Get top characters by ISK destroyed
+        top_characters = get_top_characters_by_isk_destroyed(weekly_stats, limit)
+
+        AppLogger.kill_info("Selected top characters for weekly ISK destroyed chart",
+          count: length(top_characters)
+        )
+
+        # Extract chart elements
+        {character_labels, _, isk_destroyed_data, _, _} = extract_kill_metrics(top_characters)
+
+        # Create chart data structure for ISK only
+        chart_data = create_weekly_isk_only_chart_data(character_labels, isk_destroyed_data)
+        options = create_weekly_isk_chart_options()
+
+        {:ok, chart_data, "Weekly ISK Destroyed", options}
+      else
+        AppLogger.kill_warn("No weekly statistics available for tracked characters")
+
+        # Create an empty chart with a message instead of returning an error
+        empty_chart_data = create_empty_isk_chart_data("No ISK statistics available yet")
         options = create_empty_chart_options()
 
-        {:ok, empty_chart_data, "Weekly Character Kills", options}
+        {:ok, empty_chart_data, "Weekly ISK Destroyed", options}
+      end
+    rescue
+      e ->
+        AppLogger.kill_error("Error preparing weekly ISK data",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        {:error, "Error preparing weekly ISK data: #{Exception.message(e)}"}
     end
   end
 
@@ -176,6 +249,88 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       {:error, reason} ->
         AppLogger.kill_error("Failed to generate weekly kills chart", error: inspect(reason))
         {:error, reason}
+    end
+  end
+
+  @doc """
+  Sends a weekly ISK destroyed chart to Discord.
+
+  ## Parameters
+    - title: The title for the chart embed (optional)
+    - description: Optional description for the Discord embed
+    - channel_id: Optional Discord channel ID to send the chart to
+    - limit: Maximum number of characters to display (default 20)
+
+  ## Returns
+    - {:ok, message_id} if successful
+    - {:error, reason} if something fails
+  """
+  def send_weekly_isk_chart_to_discord(
+        title \\ "Weekly ISK Destroyed",
+        description \\ nil,
+        channel_id \\ nil,
+        limit \\ 20
+      ) do
+    # Determine actual description if not provided
+    actual_description =
+      description || "Top #{limit} characters by ISK destroyed in the past week"
+
+    # Generate the chart URL
+    case generate_weekly_isk_chart(limit) do
+      {:ok, url} ->
+        # Send chart to Discord
+        ChartService.send_chart_to_discord(
+          url,
+          title,
+          actual_description,
+          channel_id
+        )
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to generate weekly ISK destroyed chart",
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Sends both weekly kill and ISK destroyed charts to Discord.
+
+  ## Parameters
+    - kill_title: Optional title for the kills chart
+    - isk_title: Optional title for the ISK destroyed chart
+    - description: Optional description for the Discord embeds
+    - channel_id: Optional Discord channel ID to send the charts to
+    - limit: Maximum number of characters to display (default 20)
+
+  ## Returns
+    - {:ok, [kill_message_id, isk_message_id]} if successful
+    - {:error, reason} if something fails
+  """
+  def send_weekly_charts_to_discord(
+        kill_title \\ "Weekly Character Kills",
+        isk_title \\ "Weekly ISK Destroyed",
+        description \\ nil,
+        channel_id \\ nil,
+        limit \\ 20
+      ) do
+    # Send kill chart
+    kill_result = send_weekly_kills_chart_to_discord(kill_title, description, channel_id, limit)
+
+    # Send ISK chart
+    isk_result = send_weekly_isk_chart_to_discord(isk_title, description, channel_id, limit)
+
+    case {kill_result, isk_result} do
+      {{:ok, kill_id}, {:ok, isk_id}} ->
+        {:ok, [kill_id, isk_id]}
+
+      {{:error, kill_reason}, _} ->
+        {:error, "Failed to send kill chart: #{inspect(kill_reason)}"}
+
+      {_, {:error, isk_reason}} ->
+        {:error, "Failed to send ISK chart: #{inspect(isk_reason)}"}
     end
   end
 
@@ -220,6 +375,8 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
            :deaths_count,
            :isk_destroyed,
            :isk_lost,
+           :solo_kills_count,
+           :final_blows_count,
            :period_start,
            :period_end
          ])
@@ -239,7 +396,29 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   # Gets top N characters sorted by kill count
   defp get_top_characters_by_kills(stats, limit) do
     stats
+    |> Enum.filter(fn stat -> stat.kills_count > 0 end)
     |> Enum.sort_by(fn stat -> stat.kills_count end, :desc)
+    |> Enum.take(limit)
+  end
+
+  # Gets top N characters sorted by ISK destroyed
+  defp get_top_characters_by_isk_destroyed(stats, limit) do
+    stats
+    |> Enum.filter(fn stat ->
+      case stat.isk_destroyed do
+        nil -> false
+        decimal -> Decimal.compare(decimal, Decimal.new(0)) != :eq
+      end
+    end)
+    |> Enum.sort_by(
+      fn stat ->
+        case stat.isk_destroyed do
+          nil -> Decimal.new(0)
+          decimal -> decimal
+        end
+      end,
+      :desc
+    )
     |> Enum.take(limit)
   end
 
@@ -247,6 +426,8 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   defp extract_kill_metrics(stats) do
     character_labels = Enum.map(stats, fn stat -> stat.character_name end)
     kills_data = Enum.map(stats, fn stat -> stat.kills_count end)
+    solo_kills_data = Enum.map(stats, fn stat -> stat.solo_kills_count end)
+    final_blows_data = Enum.map(stats, fn stat -> stat.final_blows_count end)
 
     # Convert Decimal to float for charting
     isk_destroyed_data =
@@ -265,37 +446,38 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         end
       end)
 
-    {character_labels, kills_data, isk_destroyed_data}
+    {character_labels, kills_data, isk_destroyed_data, solo_kills_data, final_blows_data}
   end
 
   # Creates chart data structure for the weekly kills chart
-  defp create_weekly_kills_chart_data(labels, kills_data, isk_destroyed_data) do
-    # Define colors
-    # Red for kills
-    kill_color = "rgba(255, 99, 132, 0.8)"
-    # Blue for ISK
-    isk_color = "rgba(54, 162, 235, 0.8)"
-
-    # Create the chart data
+  defp create_weekly_kills_only_chart_data(labels, kills_data, solo_kills_data, final_blows_data) do
     %{
-      "type" => "horizontalBar",
+      "type" => "bar",
       "labels" => labels,
       "datasets" => [
         %{
           "label" => "Kills",
-          "backgroundColor" => kill_color,
-          "borderColor" => kill_color,
+          "backgroundColor" => "rgba(255, 99, 132, 0.8)",
+          "borderColor" => "rgba(255, 99, 132, 0.8)",
           "borderWidth" => 1,
           "data" => kills_data,
           "yAxisID" => "kills"
         },
         %{
-          "label" => "ISK Destroyed (Millions)",
-          "backgroundColor" => isk_color,
-          "borderColor" => isk_color,
+          "label" => "Solo Kills",
+          "backgroundColor" => "rgba(54, 162, 235, 0.8)",
+          "borderColor" => "rgba(54, 162, 235, 0.8)",
           "borderWidth" => 1,
-          "data" => isk_destroyed_data,
-          "yAxisID" => "isk"
+          "data" => solo_kills_data,
+          "yAxisID" => "kills"
+        },
+        %{
+          "label" => "Final Blows",
+          "backgroundColor" => "rgba(75, 192, 192, 0.8)",
+          "borderColor" => "rgba(75, 192, 192, 0.8)",
+          "borderWidth" => 1,
+          "data" => final_blows_data,
+          "yAxisID" => "kills"
         }
       ]
     }
@@ -313,9 +495,14 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
               "color" => "rgba(255, 255, 255, 0.1)"
             },
             "ticks" => %{
-              "beginAtZero" => true,
-              "fontColor" => "rgb(255, 255, 255)"
-            }
+              "fontColor" => "rgb(255, 255, 255)",
+              "maxRotation" => 45,
+              "autoSkip" => false
+            },
+            "scaleLabel" => %{
+              "display" => false
+            },
+            "stacked" => true
           }
         ],
         "yAxes" => [
@@ -326,23 +513,16 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
               "color" => "rgba(255, 255, 255, 0.1)"
             },
             "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)"
+              "fontColor" => "rgb(255, 255, 255)",
+              "padding" => 10,
+              "beginAtZero" => true,
+              "stepSize" => 1,
+              "precision" => 0
             },
             "scaleLabel" => %{
-              "display" => true,
-              "labelString" => "Characters",
-              "fontColor" => "rgb(255, 255, 255)"
-            }
-          },
-          %{
-            "id" => "isk",
-            "position" => "right",
-            "gridLines" => %{
               "display" => false
             },
-            "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)"
-            }
+            "stacked" => true
           }
         ]
       },
@@ -363,13 +543,26 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "enabled" => true,
         "mode" => "index",
         "intersect" => false
+      },
+      "layout" => %{
+        "padding" => %{
+          "left" => 15,
+          "right" => 15,
+          "top" => 10,
+          "bottom" => 20
+        }
+      },
+      "plugins" => %{
+        "datalabels" => %{
+          "display" => false
+        }
       }
     }
   end
 
-  defp create_empty_chart_data(message) do
+  defp create_empty_kills_chart_data(message) do
     %{
-      "type" => "horizontalBar",
+      "type" => "bar",
       "labels" => ["No Data"],
       "datasets" => [
         %{
@@ -381,15 +574,35 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
           "yAxisID" => "kills"
         },
         %{
-          "label" => "ISK Destroyed (Millions)",
+          "label" => "Solo Kills",
           "backgroundColor" => "rgba(54, 162, 235, 0.2)",
           "borderColor" => "rgba(54, 162, 235, 0.2)",
           "borderWidth" => 1,
           "data" => [0],
-          "yAxisID" => "isk"
+          "yAxisID" => "kills"
+        },
+        %{
+          "label" => "Final Blows",
+          "backgroundColor" => "rgba(75, 192, 192, 0.2)",
+          "borderColor" => "rgba(75, 192, 192, 0.2)",
+          "borderWidth" => 1,
+          "data" => [0],
+          "yAxisID" => "kills"
         }
       ],
       "options" => %{
+        "scales" => %{
+          "xAxes" => [
+            %{
+              "stacked" => true
+            }
+          ],
+          "yAxes" => [
+            %{
+              "stacked" => true
+            }
+          ]
+        },
         "plugins" => %{
           "annotation" => %{
             "annotations" => [
@@ -428,5 +641,135 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "fontSize" => 16
       }
     })
+  end
+
+  # Creates chart data structure for the weekly ISK destroyed chart
+  defp create_weekly_isk_only_chart_data(labels, isk_destroyed_data) do
+    %{
+      "type" => "bar",
+      "labels" => labels,
+      "datasets" => [
+        %{
+          "label" => "ISK Destroyed (Millions)",
+          "backgroundColor" => "rgba(54, 162, 235, 0.8)",
+          "borderColor" => "rgba(54, 162, 235, 0.8)",
+          "borderWidth" => 1,
+          "data" => isk_destroyed_data,
+          "yAxisID" => "isk"
+        }
+      ]
+    }
+  end
+
+  # Creates options for the weekly ISK destroyed chart
+  defp create_weekly_isk_chart_options do
+    %{
+      "responsive" => true,
+      "maintainAspectRatio" => false,
+      "scales" => %{
+        "xAxes" => [
+          %{
+            "gridLines" => %{
+              "color" => "rgba(255, 255, 255, 0.1)"
+            },
+            "ticks" => %{
+              "fontColor" => "rgb(255, 255, 255)",
+              "maxRotation" => 45,
+              "autoSkip" => false
+            },
+            "scaleLabel" => %{
+              "display" => false
+            }
+          }
+        ],
+        "yAxes" => [
+          %{
+            "id" => "isk",
+            "position" => "left",
+            "gridLines" => %{
+              "color" => "rgba(255, 255, 255, 0.1)",
+              "display" => true
+            },
+            "ticks" => %{
+              "fontColor" => "rgb(255, 255, 255)",
+              "padding" => 10,
+              "beginAtZero" => true
+            },
+            "scaleLabel" => %{
+              "display" => false
+            }
+          }
+        ]
+      },
+      "legend" => %{
+        "display" => true,
+        "position" => "top",
+        "labels" => %{
+          "fontColor" => "rgb(255, 255, 255)"
+        }
+      },
+      "title" => %{
+        "display" => true,
+        "text" => "Weekly ISK Destroyed",
+        "fontColor" => "rgb(255, 255, 255)",
+        "fontSize" => 16
+      },
+      "tooltips" => %{
+        "enabled" => true,
+        "mode" => "index",
+        "intersect" => false
+      },
+      "layout" => %{
+        "padding" => %{
+          "left" => 15,
+          "right" => 15,
+          "top" => 10,
+          "bottom" => 20
+        }
+      },
+      "plugins" => %{
+        "datalabels" => %{
+          "display" => false
+        }
+      }
+    }
+  end
+
+  defp create_empty_isk_chart_data(message) do
+    %{
+      "type" => "bar",
+      "labels" => ["No Data"],
+      "datasets" => [
+        %{
+          "label" => "ISK Destroyed (Millions)",
+          "backgroundColor" => "rgba(54, 162, 235, 0.2)",
+          "borderColor" => "rgba(54, 162, 235, 0.2)",
+          "borderWidth" => 1,
+          "data" => [0],
+          "yAxisID" => "isk"
+        }
+      ],
+      "options" => %{
+        "plugins" => %{
+          "annotation" => %{
+            "annotations" => [
+              %{
+                "type" => "label",
+                "content" => message,
+                "font" => %{
+                  "size" => 24,
+                  "weight" => "bold",
+                  "color" => "rgba(255, 255, 255, 0.8)"
+                },
+                "position" => %{
+                  "x" => "50%",
+                  "y" => "50%"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
   end
 end
