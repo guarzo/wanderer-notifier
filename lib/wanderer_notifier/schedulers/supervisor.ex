@@ -8,6 +8,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   use Supervisor
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Config
 
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -62,87 +63,58 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     schedulers
   end
 
-  # Add kill charts schedulers if feature is enabled
+  # Add kill charts schedulers if feature is enabled and database is available
   defp maybe_add_kill_chart_schedulers(core_schedulers) do
-    if kill_charts_enabled?() do
-      record_feature_status("kill_charts", true)
+    if Config.kill_charts_enabled?() && database_ready?() do
+      kill_chart_schedulers = [
+        {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
+        {WandererNotifier.Schedulers.KillmailAggregationScheduler, []}
+      ]
 
-      if database_ready?() do
-        killmail_schedulers = define_killmail_schedulers()
-        core_schedulers ++ killmail_schedulers
-      else
-        record_skipped_schedulers()
-        core_schedulers
+      # Track kill chart schedulers
+      if Process.get(:startup_tracker) do
+        WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+          kill_chart_schedulers: length(kill_chart_schedulers)
+        })
       end
+
+      core_schedulers ++ kill_chart_schedulers
     else
-      record_feature_status("kill_charts", false)
+      if Config.kill_charts_enabled?() do
+        AppLogger.scheduler_warn("Kill charts enabled but database not ready, skipping kill chart schedulers")
+      end
       core_schedulers
     end
   end
 
-  # Define the killmail schedulers
-  defp define_killmail_schedulers do
-    killmail_schedulers = [
-      {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
-      {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
-      {WandererNotifier.Schedulers.KillmailChartScheduler, []}
-    ]
-
-    # Record killmail schedulers in tracker
-    if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
-        killmail_schedulers: length(killmail_schedulers)
-      })
-    end
-
-    killmail_schedulers
+  # Check if database is required based on feature flags
+  defp database_required? do
+    Config.map_charts_enabled?() || Config.kill_charts_enabled?()
   end
 
-  # Record if a feature is enabled or disabled
-  defp record_feature_status(feature, enabled) do
-    if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:feature_status, %{
-        feature: feature,
-        enabled: enabled
-      })
-    end
-  end
-
-  # Record that schedulers were skipped
-  defp record_skipped_schedulers do
-    if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
-        skipped_killmail_schedulers: 3,
-        reason: "database_not_ready"
-      })
-    end
-  end
-
-  # Check if the database is ready
+  # Check if database is ready
   defp database_ready? do
-    # Add a brief delay to ensure the Repo is fully started
-    Process.sleep(500)
+    if !database_required?() do
+      true
+    else
+      # Add a brief delay to ensure the Repo is fully started
+      Process.sleep(500)
 
-    try do
-      case WandererNotifier.Repo.health_check() do
-        {:ok, ping_time} ->
-          record_database_status("verified", ping_time)
-          true
+      try do
+        case WandererNotifier.Repo.health_check() do
+          {:ok, ping_time} ->
+            record_database_status("verified", ping_time)
+            true
 
-        {:error, reason} ->
-          record_database_error("Database connection check failed during scheduler setup", reason)
-
-          Logger.warning(
-            "Starting without killmail schedulers due to database connection failure"
-          )
-
+          {:error, reason} ->
+            record_database_error("Database connection check failed during scheduler setup", reason)
+            false
+        end
+      rescue
+        e ->
+          record_database_exception("Database health check exception during scheduler setup", e)
           false
       end
-    rescue
-      e ->
-        record_database_exception("Database health check exception during scheduler setup", e)
-        Logger.warning("Starting without killmail schedulers due to database connection failure")
-        false
     end
   end
 

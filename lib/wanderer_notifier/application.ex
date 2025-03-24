@@ -70,20 +70,31 @@ defmodule WandererNotifier.Application do
     # Start the supervisor and schedule startup message
     result = start_supervisor_and_notify()
 
-    # Begin database phase (only do this once)
-    WandererNotifier.Logger.StartupTracker.begin_phase(
-      :database,
-      "Establishing database connection"
-    )
+    # Begin database phase (only if needed)
+    if database_required?() do
+      WandererNotifier.Logger.StartupTracker.begin_phase(
+        :database,
+        "Establishing database connection"
+      )
 
-    # Instead of scheduling a database health check,
-    # actively wait for the database connection to be available
-    wait_for_database_connection()
+      # Wait for database connection
+      wait_for_database_connection()
+    else
+      WandererNotifier.Logger.StartupTracker.log_state_change(
+        :database_status,
+        "Database connection not required"
+      )
+    end
 
     # Complete startup tracking
     WandererNotifier.Logger.StartupTracker.complete_startup()
 
     result
+  end
+
+  # Check if database is required based on feature flags
+  defp database_required? do
+    Config.map_charts_enabled?() || Config.kill_charts_enabled?()
   end
 
   # Wait for the database connection to be established
@@ -363,15 +374,11 @@ defmodule WandererNotifier.Application do
   end
 
   defp get_children do
-    # Start with the database repository first
     # Initialize the batch logger
     WandererNotifier.Logger.BatchLogger.init()
     AppLogger.startup_info("Batch logger initialized for high-volume logging")
 
     base_children = [
-      # Always start the Database Repository first with automatic restart
-      {WandererNotifier.Repo, [restart: :permanent]},
-
       # Basic services that don't directly depend on database
       {WandererNotifier.NoopConsumer, []},
       {WandererNotifier.Core.License, []},
@@ -388,8 +395,16 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Workers.CharacterSyncWorker, []}
     ]
 
+    # Add database repo only if required
+    children =
+      if database_required?() do
+        [{WandererNotifier.Repo, [restart: :permanent]} | base_children]
+      else
+        base_children
+      end
+
     # Add the scheduler supervisor last to ensure all dependencies are started first
-    base_children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
+    children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
   end
 
   # Check if kill charts feature is enabled

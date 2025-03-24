@@ -101,6 +101,7 @@ jobs:
           tags: |
             guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
             guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
+            guarzo/wanderer-notifier:latest
           build-args: |
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}

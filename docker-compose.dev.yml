@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  builder:
+    image: ubuntu:22.04
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    environment:
+      - DOCKER_BUILDKIT=1
+      - DOCKER_CLI_EXPERIMENTAL=enabled
+      # Elixir/Mix environment variables to reduce memory usage
+      - MIX_ENV=prod
+      - ERL_AFLAGS="-kernel shell_history enabled"
+    command: >
+      bash -c "
+        # Install required packages
+        apt-get update && 
+        apt-get install -y docker.io curl git &&
+        # Install Docker Buildx
+        mkdir -p ~/.docker/cli-plugins &&
+        curl -SL https://github.com/docker/buildx/releases/download/v0.12.1/buildx-v0.12.1.linux-amd64 -o ~/.docker/cli-plugins/docker-buildx &&
+        chmod +x ~/.docker/cli-plugins/docker-buildx &&
+        # Enable buildkit
+        mkdir -p /etc/docker &&
+        echo '{"experimental": true, "features": {"buildkit": true}}' > /etc/docker/daemon.json &&
+        # Install Elixir and Erlang
+        curl -fsSL https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | gpg --dearmor -o /usr/share/keyrings/erlang.gpg &&
+        echo 'deb [signed-by=/usr/share/keyrings/erlang.gpg] https://packages.erlang-solutions.com/ubuntu jammy contrib' > /etc/apt/sources.list.d/erlang.list &&
+        apt-get update &&
+        apt-get install -y esl-erlang elixir &&
+        # Keep container running
+        tail -f /dev/null
+      "

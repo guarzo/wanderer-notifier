@@ -1,7 +1,7 @@
 # ----------------------------------------
 # 1. BUILD STAGE
 # ----------------------------------------
-FROM elixir:1.18-otp-27-slim AS builder
+FROM hexpm/elixir:1.15.7-erlang-26.2.1-debian-bullseye-20231009-slim AS builder
 
 # Install build dependencies
 RUN apt-get update -y && \
@@ -34,11 +34,16 @@ RUN mix do compile, release
 # ----------------------------------------
 # 2. RUNTIME STAGE
 # ----------------------------------------
-FROM elixir:1.18-otp-27-slim
+FROM debian:bullseye-slim
 
 # Install runtime dependencies
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends libstdc++6 openssl ca-certificates ncurses-bin && \
+    apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    openssl \
+    ca-certificates \
+    ncurses-bin \
+    locales && \
     apt-get clean && \
     rm -f /var/lib/apt/lists/*_*
 
@@ -53,7 +58,8 @@ RUN mkdir -p /app/data/cache && \
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
 # Set environment
-ENV HOME=/app
+ENV HOME=/app \
+    LANG=C.UTF-8
 
 # Expose port
 EXPOSE 4000

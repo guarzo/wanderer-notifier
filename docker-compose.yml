@@ -1,32 +1,16 @@
-version: "3.8"
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
-    container_name: notifier
-    env_file:
-      - ./.env-notifier
+    image: guarzo/wanderer-notifier:v1
     restart: unless-stopped
     environment:
       PORT: "4000"
-      # Keep the working PostgreSQL hostname
-      POSTGRES_HOST: "postgres"
-      POSTGRES_USER: "postgres"
-      POSTGRES_PASSWORD: "postgres"
-      POSTGRES_DB: "wanderer_notifier_dev"
-      # Explicitly enable kill charts
-      ENABLE_KILL_CHARTS: "true"
-      # Keep debug logging for now
-      LOG_LEVEL: "debug"
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID}
+      MAP_URL_WITH_NAME: ${MAP_URL_WITH_NAME}
+      MAP_TOKEN: ${MAP_TOKEN}
+      LICENSE_KEY: ${LICENSE_KEY}
     ports:
       - "${PORT:-4000}:4000"
-    depends_on:
-      - postgres_notifier
-    labels:
-      virtual.host: "notifier.zoolanders.space"
-      virtual.port: "4000"
-      virtual.tls-email: "guarzo.eve@gmail.com"
-    volumes:
-      - wanderer_data:/app/data
     deploy:
       resources:
         limits:
@@ -44,34 +28,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      notifier-internal:
-        aliases:
-          - app
-      web: {}
-
-  postgres_notifier:
-    image: postgres:16-alpine
-    container_name: notifier-postgres
-    restart: unless-stopped
-    networks:
-      notifier-internal:
-        aliases:
-          - postgres
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wanderer_notifier_dev
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
 
 volumes:
   wanderer_data:
-  postgres_data:
-    external: true
-
-networks:
-  notifier-internal:
-    internal: true
-  web:
-    external: true
