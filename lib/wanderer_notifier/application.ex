@@ -43,6 +43,9 @@ defmodule WandererNotifier.Application do
     # Initialize the startup tracker for consolidated logging
     WandererNotifier.Logger.StartupTracker.init()
 
+    # Configure Logger backends if not in test mode
+    setup_logger_backends()
+
     # Begin initialization phase
     WandererNotifier.Logger.StartupTracker.begin_phase(
       :initialization,
@@ -457,5 +460,30 @@ defmodule WandererNotifier.Application do
 
     opts = [strategy: :one_for_one, name: WandererNotifier.TestSupervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Set up logger backends properly to avoid initialization conflicts
+  defp setup_logger_backends do
+    Logger.info("Setting up logger backends")
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
+
+    # Only add file backend in production to avoid test/dev conflicts
+    if env == :prod do
+      # Add error log backend if not already started
+      case :gen_event.add_handler(
+             Logger,
+             {LoggerFileBackend, :error_log},
+             {LoggerFileBackend, :error_log}
+           ) do
+        :ok ->
+          Logger.info("Added LoggerFileBackend for error logs")
+
+        {:error, :ignore} ->
+          Logger.info("LoggerFileBackend already configured")
+
+        {:error, reason} ->
+          Logger.warning("Could not add LoggerFileBackend: #{inspect(reason)}")
+      end
+    end
   end
 end

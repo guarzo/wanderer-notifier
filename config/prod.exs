@@ -1,20 +1,34 @@
 import Config
 
-# Configure logger with JSON formatting for production
+# Configure logger for production with minimal dependencies
+# Disable automatic Logger starts to prevent conflicts during startup phases
 config :logger,
+  handle_otp_reports: false,
+  handle_sasl_reports: false,
+  compile_time_purge_matching: [
+    [level_lower_than: :info]
+  ],
+  utc_log: true,
   level: :info,
-  backends: [:console, {LoggerFileBackend, :error_log}]
+  backends: [:console]
 
-# Console logs as JSON for easier parsing by log management systems
+# Add file backend configuration but don't start it immediately
+# This allows the application to properly initialize Logger during boot
 config :logger, :console,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
-  metadata: [:category, :trace_id, :module, :function]
+  format: "$time [$level] [$category] $message $metadata\n",
+  metadata: [:category, :trace_id, :module, :function],
+  colors: [
+    debug: :cyan,
+    info: :green,
+    warn: :yellow,
+    error: :red
+  ]
 
-# Error logs with file rotation
+# Config file logger that will be started by application code
 config :logger, :error_log,
   path: "/var/log/wanderer_notifier/error.log",
   level: :error,
-  format: {WandererNotifier.Logger.JsonFormatter, :format},
+  format: "$time [$level] [$category] $message $metadata\n",
   metadata: [:category, :trace_id, :module, :function],
   rotate: %{max_bytes: 10_485_760, keep: 5}
 
@@ -29,5 +43,12 @@ config :logger, :module_levels, %{
   "WandererNotifier.Web.Router" => :warning,
   "WandererNotifier.KillProcessor" => :warning
 }
+
+# Setup LoggerFileBackend explicitly
+config :logger_file_backend,
+  path: "/var/log/wanderer_notifier/error.log",
+  level: :error,
+  format: "$time [$level] [$category] $message $metadata\n",
+  metadata: [:category, :trace_id, :module, :function]
 
 # Runtime configuration should be in runtime.exs
