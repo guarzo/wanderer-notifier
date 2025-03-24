@@ -12,6 +12,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Default to midnight (hour = 0, minute = 0)
@@ -28,7 +29,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   @impl true
   def execute(state) do
     if kill_charts_enabled?() do
-      Logger.info("#{inspect(@scheduler_name)}: Running killmail aggregation")
+      AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail aggregation")
 
       # Get today's date
       today = Date.utc_today()
@@ -70,13 +71,15 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
         "#{inspect(@scheduler_name)}: Error during killmail aggregation: #{Exception.message(e)}"
       )
 
-      Logger.debug(Exception.format_stacktrace())
+      AppLogger.scheduler_debug(Exception.format_stacktrace())
       {:error, e, state}
   end
 
   # Run aggregation for a specific period
   defp aggregate_for_period(period_type, date) do
-    Logger.info("#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}")
+    AppLogger.scheduler_info(
+      "#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}"
+    )
 
     try do
       case KillmailAggregation.aggregate_statistics(period_type, date) do

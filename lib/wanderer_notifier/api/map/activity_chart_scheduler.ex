@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Core.Config
 
@@ -51,14 +52,16 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Get interval from options or use default
     interval = Keyword.get(opts, :interval, @default_interval)
 
-    Logger.info("Initializing Activity Chart Scheduler...")
+    AppLogger.api_info("Initializing Activity Chart Scheduler...")
 
     # Schedule first chart sending only if map charts are enabled
     if Config.map_charts_enabled?() do
       schedule_charts(interval)
-      Logger.info("Activity Chart Scheduler initialized and scheduled")
+      AppLogger.api_info("Activity Chart Scheduler initialized and scheduled")
     else
-      Logger.info("Activity Chart Scheduler initialized but not scheduled (Map Charts disabled)")
+      AppLogger.api_info(
+        "Activity Chart Scheduler initialized but not scheduled (Map Charts disabled)"
+      )
     end
 
     # Initial state
@@ -75,7 +78,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
       # Update state with last sent timestamp
       {:noreply, %{state | last_sent: DateTime.utc_now()}}
     else
-      Logger.info("Skipping manually triggered Activity Charts (Map Charts disabled)")
+      AppLogger.api_info("Skipping manually triggered Activity Charts (Map Charts disabled)")
       {:noreply, state}
     end
   end
@@ -89,7 +92,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     if Config.map_charts_enabled?() do
       schedule_charts(interval_ms)
     else
-      Logger.info("Not rescheduling Activity Charts (Map Charts disabled)")
+      AppLogger.api_info("Not rescheduling Activity Charts (Map Charts disabled)")
     end
 
     {:reply, :ok, new_state}
@@ -99,7 +102,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   def handle_info(:send_charts, state) do
     # Send charts only if map charts are enabled
     if Config.map_charts_enabled?() do
-      Logger.info("Sending activity charts to Discord...")
+      AppLogger.api_info("Sending activity charts to Discord...")
 
       # Send charts
       _results = send_charts()
@@ -109,7 +112,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
       {:noreply, %{state | last_sent: DateTime.utc_now()}}
     else
-      Logger.info("Skipping scheduled Activity Charts (Map Charts disabled)")
+      AppLogger.api_info("Skipping scheduled Activity Charts (Map Charts disabled)")
       {:noreply, state}
     end
   end
@@ -120,9 +123,9 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Only schedule if map charts are enabled
     if Config.map_charts_enabled?() do
       Process.send_after(self(), :send_charts, interval)
-      Logger.debug("Scheduled next activity chart run in #{interval / 1000 / 60} minutes")
+      AppLogger.api_debug("Scheduled next activity chart run in #{interval / 1000 / 60} minutes")
     else
-      Logger.info("Not scheduling Activity Charts (Map Charts disabled)")
+      AppLogger.api_info("Not scheduling Activity Charts (Map Charts disabled)")
     end
   end
 
@@ -131,12 +134,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     channel_id = Config.discord_channel_id_for_activity_charts()
 
     # Use debug level for detailed channel variables, info level will show the actual ID being used
-    Logger.debug("Using activity charts channel ID: #{channel_id}")
+    AppLogger.api_debug("Using activity charts channel ID: #{channel_id}")
     channel_id
   end
 
   defp send_charts do
-    Logger.info("Sending scheduled activity charts to Discord")
+    AppLogger.api_info("Sending scheduled activity charts to Discord")
 
     # Get activity data first
     activity_data_result = get_activity_data()
@@ -146,7 +149,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   defp process_activity_data({:ok, activity_data}) do
     # Get the channel ID for activity charts
     channel_id = get_channel_id()
-    Logger.info("Sending activity charts to Discord channel: #{channel_id}")
+    AppLogger.api_info("Sending activity charts to Discord channel: #{channel_id}")
 
     # Send each chart and collect results
     results = generate_charts(activity_data, channel_id)
@@ -159,13 +162,13 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   end
 
   defp process_activity_data({:error, reason}) do
-    Logger.error("Failed to retrieve activity data: #{inspect(reason)}")
+    AppLogger.api_error("Failed to retrieve activity data: #{inspect(reason)}")
     []
   end
 
   defp generate_charts(activity_data, channel_id) do
     Enum.map(@chart_configs, fn config ->
-      Logger.info("Generating chart: #{config.type} - #{config.title}")
+      AppLogger.api_info("Generating chart: #{config.type} - #{config.title}")
       {config.type, generate_chart(config, activity_data, channel_id)}
     end)
   end
@@ -185,12 +188,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     rescue
       e ->
         error_message = "Chart generation crashed: #{inspect(e)}"
-        Logger.error(error_message)
+        AppLogger.api_error(error_message)
         {:error, error_message}
     catch
       kind, reason ->
         error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
-        Logger.error(error_message)
+        AppLogger.api_error(error_message)
         {:error, error_message}
     end
   end
@@ -206,7 +209,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   end
 
   defp generate_activity_timeline(_activity_data, _channel_id) do
-    Logger.warning("Activity Timeline chart has been removed", [])
+    AppLogger.api_warn("Activity Timeline chart has been removed", %{})
     {:error, "Activity Timeline chart has been removed"}
   end
 
@@ -216,20 +219,20 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
     # Log summary
     success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
-    Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
+    AppLogger.api_info("Chart sending complete: #{success_count}/#{length(results)} successful")
   end
 
   defp log_chart_result({type, {:ok, url, title}}) do
-    Logger.info("Successfully sent #{type} chart to Discord: #{title}")
-    Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
+    AppLogger.api_info("Successfully sent #{type} chart to Discord: #{title}")
+    AppLogger.api_debug("Chart URL: #{String.slice(url, 0, 100)}...")
   end
 
   defp log_chart_result({type, {:error, reason}}) do
-    Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
+    AppLogger.api_error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
   end
 
   defp log_chart_result({type, result}) do
-    Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
+    AppLogger.api_error("Unexpected result for #{type} chart: #{inspect(result)}")
   end
 
   # Helper to get activity data from Map API
@@ -239,10 +242,10 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     map_name = Map.get(config, :map_name)
 
     if is_nil(map_name) do
-      Logger.warning("Map name not configured for activity data")
+      AppLogger.api_warn("Map name not configured for activity data")
       {:error, "Map name not configured"}
     else
-      Logger.info("Fetching character activity data for map: #{map_name}")
+      AppLogger.api_info("Fetching character activity data for map: #{map_name}")
       MapClient.get_character_activity(map_name)
     end
   end

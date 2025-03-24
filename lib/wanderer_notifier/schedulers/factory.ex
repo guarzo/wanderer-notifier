@@ -7,6 +7,7 @@ defmodule WandererNotifier.Schedulers.Factory do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Creates a scheduler module with the appropriate implementation.
@@ -45,7 +46,12 @@ defmodule WandererNotifier.Schedulers.Factory do
         end
       end
   """
-  defmacro create_scheduler(opts) do
+  defmacro create_scheduler(module_name, opts) do
+    AppLogger.startup_info("Creating scheduler",
+      module: module_name,
+      type: opts[:type]
+    )
+
     type = Keyword.get(opts, :type, :interval)
 
     quote do

@@ -7,7 +7,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   delivery to the ChartService module.
   """
 
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartTypes
@@ -40,10 +40,10 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   Returns {:ok, chart_data, title, options} or {:error, reason}.
   """
   def prepare_activity_summary_data(activity_data) do
-    Logger.info("Preparing character activity summary data")
+    AppLogger.api_info("Preparing character activity summary data")
 
     if activity_data == nil do
-      Logger.error("No activity data provided")
+      AppLogger.api_error("No activity data provided")
       {:error, "No activity data provided"}
     else
       try do
@@ -53,7 +53,10 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         if characters && length(characters) > 0 do
           # Get top characters by activity
           top_characters = get_top_characters(characters, 5)
-          Logger.info("Selected top #{length(top_characters)} characters for activity chart")
+
+          AppLogger.api_info("Selected characters for activity chart",
+            count: length(top_characters)
+          )
 
           # Extract chart elements
           character_labels = extract_character_labels(top_characters)
@@ -78,7 +81,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         end
       rescue
         e ->
-          Logger.error("Error preparing activity summary data: #{inspect(e)}")
+          AppLogger.api_error("Error preparing activity summary data", error: inspect(e))
           {:error, "Error preparing activity summary data: #{inspect(e)}"}
       end
     end
@@ -102,7 +105,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
       # Return empty list for other formats
       true ->
-        Logger.error("Invalid data format - couldn't extract character data")
+        AppLogger.api_error("Invalid data format - couldn't extract character data")
         []
     end
   end
@@ -315,7 +318,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         )
 
       {:error, reason} ->
-        Logger.error("Failed to generate chart: #{inspect(reason)}")
+        AppLogger.api_error("Failed to generate chart", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -400,7 +403,9 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         channel_id
       end
 
-    Logger.info("Sending activity charts to Discord channel: #{actual_channel_id}")
+    AppLogger.api_info("Sending activity charts to Discord channel",
+      channel_id: actual_channel_id
+    )
 
     # Chart types and their descriptions
     charts = [

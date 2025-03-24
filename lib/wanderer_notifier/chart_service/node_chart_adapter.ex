@@ -8,6 +8,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   # ChartConfig no longer used directly, handled by ChartConfigHandler
   # alias WandererNotifier.ChartService.ChartConfig
@@ -27,26 +28,29 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
             url
 
           _ ->
-            Logger.warning("ChartServiceManager returned invalid URL, using default")
+            AppLogger.api_warn("ChartServiceManager returned invalid URL, using default")
             "http://localhost:3001"
         end
       rescue
         # Just handle general exceptions
         e ->
-          Logger.warning("Error getting URL from ChartServiceManager: #{inspect(e)}")
+          AppLogger.api_warn("Error getting URL from ChartServiceManager", error: inspect(e))
           "http://localhost:3001"
       catch
         :exit, {:timeout, _} ->
-          Logger.warning("Timeout getting URL from ChartServiceManager")
+          AppLogger.api_warn("Timeout getting URL from ChartServiceManager")
           "http://localhost:3001"
 
         :exit, reason ->
-          Logger.warning("Exit when getting URL from ChartServiceManager: #{inspect(reason)}")
+          AppLogger.api_warn("Exit when getting URL from ChartServiceManager",
+            error: inspect(reason)
+          )
+
           "http://localhost:3001"
       end
     else
       # Fallback to default URL if manager is not available
-      Logger.debug("ChartServiceManager process not found, using default URL")
+      AppLogger.api_debug("ChartServiceManager process not found, using default URL")
       "http://localhost:3001"
     end
   end
@@ -101,20 +105,24 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
             {:ok, Base.decode64!(image_data)}
 
           {:ok, %{"success" => false, "message" => message}} ->
-            Logger.error("Node chart service error: #{message}")
+            AppLogger.api_error("Node chart service error", message: message)
             {:error, "Node chart service error: #{message}"}
 
           {:error, reason} ->
-            Logger.error("Failed to parse chart service response: #{inspect(reason)}")
+            AppLogger.api_error("Failed to parse chart service response", error: inspect(reason))
             {:error, "Failed to parse chart service response"}
         end
 
       {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error("Chart service returned status #{status_code}: #{body}")
+        AppLogger.api_error("Chart service returned error status",
+          status_code: status_code,
+          response: body
+        )
+
         {:error, "Chart service error (HTTP #{status_code})"}
 
       {:error, reason} ->
-        Logger.error("Failed to communicate with chart service: #{inspect(reason)}")
+        AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
         {:error, "Failed to communicate with chart service"}
     end
   end
@@ -168,25 +176,36 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
               {:ok, Base.decode64!(image_data)}
 
             {:ok, %{"success" => false, "message" => message}} ->
-              Logger.error("Node chart service error: #{message}")
+              AppLogger.api_error("Node chart service error", message: message)
               {:error, "Node chart service error: #{message}"}
 
             {:error, reason} ->
-              Logger.error("Failed to parse chart service response: #{inspect(reason)}")
+              AppLogger.api_error("Failed to parse chart service response",
+                error: inspect(reason)
+              )
+
               {:error, "Failed to parse chart service response"}
           end
 
         {:ok, %{status_code: status_code, body: body}} ->
-          Logger.error("Chart service returned status #{status_code}: #{body}")
+          AppLogger.api_error("Chart service returned error status",
+            status_code: status_code,
+            response: body
+          )
+
           {:error, "Chart service error (HTTP #{status_code})"}
 
         {:error, reason} ->
-          Logger.error("Failed to communicate with chart service: #{inspect(reason)}")
+          AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
           {:error, "Failed to communicate with chart service"}
       end
     rescue
       e ->
-        Logger.error("Exception calling chart service: #{inspect(e)}")
+        AppLogger.api_error("Exception calling chart service",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         {:error, "Exception calling chart service: #{inspect(e)}"}
     end
   end
@@ -222,25 +241,36 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
               {:ok, file_path}
 
             {:ok, %{"success" => false, "message" => message}} ->
-              Logger.error("Node chart service error: #{message}")
+              AppLogger.api_error("Node chart service error", message: message)
               {:error, "Node chart service error: #{message}"}
 
             {:error, reason} ->
-              Logger.error("Failed to parse chart service response: #{inspect(reason)}")
+              AppLogger.api_error("Failed to parse chart service response",
+                error: inspect(reason)
+              )
+
               {:error, "Failed to parse chart service response"}
           end
 
         {:ok, %{status_code: status_code, body: body}} ->
-          Logger.error("Chart service returned status #{status_code}: #{body}")
+          AppLogger.api_error("Chart service returned error status",
+            status_code: status_code,
+            response: body
+          )
+
           {:error, "Chart service error (HTTP #{status_code})"}
 
         {:error, reason} ->
-          Logger.error("Failed to communicate with chart service: #{inspect(reason)}")
+          AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
           {:error, "Failed to communicate with chart service"}
       end
     rescue
       e ->
-        Logger.error("Exception calling chart service: #{inspect(e)}")
+        AppLogger.api_error("Exception calling chart service",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         {:error, "Exception calling chart service: #{inspect(e)}"}
     end
   end

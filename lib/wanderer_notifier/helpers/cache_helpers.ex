@@ -3,6 +3,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   Helper functions for working with the cache.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
   @doc """
@@ -17,9 +18,16 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     # Merge both lists, avoiding duplicates based on system_id
     merged_systems = merge_systems_lists(map_systems, tracked_systems)
 
-    Logger.debug(
-      "CacheHelpers.get_tracked_systems: Retrieved #{length(merged_systems)} total systems (#{length(map_systems)} from map:systems, #{length(tracked_systems)} from tracked:systems)"
-    )
+    # Only log system details occasionally (10% of requests)
+    # This is also high-volume during kill processing
+    if :rand.uniform(10) == 1 do
+      AppLogger.cache_debug(
+        "Retrieved tracked systems (sampled 10%)",
+        total_count: length(merged_systems),
+        map_systems_count: length(map_systems),
+        tracked_systems_count: length(tracked_systems)
+      )
+    end
 
     # Ensure all systems are properly cached for direct lookup
     ensure_systems_individual_cache(merged_systems)
@@ -164,49 +172,100 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   Also checks both "map:characters" and "tracked:characters" keys for comprehensive tracking.
   """
   def get_tracked_characters do
-    # Merge characters from both sources, removing duplicates
-    map_characters = get_characters_from_cache("map:characters")
-    tracked_characters = get_characters_from_cache("tracked:characters")
-    all_characters = merge_characters_lists(map_characters, tracked_characters)
+    try do
+      # Get and validate characters from each source
+      map_characters_list = get_and_validate_cache_data("map:characters")
+      tracked_characters_list = get_and_validate_cache_data("tracked:characters")
 
-    # Log character counts
-    log_character_counts(all_characters, map_characters, tracked_characters)
+      # Process each list to standardize character data
+      map_characters_processed = Enum.flat_map(map_characters_list, &normalize_character_data/1)
 
-    # Log sample characters for debugging
-    log_sample_characters(all_characters)
+      tracked_characters_processed =
+        Enum.flat_map(tracked_characters_list, &normalize_character_data/1)
 
-    # Ensure all characters are cached individually for direct lookup
-    ensure_characters_individual_cache(all_characters)
+      # Merge characters from both sources, removing duplicates by ID
+      all_characters =
+        merge_characters_lists(map_characters_processed, tracked_characters_processed)
 
-    all_characters
+      # Sample log character details occasionally
+      sample_log_character_data(
+        all_characters,
+        map_characters_processed,
+        tracked_characters_processed
+      )
+
+      all_characters
+    rescue
+      e ->
+        # Log any errors in character processing
+        AppLogger.cache_error(
+          "ERROR retrieving tracked characters: #{Exception.message(e)}",
+          stacktrace: Exception.format_stacktrace()
+        )
+
+        []
+    end
   end
 
-  # Log counts of retrieved characters
-  defp log_character_counts(all_characters, map_characters, tracked_characters) do
-    Logger.info(fn ->
-      "Retrieved #{length(all_characters)} tracked characters " <>
-        "(#{length(map_characters)} from map, #{length(tracked_characters)} from tracked)"
-    end)
+  # Get and validate data from cache by key
+  defp get_and_validate_cache_data(cache_key) do
+    data = CacheRepo.get(cache_key)
+
+    # Validate expected data types
+    if !(is_nil(data) || is_list(data)) do
+      AppLogger.cache_error(
+        "ERROR: Expected nil or list from #{cache_key} but got: #{inspect(data)}"
+      )
+    end
+
+    # Return as list or empty list if nil/invalid
+    if is_list(data), do: data, else: []
   end
 
-  # Log a sample of characters with their EVE IDs for debugging
-  defp log_sample_characters(characters) do
-    sample_ids =
-      characters
-      |> Enum.take(5)
-      |> Enum.map(&format_character_for_logging/1)
+  # Sample log character data occasionally for debugging
+  defp sample_log_character_data(all_characters, map_characters, tracked_characters) do
+    # Only log character details occasionally (10% of requests)
+    # This is extremely high-volume during kill processing
+    if :rand.uniform(10) == 1 do
+      AppLogger.cache_debug(
+        "Retrieved tracked characters (sampled 10%)",
+        total_count: length(all_characters),
+        map_characters_count: length(map_characters),
+        tracked_characters_count: length(tracked_characters)
+      )
 
-    Logger.debug("Sample character data: #{inspect(sample_ids)}")
+      # Sample for debugging (only when sampling)
+      if length(all_characters) > 0 do
+        sample = Enum.take(all_characters, min(2, length(all_characters)))
+        AppLogger.cache_debug("Sample character data (sampled): #{inspect(sample)}")
+      end
+    end
   end
 
-  # Format a character for logging purposes
-  defp format_character_for_logging(char) when is_map(char) do
-    character_id = extract_character_id(char)
-    "#{inspect(char)} with character_id: #{character_id}"
+  # Helper to normalize character data regardless of its format
+  defp normalize_character_data(%WandererNotifier.Data.Character{} = char), do: [char]
+  defp normalize_character_data(char) when is_map(char), do: [char]
+
+  defp normalize_character_data(char_id) when is_binary(char_id) or is_integer(char_id),
+    do: [%{"character_id" => to_string(char_id)}]
+
+  defp normalize_character_data({:ok, data}) do
+    AppLogger.cache_error(
+      "ERROR: Received wrapped data {:ok, value} in normalize_character_data: #{inspect(data)}. This should not occur with the updated repository."
+    )
+
+    normalize_character_data(data)
   end
 
-  defp format_character_for_logging(char) do
-    "#{inspect(char)}"
+  defp normalize_character_data(data) when is_list(data),
+    do: Enum.flat_map(data, &normalize_character_data/1)
+
+  defp normalize_character_data(other) do
+    AppLogger.cache_error(
+      "ERROR: Received unexpected data type in normalize_character_data: #{inspect(other)}. This should be investigated and fixed at the source."
+    )
+
+    []
   end
 
   # Helper functions to extract character ID from different formats
@@ -373,44 +432,6 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
       # Keep the ID even if we can't fetch the system
       nil -> system_id
       system -> system
-    end
-  end
-
-  # Helper to get characters from a specific cache key
-  defp get_characters_from_cache(cache_key) do
-    case CacheRepo.get(cache_key) do
-      nil -> []
-      characters when is_list(characters) -> process_characters_list(characters)
-      _ -> []
-    end
-  end
-
-  # Process a list of characters
-  defp process_characters_list([]), do: []
-
-  defp process_characters_list([first | _] = characters) when is_map(first) do
-    # We have the full character objects
-    characters
-  end
-
-  defp process_characters_list(character_ids) do
-    # We have a list of character IDs, fetch each character
-    fetch_characters_by_ids(character_ids)
-  end
-
-  # Helper to fetch characters by IDs
-  defp fetch_characters_by_ids(character_ids) do
-    character_ids
-    |> Enum.map(&fetch_character_by_id/1)
-    |> Enum.filter(& &1)
-  end
-
-  # Helper to fetch a single character by ID
-  defp fetch_character_by_id(character_id) do
-    case CacheRepo.get("map:character:#{character_id}") do
-      # Keep the ID even if we can't fetch the character
-      nil -> character_id
-      character -> character
     end
   end
 

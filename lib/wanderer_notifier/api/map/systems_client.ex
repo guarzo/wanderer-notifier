@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   Uses structured data types and consistent parsing to simplify the logic.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Api.Map.SystemStaticInfo
@@ -26,7 +27,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     - {:error, reason} on failure
   """
   def update_systems(cached_systems \\ nil) do
-    Logger.debug("[SystemsClient] Starting systems update")
+    AppLogger.api_debug("[SystemsClient] Starting systems update")
 
     case UrlBuilder.build_url("map/systems") do
       {:ok, url} ->
@@ -34,7 +35,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         process_systems_request(url, headers, cached_systems)
 
       {:error, reason} ->
-        Logger.error("[SystemsClient] Failed to build URL or headers: #{inspect(reason)}")
+        AppLogger.api_error("[SystemsClient] Failed to build URL or headers: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -45,7 +46,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         process_systems_response(response, cached_systems)
 
       {:error, reason} ->
-        Logger.error("[SystemsClient] HTTP request failed: #{inspect(reason)}")
+        AppLogger.api_error("[SystemsClient] HTTP request failed: #{inspect(reason)}")
         {:error, {:http_error, reason}}
     end
   end
@@ -58,7 +59,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         process_systems_data(parsed_response, cached_systems)
 
       {:error, reason} ->
-        Logger.error("[SystemsClient] Failed to process API response: #{inspect(reason)}")
+        AppLogger.api_error("[SystemsClient] Failed to process API response: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -74,7 +75,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       end
 
     # Convert to MapSystem structs
-    Logger.debug("[SystemsClient] Parsing #{length(systems_data)} systems from API response")
+    AppLogger.api_debug(
+      "[SystemsClient] Parsing #{length(systems_data)} systems from API response"
+    )
 
     # Transform each system into a MapSystem struct
     systems = Enum.map(systems_data, &create_map_system/1)
@@ -107,7 +110,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp enrich_wormhole_system(map_system) do
     case SystemStaticInfo.enrich_system(map_system) do
       {:ok, enriched_system} ->
-        Logger.debug("[SystemsClient] Successfully enriched system #{map_system.name}")
+        AppLogger.api_debug("[SystemsClient] Successfully enriched system #{map_system.name}")
         enriched_system
 
       {:error, _reason} ->
@@ -118,9 +121,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   defp log_wormhole_systems_status(wormhole_systems) do
     if wormhole_systems == [] do
-      Logger.warning("[SystemsClient] No wormhole systems found in map API response")
+      AppLogger.api_warn("[SystemsClient] No wormhole systems found in map API response")
     else
-      Logger.debug("[SystemsClient] Found #{length(wormhole_systems)} wormhole systems")
+      AppLogger.api_debug("[SystemsClient] Found #{length(wormhole_systems)} wormhole systems")
     end
   end
 
@@ -147,7 +150,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     if Config.system_notifications_enabled?() do
       process_system_notifications(fresh_systems, cached_systems)
     else
-      Logger.info("[SystemsClient] System notifications are disabled, skipping")
+      AppLogger.api_info("[SystemsClient] System notifications are disabled, skipping")
       {:ok, []}
     end
   end
@@ -200,7 +203,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp log_added_systems([]), do: :ok
 
   defp log_added_systems(added_systems) do
-    Logger.info("[SystemsClient] Found #{length(added_systems)} new systems to notify about")
+    AppLogger.api_info(
+      "[SystemsClient] Found #{length(added_systems)} new systems to notify about"
+    )
   end
 
   defp send_system_notification(system) do

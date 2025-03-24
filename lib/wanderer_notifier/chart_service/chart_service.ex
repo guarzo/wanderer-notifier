@@ -10,7 +10,7 @@ defmodule WandererNotifier.ChartService do
   falling back to QuickChart.io if not.
   """
 
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartConfigHandler
   alias WandererNotifier.ChartService.ChartTypes
@@ -87,7 +87,7 @@ defmodule WandererNotifier.ChartService do
             {:ok, image_data}
           else
             {:error, reason} ->
-              Logger.error("QuickChart fallback failed: #{inspect(reason)}")
+              AppLogger.api_error("QuickChart fallback failed", error: inspect(reason))
               # Create a placeholder as last resort
               title = chart_config.title || "Chart"
               FallbackStrategy.generate_placeholder_chart(title, "Chart generation failed")
@@ -201,7 +201,7 @@ defmodule WandererNotifier.ChartService do
     if url?(image_binary) do
       # It's a URL, use it directly in an embed
       chart_url = image_binary
-      Logger.debug("URL detected for chart - using in embed: #{title}")
+      AppLogger.api_debug("URL detected for chart - using in embed", chart_title: title)
 
       # Create rich embed with the chart URL as the image
       embed = %{
@@ -221,7 +221,9 @@ defmodule WandererNotifier.ChartService do
       DiscordClient.send_embed(embed, channel_id)
     else
       # It's binary image data, we need to upload it somewhere first
-      Logger.debug("Binary image data detected - converting to URL for embed: #{title}")
+      AppLogger.api_debug("Binary image data detected - converting to URL for embed",
+        chart_title: title
+      )
 
       # Try to generate a URL using chart config approach first
       case generate_chart_url(extract_config_from_binary(image_binary)) do
@@ -245,7 +247,7 @@ defmodule WandererNotifier.ChartService do
 
         {:error, _url_error} ->
           # Last resort - send as file if we can't get a URL
-          Logger.warning("Could not generate URL for image. Falling back to file upload.")
+          AppLogger.api_warn("Could not generate URL for image. Falling back to file upload.")
 
           # Generate a unique filename
           filename = "chart_#{:os.system_time(:millisecond)}.png"
@@ -278,7 +280,7 @@ defmodule WandererNotifier.ChartService do
         DiscordClient.send_embed(embed, channel_id)
 
       {:error, reason} ->
-        Logger.error("Failed to generate chart URL: #{inspect(reason)}")
+        AppLogger.api_error("Failed to generate chart URL", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -298,10 +300,13 @@ defmodule WandererNotifier.ChartService do
         {:ok, json} ->
           # Check JSON size to determine approach
           json_size = byte_size(json)
-          Logger.debug("Chart JSON size: #{json_size} bytes")
+          AppLogger.api_debug("Chart config prepared", json_size_bytes: json_size)
 
           if json_size > 8000 or String.length(json) > 2000 do
-            Logger.warning("Chart JSON is large (#{json_size} bytes), using POST method instead")
+            AppLogger.api_warn("Chart JSON is large, using POST method instead",
+              json_size_bytes: json_size
+            )
+
             create_chart_via_post(chart_map, width, height, background_color)
           else
             # Standard encoding for normal-sized JSON
@@ -314,11 +319,12 @@ defmodule WandererNotifier.ChartService do
 
             # Check URL length
             url_length = String.length(url)
-            Logger.debug("Generated chart URL with length: #{url_length}")
+            AppLogger.api_debug("Generated chart URL", url_length: url_length)
 
             if url_length > 2000 do
-              Logger.warning(
-                "Chart URL is very long (#{url_length} chars), using POST method instead"
+              AppLogger.api_warn(
+                "Chart URL is very long, using POST method instead",
+                url_length: url_length
               )
 
               create_chart_via_post(chart_map, width, height, background_color)
@@ -328,19 +334,19 @@ defmodule WandererNotifier.ChartService do
           end
 
         {:error, reason} ->
-          Logger.error("Failed to encode chart configuration: #{inspect(reason)}")
+          AppLogger.api_error("Failed to encode chart configuration", error: inspect(reason))
           {:error, "Failed to encode chart configuration: #{inspect(reason)}"}
       end
     rescue
       e ->
-        Logger.error("Exception encoding chart: #{inspect(e)}")
+        AppLogger.api_error("Exception encoding chart", exception: inspect(e))
         {:error, "Exception encoding chart: #{inspect(e)}"}
     end
   end
 
   # Creates a chart via POST with custom dimensions and background color
   defp create_chart_via_post(chart_config, width, height, background_color) do
-    Logger.debug("Creating chart via POST request with custom dimensions")
+    AppLogger.api_debug("Creating chart via POST request", width: width, height: height)
 
     # Prepare the full configuration with custom dimensions
     full_config = %{
@@ -369,7 +375,10 @@ defmodule WandererNotifier.ChartService do
         make_chart_post_request(post_url, headers, json_body)
 
       {:error, reason} ->
-        Logger.error("Failed to encode chart configuration for POST: #{inspect(reason)}")
+        AppLogger.api_error("Failed to encode chart configuration for POST",
+          error: inspect(reason)
+        )
+
         {:error, "Failed to encode chart configuration for POST"}
     end
   end
@@ -382,11 +391,11 @@ defmodule WandererNotifier.ChartService do
         parse_chart_response(response_body)
 
       {:ok, %{status_code: status, body: error_body}} ->
-        Logger.error("QuickChart API returned #{status}: #{error_body}")
+        AppLogger.api_error("QuickChart API error", status_code: status, body: error_body)
         {:error, "QuickChart API error (HTTP #{status})"}
 
       {:error, reason} ->
-        Logger.error("HTTP request to QuickChart failed: #{inspect(reason)}")
+        AppLogger.api_error("HTTP request to QuickChart failed", error: inspect(reason))
         {:error, "HTTP request to QuickChart failed"}
     end
   end
@@ -395,15 +404,15 @@ defmodule WandererNotifier.ChartService do
   defp parse_chart_response(response_body) do
     case Jason.decode(response_body) do
       {:ok, %{"success" => true, "url" => chart_url}} ->
-        Logger.debug("Successfully created chart via POST request")
+        AppLogger.api_debug("Successfully created chart via POST request")
         {:ok, chart_url}
 
       {:ok, %{"success" => false, "message" => message}} ->
-        Logger.error("QuickChart API error: #{message}")
+        AppLogger.api_error("QuickChart API error", message: message)
         {:error, "QuickChart API error: #{message}"}
 
       {:error, reason} ->
-        Logger.error("Failed to parse QuickChart response: #{inspect(reason)}")
+        AppLogger.api_error("Failed to parse QuickChart response", error: inspect(reason))
         {:error, "Failed to parse QuickChart response"}
     end
   end

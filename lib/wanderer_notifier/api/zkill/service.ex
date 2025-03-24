@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail
@@ -35,12 +36,12 @@ defmodule WandererNotifier.Api.ZKill.Service do
       {:ok, enriched}
     else
       {:error, reason} ->
-        Logger.error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
+        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
         {:error, reason}
 
       false ->
         reason = "Missing or invalid hash in zKill data"
-        Logger.error("Failed to get enriched killmail for #{kill_id}: #{reason}")
+        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{reason}")
         {:error, reason}
 
       %{} = incomplete_data ->
@@ -54,7 +55,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
 
       error ->
         reason = "Unexpected error: #{inspect(error)}"
-        Logger.error("Failed to get enriched killmail for #{kill_id}: #{reason}")
+        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{reason}")
         {:error, reason}
     end
   end

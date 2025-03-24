@@ -4,6 +4,7 @@ defmodule WandererNotifier.Release do
   Used in production for migrations and database setup.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @app :wanderer_notifier
 
@@ -11,14 +12,18 @@ defmodule WandererNotifier.Release do
   Creates the database if it doesn't exist.
   """
   def createdb do
-    Logger.info("Checking if database exists...")
+    AppLogger.persistence_info("Checking if database exists")
 
     for repo <- repos() do
-      with {:error, error} <- repo.__adapter__().storage_up(repo.config()) do
-        Logger.warning("Failed to create database: #{inspect(error)}")
-      else
-        :ok -> Logger.info("Database created successfully")
-        {:error, :already_up} -> Logger.info("Database already exists")
+      case repo.__adapter__().storage_up(repo.config()) do
+        :ok ->
+          AppLogger.persistence_info("Database created successfully")
+
+        {:error, :already_up} ->
+          AppLogger.persistence_info("Database already exists")
+
+        {:error, error} ->
+          AppLogger.persistence_warn("Failed to create database", error: inspect(error))
       end
     end
   end
@@ -27,24 +32,24 @@ defmodule WandererNotifier.Release do
   Runs pending migrations.
   """
   def migrate do
-    Logger.info("Running migrations...")
+    AppLogger.persistence_info("Running migrations")
 
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
 
-    Logger.info("Migrations completed successfully")
+    AppLogger.persistence_info("Migrations completed successfully")
   end
 
   @doc """
   Rollback migrations.
   """
   def rollback(repo, version) do
-    Logger.info("Rolling back to version #{version}...")
+    AppLogger.persistence_info("Rolling back migrations", target_version: version)
 
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
 
-    Logger.info("Rollback completed")
+    AppLogger.persistence_info("Rollback completed")
   end
 
   defp repos do

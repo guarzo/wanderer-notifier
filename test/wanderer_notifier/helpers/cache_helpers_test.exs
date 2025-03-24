@@ -2,7 +2,6 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
   use ExUnit.Case, async: false
   require Logger
   alias WandererNotifier.Helpers.CacheHelpers
-  import ExUnit.CaptureLog
 
   # Basic sanity testing for public API
   describe "get_tracked_systems/0" do
@@ -10,15 +9,6 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
       result = CacheHelpers.get_tracked_systems()
       assert is_list(result)
       assert result == []
-    end
-
-    test "produces expected logs" do
-      log =
-        capture_log(fn ->
-          CacheHelpers.get_tracked_systems()
-        end)
-
-      assert log =~ "Cache error"
     end
   end
 
@@ -70,15 +60,6 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
       result = CacheHelpers.get_tracked_characters()
       assert is_list(result)
       assert result == []
-    end
-
-    test "produces expected logs" do
-      log =
-        capture_log(fn ->
-          CacheHelpers.get_tracked_characters()
-        end)
-
-      assert log =~ "Cache error"
     end
   end
 

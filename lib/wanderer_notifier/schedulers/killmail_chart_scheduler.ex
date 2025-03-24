@@ -9,6 +9,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
   require WandererNotifier.Schedulers.Factory
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.ChartService.KillmailChartAdapter
   alias WandererNotifier.Core.Config
@@ -18,7 +19,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   @default_minute 0
 
   # Create a time-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(
+  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
     type: :time,
     default_hour: @default_hour,
     default_minute: @default_minute,
@@ -33,7 +34,9 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
     today = Date.utc_today()
 
     if Date.day_of_week(today) == 7 do
-      Logger.info("Executing weekly killmail chart generation and sending to Discord")
+      AppLogger.scheduler_info(
+        "Executing weekly killmail chart generation and sending to Discord"
+      )
 
       # Send the weekly kills chart
       result = send_weekly_kills_chart()
@@ -67,12 +70,15 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
         )
       rescue
         e ->
-          Logger.error("Exception in weekly kills chart: #{Exception.message(e)}")
-          Logger.error(Exception.format_stacktrace())
+          AppLogger.scheduler_error("Exception in weekly kills chart: #{Exception.message(e)}")
+          AppLogger.scheduler_error(Exception.format_stacktrace())
           {:error, Exception.message(e)}
       end
     else
-      Logger.info("Killmail charts are not enabled. Skipping weekly kills chart generation.")
+      AppLogger.scheduler_info(
+        "Killmail charts are not enabled. Skipping weekly kills chart generation."
+      )
+
       {:error, "Killmail charts are not enabled"}
     end
   end
@@ -81,11 +87,11 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   defp process_result(result, state) do
     case result do
       {:ok, _} ->
-        Logger.info("Successfully sent weekly kills chart to Discord")
+        AppLogger.scheduler_info("Successfully sent weekly kills chart to Discord")
         {:ok, result, state}
 
       {:error, reason} ->
-        Logger.error("Failed to send weekly kills chart: #{inspect(reason)}")
+        AppLogger.scheduler_error("Failed to send weekly kills chart: #{inspect(reason)}")
         {:error, reason, state}
     end
   end

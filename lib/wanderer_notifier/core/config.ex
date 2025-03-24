@@ -4,6 +4,7 @@ defmodule WandererNotifier.Core.Config do
   Provides access to application configuration with sensible defaults.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Constants for API URLs
   @zkill_base_url "https://zkillboard.com"
@@ -92,7 +93,7 @@ defmodule WandererNotifier.Core.Config do
       end
     else
       # Unknown feature, use the main channel
-      Logger.warning("Unknown feature #{feature} when looking up Discord channel ID")
+      AppLogger.config_warn("Unknown feature #{feature} when looking up Discord channel ID")
       discord_channel_id()
     end
   end
@@ -127,7 +128,7 @@ defmodule WandererNotifier.Core.Config do
       end
     else
       # Unknown feature, default to false for safety
-      Logger.warning("Unknown feature #{feature} when checking if enabled")
+      AppLogger.config_warn("Unknown feature #{feature} when checking if enabled")
       false
     end
   end
@@ -245,7 +246,7 @@ defmodule WandererNotifier.Core.Config do
         message =
           "Missing baked-in notifier API token in production. Token should be compiled into the release."
 
-        Logger.error(message)
+        AppLogger.config_error(message)
         # In production, return a dummy token that will fail validation
         "invalid-prod-token-missing"
       end
@@ -267,13 +268,13 @@ defmodule WandererNotifier.Core.Config do
         message =
           "Missing notifier API token in production. Token should be compiled into the release."
 
-        Logger.error(message)
+        AppLogger.config_error(message)
         # In production, return a dummy token that will fail validation
         "invalid-prod-token-missing"
       else
         # In development, log a warning but use a development token
         message = "Missing NOTIFIER_API_TOKEN environment variable for development"
-        Logger.warning(message)
+        AppLogger.config_warn(message)
         "dev-environment-token"
       end
     end

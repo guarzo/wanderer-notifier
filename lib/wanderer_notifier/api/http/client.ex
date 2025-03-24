@@ -6,6 +6,7 @@ defmodule WandererNotifier.Api.Http.Client do
   @behaviour WandererNotifier.Api.Http.ClientBehaviour
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @default_max_retries 3
   # milliseconds
@@ -179,7 +180,7 @@ defmodule WandererNotifier.Api.Http.Client do
       Task.await(task, timeout * (max_retries + 1))
     catch
       :exit, {:timeout, _} ->
-        Logger.error("HTTP request timed out: #{method} #{url}")
+        AppLogger.api_error("HTTP request timed out: #{method} #{url}")
         Task.shutdown(task, :brutal_kill)
         {:error, :timeout}
     end
@@ -208,7 +209,7 @@ defmodule WandererNotifier.Api.Http.Client do
     case HTTPoison.request(method, url, body, headers, options) do
       {:ok, response = %{status_code: status_code}} ->
         # Only log at debug level for successful responses
-        Logger.debug("HTTP #{method_str} [#{config.label}] => status #{status_code}")
+        AppLogger.api_debug("HTTP #{method_str} [#{config.label}] => status #{status_code}")
 
         # Return a consistent response format
         {:ok,
@@ -282,9 +283,9 @@ defmodule WandererNotifier.Api.Http.Client do
         ": #{inspect(reason)}"
 
     case log_level do
-      :error -> Logger.error(message)
-      :warning -> Logger.warning(message)
-      _ -> Logger.debug(message)
+      :error -> AppLogger.api_error(message)
+      :warning -> AppLogger.api_warn(message)
+      _ -> AppLogger.api_debug(message)
     end
   end
 

@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
   Handles extracting slugs and building properly formatted URLs for the Map API.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.Config
 
   @doc """
@@ -47,7 +48,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
 
     # Debug logs for token availability
     if token do
-      Logger.debug("[UrlBuilder] Map token is available")
+      AppLogger.api_debug("[UrlBuilder] Map token is available")
     else
       Logger.warning(
         "[UrlBuilder] Map token is NOT available - bearer token authentication will not be used"
@@ -71,7 +72,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
     base_url = Config.map_url()
 
     if is_nil(base_url) or base_url == "" do
-      Logger.error("[UrlBuilder] MAP_URL not configured. Cannot construct API URL.")
+      AppLogger.api_error("[UrlBuilder] MAP_URL not configured. Cannot construct API URL.")
       {:error, "MAP_URL is required but not configured"}
     else
       # Extract base domain - should be just the domain without the slug path
@@ -87,7 +88,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         extract_slug_from_url(Config.map_url())
 
     if is_nil(slug) do
-      Logger.error("[UrlBuilder] No map slug provided or configured")
+      AppLogger.api_error("[UrlBuilder] No map slug provided or configured")
       {:error, "Map slug is required but not available"}
     else
       {:ok, slug}

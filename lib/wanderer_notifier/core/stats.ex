@@ -6,6 +6,7 @@ defmodule WandererNotifier.Core.Stats do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Client API
 
@@ -13,7 +14,7 @@ defmodule WandererNotifier.Core.Stats do
   Starts the Stats GenServer.
   """
   def start_link(opts \\ []) do
-    Logger.info("Starting Stats tracking service...")
+    AppLogger.config_info("Starting Stats tracking service...")
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -64,7 +65,7 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def init(_opts) do
-    Logger.info("Initializing stats tracking service...")
+    AppLogger.config_info("Initializing stats tracking service...")
 
     initial_state = %{
       startup_time: DateTime.utc_now(),
@@ -108,7 +109,7 @@ defmodule WandererNotifier.Core.Stats do
   def handle_cast({:mark_notification_sent, type}, state) do
     # Update the first_notifications map to mark this type as sent
     first_notifications = Map.put(state.first_notifications, type, false)
-    Logger.debug("Marked #{type} notification as sent - no longer first notification")
+    AppLogger.config_debug("Marked #{type} notification as sent - no longer first notification")
 
     {:noreply, %{state | first_notifications: first_notifications}}
   end

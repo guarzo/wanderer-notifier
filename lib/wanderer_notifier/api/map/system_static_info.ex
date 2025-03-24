@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.UrlBuilder
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
          {:ok, response} <- make_api_request(url, solar_system_id),
          {:ok, parsed_response} <- process_api_response(response),
          {:ok, data} <- validate_static_info(parsed_response) do
-      Logger.debug("[SystemStaticInfo] Successfully validated static info")
+      AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
       {:ok, data}
     end
   end
@@ -37,7 +38,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         {:ok, url}
 
       {:error, reason} = error ->
-        Logger.error("[SystemStaticInfo] Failed to construct URL: #{inspect(reason)}")
+        AppLogger.api_error("[SystemStaticInfo] Failed to construct URL: #{inspect(reason)}")
         error
     end
   end
@@ -45,15 +46,15 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   defp make_api_request(url, solar_system_id) do
     headers = UrlBuilder.get_auth_headers()
     # Log request details for debugging
-    Logger.debug("[SystemStaticInfo] Requesting static info for system #{solar_system_id}")
-    Logger.debug("[SystemStaticInfo] URL: #{url}")
+    AppLogger.api_debug("[SystemStaticInfo] Requesting static info for system #{solar_system_id}")
+    AppLogger.api_debug("[SystemStaticInfo] URL: #{url}")
 
     case Client.get(url, headers) do
       {:ok, _response} = success ->
         success
 
       {:error, reason} = error ->
-        Logger.error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
+        AppLogger.api_error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
         error
     end
   end
@@ -64,7 +65,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         success
 
       {:error, reason} = error ->
-        Logger.error("[SystemStaticInfo] HTTP error: #{inspect(reason)}")
+        AppLogger.api_error("[SystemStaticInfo] HTTP error: #{inspect(reason)}")
         error
     end
   end
@@ -75,7 +76,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         success
 
       {:error, reason} = error ->
-        Logger.warning("[SystemStaticInfo] Invalid system static info: #{inspect(reason)}")
+        AppLogger.api_warn("[SystemStaticInfo] Invalid system static info: #{inspect(reason)}")
         error
     end
   end

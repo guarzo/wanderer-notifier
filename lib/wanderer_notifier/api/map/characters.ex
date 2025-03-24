@@ -2,7 +2,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   @moduledoc """
   Tracked characters API calls.
   """
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
@@ -11,47 +11,35 @@ defmodule WandererNotifier.Api.Map.Characters do
   alias WandererNotifier.Helpers.NotificationHelpers
 
   def update_tracked_characters(cached_characters \\ nil) do
-    Logger.debug("[update_tracked_characters] Starting update of tracked characters")
+    AppLogger.api_debug("Starting update of tracked characters")
 
     with {:ok, chars_url} <- build_characters_url(),
-         _ <- Logger.debug("[update_tracked_characters] Characters URL built: #{chars_url}"),
+         _ <- AppLogger.api_debug("Characters URL built", url: chars_url),
          {:ok, body} <- fetch_characters_body(chars_url),
          _ <-
-           Logger.debug(
-             "[update_tracked_characters] Received response body: #{String.slice(body, 0, 100)}..."
-           ),
+           AppLogger.api_debug("Received response body", body_preview: String.slice(body, 0, 100)),
          {:ok, parsed_chars} <- parse_characters_response(body),
          _ <- update_cache(parsed_chars, cached_characters),
          _ <- notify_new_tracked_characters(parsed_chars, cached_characters) do
       {:ok, parsed_chars}
     else
       error ->
-        Logger.error(
-          "[update_tracked_characters] Failed to update tracked characters: #{inspect(error)}"
-        )
-
+        AppLogger.api_error("Failed to update tracked characters", error: inspect(error))
         {:error, error}
     end
   end
 
   def check_characters_endpoint_availability do
-    Logger.debug(
-      "[check_characters_endpoint_availability] Checking characters endpoint availability"
-    )
+    AppLogger.api_debug("Checking characters endpoint availability")
 
     with {:ok, chars_url} <- build_characters_url(),
-         _ <-
-           Logger.debug(
-             "[check_characters_endpoint_availability] Characters URL built: #{chars_url}"
-           ),
+         _ <- AppLogger.api_debug("Characters URL built", url: chars_url),
          {:ok, _body} <- fetch_characters_body(chars_url) do
-      Logger.info("[check_characters_endpoint_availability] Characters endpoint is available")
+      AppLogger.api_info("Characters endpoint is available")
       {:ok, true}
     else
       error ->
-        Logger.warning(
-          "[check_characters_endpoint_availability] Characters endpoint is NOT available: #{inspect(error)}"
-        )
+        AppLogger.api_warn("Characters endpoint is NOT available", error: inspect(error))
 
         error_reason =
           case error do
@@ -89,24 +77,24 @@ defmodule WandererNotifier.Api.Map.Characters do
   defp construct_characters_url(base_url_with_slug) do
     # Parse the URL to separate the base URL from the slug
     uri = URI.parse(base_url_with_slug)
-    Logger.debug("[build_characters_url] Parsed URI: #{inspect(uri)}")
+    AppLogger.api_debug("Parsed URI", uri: inspect(uri))
 
     # Extract the slug ID from the path
     slug_id = extract_slug_id(uri)
-    Logger.debug("[build_characters_url] Extracted slug ID: #{slug_id}")
+    AppLogger.api_debug("Extracted slug ID", slug_id: slug_id)
 
     # Get base host and construct the final URL
     base_host = get_base_host(uri)
     url = build_final_url(base_host, slug_id)
 
-    Logger.debug("[build_characters_url] Final URL: #{url}")
+    AppLogger.api_debug("Final URL constructed", url: url)
     {:ok, url}
   end
 
   defp extract_slug_id(uri) do
     path = uri.path || ""
     path = String.trim_trailing(path, "/")
-    Logger.debug("[build_characters_url] Extracted path: #{path}")
+    AppLogger.api_debug("Extracted path", path: path)
 
     path
     |> String.split("/")
@@ -135,29 +123,30 @@ defmodule WandererNotifier.Api.Map.Characters do
       {"Accept", "application/json"}
     ]
 
-    Logger.debug("[fetch_characters_body] Requesting from URL: #{chars_url}")
+    AppLogger.api_debug("Requesting characters data", url: chars_url)
 
     # Make the request - use only one endpoint, no fallbacks
     case HttpClient.get(chars_url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
-        Logger.debug("[fetch_characters_body] Characters API endpoint successful")
+        AppLogger.api_debug("Characters API endpoint successful")
         {:ok, body}
 
       {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error(
-          "[fetch_characters_body] API returned non-200 status: #{status_code}. Body: #{body}"
+        AppLogger.api_error("API returned non-200 status",
+          status_code: status_code,
+          body: String.slice(body, 0, 100)
         )
 
         {:error, "API returned non-200 status: #{status_code}"}
 
       {:error, reason} ->
-        Logger.error("[fetch_characters_body] API request failed: #{inspect(reason)}")
+        AppLogger.api_error("API request failed", error: inspect(reason))
         {:error, reason}
     end
   end
 
   defp parse_characters_response(body) do
-    Logger.debug("[parse_characters_response] Raw body: #{body}")
+    AppLogger.api_debug("Processing response body", body_size: byte_size(body))
 
     case decode_json(body) do
       {:ok, data} -> process_decoded_data(data)
@@ -169,17 +158,25 @@ defmodule WandererNotifier.Api.Map.Characters do
   defp decode_json(body) do
     case Jason.decode(body) do
       {:ok, data} ->
-        Logger.debug("[parse_characters_response] Decoded data: #{inspect(data)}")
+        AppLogger.api_debug("Successfully decoded JSON", data_keys: map_keys_preview(data))
         {:ok, data}
 
       {:error, reason} ->
-        Logger.error(
-          "[parse_characters_response] Failed to parse JSON response: #{inspect(reason)}"
-        )
-
+        AppLogger.api_error("Failed to parse JSON response", error: inspect(reason))
         {:error, "Failed to parse JSON response"}
     end
   end
+
+  # Helper to get a preview of map keys for debugging
+  defp map_keys_preview(data) when is_map(data) do
+    Map.keys(data)
+  end
+
+  defp map_keys_preview(data) when is_list(data) do
+    "list with #{length(data)} items"
+  end
+
+  defp map_keys_preview(_), do: "not a map"
 
   # Process the decoded data based on format
   defp process_decoded_data(data) do
@@ -194,42 +191,54 @@ defmodule WandererNotifier.Api.Map.Characters do
 
       # Case 3: Empty or unexpected map
       is_map(data) ->
-        Logger.warning(
-          "[parse_characters_response] Unexpected response format, no characters found: #{inspect(data)}"
-        )
-
+        AppLogger.api_warn("Unexpected response format, no characters found", data: inspect(data))
         {:ok, []}
 
       # Case 4: Completely unexpected format
       true ->
-        Logger.error("[parse_characters_response] Unexpected response format: #{inspect(data)}")
+        AppLogger.api_error("Unexpected response format", data_type: typeof(data))
         {:error, "Unexpected response format"}
     end
   end
 
+  defp typeof(term) when is_binary(term), do: "string"
+  defp typeof(term) when is_boolean(term), do: "boolean"
+  defp typeof(term) when is_integer(term), do: "integer"
+  defp typeof(term) when is_float(term), do: "float"
+  defp typeof(term) when is_map(term), do: "map"
+  defp typeof(term) when is_list(term), do: "list"
+  defp typeof(term) when is_atom(term), do: "atom"
+  defp typeof(term) when is_tuple(term), do: "tuple"
+  defp typeof(term) when is_function(term), do: "function"
+  defp typeof(term) when is_pid(term), do: "pid"
+  defp typeof(term) when is_reference(term), do: "reference"
+  defp typeof(_), do: "unknown"
+
   # Process characters nested in a data array
   defp process_nested_characters(characters) do
-    Logger.debug(
-      "[parse_characters_response] Parsed characters from data array: #{length(characters)}"
-    )
+    AppLogger.api_debug("Parsed characters from data array", count: length(characters))
 
-    Logger.debug(
-      "[parse_characters_response] First raw character: #{inspect(List.first(characters))}"
-    )
+    if length(characters) > 0 do
+      AppLogger.api_debug("First raw character sample",
+        sample: inspect(List.first(characters), limit: 500)
+      )
+    end
 
     # Transform the characters to match the expected format
     transformed_characters = Enum.map(characters, &transform_nested_character/1)
 
-    Logger.debug(
-      "[parse_characters_response] First transformed character: #{inspect(List.first(transformed_characters))}"
-    )
+    if length(transformed_characters) > 0 do
+      AppLogger.api_debug("First transformed character",
+        sample: inspect(List.first(transformed_characters), limit: 500)
+      )
+    end
 
     {:ok, transformed_characters}
   end
 
   # Process a direct array of characters
   defp process_direct_characters(characters) do
-    Logger.debug("[parse_characters_response] Parsed characters: #{length(characters)}")
+    AppLogger.api_debug("Parsed characters", count: length(characters))
 
     # Transform raw characters into standardized format
     transformed_characters = Enum.map(characters, &transform_character_data/1)
@@ -241,40 +250,43 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Update the cache
     CacheRepo.set("map:characters", new_characters, Timings.characters_cache_ttl())
 
-    Logger.info(
-      "[update_cache] Updated map:characters cache with #{length(new_characters)} characters"
+    AppLogger.api_info("Updated characters cache",
+      count: length(new_characters),
+      ttl: Timings.characters_cache_ttl()
     )
 
     # Log a sample of characters for debugging
     if length(new_characters) > 0 do
       sample = Enum.take(new_characters, min(2, length(new_characters)))
-      Logger.info("[update_cache] Sample from updated cache: #{inspect(sample)}")
+      AppLogger.api_debug("Sample from updated cache", sample: inspect(sample, limit: 500))
     end
 
     # Sync with TrackedCharacter Ash resource synchronously - no more background process
-    Logger.info("[update_cache] Starting synchronization with Ash resource")
+    AppLogger.api_info("Starting synchronization with Ash resource")
 
     # Run sync synchronously
     try do
       case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
         {:ok, stats} ->
-          Logger.info(
-            "[update_cache] Successfully synced characters to Ash resource: #{inspect(stats)}"
+          AppLogger.api_info("Successfully synced characters to Ash resource",
+            stats: inspect(stats)
           )
 
         {:error, reason} ->
-          Logger.error(
-            "[update_cache] Failed to sync characters to Ash resource: #{inspect(reason)}"
-          )
+          AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
       end
     rescue
       e ->
-        Logger.error(
-          "[update_cache] Exception in sync process: #{Exception.message(e)}\n#{Exception.format_stacktrace()}"
+        AppLogger.api_error("Exception in sync process",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
     catch
       kind, reason ->
-        Logger.error("[update_cache] Caught #{kind} in sync process: #{inspect(reason)}")
+        AppLogger.api_error("Caught error in sync process",
+          kind: kind,
+          error: inspect(reason)
+        )
     end
 
     {:ok, new_characters}
@@ -290,12 +302,12 @@ defmodule WandererNotifier.Api.Map.Characters do
       # Find characters that are in new_chars but not in cached_chars
       added_characters = find_new_characters(new_chars, cached_chars)
 
+      AppLogger.api_info("Found new characters", count: length(added_characters))
+
       # Process each new character for notification
       Enum.each(added_characters, &process_character_notification/1)
     else
-      Logger.debug(
-        "[notify_new_tracked_characters] Character notifications are disabled globally"
-      )
+      AppLogger.api_debug("Character notifications are disabled globally")
     end
 
     {:ok, new_characters}
@@ -340,9 +352,7 @@ defmodule WandererNotifier.Api.Map.Characters do
     eve_id = Map.get(character_data, "eve_id")
 
     if is_nil(eve_id) do
-      Logger.warning(
-        "[transform_character_data] Character data missing eve_id: #{inspect(character_data)}"
-      )
+      AppLogger.api_warn("Character data missing eve_id", data: inspect(character_data))
     end
 
     character_map = %{
@@ -376,8 +386,9 @@ defmodule WandererNotifier.Api.Map.Characters do
       notify_character_if_needed(character_id, char)
     rescue
       e ->
-        Logger.error(
-          "[notify_new_tracked_characters] Error sending character notification: #{inspect(e)}"
+        AppLogger.api_error("Error sending character notification",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
     end
   end
@@ -388,9 +399,7 @@ defmodule WandererNotifier.Api.Map.Characters do
     if determiner.should_notify_character?(character_id) do
       send_notification_for_character(character_id, char)
     else
-      Logger.debug(
-        "[notify_new_tracked_characters] Character with ID #{character_id} is not marked for notification"
-      )
+      AppLogger.api_debug("Character is not marked for notification", character_id: character_id)
     end
   end
 
@@ -404,8 +413,9 @@ defmodule WandererNotifier.Api.Map.Characters do
 
     send_character_notification(character_info)
 
-    Logger.info(
-      "[notify_new_tracked_characters] Sent notification for character #{character_info["character_name"]} (ID: #{character_id})"
+    AppLogger.api_info("Sent character notification",
+      character_name: character_info["character_name"],
+      character_id: character_id
     )
   end
 
@@ -414,7 +424,7 @@ defmodule WandererNotifier.Api.Map.Characters do
     # or it might return a flat structure with the data directly in the map
     character_data = Map.get(char, "character", char)
 
-    Logger.debug("[parse_characters_response] Character data: #{inspect(character_data)}")
+    AppLogger.api_debug("Processing character data", data: inspect(character_data, limit: 500))
 
     # Transform the data to use consistent field names, prioritizing eve_id
     transform_character_data(character_data)

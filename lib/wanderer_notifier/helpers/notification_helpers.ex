@@ -3,6 +3,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   Helper functions for notification formatting and data extraction.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Extracts a valid EVE character ID from a character map.
@@ -23,8 +24,9 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
 
       # Log error if no valid ID was found
       if is_nil(character_id) do
-        Logger.error(
-          "No valid numeric EVE ID found for character: #{inspect(character, pretty: true, limit: 500)}"
+        AppLogger.processor_error(
+          "No valid numeric EVE ID found for character",
+          character_data: inspect(character, pretty: true, limit: 500)
         )
       end
 
@@ -229,14 +231,17 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @spec send_test_system_notification() :: {:ok, String.t() | integer(), String.t()}
   def send_test_system_notification() do
     require Logger
-    Logger.info("TEST NOTIFICATION: Manually triggering a test system notification")
+
+    AppLogger.processor_info("Manually triggering a test system notification",
+      type: "TEST NOTIFICATION"
+    )
 
     alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
     alias WandererNotifier.Data.MapSystem
 
     # Get all tracked systems from cache
     tracked_systems = get_tracked_systems()
-    Logger.info("Found #{length(tracked_systems)} tracked systems")
+    AppLogger.processor_info("Found tracked systems", count: length(tracked_systems))
 
     # Select a random wormhole system if available, or any system if no wormholes
     selected_system =
@@ -245,12 +250,12 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       |> case do
         [] ->
           # No wormhole systems, just pick any system
-          Logger.info("No wormhole systems found, selecting random system")
+          AppLogger.processor_info("No wormhole systems found", action: "selecting random system")
           Enum.random(tracked_systems)
 
         wormhole_systems ->
           # Pick a random wormhole system
-          Logger.info("Found #{length(wormhole_systems)} wormhole systems")
+          AppLogger.processor_info("Found wormhole systems", count: length(wormhole_systems))
           Enum.random(wormhole_systems)
       end
 
@@ -259,34 +264,37 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       if is_struct(selected_system, MapSystem) do
         selected_system
       else
-        Logger.info("Converting to MapSystem struct for consistent handling")
+        AppLogger.processor_debug("Converting to MapSystem struct for consistent handling")
         MapSystem.new(selected_system)
       end
 
-    Logger.info(
-      "Using system #{map_system.name} (ID: #{map_system.solar_system_id}) for test notification"
+    AppLogger.processor_info(
+      "Using system for test notification",
+      system_name: map_system.name,
+      system_id: map_system.solar_system_id
     )
 
     # Enrich the MapSystem with static info
     enriched_system =
       case WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(map_system) do
         {:ok, enriched} ->
-          Logger.info("Successfully enriched system with static info")
+          AppLogger.processor_info("Successfully enriched system with static info")
           enriched
 
         {:error, reason} ->
-          Logger.warning("Failed to enrich system: #{inspect(reason)}")
+          AppLogger.processor_warn("Failed to enrich system", error: inspect(reason))
           # Return the original system if enrichment fails
           map_system
       end
 
     # Log key fields for debugging
-    Logger.info("Enriched system fields:")
-    Logger.info("- solar_system_id: #{enriched_system.solar_system_id}")
-    Logger.info("- name: #{enriched_system.name}")
-    Logger.info("- type_description: #{enriched_system.type_description}")
-    Logger.info("- is_wormhole?: #{MapSystem.wormhole?(enriched_system)}")
-    Logger.info("- statics: #{inspect(enriched_system.statics)}")
+    AppLogger.processor_debug("Enriched system fields",
+      solar_system_id: enriched_system.solar_system_id,
+      name: enriched_system.name,
+      type_description: enriched_system.type_description,
+      is_wormhole: MapSystem.wormhole?(enriched_system),
+      statics: inspect(enriched_system.statics)
+    )
 
     # Send notification with the enriched system struct directly
     notifier = NotifierFactory.get_notifier()

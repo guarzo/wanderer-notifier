@@ -8,6 +8,7 @@ defmodule WandererNotifier.Schedulers.Registry do
 
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Client API
 
@@ -43,35 +44,81 @@ defmodule WandererNotifier.Schedulers.Registry do
 
   @impl true
   def init(_opts) do
-    Logger.info("Initializing Scheduler Registry...")
-    {:ok, %{schedulers: []}}
+    # Use startup tracker if available
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_registry, %{
+        status: "initializing"
+      })
+    else
+      AppLogger.scheduler_info("Initializing Scheduler Registry...")
+    end
+
+    # Initialize with a counter to track the number of schedulers
+    {:ok, %{schedulers: [], enabled_count: 0, disabled_count: 0}}
   end
 
   @impl true
   def handle_cast({:register, scheduler_module}, state) do
-    if Enum.member?(state.schedulers, scheduler_module) do
-      Logger.debug("Scheduler #{inspect(scheduler_module)} already registered")
-      {:noreply, state}
-    else
-      Logger.info("Registering scheduler: #{inspect(scheduler_module)}")
-      {:noreply, %{state | schedulers: [scheduler_module | state.schedulers]}}
-    end
+    {enabled_count, disabled_count} =
+      if scheduler_module.enabled?() do
+        {state.enabled_count + 1, state.disabled_count}
+      else
+        {state.enabled_count, state.disabled_count + 1}
+      end
+
+    # Update state with new scheduler
+    new_state = %{
+      state
+      | schedulers: [scheduler_module | state.schedulers],
+        enabled_count: enabled_count,
+        disabled_count: disabled_count
+    }
+
+    # Log a summary based on certain conditions
+    maybe_log_scheduler_summary(length(new_state.schedulers), enabled_count, disabled_count)
+
+    {:noreply, new_state}
   end
 
   @impl true
   def handle_cast(:execute_all, state) do
-    Logger.info("Triggering execution of all registered schedulers")
+    AppLogger.scheduler_info("Triggering execution of all registered schedulers")
 
     Enum.each(state.schedulers, fn scheduler ->
       if function_exported?(scheduler, :execute_now, 0) do
-        Logger.debug("Executing scheduler: #{inspect(scheduler)}")
+        AppLogger.scheduler_debug("Executing scheduler: #{inspect(scheduler)}")
         scheduler.execute_now()
       else
-        Logger.warning("Scheduler #{inspect(scheduler)} does not implement execute_now/0")
+        AppLogger.scheduler_warn(
+          "Scheduler #{inspect(scheduler)} does not implement execute_now/0"
+        )
       end
     end)
 
     {:noreply, state}
+  end
+
+  # Private function to handle logging logic
+  defp maybe_log_scheduler_summary(total_count, enabled_count, disabled_count) do
+    # Only log scheduler summary when we reach a significant milestone
+    # in the registration process (final expected scheduler or at regular intervals)
+    if total_count == 6 || (total_count > 0 && rem(total_count, 3) == 0) do
+      # Always use the startup tracker to consolidate logs
+      if Process.get(:startup_tracker) do
+        # Only track the event, it will be logged only once by the supervisor later
+        WandererNotifier.Logger.StartupTracker.record_event(:scheduler_status, %{
+          total: total_count,
+          enabled: enabled_count,
+          disabled: disabled_count
+        })
+      else
+        # If no startup tracker, log at debug level to reduce noise
+        AppLogger.scheduler_debug(
+          "Scheduler registration progress",
+          %{total: total_count, enabled: enabled_count, disabled: disabled_count}
+        )
+      end
+    end
   end
 
   @impl true

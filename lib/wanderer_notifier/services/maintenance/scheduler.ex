@@ -3,7 +3,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Schedules and executes maintenance tasks.
   Handles periodic updates for systems and characters.
   """
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
@@ -18,7 +18,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   """
   def tick(state) do
     now = :os.system_time(:second)
-    Logger.debug("Running maintenance tick at #{DateTime.from_unix!(now)}")
+    AppLogger.maintenance_debug("Running maintenance tick", timestamp: DateTime.from_unix!(now))
 
     # Update systems if needed (every 5 minutes)
     new_state =
@@ -60,75 +60,139 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   # Update systems from the map
   defp update_systems(state, now, force \\ false) do
     if Features.tracked_systems_notifications_enabled?() do
-      Logger.info("Updating systems (force=#{force})...")
+      AppLogger.maintenance_info("Updating systems", force: force)
 
       cached_systems = if force, do: nil, else: CacheHelpers.get_tracked_systems()
 
       case MapClient.update_systems_with_cache(cached_systems) do
         {:ok, systems} ->
-          Logger.info("Systems updated: #{length(systems)} systems found")
+          AppLogger.maintenance_info("Systems updated", count: length(systems))
           %{state | last_systems_update: now, systems_count: length(systems)}
 
         {:error, reason} ->
-          Logger.error("Failed to update systems: #{inspect(reason)}")
+          AppLogger.maintenance_error("Failed to update systems", error: inspect(reason))
           # Return original state with updated timestamp to prevent rapid retries
           %{state | last_systems_update: now}
       end
     else
-      Logger.debug("System tracking is disabled, skipping update")
+      AppLogger.maintenance_debug("System tracking is disabled, skipping update")
       %{state | last_systems_update: now}
     end
   end
 
   # Update characters from the map
   defp update_characters(state, now, force \\ false) do
+    # Check if character tracking is enabled
     if Features.tracked_characters_notifications_enabled?() do
-      Logger.info("Updating characters (force=#{force})...")
+      update_tracked_characters(state, now, force)
+    else
+      AppLogger.maintenance_debug("Character tracking is disabled, skipping update")
+      return_state_with_updated_timestamp(state, now)
+    end
+  end
 
-      cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
-      Logger.debug("Retrieved cached characters before update: #{inspect(cached_characters)}")
+  # Process tracked characters update
+  defp update_tracked_characters(state, now, force) do
+    AppLogger.maintenance_info("Updating characters", force: force)
 
-      case MapClient.update_tracked_characters(cached_characters) do
+    # Get cached characters and ensure they're in the right format
+    cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
+    cached_characters_safe = normalize_cached_characters(cached_characters)
+
+    AppLogger.maintenance_debug("Retrieved cached characters before update",
+      characters: inspect(cached_characters_safe)
+    )
+
+    # Update characters through the MapClient with exception handling
+    try do
+      case MapClient.update_tracked_characters(cached_characters_safe) do
         {:ok, characters} ->
-          Logger.info("Characters updated: #{length(characters)} characters found")
-          # Verify the characters were actually stored in cache
-          verify_and_update_characters_cache(characters)
-          %{state | last_characters_update: now, characters_count: length(characters)}
+          handle_successful_character_update(state, now, characters)
 
         {:error, reason} ->
-          Logger.error("Failed to update characters: #{inspect(reason)}")
-          # Return original state with updated timestamp to prevent rapid retries
-          %{state | last_characters_update: now}
+          AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
+          return_state_with_updated_timestamp(state, now)
       end
-    else
-      Logger.debug("Character tracking is disabled, skipping update")
-      %{state | last_characters_update: now}
+    rescue
+      e ->
+        # Catch any exception, log it, and return the state with updated timestamp
+        AppLogger.maintenance_error("Exception while updating characters",
+          error: Exception.message(e),
+          stacktrace: inspect(Process.info(self(), :current_stacktrace))
+        )
+
+        # Return original state with updated timestamp to prevent rapid retries
+        return_state_with_updated_timestamp(state, now)
     end
+  end
+
+  # Normalize cached characters to ensure it's a list or nil
+  defp normalize_cached_characters(cached_characters) do
+    ensure_list(cached_characters)
+  end
+
+  # Helper function to ensure we're working with a list
+  defp ensure_list(nil), do: []
+  defp ensure_list(list) when is_list(list), do: list
+  defp ensure_list({:ok, list}) when is_list(list), do: list
+  defp ensure_list({:error, _}), do: []
+  defp ensure_list(_), do: []
+
+  # Handle successful character update
+  defp handle_successful_character_update(state, now, characters) do
+    # Ensure characters is a list
+    characters_list = ensure_list(characters)
+
+    AppLogger.maintenance_info("Characters updated", count: length(characters_list))
+
+    # Verify the characters were actually stored in cache
+    verify_and_update_characters_cache(characters_list)
+
+    # Return updated state
+    %{state | last_characters_update: now, characters_count: length(characters_list)}
+  end
+
+  # Helper to return state with updated timestamp
+  defp return_state_with_updated_timestamp(state, now) do
+    %{state | last_characters_update: now}
   end
 
   # Verify characters are stored in cache and force update if needed
   defp verify_and_update_characters_cache(characters) do
-    updated_cache = CacheRepo.get("map:characters")
+    # Ensure we're working with a list
+    characters_list = ensure_list(characters)
 
-    Logger.debug(
-      "Post-update cache verification - map:characters contains: #{inspect(updated_cache)}"
+    updated_cache = CacheRepo.get("map:characters")
+    # Ensure the cache result is a list
+    cache_list = ensure_list(updated_cache)
+
+    AppLogger.maintenance_debug(
+      "Post-update cache verification",
+      cache_key: "map:characters",
+      character_count: length(cache_list)
     )
 
-    if updated_cache == nil || updated_cache == [] do
-      Logger.warning(
-        "Characters were updated but cache appears empty. Forcing manual cache update."
+    if cache_list == [] do
+      AppLogger.maintenance_warn(
+        "Characters were updated but cache appears empty",
+        action: "forcing_manual_cache_update"
       )
 
       CacheRepo.set(
         "map:characters",
-        characters,
-        WandererNotifier.Config.Timings.characters_cache_ttl()
+        characters_list,
+        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
       )
 
       # Double-check the cache again
       final_cache = CacheRepo.get("map:characters")
+      final_cache_list = ensure_list(final_cache)
 
-      Logger.debug("After manual cache update - map:characters contains: #{inspect(final_cache)}")
+      AppLogger.maintenance_debug(
+        "After manual cache update",
+        cache_key: "map:characters",
+        character_count: length(final_cache_list)
+      )
     end
   end
 
@@ -149,7 +213,10 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Check if we've already sent a status report in this time window
     case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :duplicate} ->
-        Logger.info("Status report for current day already sent, skipping duplicate")
+        AppLogger.maintenance_info("Status report for current day already sent",
+          action: "skipping_duplicate"
+        )
+
         :ok
 
       {:ok, :new} ->
@@ -162,11 +229,15 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
             WandererNotifier.Core.License.status()
           rescue
             e ->
-              Logger.error("Error getting license status: #{inspect(e)}")
+              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
               %{valid: false, error_message: "Error retrieving license status"}
           catch
             type, error ->
-              Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+              AppLogger.maintenance_error("Error getting license status",
+                error_type: inspect(type),
+                error: inspect(error)
+              )
+
               %{valid: false, error_message: "Error retrieving license status"}
           end
 
@@ -199,7 +270,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
           WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
         # Log simple status message
-        Logger.info("Service status report - Uptime: #{uptime_str}")
+        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
 
         # Send the rich notification
         NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
@@ -225,7 +296,10 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Check if we've already sent a status report in this time window
     case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :duplicate} ->
-        Logger.info("Status report for current day already sent, skipping duplicate")
+        AppLogger.maintenance_info("Status report for current day already sent",
+          action: "skipping_duplicate"
+        )
+
         :ok
 
       {:ok, :new} ->
@@ -238,11 +312,15 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
             WandererNotifier.Core.License.status()
           rescue
             e ->
-              Logger.error("Error getting license status: #{inspect(e)}")
+              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
               %{valid: false, error_message: "Error retrieving license status"}
           catch
             type, error ->
-              Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+              AppLogger.maintenance_error("Error getting license status",
+                error_type: inspect(type),
+                error: inspect(error)
+              )
+
               %{valid: false, error_message: "Error retrieving license status"}
           end
 
@@ -275,7 +353,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
           WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
         # Log simple status message
-        Logger.info("Service status report - Uptime: #{uptime_str}")
+        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
 
         # Send the rich notification
         NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])

@@ -4,6 +4,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   """
   use Plug.Router
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Core.Config
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
         _ -> "invalid"
       end
 
-    Logger.info("Generating activity chart type: #{inspect(chart_type)}")
+    AppLogger.api_info("Generating activity chart", chart_type: chart_type)
 
     if chart_type == "invalid" do
       conn
@@ -40,11 +41,11 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       activity_data =
         case CharactersClient.get_character_activity() do
           {:ok, data} ->
-            Logger.info("Successfully retrieved activity data for chart generation")
+            AppLogger.api_info("Retrieved activity data for chart generation")
             data
 
           _ ->
-            Logger.warning("Failed to retrieve activity data, using nil")
+            AppLogger.api_warn("Failed to retrieve activity data", fallback: "using nil")
             nil
         end
 
@@ -68,7 +69,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
       case chart_result do
         {:ok, chart_url, title} ->
-          Logger.info("Generated chart: #{title}")
+          AppLogger.api_info("Generated chart", title: title)
 
           conn
           |> put_resp_content_type("application/json")
@@ -84,7 +85,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
         {:ok, chart_url} ->
           # Handle new return format from ChartService
           title = "Character Activity Chart"
-          Logger.info("Generated chart (new format): #{title}")
+          AppLogger.api_info("Generated chart", format: "new", title: title)
 
           conn
           |> put_resp_content_type("application/json")
@@ -98,7 +99,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
           )
 
         {:error, reason} ->
-          Logger.error("Failed to generate #{chart_type} chart: #{inspect(reason)}")
+          AppLogger.api_error("Failed to generate chart",
+            chart_type: chart_type,
+            error: inspect(reason)
+          )
 
           conn
           |> put_resp_content_type("application/json")
@@ -122,7 +126,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
         _ -> :invalid
       end
 
-    Logger.info("Sending #{chart_type} chart to Discord")
+    AppLogger.api_info("Sending chart to Discord", chart_type: chart_type)
 
     if chart_type == :invalid do
       conn
@@ -133,11 +137,11 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       activity_data =
         case CharactersClient.get_character_activity() do
           {:ok, data} ->
-            Logger.info("Successfully retrieved activity data for sending chart")
+            AppLogger.api_info("Retrieved activity data for sending chart")
             data
 
           _ ->
-            Logger.warning("Failed to retrieve activity data, using nil")
+            AppLogger.api_warn("Failed to retrieve activity data", fallback: "using nil")
             nil
         end
 
@@ -146,7 +150,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
       case result do
         {:ok, chart_url, title} ->
-          Logger.info("Successfully sent chart to Discord: #{title}")
+          AppLogger.api_info("Sent chart to Discord", title: title)
 
           conn
           |> put_resp_content_type("application/json")
@@ -161,7 +165,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
           )
 
         {:error, reason} ->
-          Logger.error("Failed to send chart to Discord: #{inspect(reason)}")
+          AppLogger.api_error("Failed to send chart to Discord", error: inspect(reason))
 
           conn
           |> put_resp_content_type("application/json")
@@ -179,17 +183,18 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   # Handles requests to send all activity charts to Discord.
   # Returns a summary of the results.
   get "/send-all" do
-    Logger.info("Request to send all activity charts to Discord")
+    AppLogger.api_info("Request to send all activity charts to Discord")
 
     # Check if we have a map slug configured
     map_slug = Config.map_name()
 
     if map_slug == nil || map_slug == "" do
-      Logger.info("No map slug configured, using mock data")
+      AppLogger.api_info("No map slug configured", action: "using mock data")
     end
 
-    Logger.info(
-      "Sending all charts with #{if map_slug == nil || map_slug == "", do: "mock", else: "real"} data"
+    AppLogger.api_info(
+      "Sending all charts",
+      data_type: if(map_slug == nil || map_slug == "", do: "mock", else: "real")
     )
 
     # Get character activity data
@@ -211,8 +216,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
       end)
 
     # Report the results
-    Logger.info(
-      "Completed sending all activity charts to Discord. Success: #{success_count}/#{length(results)}"
+    AppLogger.api_info(
+      "Completed sending all charts to Discord",
+      success_count: success_count,
+      total_count: length(results)
     )
 
     # Format the results in a way that can be encoded to JSON
@@ -247,22 +254,27 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   # Fetches character activity data for display in the UI.
   # Responds with JSON containing the activity data.
   get "/character-activity" do
-    Logger.info("Character activity data request received")
+    AppLogger.api_info("Character activity data request received")
 
     response =
       case CharactersClient.get_character_activity() do
         {:ok, data} ->
-          # Log the full data structure to see what we're working with
-          Logger.info("Successfully retrieved character activity data")
-          Logger.info("Data structure: #{inspect(data, pretty: true, limit: 5000)}")
+          # Log the data information
+          AppLogger.api_info("Retrieved character activity data")
+
+          AppLogger.api_debug("Character activity data structure",
+            data: inspect(data, pretty: true, limit: 2000)
+          )
 
           # Determine the structure of the data and log appropriate information
           characters =
             cond do
               # If data is a map with a "data" key that contains a list
               is_map(data) && Map.has_key?(data, "data") && is_list(data["data"]) ->
-                Logger.info(
-                  "Found data structure: map with 'data' key containing a list of #{length(data["data"])} records"
+                AppLogger.api_debug(
+                  "Found data structure",
+                  type: "map with 'data' key containing a list",
+                  record_count: length(data["data"])
                 )
 
                 data["data"]
@@ -272,20 +284,29 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
                   Map.has_key?(data["data"], "characters") ->
                 char_data = data["data"]["characters"]
 
-                Logger.info(
-                  "Found data structure: nested map with characters key containing #{length(char_data)} records"
+                AppLogger.api_debug(
+                  "Found data structure",
+                  type: "nested map with characters key",
+                  record_count: length(char_data)
                 )
 
                 char_data
 
               # If data is already a list of character data
               is_list(data) ->
-                Logger.info("Found data structure: list with #{length(data)} records")
+                AppLogger.api_debug("Found data structure",
+                  type: "list",
+                  record_count: length(data)
+                )
+
                 data
 
               # Handle other cases
               true ->
-                Logger.info("Unexpected data structure: #{inspect(data, limit: 200)}")
+                AppLogger.api_warn("Unexpected data structure",
+                  data_preview: inspect(data, limit: 200)
+                )
+
                 []
             end
 
@@ -302,7 +323,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
         _ ->
           # Fall back to error response
-          Logger.error("Failed to retrieve character activity data")
+          AppLogger.api_error("Failed to retrieve character activity data")
 
           conn
           |> put_resp_content_type("application/json")
@@ -317,7 +338,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
   # Catch-all route
   match _ do
-    Logger.warning("Unmatched route in ActivityChartController: #{inspect(conn.request_path)}")
+    AppLogger.api_warn("Unmatched route",
+      controller: "ActivityChartController",
+      path: inspect(conn.request_path)
+    )
 
     conn
     |> put_resp_content_type("application/json")
@@ -327,7 +351,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   # Helper function to send all charts to Discord
   # Returns a list of tuples with chart type and result
   defp send_all_charts(activity_data) do
-    Logger.info("Sending all activity charts to Discord")
+    AppLogger.api_info("Sending all activity charts to Discord")
 
     # List of charts to send
     charts = [
@@ -344,12 +368,12 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
   # Helper function to send a specific chart to Discord
   defp send_chart_to_discord(chart_type, activity_data) do
-    Logger.info("Sending #{chart_type} chart to Discord")
-    Logger.info("Preparing to send #{chart_type} chart to Discord")
+    AppLogger.api_info("Sending chart to Discord", chart_type: chart_type)
+    AppLogger.api_debug("Preparing chart for Discord", chart_type: chart_type)
 
     # Get the appropriate channel ID for activity charts
     channel_id = WandererNotifier.Core.Config.discord_channel_id_for_activity_charts()
-    Logger.info("Using Discord channel ID for activity charts: #{channel_id}")
+    AppLogger.api_debug("Using Discord channel", channel_id: channel_id, chart_type: "activity")
 
     # Log the activity data info
     log_activity_data_info(activity_data)
@@ -362,23 +386,23 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   end
 
   # Log information about the activity data
-  defp log_activity_data_info(nil), do: Logger.info("Activity data type: nil")
+  defp log_activity_data_info(nil), do: AppLogger.api_debug("Activity data type", type: "nil")
 
   defp log_activity_data_info(data) when is_map(data) do
-    Logger.info("Activity data type: map with keys: #{inspect(Map.keys(data))}")
+    AppLogger.api_debug("Activity data type", type: "map", keys: inspect(Map.keys(data)))
   end
 
   defp log_activity_data_info(data) when is_list(data) do
-    Logger.info("Activity data type: list with #{length(data)} items")
+    AppLogger.api_debug("Activity data type", type: "list", item_count: length(data))
   end
 
   defp log_activity_data_info(data) do
-    Logger.info("Activity data type: #{inspect(data, limit: 50)}")
+    AppLogger.api_debug("Activity data type", type: "other", preview: inspect(data, limit: 50))
   end
 
   # Ensure we have activity data or fetch it
   defp ensure_activity_data(nil) do
-    Logger.info("Fetching character activity data from EVE Corp Tools API")
+    AppLogger.api_info("Fetching character activity data", source: "EVE Corp Tools API")
     fetch_activity_data()
   end
 
@@ -391,7 +415,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
         data
 
       {:error, reason} ->
-        Logger.error("Failed to fetch activity data: #{inspect(reason)}")
+        AppLogger.api_error("Failed to fetch activity data", error: inspect(reason))
         nil
     end
   end

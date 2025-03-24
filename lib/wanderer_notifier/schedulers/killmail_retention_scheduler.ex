@@ -13,6 +13,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Run once per day (24 hours) by default
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   @impl true
   def execute(state) do
     if kill_charts_enabled?() do
-      Logger.info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
+      AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
 
       # Get the configured retention period
       retention_days = get_retention_period()
@@ -59,7 +60,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
         "#{inspect(@scheduler_name)}: Error during killmail retention: #{Exception.message(e)}"
       )
 
-      Logger.debug(Exception.format_stacktrace())
+      AppLogger.scheduler_debug(Exception.format_stacktrace())
       {:error, e, state}
   end
 

@@ -10,6 +10,9 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
       use WandererNotifier.Schedulers.BaseScheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
+      # Add the alias for Logger
+      alias WandererNotifier.Logger, as: AppLogger
+
       # Default interval is 1 hour (in milliseconds) if not specified
       @default_interval unquote(Keyword.get(opts, :default_interval, 60 * 60 * 1000))
 
@@ -48,7 +51,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         # Reschedule with new interval if enabled
         if enabled?() do
           schedule_next(interval_ms)
-          Logger.info("#{inspect(@scheduler_name)}: Interval updated to #{interval_ms}ms")
+
+          AppLogger.scheduler_info(
+            "#{inspect(@scheduler_name)}: Interval updated to #{interval_ms}ms"
+          )
         end
 
         {:reply, :ok, new_state}
@@ -56,13 +62,16 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       @impl true
       def handle_info(:execute, %{disabled: true} = state) do
-        Logger.info("#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)")
+        AppLogger.scheduler_info(
+          "#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)"
+        )
+
         {:noreply, state}
       end
 
       @impl true
       def handle_info(:execute, state) do
-        Logger.info("#{inspect(@scheduler_name)}: Running scheduled execution")
+        AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running scheduled execution")
 
         case execute(state) do
           {:ok, _result, new_state} ->
@@ -72,7 +81,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
             {:noreply, %{new_state | last_run: DateTime.utc_now()}}
 
           {:error, reason, new_state} ->
-            Logger.error("#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}")
+            AppLogger.scheduler_error(
+              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
+            )
+
             # Schedule next execution even if this one failed
             schedule_next(new_state.interval)
             # Update last run timestamp
@@ -91,11 +103,13 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         if enabled?() do
           Process.send_after(self(), :execute, interval)
 
-          Logger.debug(
-            "#{inspect(@scheduler_name)}: Scheduled next execution in #{interval / 1000 / 60} minutes"
+          AppLogger.scheduler_debug(
+            "Scheduled next execution",
+            scheduler: inspect(@scheduler_name),
+            minutes: Float.round(interval / 1000 / 60, 2)
           )
         else
-          Logger.info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
+          AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
         end
       end
 

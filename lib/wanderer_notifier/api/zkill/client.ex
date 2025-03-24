@@ -5,6 +5,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 
@@ -35,14 +36,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     headers = [{"User-Agent", @user_agent}]
 
-    Logger.debug("[ZKill] Fetching killmail #{kill_id}")
+    AppLogger.api_debug("[ZKill] Fetching killmail #{kill_id}")
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, %{status_code: 200, body: body}} = response ->
         # zKill sometimes returns just "true" or "false" as bare JSON
         case Jason.decode(body) do
           {:ok, true} ->
-            Logger.warning("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
+            AppLogger.api_warn("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
             {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_true}}}
 
           _ ->
@@ -70,7 +71,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     headers = [{"User-Agent", @user_agent}]
 
-    Logger.debug("[ZKill] Fetching recent kills (limit: #{limit})")
+    AppLogger.api_debug("[ZKill] Fetching recent kills (limit: #{limit})")
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
@@ -84,7 +85,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
             {:ok, result}
 
           {:ok, _} ->
-            Logger.warning("[ZKill] Unexpected response format for recent kills")
+            AppLogger.api_warn("[ZKill] Unexpected response format for recent kills")
             {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
 
           error ->
@@ -115,7 +116,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     headers = [{"User-Agent", @user_agent}]
 
-    Logger.info("[ZKill] Requesting system kills for #{system_id} (limit: #{limit})")
+    AppLogger.api_info("[ZKill] Requesting system kills for #{system_id} (limit: #{limit})")
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
@@ -131,7 +132,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
             {:ok, result}
 
           {:ok, []} ->
-            Logger.info("[ZKill] No kills found for system #{system_id}")
+            AppLogger.api_info("[ZKill] No kills found for system #{system_id}")
             {:ok, []}
 
           {:ok, other} ->
@@ -139,7 +140,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
               "[ZKill] Unexpected response format from zKill for system #{system_id} kills"
             )
 
-            Logger.warning("[ZKill] Response keys: #{inspect(other |> Map.keys())}")
+            AppLogger.api_warn("[ZKill] Response keys: #{inspect(other |> Map.keys())}")
             {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
 
           error ->
@@ -202,11 +203,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
   defp validate_character_id(character_id, character_id_str) do
     cond do
       character_id == nil or character_id_str == "" ->
-        Logger.error("[ZKill] Invalid character ID: #{inspect(character_id)}")
+        AppLogger.api_error("[ZKill] Invalid character ID: #{inspect(character_id)}")
         {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_missing}}}
 
       !is_integer(character_id) && !Regex.match?(~r/^\d+$/, character_id_str) ->
-        Logger.error("[ZKill] Character ID is not a valid integer: #{inspect(character_id)}")
+        AppLogger.api_error(
+          "[ZKill] Character ID is not a valid integer: #{inspect(character_id)}"
+        )
+
         {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_format}}}
 
       true ->
@@ -261,15 +265,15 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
   # Processes unexpected response formats
   defp process_unexpected_response(response) do
-    Logger.warning("[ZKill] Unexpected response format from zKill")
-    Logger.warning("[ZKill] Response data: #{inspect(response)}")
+    AppLogger.api_warn("[ZKill] Unexpected response format from zKill")
+    AppLogger.api_warn("[ZKill] Response data: #{inspect(response)}")
 
     if Map.has_key?(response, "error") do
       error_msg = Map.get(response, "error")
-      Logger.error("[ZKill] API returned error: #{error_msg}")
+      AppLogger.api_error("[ZKill] API returned error: #{error_msg}")
       {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
     else
-      Logger.warning("[ZKill] Response keys: #{inspect(Map.keys(response))}")
+      AppLogger.api_warn("[ZKill] Response keys: #{inspect(Map.keys(response))}")
       {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
     end
   end
@@ -277,7 +281,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   # Handles retry logic for failed requests
   defp handle_retry_logic(error, url, headers, label, character_id, limit, retry_count) do
     if ErrorHandler.retryable?(error) && retry_count < @max_retries do
-      Logger.warning("[ZKill] Transient error, retrying (#{retry_count + 1}/#{@max_retries})")
+      AppLogger.api_warn("[ZKill] Transient error, retrying (#{retry_count + 1}/#{@max_retries})")
       :timer.sleep(@retry_backoff_ms)
 
       get_character_kills_with_retry(

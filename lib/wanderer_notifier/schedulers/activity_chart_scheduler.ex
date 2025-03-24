@@ -7,6 +7,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
   require WandererNotifier.Schedulers.Factory
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
@@ -26,7 +27,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
   ]
 
   # Create an interval-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(
+  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
     type: :interval,
     default_interval: @default_interval,
     enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0
@@ -34,7 +35,9 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
   @impl true
   def execute(state) do
-    Logger.info("Executing character activity chart generation and sending to Discord")
+    AppLogger.scheduler_info(
+      "Executing character activity chart generation and sending to Discord"
+    )
 
     # Get activity data and process it if available
     case get_activity_data() do
@@ -43,7 +46,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
         process_results(results, state)
 
       {:error, reason} ->
-        Logger.error("Failed to retrieve activity data: #{inspect(reason)}")
+        AppLogger.scheduler_error("Failed to retrieve activity data: #{inspect(reason)}")
         {:error, reason, state}
     end
   end
@@ -51,7 +54,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
   # Process each chart config and generate charts
   defp process_chart_configs(activity_data) do
     Enum.map(@chart_configs, fn config ->
-      Logger.info("Generating chart: #{config.type} - #{config.title}")
+      AppLogger.scheduler_info("Generating chart: #{config.type} - #{config.title}")
       result = generate_chart(config, activity_data)
       {config.type, result}
     end)
@@ -64,12 +67,12 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
     rescue
       e ->
         error_message = "Chart generation crashed: #{inspect(e)}"
-        Logger.error(error_message)
+        AppLogger.scheduler_error(error_message)
         {:error, error_message}
     catch
       kind, reason ->
         error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
-        Logger.error(error_message)
+        AppLogger.scheduler_error(error_message)
         {:error, error_message}
     end
   end
@@ -90,7 +93,10 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
     # Count successful charts
     success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
-    Logger.info("Chart sending complete: #{success_count}/#{length(results)} successful")
+
+    AppLogger.scheduler_info(
+      "Chart sending complete: #{success_count}/#{length(results)} successful"
+    )
 
     {:ok, results, state}
   end
@@ -99,14 +105,14 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
   defp log_chart_result({type, result}) do
     case result do
       {:ok, url, title} ->
-        Logger.info("Successfully sent #{type} chart to Discord: #{title}")
-        Logger.debug("Chart URL: #{String.slice(url, 0, 100)}...")
+        AppLogger.scheduler_info("Successfully sent #{type} chart to Discord: #{title}")
+        AppLogger.scheduler_debug("Chart URL: #{String.slice(url, 0, 100)}...")
 
       {:error, reason} ->
-        Logger.error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
+        AppLogger.scheduler_error("Failed to send #{type} chart to Discord: #{inspect(reason)}")
 
       _ ->
-        Logger.error("Unexpected result for #{type} chart: #{inspect(result)}")
+        AppLogger.scheduler_error("Unexpected result for #{type} chart: #{inspect(result)}")
     end
   end
 
@@ -114,7 +120,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
   defp get_activity_data do
     # Use the new CharactersClient module to fetch activity data
     # This handles slug/map name resolution internally
-    Logger.info("Fetching character activity data")
+    AppLogger.scheduler_info("Fetching character activity data")
     CharactersClient.get_character_activity()
   end
 end

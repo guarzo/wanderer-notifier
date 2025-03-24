@@ -9,6 +9,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   use WebSockex
   require Logger
   alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Maximum reconnection attempts before circuit breaking
   @max_reconnects 20
@@ -17,7 +18,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   def start_link(parent, url) do
     # Enhanced logging for WebSocket connection attempt
-    Logger.info("Starting zKillboard WebSocket connection to #{url}")
+    AppLogger.websocket_info("Starting zKillboard WebSocket connection", url: url)
 
     # Set application-level status for monitoring
     update_startup_status()
@@ -39,17 +40,20 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
            retry_initial_connection: true
          ) do
       {:ok, pid} ->
-        Logger.info("Successfully initialized zKillboard WebSocket with PID: #{inspect(pid)}")
+        AppLogger.websocket_info("Successfully initialized zKillboard WebSocket",
+          pid: inspect(pid)
+        )
+
         {:ok, pid}
 
       {:error, reason} ->
-        Logger.error("Failed to start websocket: #{inspect(reason)}")
+        AppLogger.websocket_error("Failed to start websocket", error: inspect(reason))
         {:error, reason}
     end
   end
 
   def init(state) do
-    Logger.info("Initializing zKill WebSocket client. Will attempt connection to #{state.url}")
+    AppLogger.websocket_info("Initializing zKill WebSocket client", url: state.url)
     # Report initial state
     Stats.update_websocket(%{
       connected: false,
@@ -75,13 +79,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         last_message: nil
       })
     rescue
-      e -> Logger.error("Failed to update startup status: #{inspect(e)}")
+      e -> AppLogger.websocket_error("Failed to update startup status", error: inspect(e))
     end
   end
 
   @impl true
   def handle_connect(_conn, state) do
-    Logger.info("Connected to zKill websocket.")
+    AppLogger.websocket_info("Connected to zKill websocket")
     new_state = Map.put(state, :connected, true)
 
     # Update websocket status
@@ -103,7 +107,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         reconnects: Map.get(state, :reconnects, 0)
       })
     rescue
-      e -> Logger.error("Failed to update websocket status: #{inspect(e)}")
+      e -> AppLogger.websocket_error("Failed to update websocket status", error: inspect(e))
     end
   end
 
@@ -111,7 +115,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   @impl true
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
-    Logger.info("Subscribing to zKillboard killstream channel with message: #{msg}")
+    AppLogger.websocket_info("Subscribing to zKillboard killstream channel", message: msg)
 
     # Send the subscription frame
     {:reply, {:text, msg}, state}
@@ -136,22 +140,22 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     if no_messages && state.connected do
       # No messages for too long, connection might be stale
-      Logger.warning("No WebSocket messages received in over 5 minutes. Connection may be stale.")
+      AppLogger.websocket_warn("No messages received in over 5 minutes, connection may be stale")
 
       # Send a test ping to verify connection
-      Logger.info("Sending manual ping to test WebSocket connection")
+      AppLogger.websocket_info("Sending manual ping to test connection")
 
       case WebSockex.send_frame(self(), :ping) do
         :ok ->
-          Logger.debug("Manual ping sent successfully")
+          AppLogger.websocket_debug("Manual ping sent successfully")
 
         {:error, reason} ->
-          Logger.error("Failed to send manual ping: #{inspect(reason)}")
+          AppLogger.websocket_error("Failed to send manual ping", error: inspect(reason))
           # Connection is definitely bad, initiate a reconnect
           Process.send_after(self(), :force_reconnect, 1000)
       end
     else
-      Logger.debug("WebSocket heartbeat check passed")
+      AppLogger.websocket_debug("Heartbeat check passed")
     end
 
     # Schedule the next heartbeat check
@@ -163,7 +167,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Handle reconnect request
   @impl true
   def handle_info(:force_reconnect, state) do
-    Logger.warning("Forcing WebSocket reconnection due to heartbeat failure")
+    AppLogger.websocket_warn("Forcing reconnection due to heartbeat failure")
     # This will trigger the disconnect handler which will reconnect
     {:close, state}
   end
@@ -178,7 +182,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
         # Binary frames - just log the size
         {:binary, data} ->
-          Logger.debug("Received binary frame from zKill (#{byte_size(data)} bytes)")
+          AppLogger.websocket_debug("Received binary frame", size_bytes: byte_size(data))
           {:ok, state}
 
         # Ping frames - send heartbeat response
@@ -187,26 +191,24 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
         # Any other frame type
         _ ->
-          Logger.debug("Received unexpected frame type from zKill: #{inspect(frame)}")
+          AppLogger.websocket_debug("Received unexpected frame type", frame: inspect(frame))
           {:ok, state}
       end
     rescue
       e ->
-        Logger.error("Error in handle_frame/2: #{inspect(e)}")
+        AppLogger.websocket_error("Error processing frame", error: inspect(e))
         {:ok, state}
     end
   end
 
   # Helper to handle ping frames
   defp handle_ping_frame(ping_frame, state) do
-    ping_log_message =
-      if ping_frame == "ping" do
-        "Received WS ping from zKill"
-      else
-        "Received unexpected ping format from zKill: #{inspect(ping_frame)}"
-      end
+    message_format = if ping_frame == "ping", do: "standard", else: "unexpected"
 
-    Logger.debug("#{ping_log_message}. Sending heartbeat pong response.")
+    AppLogger.websocket_debug("Received ping",
+      format: message_format,
+      content: if(message_format == "unexpected", do: inspect(ping_frame), else: nil)
+    )
 
     # Send heartbeat immediately
     payload = Jason.encode!(%{"action" => "pong"})
@@ -225,171 +227,163 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         reconnects: Map.get(state, :reconnects, 0)
       })
     rescue
-      e -> Logger.error("Failed to update websocket status: #{inspect(e)}")
+      e -> AppLogger.websocket_error("Failed to update websocket status", error: inspect(e))
     end
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
         # Log the type of message (debug level to avoid excessive logging)
         message_type = classify_message_type(json_data)
-        Logger.debug("Processed killstream message of type: #{message_type}")
+        AppLogger.websocket_debug("Processed message", type: message_type)
 
         # Forward to parent process for handling
         if is_pid(state.parent) and Process.alive?(state.parent) do
-          Logger.debug("Forwarding zKill message to parent process")
+          AppLogger.websocket_debug("Forwarding message to parent process")
           send(state.parent, {:zkill_message, raw_msg})
           {:ok, state}
         else
-          Logger.warning("Parent process not available or not alive, skipping message")
+          AppLogger.websocket_warn("Parent process unavailable, skipping message")
           {:ok, state}
         end
 
       {:error, decode_err} ->
-        Logger.error("Error decoding zKill frame: #{inspect(decode_err)}. Raw: #{raw_msg}")
+        AppLogger.websocket_error("Error decoding frame",
+          error: inspect(decode_err),
+          raw_message: raw_msg
+        )
+
         {:ok, state}
     end
   end
 
-  # Identify the message type for better logging
+  # Classify message type for logging
   defp classify_message_type(json_data) when is_map(json_data) do
     cond do
-      Map.has_key?(json_data, "action") ->
-        "action:#{json_data["action"]}"
+      Map.has_key?(json_data, "action") && json_data["action"] == "tqStatus" ->
+        "tq_status"
 
-      Map.has_key?(json_data, "killmail_id") and Map.has_key?(json_data, "zkb") ->
-        "killmail_with_zkb"
+      Map.has_key?(json_data, "zkb") ->
+        "killmail"
 
       Map.has_key?(json_data, "killmail_id") ->
-        "killmail_without_zkb"
-
-      Map.has_key?(json_data, "kill_id") ->
-        "kill_info"
-
-      Map.has_key?(json_data, "tqStatus") ->
-        "tq_status"
+        "killmail"
 
       true ->
         "unknown"
     end
   end
 
-  defp classify_message_type(_), do: "non_map"
+  defp classify_message_type(_), do: "invalid"
 
   @impl true
-  def handle_pong({:pong, data}, state) do
-    Logger.debug("Received WS pong from zKill: #{inspect(data)}")
-    {:ok, state}
-  end
-
-  @impl true
-  def handle_disconnect(disconnect_info, state) do
-    # Record disconnect time for circuit breaker
-    current_time = System.os_time(:second)
-
-    # Add disconnect to history
-    history =
-      [current_time | state.reconnect_history]
-      |> Enum.filter(fn time -> current_time - time < @reconnect_window end)
-
-    # Update reconnect count
-    reconnects = Map.get(state, :reconnects, 0) + 1
-
-    # Check if circuit breaker should trip
-    circuit_state = check_circuit_breaker(history, state, current_time)
-
-    # Update state with new values
+  def handle_disconnect(disconnect_map, state) do
+    # Update reconnect count and check for circuit breaking condition
     new_state =
       state
-      |> Map.put(:reconnects, reconnects)
-      |> Map.put(:reconnect_history, history)
-      |> Map.put(:circuit_open, circuit_state.circuit_open)
-      |> Map.put(:last_circuit_reset, circuit_state.last_reset)
+      |> increment_reconnect_count
+      |> check_circuit_breaker
 
-    # Format disconnect message
-    disconnect_message = format_disconnect_message(disconnect_info)
+    if new_state.circuit_open do
+      # Circuit is open, stop reconnection attempts
+      AppLogger.websocket_error("Circuit breaker open, stopping reconnection attempts",
+        reason: inspect(disconnect_map),
+        reconnect_count: new_state.reconnects
+      )
 
-    Logger.warning(
-      "zKill websocket disconnected: #{disconnect_message}. #{circuit_state.message}"
-    )
+      {:error, new_state}
+    else
+      # Circuit is closed, attempt reconnection
+      delay = calculate_reconnect_delay(new_state.reconnects)
 
-    # Update stats
-    try do
+      AppLogger.websocket_warn("WebSocket disconnected, will reconnect",
+        reason: inspect(disconnect_map),
+        reconnect_attempts: new_state.reconnects,
+        delay_ms: delay
+      )
+
+      # Update application status to show disconnection
       Stats.update_websocket(%{
         connected: false,
-        last_message: DateTime.utc_now(),
-        reconnects: reconnects,
-        circuit_open: circuit_state.circuit_open
+        reconnects: new_state.reconnects,
+        last_disconnect: DateTime.utc_now()
       })
-    rescue
-      _ -> :ok
-    end
 
-    {:reconnect, new_state}
-  end
-
-  # Format disconnect message for easier reading
-  defp format_disconnect_message(disconnect_info) do
-    case disconnect_info do
-      %{code: code, reason: reason} ->
-        "code=#{inspect(code)}, reason=#{inspect(reason)}"
-
-      other ->
-        inspect(other)
+      # Request reconnection after a delay
+      {:reconnect, %{new_state | connected: false}}
     end
   end
 
-  # Determine if circuit breaker should be open or closed
-  defp check_circuit_breaker(history, state, current_time) do
-    # Count recent disconnects
-    recent_disconnects = length(history)
+  # Increment reconnect count and add timestamp to history
+  defp increment_reconnect_count(state) do
+    current_time = System.os_time(:second)
 
-    # Reset circuit breaker after a period if it was open
-    circuit_open =
-      if state.circuit_open && current_time - state.last_circuit_reset > @reconnect_window do
-        # Reset after window has passed
-        false
+    # Add current time to reconnect history
+    new_history = [current_time | state.reconnect_history]
+
+    # Keep only reconnects within the monitoring window
+    window_start = current_time - @reconnect_window
+    filtered_history = Enum.filter(new_history, fn time -> time >= window_start end)
+
+    %{state | reconnects: state.reconnects + 1, reconnect_history: filtered_history}
+  end
+
+  # Check if circuit breaker should open based on reconnection frequency
+  defp check_circuit_breaker(state) do
+    # Count recent reconnects in our monitoring window
+    current_time = System.os_time(:second)
+    recent_reconnects = Enum.count(state.reconnect_history)
+    time_since_reset = current_time - state.last_circuit_reset
+
+    # If we have too many recent reconnects, open the circuit
+    # But only if it's been at least 10 minutes since last reset
+    # 10 minutes
+    should_open_circuit =
+      recent_reconnects >= @max_reconnects &&
+        time_since_reset >= 600
+
+    if should_open_circuit do
+      AppLogger.websocket_error("Opening circuit breaker due to excessive reconnections",
+        reconnect_count: recent_reconnects,
+        since_last_reset_seconds: time_since_reset
+      )
+
+      %{state | circuit_open: true}
+    else
+      # If it's been a long time since last reset (24h+), reset the counter
+      if time_since_reset >= 86_400 do
+        AppLogger.websocket_info("Resetting circuit breaker counts",
+          previous_reconnect_count: state.reconnects
+        )
+
+        %{state | reconnects: 0, last_circuit_reset: current_time}
       else
-        # Check if we need to open the circuit
-        recent_disconnects > @max_reconnects || state.circuit_open
+        state
       end
-
-    # Determine appropriate message and delay
-    {message, delay, last_reset} =
-      cond do
-        circuit_open && !state.circuit_open ->
-          # Circuit just opened
-          {
-            "Circuit breaker engaged after #{recent_disconnects} disconnects in #{@reconnect_window}s",
-            # 2 minute delay before retry
-            120_000,
-            current_time
-          }
-
-        circuit_open ->
-          # Circuit was already open
-          {
-            "Circuit breaker remains open, limiting reconnection attempts",
-            # 5 minute delay
-            300_000,
-            state.last_circuit_reset
-          }
-
-        true ->
-          # Circuit closed, normal operation
-          {"Reconnecting...", 0, state.last_circuit_reset}
-      end
-
-    %{
-      circuit_open: circuit_open,
-      message: message,
-      delay: delay,
-      last_reset: last_reset
-    }
+    end
   end
 
+  # Calculate exponential backoff delay for reconnection
+  defp calculate_reconnect_delay(reconnect_count) do
+    # Base delay is 500ms
+    base_delay = 500
+    # Use exponential backoff with jitter
+    delay = :math.pow(1.5, min(reconnect_count, 10)) * base_delay
+    # Add some random jitter (±25%)
+    jitter = :rand.uniform() * 0.5 - 0.25
+    delay_with_jitter = delay * (1 + jitter)
+    # Cap at 2 minutes
+    trunc(min(delay_with_jitter, 120_000))
+  end
+
+  # Terminate the process
   @impl true
-  def terminate(reason, _state) do
-    Logger.warning("ZKill websocket terminating: #{inspect(reason)}")
+  def terminate(reason, state) do
+    AppLogger.websocket_info("WebSocket terminating",
+      reason: inspect(reason),
+      state: Map.take(state, [:reconnects, :connected, :circuit_open])
+    )
+
+    # No special cleanup needed
     :ok
   end
 end

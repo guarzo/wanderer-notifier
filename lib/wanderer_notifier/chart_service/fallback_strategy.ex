@@ -7,7 +7,7 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   and providing alternative chart generation methods.
   """
 
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
 
   @typedoc """
@@ -50,7 +50,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
 
       {:error, reason} ->
         # Log the failure
-        Logger.warning("Primary chart generation failed: #{inspect(reason)}. Using fallback.")
+        AppLogger.api_warn("Primary chart generation failed",
+          error: inspect(reason),
+          action: "using_fallback"
+        )
 
         # Try the fallback function
         case fallback_fn.() do
@@ -58,7 +61,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
             success
 
           {:error, fallback_reason} ->
-            Logger.error("Fallback chart generation also failed: #{inspect(fallback_reason)}")
+            AppLogger.api_error("Fallback chart generation also failed",
+              error: inspect(fallback_reason)
+            )
+
             {:error, {:fallback_chain_failed, reason, fallback_reason}}
         end
     end
@@ -87,14 +93,21 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   end
 
   defp do_download_with_retry(url, max_retries, attempt) do
-    Logger.info("Downloading chart image from: #{url}, attempt #{attempt + 1}/#{max_retries + 1}")
+    AppLogger.api_info("Downloading chart image",
+      url: url,
+      attempt: attempt + 1,
+      max_attempts: max_retries + 1
+    )
 
     case HttpClient.request("GET", url, [], "") do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 
       {:ok, %{status_code: status, body: _body}} ->
-        Logger.error("Failed to download chart image. Status: #{status}, attempt: #{attempt + 1}")
+        AppLogger.api_error("Failed to download chart image",
+          status_code: status,
+          attempt: attempt + 1
+        )
 
         # Exponential backoff - wait longer between retries
         if attempt < max_retries do
@@ -106,8 +119,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         end
 
       {:error, reason} ->
-        Logger.error(
-          "Failed to download chart image: #{inspect(reason)}, attempt: #{attempt + 1}"
+        AppLogger.api_error(
+          "Failed to download chart image",
+          error: inspect(reason),
+          attempt: attempt + 1
         )
 
         if attempt < max_retries do
@@ -156,7 +171,7 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         {:ok, image_binary}
 
       {:error, primary_reason} ->
-        Logger.warning("Primary chart generation failed: #{inspect(primary_reason)}.")
+        AppLogger.api_warn("Primary chart generation failed", error: inspect(primary_reason))
 
         try_fallbacks(
           quickchart_fn,
@@ -181,14 +196,14 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
          enable_placeholder
        ) do
     # Try QuickChart.io
-    Logger.info("Falling back to QuickChart.io")
+    AppLogger.api_info("Falling back to QuickChart.io")
 
     case quickchart_fn.() do
       {:ok, url} ->
         try_download_from_url(url, options, title, message, primary_reason, enable_placeholder)
 
       {:error, quickchart_reason} ->
-        Logger.error("QuickChart.io fallback failed: #{inspect(quickchart_reason)}")
+        AppLogger.api_error("QuickChart.io fallback failed", error: inspect(quickchart_reason))
 
         maybe_use_placeholder(
           enable_placeholder,
@@ -210,7 +225,7 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
          false,
          enable_placeholder
        ) do
-    Logger.info("QuickChart disabled. Falling back to placeholder chart")
+    AppLogger.api_info("QuickChart disabled. Falling back to placeholder chart")
     maybe_use_placeholder(enable_placeholder, title, message, primary_reason, nil)
   end
 
@@ -221,14 +236,17 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         {:ok, image_data}
 
       {:error, download_reason} ->
-        Logger.error("Failed to download QuickChart.io image: #{inspect(download_reason)}")
+        AppLogger.api_error("Failed to download QuickChart.io image",
+          error: inspect(download_reason)
+        )
+
         maybe_use_placeholder(enable_placeholder, title, message, primary_reason, download_reason)
     end
   end
 
   # Use placeholder as final fallback if enabled
   defp maybe_use_placeholder(true, title, message, _primary_reason, _secondary_reason) do
-    Logger.info("Falling back to placeholder chart")
+    AppLogger.api_info("Falling back to placeholder chart")
     generate_placeholder_chart(title, message)
   end
 
@@ -262,7 +280,7 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         3, 1, 1, 0, 39, 68, 107, 74, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130>>
 
     # Log that we're using the placeholder
-    Logger.warning("Using placeholder chart for '#{title}': #{message}")
+    AppLogger.api_warn("Using placeholder chart", title: title, message: message)
 
     # Return the placeholder image
     {:ok, transparent_png}

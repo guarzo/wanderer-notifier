@@ -4,6 +4,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   """
   use Plug.Router
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.ChartService.KillmailChartAdapter
   alias WandererNotifier.Api.Map.CharactersClient
@@ -38,12 +39,14 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
       # Log the slug for debugging
       if slug do
-        Logger.info("Character activity request with explicit slug: #{slug}")
+        AppLogger.api_info("Character activity request", slug: slug)
       else
         configured_slug = Config.map_name()
 
-        Logger.info(
-          "Character activity request using configured slug: #{configured_slug || "none"}"
+        AppLogger.api_info(
+          "Character activity request",
+          slug: configured_slug || "none",
+          slug_source: "configured"
         )
       end
 
@@ -55,7 +58,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
         {:error, reason} ->
           # Log the error for server-side debugging
-          Logger.error("Error in character activity endpoint: #{inspect(reason)}")
+          AppLogger.api_error("Error in character activity endpoint", error: inspect(reason))
 
           # Provide a more user-friendly error message
           error_message =
@@ -113,30 +116,37 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
   # Special route for sending all activity charts
   get "/activity/send-all" do
-    Logger.info("Forwarding request to send all activity charts to Discord")
+    AppLogger.api_info("Forwarding request to send all activity charts to Discord")
 
     # Only allow this if map tools are enabled
     if Config.map_charts_enabled?() do
-      Logger.info("Forwarding request to activity controller send-all endpoint")
+      AppLogger.api_info("Forwarding request to activity controller send-all endpoint")
 
       # Get character activity data
       activity_data =
         case CharactersClient.get_character_activity() do
           {:ok, data} ->
-            Logger.info(
-              "Successfully retrieved character activity data: #{inspect(data, limit: 500)}"
+            AppLogger.api_info("Retrieved character activity data",
+              preview: inspect(data, limit: 500)
             )
 
             data
 
           error ->
-            Logger.error("Failed to retrieve character activity data: #{inspect(error)}")
+            AppLogger.api_error("Failed to retrieve character activity data",
+              error: inspect(error)
+            )
+
             nil
         end
 
       # Get the appropriate channel ID for activity charts
       channel_id = Config.discord_channel_id_for_activity_charts()
-      Logger.info("Using Discord channel ID for activity charts: #{channel_id}")
+
+      AppLogger.api_debug("Using Discord channel",
+        purpose: "activity charts",
+        channel_id: channel_id
+      )
 
       # Use the ActivityChartAdapter directly to send all charts
       results = ActivityChartAdapter.send_all_charts_to_discord(activity_data, channel_id)
@@ -172,7 +182,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         })
       )
     else
-      Logger.warning("Map tools are not enabled, cannot send activity charts")
+      AppLogger.api_warn("Cannot send activity charts", reason: "Map tools not enabled")
 
       conn
       |> put_resp_content_type("application/json")
@@ -195,7 +205,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Generate a killmail chart
   get "/killmail/generate/weekly_kills" do
     if Config.kill_charts_enabled?() do
-      Logger.info("Generating weekly kills chart")
+      AppLogger.api_info("Generating weekly kills chart")
 
       # Parse limit parameter with default of 20
       limit =
@@ -273,7 +283,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             20
         end
 
-      Logger.info("Sending weekly kills chart to Discord with title: #{title}")
+      AppLogger.api_info("Sending weekly kills chart to Discord", title: title)
 
       case KillmailChartAdapter.send_weekly_kills_chart_to_discord(
              title,
@@ -319,7 +329,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Send all killmail charts to Discord
   get "/killmail/send-all" do
     if Config.kill_charts_enabled?() do
-      Logger.info("Sending all killmail charts to Discord")
+      AppLogger.api_info("Sending all killmail charts to Discord")
 
       # Currently only weekly kills chart is available
       case KillmailChartAdapter.send_weekly_kills_chart_to_discord() do
@@ -361,7 +371,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Debug endpoint to check killmail and statistics counts
   get "/killmail/debug" do
     if Config.kill_charts_enabled?() do
-      Logger.info("Debug endpoint called for killmail aggregation")
+      AppLogger.api_info("Debug endpoint called for killmail aggregation")
 
       # Perform diagnostic queries
       try do
@@ -433,7 +443,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         )
       rescue
         e ->
-          Logger.error("Error in killmail debug endpoint: #{Exception.message(e)}")
+          AppLogger.api_error("Error in killmail debug endpoint", error: Exception.message(e))
 
           conn
           |> put_resp_content_type("application/json")
@@ -462,10 +472,10 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Force sync tracked characters from cache to the database
   get "/killmail/sync-characters" do
     if Config.kill_charts_enabled?() do
-      Logger.info("Forcing character sync from cache to database")
+      AppLogger.api_info("Forcing character sync from cache to database")
 
       cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
-      Logger.info("Found #{length(cached_characters)} characters in cache")
+      AppLogger.api_info("Found characters in cache", count: length(cached_characters))
 
       case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
         {:ok, result} ->
@@ -512,7 +522,9 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Force-sync characters (destructive operation that clears and rebuilds)
   get "/killmail/force-sync-characters" do
     if Config.kill_charts_enabled?() do
-      Logger.warning("Forcing destructive character sync from cache to database")
+      AppLogger.api_warn("Forcing destructive character sync from cache to database",
+        action: "database-clear"
+      )
 
       case WandererNotifier.Resources.TrackedCharacter.force_sync_from_cache() do
         {:ok, result} ->
@@ -568,7 +580,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           _ -> :weekly
         end
 
-      Logger.info("Manually triggering #{period_type} killmail aggregation")
+      AppLogger.api_info("Manually triggering killmail aggregation", period_type: period_type)
 
       # Calculate appropriate date based on period type
       today = Date.utc_today()

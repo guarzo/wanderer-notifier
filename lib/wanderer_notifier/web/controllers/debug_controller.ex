@@ -4,6 +4,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
   """
   use Plug.Router
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Schedulers.Registry, as: SchedulerRegistry
@@ -140,10 +141,11 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     }
 
     # Log WebSocket status check for monitoring
-    Logger.info(
-      "ZKill WebSocket status check: " <>
-        "#{if Map.get(websocket_stats, :connected, false), do: "CONNECTED", else: "DISCONNECTED"}, " <>
-        "Last message: #{time_since_last_message}"
+    AppLogger.websocket_info(
+      "ZKill WebSocket status check",
+      status:
+        if(Map.get(websocket_stats, :connected, false), do: "CONNECTED", else: "DISCONNECTED"),
+      last_message: time_since_last_message
     )
 
     conn

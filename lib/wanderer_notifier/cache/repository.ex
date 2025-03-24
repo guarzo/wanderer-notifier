@@ -5,12 +5,13 @@ defmodule WandererNotifier.Cache.Repository do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Timings
 
   @cache_name :wanderer_notifier_cache
 
   def start_link(_args \\ []) do
-    Logger.info("Starting WandererNotifier cache repository...")
+    AppLogger.cache_info("Starting cache repository")
 
     # Ensure cache directory exists
     # Use a path that works in both dev container and production
@@ -19,17 +20,18 @@ defmodule WandererNotifier.Cache.Repository do
     # Ensure the directory exists
     case File.mkdir_p(cache_dir) do
       :ok ->
-        Logger.info("Using cache directory: #{cache_dir}")
+        AppLogger.cache_info("Using cache directory", path: cache_dir)
 
       {:error, reason} ->
-        Logger.warning(
-          "Failed to create cache directory at #{cache_dir}: #{inspect(reason)}. Falling back to temporary directory."
+        AppLogger.cache_warn("Failed to create cache directory",
+          path: cache_dir,
+          reason: inspect(reason)
         )
 
         # Fall back to a temporary directory that should be writable
         cache_dir = System.tmp_dir!() |> Path.join("wanderer_notifier_cache")
         File.mkdir_p!(cache_dir)
-        Logger.info("Using fallback cache directory: #{cache_dir}")
+        AppLogger.cache_info("Using fallback cache directory", path: cache_dir)
     end
 
     # Configure Cachex with optimized settings
@@ -52,7 +54,7 @@ defmodule WandererNotifier.Cache.Repository do
 
     # Start Cachex
     result = Cachex.start_link(@cache_name, cachex_options)
-    Logger.info("Cache repository started with result: #{inspect(result)}")
+    AppLogger.cache_info("Cache repository started", result: inspect(result))
 
     # Start the cache monitoring process
     GenServer.start_link(__MODULE__, [cache_dir], name: __MODULE__)
@@ -65,7 +67,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Get the configured cache directory
     configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
 
-    # Check if we're in a dev container
+    # Check if we're in a dev environment
     in_dev_environment =
       String.contains?(File.cwd!(), "dev-container") or
         String.contains?(File.cwd!(), "workspaces")
@@ -81,7 +83,7 @@ defmodule WandererNotifier.Cache.Repository do
 
   # Fallback function for cache misses
   defp handle_cache_miss(key) do
-    Logger.debug("[CacheRepo] Cache miss handled by fallback for key: #{key}")
+    AppLogger.cache_debug("Cache miss handled by fallback", key: key)
     {:ignore, nil}
   end
 
@@ -123,7 +125,7 @@ defmodule WandererNotifier.Cache.Repository do
   def handle_info(:check_cache, state) do
     # Get cache stats
     {:ok, stats} = Cachex.stats(@cache_name)
-    Logger.debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+    AppLogger.cache_debug("[CacheRepo] Cache stats: #{inspect(stats)}")
 
     # Check systems and characters counts
     systems = get("map:systems") || []
@@ -162,32 +164,38 @@ defmodule WandererNotifier.Cache.Repository do
   """
   def get(key) do
     retry_with_backoff(fn ->
-      Logger.debug("[CacheRepo] Getting value for key: #{key}")
+      AppLogger.cache_debug("[CacheRepo] Getting value for key: #{key}")
       result = Cachex.get(@cache_name, key)
-      Logger.debug("[CacheRepo] Raw result from Cachex: #{inspect(result)}")
+      AppLogger.cache_debug("[CacheRepo] Raw result from Cachex: #{inspect(result)}")
 
       # Check if the key exists in the cache
       exists_result = Cachex.exists?(@cache_name, key)
-      Logger.debug("[CacheRepo] Key exists check: #{inspect(exists_result)}")
+      AppLogger.cache_debug("[CacheRepo] Key exists check: #{inspect(exists_result)}")
 
       # Check TTL for the key
       ttl_result = Cachex.ttl(@cache_name, key)
-      Logger.debug("[CacheRepo] TTL for key: #{inspect(ttl_result)}")
+      AppLogger.cache_debug("[CacheRepo] TTL for key: #{inspect(ttl_result)}")
 
       case result do
         {:ok, value} when not is_nil(value) ->
-          Logger.debug("[CacheRepo] Cache hit for key: #{key}, found #{length_of(value)} items")
+          AppLogger.cache_debug(
+            "[CacheRepo] Cache hit for key: #{key}, found #{length_of(value)} items"
+          )
+
           value
 
         {:ok, nil} ->
           handle_nil_result(key, exists_result)
 
         {:error, error} ->
-          Logger.error("[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}")
+          AppLogger.cache_error(
+            "[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}"
+          )
+
           nil
 
         _ ->
-          Logger.debug("[CacheRepo] Cache miss for key: #{key}")
+          AppLogger.cache_debug("[CacheRepo] Cache miss for key: #{key}")
           nil
       end
     end)
@@ -198,7 +206,7 @@ defmodule WandererNotifier.Cache.Repository do
     # Special handling for map:systems and map:characters keys
     if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
       # For these keys, initialize with empty array without warning
-      Logger.debug("[CacheRepo] Initializing #{key} with empty array")
+      AppLogger.cache_debug("[CacheRepo] Initializing #{key} with empty array")
       Cachex.put(@cache_name, key, [])
       []
     else
@@ -210,9 +218,9 @@ defmodule WandererNotifier.Cache.Repository do
   # Log cache misses appropriately based on key type
   defp log_cache_miss(key) do
     if String.starts_with?(key, "static_info:") do
-      Logger.debug("[CacheRepo] Cache miss for static info key: #{key}")
+      AppLogger.cache_debug("[CacheRepo] Cache miss for static info key: #{key}")
     else
-      Logger.debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
+      AppLogger.cache_debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
     end
   end
 
@@ -227,7 +235,7 @@ defmodule WandererNotifier.Cache.Repository do
 
       # Convert TTL from seconds to milliseconds for Cachex
       ttl_ms = ttl * 1000
-      Logger.debug("[CacheRepo] TTL in milliseconds: #{ttl_ms}")
+      AppLogger.cache_debug("[CacheRepo] TTL in milliseconds: #{ttl_ms}")
 
       result = Cachex.put(@cache_name, key, value, ttl: ttl_ms)
 
@@ -235,9 +243,9 @@ defmodule WandererNotifier.Cache.Repository do
         {:ok, true} ->
           # Verify the TTL was set correctly
           ttl_result = Cachex.ttl(@cache_name, key)
-          Logger.debug("[CacheRepo] Verified TTL after set: #{inspect(ttl_result)}")
+          AppLogger.cache_debug("[CacheRepo] Verified TTL after set: #{inspect(ttl_result)}")
 
-          Logger.debug("[CacheRepo] Successfully set cache for key: #{key}")
+          AppLogger.cache_debug("[CacheRepo] Successfully set cache for key: #{key}")
           {:ok, true}
 
         _ ->
@@ -263,7 +271,7 @@ defmodule WandererNotifier.Cache.Repository do
 
       case result do
         {:ok, true} ->
-          Logger.debug("[CacheRepo] Successfully put cache for key: #{key}")
+          AppLogger.cache_debug("[CacheRepo] Successfully put cache for key: #{key}")
           {:ok, true}
 
         _ ->
@@ -281,7 +289,7 @@ defmodule WandererNotifier.Cache.Repository do
   """
   def delete(key) do
     retry_with_backoff(fn ->
-      Logger.info("[CacheRepo] Deleting key: #{key} from cache")
+      AppLogger.cache_info("[CacheRepo] Deleting key: #{key} from cache")
       Cachex.del(@cache_name, key)
     end)
   end
@@ -291,7 +299,7 @@ defmodule WandererNotifier.Cache.Repository do
   """
   def clear do
     retry_with_backoff(fn ->
-      Logger.warning("[CacheRepo] Clearing entire cache")
+      AppLogger.cache_warn("[CacheRepo] Clearing entire cache")
       Cachex.clear(@cache_name)
     end)
   end
@@ -327,25 +335,25 @@ defmodule WandererNotifier.Cache.Repository do
       fun.()
     rescue
       e ->
-        Logger.error("[CacheRepo] Error in cache operation: #{inspect(e)}")
+        AppLogger.cache_error("[CacheRepo] Error in cache operation: #{inspect(e)}")
 
         if retries <= 0 do
-          Logger.error("[CacheRepo] Max retries reached, giving up")
+          AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
           {:error, e}
         else
-          Logger.warning("[CacheRepo] Retrying after error (#{retries} retries left)")
+          AppLogger.cache_warn("[CacheRepo] Retrying after error (#{retries} retries left)")
           Process.sleep(Timings.retry_delay())
           retry_with_backoff(fun, retries - 1)
         end
     catch
       :exit, reason ->
-        Logger.error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
+        AppLogger.cache_error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
 
         if retries <= 0 do
-          Logger.error("[CacheRepo] Max retries reached, giving up")
+          AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
           {:error, reason}
         else
-          Logger.warning("[CacheRepo] Retrying after exit (#{retries} retries left)")
+          AppLogger.cache_warn("[CacheRepo] Retrying after exit (#{retries} retries left)")
           Process.sleep(Timings.retry_delay())
           retry_with_backoff(fun, retries - 1)
         end
@@ -359,5 +367,143 @@ defmodule WandererNotifier.Cache.Repository do
   defp length_of(value) when is_list(value), do: length(value)
   defp length_of(value) when is_map(value), do: map_size(value)
   defp length_of(value) when is_binary(value), do: byte_size(value)
+  defp length_of({:ok, value}) when is_list(value), do: length(value)
+  defp length_of({:ok, _value}), do: 1
   defp length_of(_), do: 0
+
+  @doc """
+  Updates cache after a successful database write to ensure consistency.
+  This should be called after any database operation that might affect cached data.
+
+  ## Parameters
+    - key: The cache key to update
+    - value: The new value to store in cache
+    - ttl: Optional time-to-live in seconds
+
+  ## Returns
+    - {:ok, true} if cache was updated successfully
+    - {:error, reason} if there was an error
+  """
+  def update_after_db_write(key, value, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      Logger.debug(
+        "[CacheRepo] Updating cache after DB write for key: #{key}, storing #{length_of(value)} items"
+      )
+
+      result =
+        if ttl do
+          # Set with TTL if provided
+          ttl_ms = ttl * 1000
+          Cachex.put(@cache_name, key, value, ttl: ttl_ms)
+        else
+          # Otherwise just put without TTL
+          Cachex.put(@cache_name, key, value)
+        end
+
+      case result do
+        {:ok, true} ->
+          AppLogger.cache_debug(
+            "[CacheRepo] Successfully updated cache after DB write for key: #{key}"
+          )
+
+          {:ok, true}
+
+        _ ->
+          Logger.error(
+            "[CacheRepo] Failed to update cache after DB write for key: #{key}, result: #{inspect(result)}"
+          )
+
+          {:error, result}
+      end
+    end)
+  end
+
+  @doc """
+  Gets a value from the cache and updates it atomically.
+  This is useful for making concurrent updates to cached values.
+
+  ## Parameters
+    - key: The cache key to update
+    - update_fun: A function that takes the current value and returns {get_value, new_value}
+    - ttl: Optional time-to-live in seconds for the updated value
+
+  ## Returns
+    - {get_value, result} where result is the result of the update operation
+  """
+  def get_and_update(key, update_fun, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      AppLogger.cache_debug("[CacheRepo] Atomic get_and_update for key: #{key}")
+
+      # First get the current value
+      current_value = get(key)
+
+      # Apply the update function
+      {get_value, new_value} = update_fun.(current_value)
+
+      # Update the cache
+      result =
+        if ttl do
+          set(key, new_value, ttl)
+        else
+          put(key, new_value)
+        end
+
+      {get_value, result}
+    end)
+  end
+
+  @doc """
+  Synchronizes a cache key with database via provided function.
+  The db_read_fun should fetch data from database and return {:ok, value} or {:error, reason}.
+  Optionally accepts a TTL in seconds.
+
+  ## Returns
+    - {:ok, value} if synchronized successfully
+    - {:error, reason} if there was an error
+  """
+  def sync_with_db(key, db_read_fun, ttl \\ nil) do
+    retry_with_backoff(fn ->
+      AppLogger.cache_debug("[CacheRepo] Synchronizing cache key '#{key}' with database")
+
+      # Read from database
+      case db_read_fun.() do
+        {:ok, value} ->
+          # Update cache with value from database
+          update_cache_from_db(key, value, ttl)
+
+        {:error, reason} = error ->
+          AppLogger.cache_error(
+            "[CacheRepo] Database read failed during cache sync: #{inspect(reason)}"
+          )
+
+          error
+      end
+    end)
+  end
+
+  # Helper to update cache with value from database
+  defp update_cache_from_db(key, value, ttl) do
+    # Choose appropriate cache update method based on TTL
+    result = if ttl, do: set(key, value, ttl), else: put(key, value)
+
+    # Handle result of cache update
+    handle_cache_update_result(key, value, result)
+  end
+
+  # Handle the result of a cache update operation
+  defp handle_cache_update_result(key, value, {:ok, true}) do
+    AppLogger.cache_debug(
+      "[CacheRepo] Successfully synchronized cache key '#{key}' with database"
+    )
+
+    {:ok, value}
+  end
+
+  defp handle_cache_update_result(_key, _value, error) do
+    AppLogger.cache_error(
+      "[CacheRepo] Failed to update cache during database sync: #{inspect(error)}"
+    )
+
+    {:error, :cache_update_failed}
+  end
 end

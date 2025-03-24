@@ -7,11 +7,13 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   defmacro __using__(opts) do
     quote do
       use GenServer
       require Logger
+      alias WandererNotifier.Logger, as: AppLogger
       @behaviour WandererNotifier.Schedulers.Behaviour
 
       # The scheduler name, to be used for registration and logging
@@ -37,15 +39,21 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl true
       def init(opts) do
-        Logger.info("Initializing #{inspect(@scheduler_name)}...")
+        # Removed individual scheduler initialization log
+        # AppLogger.scheduler_info("Initializing #{inspect(@scheduler_name)}...")
 
         if enabled?() do
           # Call initialize instead of init to avoid name conflicts
           {:ok, state} = initialize(opts)
-          Logger.info("#{inspect(@scheduler_name)} initialized and scheduled")
+          # Log only at debug level, will be summarized by the Registry
+          AppLogger.scheduler_debug("#{inspect(@scheduler_name)} initialized and scheduled")
           {:ok, state}
         else
-          Logger.info("#{inspect(@scheduler_name)} initialized but not scheduled (disabled)")
+          # Log only at debug level, will be summarized by the Registry
+          AppLogger.scheduler_debug(
+            "#{inspect(@scheduler_name)} initialized but not scheduled (disabled)"
+          )
+
           {:ok, %{disabled: true}}
         end
       end
@@ -66,14 +74,18 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
       @impl true
       def handle_cast(:execute_now, state) do
-        Logger.info("#{inspect(@scheduler_name)}: Manually triggered execution")
+        # Log at debug level to reduce startup noise
+        AppLogger.scheduler_debug("#{inspect(@scheduler_name)}: Manually triggered execution")
 
         case execute(state) do
           {:ok, _result, new_state} ->
             {:noreply, new_state}
 
           {:error, reason, new_state} ->
-            Logger.error("#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}")
+            AppLogger.scheduler_error(
+              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
+            )
+
             {:noreply, new_state}
         end
       end

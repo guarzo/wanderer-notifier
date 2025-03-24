@@ -15,6 +15,7 @@ defmodule WandererNotifier.Application do
   """
   use Application
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.License
@@ -27,7 +28,10 @@ defmodule WandererNotifier.Application do
   @impl true
   def start(_type, _args) do
     if should_skip_app_start?() do
-      Logger.info("Skipping full application start due to test environment configuration")
+      AppLogger.startup_info(
+        "Skipping full application start due to test environment configuration"
+      )
+
       start_minimal_test_components()
     else
       start_full_application()
@@ -36,7 +40,14 @@ defmodule WandererNotifier.Application do
 
   # Start the application with all components
   defp start_full_application do
-    Logger.info("Starting WandererNotifier...")
+    # Initialize the startup tracker for consolidated logging
+    WandererNotifier.Logger.StartupTracker.init()
+
+    # Begin initialization phase
+    WandererNotifier.Logger.StartupTracker.begin_phase(
+      :initialization,
+      "Starting WandererNotifier"
+    )
 
     # Get the environment from system environment variable
     env = System.get_env("MIX_ENV", "prod") |> String.to_atom()
@@ -47,47 +58,106 @@ defmodule WandererNotifier.Application do
     # Set the environment in the application configuration
     Application.put_env(:wanderer_notifier, :env, env)
 
-    # Log application startup information
-    log_startup_info(env)
+    # Log environment as a state change
+    WandererNotifier.Logger.StartupTracker.log_state_change(:environment, "#{env}")
+
+    # Log feature status (avoids duplicate logs)
+    log_feature_status()
+
+    # Begin services phase that includes starting the supervisor
+    WandererNotifier.Logger.StartupTracker.begin_phase(:services, "Starting core services")
 
     # Start the supervisor and schedule startup message
     result = start_supervisor_and_notify()
 
-    # Schedule a database health check if kill charts feature is enabled
-    schedule_database_health_check()
+    # Begin database phase (only do this once)
+    WandererNotifier.Logger.StartupTracker.begin_phase(
+      :database,
+      "Establishing database connection"
+    )
+
+    # Instead of scheduling a database health check,
+    # actively wait for the database connection to be available
+    wait_for_database_connection()
+
+    # Complete startup tracking
+    WandererNotifier.Logger.StartupTracker.complete_startup()
 
     result
   end
 
-  # Schedule a database health check if the kill charts feature is enabled
-  defp schedule_database_health_check do
-    # Always schedule a database health check since PostgreSQL is now required
-    Task.start(fn ->
-      # Give the repo time to connect
-      Process.sleep(1000)
-      perform_database_health_check()
+  # Wait for the database connection to be established
+  defp wait_for_database_connection do
+    # Only record this event, not log it directly
+    WandererNotifier.Logger.StartupTracker.record_event(:database_connection, %{
+      status: "attempting"
+    })
+
+    # Try up to 5 times with increasing delays
+    Enum.reduce_while(1..5, 500, fn attempt, delay ->
+      Process.sleep(delay)
+
+      case check_database_connection() do
+        {:ok, ping_time} ->
+          # Log successful connection as a significant state change (only once)
+          WandererNotifier.Logger.StartupTracker.log_state_change(
+            :database_status,
+            "Database connection established",
+            %{ping_time: ping_time}
+          )
+
+          {:halt, :ok}
+
+        {:error, reason} ->
+          handle_failed_connection_attempt(attempt, reason, delay)
+      end
     end)
   end
 
-  # Perform the actual database health check
-  defp perform_database_health_check do
-    case WandererNotifier.Repo.health_check() do
-      {:ok, ping_time} ->
-        Logger.info("Database health check successful - ping time: #{ping_time}ms")
+  # Handle a failed database connection attempt
+  defp handle_failed_connection_attempt(attempt, reason, delay) do
+    if attempt < 5 do
+      # Track the attempt but don't log every one
+      WandererNotifier.Logger.StartupTracker.record_event(
+        :database_retry,
+        %{attempt: attempt, reason: inspect(reason)}
+      )
 
-      {:error, reason} ->
-        Logger.error("Database health check failed: #{inspect(reason)}")
-        Logger.error("Make sure PostgreSQL is running and properly configured")
+      # Only log the first attempt at warning level
+      if attempt == 1 do
+        AppLogger.startup_warn(
+          "Database connection not ready, will retry #{5 - attempt} more times"
+        )
+      end
+
+      # Increase delay for next attempt (exponential backoff)
+      {:cont, delay * 2}
+    else
+      # Log final failure as an error
+      WandererNotifier.Logger.StartupTracker.record_error(
+        "Failed to establish database connection after 5 attempts",
+        %{reason: inspect(reason)}
+      )
+
+      {:halt, :error}
     end
+  end
+
+  # Check if the database connection is available
+  defp check_database_connection do
+    WandererNotifier.Repo.health_check()
   end
 
   # Start development tools if in dev environment
   defp maybe_start_dev_tools(:dev) do
-    Logger.info("Starting ExSync for hot code reloading")
+    AppLogger.startup_info("Starting ExSync for hot code reloading")
 
     case Application.ensure_all_started(:exsync) do
-      {:ok, _} -> Logger.info("ExSync started successfully")
-      {:error, _} -> Logger.warning("ExSync not available, continuing without hot reloading")
+      {:ok, _} ->
+        AppLogger.startup_info("ExSync started successfully")
+
+      {:error, _} ->
+        AppLogger.startup_warn("ExSync not available, continuing without hot reloading")
     end
 
     # Start watchers for frontend asset rebuilding in development
@@ -96,37 +166,50 @@ defmodule WandererNotifier.Application do
 
   defp maybe_start_dev_tools(_other_env), do: :ok
 
-  # Log application startup information
-  defp log_startup_info(env) do
-    Logger.info("Starting WandererNotifier application...")
-    Logger.info("Environment: #{env}")
+  # Log essential feature statuses
+  defp log_feature_status do
+    # Begin dependencies phase
+    WandererNotifier.Logger.StartupTracker.begin_phase(:dependencies, "Checking feature status")
 
-    # Log configuration details
+    # Only log essential feature status directly, others go through tracker
+    kill_charts_status = if kill_charts_enabled?(), do: "Enabled", else: "Disabled"
+
+    WandererNotifier.Logger.StartupTracker.log_state_change(
+      :feature_status,
+      "Kill charts feature: #{kill_charts_status}"
+    )
+
+    # Log database requirement
+    WandererNotifier.Logger.StartupTracker.log_state_change(
+      :database_status,
+      "PostgreSQL database: Required and will be connected"
+    )
+
+    # Track configuration details but don't log directly
     license_key = Config.license_key()
 
-    Logger.debug(
-      "License Key configured: #{if license_key && license_key != "", do: "Yes", else: "No"}"
-    )
+    if license_key && license_key != "" do
+      WandererNotifier.Logger.StartupTracker.record_event(:license, %{status: "configured"})
+    else
+      WandererNotifier.Logger.StartupTracker.record_event(:license, %{status: "not_configured"})
+    end
 
-    Logger.debug(
-      "License Manager: #{if Config.license_manager_api_url(), do: "Configured", else: "Not configured"}"
-    )
+    # License manager config status (tracked but not logged)
+    license_manager_status =
+      if Config.license_manager_api_url(), do: "configured", else: "not_configured"
 
-    Logger.debug(
-      "Bot API Token: #{if env == :prod, do: "Using production token", else: "Using environment token"}"
-    )
-
-    # Log kill charts status
-    Logger.info(
-      "Kill charts feature: #{if kill_charts_enabled?(), do: "Enabled", else: "Disabled"}"
-    )
-
-    # Log database status
-    Logger.info("PostgreSQL database: Required and will be connected")
+    WandererNotifier.Logger.StartupTracker.record_event(:license_manager, %{
+      status: license_manager_status
+    })
   end
 
   # Start supervisor and schedule startup notification
   defp start_supervisor_and_notify do
+    # Start web server phase
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.begin_phase(:web, "Starting web server")
+    end
+
     # Start the supervisor with all children including Nostrum.Consumer
     result =
       Supervisor.start_link(get_children(),
@@ -134,13 +217,60 @@ defmodule WandererNotifier.Application do
         name: WandererNotifier.Supervisor
       )
 
-    # Send startup message after a short delay to ensure all services are started
+    # Move to completion phase
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.begin_phase(:completion, "Finalizing startup")
+    end
+
+    # Send startup notification asynchronously with delay
     Task.start(fn ->
-      Process.sleep(2000)
+      # Use a slightly longer delay to ensure all services are initialized
+      Process.sleep(5000)
       send_startup_message()
+
+      # Run initial maintenance tasks
+      run_initial_maintenance_tasks()
     end)
 
     result
+  end
+
+  # Run initial maintenance tasks with consolidated logging
+  defp run_initial_maintenance_tasks do
+    # Record this activity in the tracker
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:maintenance, %{
+        status: "starting_initial_tasks"
+      })
+    else
+      AppLogger.startup_info("Running initial maintenance tasks")
+    end
+
+    # Use maintenance service to update systems and characters
+    # Create a basic state map similar to what the Maintenance GenServer uses
+    current_time = :os.system_time(:second)
+
+    initial_state = %{
+      service_start_time: current_time,
+      last_systems_update: current_time,
+      last_characters_update: current_time,
+      last_status_time: current_time,
+      systems_count: 0,
+      characters_count: 0
+    }
+
+    # Call the do_initial_checks function directly from the Scheduler
+    alias WandererNotifier.Services.Maintenance.Scheduler
+    Scheduler.do_initial_checks(initial_state)
+
+    # Record completion
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:maintenance, %{
+        status: "initial_tasks_completed"
+      })
+    else
+      AppLogger.startup_info("Initial maintenance tasks completed")
+    end
   end
 
   defp should_skip_app_start? do
@@ -154,23 +284,41 @@ defmodule WandererNotifier.Application do
   end
 
   defp send_startup_message do
-    Logger.info("Sending startup message...")
+    # Only record this activity in the tracker, avoid redundant logs
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:startup_message, %{
+        status: "preparing"
+      })
+    else
+      AppLogger.startup_info("Sending startup message...")
+    end
 
     license_status =
       try do
         License.status()
       rescue
         e ->
-          Logger.error("Error getting license status for startup message: #{inspect(e)}")
+          AppLogger.startup_error(
+            "Error getting license status for startup message: #{inspect(e)}"
+          )
+
           %{valid: false, error_message: "Error retrieving license status"}
       catch
         type, error ->
-          Logger.error("Error getting license status: #{inspect(type)}, #{inspect(error)}")
+          AppLogger.startup_error(
+            "Error getting license status: #{inspect(type)}, #{inspect(error)}"
+          )
+
           %{valid: false, error_message: "Error retrieving license status"}
       end
 
     systems = get_tracked_systems()
     characters = CacheRepo.get("map:characters") || []
+
+    # Ensure systems and characters are lists
+    systems_list = if is_list(systems), do: systems, else: []
+    characters_list = if is_list(characters), do: characters, else: []
+
     features_status = Features.get_feature_status()
     stats = Stats.get_stats()
     title = "WandererNotifier Started"
@@ -184,14 +332,21 @@ defmodule WandererNotifier.Application do
         nil,
         features_status,
         license_status,
-        length(systems),
-        length(characters)
+        length(systems_list),
+        length(characters_list)
       )
 
     discord_embed =
       WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
 
     NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+
+    # Record completion of startup message in tracker
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:startup_message, %{
+        status: "completed"
+      })
+    end
   end
 
   defp get_tracked_systems do
@@ -203,34 +358,34 @@ defmodule WandererNotifier.Application do
   This replaces the functionality in DevCallbacks.
   """
   def reload(modules) do
-    Logger.info("Reloaded modules: #{inspect(modules)}")
+    AppLogger.startup_info("Reloaded modules: #{inspect(modules)}")
     :ok
   end
 
   defp get_children do
-    # Basic children that don't depend on database
+    # Start with the database repository first
+    # Initialize the batch logger
+    WandererNotifier.Logger.BatchLogger.init()
+    AppLogger.startup_info("Batch logger initialized for high-volume logging")
+
     base_children = [
+      # Always start the Database Repository first with automatic restart
+      {WandererNotifier.Repo, [restart: :permanent]},
+
+      # Basic services that don't directly depend on database
       {WandererNotifier.NoopConsumer, []},
-      # Start the License Manager
       {WandererNotifier.Core.License, []},
-      # Start the Stats tracking service
       {WandererNotifier.Core.Stats, []},
-      # Start the Cache Repository
       {WandererNotifier.Data.Cache.Repository, []},
-      # Start the Chart Service Manager (if enabled)
+      {WandererNotifier.Cache.Monitor, []},
       {WandererNotifier.ChartService.ChartServiceManager, []},
-      # Start the Deduplication Helper
       {WandererNotifier.Helpers.DeduplicationHelper, []},
-      # Start the main service (which starts the WebSocket)
+
+      # Services that may interact with the database
       {WandererNotifier.Services.Service, []},
-      # Start the Maintenance service
       {WandererNotifier.Services.Maintenance, []},
-      # Start the Web Server
       {WandererNotifier.Web.Server, []},
-      # Add automatic sync for cached characters to database (runs every 15 minutes)
-      {WandererNotifier.Workers.CharacterSyncWorker, []},
-      # Always start the Database Repository
-      {WandererNotifier.Repo, [restart: :transient]}
+      {WandererNotifier.Workers.CharacterSyncWorker, []}
     ]
 
     # Add the scheduler supervisor last to ensure all dependencies are started first
@@ -246,13 +401,18 @@ defmodule WandererNotifier.Application do
     watchers = Application.get_env(:wanderer_notifier, :watchers, [])
 
     Enum.each(watchers, fn {cmd, args} ->
-      Logger.info("Starting watcher: #{cmd} with args: #{inspect(args)}")
+      AppLogger.startup_info("Starting watcher: #{cmd} with args: #{inspect(args)}")
       {cmd_args, cd_path} = extract_watcher_args(args)
       cmd_str = to_string(cmd)
 
-      Logger.info(
-        "Processed watcher command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(cmd_args)}, cd: #{inspect(cd_path)}"
-      )
+      # Use the startup tracker to record this event without direct logging
+      if Process.get(:startup_tracker) do
+        WandererNotifier.Logger.StartupTracker.record_event(:watcher_command, %{
+          command: cmd_str,
+          args: cmd_args,
+          cd: cd_path
+        })
+      end
 
       Task.start(fn ->
         try do
@@ -260,21 +420,18 @@ defmodule WandererNotifier.Application do
           system_opts = if cd_path, do: [cd: cd_path] ++ system_opts, else: system_opts
           system_opts = [into: IO.stream(:stdio, :line)] ++ system_opts
 
-          Logger.info(
-            "Running command: #{cmd_str} #{Enum.join(cmd_args, " ")} with options: #{inspect(system_opts)}"
-          )
-
           {_output, status} = System.cmd(cmd_str, cmd_args, system_opts)
 
           if status == 0 do
-            Logger.info("Watcher #{cmd} completed successfully")
+            # Only log at debug level for successful completion
+            AppLogger.startup_debug("Watcher #{cmd} completed successfully")
           else
-            Logger.error("Watcher #{cmd} exited with status #{status}")
+            AppLogger.startup_error("Watcher #{cmd} exited with status #{status}")
           end
         rescue
           e ->
-            Logger.error("Error starting watcher: #{inspect(e)}")
-            Logger.error(Exception.format_stacktrace())
+            AppLogger.startup_error("Error starting watcher: #{inspect(e)}")
+            AppLogger.startup_error(Exception.format_stacktrace())
         end
       end)
     end)

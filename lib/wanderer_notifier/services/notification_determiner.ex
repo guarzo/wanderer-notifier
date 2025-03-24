@@ -8,14 +8,14 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
-  Determines if a killmail should trigger a notification.
-  Checks against tracked systems and characters.
+  Determine if a kill notification should be sent.
 
   ## Parameters
-    - killmail: The killmail data (as Killmail struct or map)
-    - system_id: Optional system ID override (useful when extracted earlier)
+    - killmail: The killmail data
+    - system_id: Optional system ID (will extract from killmail if not provided)
 
   ## Returns
     - true if notification should be sent
@@ -24,41 +24,104 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def should_notify_kill?(killmail, system_id \\ nil) do
     # Check if kill notifications are enabled globally
     if Features.kill_notifications_enabled?() do
-      # Extract system ID if not provided
-      system_id = system_id || extract_system_id(killmail)
-
-      # Get system name for better logging
-      system_name = get_system_name(system_id)
-      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
-
-      kill_id =
-        if is_map(killmail),
-          do: Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id"),
-          else: "unknown"
-
-      # Check if the kill is in a tracked system
-      is_tracked_system = tracked_system?(system_id)
-
-      # Check if the kill involves a tracked character
-      has_tracked_character = has_tracked_character?(killmail)
+      # Extract kill details for decision making
+      kill_details = extract_kill_details(killmail, system_id)
 
       # Log the decision factors
-      Logger.debug(
-        "NOTIFICATION CRITERIA: Kill #{kill_id} - System #{system_info} tracked? #{is_tracked_system}"
-      )
+      log_notification_criteria(kill_details)
 
-      Logger.debug(
-        "NOTIFICATION CRITERIA: Kill #{kill_id} - Has tracked character? #{has_tracked_character}"
-      )
-
-      # Return true if either condition is met
-      is_tracked_system || has_tracked_character
+      # Check if this kill should be considered for notification
+      if kill_meets_tracking_criteria?(kill_details) do
+        check_deduplication_and_decide(kill_details.kill_id)
+      else
+        log_kill_not_tracked(kill_details.kill_id)
+        false
+      end
     else
-      Logger.debug(
-        "🔕 NOTIFICATION BLOCKED: Kill notifications are disabled globally (ENABLE_KILL_NOTIFICATIONS=false)"
-      )
-
+      log_notifications_disabled()
       false
+    end
+  end
+
+  # Extract all relevant kill details for decision making
+  defp extract_kill_details(killmail, provided_system_id) do
+    # Extract system ID if not provided
+    system_id = provided_system_id || extract_system_id(killmail)
+    system_name = get_system_name(system_id)
+
+    kill_id =
+      if is_map(killmail),
+        do: Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id"),
+        else: "unknown"
+
+    # Check tracking criteria
+    is_tracked_system = tracked_system?(system_id)
+    has_tracked_character = has_tracked_character?(killmail)
+
+    %{
+      kill_id: kill_id,
+      system_id: system_id,
+      system_name: system_name,
+      is_tracked_system: is_tracked_system,
+      has_tracked_character: has_tracked_character
+    }
+  end
+
+  # Log notification criteria details
+  defp log_notification_criteria(kill_details) do
+    AppLogger.processor_debug("Evaluating notification criteria",
+      kill_id: kill_details.kill_id,
+      system_id: kill_details.system_id,
+      system_name: kill_details.system_name,
+      is_tracked_system: kill_details.is_tracked_system,
+      has_tracked_character: kill_details.has_tracked_character
+    )
+  end
+
+  # Check if kill meets any tracking criteria
+  defp kill_meets_tracking_criteria?(kill_details) do
+    kill_details.is_tracked_system || kill_details.has_tracked_character
+  end
+
+  # Log that notifications are disabled
+  defp log_notifications_disabled do
+    AppLogger.processor_debug("Kill notifications are disabled globally",
+      setting: "ENABLE_KILL_NOTIFICATIONS=false"
+    )
+  end
+
+  # Log that kill is not tracked
+  defp log_kill_not_tracked(kill_id) do
+    AppLogger.processor_debug("Kill not in tracked system or with tracked character",
+      kill_id: kill_id
+    )
+  end
+
+  # Apply deduplication check and decide whether to send notification
+  defp check_deduplication_and_decide(kill_id) do
+    case check_deduplication(:kill, kill_id) do
+      {:ok, :send} ->
+        # Not a duplicate, allow sending
+        true
+
+      {:ok, :skip} ->
+        # Duplicate, skip notification
+        AppLogger.processor_debug("Skipping duplicate kill notification",
+          kill_id: kill_id,
+          reason: "Duplicate notification"
+        )
+
+        false
+
+      {:error, reason} ->
+        # Error during deduplication check - default to allowing
+        AppLogger.processor_warn(
+          "Deduplication check failed, allowing notification by default",
+          kill_id: kill_id,
+          error: inspect(reason)
+        )
+
+        true
     end
   end
 
@@ -82,8 +145,16 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     # Check if system is tracked through direct tracking or track_all policy
     tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
 
-    # Log the tracking status with appropriate details
-    log_tracking_status(tracked, system_info, system_id_str)
+    # Use batch logger for system tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:system_tracked, %{
+      system_id: system_id_str,
+      tracked: tracked
+    })
+
+    # Only log detailed info if system is tracked
+    if tracked do
+      log_tracking_status(tracked, system_info, system_id_str)
+    end
 
     tracked
   end
@@ -109,25 +180,26 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   defp log_tracking_status(tracked, system_info, system_id_str) do
+    # We're going to make system tracking logs extremely minimal
+    # Only log notable events (system is tracked) at debug level
+    # Tracking failures are too common to log each one
+
     if tracked do
-      Logger.debug("TRACKING: System #{system_info} is tracked ✅")
+      # Log basic tracking at debug level
+      tracking_method =
+        if directly_tracked?(system_id_str) do
+          "explicit tracking"
+        else
+          "TRACK_ALL_SYSTEMS setting"
+        end
 
-      if directly_tracked?(system_id_str) do
-        Logger.debug(
-          "TRACKING DETAIL: System is explicitly tracked (tracked:system:#{system_id_str}=true)"
-        )
-      else
-        Logger.debug(
-          "TRACKING DETAIL: System is tracked due to TRACK_ALL_SYSTEMS=true and exists in map:system:#{system_id_str}"
-        )
-      end
-    else
-      Logger.debug("TRACKING: System #{system_info} is NOT tracked ❌")
-
-      Logger.debug(
-        "TRACKING DETAIL: Not found in tracked:system:#{system_id_str} and either TRACK_ALL_SYSTEMS=false or not in map:system:#{system_id_str}"
+      AppLogger.processor_debug("System is tracked via #{tracking_method}",
+        system_info: system_info,
+        system_id: system_id_str
       )
     end
+
+    # We no longer log when a system is NOT tracked, as this happens for most systems
   end
 
   @doc """
@@ -145,20 +217,25 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     kill_data = extract_kill_data(killmail)
     kill_id = extract_kill_id(killmail)
 
-    Logger.debug("CHARACTER TRACKING: Checking kill #{kill_id} for tracked characters")
+    # Use batch logger for character tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:character_tracked, %{
+      kill_id: kill_id
+    })
 
     # Get all tracked character IDs for comparison
     all_character_ids = get_all_tracked_character_ids()
 
-    # For debugging, log sample character IDs
-    log_sample_character_ids(all_character_ids)
+    # For debugging, log sample character IDs (but less frequently)
+    if :rand.uniform(10) == 1 do
+      log_sample_character_ids(all_character_ids)
+    end
 
     # Check if victim is tracked
     victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
 
     if victim_tracked do
       # Early return if victim is tracked
-      Logger.info("CHARACTER TRACKING: Found tracked victim in kill #{kill_id}")
+      AppLogger.processor_info("Found tracked victim", kill_id: kill_id)
       true
     else
       # Check if any attacker is tracked
@@ -194,12 +271,14 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Log a sample of character IDs for debugging
+  # Log a sample of character IDs for debugging - reduced to debug level
   defp log_sample_character_ids(all_character_ids) do
-    sample_character_ids = Enum.take(all_character_ids, min(5, length(all_character_ids)))
+    # Only log this at debug level - it happens on every kill
+    sample_character_ids = Enum.take(all_character_ids, min(3, length(all_character_ids)))
 
-    Logger.info(
-      "CHARACTER TRACKING: Using #{length(all_character_ids)} tracked characters. Sample: #{inspect(sample_character_ids)}"
+    AppLogger.processor_debug("Character tracking details",
+      character_count: length(all_character_ids),
+      sample_characters: sample_character_ids
     )
   end
 
@@ -210,13 +289,11 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if victim_id, do: to_string(victim_id), else: nil
   end
 
-  # Log victim information for debugging
-  defp log_victim_info(victim_id_str, kill_id) do
-    if victim_id_str do
-      Logger.debug("CHARACTER TRACKING: Victim ID in kill #{kill_id} is #{victim_id_str}")
-    else
-      Logger.debug("CHARACTER TRACKING: No victim character ID found in kill #{kill_id}")
-    end
+  # Victim tracking logs removed - these are too verbose 
+  # and happen on every kill
+  defp log_victim_info(_victim_id_str, _kill_id) do
+    # No longer logging victim info - too verbose
+    :ok
   end
 
   # Check if victim is tracked through direct cache lookup
@@ -225,8 +302,10 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
 
     if direct_tracked do
-      Logger.info(
-        "CHARACTER TRACKING: Victim #{victim_id_str} found via direct cache key #{direct_cache_key}"
+      # Keep this info log as it indicates a successful tracking match - useful information
+      AppLogger.processor_info("Victim found via direct cache lookup",
+        victim_id: victim_id_str,
+        cache_key: direct_cache_key
       )
 
       true
@@ -254,200 +333,224 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     end
   end
 
-  # Check if any attacker in this kill is being tracked
+  # Extract attackers from kill data
+  defp extract_attackers(kill_data) do
+    Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
+  end
+
+  # Check if any attacker is tracked
   defp check_attackers_tracked(kill_data, kill_id, all_character_ids) do
-    # Check attackers
-    attackers = Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
+    # Get attacker data
+    attackers = extract_attackers(kill_data)
 
-    # Log attackers count for debugging
-    Logger.debug("CHARACTER TRACKING: Kill #{kill_id} has #{length(attackers)} attackers")
+    # First check, is any attacker in the list of tracked character IDs
+    tracked_attackers =
+      attackers
+      |> Enum.map(fn attacker ->
+        attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
+        if attacker_id, do: to_string(attacker_id), else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.filter(fn attacker_id -> Enum.member?(all_character_ids, attacker_id) end)
 
-    # Now extract all attacker IDs for checking
+    # Check if we found any tracked attackers by ID list
+    has_tracked_attackers = length(tracked_attackers) > 0
+
+    if has_tracked_attackers do
+      AppLogger.processor_info("Found tracked attackers",
+        kill_id: kill_id,
+        tracked_attackers: tracked_attackers
+      )
+
+      true
+    else
+      # Second check, try direct cache lookup for each attacker
+      check_direct_attacker_tracking(attackers, kill_id)
+    end
+  end
+
+  # Check if any attacker is tracked through direct cache lookup
+  defp check_direct_attacker_tracking(attackers, kill_id) do
+    # Extract attacker IDs
     attacker_ids =
       attackers
       |> Enum.map(fn attacker ->
-        char_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-        if char_id, do: to_string(char_id), else: nil
+        attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
+        if attacker_id, do: to_string(attacker_id), else: nil
       end)
       |> Enum.reject(&is_nil/1)
 
-    Logger.debug(
-      "CHARACTER TRACKING: Found #{length(attacker_ids)} attacker IDs in kill #{kill_id}: #{inspect(attacker_ids)}"
-    )
+    # Check each attacker ID in the cache
+    Enum.find_value(attacker_ids, false, fn attacker_id ->
+      cache_key = "tracked:character:#{attacker_id}"
+      tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
 
-    # Check if any attacker is in our tracked characters
-    any_attacker_tracked_by_id =
-      Enum.any?(attacker_ids, fn id ->
-        is_tracked = Enum.member?(all_character_ids, id)
-
-        if is_tracked do
-          Logger.info("CHARACTER TRACKING: Found tracked attacker #{id} in kill #{kill_id}")
-        end
-
-        is_tracked
-      end)
-
-    # Also try direct cache lookup for additional safety
-    any_attacker_tracked_by_cache =
-      Enum.any?(attacker_ids, fn id ->
-        cache_key = "tracked:character:#{id}"
-        is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
-
-        if is_tracked do
-          Logger.info(
-            "CHARACTER TRACKING: Attacker #{id} found via direct cache key #{cache_key}"
-          )
-        end
-
-        is_tracked
-      end)
-
-    # Return true if any attacker is tracked by either method
-    any_attacker_tracked_by_id || any_attacker_tracked_by_cache
-  end
-
-  @doc """
-  Determines if a character event should trigger a notification.
-
-  ## Parameters
-    - character_id: The ID of the character
-
-  ## Returns
-    - true if the character is tracked
-    - false otherwise
-  """
-  def should_notify_character?(character_id)
-      when is_integer(character_id) or is_binary(character_id) do
-    # Check if character notifications are enabled globally
-    if Features.enabled?(:tracked_characters_notifications) do
-      # Convert to string for consistent comparison
-      character_id_str = to_string(character_id)
-
-      # Direct check in tracked characters cache
-      cache_key = "tracked:character:#{character_id_str}"
-      is_tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
-
-      if is_tracked do
-        Logger.debug(
-          "NOTIFICATION DECISION: Character #{character_id} is tracked (#{cache_key}=true)"
+      if tracked do
+        AppLogger.processor_info("Found tracked attacker via direct cache lookup",
+          kill_id: kill_id,
+          attacker_id: attacker_id,
+          cache_key: cache_key
         )
 
         true
       else
-        Logger.debug(
-          "NOTIFICATION DECISION: Character #{character_id} is not tracked (#{cache_key} not found)"
+        false
+      end
+    end)
+  end
+
+  # Extract system ID from killmail
+  defp extract_system_id(killmail) do
+    cond do
+      is_binary(killmail) ->
+        killmail
+
+      is_map(killmail) ->
+        system_id =
+          Map.get(killmail, "solar_system_id") ||
+            get_in(killmail, ["esi_data", "solar_system_id"])
+
+        system_name =
+          Map.get(killmail, "solar_system_name") ||
+            get_in(killmail, ["esi_data", "solar_system_name"])
+
+        # Return system_id, but log it with the name if available
+        AppLogger.processor_debug("Extracted system",
+          system_id: system_id,
+          system_name: system_name
         )
 
-        false
-      end
-    else
-      Logger.debug("NOTIFICATION DECISION: Character notifications are disabled globally")
-      false
+        system_id
+
+      true ->
+        nil
     end
   end
 
-  @doc """
-  Determines if we should send a notification for a system.
-
-  ## Parameters
-    - system_id: The system ID to check
-
-  ## Returns
-    - true if we should notify, false otherwise
-  """
-  def should_notify_system?(system_id) do
-    # Check if system notifications are enabled globally
-    if Features.enabled?(:tracked_systems_notifications) do
-      is_tracked = tracked_system?(system_id)
-      system_name = get_system_name(system_id)
-      system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
-
-      if is_tracked do
-        Logger.debug("NOTIFICATION DECISION: System #{system_info} is tracked")
-        true
-      else
-        Logger.debug("NOTIFICATION DECISION: System #{system_info} is not tracked")
-        false
-      end
-    else
-      Logger.debug("NOTIFICATION DECISION: System notifications are disabled globally")
-      false
-    end
-  end
-
-  # Helper function to get system name
+  # Try to get system name from ESI cache
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
     case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
-      {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil
     end
   end
 
-  # Helper function to extract system ID from a killmail
-  defp extract_system_id(%Killmail{} = killmail) do
-    case killmail do
-      %Killmail{esi_data: esi_data} when is_map(esi_data) ->
-        Map.get(esi_data, "solar_system_id")
-
-      _ ->
-        nil
-    end
-  end
-
-  defp extract_system_id(killmail) when is_map(killmail) do
-    # Try to get system ID from various possible locations
-    Map.get(killmail, "solar_system_id") ||
-      Map.get(killmail, :solar_system_id) ||
-      get_in(killmail, ["esi_data", "solar_system_id"]) ||
-      get_in(killmail, [:esi_data, "solar_system_id"])
-  end
-
-  defp extract_system_id(_), do: nil
-
   @doc """
-  Centralized deduplication check for notifications.
-  Uses a day-based global key approach for consistent deduplication across service restarts.
+  Checks if a notification should be sent after deduplication.
+  This is used to prevent duplicate notifications for the same event.
 
   ## Parameters
-    - type: The notification type (:kill, :system, :character)
-    - id: The ID of the entity
+    - notification_type: The type of notification (:kill, :system, :character, etc.)
+    - identifier: Unique identifier for the notification (such as kill_id)
 
   ## Returns
-    - {:ok, :send} if notification should be sent (not a duplicate)
+    - {:ok, :send} if notification should be sent
     - {:ok, :skip} if notification should be skipped (duplicate)
-    - {:error, reason} if there was an error in the check
+    - {:error, reason} if an error occurs
   """
-  def check_deduplication(type, id)
-      when type in [:kill, :system, :character] and (is_binary(id) or is_integer(id)) do
-    id_str = to_string(id)
-    day_str = Date.utc_today() |> Date.to_string()
-    global_key = "global:#{type}:#{day_str}:#{id_str}"
-
-    Logger.info("DEDUPLICATION: Checking for #{type} #{id_str}")
-
-    # Delegate deduplication check to helper and translate the response
-    case DeduplicationHelper.check_and_mark(global_key) do
-      {:ok, :new} ->
-        Logger.info("DEDUPLICATION: #{type} #{id_str} is new, sending notification")
+  def check_deduplication(notification_type, identifier) do
+    # Use the DeduplicationHelper to check if this is a duplicate
+    case DeduplicationHelper.duplicate?(notification_type, identifier) do
+      {:ok, false} ->
+        # Not a duplicate, mark as processed and allow sending
+        DeduplicationHelper.mark_as_processed(notification_type, identifier)
         {:ok, :send}
 
-      {:ok, :duplicate} ->
-        Logger.info("DEDUPLICATION: #{type} #{id_str} is a duplicate, skipping notification")
+      {:ok, true} ->
+        # Duplicate, skip notification
         {:ok, :skip}
 
-      error ->
-        Logger.error("DEDUPLICATION: Error checking #{type} #{id_str}: #{inspect(error)}")
-        # Default to allowing notification in case of errors
-        {:error, "Deduplication check failed: #{inspect(error)}"}
+      # Handle the direct boolean value returned from duplicate? function
+      false ->
+        # Not a duplicate, mark as processed and allow sending
+        DeduplicationHelper.mark_as_processed(notification_type, identifier)
+        {:ok, :send}
+
+      true ->
+        # Duplicate, skip notification
+        {:ok, :skip}
+
+      {:error, reason} ->
+        # Error during deduplication check
+        AppLogger.processor_error("Deduplication check failed",
+          notification_type: notification_type,
+          identifier: identifier,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 
-  def check_deduplication(_type, id) do
-    Logger.warning("DEDUPLICATION: Invalid type or ID (#{inspect(id)}) for deduplication check")
-    # Default to sending notification if we can't properly check
-    {:ok, :send}
+  @doc """
+  Determines if a system notification should be sent.
+  Checks if system notifications are enabled and applies deduplication.
+
+  ## Parameters
+    - system_id: The system ID to check
+
+  ## Returns
+    - true if notification should be sent
+    - false otherwise
+  """
+  def should_notify_system?(system_id) do
+    # Check if system notifications are enabled globally
+    if Features.system_notifications_enabled?() do
+      # Log the check
+      system_id_str = if system_id, do: to_string(system_id), else: "nil"
+
+      AppLogger.processor_debug("Checking if system notification should be sent",
+        system_id: system_id_str
+      )
+
+      # Apply deduplication check
+      case check_deduplication(:system, system_id || "new") do
+        {:ok, :send} -> true
+        {:ok, :skip} -> false
+        # Default to allowing on error
+        {:error, _reason} -> true
+      end
+    else
+      # System notifications disabled
+      AppLogger.processor_debug("System notifications disabled")
+      false
+    end
+  end
+
+  @doc """
+  Determines if a character notification should be sent.
+  Checks if character notifications are enabled and applies deduplication.
+
+  ## Parameters
+    - character_id: The character ID to check
+
+  ## Returns
+    - true if notification should be sent
+    - false otherwise
+  """
+  def should_notify_character?(character_id) do
+    # Check if character notifications are enabled globally
+    if Features.character_notifications_enabled?() do
+      # Log the check
+      character_id_str = if character_id, do: to_string(character_id), else: "nil"
+
+      AppLogger.processor_debug("Checking if character notification should be sent",
+        character_id: character_id_str
+      )
+
+      # Apply deduplication check
+      case check_deduplication(:character, character_id || "new") do
+        {:ok, :send} -> true
+        {:ok, :skip} -> false
+        # Default to allowing on error
+        {:error, _reason} -> true
+      end
+    else
+      # Character notifications disabled
+      AppLogger.processor_debug("Character notifications disabled")
+      false
+    end
   end
 end

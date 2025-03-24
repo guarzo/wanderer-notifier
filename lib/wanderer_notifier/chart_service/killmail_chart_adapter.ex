@@ -8,6 +8,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   require Logger
   require Ash.Query
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter
@@ -28,7 +29,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   def generate_weekly_kills_chart(options \\ %{}) do
     # Extract limit from options
     limit = extract_limit_from_options(options)
-    Logger.info("Generating weekly kills chart (limit: #{limit})")
+    AppLogger.kill_info("Generating weekly kills chart", limit: limit)
 
     # Prepare chart data
     case prepare_weekly_kills_data(limit) do
@@ -88,7 +89,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   Returns {:ok, chart_data, title, options} or {:error, reason}.
   """
   def prepare_weekly_kills_data(limit) do
-    Logger.info("Preparing weekly kills chart data")
+    AppLogger.kill_info("Preparing weekly kills chart data")
 
     try do
       # Get tracked characters
@@ -100,7 +101,10 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       if length(weekly_stats) > 0 do
         # Get top characters by kills
         top_characters = get_top_characters_by_kills(weekly_stats, limit)
-        Logger.info("Selected top #{length(top_characters)} characters for weekly kills chart")
+
+        AppLogger.kill_info("Selected top characters for weekly kills chart",
+          count: length(top_characters)
+        )
 
         # Extract chart elements
         {character_labels, kills_data, isk_destroyed_data} = extract_kill_metrics(top_characters)
@@ -113,7 +117,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
         {:ok, chart_data, "Weekly Character Kills", options}
       else
-        Logger.warning("No weekly statistics available for tracked characters", [])
+        AppLogger.kill_warn("No weekly statistics available for tracked characters")
 
         # Create an empty chart with a message instead of returning an error
         empty_chart_data = create_empty_chart_data("No kill statistics available yet")
@@ -123,8 +127,10 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       end
     rescue
       e ->
-        Logger.error("Error preparing weekly kills data: #{Exception.message(e)}")
-        Logger.error(Exception.format_stacktrace())
+        AppLogger.kill_error("Error preparing weekly kills data",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
 
         # Even for errors, create an empty chart with an error message
         empty_chart_data = create_empty_chart_data("Error loading chart data")
@@ -168,7 +174,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         )
 
       {:error, reason} ->
-        Logger.error("Failed to generate weekly kills chart: #{inspect(reason)}")
+        AppLogger.kill_error("Failed to generate weekly kills chart", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -184,7 +190,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         characters
 
       {:error, error} ->
-        Logger.error("Error fetching tracked characters: #{inspect(error)}")
+        AppLogger.kill_error("Error fetching tracked characters", error: inspect(error))
         []
 
       _ ->
@@ -222,7 +228,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         stats
 
       {:error, error} ->
-        Logger.error("Error fetching weekly stats: #{inspect(error)}")
+        AppLogger.kill_error("Error fetching weekly stats", error: inspect(error))
         []
 
       _ ->

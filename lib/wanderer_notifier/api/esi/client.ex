@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.ESI.Client do
   Provides low-level functions for making requests to ESI endpoints.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 
@@ -103,7 +104,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    Logger.debug("[ESI] Searching inventory_type with query #{query} (strict=#{strict})")
+    AppLogger.api_debug("[ESI] Searching inventory_type with query #{query} (strict=#{strict})")
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.search")
@@ -118,17 +119,17 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    Logger.debug("[ESI] Fetching solar system #{system_id}")
+    AppLogger.api_debug("[ESI] Fetching solar system #{system_id}")
 
     result = HttpClient.get(url, headers, label: label)
 
     case result do
       {:ok, %{status: 404}} ->
-        Logger.warning("[ESI] Solar system ID #{system_id} not found (404)")
+        AppLogger.api_warn("[ESI] Solar system ID #{system_id} not found (404)")
         {:error, :not_found}
 
       {:error, error} ->
-        Logger.error("[ESI] Failed to fetch solar system #{system_id}: #{inspect(error)}")
+        AppLogger.api_error("[ESI] Failed to fetch solar system #{system_id}: #{inspect(error)}")
         {:error, error}
 
       response ->
@@ -145,7 +146,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    Logger.debug("[ESI] Fetching region #{region_id}")
+    AppLogger.api_debug("[ESI] Fetching region #{region_id}")
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.region")

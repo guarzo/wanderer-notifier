@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   """
 
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.MapSystem
@@ -133,7 +134,9 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Log killmail data for debugging
   defp log_killmail_data(killmail) do
-    Logger.debug("[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}")
+    AppLogger.processor_debug(
+      "[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}"
+    )
 
     # Check if we have all required fields
     has_victim = Killmail.get_victim(killmail) != nil
@@ -156,8 +159,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     victim_character_id = Map.get(victim, "character_id")
 
     # Log extracted values
-    Logger.debug("[StructuredFormatter] Extracted victim_name: #{victim_name}")
-    Logger.debug("[StructuredFormatter] Extracted victim_ship: #{victim_ship}")
+    AppLogger.processor_debug("[StructuredFormatter] Extracted victim_name: #{victim_name}")
+    AppLogger.processor_debug("[StructuredFormatter] Extracted victim_ship: #{victim_ship}")
 
     %{
       name: victim_name,
@@ -173,7 +176,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp extract_kill_context(killmail) do
     # System name
     system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
-    Logger.debug("[StructuredFormatter] Extracted system_name: #{system_name}")
+    AppLogger.processor_debug("[StructuredFormatter] Extracted system_name: #{system_name}")
 
     # Kill value
     zkb = killmail.zkb || %{}
@@ -234,7 +237,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
          _final_blow_details,
          fields
        ) do
-    Logger.debug("Building kill notification for kill #{kill_id}")
+    AppLogger.processor_debug("Building kill notification for kill #{kill_id}")
 
     # Determine author name
     author_name =
@@ -297,27 +300,25 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_character_notification(%Character{} = character) do
-    Logger.info(
-      "[StructuredFormatter] Processing Character notification for: #{character.name} (#{character.character_id})"
+    AppLogger.processor_info("Processing Character notification",
+      character_name: character.name,
+      character_id: character.character_id
     )
 
     # Log all character fields to diagnose issues
-    Logger.info("[StructuredFormatter] Character struct fields:")
-    Logger.info("[StructuredFormatter] - name: #{inspect(character.name)}")
-    Logger.info("[StructuredFormatter] - character_id: #{inspect(character.character_id)}")
-    Logger.info("[StructuredFormatter] - corporation_id: #{inspect(character.corporation_id)}")
-
-    Logger.info(
-      "[StructuredFormatter] - corporation_ticker: #{inspect(character.corporation_ticker)}"
+    AppLogger.processor_debug("Character struct fields",
+      name: inspect(character.name),
+      character_id: inspect(character.character_id),
+      corporation_id: inspect(character.corporation_id),
+      corporation_ticker: inspect(character.corporation_ticker),
+      alliance_id: inspect(character.alliance_id),
+      alliance_ticker: inspect(character.alliance_ticker),
+      tracked: inspect(character.tracked)
     )
 
-    Logger.info("[StructuredFormatter] - alliance_id: #{inspect(character.alliance_id)}")
-    Logger.info("[StructuredFormatter] - alliance_ticker: #{inspect(character.alliance_ticker)}")
-    Logger.info("[StructuredFormatter] - tracked: #{inspect(character.tracked)}")
-
     # Log the entire struct for comprehensive debugging
-    Logger.debug(
-      "[StructuredFormatter] Full character struct: #{inspect(character, pretty: true, limit: 10_000)}"
+    AppLogger.processor_debug("Full character struct",
+      character: inspect(character, pretty: true, limit: 10_000)
     )
 
     # Build notification structure
@@ -349,7 +350,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
             [%{name: "Corporation", value: corporation_link, inline: true}]
           else
-            Logger.info("[StructuredFormatter] No corporation data available for inclusion")
+            AppLogger.processor_info(
+              "[StructuredFormatter] No corporation data available for inclusion"
+            )
+
             []
           end
     }
@@ -379,7 +383,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     is_wormhole = MapSystem.wormhole?(system)
     display_name = MapSystem.format_display_name(system)
 
-    # Generate title, description, color and icon
+    # Generate notification elements
     notification_elements = generate_notification_elements(system, is_wormhole)
 
     # Format statics list and system link
@@ -413,50 +417,85 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   # Helper function to validate required system fields
   defp validate_system_fields(system) do
     if is_nil(system.solar_system_id) do
-      Logger.error("[StructuredFormatter] Missing solar_system_id in MapSystem struct")
+      AppLogger.processor_error(
+        "[StructuredFormatter] Missing solar_system_id in MapSystem struct"
+      )
+
       raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
     end
 
     if is_nil(system.name) do
-      Logger.error("[StructuredFormatter] Missing name in MapSystem struct")
+      AppLogger.processor_error("[StructuredFormatter] Missing name in MapSystem struct")
       raise "Cannot format system notification: name is missing in MapSystem struct"
     end
   end
 
   # Helper function to log system fields for debugging
   defp log_system_fields(system) do
-    Logger.debug("[StructuredFormatter] System struct fields:")
-    Logger.debug("[StructuredFormatter] - solar_system_id: #{system.solar_system_id}")
-    Logger.debug("[StructuredFormatter] - name: #{inspect(system.name)}")
-    Logger.debug("[StructuredFormatter] - temporary_name: #{inspect(system.temporary_name)}")
-    Logger.debug("[StructuredFormatter] - original_name: #{inspect(system.original_name)}")
-    Logger.debug("[StructuredFormatter] - type_description: #{inspect(system.type_description)}")
-    Logger.debug("[StructuredFormatter] - class_title: #{inspect(system.class_title)}")
-    Logger.debug("[StructuredFormatter] - effect_name: #{inspect(system.effect_name)}")
-    Logger.debug("[StructuredFormatter] - is_shattered: #{inspect(system.is_shattered)}")
-    Logger.debug("[StructuredFormatter] - region_name: #{inspect(system.region_name)}")
-    Logger.debug("[StructuredFormatter] - statics: #{inspect(system.statics)}")
-    Logger.debug("[StructuredFormatter] - static_details: #{inspect(system.static_details)}")
-    Logger.debug("[StructuredFormatter] - system_type: #{inspect(system.system_type)}")
+    AppLogger.processor_debug("[StructuredFormatter] System struct fields:")
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - solar_system_id: #{system.solar_system_id}"
+    )
+
+    AppLogger.processor_debug("[StructuredFormatter] - name: #{inspect(system.name)}")
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - temporary_name: #{inspect(system.temporary_name)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - original_name: #{inspect(system.original_name)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - type_description: #{inspect(system.type_description)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - class_title: #{inspect(system.class_title)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - effect_name: #{inspect(system.effect_name)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - is_shattered: #{inspect(system.is_shattered)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - region_name: #{inspect(system.region_name)}"
+    )
+
+    AppLogger.processor_debug("[StructuredFormatter] - statics: #{inspect(system.statics)}")
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - static_details: #{inspect(system.static_details)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] - system_type: #{inspect(system.system_type)}"
+    )
   end
 
   # Generate notification elements (title, description, color, icon)
   defp generate_notification_elements(system, is_wormhole) do
     # Generate title and description
     title = generate_system_title(is_wormhole, system.class_title, system.type_description)
-    Logger.debug("[StructuredFormatter] Generated title: #{inspect(title)}")
+    AppLogger.processor_debug("Generated title", title: inspect(title))
 
     description =
       generate_system_description(is_wormhole, system.class_title, system.type_description)
 
-    Logger.debug("[StructuredFormatter] Generated description: #{inspect(description)}")
+    AppLogger.processor_debug("Generated description", description: inspect(description))
 
     # Generate color and icon
     system_color = determine_system_color(system.type_description, is_wormhole)
-    Logger.debug("[StructuredFormatter] Determined system color: #{inspect(system_color)}")
+    AppLogger.processor_debug("Determined system color", color: inspect(system_color))
 
     icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
-    Logger.debug("[StructuredFormatter] Determined icon URL: #{inspect(icon_url)}")
+    AppLogger.processor_debug("Determined icon URL", icon_url: inspect(icon_url))
 
     %{
       title: title,
@@ -498,9 +537,15 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
          formatted_statics,
          system_name_with_link
        ) do
-    Logger.debug("[StructuredFormatter] System name with link: #{inspect(system_name_with_link)}")
-    Logger.debug("[StructuredFormatter] Is wormhole: #{is_wormhole}")
-    Logger.debug("[StructuredFormatter] Formatted statics: #{inspect(formatted_statics)}")
+    AppLogger.processor_debug(
+      "[StructuredFormatter] System name with link: #{inspect(system_name_with_link)}"
+    )
+
+    AppLogger.processor_debug("[StructuredFormatter] Is wormhole: #{is_wormhole}")
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] Formatted statics: #{inspect(formatted_statics)}"
+    )
 
     # Start with basic system field
     fields = [%{name: "System", value: system_name_with_link, inline: true}]
@@ -700,12 +745,12 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Format a list of statics for system notification with clear error handling
   defp format_statics_list(nil) do
-    Logger.debug("[StructuredFormatter.format_statics_list] Nil statics list")
+    AppLogger.processor_debug("[StructuredFormatter.format_statics_list] Nil statics list")
     "None"
   end
 
   defp format_statics_list([]) do
-    Logger.debug("[StructuredFormatter.format_statics_list] Empty statics list")
+    AppLogger.processor_debug("[StructuredFormatter.format_statics_list] Empty statics list")
     "None"
   end
 
@@ -836,7 +881,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         systems_count,
         characters_count
       ) do
-    Logger.info("[StructuredFormatter] Creating status message with title: #{title}")
+    AppLogger.processor_info("[StructuredFormatter] Creating status message with title: #{title}")
 
     # Prepare all the data needed for the status message
     uptime_str = format_uptime(uptime)
@@ -905,8 +950,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     }
 
     # For debugging display
-    Logger.debug("[StructuredFormatter] Found feature statuses: #{inspect(features_status)}")
-    Logger.debug("[StructuredFormatter] Extracted primary features: #{inspect(primary_features)}")
+    AppLogger.processor_debug(
+      "[StructuredFormatter] Found feature statuses: #{inspect(features_status)}"
+    )
+
+    AppLogger.processor_debug(
+      "[StructuredFormatter] Extracted primary features: #{inspect(primary_features)}"
+    )
 
     # Format primary feature statuses
     [

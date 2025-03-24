@@ -5,6 +5,7 @@ defmodule WandererNotifier.Core.License do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
   alias WandererNotifier.Core.Config.Timings
@@ -39,7 +40,9 @@ defmodule WandererNotifier.Core.License do
 
         unexpected_result ->
           # Create a safe default state
-          Logger.error("Unexpected result from license validation: #{inspect(unexpected_result)}")
+          AppLogger.config_error(
+            "Unexpected result from license validation: #{inspect(unexpected_result)}"
+          )
 
           %{
             valid: false,
@@ -52,7 +55,7 @@ defmodule WandererNotifier.Core.License do
       end
     rescue
       e ->
-        Logger.error("Error in license validation: #{inspect(e)}")
+        AppLogger.config_error("Error in license validation: #{inspect(e)}")
 
         %{
           valid: false,
@@ -64,7 +67,7 @@ defmodule WandererNotifier.Core.License do
         }
     catch
       :exit, {:timeout, _} ->
-        Logger.error("License validation timed out")
+        AppLogger.config_error("License validation timed out")
 
         %{
           valid: false,
@@ -76,7 +79,7 @@ defmodule WandererNotifier.Core.License do
         }
 
       type, reason ->
-        Logger.error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+        AppLogger.config_error("License validation error: #{inspect(type)}, #{inspect(reason)}")
 
         %{
           valid: false,
@@ -135,10 +138,12 @@ defmodule WandererNotifier.Core.License do
       new_state = do_validate()
 
       if new_state.valid do
-        Logger.info("License validated successfully: #{new_state.details["status"] || "valid"}")
+        AppLogger.config_info(
+          "License validated successfully: #{new_state.details["status"] || "valid"}"
+        )
       else
         error_msg = new_state.error_message || "No error message provided"
-        Logger.warning("License validation warning: #{error_msg}")
+        AppLogger.config_warn("License validation warning: #{error_msg}")
       end
 
       {:noreply, new_state}
@@ -164,7 +169,7 @@ defmodule WandererNotifier.Core.License do
 
   @impl true
   def handle_call(:validate, _from, _state) do
-    Logger.info("Validating license...")
+    AppLogger.config_info("Validating license...")
 
     # Get the license key from configuration
     license_key = Config.license_key()
@@ -184,11 +189,14 @@ defmodule WandererNotifier.Core.License do
         )
       catch
         :exit, {:timeout, _} ->
-          Logger.error("License validation HTTP request timed out")
+          AppLogger.config_error("License validation HTTP request timed out")
           {:error, "License validation timed out"}
 
         type, reason ->
-          Logger.error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
+          AppLogger.config_error(
+            "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
+          )
+
           {:error, "License validation error: #{inspect(reason)}"}
       end
 
@@ -197,20 +205,20 @@ defmodule WandererNotifier.Core.License do
       case validation_result do
         # Handle validate_bot response format
         {:ok, %{"license_valid" => true} = response} ->
-          Logger.info("License is valid and bot is assigned")
+          AppLogger.config_info("License is valid and bot is assigned")
           {true, true, response, nil, nil}
 
         {:ok, %{"license_valid" => false} = response} ->
           error_msg = response["message"] || "License is invalid"
-          Logger.error("License is invalid: #{error_msg}")
+          AppLogger.config_error("License is invalid: #{error_msg}")
           {false, false, response, :invalid_license, error_msg}
 
         {:error, reason} ->
-          Logger.error("License validation failed: #{inspect(reason)}")
+          AppLogger.config_error("License validation failed: #{inspect(reason)}")
           {false, false, %{}, :validation_failed, "License validation failed: #{inspect(reason)}"}
 
         unexpected ->
-          Logger.error("Unexpected license validation result: #{inspect(unexpected)}")
+          AppLogger.config_error("Unexpected license validation result: #{inspect(unexpected)}")
           {false, false, %{}, :unexpected_result, "Unexpected validation result"}
       end
 
@@ -267,7 +275,7 @@ defmodule WandererNotifier.Core.License do
           premium
 
         _ ->
-          Logger.debug("Premium check: not premium (invalid license state)")
+          AppLogger.config_debug("Premium check: not premium (invalid license state)")
           false
       end
 
@@ -295,7 +303,7 @@ defmodule WandererNotifier.Core.License do
         check_features_list(feature, details["features"])
 
       _ ->
-        Logger.debug("Feature check: #{feature} - disabled (invalid license)")
+        AppLogger.config_debug("Feature check: #{feature} - disabled (invalid license)")
         false
     end
   end
@@ -305,11 +313,13 @@ defmodule WandererNotifier.Core.License do
     if is_list(features) do
       enabled = Enum.member?(features, to_string(feature))
 
-      Logger.debug("Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}")
+      AppLogger.config_debug(
+        "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
+      )
 
       enabled
     else
-      Logger.debug("Feature check: #{feature} - disabled (features not a list)")
+      AppLogger.config_debug("Feature check: #{feature} - disabled (features not a list)")
       false
     end
   end
@@ -331,7 +341,7 @@ defmodule WandererNotifier.Core.License do
         message = response["message"]
 
         if license_valid do
-          Logger.info("License and bot validation successful")
+          AppLogger.config_info("License and bot validation successful")
           # If valid, return success state
           %{
             valid: true,
@@ -344,7 +354,7 @@ defmodule WandererNotifier.Core.License do
         else
           # For invalid license, return error state with message
           error_msg = message || "License is not valid"
-          Logger.error("License validation failed - #{error_msg}")
+          AppLogger.config_error("License validation failed - #{error_msg}")
 
           %{
             valid: false,
@@ -358,7 +368,7 @@ defmodule WandererNotifier.Core.License do
 
       {:error, reason} ->
         error_message = error_reason_to_message(reason)
-        Logger.error("License/bot validation failed: #{error_message}")
+        AppLogger.config_error("License/bot validation failed: #{error_message}")
 
         %{
           valid: false,

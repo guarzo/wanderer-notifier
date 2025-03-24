@@ -4,6 +4,7 @@ defmodule WandererNotifier.Web.Server do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
 
   @default_port 4000
@@ -35,22 +36,22 @@ defmodule WandererNotifier.Web.Server do
           end
       end
 
-    Logger.info("Starting web server on port #{port}...")
+    AppLogger.startup_info("Starting web server", port: port)
 
     case start_server(port) do
       {:ok, pid} ->
-        Logger.info("Web server started successfully on port #{port}")
+        AppLogger.startup_info("Web server started successfully", port: port)
         {:ok, %{server_pid: pid, port: port}}
 
       {:error, reason} ->
-        Logger.error("Failed to start web server: #{inspect(reason)}")
+        AppLogger.startup_error("Failed to start web server", error: inspect(reason))
         {:stop, reason}
     end
   end
 
   @impl true
   def terminate(_reason, %{server_pid: pid}) do
-    Logger.info("Stopping web server...")
+    AppLogger.startup_info("Stopping web server")
 
     if Process.alive?(pid) do
       Process.exit(pid, :normal)

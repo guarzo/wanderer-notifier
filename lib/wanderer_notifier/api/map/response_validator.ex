@@ -6,6 +6,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   processing, to prevent errors from unexpected data formats.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Validates a systems response.
@@ -56,7 +57,10 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         end
 
       _ ->
-        Logger.error("[ResponseValidator] Unexpected response format: #{inspect(response)}")
+        AppLogger.api_error(
+          "[ResponseValidator] Unexpected response format: #{inspect(response)}"
+        )
+
         {:error, "Expected 'data' or 'systems' array in response"}
     end
   end
@@ -110,7 +114,10 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         end
 
       _ ->
-        Logger.error("[ResponseValidator] Unexpected response format: #{inspect(response)}")
+        AppLogger.api_error(
+          "[ResponseValidator] Unexpected response format: #{inspect(response)}"
+        )
+
         {:error, "Expected 'data' or 'characters' array in response"}
     end
   end
@@ -212,7 +219,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
 
       # If we just have the expected fields at the top level (sometimes API returns this format)
       %{"statics" => _} = direct_data ->
-        Logger.warning("[ResponseValidator] Top-level static info format detected")
+        AppLogger.api_warn("[ResponseValidator] Top-level static info format detected")
         validate_static_info_data(direct_data)
 
       _ ->

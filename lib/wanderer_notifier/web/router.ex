@@ -4,6 +4,7 @@ defmodule WandererNotifier.Web.Router do
   """
   use Plug.Router
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Web.Controllers.ChartController
@@ -157,10 +158,10 @@ defmodule WandererNotifier.Web.Router do
   # Catch-all: serve the React index.html from priv/static/app
   #
   match _ do
-    Logger.info("Serving React app for path: #{conn.request_path}")
+    AppLogger.api_info("Serving React app", path: conn.request_path)
 
     index_path = Path.join(:code.priv_dir(:wanderer_notifier), "static/app/index.html")
-    Logger.info("Serving index.html from: #{index_path}")
+    AppLogger.api_debug("Serving index.html", path: index_path)
 
     if File.exists?(index_path) do
       conn
@@ -168,7 +169,7 @@ defmodule WandererNotifier.Web.Router do
       |> put_resp_content_type("text/html")
       |> Plug.Conn.send_file(200, index_path)
     else
-      Logger.error("Index file not found at: #{index_path}")
+      AppLogger.api_error("Index file not found", path: index_path)
 
       conn
       |> put_resp_content_type("text/plain")

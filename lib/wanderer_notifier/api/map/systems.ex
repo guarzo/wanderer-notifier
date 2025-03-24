@@ -10,6 +10,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   2. Fall back to ID-based classification only when API doesn't provide type information
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
@@ -17,16 +18,16 @@ defmodule WandererNotifier.Api.Map.Systems do
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
-    Logger.debug("[update_systems] Starting systems update")
+    AppLogger.api_debug("[update_systems] Starting systems update")
 
     with {:ok, systems_url} <- build_systems_url(),
          {:ok, body} <- fetch_get_body(systems_url),
          {:ok, json} <- decode_json(body),
          {:ok, fresh_systems} <- process_systems(json) do
       if fresh_systems == [] do
-        Logger.warning("[update_systems] No systems found in map API response")
+        AppLogger.api_warn("[update_systems] No systems found in map API response")
       else
-        Logger.debug("[update_systems] Found #{length(fresh_systems)} systems")
+        AppLogger.api_debug("[update_systems] Found #{length(fresh_systems)} systems")
       end
 
       # Cache the systems - use map:systems key for consistency with helpers
@@ -38,7 +39,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       {:ok, fresh_systems}
     else
       {:error, reason} ->
-        Logger.error("[update_systems] Failed to update systems: #{inspect(reason)}")
+        AppLogger.api_error("[update_systems] Failed to update systems: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -69,7 +70,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   defp build_url_from_parameters(base_url_with_slug) do
     # Parse the URL to separate the base URL from the slug
     uri = URI.parse(base_url_with_slug)
-    Logger.debug("[build_systems_url] Parsed URI: #{inspect(uri)}")
+    AppLogger.api_debug("[build_systems_url] Parsed URI: #{inspect(uri)}")
 
     # Extract components
     path = extract_path(uri)
@@ -79,7 +80,7 @@ defmodule WandererNotifier.Api.Map.Systems do
     # Construct final URL
     url = build_systems_api_url(base_host, slug_id)
 
-    Logger.info("[build_systems_url] Final URL: #{url}")
+    AppLogger.api_info("[build_systems_url] Final URL: #{url}")
     {:ok, url}
   end
 
@@ -87,7 +88,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   defp extract_path(uri) do
     path = uri.path || ""
     path = String.trim_trailing(path, "/")
-    Logger.debug("[build_systems_url] Extracted path: #{path}")
+    AppLogger.api_debug("[build_systems_url] Extracted path: #{path}")
     path
   end
 
@@ -99,7 +100,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       |> Enum.filter(fn part -> part != "" end)
       |> List.last() || ""
 
-    Logger.debug("[build_systems_url] Extracted slug ID: #{slug_id}")
+    AppLogger.api_debug("[build_systems_url] Extracted slug ID: #{slug_id}")
     slug_id
   end
 
@@ -141,7 +142,7 @@ defmodule WandererNotifier.Api.Map.Systems do
         {:error, "API returned non-200 status: #{status_code}"}
 
       {:error, reason} ->
-        Logger.error("[fetch_get_body] API request failed: #{inspect(reason)}")
+        AppLogger.api_error("[fetch_get_body] API request failed: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -152,7 +153,7 @@ defmodule WandererNotifier.Api.Map.Systems do
         {:ok, json}
 
       {:error, reason} ->
-        Logger.error("[decode_json] Failed to decode JSON: #{inspect(reason)}")
+        AppLogger.api_error("[decode_json] Failed to decode JSON: #{inspect(reason)}")
         {:error, "Failed to decode JSON: #{inspect(reason)}"}
     end
   end
@@ -165,11 +166,14 @@ defmodule WandererNotifier.Api.Map.Systems do
 
       %{"data" => systems} when is_list(systems) ->
         # Handle new API format where systems are in a "data" array
-        Logger.info("[process_systems] Processing systems from data array: #{length(systems)}")
+        AppLogger.api_info(
+          "[process_systems] Processing systems from data array: #{length(systems)}"
+        )
+
         process_system_list(systems)
 
       _ ->
-        Logger.error("[process_systems] Unexpected JSON format: #{inspect(json)}")
+        AppLogger.api_error("[process_systems] Unexpected JSON format: #{inspect(json)}")
         {:error, "Unexpected JSON format"}
     end
   end
@@ -384,7 +388,9 @@ defmodule WandererNotifier.Api.Map.Systems do
   defp add_static_info(system, system_id) do
     case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id) do
       {:ok, static_info} ->
-        Logger.info("[notify_new_systems] Successfully got static info for system #{system_id}")
+        AppLogger.api_info(
+          "[notify_new_systems] Successfully got static info for system #{system_id}"
+        )
 
         # Extract the full static info data if available
         static_info_data = Map.get(static_info, "data") || %{}
@@ -456,7 +462,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       system
     else
       # Need to enrich the system with static info
-      Logger.info("[notify_new_systems] Enriching system with static info")
+      AppLogger.api_info("[notify_new_systems] Enriching system with static info")
 
       # Try to get static info if we have a valid system ID
       system_with_static =
@@ -465,7 +471,7 @@ defmodule WandererNotifier.Api.Map.Systems do
             add_static_info(system, system_id)
           rescue
             e ->
-              Logger.error("[notify_new_systems] Error getting static info: #{inspect(e)}")
+              AppLogger.api_error("[notify_new_systems] Error getting static info: #{inspect(e)}")
               add_fallback_static_info(system, system_id)
           end
         else
@@ -504,7 +510,7 @@ defmodule WandererNotifier.Api.Map.Systems do
             "[notify_new_systems] System #{system_name} added and tracked (track_all_systems=true)"
           )
         else
-          Logger.info("[notify_new_systems] New system #{system_name} discovered")
+          AppLogger.api_info("[notify_new_systems] New system #{system_name} discovered")
         end
       else
         Logger.debug(
@@ -513,7 +519,9 @@ defmodule WandererNotifier.Api.Map.Systems do
       end
     rescue
       e ->
-        Logger.error("[notify_new_systems] Error sending system notification: #{inspect(e)}")
+        AppLogger.api_error(
+          "[notify_new_systems] Error sending system notification: #{inspect(e)}"
+        )
     end
   end
 
@@ -538,7 +546,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
       {:ok, added_systems}
     else
-      Logger.debug("[notify_new_systems] System notifications are disabled globally")
+      AppLogger.api_debug("[notify_new_systems] System notifications are disabled globally")
       {:ok, []}
     end
   end

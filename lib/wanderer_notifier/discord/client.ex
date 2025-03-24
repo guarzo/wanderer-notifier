@@ -3,7 +3,7 @@ defmodule WandererNotifier.Discord.Client do
   Client for interacting with the Discord API.
   Provides a simplified interface for common Discord operations.
   """
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 
@@ -65,7 +65,7 @@ defmodule WandererNotifier.Discord.Client do
   """
   def send_embed(embed, override_channel_id \\ nil) do
     if env() == :test do
-      Logger.info("TEST MODE: Would send embed to Discord: #{inspect(embed)}")
+      AppLogger.api_info("TEST MODE: Would send embed to Discord", embed: inspect(embed))
       :ok
     else
       url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Discord.Client do
           |> handle_discord_response("send_embed")
 
         {:error, reason} ->
-          Logger.error("Failed to encode Discord payload: #{inspect(reason)}")
+          AppLogger.api_error("Failed to encode Discord payload", error: inspect(reason))
           {:error, :json_error}
       end
     end
@@ -96,7 +96,7 @@ defmodule WandererNotifier.Discord.Client do
   """
   def send_message(message, override_channel_id \\ nil) do
     if env() == :test do
-      Logger.info("TEST MODE: Would send message to Discord: #{message}")
+      AppLogger.api_info("TEST MODE: Would send message to Discord", message: message)
       :ok
     else
       url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Discord.Client do
           |> handle_discord_response("send_message")
 
         {:error, reason} ->
-          Logger.error("Failed to encode Discord payload: #{inspect(reason)}")
+          AppLogger.api_error("Failed to encode Discord payload", error: inspect(reason))
           {:error, :json_error}
       end
     end
@@ -129,10 +129,14 @@ defmodule WandererNotifier.Discord.Client do
     - {:error, reason} on failure
   """
   def send_file(filename, file_data, title \\ nil, description \\ nil, override_channel_id \\ nil) do
-    Logger.info("Sending file to Discord: #{filename}")
+    AppLogger.api_info("Sending file to Discord", filename: filename)
 
     if env() == :test do
-      Logger.info("TEST MODE: Would send file to Discord: #{filename} - #{title || "No title"}")
+      AppLogger.api_info("TEST MODE: Would send file to Discord",
+        filename: filename,
+        title: title || "No title"
+      )
+
       :ok
     else
       url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
@@ -190,19 +194,23 @@ defmodule WandererNotifier.Discord.Client do
            decode_json: false
          ) do
       {:ok, _} ->
-        Logger.info("Successfully executed Discord operation: #{operation}")
+        AppLogger.api_info("Successfully executed Discord operation", operation: operation)
         :ok
 
       {:error, error} ->
         # Log the specific error details for debugging
-        Logger.error("Discord #{operation} failed: #{inspect(error)}")
+        AppLogger.api_error("Discord operation failed",
+          operation: operation,
+          error: inspect(error)
+        )
 
         # Check if it's retriable using ErrorHandler classification
         retriable = ErrorHandler.retryable?(error)
 
         if retriable do
-          Logger.warning(
-            "Discord error is retriable. Consider implementing automatic retry logic."
+          AppLogger.api_warn(
+            "Discord error is retriable",
+            suggestion: "Consider implementing automatic retry logic"
           )
         end
 
