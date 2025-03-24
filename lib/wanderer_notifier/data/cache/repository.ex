@@ -196,18 +196,24 @@ defmodule WandererNotifier.Data.Cache.Repository do
     systems_count = length(systems)
     characters_count = length(characters)
 
-    # Log changes in counts
+    # Log changes in counts with descriptive messages
     if systems_count != state.last_systems_count do
-      AppLogger.cache_info("Systems count changed",
-        previous_count: state.last_systems_count,
-        new_count: systems_count
+      AppLogger.cache_info(
+        "Systems count changed: #{state.last_systems_count} → #{systems_count}",
+        %{
+          previous_count: state.last_systems_count,
+          new_count: systems_count
+        }
       )
     end
 
     if characters_count != state.last_characters_count do
-      AppLogger.cache_info("Characters count changed",
-        previous_count: state.last_characters_count,
-        new_count: characters_count
+      AppLogger.cache_info(
+        "Characters count changed: #{state.last_characters_count} → #{characters_count}",
+        %{
+          previous_count: state.last_characters_count,
+          new_count: characters_count
+        }
       )
     end
 

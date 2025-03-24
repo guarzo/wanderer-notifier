@@ -12,22 +12,26 @@ defmodule WandererNotifier.Logger.JsonFormatter do
   Formats a log entry as a JSON object.
   """
   def format(level, message, timestamp, metadata) do
-    # Log formatting for debugging
-    AppLogger.processor_debug("Formatting log entry as JSON",
-      level: level,
-      message_length: String.length(message),
-      metadata_count: length(metadata)
-    )
+    # Only log formatter debug in development environment
+    if Application.get_env(:wanderer_notifier, :env) == :dev do
+      AppLogger.processor_debug("Formatting log entry as JSON",
+        level: level,
+        message_length: String.length(message),
+        metadata_count: length(metadata)
+      )
+    end
 
     # Convert timestamp to ISO8601 format
     {:ok, formatted_time} = format_timestamp(timestamp)
 
-    # Build the base log entry
+    # Build the base log entry with most important fields first for readability
     base_object = %{
       timestamp: formatted_time,
       level: level,
+      category: metadata[:category] || "GENERAL",
       message: String.trim(message),
-      pid: metadata[:pid] || self() |> inspect()
+      pid: metadata[:pid] || self() |> inspect(),
+      trace_id: metadata[:trace_id] || ""
     }
 
     # Add metadata fields, filtering out any that shouldn't be logged

@@ -304,7 +304,12 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   # Separate function to handle character persistence with isolated error handling
   defp handle_character_persistence(tracked_characters) do
     try do
-      if Config.character_tracking_enabled?() && Config.kill_charts_enabled?() do
+      # Check feature status - log feature status only once using Process dictionary
+      # to avoid repetitive logs
+      character_tracking_enabled = Config.character_tracking_enabled?()
+      kill_charts_enabled = WandererNotifier.Resources.KillmailPersistence.kill_charts_enabled?()
+
+      if character_tracking_enabled && kill_charts_enabled do
         AppLogger.api_info(
           "[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database"
         )

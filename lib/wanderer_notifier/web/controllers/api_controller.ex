@@ -127,7 +127,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               features.enabled?(:tracked_characters_notifications),
             backup_kills_processing: features.enabled?(:backup_kills_processing),
             web_dashboard_full: features.enabled?(:web_dashboard_full),
-            advanced_statistics: features.enabled?(:advanced_statistics)
+            advanced_statistics: features.enabled?(:advanced_statistics),
+            kill_charts_enabled: WandererNotifier.Core.Config.kill_charts_enabled?(),
+            map_charts_enabled: WandererNotifier.Core.Config.map_charts_enabled?()
           },
           config: %{
             character_tracking_enabled:
@@ -153,6 +155,61 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(500, Jason.encode!(%{error: "Internal server error", details: inspect(e)}))
+    end
+  end
+
+  # Database statistics endpoint for the dashboard
+  get "/db-stats" do
+    try do
+      # Check if kill charts is enabled
+      if WandererNotifier.Core.Config.kill_charts_enabled?() do
+        # Get killmail statistics
+        killmail_stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+
+        # Get database health status
+        db_health =
+          case WandererNotifier.Repo.health_check() do
+            {:ok, ping_time} -> %{status: "connected", ping_ms: ping_time}
+            {:error, reason} -> %{status: "error", reason: inspect(reason)}
+          end
+
+        # Combine all DB statistics
+        db_stats = %{
+          killmail: killmail_stats,
+          db_health: db_health
+        }
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(%{success: true, stats: db_stats}))
+      else
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          403,
+          Jason.encode!(%{
+            success: false,
+            message: "Kill charts functionality is not enabled"
+          })
+        )
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error processing db-stats endpoint",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            success: false,
+            error: "Internal server error",
+            details: inspect(e)
+          })
+        )
     end
   end
 

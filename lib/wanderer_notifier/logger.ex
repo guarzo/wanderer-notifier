@@ -42,10 +42,13 @@ defmodule WandererNotifier.Logger do
     metadata_with_diagnostics = prepare_metadata(metadata, category)
 
     # Format message with category prefix
-    formatted_message = format_log_message(category, message, metadata_with_diagnostics)
+    formatted_message = "[#{category}] #{message}"
+
+    # For debugging, add metadata keys if env var is set
+    enhanced_message = maybe_add_debug_metadata(formatted_message, metadata_with_diagnostics)
 
     # Log at the specified level
-    Logger.log(level, formatted_message, metadata_with_diagnostics)
+    Logger.log(level, enhanced_message, metadata_with_diagnostics)
   end
 
   # Processes metadata to ensure proper format and adds diagnostics
@@ -56,11 +59,14 @@ defmodule WandererNotifier.Logger do
     # Add original type info
     metadata_with_type = add_metadata_type_info(metadata, converted_metadata)
 
-    # Add category
+    # Add category with proper formatting for visibility in the logs
+    # Category will be printed as [CATEGORY=API] for better readability
     metadata_with_category = Keyword.put(metadata_with_type, :category, category)
 
-    # Merge with Logger context
-    Keyword.merge(Logger.metadata(), metadata_with_category)
+    # Merge with Logger context, but ensure our category takes precedence
+    Logger.metadata()
+    |> Keyword.delete(:category)  # Remove existing category if present
+    |> Keyword.merge(metadata_with_category)  # Add our metadata with correct category
   end
 
   # Adds metadata type information for debugging
@@ -91,14 +97,12 @@ defmodule WandererNotifier.Logger do
   end
 
   # Formats the log message with optional debug information
-  defp format_log_message(category, message, metadata) do
-    base_message = "[#{category}] #{message}"
-
+  defp maybe_add_debug_metadata(message, metadata) do
     if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
       metadata_keys = extract_metadata_keys(metadata)
-      "#{base_message} [META-KEYS:#{metadata_keys}]"
+      "#{message} [META-KEYS:#{metadata_keys}]"
     else
-      base_message
+      message
     end
   end
 

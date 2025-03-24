@@ -203,13 +203,25 @@ defmodule WandererNotifier.Logger.BatchLogger do
       if system_name == "", do: system_info, else: "#{system_info} (#{system_name})"
 
     if count == 1 do
-      # Single event, log normally
+      # Single event, log normally with proper metadata
       AppLogger.kill_info(
-        "📥 KILL RECEIVED: ID=#{Map.get(details, :kill_id, "unknown")} in system=#{system_display}"
+        "📥 KILL RECEIVED: ID=#{Map.get(details, :kill_id, "unknown")} in system=#{system_display}",
+        %{
+          kill_id: Map.get(details, :kill_id, "unknown"),
+          system_id: system_info,
+          system_name: system_name
+        }
       )
     else
-      # Multiple events, log with counter
-      AppLogger.kill_info("📥 KILLS RECEIVED: #{count} kills in system=#{system_display}")
+      # Multiple events, log with counter and proper metadata
+      AppLogger.kill_info(
+        "📥 KILLS RECEIVED: #{count} kills in system=#{system_display}",
+        %{
+          count: count,
+          system_id: system_info,
+          system_name: system_name
+        }
+      )
     end
   end
 
