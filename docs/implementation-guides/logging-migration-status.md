@@ -23,19 +23,29 @@ We've implemented a new structured logging approach using `WandererNotifier.Logg
 
 ## Current Status
 
-Based on the initial scan, we found:
+Based on the latest scan:
 
 - Total Elixir files: 101
-- Already using AppLogger: 5
-- Files needing migration: 69
+- Already using AppLogger: 72
+- Files needing migration: 4 (making great progress!)
 
 ## Files Updated
 
 - [x] `lib/wanderer_notifier/resources/tracked_character.ex`
 - [x] `lib/wanderer_notifier/notifiers/discord.ex` (partially)
 - [x] `lib/wanderer_notifier/services/maintenance.ex`
+- [x] `lib/wanderer_notifier/services/maintenance/scheduler.ex`
 - [x] `lib/wanderer_notifier/services/notification_determiner.ex`
+- [x] `lib/wanderer_notifier/services/character_kills_service.ex`
+- [x] `lib/wanderer_notifier/services/system_tracker.ex`
 - [x] `lib/wanderer_notifier/api/zkill/websocket.ex`
+- [x] `lib/wanderer_notifier/web/controllers/api_controller.ex`
+- [x] `lib/wanderer_notifier/chart_service/node_chart_adapter.ex`
+- [x] `lib/wanderer_notifier/chart_service/chart_service_manager.ex`
+- [x] `lib/wanderer_notifier/chart_service/killmail_chart_adapter.ex`
+- [x] `lib/wanderer_notifier/data/cache/repository.ex`
+- [x] `lib/wanderer_notifier/discord/notifier.ex`
+- [x] `lib/wanderer_notifier/workers/character_sync_worker.ex`
 
 ## How to Continue the Migration
 
@@ -64,11 +74,11 @@ After running the automated scripts, you'll need to:
 
 Focus on these high-impact files next:
 
-1. `lib/wanderer_notifier/data/cache/repository.ex` (52 calls)
-2. `lib/wanderer_notifier/services/system_tracker.ex` (49 calls)
-3. `lib/wanderer_notifier/cache/repository.ex` (43 calls)
-4. `lib/wanderer_notifier/api/map/characters.ex` (38 calls)
-5. `lib/wanderer_notifier/web/controllers/activity_chart_controller.ex` (34 calls)
+1. ~~`lib/wanderer_notifier/data/cache/repository.ex` (52 calls)~~ - ✅ Completed
+2. ~~`lib/wanderer_notifier/services/system_tracker.ex` (49 calls)~~ - ✅ Completed
+3. ~~`lib/wanderer_notifier/chart_service/node_chart_adapter.ex` (19 calls)~~ - ✅ Completed
+4. ~~`lib/wanderer_notifier/chart_service/chart_service_manager.ex` (22 calls)~~ - ✅ Completed
+5. ~~`lib/wanderer_notifier/discord/notifier.ex` (27 calls)~~ - ✅ Completed
 
 ## Testing Recommendations
 

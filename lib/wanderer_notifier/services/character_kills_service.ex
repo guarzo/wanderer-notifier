@@ -3,7 +3,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
   Service for fetching and processing character kills from ZKillboard.
   This service provides functions to retrieve character kills and persist them.
   """
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
@@ -32,15 +32,13 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Handle nil or invalid character IDs
   def fetch_and_persist_character_kills(nil, _limit, _page) do
-    Logger.error("[ZKill] Invalid character ID: nil")
+    AppLogger.api_error("Invalid character ID", value: nil)
     {:error, "Invalid character ID: nil"}
   end
 
   # Handle string character IDs by converting them to integers
   def fetch_and_persist_character_kills(character_id, limit, page) when is_binary(character_id) do
-    Logger.debug(
-      "[CharacterKillsService] Converting string character ID: #{character_id} to integer"
-    )
+    AppLogger.processor_debug("Converting string character ID to integer", character_id: character_id)
 
     case Integer.parse(character_id) do
       {int_id, ""} ->
@@ -48,21 +46,21 @@ defmodule WandererNotifier.Services.CharacterKillsService do
         fetch_and_persist_character_kills(int_id, limit, page)
 
       _ ->
-        Logger.error("[ZKill] Invalid character ID string: #{character_id}")
+        AppLogger.api_error("Invalid character ID string", character_id: character_id)
         {:error, "Invalid character ID string: #{character_id}"}
     end
   end
 
   def fetch_and_persist_character_kills(character_id, limit, page)
       when is_integer(character_id) and character_id > 0 do
-    Logger.info("[CharacterKillsService] Fetching kills for character #{character_id}")
+    AppLogger.processor_info("Fetching kills for character", character_id: character_id)
     character_id_str = to_string(character_id)
 
     # Use cache as rate-limiting mechanism too - don't fetch same character too frequently
     cache_key = "zkill:character_kills:#{character_id_str}:#{page}"
 
     if CacheRepo.exists?(cache_key) do
-      Logger.info("[CharacterKillsService] Using cached kills for character #{character_id}")
+      AppLogger.processor_info("Using cached kills for character", character_id: character_id)
       cached_response = CacheRepo.get(cache_key)
 
       # Ensure we're working with the expected format - the cache should contain
@@ -73,8 +71,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
         _unexpected ->
           # If somehow the cache got corrupted, treat it as a cache miss and fetch fresh data
-          Logger.warning(
-            "[CharacterKillsService] Cached data for character #{character_id} is not in expected format. Fetching fresh data."
+          AppLogger.processor_warn(
+            "Cached data not in expected format",
+            character_id: character_id,
+            action: "fetching_fresh_data"
           )
 
           CacheRepo.delete(cache_key)
@@ -88,7 +88,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Handle any other invalid character ID type
   def fetch_and_persist_character_kills(character_id, _limit, _page) do
-    Logger.error("[ZKill] Invalid character ID: #{inspect(character_id)}")
+    AppLogger.api_error("Invalid character ID", character_id: inspect(character_id))
     {:error, "Invalid character ID: #{inspect(character_id)}"}
   end
 
@@ -106,8 +106,9 @@ defmodule WandererNotifier.Services.CharacterKillsService do
         process_kills({:ok, kills}, character_id)
 
       {:error, _reason} = error ->
-        Logger.error(
-          "[CharacterKillsService] Failed to fetch kills for character #{character_id}"
+        AppLogger.api_error(
+          "Failed to fetch kills for character",
+          character_id: character_id
         )
 
         error
@@ -135,7 +136,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
     # Continue with processing the tracked characters list
     if Enum.empty?(tracked_characters) do
-      Logger.warning("[CharacterKillsService] No tracked characters found in any source")
+      AppLogger.processor_warn("No tracked characters found in any source")
       {:ok, %{processed: 0, persisted: 0, characters: 0}}
     else
       process_tracked_characters(tracked_characters, limit, page)
@@ -147,8 +148,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
     character_count = length(tracked_characters)
     sample = Enum.take(tracked_characters, min(5, character_count))
 
-    Logger.info(
-      "[CharacterKillsService] Found #{character_count} tracked characters from CacheHelpers. Sample: #{inspect(sample)}"
+    AppLogger.processor_info(
+      "Found tracked characters from CacheHelpers",
+      count: character_count,
+      sample: inspect(sample)
     )
   end
 
@@ -175,8 +178,9 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
     # Skip invalid character IDs
     if is_nil(character_id) do
-      Logger.warning(
-        "[CharacterKillsService] Skipping character with invalid ID: #{inspect(character)}"
+      AppLogger.processor_warn(
+        "Skipping character with invalid ID",
+        character: inspect(character)
       )
 
       {:error, :invalid_character_id}
@@ -201,22 +205,27 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Safely fetch kills for a character with error handling
   defp fetch_character_kills_safely(character_id, limit, page) do
-    Logger.info("[CharacterKillsService] Processing character ID: #{character_id}")
+    AppLogger.processor_info("Processing character ID", character_id: character_id)
     throttle_request()
 
     try do
       fetch_and_persist_character_kills(character_id, limit, page)
     rescue
       e ->
-        Logger.error(
-          "[CharacterKillsService] Error processing character #{character_id}: #{inspect(e)}"
+        AppLogger.processor_error(
+          "Error processing character",
+          character_id: character_id,
+          error: inspect(e)
         )
 
         {:error, {:exception, e}}
     catch
       kind, reason ->
-        Logger.error(
-          "[CharacterKillsService] Caught #{kind} while processing character #{character_id}: #{inspect(reason)}"
+        AppLogger.processor_error(
+          "Caught error while processing character",
+          character_id: character_id,
+          kind: kind,
+          reason: inspect(reason)
         )
 
         {:error, {kind, reason}}
@@ -248,8 +257,11 @@ defmodule WandererNotifier.Services.CharacterKillsService do
       total_persisted = Enum.reduce(successes, 0, fn {:ok, %{persisted: p}}, acc -> acc + p end)
 
       # Log summary of success
-      Logger.info(
-        "[CharacterKillsService] Successfully processed #{total_processed} kills and persisted #{total_persisted} kills for #{length(tracked_characters)} characters"
+      AppLogger.processor_info(
+        "Successfully processed and persisted kills",
+        processed: total_processed,
+        persisted: total_persisted,
+        character_count: length(tracked_characters)
       )
 
       {:ok,
@@ -265,8 +277,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Process kills returned from ZKill API
   defp process_kills({:ok, kills}, character_id) do
-    Logger.info(
-      "[CharacterKillsService] Processing #{length(kills)} kills for character #{character_id}"
+    AppLogger.processor_info(
+      "Processing kills for character",
+      kill_count: length(kills),
+      character_id: character_id
     )
 
     # Get a list of all processed killmail IDs from global cache (not per-character)
@@ -297,8 +311,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
       end)
 
     if length(unprocessed) < length(kills) do
-      Logger.info(
-        "[CharacterKillsService] Skipping #{length(kills) - length(unprocessed)} already processed kills"
+      AppLogger.processor_info(
+        "Skipping already processed kills",
+        skipped_count: length(kills) - length(unprocessed),
+        total_count: length(kills)
       )
     end
 
@@ -328,7 +344,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
     zkb_data = Map.get(kill, "zkb", %{})
 
     if is_nil(kill_id) do
-      Logger.warning("[CharacterKillsService] Kill without ID: #{inspect(kill)}")
+      AppLogger.processor_warn("Kill without ID", kill: inspect(kill))
       # Add error result but don't update processed set
       {[{:error, :missing_kill_id} | acc_results], acc_processed}
     else
@@ -365,8 +381,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
         {[process_result | acc_results], updated_set}
 
       {:error, reason} = error ->
-        Logger.error(
-          "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
+        AppLogger.api_error(
+          "Failed to get ESI data for kill",
+          kill_id: kill_id,
+          error: inspect(reason)
         )
 
         # Add error to results but keep the kill in processed set
@@ -395,7 +413,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
   defp get_esi_data(kill_id, kill_hash) do
     # Return error if kill_hash is nil
     if is_nil(kill_hash) do
-      Logger.warning("[CharacterKillsService] Kill #{kill_id} is missing hash")
+      AppLogger.processor_warn("Kill is missing hash", kill_id: kill_id)
       {:error, :missing_kill_hash}
     else
       get_esi_data_with_hash(kill_id, kill_hash)
@@ -408,7 +426,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
     if CacheRepo.exists?(cache_key) do
       # Use cached data
-      Logger.debug("[CharacterKillsService] Using cached ESI data for kill #{kill_id}")
+      AppLogger.processor_debug("Using cached ESI data for kill", kill_id: kill_id)
       {:ok, CacheRepo.get(cache_key)}
     else
       # Fetch data from ESI
@@ -422,7 +440,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
     throttle_request()
 
     # Use the shared ESI service
-    Logger.debug("[CharacterKillsService] Fetching ESI data for kill #{kill_id}")
+    AppLogger.processor_debug("Fetching ESI data for kill", kill_id: kill_id)
 
     case ESIService.get_killmail(kill_id, kill_hash) do
       {:ok, esi_data} ->
@@ -431,8 +449,10 @@ defmodule WandererNotifier.Services.CharacterKillsService do
         {:ok, esi_data}
 
       {:error, reason} = error ->
-        Logger.error(
-          "[CharacterKillsService] Failed to get ESI data for kill #{kill_id}: #{inspect(reason)}"
+        AppLogger.api_error(
+          "Failed to get ESI data for kill",
+          kill_id: kill_id,
+          error: inspect(reason)
         )
 
         error
@@ -457,16 +477,19 @@ defmodule WandererNotifier.Services.CharacterKillsService do
         if String.contains?(err_msg, "disable_atomic_actions") do
           # Specific error we're catching - log a warning but consider it a success
           # as this is just a transient DB configuration issue
-          Logger.warning(
-            "[CharacterKillsService] Ash atomic transaction error - treating as successful: #{err_msg}"
+          AppLogger.processor_warn(
+            "Ash atomic transaction error - treating as successful",
+            error: err_msg
           )
 
           # Return a synthetic success - we know the killmail is valid, just can't persist it due to config
           {:ok, :persisted_with_warning}
         else
           # For all other errors, log and return error
-          Logger.error(
-            "[CharacterKillsService] Error persisting killmail: #{inspect(e)}\n#{Exception.format_stacktrace()}"
+          AppLogger.processor_error(
+            "Error persisting killmail",
+            error: inspect(e),
+            stacktrace: Exception.format_stacktrace()
           )
 
           {:error, "Persistence error: #{inspect(e)}"}

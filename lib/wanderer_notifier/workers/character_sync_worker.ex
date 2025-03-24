@@ -7,7 +7,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   This worker serves as a fallback and validation mechanism to ensure consistency.
   """
   use GenServer
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Change from 15 minutes to 1 hour for validation checks
   @sync_interval 60 * 60 * 1000
@@ -48,19 +48,20 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
 
   # Run the character validation
   defp run_validation do
-    Logger.info("[CharacterSyncWorker] Running periodic character consistency validation...")
+    AppLogger.scheduler_info("Running periodic character consistency validation")
 
     # Check if kill charts feature is enabled first
     if kill_charts_enabled?() do
       validate_characters_if_available()
     else
-      Logger.info("[CharacterSyncWorker] Kill charts feature is disabled, skipping validation")
+      AppLogger.scheduler_info("Kill charts feature is disabled", action: "skipping_validation")
       {:ok, :disabled_feature}
     end
   rescue
     e ->
-      Logger.error("[CharacterSyncWorker] Error during validation: #{Exception.message(e)}")
-      Logger.debug("[CharacterSyncWorker] #{Exception.format_stacktrace()}")
+      AppLogger.scheduler_error("Error during validation", 
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace())
       {:error, e}
   end
   
@@ -71,13 +72,14 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
 
     # Only run if we have characters in the cache
     if length(cached_characters) > 0 do
-      Logger.info(
-        "[CharacterSyncWorker] Validating consistency of #{length(cached_characters)} characters between cache and database"
+      AppLogger.scheduler_info(
+        "Validating consistency of characters between cache and database",
+        character_count: length(cached_characters)
       )
 
       perform_character_validation(cached_characters)
     else
-      Logger.info("[CharacterSyncWorker] No characters in cache, skipping validation")
+      AppLogger.scheduler_info("No characters in cache", action: "skipping_validation")
       {:ok, :no_characters}
     end
   end
@@ -86,14 +88,14 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   defp perform_character_validation(cached_characters) do
     case validate_character_consistency(cached_characters) do
       {:ok, %{missing: 0, different: 0}} ->
-        Logger.info("[CharacterSyncWorker] Cache and database are consistent")
+        AppLogger.scheduler_info("Cache and database are consistent")
         {:ok, :consistent}
 
       {:ok, %{missing: missing, different: different}} ->
         handle_inconsistencies(cached_characters, missing, different)
 
       {:error, reason} ->
-        Logger.error("[CharacterSyncWorker] Validation failed: #{inspect(reason)}")
+        AppLogger.scheduler_error("Validation failed", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -101,13 +103,13 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   # Handle inconsistencies between cache and database
   defp handle_inconsistencies(cached_characters, missing, different) do
     if missing > 0 || different > 0 do
-      Logger.warning("[CharacterSyncWorker] Inconsistencies found: #{missing} missing, #{different} different")
+      AppLogger.scheduler_warn("Inconsistencies found", missing: missing, different: different)
       # Run sync to fix inconsistencies
       sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
-      Logger.info("[CharacterSyncWorker] Auto-fixed inconsistencies: #{inspect(sync_result)}")
+      AppLogger.scheduler_info("Auto-fixed inconsistencies", result: inspect(sync_result))
       {:ok, %{inconsistent: true, sync_result: sync_result}}
     else
-      Logger.info("[CharacterSyncWorker] Cache and database are consistent")
+      AppLogger.scheduler_info("Cache and database are consistent")
       {:ok, :consistent}
     end
   end
@@ -127,7 +129,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
       end
     rescue
       e ->
-        Logger.error("[CharacterSyncWorker] Error fetching database characters: #{Exception.message(e)}")
+        AppLogger.scheduler_error("Error fetching database characters", error: Exception.message(e))
         {:error, e}
     end
   end

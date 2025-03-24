@@ -180,13 +180,13 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Handle stats result, which could be {:ok, stats} or {:error, :stats_disabled}
     case stats_result do
       {:ok, stats} ->
-        AppLogger.cache_debug("[CacheRepo] Cache stats: #{inspect(stats)}")
+        AppLogger.cache_debug("Cache stats", stats: inspect(stats))
 
       {:error, :stats_disabled} ->
-        AppLogger.cache_debug("[CacheRepo] Cache stats are disabled")
+        AppLogger.cache_debug("Cache stats are disabled")
 
       other_error ->
-        AppLogger.cache_warn("[CacheRepo] Failed to get cache stats: #{inspect(other_error)}")
+        AppLogger.cache_warn("Failed to get cache stats", error: inspect(other_error))
     end
 
     # Check systems and characters counts
@@ -282,36 +282,34 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   def get(key) do
     retry_with_backoff(fn ->
-      AppLogger.cache_debug("[CacheRepo] Getting value for key: #{key}")
+      AppLogger.cache_debug("Getting value", key: key)
       result = Cachex.get(@cache_name, key)
-      AppLogger.cache_debug("[CacheRepo] Raw result from Cachex: #{inspect(result)}")
+      AppLogger.cache_debug("Raw result from Cachex", result: inspect(result))
 
       # Check if the key exists in the cache
       exists_result = Cachex.exists?(@cache_name, key)
-      AppLogger.cache_debug("[CacheRepo] Key exists check: #{inspect(exists_result)}")
+      AppLogger.cache_debug("Key exists check", result: inspect(exists_result))
 
       # Check TTL for the key
       ttl_result = Cachex.ttl(@cache_name, key)
-      AppLogger.cache_debug("[CacheRepo] TTL for key: #{inspect(ttl_result)}")
+      AppLogger.cache_debug("TTL for key", ttl: inspect(ttl_result))
 
       # Always unwrap tuples to ensure consistent returns
       case result do
         {:ok, value} when not is_nil(value) ->
-          AppLogger.cache_debug("[CacheRepo] Cache hit for key: #{key}, found value")
+          AppLogger.cache_debug("Cache hit", key: key, status: "value found")
           value
 
         {:ok, nil} ->
           handle_nil_result(key, exists_result)
 
         {:error, error} ->
-          AppLogger.cache_error(
-            "[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}"
-          )
+          AppLogger.cache_error("Cache error", key: key, error: inspect(error))
 
           nil
 
         _ ->
-          AppLogger.cache_debug("[CacheRepo] Cache miss for key: #{key}")
+          AppLogger.cache_debug("Cache miss", key: key)
           nil
       end
     end)
@@ -367,7 +365,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   def get_many(keys) when is_list(keys) do
     retry_with_backoff(fn ->
-      AppLogger.cache_debug("[CacheRepo] Batch getting #{length(keys)} keys")
+      AppLogger.cache_debug("Batch getting keys", count: length(keys))
 
       # Implement our own batch get since Cachex doesn't provide get_many
       results = Enum.map(keys, &get_single_key/1)
@@ -606,9 +604,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
       cache_db_result(key, db_result, ttl)
     rescue
       e ->
-        AppLogger.cache_error(
-          "[CacheRepo] Error syncing cache with DB for key #{key}: #{Exception.message(e)}"
-        )
+        AppLogger.cache_error("Error syncing cache with DB", key: key, error: Exception.message(e))
 
         {:error, :sync_failed}
     end
@@ -767,15 +763,15 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Special handling for map:systems and map:characters keys
     if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
       # For these keys, initialize with empty array without warning
-      AppLogger.cache_debug("[CacheRepo] Initializing #{key} with empty array")
+      AppLogger.cache_debug("Initializing with empty array", key: key)
       Cachex.put(@cache_name, key, [])
       []
     else
       # Log cache miss appropriately
       if String.starts_with?(key, "static_info:") do
-        AppLogger.cache_debug("[CacheRepo] Cache miss for static info key: #{key}")
+        AppLogger.cache_debug("Cache miss for static info", key: key)
       else
-        AppLogger.cache_debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
+        AppLogger.cache_debug("Cache hit but value is nil", key: key)
       end
 
       nil
