@@ -221,7 +221,9 @@ defmodule WandererNotifier.ChartService do
       DiscordClient.send_embed(embed, channel_id)
     else
       # It's binary image data, we need to upload it somewhere first
-      AppLogger.api_debug("Binary image data detected - converting to URL for embed", chart_title: title)
+      AppLogger.api_debug("Binary image data detected - converting to URL for embed",
+        chart_title: title
+      )
 
       # Try to generate a URL using chart config approach first
       case generate_chart_url(extract_config_from_binary(image_binary)) do
@@ -301,7 +303,10 @@ defmodule WandererNotifier.ChartService do
           AppLogger.api_debug("Chart config prepared", json_size_bytes: json_size)
 
           if json_size > 8000 or String.length(json) > 2000 do
-            AppLogger.api_warn("Chart JSON is large, using POST method instead", json_size_bytes: json_size)
+            AppLogger.api_warn("Chart JSON is large, using POST method instead",
+              json_size_bytes: json_size
+            )
+
             create_chart_via_post(chart_map, width, height, background_color)
           else
             # Standard encoding for normal-sized JSON
@@ -370,7 +375,10 @@ defmodule WandererNotifier.ChartService do
         make_chart_post_request(post_url, headers, json_body)
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to encode chart configuration for POST", error: inspect(reason))
+        AppLogger.api_error("Failed to encode chart configuration for POST",
+          error: inspect(reason)
+        )
+
         {:error, "Failed to encode chart configuration for POST"}
     end
   end

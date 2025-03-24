@@ -99,7 +99,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
           )
 
         {:error, reason} ->
-          AppLogger.api_error("Failed to generate chart", chart_type: chart_type, error: inspect(reason))
+          AppLogger.api_error("Failed to generate chart",
+            chart_type: chart_type,
+            error: inspect(reason)
+          )
 
           conn
           |> put_resp_content_type("application/json")
@@ -258,7 +261,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
         {:ok, data} ->
           # Log the data information
           AppLogger.api_info("Retrieved character activity data")
-          AppLogger.api_debug("Character activity data structure", data: inspect(data, pretty: true, limit: 2000))
+
+          AppLogger.api_debug("Character activity data structure",
+            data: inspect(data, pretty: true, limit: 2000)
+          )
 
           # Determine the structure of the data and log appropriate information
           characters =
@@ -288,12 +294,19 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
               # If data is already a list of character data
               is_list(data) ->
-                AppLogger.api_debug("Found data structure", type: "list", record_count: length(data))
+                AppLogger.api_debug("Found data structure",
+                  type: "list",
+                  record_count: length(data)
+                )
+
                 data
 
               # Handle other cases
               true ->
-                AppLogger.api_warn("Unexpected data structure", data_preview: inspect(data, limit: 200))
+                AppLogger.api_warn("Unexpected data structure",
+                  data_preview: inspect(data, limit: 200)
+                )
+
                 []
             end
 
@@ -325,7 +338,10 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
   # Catch-all route
   match _ do
-    AppLogger.api_warn("Unmatched route", controller: "ActivityChartController", path: inspect(conn.request_path))
+    AppLogger.api_warn("Unmatched route",
+      controller: "ActivityChartController",
+      path: inspect(conn.request_path)
+    )
 
     conn
     |> put_resp_content_type("application/json")

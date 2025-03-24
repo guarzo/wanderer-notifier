@@ -53,7 +53,10 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         if characters && length(characters) > 0 do
           # Get top characters by activity
           top_characters = get_top_characters(characters, 5)
-          AppLogger.api_info("Selected characters for activity chart", count: length(top_characters))
+
+          AppLogger.api_info("Selected characters for activity chart",
+            count: length(top_characters)
+          )
 
           # Extract chart elements
           character_labels = extract_character_labels(top_characters)
@@ -400,7 +403,9 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         channel_id
       end
 
-    AppLogger.api_info("Sending activity charts to Discord channel", channel_id: actual_channel_id)
+    AppLogger.api_info("Sending activity charts to Discord channel",
+      channel_id: actual_channel_id
+    )
 
     # Chart types and their descriptions
     charts = [

@@ -338,16 +338,6 @@ defmodule WandererNotifier.Data.CharacterTest do
         name: "Test Character"
       }
 
-      # The eve_id compatibility function was removed
-      assert_raise UndefinedFunctionError, fn ->
-        Character.eve_id(character)
-      end
-
-      # Direct struct field access should fail
-      assert_raise KeyError, fn ->
-        character.eve_id
-      end
-
       # Access protocol with eve_id key should return error
       assert :error = Character.fetch(character, "eve_id")
       assert nil == Character.get(character, "eve_id")

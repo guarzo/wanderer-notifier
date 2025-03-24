@@ -51,7 +51,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         # Reschedule with new interval if enabled
         if enabled?() do
           schedule_next(interval_ms)
-          AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Interval updated to #{interval_ms}ms")
+
+          AppLogger.scheduler_info(
+            "#{inspect(@scheduler_name)}: Interval updated to #{interval_ms}ms"
+          )
         end
 
         {:reply, :ok, new_state}
@@ -59,7 +62,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       @impl true
       def handle_info(:execute, %{disabled: true} = state) do
-        AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)")
+        AppLogger.scheduler_info(
+          "#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)"
+        )
+
         {:noreply, state}
       end
 
@@ -75,7 +81,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
             {:noreply, %{new_state | last_run: DateTime.utc_now()}}
 
           {:error, reason, new_state} ->
-            AppLogger.scheduler_error("#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}")
+            AppLogger.scheduler_error(
+              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
+            )
+
             # Schedule next execution even if this one failed
             schedule_next(new_state.interval)
             # Update last run timestamp

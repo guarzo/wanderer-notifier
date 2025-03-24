@@ -143,7 +143,8 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     # Log WebSocket status check for monitoring
     AppLogger.websocket_info(
       "ZKill WebSocket status check",
-      status: if(Map.get(websocket_stats, :connected, false), do: "CONNECTED", else: "DISCONNECTED"),
+      status:
+        if(Map.get(websocket_stats, :connected, false), do: "CONNECTED", else: "DISCONNECTED"),
       last_message: time_since_last_message
     )
 

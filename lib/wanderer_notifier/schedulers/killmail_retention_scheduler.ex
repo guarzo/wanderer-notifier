@@ -13,7 +13,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Run once per day (24 hours) by default

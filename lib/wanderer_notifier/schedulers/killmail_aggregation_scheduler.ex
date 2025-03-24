@@ -12,7 +12,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Default to midnight (hour = 0, minute = 0)
@@ -77,7 +77,9 @@ alias WandererNotifier.Logger, as: AppLogger
 
   # Run aggregation for a specific period
   defp aggregate_for_period(period_type, date) do
-    AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}")
+    AppLogger.scheduler_info(
+      "#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}"
+    )
 
     try do
       case KillmailAggregation.aggregate_statistics(period_type, date) do

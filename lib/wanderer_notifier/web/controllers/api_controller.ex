@@ -3,12 +3,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   API controller for the web interface.
   """
   use Plug.Router
-  require Logger
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.NotificationHelpers
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.License
   alias WandererNotifier.Services.CharacterKillsService
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Module attributes
   @api_version "1.0.0"
@@ -77,7 +77,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
         rescue
           e ->
-            Logger.error("Error getting tracked systems: #{inspect(e)}")
+            AppLogger.api_error("Error retrieving tracked systems",
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            )
+
             []
         end
 
@@ -86,7 +90,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           WandererNotifier.Data.Cache.Repository.get("map:characters") || []
         rescue
           e ->
-            Logger.error("Error getting tracked characters: #{inspect(e)}")
+            AppLogger.api_error("Error retrieving tracked characters",
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            )
+
             []
         end
 
@@ -137,7 +145,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       |> send_resp(200, Jason.encode!(response))
     rescue
       e ->
-        Logger.error("Error processing /api/status: #{inspect(e)}")
+        AppLogger.api_error("Error processing status endpoint",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
 
         conn
         |> put_resp_content_type("application/json")
@@ -171,7 +182,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # New endpoint for getting kill stats
   get "/character-kills/stats" do
-    Logger.info("Character kills stats endpoint called")
+    AppLogger.api_info("Character kills stats endpoint called")
 
     # Check if kill charts is enabled
     if Config.kill_charts_enabled?() do
@@ -205,7 +216,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Fetch character kills endpoint - simplified for just loading all tracked characters
   get "/character-kills" do
-    Logger.info("Character kills fetch endpoint called")
+    AppLogger.api_info("Character kills fetch endpoint called")
 
     # Get query parameters
     conn_params = conn.query_params
@@ -217,7 +228,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     if Config.kill_charts_enabled?() do
       if all_characters do
         # Fetch kills for all tracked characters
-        Logger.info("Fetching kills for all tracked characters")
+        AppLogger.api_info("Fetching kills for all tracked characters",
+          limit: limit,
+          page: page
+        )
 
         case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, page) do
           {:ok, stats} ->
@@ -246,6 +260,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             )
 
           {:error, reason} ->
+            AppLogger.api_error("Failed to fetch character kills",
+              error: inspect(reason)
+            )
+
             conn
             |> put_resp_content_type("application/json")
             |> send_resp(
@@ -269,7 +287,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               :error -> character_id
             end
 
-          Logger.info("Fetching kills for character ID #{character_id_int}")
+          AppLogger.api_info("Fetching kills for character ID #{character_id_int}")
 
           case CharacterKillsService.fetch_and_persist_character_kills(
                  character_id_int,
@@ -289,6 +307,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               )
 
             {:error, reason} ->
+              AppLogger.api_error("Failed to fetch character kills",
+                character_id: character_id_int,
+                error: inspect(reason)
+              )
+
               conn
               |> put_resp_content_type("application/json")
               |> send_resp(
@@ -302,6 +325,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           end
         else
           # No character ID provided and all=false
+          AppLogger.api_warn("No character ID provided for kills fetch")
+
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(
@@ -314,6 +339,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         end
       end
     else
+      AppLogger.api_info("Kill charts feature is not enabled for kills fetch")
+
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(
@@ -328,7 +355,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Get aggregation statistics
   get "/killmail-aggregation-stats" do
-    Logger.info("Killmail aggregation stats endpoint called")
+    AppLogger.api_info("Killmail aggregation stats requested")
 
     # Check if kill charts is enabled
     if Config.kill_charts_enabled?() do
@@ -355,6 +382,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             nil
           end
 
+        AppLogger.api_info("Retrieved aggregation statistics",
+          total_stats: total_stats,
+          aggregated_characters: aggregated_characters,
+          last_update: formatted_date
+        )
+
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(
@@ -370,7 +403,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         )
       rescue
         e ->
-          Logger.error("Error fetching aggregation stats: #{Exception.message(e)}")
+          AppLogger.api_error("Failed to fetch aggregation statistics",
+            error: Exception.message(e),
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          )
 
           conn
           |> put_resp_content_type("application/json")
@@ -384,6 +420,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           )
       end
     else
+      AppLogger.api_info("Kill charts feature not enabled for aggregation stats")
+
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(
@@ -398,7 +436,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Sync tracked characters from cache to database
   get "/sync-tracked-characters" do
-    Logger.info("Sync tracked characters endpoint called")
+    AppLogger.api_info("Sync tracked characters endpoint called")
 
     if Config.kill_charts_enabled?() do
       # Try to sync characters
@@ -476,7 +514,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Test kill notification endpoint
   get "/test-notification" do
-    Logger.info("Test notification endpoint called")
+    AppLogger.api_info("Test notification endpoint called")
 
     result = WandererNotifier.Services.KillProcessor.send_test_kill_notification()
 
@@ -497,7 +535,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Test character notification endpoint
   get "/test-character-notification" do
-    Logger.info("Test character notification endpoint called")
+    AppLogger.api_info("Test character notification endpoint called")
 
     result = send_test_character_notification()
 
@@ -517,7 +555,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Test system notification endpoint
   get "/test-system-notification" do
-    Logger.info("Test system notification endpoint called")
+    AppLogger.api_info("Test system notification endpoint called")
 
     # Directly call the normal notification pathway instead of using custom test data
     result = NotificationHelpers.send_test_system_notification()
@@ -539,7 +577,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Check characters endpoint availability
   get "/check-characters-endpoint" do
-    Logger.info("Characters endpoint check requested")
+    AppLogger.api_info("Characters endpoint check requested")
 
     alias WandererNotifier.Api.Map.CharactersClient
     result = CharactersClient.check_characters_endpoint_availability()
@@ -568,7 +606,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Revalidate license
   get "/revalidate-license" do
-    Logger.info("License revalidation requested")
+    AppLogger.api_info("License revalidation requested")
 
     # Use a more direct approach to avoid potential state issues
     result =
@@ -578,7 +616,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         notifier_api_token = Config.notifier_api_token()
 
         # Log what we're doing
-        Logger.info("Performing manual license validation")
+        AppLogger.api_info("Performing license validation",
+          license_key_length: String.length(license_key || ""),
+          has_api_token: notifier_api_token != nil
+        )
 
         # Call the license manager client directly
         case WandererNotifier.LicenseManager.Client.validate_bot(notifier_api_token, license_key) do
@@ -588,6 +629,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
             # Update the GenServer state
             GenServer.call(License, :validate)
+
+            AppLogger.api_info("License validation completed",
+              success: license_valid,
+              message: response["message"]
+            )
 
             if license_valid do
               %{
@@ -606,7 +652,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             end
 
           {:error, reason} ->
-            Logger.error("Direct license validation failed: #{inspect(reason)}")
+            AppLogger.api_error("License validation failed",
+              reason: inspect(reason)
+            )
 
             error_message =
               case reason do
@@ -626,7 +674,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         end
       rescue
         e ->
-          Logger.error("Exception during license revalidation: #{inspect(e)}")
+          AppLogger.api_error("Exception during license revalidation: #{inspect(e)}")
 
           %{
             success: false,
@@ -642,7 +690,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Get recent kills
   get "/recent-kills" do
-    Logger.info("Recent kills endpoint called")
+    AppLogger.api_info("Recent kills endpoint called")
 
     recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills()
 
@@ -681,7 +729,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Character Notification
   #
   defp send_test_character_notification do
-    Logger.info("TEST NOTIFICATION: Manually triggering a test character notification")
+    AppLogger.api_info("Triggering test character notification")
 
     # Get tracked characters or use sample if none are available
     tracked_characters = get_and_log_tracked_characters()
@@ -694,15 +742,22 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Get tracked characters and log their count
   defp get_and_log_tracked_characters do
     tracked_characters = CacheHelpers.get_tracked_characters()
-    Logger.debug("Fetched tracked characters from cache: #{inspect(tracked_characters)}")
-    Logger.info("Found #{length(tracked_characters)} tracked characters")
+
+    AppLogger.api_debug("Retrieved tracked characters",
+      count: length(tracked_characters)
+    )
+
     tracked_characters
   end
 
   # Find a valid character or return a sample one
   defp get_valid_character_for_notification(tracked_characters) do
     valid_chars = Enum.filter(tracked_characters, &valid_character_id?/1)
-    Logger.debug("Valid characters: #{length(valid_chars)} out of #{length(tracked_characters)}")
+
+    AppLogger.api_debug("Filtered valid characters",
+      valid_count: length(valid_chars),
+      total_count: length(tracked_characters)
+    )
 
     if Enum.empty?(valid_chars) do
       create_sample_character()
@@ -713,7 +768,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Create a standard sample character for testing
   defp create_sample_character do
-    Logger.info("Using sample character for notification")
+    AppLogger.api_info("No valid characters found, using sample character")
 
     %{
       "character_id" => "1354830081",
@@ -726,7 +781,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Send notification with the provided character
   defp send_character_notification(character) do
     {character_id, character_name} = extract_character_details(character)
-    Logger.info("Using character #{character_name} (ID: #{character_id}) for test notification")
+
+    AppLogger.api_info("Sending test character notification",
+      character_id: character_id,
+      character_name: character_name
+    )
 
     # Format the character for notification
     formatted_character = format_character_for_notification(character)
@@ -745,8 +804,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     character_id = extract_character_id(character)
     character_name = extract_character_name(character)
 
-    Logger.info(
-      "[APIController] Extracted character details - ID: #{character_id}, Name: #{character_name}"
+    AppLogger.api_debug("Extracted character details",
+      character_id: character_id,
+      character_name: character_name
     )
 
     {character_id, character_name}
@@ -785,10 +845,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Helper to format character data consistently for notification
   defp format_character_for_notification(character) do
-    require Logger
-
-    Logger.debug(
-      "[APIController] Formatting character for notification: #{inspect(character, pretty: true, limit: 300)}"
+    AppLogger.api_debug("Formatting character for notification",
+      character_type: inspect(character.__struct__),
+      character_content: inspect(character, pretty: true, limit: 300)
     )
 
     # Always prioritize EVE ID
@@ -879,12 +938,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
         rescue
           e ->
-            Logger.error("Error getting tracked characters: #{inspect(e)}")
+            AppLogger.api_error("Error getting tracked characters: #{inspect(e)}")
             []
         end
 
       # Log how many characters we found
-      Logger.info("Returning #{length(tracked_characters)} tracked characters")
+      AppLogger.api_info("Returning #{length(tracked_characters)} tracked characters")
 
       # Ensure each character has at least the required ID and name fields
       formatted_characters =
@@ -918,7 +977,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
             # Unknown format, return empty map with log
             other ->
-              Logger.warning("Unknown character format: #{inspect(other)}")
+              AppLogger.api_warn("Unknown character format: #{inspect(other)}")
               %{character_id: nil, character_name: "Unknown"}
           end
         end)
@@ -935,7 +994,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       )
     rescue
       e ->
-        Logger.error("Error in tracked-characters endpoint: #{inspect(e)}")
+        AppLogger.api_error("Error in tracked-characters endpoint: #{inspect(e)}")
 
         conn
         |> put_resp_content_type("application/json")
@@ -956,16 +1015,16 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Sync tracked characters from cache to Ash resource
   get "/sync-characters" do
-    Logger.info("Triggering sync of tracked characters from cache to Ash resource")
+    AppLogger.api_info("Triggering sync of tracked characters from cache to Ash resource")
 
     # Inspect the map cache first
     cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
-    Logger.info("Found #{length(cached_characters)} characters in map cache")
+    AppLogger.api_info("Found #{length(cached_characters)} characters in map cache")
 
     # Log some sample characters to check their format
     if length(cached_characters) > 0 do
       sample = Enum.take(cached_characters, min(5, length(cached_characters)))
-      Logger.info("Sample characters from cache: #{inspect(sample)}")
+      AppLogger.api_info("Sample characters from cache: #{inspect(sample)}")
     end
 
     # Call the sync function
@@ -982,7 +1041,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             _ -> 0
           end
 
-        Logger.info("After sync: Ash resource now has #{ash_count} characters")
+        AppLogger.api_info("After sync: Ash resource now has #{ash_count} characters")
 
         conn
         |> put_resp_content_type("application/json")
@@ -1011,7 +1070,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Force sync map characters to Ash resource and vice versa
   get "/force-sync-characters" do
-    Logger.info("Triggering forced character synchronization")
+    AppLogger.api_info("Triggering forced character synchronization")
 
     # Get all relevant caches
     map_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
@@ -1033,17 +1092,17 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       end
 
     # Log the current state of all caches
-    Logger.info("Before sync: map:characters has #{length(map_characters)} characters")
+    AppLogger.api_info("Before sync: map:characters has #{length(map_characters)} characters")
 
-    Logger.info(
+    AppLogger.api_info(
       "Before sync: tracked:characters has #{length(tracked_characters_cache)} characters"
     )
 
-    Logger.info(
+    AppLogger.api_info(
       "Before sync: CacheHelpers.get_tracked_characters() returns #{length(all_from_helper)} characters"
     )
 
-    Logger.info("Before sync: Ash resource has #{length(ash_characters)} characters")
+    AppLogger.api_info("Before sync: Ash resource has #{length(ash_characters)} characters")
 
     # Perform the sync operation directly (not in a spawned process)
     sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_cache()

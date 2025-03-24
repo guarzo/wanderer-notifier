@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   use Supervisor
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -15,72 +15,183 @@ alias WandererNotifier.Logger, as: AppLogger
 
   @impl true
   def init(_opts) do
+    # Begin the scheduler phase in the startup tracker
+    start_scheduler_phase()
+
     AppLogger.scheduler_info("Starting Scheduler Supervisor...")
 
     # Define the scheduler registry
     registry = {WandererNotifier.Schedulers.Registry, []}
 
-    # Define all schedulers to be supervised
+    # Define core schedulers and build complete list
+    core_schedulers = define_core_schedulers()
+    schedulers = maybe_add_kill_chart_schedulers(core_schedulers)
+
+    # Create children list with consolidated logging
+    children = [registry | schedulers]
+
+    # Single consolidated log message for all schedulers
+    log_scheduler_summary(schedulers)
+
+    # Start all children with a one_for_one strategy
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # Start the scheduler phase in the startup tracker
+  defp start_scheduler_phase do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.begin_phase(:schedulers, "Initializing schedulers")
+    end
+  end
+
+  # Define the core schedulers
+  defp define_core_schedulers do
     schedulers = [
       {WandererNotifier.Schedulers.ActivityChartScheduler, []},
       {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
       {WandererNotifier.Schedulers.SystemUpdateScheduler, []}
     ]
 
-    # Add kill charts-related schedulers if kill charts feature is enabled
-    schedulers =
-      if kill_charts_enabled?() do
-        AppLogger.scheduler_info("Kill charts feature enabled, adding killmail schedulers")
+    # Track core schedulers
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+        core_schedulers: length(schedulers)
+      })
+    end
 
-        # Add a brief delay to ensure the Repo is fully started
-        Process.sleep(500)
+    schedulers
+  end
 
-        # Verify database connection is available
-        db_ready? =
-          try do
-            case WandererNotifier.Repo.health_check() do
-              {:ok, ping_time} ->
-                AppLogger.scheduler_info("Database connection verified - ping time: #{ping_time}ms")
-                true
+  # Add kill charts schedulers if feature is enabled
+  defp maybe_add_kill_chart_schedulers(core_schedulers) do
+    if kill_charts_enabled?() do
+      record_feature_status("kill_charts", true)
 
-              {:error, reason} ->
-                AppLogger.scheduler_error("Database connection check failed: #{inspect(reason)}")
-
-                Logger.warning(
-                  "Starting without killmail schedulers due to database connection failure"
-                )
-
-                false
-            end
-          rescue
-            e ->
-              AppLogger.scheduler_error("Database health check failed with exception: #{Exception.message(e)}")
-
-              Logger.warning(
-                "Starting without killmail schedulers due to database connection failure"
-              )
-
-              false
-          end
-
-        if db_ready? do
-          schedulers ++
-            [
-              {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
-              {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
-              {WandererNotifier.Schedulers.KillmailChartScheduler, []}
-            ]
-        else
-          schedulers
-        end
+      if database_ready?() do
+        killmail_schedulers = define_killmail_schedulers()
+        core_schedulers ++ killmail_schedulers
       else
-        schedulers
+        record_skipped_schedulers()
+        core_schedulers
       end
+    else
+      record_feature_status("kill_charts", false)
+      core_schedulers
+    end
+  end
 
-    children = [registry | schedulers]
+  # Define the killmail schedulers
+  defp define_killmail_schedulers do
+    killmail_schedulers = [
+      {WandererNotifier.Schedulers.KillmailAggregationScheduler, []},
+      {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
+      {WandererNotifier.Schedulers.KillmailChartScheduler, []}
+    ]
 
-    # Start all children with a one_for_one strategy
-    Supervisor.init(children, strategy: :one_for_one)
+    # Record killmail schedulers in tracker
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+        killmail_schedulers: length(killmail_schedulers)
+      })
+    end
+
+    killmail_schedulers
+  end
+
+  # Record if a feature is enabled or disabled
+  defp record_feature_status(feature, enabled) do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:feature_status, %{
+        feature: feature,
+        enabled: enabled
+      })
+    end
+  end
+
+  # Record that schedulers were skipped
+  defp record_skipped_schedulers do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+        skipped_killmail_schedulers: 3,
+        reason: "database_not_ready"
+      })
+    end
+  end
+
+  # Check if the database is ready
+  defp database_ready? do
+    # Add a brief delay to ensure the Repo is fully started
+    Process.sleep(500)
+
+    try do
+      case WandererNotifier.Repo.health_check() do
+        {:ok, ping_time} ->
+          record_database_status("verified", ping_time)
+          true
+
+        {:error, reason} ->
+          record_database_error("Database connection check failed during scheduler setup", reason)
+
+          Logger.warning(
+            "Starting without killmail schedulers due to database connection failure"
+          )
+
+          false
+      end
+    rescue
+      e ->
+        record_database_exception("Database health check exception during scheduler setup", e)
+        Logger.warning("Starting without killmail schedulers due to database connection failure")
+        false
+    end
+  end
+
+  # Record database status
+  defp record_database_status(status, ping_time) do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_event(:database_status, %{
+        status: status,
+        ping_time: ping_time
+      })
+    end
+  end
+
+  # Record database error
+  defp record_database_error(message, reason) do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_error(
+        message,
+        %{reason: inspect(reason)}
+      )
+    else
+      AppLogger.scheduler_error("Database connection check failed: #{inspect(reason)}")
+    end
+  end
+
+  # Record database exception
+  defp record_database_exception(message, exception) do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.record_error(
+        message,
+        %{error: Exception.message(exception)}
+      )
+    else
+      AppLogger.scheduler_error(
+        "Database health check failed with exception: #{Exception.message(exception)}"
+      )
+    end
+  end
+
+  # Log a summary of all schedulers being started
+  defp log_scheduler_summary(schedulers) do
+    if Process.get(:startup_tracker) do
+      WandererNotifier.Logger.StartupTracker.log_state_change(
+        :scheduler_summary,
+        "#{length(schedulers)} schedulers initialized"
+      )
+    else
+      AppLogger.scheduler_info("Starting #{length(schedulers)} schedulers")
+    end
   end
 
   @doc """
@@ -99,7 +210,10 @@ alias WandererNotifier.Logger, as: AppLogger
         :ok
 
       {:error, reason} ->
-        AppLogger.scheduler_error("Failed to start scheduler #{inspect(scheduler_module)}: #{inspect(reason)}")
+        AppLogger.scheduler_error(
+          "Failed to start scheduler #{inspect(scheduler_module)}: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end

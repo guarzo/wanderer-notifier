@@ -4,7 +4,7 @@ defmodule WandererNotifier.Core.Config do
   Provides access to application configuration with sensible defaults.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Constants for API URLs
   @zkill_base_url "https://zkillboard.com"

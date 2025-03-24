@@ -4,7 +4,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   """
   use GenServer
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Core.Config
 
@@ -59,7 +59,9 @@ alias WandererNotifier.Logger, as: AppLogger
       schedule_charts(interval)
       AppLogger.api_info("Activity Chart Scheduler initialized and scheduled")
     else
-      AppLogger.api_info("Activity Chart Scheduler initialized but not scheduled (Map Charts disabled)")
+      AppLogger.api_info(
+        "Activity Chart Scheduler initialized but not scheduled (Map Charts disabled)"
+      )
     end
 
     # Initial state
@@ -207,7 +209,7 @@ alias WandererNotifier.Logger, as: AppLogger
   end
 
   defp generate_activity_timeline(_activity_data, _channel_id) do
-    AppLogger.api_warn("Activity Timeline chart has been removed", [])
+    AppLogger.api_warn("Activity Timeline chart has been removed", %{})
     {:error, "Activity Timeline chart has been removed"}
   end
 

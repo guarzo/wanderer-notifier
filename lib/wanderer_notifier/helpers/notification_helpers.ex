@@ -231,7 +231,10 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @spec send_test_system_notification() :: {:ok, String.t() | integer(), String.t()}
   def send_test_system_notification() do
     require Logger
-    AppLogger.processor_info("Manually triggering a test system notification", type: "TEST NOTIFICATION")
+
+    AppLogger.processor_info("Manually triggering a test system notification",
+      type: "TEST NOTIFICATION"
+    )
 
     alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
     alias WandererNotifier.Data.MapSystem
@@ -285,7 +288,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
       end
 
     # Log key fields for debugging
-    AppLogger.processor_debug("Enriched system fields", 
+    AppLogger.processor_debug("Enriched system fields",
       solar_system_id: enriched_system.solar_system_id,
       name: enriched_system.name,
       type_description: enriched_system.type_description,

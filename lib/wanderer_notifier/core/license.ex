@@ -5,7 +5,7 @@ defmodule WandererNotifier.Core.License do
   """
   use GenServer
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
   alias WandererNotifier.Core.Config.Timings
@@ -40,7 +40,9 @@ alias WandererNotifier.Logger, as: AppLogger
 
         unexpected_result ->
           # Create a safe default state
-          AppLogger.config_error("Unexpected result from license validation: #{inspect(unexpected_result)}")
+          AppLogger.config_error(
+            "Unexpected result from license validation: #{inspect(unexpected_result)}"
+          )
 
           %{
             valid: false,
@@ -136,7 +138,9 @@ alias WandererNotifier.Logger, as: AppLogger
       new_state = do_validate()
 
       if new_state.valid do
-        AppLogger.config_info("License validated successfully: #{new_state.details["status"] || "valid"}")
+        AppLogger.config_info(
+          "License validated successfully: #{new_state.details["status"] || "valid"}"
+        )
       else
         error_msg = new_state.error_message || "No error message provided"
         AppLogger.config_warn("License validation warning: #{error_msg}")
@@ -189,7 +193,10 @@ alias WandererNotifier.Logger, as: AppLogger
           {:error, "License validation timed out"}
 
         type, reason ->
-          AppLogger.config_error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
+          AppLogger.config_error(
+            "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
+          )
+
           {:error, "License validation error: #{inspect(reason)}"}
       end
 
@@ -306,7 +313,9 @@ alias WandererNotifier.Logger, as: AppLogger
     if is_list(features) do
       enabled = Enum.member?(features, to_string(feature))
 
-      AppLogger.config_debug("Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}")
+      AppLogger.config_debug(
+        "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
+      )
 
       enabled
     else

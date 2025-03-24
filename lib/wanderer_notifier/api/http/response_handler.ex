@@ -3,7 +3,7 @@ defmodule WandererNotifier.Api.Http.ResponseHandler do
   Handles HTTP responses, providing consistent error handling and response processing.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @spec handle_response({:ok, any()} | {:error, any()}, String.t()) ::
           {:ok, map()} | {:error, any()}

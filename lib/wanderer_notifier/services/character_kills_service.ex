@@ -38,7 +38,9 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   # Handle string character IDs by converting them to integers
   def fetch_and_persist_character_kills(character_id, limit, page) when is_binary(character_id) do
-    AppLogger.processor_debug("Converting string character ID to integer", character_id: character_id)
+    AppLogger.processor_debug("Converting string character ID to integer",
+      character_id: character_id
+    )
 
     case Integer.parse(character_id) do
       {int_id, ""} ->

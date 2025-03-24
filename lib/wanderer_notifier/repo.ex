@@ -62,7 +62,10 @@ defmodule WandererNotifier.Repo do
         end
       rescue
         e ->
-          AppLogger.persistence_error("Database health check exception", error: Exception.message(e))
+          AppLogger.persistence_error("Database health check exception",
+            error: Exception.message(e)
+          )
+
           {:error, e}
       end
     else

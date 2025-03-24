@@ -126,18 +126,27 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       activity_data =
         case CharactersClient.get_character_activity() do
           {:ok, data} ->
-            AppLogger.api_info("Retrieved character activity data", preview: inspect(data, limit: 500))
+            AppLogger.api_info("Retrieved character activity data",
+              preview: inspect(data, limit: 500)
+            )
 
             data
 
           error ->
-            AppLogger.api_error("Failed to retrieve character activity data", error: inspect(error))
+            AppLogger.api_error("Failed to retrieve character activity data",
+              error: inspect(error)
+            )
+
             nil
         end
 
       # Get the appropriate channel ID for activity charts
       channel_id = Config.discord_channel_id_for_activity_charts()
-      AppLogger.api_debug("Using Discord channel", purpose: "activity charts", channel_id: channel_id)
+
+      AppLogger.api_debug("Using Discord channel",
+        purpose: "activity charts",
+        channel_id: channel_id
+      )
 
       # Use the ActivityChartAdapter directly to send all charts
       results = ActivityChartAdapter.send_all_charts_to_discord(activity_data, channel_id)
@@ -513,7 +522,9 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   # Force-sync characters (destructive operation that clears and rebuilds)
   get "/killmail/force-sync-characters" do
     if Config.kill_charts_enabled?() do
-      AppLogger.api_warn("Forcing destructive character sync from cache to database", action: "database-clear")
+      AppLogger.api_warn("Forcing destructive character sync from cache to database",
+        action: "database-clear"
+      )
 
       case WandererNotifier.Resources.TrackedCharacter.force_sync_from_cache() do
         {:ok, result} ->

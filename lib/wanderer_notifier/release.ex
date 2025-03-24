@@ -16,13 +16,13 @@ defmodule WandererNotifier.Release do
 
     for repo <- repos() do
       case repo.__adapter__().storage_up(repo.config()) do
-        :ok -> 
+        :ok ->
           AppLogger.persistence_info("Database created successfully")
-        
-        {:error, :already_up} -> 
+
+        {:error, :already_up} ->
           AppLogger.persistence_info("Database already exists")
-        
-        {:error, error} -> 
+
+        {:error, error} ->
           AppLogger.persistence_warn("Failed to create database", error: inspect(error))
       end
     end

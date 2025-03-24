@@ -6,7 +6,7 @@ defmodule WandererNotifier.Core.Stats do
   """
   use GenServer
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Client API
 

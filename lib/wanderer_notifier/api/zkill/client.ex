@@ -5,7 +5,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 
@@ -207,7 +207,10 @@ alias WandererNotifier.Logger, as: AppLogger
         {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_missing}}}
 
       !is_integer(character_id) && !Regex.match?(~r/^\d+$/, character_id_str) ->
-        AppLogger.api_error("[ZKill] Character ID is not a valid integer: #{inspect(character_id)}")
+        AppLogger.api_error(
+          "[ZKill] Character ID is not a valid integer: #{inspect(character_id)}"
+        )
+
         {:error, {:domain_error, :zkill, {:invalid_parameter, :character_id_format}}}
 
       true ->

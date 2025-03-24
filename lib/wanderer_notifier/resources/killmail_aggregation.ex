@@ -6,7 +6,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   require Ash.Query
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.Killmail
@@ -38,7 +38,10 @@ alias WandererNotifier.Logger, as: AppLogger
       # Get all tracked characters
       case get_tracked_characters() do
         [] ->
-          AppLogger.persistence_info("[KillmailAggregation] No tracked characters found, skipping aggregation")
+          AppLogger.persistence_info(
+            "[KillmailAggregation] No tracked characters found, skipping aggregation"
+          )
+
           :ok
 
         tracked_characters ->
@@ -59,7 +62,10 @@ alias WandererNotifier.Logger, as: AppLogger
       end
     rescue
       e ->
-        AppLogger.persistence_error("[KillmailAggregation] Error during aggregation: #{Exception.message(e)}")
+        AppLogger.persistence_error(
+          "[KillmailAggregation] Error during aggregation: #{Exception.message(e)}"
+        )
+
         AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
         {:error, e}
     end
@@ -81,7 +87,9 @@ alias WandererNotifier.Logger, as: AppLogger
     cutoff_date = Date.add(Date.utc_today(), -retention_days)
     cutoff_datetime = DateTime.new!(cutoff_date, ~T[00:00:00.000], "Etc/UTC")
 
-    AppLogger.persistence_info("[KillmailAggregation] Cleaning up killmails older than #{cutoff_date}")
+    AppLogger.persistence_info(
+      "[KillmailAggregation] Cleaning up killmails older than #{cutoff_date}"
+    )
 
     # Find killmails older than the cutoff date
     try do
@@ -101,12 +109,18 @@ alias WandererNotifier.Logger, as: AppLogger
         # Delete the old killmails in batches
         delete_in_batches(old_killmails)
       else
-        AppLogger.persistence_info("[KillmailAggregation] No killmails found older than the cutoff date")
+        AppLogger.persistence_info(
+          "[KillmailAggregation] No killmails found older than the cutoff date"
+        )
+
         {0, 0}
       end
     rescue
       e ->
-        AppLogger.persistence_error("[KillmailAggregation] Error during cleanup: #{Exception.message(e)}")
+        AppLogger.persistence_error(
+          "[KillmailAggregation] Error during cleanup: #{Exception.message(e)}"
+        )
+
         AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
         {0, 1}
     end
@@ -319,7 +333,9 @@ alias WandererNotifier.Logger, as: AppLogger
 
   # Update existing statistics record
   defp update_existing_statistics(existing_stat, statistic_attrs, character_name) do
-    AppLogger.persistence_info("[KillmailAggregation] Updating existing statistics for #{character_name}")
+    AppLogger.persistence_info(
+      "[KillmailAggregation] Updating existing statistics for #{character_name}"
+    )
 
     result =
       WandererNotifier.Resources.Api.update(
@@ -331,31 +347,43 @@ alias WandererNotifier.Logger, as: AppLogger
 
     case result do
       {:ok, _updated} ->
-        AppLogger.persistence_info("[KillmailAggregation] Successfully updated statistics for #{character_name}")
+        AppLogger.persistence_info(
+          "[KillmailAggregation] Successfully updated statistics for #{character_name}"
+        )
 
         :ok
 
       error ->
-        AppLogger.persistence_error("[KillmailAggregation] Error updating statistics: #{inspect(error)}")
+        AppLogger.persistence_error(
+          "[KillmailAggregation] Error updating statistics: #{inspect(error)}"
+        )
+
         {:error, error}
     end
   end
 
   # Create new statistics record
   defp create_new_statistics(statistic_attrs, character_name) do
-    AppLogger.persistence_info("[KillmailAggregation] Creating new statistics for #{character_name}")
+    AppLogger.persistence_info(
+      "[KillmailAggregation] Creating new statistics for #{character_name}"
+    )
 
     result =
       WandererNotifier.Resources.Api.create(KillmailStatistic, statistic_attrs, action: :create)
 
     case result do
       {:ok, _created} ->
-        AppLogger.persistence_info("[KillmailAggregation] Successfully created statistics for #{character_name}")
+        AppLogger.persistence_info(
+          "[KillmailAggregation] Successfully created statistics for #{character_name}"
+        )
 
         :ok
 
       error ->
-        AppLogger.persistence_error("[KillmailAggregation] Error creating statistics: #{inspect(error)}")
+        AppLogger.persistence_error(
+          "[KillmailAggregation] Error creating statistics: #{inspect(error)}"
+        )
+
         {:error, error}
     end
   end

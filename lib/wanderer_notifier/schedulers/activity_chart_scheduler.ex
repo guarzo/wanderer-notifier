@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
   require WandererNotifier.Schedulers.Factory
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
@@ -27,7 +27,7 @@ alias WandererNotifier.Logger, as: AppLogger
   ]
 
   # Create an interval-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__, 
+  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
     type: :interval,
     default_interval: @default_interval,
     enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0
@@ -35,7 +35,9 @@ alias WandererNotifier.Logger, as: AppLogger
 
   @impl true
   def execute(state) do
-    AppLogger.scheduler_info("Executing character activity chart generation and sending to Discord")
+    AppLogger.scheduler_info(
+      "Executing character activity chart generation and sending to Discord"
+    )
 
     # Get activity data and process it if available
     case get_activity_data() do
@@ -91,7 +93,10 @@ alias WandererNotifier.Logger, as: AppLogger
 
     # Count successful charts
     success_count = Enum.count(results, fn {_, result} -> match?({:ok, _, _}, result) end)
-    AppLogger.scheduler_info("Chart sending complete: #{success_count}/#{length(results)} successful")
+
+    AppLogger.scheduler_info(
+      "Chart sending complete: #{success_count}/#{length(results)} successful"
+    )
 
     {:ok, results, state}
   end

@@ -282,37 +282,82 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   def get(key) do
     retry_with_backoff(fn ->
-      AppLogger.cache_debug("Getting value", key: key)
+      # Use a sampling approach to reduce debug logs (only log ~1% of gets)
+      should_log = :rand.uniform(100) <= 1
+
+      # Log the get operation if sampled
+      log_get_operation(key, should_log)
+
+      # Get the value from cache
       result = Cachex.get(@cache_name, key)
-      AppLogger.cache_debug("Raw result from Cachex", result: inspect(result))
 
-      # Check if the key exists in the cache
-      exists_result = Cachex.exists?(@cache_name, key)
-      AppLogger.cache_debug("Key exists check", result: inspect(exists_result))
+      # Log detailed cache info if sampled
+      log_cache_details(key, result, should_log)
 
-      # Check TTL for the key
-      ttl_result = Cachex.ttl(@cache_name, key)
-      AppLogger.cache_debug("TTL for key", ttl: inspect(ttl_result))
-
-      # Always unwrap tuples to ensure consistent returns
-      case result do
-        {:ok, value} when not is_nil(value) ->
-          AppLogger.cache_debug("Cache hit", key: key, status: "value found")
-          value
-
-        {:ok, nil} ->
-          handle_nil_result(key, exists_result)
-
-        {:error, error} ->
-          AppLogger.cache_error("Cache error", key: key, error: inspect(error))
-
-          nil
-
-        _ ->
-          AppLogger.cache_debug("Cache miss", key: key)
-          nil
-      end
+      # Process the result
+      process_cache_result(key, result, should_log)
     end)
+  end
+
+  # Log the get operation if sampled
+  defp log_get_operation(key, true) do
+    AppLogger.cache_debug("Getting value (sampled 1%)", key: key)
+  end
+
+  defp log_get_operation(_key, false), do: :ok
+
+  # Log detailed cache info if sampled
+  defp log_cache_details(key, result, true) do
+    # Only check exists and TTL if we're already sampling this request
+    exists_result = Cachex.exists?(@cache_name, key)
+    ttl_result = Cachex.ttl(@cache_name, key)
+
+    AppLogger.cache_debug("Cache details (sampled)",
+      key: key,
+      result: inspect(result),
+      exists: inspect(exists_result),
+      ttl: inspect(ttl_result)
+    )
+  end
+
+  defp log_cache_details(_key, _result, false), do: :ok
+
+  # Process the result of a cache get operation
+  defp process_cache_result(key, {:ok, value}, _should_log) when not is_nil(value) do
+    # Don't log individual cache hits, but count them for batch logging
+    key_pattern = extract_key_pattern(key)
+
+    WandererNotifier.Logger.BatchLogger.count_event(:cache_hit, %{
+      key_pattern: key_pattern
+    })
+
+    value
+  end
+
+  defp process_cache_result(key, {:ok, nil}, should_log) do
+    handle_nil_result(key, should_log)
+  end
+
+  defp process_cache_result(key, {:error, error}, _should_log) do
+    # Always log errors
+    AppLogger.cache_error("Cache error", key: key, error: inspect(error))
+    nil
+  end
+
+  defp process_cache_result(key, _other_result, should_log) do
+    # Count cache misses for batch logging
+    key_pattern = extract_key_pattern(key)
+
+    WandererNotifier.Logger.BatchLogger.count_event(:cache_miss, %{
+      key_pattern: key_pattern
+    })
+
+    # Log miss only if we're sampling
+    if should_log do
+      AppLogger.cache_debug("Cache miss (sampled)", key: key)
+    end
+
+    nil
   end
 
   @doc """
@@ -510,27 +555,9 @@ defmodule WandererNotifier.Data.Cache.Repository do
     - nil if not found or on error
   """
   def safe_get(key) do
-    case get(key) do
-      {:ok, value} when not is_nil(value) ->
-        AppLogger.cache_debug("Cache hit",
-          key: key,
-          value_size: length_of(value)
-        )
-
-        value
-
-      {:error, error} ->
-        AppLogger.cache_error("Cache error",
-          key: key,
-          error: inspect(error)
-        )
-
-        nil
-
-      _ ->
-        AppLogger.cache_debug("Cache miss", key: key)
-        nil
-    end
+    # This method should redirect to get now that we've improved that method
+    # with sampling to reduce log volume
+    get(key)
   end
 
   @doc """
@@ -583,12 +610,6 @@ defmodule WandererNotifier.Data.Cache.Repository do
     Cachex.stats(@cache_name)
   end
 
-  # Helper function to safely get the length of a value
-  defp length_of(value) when is_list(value), do: length(value)
-  defp length_of(value) when is_map(value), do: map_size(value)
-  defp length_of(value) when is_binary(value), do: byte_size(value)
-  defp length_of(_), do: 0
-
   @doc """
   Synchronizes the cache with the database.
   Takes a key, a function to read from the database, and a TTL (time-to-live) in seconds.
@@ -604,7 +625,10 @@ defmodule WandererNotifier.Data.Cache.Repository do
       cache_db_result(key, db_result, ttl)
     rescue
       e ->
-        AppLogger.cache_error("Error syncing cache with DB", key: key, error: Exception.message(e))
+        AppLogger.cache_error("Error syncing cache with DB",
+          key: key,
+          error: Exception.message(e)
+        )
 
         {:error, :sync_failed}
     end
@@ -758,23 +782,69 @@ defmodule WandererNotifier.Data.Cache.Repository do
   defp ttl_option(seconds) when is_integer(seconds) and seconds > 0, do: seconds * 1000
   defp ttl_option(_), do: nil
 
-  # Handle nil results from cache
-  defp handle_nil_result(key, exists_result) do
+  # Handle nil results from cache - now takes a should_log parameter
+  defp handle_nil_result(key, should_log) do
     # Special handling for map:systems and map:characters keys
-    if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
+    if key in ["map:systems", "map:characters"] do
       # For these keys, initialize with empty array without warning
-      AppLogger.cache_debug("Initializing with empty array", key: key)
-      Cachex.put(@cache_name, key, [])
-      []
+      handle_empty_array_initialization(key, should_log)
     else
-      # Log cache miss appropriately
-      if String.starts_with?(key, "static_info:") do
-        AppLogger.cache_debug("Cache miss for static info", key: key)
-      else
-        AppLogger.cache_debug("Cache hit but value is nil", key: key)
-      end
-
-      nil
+      # Handle regular nil results
+      handle_regular_nil_result(key, should_log)
     end
   end
+
+  # Handle empty array initialization for specific keys
+  defp handle_empty_array_initialization(key, should_log) do
+    if should_log do
+      AppLogger.cache_debug("Initializing with empty array (sampled)", key: key)
+    end
+
+    Cachex.put(@cache_name, key, [])
+    []
+  end
+
+  # Handle regular nil result cases
+  defp handle_regular_nil_result(key, should_log) do
+    # Only log if we're sampling this request
+    if should_log do
+      log_nil_result(key)
+    end
+
+    nil
+  end
+
+  # Log nil result with appropriate message based on key
+  defp log_nil_result(key) do
+    if String.starts_with?(key, "static_info:") do
+      AppLogger.cache_debug("Cache miss for static info (sampled)", key: key)
+    else
+      AppLogger.cache_debug("Cache hit but value is nil (sampled)", key: key)
+    end
+  end
+
+  # Extract a key pattern for grouping similar cache keys
+  defp extract_key_pattern(key) when is_binary(key) do
+    cond do
+      # For keys with IDs embedded, extract the pattern part
+      String.match?(key, ~r/^[\w\-]+:\w+:\d+$/) ->
+        # Pattern for keys like "map:system:12345" -> "map:system"
+        key |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+
+      # For other known key formats
+      String.match?(key, ~r/^[\w\-]+:[\w\-]+$/) ->
+        # Keys like "map:systems" -> return as is
+        key
+
+      # Match most prefixes
+      true ->
+        # Try to get the prefix part
+        case String.split(key, ":", parts: 2) do
+          [prefix, _] -> "#{prefix}:*"
+          _ -> key
+        end
+    end
+  end
+
+  defp extract_key_pattern(key), do: inspect(key)
 end

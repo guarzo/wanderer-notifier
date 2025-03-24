@@ -261,16 +261,16 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
       {:ok, :new} ->
         AppLogger.cache_info("Notification is new, marking as processed")
         mark_as_processed(notification_type, identifier)
-        {:reply, false, state}
+        {:reply, {:ok, false}, state}
 
       {:ok, :duplicate} ->
         AppLogger.cache_info("Notification is a duplicate, marking as processed")
         mark_as_processed(notification_type, identifier)
-        {:reply, true, state}
+        {:reply, {:ok, true}, state}
 
       _ ->
         AppLogger.cache_warn("Unexpected result for deduplication check", result: inspect(result))
-        {:reply, false, state}
+        {:reply, {:ok, false}, state}
     end
   end
 

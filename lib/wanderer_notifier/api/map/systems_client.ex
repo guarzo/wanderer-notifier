@@ -4,7 +4,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   Uses structured data types and consistent parsing to simplify the logic.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Api.Map.SystemStaticInfo
@@ -75,7 +75,9 @@ alias WandererNotifier.Logger, as: AppLogger
       end
 
     # Convert to MapSystem structs
-    AppLogger.api_debug("[SystemsClient] Parsing #{length(systems_data)} systems from API response")
+    AppLogger.api_debug(
+      "[SystemsClient] Parsing #{length(systems_data)} systems from API response"
+    )
 
     # Transform each system into a MapSystem struct
     systems = Enum.map(systems_data, &create_map_system/1)
@@ -201,7 +203,9 @@ alias WandererNotifier.Logger, as: AppLogger
   defp log_added_systems([]), do: :ok
 
   defp log_added_systems(added_systems) do
-    AppLogger.api_info("[SystemsClient] Found #{length(added_systems)} new systems to notify about")
+    AppLogger.api_info(
+      "[SystemsClient] Found #{length(added_systems)} new systems to notify about"
+    )
   end
 
   defp send_system_notification(system) do

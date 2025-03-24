@@ -5,7 +5,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.UrlBuilder

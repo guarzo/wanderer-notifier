@@ -40,7 +40,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
            retry_initial_connection: true
          ) do
       {:ok, pid} ->
-        AppLogger.websocket_info("Successfully initialized zKillboard WebSocket", pid: inspect(pid))
+        AppLogger.websocket_info("Successfully initialized zKillboard WebSocket",
+          pid: inspect(pid)
+        )
+
         {:ok, pid}
 
       {:error, reason} ->
@@ -201,10 +204,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Helper to handle ping frames
   defp handle_ping_frame(ping_frame, state) do
     message_format = if ping_frame == "ping", do: "standard", else: "unexpected"
-    
-    AppLogger.websocket_debug("Received ping", 
-      format: message_format, 
-      content: (if message_format == "unexpected", do: inspect(ping_frame), else: nil)
+
+    AppLogger.websocket_debug("Received ping",
+      format: message_format,
+      content: if(message_format == "unexpected", do: inspect(ping_frame), else: nil)
     )
 
     # Send heartbeat immediately
@@ -244,10 +247,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         end
 
       {:error, decode_err} ->
-        AppLogger.websocket_error("Error decoding frame", 
+        AppLogger.websocket_error("Error decoding frame",
           error: inspect(decode_err),
           raw_message: raw_msg
         )
+
         {:ok, state}
     end
   end
@@ -281,28 +285,29 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     if new_state.circuit_open do
       # Circuit is open, stop reconnection attempts
-      AppLogger.websocket_error("Circuit breaker open, stopping reconnection attempts", 
+      AppLogger.websocket_error("Circuit breaker open, stopping reconnection attempts",
         reason: inspect(disconnect_map),
         reconnect_count: new_state.reconnects
       )
+
       {:error, new_state}
     else
       # Circuit is closed, attempt reconnection
       delay = calculate_reconnect_delay(new_state.reconnects)
-      
-      AppLogger.websocket_warn("WebSocket disconnected, will reconnect", 
+
+      AppLogger.websocket_warn("WebSocket disconnected, will reconnect",
         reason: inspect(disconnect_map),
         reconnect_attempts: new_state.reconnects,
         delay_ms: delay
       )
-      
+
       # Update application status to show disconnection
       Stats.update_websocket(%{
         connected: false,
         reconnects: new_state.reconnects,
         last_disconnect: DateTime.utc_now()
       })
-      
+
       # Request reconnection after a delay
       {:reconnect, %{new_state | connected: false}}
     end
@@ -311,18 +316,15 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Increment reconnect count and add timestamp to history
   defp increment_reconnect_count(state) do
     current_time = System.os_time(:second)
-    
+
     # Add current time to reconnect history
     new_history = [current_time | state.reconnect_history]
-    
+
     # Keep only reconnects within the monitoring window
     window_start = current_time - @reconnect_window
     filtered_history = Enum.filter(new_history, fn time -> time >= window_start end)
-    
-    %{state | 
-      reconnects: state.reconnects + 1,
-      reconnect_history: filtered_history
-    }
+
+    %{state | reconnects: state.reconnects + 1, reconnect_history: filtered_history}
   end
 
   # Check if circuit breaker should open based on reconnection frequency
@@ -331,33 +333,29 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     current_time = System.os_time(:second)
     recent_reconnects = Enum.count(state.reconnect_history)
     time_since_reset = current_time - state.last_circuit_reset
-    
+
     # If we have too many recent reconnects, open the circuit
     # But only if it's been at least 10 minutes since last reset
-    should_open_circuit = 
-      recent_reconnects >= @max_reconnects && 
-      time_since_reset >= 600 # 10 minutes
-      
+    # 10 minutes
+    should_open_circuit =
+      recent_reconnects >= @max_reconnects &&
+        time_since_reset >= 600
+
     if should_open_circuit do
-      AppLogger.websocket_error("Opening circuit breaker due to excessive reconnections", 
+      AppLogger.websocket_error("Opening circuit breaker due to excessive reconnections",
         reconnect_count: recent_reconnects,
         since_last_reset_seconds: time_since_reset
       )
-      
-      %{state | 
-        circuit_open: true
-      }
+
+      %{state | circuit_open: true}
     else
       # If it's been a long time since last reset (24h+), reset the counter
       if time_since_reset >= 86_400 do
-        AppLogger.websocket_info("Resetting circuit breaker counts", 
+        AppLogger.websocket_info("Resetting circuit breaker counts",
           previous_reconnect_count: state.reconnects
         )
-        
-        %{state | 
-          reconnects: 0,
-          last_circuit_reset: current_time
-        }
+
+        %{state | reconnects: 0, last_circuit_reset: current_time}
       else
         state
       end
@@ -380,11 +378,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Terminate the process
   @impl true
   def terminate(reason, state) do
-    AppLogger.websocket_info("WebSocket terminating", 
+    AppLogger.websocket_info("WebSocket terminating",
       reason: inspect(reason),
       state: Map.take(state, [:reconnects, :connected, :circuit_open])
     )
-    
+
     # No special cleanup needed
     :ok
   end

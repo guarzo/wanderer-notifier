@@ -4,6 +4,7 @@ defmodule WandererNotifier.Discord.Notifier do
   Handles sending notifications to Discord.
   """
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Core.License
@@ -150,7 +151,10 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
-    Logger.info("Discord.Notifier.send_embed called with title: #{title}, url: #{url || "nil"}")
+    AppLogger.processor_info("Discord embed requested",
+      title: title,
+      url: url || "nil"
+    )
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK EMBED: #{title} - #{description}")
@@ -162,7 +166,7 @@ defmodule WandererNotifier.Discord.Notifier do
           build_embed_payload(title, description, url, color)
         end
 
-      Logger.info("Discord embed payload built, sending to Discord API")
+      AppLogger.processor_info("Discord embed payload built, sending to Discord API")
       send_payload(payload)
     end
   end
@@ -233,7 +237,7 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
-    Logger.debug("📨 FORMATTING: Preparing to format killmail #{kill_id} for Discord")
+    AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
 
     # Ensure the killmail has a system name if system_id is present
     enriched_killmail = enrich_with_system_name(killmail)
@@ -251,7 +255,11 @@ defmodule WandererNotifier.Discord.Notifier do
     if system_id do
       # Get system name using the same approach as in kill_processor
       system_name = get_system_name(system_id)
-      Logger.debug("🔍 ENRICHING: Added system name '#{system_name}' to killmail")
+
+      AppLogger.processor_debug("Enriching killmail with system name",
+        system_id: system_id,
+        system_name: system_name
+      )
 
       # Add system name to esi_data
       new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
@@ -316,7 +324,10 @@ defmodule WandererNotifier.Discord.Notifier do
            ) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
-          Logger.info("[Discord] Processing new character notification for: #{character.name}")
+          AppLogger.processor_info("Processing new character notification",
+            character_name: character.name,
+            character_id: character.character_id
+          )
 
           # Create notification with StructuredFormatter
           generic_notification = StructuredFormatter.format_character_notification(character)
@@ -324,17 +335,26 @@ defmodule WandererNotifier.Discord.Notifier do
 
         {:ok, :skip} ->
           # This is a duplicate, skip notification
-          Logger.info(
-            "[Discord] Skipping duplicate character notification for: #{character.name}"
+          AppLogger.processor_info("Skipping duplicate character notification",
+            character_name: character.name,
+            character_id: character.character_id
           )
 
           :ok
 
         {:error, reason} ->
           # Error during deduplication check, log it
-          Logger.error("[Discord] Error checking character deduplication: #{reason}")
+          AppLogger.processor_error("Error checking character deduplication",
+            character_id: character_id,
+            character_name: character.name,
+            error: inspect(reason)
+          )
+
           # Default to sending notification in case of error
-          Logger.info("[Discord] Proceeding with notification despite deduplication error")
+          AppLogger.processor_info("Proceeding with notification despite deduplication error",
+            character_id: character_id,
+            character_name: character.name
+          )
 
           # Create notification with StructuredFormatter
           generic_notification = StructuredFormatter.format_character_notification(character)
@@ -365,17 +385,27 @@ defmodule WandererNotifier.Discord.Notifier do
 
         {:ok, :skip} ->
           # This is a duplicate, skip notification
-          Logger.info(
-            "[Discord] Skipping duplicate system notification for system ID: #{system_id}"
+          AppLogger.processor_info("Skipping duplicate system notification",
+            system_id: system_id,
+            system_name: system.name
           )
 
           :ok
 
         {:error, reason} ->
           # Error during deduplication check, log it
-          Logger.error("[Discord] Error checking system deduplication: #{reason}")
+          AppLogger.processor_error("Error checking system deduplication",
+            system_id: system_id,
+            system_name: system.name,
+            error: inspect(reason)
+          )
+
           # Default to sending notification in case of error
-          Logger.info("[Discord] Proceeding with notification despite deduplication error")
+          AppLogger.processor_info("Proceeding with notification despite deduplication error",
+            system_id: system_id,
+            system_name: system.name
+          )
+
           # Recursively call self with same system data
           send_new_system_notification(system)
       end
@@ -384,7 +414,10 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # Handle sending a new system notification after deduplication check
   defp handle_new_system_notification(system, system_id) do
-    Logger.info("[Discord] Processing new system notification for system ID: #{system_id}")
+    AppLogger.processor_info("Processing new system notification",
+      system_id: system_id,
+      system_name: system.name
+    )
 
     try do
       Stats.increment(:systems)
@@ -398,7 +431,7 @@ defmodule WandererNotifier.Discord.Notifier do
     # Mark that we've sent the first notification if this is it
     if is_first_notification do
       Stats.mark_notification_sent(:system)
-      Logger.info("[Discord] Sending first system notification in enriched format")
+      AppLogger.processor_info("Sending first system notification in enriched format")
     end
 
     # For first notification or with valid license, use enriched format
@@ -458,7 +491,10 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # Send a plain text system notification for non-licensed users
   defp send_plain_system_notification(system) do
-    Logger.info("[Discord] License not valid, sending plain text system notification")
+    AppLogger.processor_info("License not valid, sending plain text system notification",
+      system_id: system.solar_system_id,
+      system_name: system.name
+    )
 
     # Create plain text message using struct fields directly
     display_name = WandererNotifier.Data.MapSystem.format_display_name(system)
@@ -496,25 +532,43 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- HELPER FOR SENDING PAYLOAD --
 
-  defp send_payload(payload, _feature \\ nil) do
+  defp send_payload(payload, feature \\ nil) do
     url = build_url()
     json_payload = Jason.encode!(payload)
 
-    Logger.info("Sending Discord API request to URL: #{url}")
-    Logger.debug("Discord API payload: #{inspect(payload, pretty: true)}")
+    AppLogger.processor_info("Sending Discord API request",
+      url: url,
+      feature: feature
+    )
+
+    AppLogger.processor_debug("Discord API payload details",
+      payload_size: byte_size(json_payload)
+    )
 
     case HttpClient.request("POST", url, headers(), json_payload) do
       {:ok, %{status_code: status}} when status in 200..299 ->
-        Logger.info("Discord API request successful with status #{status}")
+        AppLogger.processor_info("Discord API request successful",
+          status: status,
+          feature: feature
+        )
+
         :ok
 
       {:ok, %{status_code: status, body: body}} ->
-        Logger.error("Discord API request failed with status #{status}")
-        Logger.error("Discord API error response: #{body}")
+        AppLogger.processor_error("Discord API request failed",
+          status: status,
+          response: body,
+          feature: feature
+        )
+
         {:error, body}
 
       {:error, err} ->
-        Logger.error("Discord API request error: #{inspect(err)}")
+        AppLogger.processor_error("Discord API request error",
+          error: inspect(err),
+          feature: feature
+        )
+
         {:error, err}
     end
   end
@@ -526,7 +580,10 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil) do
-    Logger.info("Sending file to Discord: #{filename}")
+    AppLogger.processor_info("Sending file to Discord",
+      filename: filename,
+      title: title
+    )
 
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
@@ -588,18 +645,19 @@ defmodule WandererNotifier.Discord.Notifier do
   defp send_multipart_request(url, headers, body) do
     case HttpClient.request("POST", url, headers, body) do
       {:ok, %{status_code: status}} when status in 200..299 ->
-        Logger.info("Successfully sent file to Discord, status: #{status}")
+        AppLogger.processor_info("Successfully sent file to Discord", status: status)
         :ok
 
       {:ok, %{status_code: status, body: response_body}} ->
-        Logger.error(
-          "Failed to send file to Discord: status=#{status}, body=#{inspect(response_body)}"
+        AppLogger.processor_error("Failed to send file to Discord",
+          status: status,
+          response: inspect(response_body)
         )
 
         {:error, "Discord API error: #{status}"}
 
       {:error, reason} ->
-        Logger.error("Error sending file to Discord: #{inspect(reason)}")
+        AppLogger.processor_error("Error sending file to Discord", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -609,8 +667,9 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_image_embed(title, description, image_url, color \\ @default_embed_color) do
-    Logger.info(
-      "Discord.Notifier.send_image_embed called with title: #{title}, image_url: #{image_url || "nil"}"
+    AppLogger.processor_info("Sending image embed to Discord",
+      title: title,
+      image_url: image_url || "nil"
     )
 
     if env() == :test do
@@ -629,7 +688,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
       payload = %{"embeds" => [embed]}
 
-      Logger.info("Discord image embed payload built, sending to Discord API")
+      AppLogger.processor_info("Discord image embed payload built, sending to Discord API")
       send_payload(payload)
     end
   end

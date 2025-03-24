@@ -132,9 +132,11 @@ defmodule WandererNotifier.Discord.Client do
     AppLogger.api_info("Sending file to Discord", filename: filename)
 
     if env() == :test do
-      AppLogger.api_info("TEST MODE: Would send file to Discord", 
-        filename: filename, 
-        title: title || "No title")
+      AppLogger.api_info("TEST MODE: Would send file to Discord",
+        filename: filename,
+        title: title || "No title"
+      )
+
       :ok
     else
       url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
@@ -197,9 +199,10 @@ defmodule WandererNotifier.Discord.Client do
 
       {:error, error} ->
         # Log the specific error details for debugging
-        AppLogger.api_error("Discord operation failed", 
-          operation: operation, 
-          error: inspect(error))
+        AppLogger.api_error("Discord operation failed",
+          operation: operation,
+          error: inspect(error)
+        )
 
         # Check if it's retriable using ErrorHandler classification
         retriable = ErrorHandler.retryable?(error)

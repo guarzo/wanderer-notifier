@@ -5,7 +5,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
   """
 
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail

@@ -8,7 +8,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   require WandererNotifier.Schedulers.Factory
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Core.Config.Timings
@@ -17,7 +17,7 @@ alias WandererNotifier.Logger, as: AppLogger
   @default_interval Timings.system_update_scheduler_interval()
 
   # Create an interval-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__, 
+  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
     type: :interval,
     default_interval: @default_interval,
     enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0

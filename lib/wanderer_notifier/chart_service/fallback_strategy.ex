@@ -50,7 +50,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
 
       {:error, reason} ->
         # Log the failure
-        AppLogger.api_warn("Primary chart generation failed", error: inspect(reason), action: "using_fallback")
+        AppLogger.api_warn("Primary chart generation failed",
+          error: inspect(reason),
+          action: "using_fallback"
+        )
 
         # Try the fallback function
         case fallback_fn.() do
@@ -58,7 +61,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
             success
 
           {:error, fallback_reason} ->
-            AppLogger.api_error("Fallback chart generation also failed", error: inspect(fallback_reason))
+            AppLogger.api_error("Fallback chart generation also failed",
+              error: inspect(fallback_reason)
+            )
+
             {:error, {:fallback_chain_failed, reason, fallback_reason}}
         end
     end
@@ -87,14 +93,21 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   end
 
   defp do_download_with_retry(url, max_retries, attempt) do
-    AppLogger.api_info("Downloading chart image", url: url, attempt: attempt + 1, max_attempts: max_retries + 1)
+    AppLogger.api_info("Downloading chart image",
+      url: url,
+      attempt: attempt + 1,
+      max_attempts: max_retries + 1
+    )
 
     case HttpClient.request("GET", url, [], "") do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 
       {:ok, %{status_code: status, body: _body}} ->
-        AppLogger.api_error("Failed to download chart image", status_code: status, attempt: attempt + 1)
+        AppLogger.api_error("Failed to download chart image",
+          status_code: status,
+          attempt: attempt + 1
+        )
 
         # Exponential backoff - wait longer between retries
         if attempt < max_retries do
@@ -223,7 +236,10 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
         {:ok, image_data}
 
       {:error, download_reason} ->
-        AppLogger.api_error("Failed to download QuickChart.io image", error: inspect(download_reason))
+        AppLogger.api_error("Failed to download QuickChart.io image",
+          error: inspect(download_reason)
+        )
+
         maybe_use_placeholder(enable_placeholder, title, message, primary_reason, download_reason)
     end
   end

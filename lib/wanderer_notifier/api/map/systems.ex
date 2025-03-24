@@ -10,7 +10,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   2. Fall back to ID-based classification only when API doesn't provide type information
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
@@ -166,7 +166,10 @@ alias WandererNotifier.Logger, as: AppLogger
 
       %{"data" => systems} when is_list(systems) ->
         # Handle new API format where systems are in a "data" array
-        AppLogger.api_info("[process_systems] Processing systems from data array: #{length(systems)}")
+        AppLogger.api_info(
+          "[process_systems] Processing systems from data array: #{length(systems)}"
+        )
+
         process_system_list(systems)
 
       _ ->
@@ -385,7 +388,9 @@ alias WandererNotifier.Logger, as: AppLogger
   defp add_static_info(system, system_id) do
     case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id) do
       {:ok, static_info} ->
-        AppLogger.api_info("[notify_new_systems] Successfully got static info for system #{system_id}")
+        AppLogger.api_info(
+          "[notify_new_systems] Successfully got static info for system #{system_id}"
+        )
 
         # Extract the full static info data if available
         static_info_data = Map.get(static_info, "data") || %{}
@@ -514,7 +519,9 @@ alias WandererNotifier.Logger, as: AppLogger
       end
     rescue
       e ->
-        AppLogger.api_error("[notify_new_systems] Error sending system notification: #{inspect(e)}")
+        AppLogger.api_error(
+          "[notify_new_systems] Error sending system notification: #{inspect(e)}"
+        )
     end
   end
 

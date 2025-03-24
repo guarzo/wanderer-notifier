@@ -23,10 +23,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   """
   def should_notify_kill?(killmail, system_id \\ nil) do
     # Check if kill notifications are enabled globally
-    unless Features.kill_notifications_enabled?() do
-      log_notifications_disabled()
-      false
-    else
+    if Features.kill_notifications_enabled?() do
       # Extract kill details for decision making
       kill_details = extract_kill_details(killmail, system_id)
 
@@ -40,6 +37,9 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         log_kill_not_tracked(kill_details.kill_id)
         false
       end
+    else
+      log_notifications_disabled()
+      false
     end
   end
 
@@ -145,8 +145,16 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     # Check if system is tracked through direct tracking or track_all policy
     tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
 
-    # Log the tracking status with appropriate details
-    log_tracking_status(tracked, system_info, system_id_str)
+    # Use batch logger for system tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:system_tracked, %{
+      system_id: system_id_str,
+      tracked: tracked
+    })
+
+    # Only log detailed info if system is tracked
+    if tracked do
+      log_tracking_status(tracked, system_info, system_id_str)
+    end
 
     tracked
   end
@@ -172,31 +180,26 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   end
 
   defp log_tracking_status(tracked, system_info, system_id_str) do
+    # We're going to make system tracking logs extremely minimal
+    # Only log notable events (system is tracked) at debug level
+    # Tracking failures are too common to log each one
+
     if tracked do
-      AppLogger.processor_debug("System is tracked", system_info: system_info)
+      # Log basic tracking at debug level
+      tracking_method =
+        if directly_tracked?(system_id_str) do
+          "explicit tracking"
+        else
+          "TRACK_ALL_SYSTEMS setting"
+        end
 
-      if directly_tracked?(system_id_str) do
-        AppLogger.processor_debug("System is explicitly tracked",
-          system_id: system_id_str,
-          cache_key: "tracked:system:#{system_id_str}"
-        )
-      else
-        AppLogger.processor_debug("System is tracked via TRACK_ALL_SYSTEMS setting",
-          system_id: system_id_str,
-          track_all_enabled: Features.track_all_systems?()
-        )
-      end
-    else
-      AppLogger.processor_debug("System is NOT tracked", system_info: system_info)
-
-      AppLogger.processor_debug("System tracking details",
-        system_id: system_id_str,
-        direct_tracked: directly_tracked?(system_id_str),
-        track_all_enabled: Features.track_all_systems?(),
-        exists_in_cache:
-          WandererNotifier.Data.Cache.Repository.get("map:system:#{system_id_str}") != nil
+      AppLogger.processor_debug("System is tracked via #{tracking_method}",
+        system_info: system_info,
+        system_id: system_id_str
       )
     end
+
+    # We no longer log when a system is NOT tracked, as this happens for most systems
   end
 
   @doc """
@@ -214,13 +217,18 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     kill_data = extract_kill_data(killmail)
     kill_id = extract_kill_id(killmail)
 
-    AppLogger.processor_debug("Checking for tracked characters", kill_id: kill_id)
+    # Use batch logger for character tracking checks
+    WandererNotifier.Logger.BatchLogger.count_event(:character_tracked, %{
+      kill_id: kill_id
+    })
 
     # Get all tracked character IDs for comparison
     all_character_ids = get_all_tracked_character_ids()
 
-    # For debugging, log sample character IDs
-    log_sample_character_ids(all_character_ids)
+    # For debugging, log sample character IDs (but less frequently)
+    if :rand.uniform(10) == 1 do
+      log_sample_character_ids(all_character_ids)
+    end
 
     # Check if victim is tracked
     victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
@@ -263,11 +271,12 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Log a sample of character IDs for debugging
+  # Log a sample of character IDs for debugging - reduced to debug level
   defp log_sample_character_ids(all_character_ids) do
-    sample_character_ids = Enum.take(all_character_ids, min(5, length(all_character_ids)))
+    # Only log this at debug level - it happens on every kill
+    sample_character_ids = Enum.take(all_character_ids, min(3, length(all_character_ids)))
 
-    AppLogger.processor_info("Character tracking details",
+    AppLogger.processor_debug("Character tracking details",
       character_count: length(all_character_ids),
       sample_characters: sample_character_ids
     )
@@ -280,13 +289,11 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     if victim_id, do: to_string(victim_id), else: nil
   end
 
-  # Log victim information for debugging
-  defp log_victim_info(victim_id_str, kill_id) do
-    if victim_id_str do
-      AppLogger.processor_debug("Victim information", kill_id: kill_id, victim_id: victim_id_str)
-    else
-      AppLogger.processor_debug("No victim character ID found", kill_id: kill_id)
-    end
+  # Victim tracking logs removed - these are too verbose 
+  # and happen on every kill
+  defp log_victim_info(_victim_id_str, _kill_id) do
+    # No longer logging victim info - too verbose
+    :ok
   end
 
   # Check if victim is tracked through direct cache lookup
@@ -295,6 +302,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
 
     if direct_tracked do
+      # Keep this info log as it indicates a successful tracking match - useful information
       AppLogger.processor_info("Victim found via direct cache lookup",
         victim_id: victim_id_str,
         cache_key: direct_cache_key
@@ -451,6 +459,16 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
         {:ok, :send}
 
       {:ok, true} ->
+        # Duplicate, skip notification
+        {:ok, :skip}
+
+      # Handle the direct boolean value returned from duplicate? function
+      false ->
+        # Not a duplicate, mark as processed and allow sending
+        DeduplicationHelper.mark_as_processed(notification_type, identifier)
+        {:ok, :send}
+
+      true ->
         # Duplicate, skip notification
         {:ok, :skip}
 

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
   Handles extracting slugs and building properly formatted URLs for the Map API.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.Config
 
   @doc """

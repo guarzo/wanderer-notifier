@@ -18,12 +18,16 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     # Merge both lists, avoiding duplicates based on system_id
     merged_systems = merge_systems_lists(map_systems, tracked_systems)
 
-    AppLogger.cache_debug(
-      "Retrieved tracked systems",
-      total_count: length(merged_systems),
-      map_systems_count: length(map_systems),
-      tracked_systems_count: length(tracked_systems)
-    )
+    # Only log system details occasionally (10% of requests)
+    # This is also high-volume during kill processing
+    if :rand.uniform(10) == 1 do
+      AppLogger.cache_debug(
+        "Retrieved tracked systems (sampled 10%)",
+        total_count: length(merged_systems),
+        map_systems_count: length(map_systems),
+        tracked_systems_count: length(tracked_systems)
+      )
+    end
 
     # Ensure all systems are properly cached for direct lookup
     ensure_systems_individual_cache(merged_systems)
@@ -169,26 +173,9 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   """
   def get_tracked_characters do
     try do
-      # Get characters from each source - these should be lists from the repository
-      map_characters = CacheRepo.get("map:characters")
-      tracked_characters = CacheRepo.get("tracked:characters")
-
-      # Validate expected data types
-      unless is_nil(map_characters) || is_list(map_characters) do
-        AppLogger.cache_error(
-          "ERROR: Expected nil or list from map:characters but got: #{inspect(map_characters)}"
-        )
-      end
-
-      unless is_nil(tracked_characters) || is_list(tracked_characters) do
-        AppLogger.cache_error(
-          "ERROR: Expected nil or list from tracked:characters but got: #{inspect(tracked_characters)}"
-        )
-      end
-
-      # Ensure we're working with lists
-      map_characters_list = if is_list(map_characters), do: map_characters, else: []
-      tracked_characters_list = if is_list(tracked_characters), do: tracked_characters, else: []
+      # Get and validate characters from each source
+      map_characters_list = get_and_validate_cache_data("map:characters")
+      tracked_characters_list = get_and_validate_cache_data("tracked:characters")
 
       # Process each list to standardize character data
       map_characters_processed = Enum.flat_map(map_characters_list, &normalize_character_data/1)
@@ -200,30 +187,58 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
       all_characters =
         merge_characters_lists(map_characters_processed, tracked_characters_processed)
 
-      # Log character counts
-      AppLogger.cache_info(
-        "Retrieved tracked characters",
-        total_count: length(all_characters),
-        map_characters_count: length(map_characters_processed),
-        tracked_characters_count: length(tracked_characters_processed)
+      # Sample log character details occasionally
+      sample_log_character_data(
+        all_characters,
+        map_characters_processed,
+        tracked_characters_processed
       )
-
-      # Sample for debugging
-      if length(all_characters) > 0 do
-        sample = Enum.take(all_characters, min(3, length(all_characters)))
-        AppLogger.cache_debug("Sample character data: #{inspect(sample)}")
-      end
-
-      # Ensure all characters are cached individually for direct lookup
-      ensure_characters_individual_cache(all_characters)
 
       all_characters
     rescue
       e ->
-        # If anything goes wrong, log it but return an empty list to prevent crashes
-        AppLogger.cache_error("Error retrieving tracked characters: #{Exception.message(e)}")
-        AppLogger.cache_debug("Stacktrace: #{Exception.format_stacktrace()}")
+        # Log any errors in character processing
+        AppLogger.cache_error(
+          "ERROR retrieving tracked characters: #{Exception.message(e)}",
+          stacktrace: Exception.format_stacktrace()
+        )
+
         []
+    end
+  end
+
+  # Get and validate data from cache by key
+  defp get_and_validate_cache_data(cache_key) do
+    data = CacheRepo.get(cache_key)
+
+    # Validate expected data types
+    if !(is_nil(data) || is_list(data)) do
+      AppLogger.cache_error(
+        "ERROR: Expected nil or list from #{cache_key} but got: #{inspect(data)}"
+      )
+    end
+
+    # Return as list or empty list if nil/invalid
+    if is_list(data), do: data, else: []
+  end
+
+  # Sample log character data occasionally for debugging
+  defp sample_log_character_data(all_characters, map_characters, tracked_characters) do
+    # Only log character details occasionally (10% of requests)
+    # This is extremely high-volume during kill processing
+    if :rand.uniform(10) == 1 do
+      AppLogger.cache_debug(
+        "Retrieved tracked characters (sampled 10%)",
+        total_count: length(all_characters),
+        map_characters_count: length(map_characters),
+        tracked_characters_count: length(tracked_characters)
+      )
+
+      # Sample for debugging (only when sampling)
+      if length(all_characters) > 0 do
+        sample = Enum.take(all_characters, min(2, length(all_characters)))
+        AppLogger.cache_debug("Sample character data (sampled): #{inspect(sample)}")
+      end
     end
   end
 

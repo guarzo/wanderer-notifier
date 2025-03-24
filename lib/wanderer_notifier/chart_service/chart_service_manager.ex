@@ -8,6 +8,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @node_chart_service_path "chart-service"
   @default_port 3001
@@ -50,16 +51,16 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     port = get_configured_port()
 
     # Log configuration for debugging
-    Logger.info("Chart Service Manager initialized with port #{port}")
+    AppLogger.config_info("Chart Service Manager initialized", port: port)
 
     # Only start the chart service if any chart functionality is enabled
     if WandererNotifier.Core.Config.map_charts_enabled?() ||
          WandererNotifier.Core.Config.kill_charts_enabled?() do
-      Logger.info("Chart functionality is enabled, starting chart service...")
+      AppLogger.startup_info("Chart functionality is enabled, starting chart service")
       # Schedule a delayed start to ensure application is fully initialized
       Process.send_after(self(), :start_chart_service, 1000)
     else
-      Logger.warning("Chart functionality is disabled. Chart service will not start.")
+      AppLogger.config_warn("Chart functionality is disabled. Chart service will not start")
     end
 
     {:ok,
@@ -103,12 +104,12 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   def handle_call(:restart, _from, state) do
     # Stop existing process if running
     if process_alive?(state.process, state) do
-      Logger.info("Stopping Node.js chart service process")
+      AppLogger.startup_info("Stopping Node.js chart service process")
       stop_process(state.process)
     end
 
     # Start a new process
-    Logger.info("Manually restarting Node.js chart service")
+    AppLogger.startup_info("Manually restarting Node.js chart service")
     {:ok, process} = start_chart_service_process(state.port)
 
     new_state = %{
@@ -132,7 +133,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     # Check if charts functionality is enabled
     if WandererNotifier.Core.Config.map_charts_enabled?() ||
          WandererNotifier.Core.Config.kill_charts_enabled?() do
-      Logger.info("Starting Node.js chart service on port #{state.port}")
+      AppLogger.startup_info("Starting Node.js chart service", port: state.port)
 
       case start_chart_service_process(state.port) do
         {:ok, process} ->
@@ -143,14 +144,14 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
            %{state | process: process, status: :running, last_started_at: DateTime.utc_now()}}
 
         {:error, reason} ->
-          Logger.error("Failed to start Node.js chart service: #{inspect(reason)}")
+          AppLogger.startup_error("Failed to start Node.js chart service", error: inspect(reason))
           # Schedule a restart attempt
           schedule_restart()
 
           {:noreply, %{state | status: :failed}}
       end
     else
-      Logger.info("Charts functionality is disabled. Skipping chart service start.")
+      AppLogger.startup_info("Charts functionality is disabled. Skipping chart service start.")
       {:noreply, %{state | status: :disabled}}
     end
   end
@@ -168,12 +169,12 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     is_alive = process_alive?(state.process, state)
 
     if is_alive do
-      Logger.debug("Node.js chart service is running")
+      AppLogger.startup_info("Node.js chart service is running")
       # Service is healthy
       schedule_health_check()
       {:noreply, %{state | status: :running}}
     else
-      Logger.warning("Node.js chart service process is not running")
+      AppLogger.startup_warn("Node.js chart service process is not running")
       # Process died, restart it
       schedule_restart()
       {:noreply, %{state | status: :stopped}}
@@ -187,7 +188,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
          WandererNotifier.Core.Config.kill_charts_enabled?() do
       handle_chart_service_restart(state)
     else
-      Logger.info("Charts functionality is disabled. Not restarting chart service.")
+      AppLogger.startup_info("Charts functionality is disabled. Not restarting chart service.")
       {:noreply, %{state | status: :disabled}}
     end
   end
@@ -203,8 +204,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   # Handle when maximum restart attempts have been reached
   defp handle_max_restart_attempts_reached(state) do
-    Logger.error(
-      "Maximum restart attempts (#{@max_restart_attempts}) reached for Node.js chart service"
+    AppLogger.startup_error("Maximum restart attempts reached for Node.js chart service",
+      max_attempts: @max_restart_attempts
     )
 
     # Reset restart attempts but keep status as failed
@@ -213,8 +214,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   # Attempt to restart the chart service
   defp attempt_service_restart(state) do
-    Logger.info(
-      "Attempting to restart Node.js chart service (attempt #{state.restart_attempts + 1})"
+    AppLogger.startup_info("Attempting to restart Node.js chart service",
+      attempt: state.restart_attempts + 1
     )
 
     # Stop existing process if still running
@@ -249,7 +250,11 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   # Handle a failed service restart
   defp handle_failed_restart(state, reason) do
-    Logger.error("Failed to restart Node.js chart service: #{inspect(reason)}")
+    AppLogger.startup_error("Failed to restart Node.js chart service",
+      error: inspect(reason),
+      attempt: state.restart_attempts + 1
+    )
+
     # Increment restart attempts and schedule another attempt
     schedule_restart()
 
@@ -279,7 +284,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       bash_cmd =
         "cd #{service_path} && export CHART_SERVICE_PORT=#{port} && node chart-generator.js > chart-service.log 2>&1 &"
 
-      Logger.info("Starting chart service with bash command: #{bash_cmd}")
+      AppLogger.startup_info("Starting chart service with bash command", command: bash_cmd)
 
       # Execute the bash command
       case System.cmd("bash", ["-c", bash_cmd]) do
@@ -295,22 +300,37 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           # Verify the service is actually running by checking the health endpoint
           case check_service_availability("http://localhost:#{port}") do
             :ok ->
-              Logger.info("Chart service successfully started and verified")
+              AppLogger.startup_info("Chart service successfully started and verified",
+                port: port
+              )
+
               {:ok, dummy_port}
 
             {:error, reason} ->
-              Logger.warning("Chart service started but health check failed: #{inspect(reason)}")
+              AppLogger.startup_warn("Chart service started but health check failed",
+                port: port,
+                error: inspect(reason)
+              )
+
               # Return ok anyway, the health check will trigger a restart if needed
               {:ok, dummy_port}
           end
 
         {error, code} ->
-          Logger.error("Failed to start chart service. Exit code: #{code}, Error: #{error}")
+          AppLogger.startup_error("Failed to start chart service",
+            exit_code: code,
+            error: error
+          )
+
           {:error, "Failed to start chart service: #{error}"}
       end
     rescue
       e ->
-        Logger.error("Failed to start Node.js chart service: #{Exception.message(e)}")
+        AppLogger.startup_error("Failed to start Node.js chart service",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         {:error, "Failed to start Node.js chart service: #{Exception.message(e)}"}
     end
   end
@@ -329,11 +349,15 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       result == :ok
     rescue
       e ->
-        Logger.error("Error checking if chart service process is alive: #{inspect(e)}")
+        AppLogger.startup_error("Error checking if chart service process is alive",
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         false
     catch
       :exit, reason ->
-        Logger.error("Exit when checking chart service: #{inspect(reason)}")
+        AppLogger.startup_error("Exit when checking chart service", error: inspect(reason))
         false
     end
   end
@@ -362,8 +386,9 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           :ok
 
         {:ok, {{_, status, _}, _, body}} ->
-          Logger.warning(
-            "Health check for Node.js chart service returned status #{status}: #{inspect(body)}"
+          AppLogger.startup_warn("Health check for Node.js chart service returned error status",
+            status: status,
+            body: inspect(body)
           )
 
           {:error, "Health check failed with status #{status}"}

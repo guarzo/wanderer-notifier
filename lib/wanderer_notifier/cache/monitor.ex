@@ -6,7 +6,7 @@ defmodule WandererNotifier.Cache.Monitor do
   """
   use GenServer
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Resources.TrackedCharacter
@@ -25,11 +25,12 @@ alias WandererNotifier.Logger, as: AppLogger
     schedule_check(5 * 60 * 1000)
 
     # Return initial state
-    {:ok, %{
-      last_check: nil,
-      check_count: 0,
-      last_results: nil
-    }}
+    {:ok,
+     %{
+       last_check: nil,
+       check_count: 0,
+       last_results: nil
+     }}
   end
 
   @impl true
@@ -73,14 +74,18 @@ alias WandererNotifier.Logger, as: AppLogger
     results
   rescue
     e ->
-      AppLogger.cache_error("[CacheMonitor] Error during cache health check: #{Exception.message(e)}")
+      AppLogger.cache_error(
+        "[CacheMonitor] Error during cache health check: #{Exception.message(e)}"
+      )
+
       AppLogger.cache_debug("[CacheMonitor] #{Exception.format_stacktrace()}")
       %{error: e}
   end
 
   # Log the results of the health check
   defp log_health_check_results(results) do
-    if results.character_count_inconsistency || length(results.missing_characters) > 0 || length(results.different_characters) > 0 do
+    if results.character_count_inconsistency || length(results.missing_characters) > 0 ||
+         length(results.different_characters) > 0 do
       Logger.warning("""
       [CacheMonitor] Cache inconsistencies detected:
         - Character count inconsistency: #{results.character_count_inconsistency}
@@ -89,7 +94,9 @@ alias WandererNotifier.Logger, as: AppLogger
         - Fixed issues: #{results.fixed_issues}
       """)
     else
-      AppLogger.cache_info("[CacheMonitor] Cache health check completed - no inconsistencies found")
+      AppLogger.cache_info(
+        "[CacheMonitor] Cache health check completed - no inconsistencies found"
+      )
     end
   end
 
@@ -102,18 +109,21 @@ alias WandererNotifier.Logger, as: AppLogger
     case TrackedCharacter.list_all() do
       {:ok, db_characters} ->
         process_character_comparison(results, cached_characters, db_characters)
-      
+
       {:error, reason} ->
-        AppLogger.cache_error("[CacheMonitor] Error retrieving characters from database: #{inspect(reason)}")
+        AppLogger.cache_error(
+          "[CacheMonitor] Error retrieving characters from database: #{inspect(reason)}"
+        )
+
         results
     end
   end
-  
+
   # Process comparison between cached characters and database characters
   defp process_character_comparison(results, cached_characters, db_characters) do
     # Check if counts match
     count_inconsistent = length(cached_characters) != length(db_characters)
-    
+
     if count_inconsistent do
       Logger.warning("""
         [CacheMonitor] Character count mismatch:
@@ -126,18 +136,19 @@ alias WandererNotifier.Logger, as: AppLogger
     {missing, different} = compare_characters(cached_characters, db_characters)
 
     # If inconsistencies found, fix them
-    fixed_count = fix_character_inconsistencies(count_inconsistent, missing, different, db_characters)
+    fixed_count =
+      fix_character_inconsistencies(count_inconsistent, missing, different, db_characters)
 
     # Update results
     %{
-      results |
-      character_count_inconsistency: count_inconsistent,
-      missing_characters: missing,
-      different_characters: different,
-      fixed_issues: results.fixed_issues + fixed_count
+      results
+      | character_count_inconsistency: count_inconsistent,
+        missing_characters: missing,
+        different_characters: different,
+        fixed_issues: results.fixed_issues + fixed_count
     }
   end
-  
+
   # Fix character inconsistencies if needed
   defp fix_character_inconsistencies(count_inconsistent, missing, different, db_characters) do
     if count_inconsistent || length(missing) > 0 || length(different) > 0 do
@@ -145,7 +156,7 @@ alias WandererNotifier.Logger, as: AppLogger
       resync_characters_cache(db_characters)
 
       # Count fixed issues
-      (if count_inconsistent, do: 1, else: 0) + length(missing) + length(different)
+      if(count_inconsistent, do: 1, else: 0) + length(missing) + length(different)
     else
       0
     end
@@ -154,13 +165,15 @@ alias WandererNotifier.Logger, as: AppLogger
   # Compare characters between cache and database
   defp compare_characters(cached_characters, db_characters) do
     # Create maps for faster lookup
-    cached_map = Map.new(cached_characters, fn char ->
-      {to_string(char["character_id"] || char.character_id), char}
-    end)
+    cached_map =
+      Map.new(cached_characters, fn char ->
+        {to_string(char["character_id"] || char.character_id), char}
+      end)
 
-    db_map = Map.new(db_characters, fn char ->
-      {to_string(char.character_id), char}
-    end)
+    db_map =
+      Map.new(db_characters, fn char ->
+        {to_string(char.character_id), char}
+      end)
 
     # Find characters in database but not in cache
     missing_in_cache =
@@ -172,7 +185,7 @@ alias WandererNotifier.Logger, as: AppLogger
     different_data =
       db_map
       |> Map.keys()
-      |> Enum.filter(fn char_id -> 
+      |> Enum.filter(fn char_id ->
         # Only check characters that exist in both maps
         if Map.has_key?(cached_map, char_id) do
           cached_char = cached_map[char_id]
@@ -188,11 +201,15 @@ alias WandererNotifier.Logger, as: AppLogger
 
     # Log any inconsistencies
     if length(missing_in_cache) > 0 do
-      AppLogger.cache_warn("[CacheMonitor] Found #{length(missing_in_cache)} characters in database but missing from cache")
+      AppLogger.cache_warn(
+        "[CacheMonitor] Found #{length(missing_in_cache)} characters in database but missing from cache"
+      )
     end
 
     if length(different_data) > 0 do
-      AppLogger.cache_warn("[CacheMonitor] Found #{length(different_data)} characters with data mismatches between cache and database")
+      AppLogger.cache_warn(
+        "[CacheMonitor] Found #{length(different_data)} characters with data mismatches between cache and database"
+      )
     end
 
     {missing_in_cache, different_data}
@@ -200,20 +217,23 @@ alias WandererNotifier.Logger, as: AppLogger
 
   # Resync characters cache from database
   defp resync_characters_cache(db_characters) do
-    AppLogger.cache_info("[CacheMonitor] Resyncing characters cache from database (#{length(db_characters)} characters)")
+    AppLogger.cache_info(
+      "[CacheMonitor] Resyncing characters cache from database (#{length(db_characters)} characters)"
+    )
 
     # Convert database characters to cache format
-    cache_characters = Enum.map(db_characters, fn char ->
-      %{
-        "character_id" => to_string(char.character_id),
-        "name" => char.character_name,
-        "corporation_id" => char.corporation_id,
-        "corporation_ticker" => char.corporation_name,
-        "alliance_id" => char.alliance_id,
-        "alliance_ticker" => char.alliance_name,
-        "tracked" => true
-      }
-    end)
+    cache_characters =
+      Enum.map(db_characters, fn char ->
+        %{
+          "character_id" => to_string(char.character_id),
+          "name" => char.character_name,
+          "corporation_id" => char.corporation_id,
+          "corporation_ticker" => char.corporation_name,
+          "alliance_id" => char.alliance_id,
+          "alliance_ticker" => char.alliance_name,
+          "tracked" => true
+        }
+      end)
 
     # Update the cache
     CacheRepo.update_after_db_write(
@@ -225,6 +245,7 @@ alias WandererNotifier.Logger, as: AppLogger
     # Also update individual character entries
     Enum.each(cache_characters, fn char ->
       character_id = char["character_id"]
+
       CacheRepo.update_after_db_write(
         "map:character:#{character_id}",
         char,

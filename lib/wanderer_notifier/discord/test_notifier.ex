@@ -70,7 +70,12 @@ defmodule WandererNotifier.Discord.TestNotifier do
     title_str = if title, do: title, else: "No title"
     desc_str = if description, do: description, else: "No description"
 
-    AppLogger.processor_info("Discord test file", filename: filename, file_size: file_size, title: title_str, description: desc_str)
+    AppLogger.processor_info("Discord test file",
+      filename: filename,
+      file_size: file_size,
+      title: title_str,
+      description: desc_str
+    )
 
     :ok
   end
@@ -81,7 +86,12 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_image_embed(title, description, image_url, _color \\ 0x00FF00) do
-    AppLogger.processor_info("Discord test image embed", title: title, description: description, image_url: image_url)
+    AppLogger.processor_info("Discord test image embed",
+      title: title,
+      description: description,
+      image_url: image_url
+    )
+
     :ok
   end
 end

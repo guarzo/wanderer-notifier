@@ -38,29 +38,188 @@ defmodule WandererNotifier.Logger do
       :ok
   """
   def log(level, category, message, metadata \\ []) do
-    # Convert map metadata to keyword list if needed
-    metadata = convert_metadata_to_keyword_list(metadata)
+    # Process and prepare metadata
+    metadata_with_diagnostics = prepare_metadata(metadata, category)
 
-    # Ensure the category is in the metadata
-    metadata = Keyword.put(metadata, :category, category)
-
-    # Format the message with category prefix
-    formatted_message = "[#{category}] #{message}"
-
-    # Merge with existing metadata from Logger context
-    metadata = Keyword.merge(Logger.metadata(), metadata)
+    # Format message with category prefix
+    formatted_message = format_log_message(category, message, metadata_with_diagnostics)
 
     # Log at the specified level
-    Logger.log(level, formatted_message, metadata)
+    Logger.log(level, formatted_message, metadata_with_diagnostics)
+  end
+
+  # Processes metadata to ensure proper format and adds diagnostics
+  defp prepare_metadata(metadata, category) do
+    # Convert to proper format
+    converted_metadata = convert_metadata_to_keyword_list(metadata)
+
+    # Add original type info
+    metadata_with_type = add_metadata_type_info(metadata, converted_metadata)
+
+    # Add category
+    metadata_with_category = Keyword.put(metadata_with_type, :category, category)
+
+    # Merge with Logger context
+    Keyword.merge(Logger.metadata(), metadata_with_category)
+  end
+
+  # Adds metadata type information for debugging
+  defp add_metadata_type_info(original_metadata, converted_metadata) do
+    orig_type = determine_metadata_type(original_metadata)
+    Keyword.put(converted_metadata, :orig_metadata_type, orig_type)
+  end
+
+  # Determines the type of the original metadata
+  defp determine_metadata_type(metadata) do
+    cond do
+      is_map(metadata) ->
+        "map"
+
+      is_list(metadata) && metadata == [] ->
+        "empty_list"
+
+      is_list(metadata) && Enum.all?(metadata, &is_tuple/1) &&
+          Enum.all?(metadata, fn {k, _v} -> is_atom(k) end) ->
+        "keyword_list"
+
+      is_list(metadata) ->
+        "non_keyword_list"
+
+      true ->
+        "other_type:#{typeof(metadata)}"
+    end
+  end
+
+  # Formats the log message with optional debug information
+  defp format_log_message(category, message, metadata) do
+    base_message = "[#{category}] #{message}"
+
+    if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
+      metadata_keys = extract_metadata_keys(metadata)
+      "#{base_message} [META-KEYS:#{metadata_keys}]"
+    else
+      base_message
+    end
+  end
+
+  # Extracts and formats metadata keys for debug logging
+  defp extract_metadata_keys(metadata) do
+    metadata
+    |> Enum.map(fn {k, _} -> k end)
+    |> inspect()
+    # Limit length for readability
+    |> String.slice(0, 100)
   end
 
   # Helper to convert metadata to keyword list
   defp convert_metadata_to_keyword_list(metadata) when is_map(metadata) do
-    Enum.map(metadata, fn {k, v} -> {to_atom(k), v} end)
+    # Map is converted to keyword list
+    map_metadata = Enum.map(metadata, fn {k, v} -> {to_atom(k), v} end)
+    # Add diagnostics to show this was a map
+    Keyword.put(map_metadata, :_metadata_source, "map")
   end
 
   defp convert_metadata_to_keyword_list(metadata) when is_list(metadata) do
-    metadata
+    cond do
+      # Valid keyword list
+      Enum.all?(metadata, &is_tuple/1) && Enum.all?(metadata, fn {k, _v} -> is_atom(k) end) ->
+        # Add diagnostics to show this was a keyword list
+        Keyword.put(metadata, :_metadata_source, "keyword_list")
+
+      # Empty list
+      metadata == [] ->
+        # Convert empty list to empty map with diagnostic
+        [
+          _metadata_source: "empty_list",
+          _metadata_warning: "Empty list converted to keyword list"
+        ]
+
+      # Non-keyword list (the problematic case)
+      true ->
+        # Get caller information for debugging
+        caller = get_caller_info()
+
+        # Log warning about non-keyword list with detailed caller information
+        Logger.warning(
+          "[LOGGER] Non-keyword list passed as metadata! Convert to map. List: #{inspect(metadata)}\nCaller: #{caller}"
+        )
+
+        # Convert the data to a keyword list with diagnostics
+        [
+          _metadata_source: "invalid_list",
+          _metadata_warning: "Non-keyword list converted to keyword list",
+          _original_data: inspect(metadata),
+          _caller: caller
+        ]
+    end
+  end
+
+  # Handle any other metadata type
+  defp convert_metadata_to_keyword_list(metadata) do
+    caller = get_caller_info()
+
+    Logger.warning(
+      "[LOGGER] Invalid metadata type #{inspect(metadata)} (#{inspect(typeof(metadata))})\nCaller: #{caller}"
+    )
+
+    [
+      _metadata_source: "invalid_type",
+      _metadata_warning: "Invalid metadata type converted to keyword list",
+      _original_type: inspect(typeof(metadata)),
+      _original_data: inspect(metadata),
+      _caller: caller
+    ]
+  end
+
+  # Helper to get type of value
+  defp typeof(value) when is_binary(value), do: "string"
+  defp typeof(value) when is_boolean(value), do: "boolean"
+  defp typeof(value) when is_integer(value), do: "integer"
+  defp typeof(value) when is_float(value), do: "float"
+  defp typeof(value) when is_list(value), do: "list"
+  defp typeof(value) when is_map(value), do: "map"
+  defp typeof(value) when is_tuple(value), do: "tuple"
+  defp typeof(value) when is_atom(value), do: "atom"
+  defp typeof(value) when is_function(value), do: "function"
+  defp typeof(value) when is_pid(value), do: "pid"
+  defp typeof(value) when is_reference(value), do: "reference"
+  defp typeof(value) when is_port(value), do: "port"
+  defp typeof(_value), do: "unknown"
+
+  # Get detailed caller information
+  defp get_caller_info do
+    case Process.info(self(), :current_stacktrace) do
+      {:current_stacktrace, stacktrace} ->
+        format_stacktrace(stacktrace)
+
+      _ ->
+        "unknown caller"
+    end
+  end
+
+  # Format the caller information to show file and line
+  defp format_stacktrace(stacktrace) do
+    # Filter out Logger frames to focus on the actual caller
+    relevant_frames =
+      stacktrace
+      |> Enum.drop_while(fn {mod, _fun, _args, _loc} ->
+        String.contains?(inspect(mod), "Logger") ||
+          String.contains?(inspect(mod), "WandererNotifier.Logger")
+      end)
+      # Take first 3 relevant frames
+      |> Enum.take(3)
+
+    case relevant_frames do
+      [] ->
+        "unknown caller"
+
+      frames ->
+        Enum.map_join(frames, "\n  ", fn {mod, fun, args, location} ->
+          file = Keyword.get(location, :file, "unknown")
+          line = Keyword.get(location, :line, "?")
+          "#{inspect(mod)}.#{fun}/#{length(args)} at #{file}:#{line}"
+        end)
+    end
   end
 
   # Convert string or atom keys to atoms safely
@@ -143,6 +302,9 @@ defmodule WandererNotifier.Logger do
   # Startup/Config helpers
   def startup_info(message, metadata \\ []),
     do: log(@level_info, @category_startup, message, metadata)
+
+  def startup_debug(message, metadata \\ []),
+    do: log(@level_debug, @category_startup, message, metadata)
 
   def startup_warn(message, metadata \\ []),
     do: log(@level_warn, @category_startup, message, metadata)
@@ -256,5 +418,29 @@ defmodule WandererNotifier.Logger do
       end
 
     log(level, category, full_message, metadata)
+  end
+
+  @doc """
+  Enables or disables debug logging to help diagnose metadata issues.
+
+  Call this function with true to enable enhanced logging that will show
+  metadata keys in log messages. Call with false to disable.
+
+  ## Examples
+
+      iex> WandererNotifier.Logger.enable_debug_logging(true)
+      :ok
+  """
+  def enable_debug_logging(enable) when is_boolean(enable) do
+    if enable do
+      System.put_env("WANDERER_DEBUG_LOGGING", "true")
+      Logger.configure(level: :debug)
+      Logger.info("Logger debug mode ENABLED - metadata keys will be visible in logs")
+    else
+      System.put_env("WANDERER_DEBUG_LOGGING", "false")
+      Logger.info("Logger debug mode DISABLED")
+    end
+
+    :ok
   end
 end

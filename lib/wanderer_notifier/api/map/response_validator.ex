@@ -6,7 +6,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   processing, to prevent errors from unexpected data formats.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Validates a systems response.
@@ -57,7 +57,10 @@ alias WandererNotifier.Logger, as: AppLogger
         end
 
       _ ->
-        AppLogger.api_error("[ResponseValidator] Unexpected response format: #{inspect(response)}")
+        AppLogger.api_error(
+          "[ResponseValidator] Unexpected response format: #{inspect(response)}"
+        )
+
         {:error, "Expected 'data' or 'systems' array in response"}
     end
   end
@@ -111,7 +114,10 @@ alias WandererNotifier.Logger, as: AppLogger
         end
 
       _ ->
-        AppLogger.api_error("[ResponseValidator] Unexpected response format: #{inspect(response)}")
+        AppLogger.api_error(
+          "[ResponseValidator] Unexpected response format: #{inspect(response)}"
+        )
+
         {:error, "Expected 'data' or 'characters' array in response"}
     end
   end

@@ -52,7 +52,10 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
   end
 
   def normalize_config(invalid_config) do
-    AppLogger.processor_error("Invalid chart configuration provided", config: inspect(invalid_config))
+    AppLogger.processor_error("Invalid chart configuration provided",
+      config: inspect(invalid_config)
+    )
+
     {:error, "Invalid chart configuration format"}
   end
 

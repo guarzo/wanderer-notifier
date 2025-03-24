@@ -2,8 +2,6 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
   use ExUnit.Case, async: false
   import Mock
   alias WandererNotifier.Services.CharacterKillsService
-  alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
   # Sample test data
   @sample_character_id 123_456_789

@@ -99,8 +99,9 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
     cached_characters_safe = normalize_cached_characters(cached_characters)
 
-    AppLogger.maintenance_debug("Retrieved cached characters before update", 
-      characters: inspect(cached_characters_safe))
+    AppLogger.maintenance_debug("Retrieved cached characters before update",
+      characters: inspect(cached_characters_safe)
+    )
 
     # Update characters through the MapClient with exception handling
     try do
@@ -115,10 +116,11 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     rescue
       e ->
         # Catch any exception, log it, and return the state with updated timestamp
-        AppLogger.maintenance_error("Exception while updating characters", 
+        AppLogger.maintenance_error("Exception while updating characters",
           error: Exception.message(e),
-          stacktrace: inspect(Process.info(self(), :current_stacktrace)))
-        
+          stacktrace: inspect(Process.info(self(), :current_stacktrace))
+        )
+
         # Return original state with updated timestamp to prevent rapid retries
         return_state_with_updated_timestamp(state, now)
     end
@@ -211,7 +213,10 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Check if we've already sent a status report in this time window
     case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent", action: "skipping_duplicate")
+        AppLogger.maintenance_info("Status report for current day already sent",
+          action: "skipping_duplicate"
+        )
+
         :ok
 
       {:ok, :new} ->
@@ -228,9 +233,11 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
               %{valid: false, error_message: "Error retrieving license status"}
           catch
             type, error ->
-              AppLogger.maintenance_error("Error getting license status", 
-                error_type: inspect(type), 
-                error: inspect(error))
+              AppLogger.maintenance_error("Error getting license status",
+                error_type: inspect(type),
+                error: inspect(error)
+              )
+
               %{valid: false, error_message: "Error retrieving license status"}
           end
 
@@ -289,7 +296,10 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     # Check if we've already sent a status report in this time window
     case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent", action: "skipping_duplicate")
+        AppLogger.maintenance_info("Status report for current day already sent",
+          action: "skipping_duplicate"
+        )
+
         :ok
 
       {:ok, :new} ->
@@ -306,9 +316,11 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
               %{valid: false, error_message: "Error retrieving license status"}
           catch
             type, error ->
-              AppLogger.maintenance_error("Error getting license status", 
-                error_type: inspect(type), 
-                error: inspect(error))
+              AppLogger.maintenance_error("Error getting license status",
+                error_type: inspect(type),
+                error: inspect(error)
+              )
+
               %{valid: false, error_message: "Error retrieving license status"}
           end
 

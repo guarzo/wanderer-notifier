@@ -4,7 +4,7 @@ defmodule WandererNotifier.Api.ESI.Client do
   Provides low-level functions for making requests to ESI endpoints.
   """
   require Logger
-alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
 

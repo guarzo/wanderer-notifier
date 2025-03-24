@@ -16,7 +16,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   """
   def kill_charts_enabled? do
     enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
-    AppLogger.persistence_info("Kill charts feature status", enabled: enabled)
+    AppLogger.persistence_info("Kill charts feature status", %{enabled: enabled})
     enabled
   end
 

@@ -59,12 +59,14 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
     end
   rescue
     e ->
-      AppLogger.scheduler_error("Error during validation", 
+      AppLogger.scheduler_error("Error during validation",
         error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace())
+        stacktrace: Exception.format_stacktrace()
+      )
+
       {:error, e}
   end
-  
+
   # Validate characters if they are available in cache
   defp validate_characters_if_available do
     # Get character counts
@@ -83,7 +85,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
       {:ok, :no_characters}
     end
   end
-  
+
   # Perform actual validation on characters
   defp perform_character_validation(cached_characters) do
     case validate_character_consistency(cached_characters) do
@@ -99,13 +101,15 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
         {:error, reason}
     end
   end
-  
+
   # Handle inconsistencies between cache and database
   defp handle_inconsistencies(cached_characters, missing, different) do
     if missing > 0 || different > 0 do
       AppLogger.scheduler_warn("Inconsistencies found", missing: missing, different: different)
       # Run sync to fix inconsistencies
-      sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
+      sync_result =
+        WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
+
       AppLogger.scheduler_info("Auto-fixed inconsistencies", result: inspect(sync_result))
       {:ok, %{inconsistent: true, sync_result: sync_result}}
     else
@@ -129,7 +133,10 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
       end
     rescue
       e ->
-        AppLogger.scheduler_error("Error fetching database characters", error: Exception.message(e))
+        AppLogger.scheduler_error("Error fetching database characters",
+          error: Exception.message(e)
+        )
+
         {:error, e}
     end
   end
@@ -151,7 +158,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
     different_data =
       cached_map
       |> Map.keys()
-      |> Enum.filter(fn char_id -> 
+      |> Enum.filter(fn char_id ->
         # Only check characters that exist in both maps
         if Map.has_key?(db_map, char_id) do
           cached_char = cached_map[char_id]
@@ -160,7 +167,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
           # Compare important fields
           cached_char.name != db_char.character_name ||
             (extract_corp_id(cached_char) != db_char.corporation_id &&
-             not is_nil(extract_corp_id(cached_char)))
+               not is_nil(extract_corp_id(cached_char)))
         else
           false
         end

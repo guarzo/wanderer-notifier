@@ -416,7 +416,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Get tracked systems - should always be a plain list
     tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
 
-    unless is_list(tracked_systems) do
+    if not is_list(tracked_systems) do
       AppLogger.kill_error(
         "ERROR: Expected list from get_tracked_systems but got: #{inspect(tracked_systems)}"
       )
@@ -425,7 +425,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     # Get tracked characters - should always be a plain list
     tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
 
-    unless is_list(tracked_characters) do
+    if not is_list(tracked_characters) do
       AppLogger.kill_error(
         "ERROR: Expected list from get_tracked_characters but got: #{inspect(tracked_characters)}"
       )
@@ -479,13 +479,18 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp check_if_victim_tracked(nil, _), do: false
 
   defp check_if_victim_tracked(victim_id_str, tracked_char_ids) do
-    AppLogger.kill_info(
+    # Downgrade to debug level - happens for every kill
+    AppLogger.kill_debug(
       "VICTIM TRACKING CHECK: Checking victim ID #{victim_id_str} against #{MapSet.size(tracked_char_ids)} tracked character IDs"
     )
 
     # Check if the victim ID is in our tracked characters set
     victim_in_set = MapSet.member?(tracked_char_ids, victim_id_str)
-    AppLogger.kill_info("VICTIM ID MATCH RESULT: #{victim_in_set}")
+
+    # Only log at info level if victim is actually tracked
+    if victim_in_set do
+      AppLogger.kill_info("VICTIM ID MATCH: Victim #{victim_id_str} is tracked")
+    end
 
     victim_in_set
   end
@@ -508,41 +513,36 @@ defmodule WandererNotifier.Services.KillProcessor do
     tracked_attackers
   end
 
-  # Log attacker matching information
+  # Log attacker matching information with reduced verbosity
   defp log_attacker_matching(attacker_ids_str, tracked_char_ids, kill_id) do
     if length(attacker_ids_str) > 0 do
-      AppLogger.kill_info(
+      # Downgrade to debug level - this happens on every kill
+      AppLogger.kill_debug(
         "ATTACKER MATCHING: Checking #{length(attacker_ids_str)} attackers against #{MapSet.size(tracked_char_ids)} tracked characters"
       )
 
-      # Log each attacker ID for better tracking
-      Enum.each(attacker_ids_str, fn attacker_id ->
-        log_attacker_match_status(attacker_id, tracked_char_ids, kill_id)
-      end)
-    end
-  end
+      # Only log matches now, not each check - significantly reduces logs
+      matched_attackers =
+        attacker_ids_str
+        |> Enum.filter(fn attacker_id -> MapSet.member?(tracked_char_ids, attacker_id) end)
 
-  # Log individual attacker match status
-  defp log_attacker_match_status(attacker_id, tracked_char_ids, kill_id) do
-    tracked = MapSet.member?(tracked_char_ids, attacker_id)
-
-    if tracked do
-      AppLogger.kill_info(
-        "ATTACKER MATCH: Attacker #{attacker_id} in kill #{kill_id} IS TRACKED ✓"
-      )
-    else
-      AppLogger.kill_debug(
-        "ATTACKER MATCH: Attacker #{attacker_id} in kill #{kill_id} is not tracked"
-      )
+      # Only log if we found matches
+      if length(matched_attackers) > 0 do
+        AppLogger.kill_info(
+          "ATTACKER MATCH: Found #{length(matched_attackers)} tracked attackers in kill #{kill_id}: #{inspect(matched_attackers)}"
+        )
+      end
     end
   end
 
   # Log tracking status information
   defp log_tracking_status(tracking_info, kill_info) do
-    # Log kill details
-    AppLogger.kill_info(
-      "📥 KILL RECEIVED: ID=#{kill_info.kill_id} in system=#{kill_info.system_info}"
-    )
+    # Use batch logger for kill received events
+    WandererNotifier.Logger.BatchLogger.count_event(:kill_received, %{
+      kill_id: kill_info.kill_id,
+      system_id: kill_info.system_id,
+      system_name: kill_info.system_name
+    })
 
     # Log debug tracking information
     AppLogger.kill_debug(
@@ -816,8 +816,14 @@ defmodule WandererNotifier.Services.KillProcessor do
           # Update statistics for notification sent
           update_kill_stats(:notification_sent)
 
-          # Log the notification for tracking purposes
-          AppLogger.kill_info(
+          # Use batch logger for notification tracking
+          WandererNotifier.Logger.BatchLogger.count_event(:notification_sent, %{
+            type: :kill,
+            id: kill_id
+          })
+
+          # Log the notification for tracking purposes (but less verbose)
+          AppLogger.kill_debug(
             "📢 NOTIFICATION SENT: Killmail #{kill_id} notification delivered successfully"
           )
 
