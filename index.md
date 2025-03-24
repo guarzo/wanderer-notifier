@@ -63,10 +63,8 @@ LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 
 # Notification Control (all enabled by default)
 # ENABLE_KILL_NOTIFICATIONS=true
-# ENABLE_CHARACTER_TRACKING=true
 # ENABLE_CHARACTER_NOTIFICATIONS=true
 # ENABLE_SYSTEM_NOTIFICATIONS=true
-# TRACK_ALL_SYSTEMS=false
 ```
 
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
@@ -78,62 +76,37 @@ Create a file named `docker-compose.yml` with the following content:
 ```yaml
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v1.1
-    container_name: wanderer_notifier
-    # Run database migration on startup
-    command: sh -c 'sleep 5 && /app/bin/wanderer_notifier eval "WandererNotifier.Release.createdb()" && /app/bin/wanderer_notifier eval "WandererNotifier.Release.migrate()" && /app/bin/wanderer_notifier start'
+    image: guarzo/wanderer-notifier:v1
     restart: unless-stopped
     environment:
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - MAP_URL_WITH_NAME=${MAP_URL_WITH_NAME}
-      - MAP_TOKEN=${MAP_TOKEN}
-      - LICENSE_KEY=${LICENSE_KEY}
-      # PostgreSQL configuration
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wanderer_notifier
-      # Optional: Enable kill charts feature (uses the database)
-      - ENABLE_KILL_CHARTS=${ENABLE_KILL_CHARTS:-false}
+      PORT: "4000"
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_CHANNEL_ID: ${DISCORD_CHANNEL_ID}
+      MAP_URL_WITH_NAME: ${MAP_URL_WITH_NAME}
+      MAP_TOKEN: ${MAP_TOKEN}
+      LICENSE_KEY: ${LICENSE_KEY}
     ports:
-      - 4000:4000
-    volumes:
-      - wanderer_data:/app/data
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "${PORT:-4000}:4000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-4000}/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-4000}/health"]
       interval: 30s
-      timeout: 3s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: notifier-postgres
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wanderer_notifier
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
 volumes:
   wanderer_data:
-  postgres_data:
 ```
 
 #### 4. Run It
