@@ -3,7 +3,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   Test-specific implementation of the Discord notifier.
   This module is used in test environment to avoid making actual Discord API calls.
   """
-  require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Implement the NotifierBehaviour
   @behaviour WandererNotifier.NotifierBehaviour
@@ -14,7 +14,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_message(message) when is_binary(message) do
-    Logger.info("DISCORD TEST: #{message}")
+    AppLogger.processor_info("Discord test message", message: message)
     :ok
   end
 
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_embed(title, description, _url \\ nil, _color \\ 0x00FF00) do
-    Logger.info("DISCORD TEST EMBED: #{title} - #{description}")
+    AppLogger.processor_info("Discord test embed", title: title, description: description)
     :ok
   end
 
@@ -34,7 +34,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_enriched_kill_embed(_enriched_kill, kill_id) do
-    Logger.info("DISCORD TEST KILL EMBED: Kill ID #{kill_id}")
+    AppLogger.processor_info("Discord test kill embed", kill_id: kill_id)
     :ok
   end
 
@@ -45,7 +45,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   @impl WandererNotifier.NotifierBehaviour
   def send_new_tracked_character_notification(character) when is_map(character) do
     character_id = Map.get(character, "character_id") || Map.get(character, :character_id)
-    Logger.info("DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character_id}")
+    AppLogger.processor_info("Discord test character notification", character_id: character_id)
     :ok
   end
 
@@ -56,7 +56,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   @impl WandererNotifier.NotifierBehaviour
   def send_new_system_notification(system) when is_map(system) do
     system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-    Logger.info("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
+    AppLogger.processor_info("Discord test system notification", system_id: system_id)
     :ok
   end
 
@@ -70,9 +70,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
     title_str = if title, do: title, else: "No title"
     desc_str = if description, do: description, else: "No description"
 
-    Logger.info(
-      "DISCORD TEST FILE: #{filename} (#{file_size} bytes) - Title: #{title_str}, Description: #{desc_str}"
-    )
+    AppLogger.processor_info("Discord test file", filename: filename, file_size: file_size, title: title_str, description: desc_str)
 
     :ok
   end
@@ -83,7 +81,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   """
   @impl WandererNotifier.NotifierBehaviour
   def send_image_embed(title, description, image_url, _color \\ 0x00FF00) do
-    Logger.info("DISCORD TEST IMAGE EMBED: #{title} - #{description} with image: #{image_url}")
+    AppLogger.processor_info("Discord test image embed", title: title, description: description, image_url: image_url)
     :ok
   end
 end
