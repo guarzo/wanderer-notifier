@@ -3,6 +3,10 @@
 # ----------------------------------------
 FROM elixir:1.18-otp-27-slim AS builder
 
+# Declare build arguments
+ARG NOTIFIER_API_TOKEN
+ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
+
 # Install build dependencies
 RUN apt-get update -y && \
     apt-get install -y build-essential git && \
@@ -35,6 +39,9 @@ RUN mix do compile, release
 # 2. RUNTIME STAGE
 # ----------------------------------------
 FROM elixir:1.18-otp-27-slim
+
+# Declare runtime environment variables
+ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
 
 # Install runtime dependencies
 RUN apt-get update -y && \
