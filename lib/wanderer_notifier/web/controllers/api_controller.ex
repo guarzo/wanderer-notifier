@@ -1222,6 +1222,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           end_date: %{
             value: conn.query_params["end_date"],
             type: get_type(conn.query_params["end_date"])
+          },
+          include_breakdown: %{
+            value: conn.query_params["include_breakdown"],
+            type: get_type(conn.query_params["include_breakdown"])
           }
         }
       })
@@ -1230,11 +1234,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       character_id = conn.query_params["character_id"]
       start_date = conn.query_params["start_date"]
       end_date = conn.query_params["end_date"]
+      include_breakdown = conn.query_params["include_breakdown"] == "true"
 
       AppLogger.api_info("Kill comparison requested", %{
         character_id: character_id,
         start_date: start_date,
-        end_date: end_date
+        end_date: end_date,
+        include_breakdown: include_breakdown
       })
 
       # Parse parameters with better error handling
@@ -1253,9 +1259,34 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
                end_datetime
              ) do
           {:ok, comparison_result} ->
+            # Add character breakdown if requested
+            result_with_breakdown =
+              if include_breakdown do
+                # Fetch all characters
+                case WandererNotifier.Resources.TrackedCharacter.list_all() do
+                  {:ok, characters} ->
+                    # For each character, calculate data
+                    character_breakdowns =
+                      generate_character_breakdowns(
+                        characters,
+                        start_datetime,
+                        end_datetime
+                      )
+
+                    # Add to response
+                    Map.put(comparison_result, :character_breakdown, character_breakdowns)
+
+                  _ ->
+                    # If we can't get characters, just return the regular result
+                    comparison_result
+                end
+              else
+                comparison_result
+              end
+
             conn
             |> put_resp_content_type("application/json")
-            |> send_resp(200, Jason.encode!(comparison_result))
+            |> send_resp(200, Jason.encode!(result_with_breakdown))
 
           {:error, reason} ->
             AppLogger.api_error("Error comparing kills", %{
@@ -1319,6 +1350,47 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           })
         )
     end
+  end
+
+  # Generate breakdown data for each tracked character
+  defp generate_character_breakdowns(characters, start_datetime, end_datetime) do
+    characters
+    |> Enum.map(fn character ->
+      # Skip if no character_id
+      if character.character_id do
+        # Get comparison data for this character
+        case WandererNotifier.Services.KillmailComparison.compare_killmails(
+               character.character_id,
+               start_datetime,
+               end_datetime
+             ) do
+          {:ok, result} ->
+            # Calculate missing percentage
+            missing_percentage =
+              if result.zkill_kills > 0 do
+                length(result.missing_kills) / result.zkill_kills * 100
+              else
+                0.0
+              end
+
+            # Return character comparison data
+            %{
+              character_id: character.character_id,
+              character_name: character.character_name,
+              our_kills: result.our_kills,
+              zkill_kills: result.zkill_kills,
+              missing_kills: result.missing_kills,
+              missing_percentage: missing_percentage
+            }
+
+          _ ->
+            nil
+        end
+      else
+        nil
+      end
+    end)
+    |> Enum.filter(&(&1 != nil))
   end
 
   # Helper function to parse date strings - expects ISO8601 format with timezone
@@ -1398,7 +1470,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       else
         AppLogger.api_info("Analyzing missing kills", %{
           character_id: character_id,
-          kill_count: length(kill_ids)
+          kill_ids_count: length(kill_ids)
         })
 
         case WandererNotifier.Services.KillmailComparison.analyze_missing_kills(
@@ -1411,7 +1483,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             |> send_resp(200, Jason.encode!(analysis))
 
           {:error, reason} ->
-            AppLogger.api_error("Error analyzing missing kills", %{
+            AppLogger.api_error("Failed to analyze missing kills", %{
               error: inspect(reason),
               character_id: character_id
             })
@@ -1420,22 +1492,133 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             |> put_resp_content_type("application/json")
             |> send_resp(
               500,
-              Jason.encode!(%{error: "Failed to analyze kills: #{inspect(reason)}"})
+              Jason.encode!(%{
+                error: "Failed to analyze missing kills",
+                details: inspect(reason)
+              })
             )
         end
       end
     rescue
       e ->
-        AppLogger.api_error("Error in analyze-missing endpoint", %{
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
+        AppLogger.api_error("Error in analyze-missing endpoint", error: Exception.message(e))
 
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(
           500,
-          Jason.encode!(%{error: "Internal server error", details: Exception.message(e)})
+          Jason.encode!(%{
+            error: "Internal server error",
+            success: false,
+            details: Exception.message(e)
+          })
+        )
+    end
+  end
+
+  # Compare kills for all characters within a date range
+  get "/kills/compare-all" do
+    try do
+      # Log raw query parameters
+      AppLogger.api_info("Raw query parameters received for compare-all", %{
+        params: conn.query_params,
+        param_details: %{
+          start_date: %{
+            value: conn.query_params["start_date"],
+            type: get_type(conn.query_params["start_date"])
+          },
+          end_date: %{
+            value: conn.query_params["end_date"],
+            type: get_type(conn.query_params["end_date"])
+          }
+        }
+      })
+
+      # Extract and validate parameters
+      start_date = conn.query_params["start_date"]
+      end_date = conn.query_params["end_date"]
+
+      AppLogger.api_info("Kill comparison for all characters requested", %{
+        start_date: start_date,
+        end_date: end_date
+      })
+
+      # Parse parameters with better error handling
+      with {:ok, start_datetime} <- parse_date_string(start_date),
+           {:ok, end_datetime} <- parse_date_string(end_date) do
+        AppLogger.api_info("Parsed parameters for all characters comparison", %{
+          start_datetime: start_datetime,
+          end_datetime: end_datetime
+        })
+
+        # Fetch all tracked characters
+        case WandererNotifier.Resources.TrackedCharacter.list_all() do
+          {:ok, characters} ->
+            # Generate comparison data for each character
+            character_comparisons =
+              generate_character_breakdowns(
+                characters,
+                start_datetime,
+                end_datetime
+              )
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              200,
+              Jason.encode!(%{
+                character_breakdown: character_comparisons,
+                count: length(character_comparisons),
+                time_range: %{
+                  start_date: DateTime.to_iso8601(start_datetime),
+                  end_date: DateTime.to_iso8601(end_datetime)
+                }
+              })
+            )
+
+          {:error, reason} ->
+            AppLogger.api_error("Error fetching characters", %{
+              error: inspect(reason)
+            })
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                error: "Failed to fetch tracked characters",
+                details: inspect(reason),
+                success: false
+              })
+            )
+        end
+      else
+        {:error, reason} ->
+          AppLogger.api_error("Invalid date format", error: inspect(reason))
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              error: "Invalid date format. Expected ISO-8601 format (e.g. 2024-03-24T18:42:00Z)",
+              success: false
+            })
+          )
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error in kills/compare-all endpoint", error: Exception.message(e))
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            error: "Internal server error",
+            success: false,
+            details: Exception.message(e)
+          })
         )
     end
   end

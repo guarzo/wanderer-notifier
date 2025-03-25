@@ -8,7 +8,8 @@ import { enUS } from 'date-fns/locale';
 import Dashboard from "./components/Dashboard";
 import ChartsDashboard from "./components/ChartsDashboard";
 import KillComparison from "./components/KillComparison";
-import { FaChartBar, FaHome, FaSkullCrossbones } from "react-icons/fa";
+import SchedulerDashboard from "./components/SchedulerDashboard";
+import { FaChartBar, FaHome, FaSkullCrossbones, FaCalendarAlt } from "react-icons/fa";
 
 // Create a client
 const queryClient = new QueryClient();
@@ -76,6 +77,11 @@ function App() {
                       <span>Kill Analysis</span>
                     </Link>
                   )}
+                  
+                  <Link to="/schedulers" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
+                    <FaCalendarAlt />
+                    <span>Schedulers</span>
+                  </Link>
                 </div>
               </div>
             </nav>
@@ -91,6 +97,11 @@ function App() {
               <Route 
                 path="/kill-comparison" 
                 element={killChartsEnabled ? <KillComparison /> : <Navigate to="/" replace />} 
+              />
+              {/* Scheduler dashboard route */}
+              <Route 
+                path="/schedulers" 
+                element={<SchedulerDashboard />} 
               />
               
               {/* Legacy routes for backward compatibility */}

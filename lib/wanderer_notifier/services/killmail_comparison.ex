@@ -90,17 +90,43 @@ defmodule WandererNotifier.Services.KillmailComparison do
       Enum.map(kill_ids, fn kill_id ->
         case ZKillboardApi.get_killmail(kill_id) do
           {:ok, kill_data} ->
-            # Add basic analysis of why we might have missed it
-            analysis = analyze_kill_miss_reason(kill_data, character_id)
-            {kill_id, analysis}
+            Logger.info("ZKB Data for #{kill_id}: #{inspect(kill_data)}")
+
+            # Get the hash from ZKB data
+            hash = get_in(kill_data, ["zkb", "hash"])
+
+            # Fetch ESI data
+            case WandererNotifier.Api.ESI.Service.get_killmail(kill_id, hash) do
+              {:ok, esi_data} ->
+                Logger.info("ESI Data for #{kill_id}: #{inspect(esi_data)}")
+                # Merge ZKB and ESI data
+                merged_data = Map.merge(kill_data, esi_data)
+                Logger.info("Merged Data for #{kill_id}: #{inspect(merged_data)}")
+
+                # Add basic analysis of why we might have missed it
+                analysis = analyze_kill_miss_reason(merged_data, character_id)
+                %{kill_id: kill_id, reason: analysis}
+
+              {:error, esi_error} ->
+                Logger.error("Failed to get ESI data for #{kill_id}: #{inspect(esi_error)}")
+                %{kill_id: kill_id, reason: :fetch_failed}
+            end
 
           _ ->
-            {kill_id, :fetch_failed}
+            %{kill_id: kill_id, reason: :fetch_failed}
         end
       end)
 
-    # Group by reason
-    grouped_analysis = Enum.group_by(kills_info, fn {_id, reason} -> reason end)
+    # Group by reason and format for JSON
+    grouped_analysis =
+      Enum.group_by(kills_info, fn %{reason: reason} -> reason end)
+      |> Enum.map(fn {reason, kills} ->
+        %{
+          reason: reason,
+          count: length(kills),
+          examples: Enum.map(kills, fn %{kill_id: id} -> id end)
+        }
+      end)
 
     {:ok, grouped_analysis}
   end
@@ -224,24 +250,6 @@ defmodule WandererNotifier.Services.KillmailComparison do
       {:ok, kills} -> kills
       _ -> []
     end
-  end
-
-  defp compare_kills(zkill_kills, our_kills) do
-    # Convert our kills to a map for easier lookup
-    our_kill_map = Map.new(our_kills, fn kill -> {kill.killmail_id, kill} end)
-
-    # Find matching and missing kills
-    {found, missing} =
-      Enum.reduce(zkill_kills, {[], []}, fn zkill_kill, {found_acc, missing_acc} ->
-        kill_id = zkill_kill["killmail_id"]
-
-        case Map.get(our_kill_map, kill_id) do
-          nil -> {found_acc, [kill_id | missing_acc]}
-          _our_kill -> {[kill_id | found_acc], missing_acc}
-        end
-      end)
-
-    {Enum.reverse(found), Enum.reverse(missing)}
   end
 
   defp fetch_our_kills(character_id, start_date, end_date) do
@@ -405,30 +413,83 @@ defmodule WandererNotifier.Services.KillmailComparison do
   end
 
   defp analyze_kill_miss_reason(kill_data, character_id) do
+    Logger.info(
+      "TEST LOG - Analyzing kill #{kill_data["killmail_id"]} for character #{character_id}"
+    )
+
+    # Log the full kill data structure for debugging
+    AppLogger.processor_info("Full kill data for analysis", %{
+      character_id: character_id,
+      kill_id: kill_data["killmail_id"],
+      kill_time: kill_data["killmail_time"],
+      victim_data: %{
+        character_id: get_in(kill_data, ["victim", "character_id"]),
+        ship_type_id: get_in(kill_data, ["victim", "ship_type_id"]),
+        category_id: get_in(kill_data, ["victim", "category_id"])
+      },
+      attackers:
+        Enum.map(kill_data["attackers"] || [], fn attacker ->
+          %{
+            character_id: attacker["character_id"],
+            ship_type_id: attacker["ship_type_id"]
+          }
+        end),
+      zkb_data: get_in(kill_data, ["zkb"])
+    })
+
     # Check each condition in sequence and return the first matching reason
     cond do
+      # First check if the character is found in the kill - if found, it's valid
+      !not_in_attackers_or_victim?(kill_data, character_id) ->
+        AppLogger.processor_info("Kill classified as valid - character found", %{
+          kill_id: kill_data["killmail_id"],
+          character_id: character_id
+        })
+
+        :valid_kill
+
       # Check if the kill is too old (might have been before tracking started)
       is_old_kill?(kill_data) ->
+        AppLogger.processor_info("Kill classified as too old", %{
+          kill_id: kill_data["killmail_id"],
+          kill_time: kill_data["killmail_time"]
+        })
+
         :kill_too_old
 
       # Check if it's an NPC kill
       get_in(kill_data, ["zkb", "npc"]) == true ->
+        AppLogger.processor_info("Kill classified as NPC kill", %{
+          kill_id: kill_data["killmail_id"],
+          zkb_data: get_in(kill_data, ["zkb"])
+        })
+
         :npc_kill
 
       # Check if it's a structure kill
       is_structure_kill?(kill_data) ->
+        AppLogger.processor_info("Kill classified as structure kill", %{
+          kill_id: kill_data["killmail_id"],
+          victim_category: get_in(kill_data, ["victim", "category_id"])
+        })
+
         :structure_kill
 
-      # Check if the character is not found in the kill
-      not_in_attackers_or_victim?(kill_data, character_id) ->
-        :character_not_found
-
-      # Check if it's a pod kill (some might be configured to ignore these)
+      # Check if it's a pod kill
       is_pod_kill?(kill_data) ->
+        AppLogger.processor_info("Kill classified as pod kill", %{
+          kill_id: kill_data["killmail_id"],
+          victim_ship_type: get_in(kill_data, ["victim", "ship_type_id"])
+        })
+
         :pod_kill
 
       # Default case
       true ->
+        AppLogger.processor_info("Kill classified as unknown reason", %{
+          kill_id: kill_data["killmail_id"]
+        })
+
         :unknown_reason
     end
   end
@@ -467,16 +528,35 @@ defmodule WandererNotifier.Services.KillmailComparison do
     str_char_id = to_string(character_id)
 
     # Check victim
-    victim_id = get_in(kill_data, ["victim", "character_id"])
+    victim = kill_data["victim"] || %{}
+    victim_id = victim["character_id"]
     victim_match = to_string(victim_id) == str_char_id
 
-    # Check attackers
-    attackers = get_in(kill_data, ["attackers"]) || []
+    # Log victim details
+    Logger.info(
+      "VICTIM CHECK - Kill #{kill_data["killmail_id"]} - Victim ID: #{victim_id}, Character ID: #{character_id}, Match: #{victim_match}"
+    )
 
+    # Check attackers
+    attackers = kill_data["attackers"] || []
+
+    # Log each attacker check
     attacker_match =
       Enum.any?(attackers, fn attacker ->
-        to_string(attacker["character_id"]) == str_char_id
+        attacker_char_id = attacker["character_id"]
+        str_attacker_id = if(attacker_char_id, do: to_string(attacker_char_id), else: nil)
+        is_match = str_attacker_id == str_char_id
+
+        Logger.info(
+          "ATTACKER CHECK - Kill #{kill_data["killmail_id"]} - Attacker ID: #{attacker_char_id}, Character ID: #{character_id}, Match: #{is_match}"
+        )
+
+        is_match
       end)
+
+    Logger.info(
+      "FINAL CHECK - Kill #{kill_data["killmail_id"]} - Character #{character_id} - Victim Match: #{victim_match}, Attacker Match: #{attacker_match}, Total Attackers: #{length(attackers)}"
+    )
 
     not (victim_match or attacker_match)
   end
@@ -501,7 +581,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
   end
 
   # Private helper to calculate match statistics
-  defp calculate_match_stats(our_count, zkill_count, missing_count, extra_count) do
+  defp calculate_match_stats(our_count, _zkill_count, missing_count, extra_count) do
     # Total unique kills across both sources
     total_unique = our_count + missing_count
     # Kills that match between sources
