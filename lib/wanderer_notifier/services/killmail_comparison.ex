@@ -8,6 +8,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.{Killmail, Api}
   alias WandererNotifier.Services.ZKillboardApi
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   import Ash.Query
 
   # Note: ZKillboard API no longer supports direct date filtering via startTime/endTime parameters.
@@ -237,6 +238,208 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
         {:error, reason}
     end
+  end
+
+  @doc """
+  Generates and caches comparison data for a specific time range.
+  Now with historical tracking support.
+
+  ## Parameters
+    - cache_type: The type of cache to generate (e.g., "1h", "4h", "12h", "24h", "7d")
+    - start_datetime: The start of the time range
+    - end_datetime: The end of the time range
+
+  ## Returns
+    - {:ok, comparison_data} on success
+    - {:error, reason} on failure
+  """
+  @spec generate_and_cache_comparison_data(String.t(), DateTime.t(), DateTime.t()) ::
+          {:ok, map()} | {:error, term()}
+  def generate_and_cache_comparison_data(cache_type, start_datetime, end_datetime) do
+    try do
+      # Fetch all tracked characters
+      case WandererNotifier.Resources.TrackedCharacter.list_all() do
+        {:ok, characters} ->
+          AppLogger.processor_info("Generating comparison data for cache", %{
+            type: cache_type,
+            character_count: length(characters)
+          })
+
+          # Process each character, using historical data when available
+          character_comparisons =
+            characters
+            |> Task.async_stream(
+              fn character ->
+                character_id = extract_character_id(character)
+                character_name = extract_character_name(character)
+
+                if character_id do
+                  # Rate limiting
+                  Process.sleep(500)
+
+                  # Check if we need fresh data
+                  case WandererNotifier.Services.KillTrackingHistory.needs_refresh?(
+                         character_id,
+                         cache_type
+                       ) do
+                    false ->
+                      # Use historical data
+                      case WandererNotifier.Services.KillTrackingHistory.get_latest_comparison(
+                             character_id,
+                             cache_type
+                           ) do
+                        {:ok, historical_data} ->
+                          AppLogger.processor_info("Using historical data for character", %{
+                            character_id: character_id,
+                            cache_type: cache_type
+                          })
+
+                          format_character_comparison(
+                            character_id,
+                            character_name,
+                            historical_data
+                          )
+
+                        _ ->
+                          # Fallback to fresh comparison if historical data not found
+                          generate_fresh_comparison(
+                            character_id,
+                            character_name,
+                            start_datetime,
+                            end_datetime,
+                            cache_type
+                          )
+                      end
+
+                    true ->
+                      # Generate fresh comparison data
+                      generate_fresh_comparison(
+                        character_id,
+                        character_name,
+                        start_datetime,
+                        end_datetime,
+                        cache_type
+                      )
+                  end
+                end
+              end,
+              max_concurrency: 2,
+              timeout: 60_000
+            )
+            |> Enum.filter(fn
+              {:ok, result} when not is_nil(result) -> true
+              _ -> false
+            end)
+            |> Enum.map(fn {:ok, result} -> result end)
+
+          # Create the cache response
+          comparison_data = %{
+            character_breakdown: character_comparisons,
+            count: length(character_comparisons),
+            time_range: %{
+              start_date: DateTime.to_iso8601(start_datetime),
+              end_date: DateTime.to_iso8601(end_datetime),
+              type: cache_type
+            },
+            cached_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+            cache_expires_at:
+              DateTime.utc_now()
+              |> DateTime.add(get_cache_ttl(cache_type), :second)
+              |> DateTime.to_iso8601()
+          }
+
+          # Store in cache
+          CacheRepo.set(get_cache_key(cache_type), comparison_data, get_cache_ttl(cache_type))
+
+          AppLogger.processor_info("Cached comparison data", %{
+            type: cache_type,
+            ttl_seconds: get_cache_ttl(cache_type),
+            character_count: length(character_comparisons)
+          })
+
+          {:ok, comparison_data}
+
+        {:error, reason} ->
+          AppLogger.processor_error("Error fetching characters for cache generation", %{
+            error: inspect(reason)
+          })
+
+          {:error, reason}
+      end
+    rescue
+      e ->
+        AppLogger.processor_error("Error generating cached comparison data", %{
+          error: Exception.message(e),
+          cache_type: cache_type
+        })
+
+        {:error, {:exception, Exception.message(e)}}
+    end
+  end
+
+  @doc """
+  Generates character breakdowns for comparison between our database and ZKillboard.
+
+  ## Parameters
+    - characters: List of character maps with character_id and character_name
+    - start_datetime: The start of the time range
+    - end_datetime: The end of the time range
+
+  ## Returns
+    - List of character comparison data
+  """
+  @spec generate_character_breakdowns(list(map()), DateTime.t(), DateTime.t()) :: list(map())
+  def generate_character_breakdowns(characters, start_datetime, end_datetime) do
+    AppLogger.processor_info("Generating character breakdowns", %{
+      character_count: length(characters),
+      start_datetime: DateTime.to_iso8601(start_datetime),
+      end_datetime: DateTime.to_iso8601(end_datetime)
+    })
+
+    # Process each character with controlled concurrency (max 2 concurrent requests)
+    # This helps prevent overwhelming the ZKillboard API
+    characters
+    |> Task.async_stream(
+      fn character ->
+        character_id = extract_character_id(character)
+        character_name = extract_character_name(character)
+
+        AppLogger.processor_debug("Processing character breakdown", %{
+          character_id: character_id,
+          character_name: character_name
+        })
+
+        # Skip if no character_id
+        if character_id do
+          # Add a small delay between characters to further reduce API load
+          # even with low concurrency
+          Process.sleep(500)
+
+          case get_character_comparison(
+                 character_id,
+                 character_name,
+                 start_datetime,
+                 end_datetime
+               ) do
+            {:ok, comparison_data} -> comparison_data
+            _ -> nil
+          end
+        else
+          AppLogger.processor_warn("Skipping character with invalid ID", %{
+            character: inspect(character)
+          })
+
+          nil
+        end
+      end,
+      max_concurrency: 2,
+      timeout: 60_000
+    )
+    |> Enum.filter(fn
+      {:ok, result} when not is_nil(result) -> true
+      _ -> false
+    end)
+    |> Enum.map(fn {:ok, result} -> result end)
   end
 
   # Private functions
@@ -613,5 +816,142 @@ defmodule WandererNotifier.Services.KillmailComparison do
       end
 
     {percentage_match, analysis}
+  end
+
+  # Helper functions for character data extraction
+
+  # Extract character ID from character data
+  defp extract_character_id(character) do
+    cond do
+      is_struct(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_map(character) && Map.has_key?(character, "character_id") -> character["character_id"]
+      is_map(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_binary(character) -> character
+      is_integer(character) -> to_string(character)
+      true -> nil
+    end
+  end
+
+  # Extract character name from character data
+  defp extract_character_name(character) do
+    cond do
+      is_struct(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_struct(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      is_map(character) && Map.has_key?(character, "character_name") ->
+        character["character_name"]
+
+      is_map(character) && Map.has_key?(character, "name") ->
+        character["name"]
+
+      is_map(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_map(character) && Map.has_key?(character, :name) ->
+        character.name
+
+      true ->
+        "Unknown Character"
+    end
+  end
+
+  # Get comparison data for a specific character
+  defp get_character_comparison(character_id, character_name, start_datetime, end_datetime) do
+    # Get comparison data for this character
+    case compare_killmails(character_id, start_datetime, end_datetime) do
+      {:ok, result} ->
+        # Calculate missing percentage
+        missing_percentage =
+          if result.zkill_kills > 0 do
+            length(result.missing_kills) / result.zkill_kills * 100
+          else
+            0.0
+          end
+
+        # Return character comparison data
+        {:ok,
+         %{
+           character_id: character_id,
+           character_name: character_name,
+           our_kills: result.our_kills,
+           zkill_kills: result.zkill_kills,
+           missing_kills: result.missing_kills,
+           missing_percentage: missing_percentage
+         }}
+
+      error ->
+        error
+    end
+  end
+
+  defp generate_fresh_comparison(
+         character_id,
+         character_name,
+         start_datetime,
+         end_datetime,
+         cache_type
+       ) do
+    AppLogger.processor_info("Generating fresh comparison", %{
+      character_id: character_id,
+      cache_type: cache_type
+    })
+
+    case get_character_comparison(character_id, character_name, start_datetime, end_datetime) do
+      {:ok, comparison_data} = result ->
+        # Store in historical tracking
+        WandererNotifier.Services.KillTrackingHistory.record_comparison(
+          character_id,
+          comparison_data,
+          cache_type
+        )
+
+        result
+
+      error ->
+        AppLogger.processor_error("Error generating comparison", %{
+          character_id: character_id,
+          error: inspect(error)
+        })
+
+        nil
+    end
+  end
+
+  defp format_character_comparison(character_id, character_name, comparison_data) do
+    %{
+      character_id: character_id,
+      character_name: character_name,
+      our_kills: comparison_data.our_kills,
+      zkill_kills: comparison_data.zkill_kills,
+      missing_kills: comparison_data.missing_kills,
+      missing_percentage:
+        if comparison_data.zkill_kills > 0 do
+          length(comparison_data.missing_kills) / comparison_data.zkill_kills * 100
+        else
+          0.0
+        end
+    }
+  end
+
+  defp get_cache_key(cache_type), do: "kill_comparison:#{cache_type}"
+
+  defp get_cache_ttl(cache_type) do
+    case cache_type do
+      # 10 minutes
+      "1h" -> 600
+      # 30 minutes
+      "4h" -> 1800
+      # 1 hour
+      "12h" -> 3600
+      # 2 hours
+      "24h" -> 7200
+      # 4 hours
+      "7d" -> 14400
+      # 30 minutes default
+      _ -> 1800
+    end
   end
 end

@@ -10,6 +10,7 @@ defmodule WandererNotifier.Resources.Api do
     resource(WandererNotifier.Resources.TrackedCharacter)
     resource(WandererNotifier.Resources.Killmail)
     resource(WandererNotifier.Resources.KillmailStatistic)
+    resource(WandererNotifier.Resources.KillTrackingHistory)
   end
 
   # Public interface for resource operations

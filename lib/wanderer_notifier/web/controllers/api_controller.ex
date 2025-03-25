@@ -875,24 +875,25 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     {character_id, character_name}
   end
 
-  # Extract character ID from character data
+  # Extract character ID
   defp extract_character_id(character) do
     cond do
-      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-        character.character_id
-
-      is_map(character) && Map.has_key?(character, "character_id") ->
-        character["character_id"]
-
-      true ->
-        nil
+      is_struct(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_map(character) && Map.has_key?(character, "character_id") -> character["character_id"]
+      is_map(character) && Map.has_key?(character, :character_id) -> character.character_id
+      is_binary(character) -> character
+      is_integer(character) -> to_string(character)
+      true -> nil
     end
   end
 
-  # Extract character name from character data
+  # Extract character name
   defp extract_character_name(character) do
     cond do
-      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
+      is_struct(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_struct(character) && Map.has_key?(character, :name) ->
         character.name
 
       is_map(character) && Map.has_key?(character, "character_name") ->
@@ -901,8 +902,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       is_map(character) && Map.has_key?(character, "name") ->
         character["name"]
 
+      is_map(character) && Map.has_key?(character, :character_name) ->
+        character.character_name
+
+      is_map(character) && Map.has_key?(character, :name) ->
+        character.name
+
       true ->
-        "Unknown"
+        "Unknown Character"
     end
   end
 
@@ -1352,90 +1359,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
   end
 
-  # Generate breakdown data for each tracked character
-  defp generate_character_breakdowns(characters, start_datetime, end_datetime) do
-    characters
-    |> Enum.map(fn character ->
-      # Skip if no character_id
-      if character.character_id do
-        # Get comparison data for this character
-        case WandererNotifier.Services.KillmailComparison.compare_killmails(
-               character.character_id,
-               start_datetime,
-               end_datetime
-             ) do
-          {:ok, result} ->
-            # Calculate missing percentage
-            missing_percentage =
-              if result.zkill_kills > 0 do
-                length(result.missing_kills) / result.zkill_kills * 100
-              else
-                0.0
-              end
-
-            # Return character comparison data
-            %{
-              character_id: character.character_id,
-              character_name: character.character_name,
-              our_kills: result.our_kills,
-              zkill_kills: result.zkill_kills,
-              missing_kills: result.missing_kills,
-              missing_percentage: missing_percentage
-            }
-
-          _ ->
-            nil
-        end
-      else
-        nil
-      end
-    end)
-    |> Enum.filter(&(&1 != nil))
-  end
-
-  # Helper function to parse date strings - expects ISO8601 format with timezone
-  defp parse_date_string(date_str) do
-    AppLogger.api_info("Parsing ISO8601 date string", %{
-      raw_string: date_str
-    })
-
-    # First try parsing with NaiveDateTime to handle milliseconds
-    case NaiveDateTime.from_iso8601(date_str) do
-      {:ok, naive_dt} ->
-        # Convert to UTC DateTime
-        {:ok, DateTime.from_naive!(naive_dt, "Etc/UTC")}
-
-      {:error, _} ->
-        # Fallback to DateTime.from_iso8601 if NaiveDateTime fails
-        case DateTime.from_iso8601(date_str) do
-          {:ok, datetime, _offset} ->
-            AppLogger.api_info("Successfully parsed ISO8601 date", %{
-              datetime: inspect(datetime)
-            })
-
-            {:ok, datetime}
-
-          {:error, reason} ->
-            AppLogger.api_error("Failed to parse ISO8601 date", %{
-              error: inspect(reason),
-              raw_string: date_str
-            })
-
-            {:error, :invalid_format}
-        end
-    end
-  end
-
-  # Helper function to get the type of a value
-  defp get_type(value) when is_binary(value), do: "string"
-  defp get_type(value) when is_integer(value), do: "integer"
-  defp get_type(value) when is_float(value), do: "float"
-  defp get_type(value) when is_boolean(value), do: "boolean"
-  defp get_type(value) when is_nil(value), do: "nil"
-  defp get_type(value) when is_map(value), do: "map"
-  defp get_type(value) when is_list(value), do: "list"
-  defp get_type(value), do: inspect(value.__struct__)
-
   # Analyze missing kills
   post "/kills/analyze-missing" do
     try do
@@ -1482,9 +1405,11 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             |> put_resp_content_type("application/json")
             |> send_resp(200, Jason.encode!(analysis))
 
-          {:error, reason} ->
+          # Update to handle a potential error case more generically
+          # The warning suggests this function only returns {:ok, term()} currently
+          error ->
             AppLogger.api_error("Failed to analyze missing kills", %{
-              error: inspect(reason),
+              error: inspect(error),
               character_id: character_id
             })
 
@@ -1494,7 +1419,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               500,
               Jason.encode!(%{
                 error: "Failed to analyze missing kills",
-                details: inspect(reason)
+                details: inspect(error)
               })
             )
         end
@@ -1551,46 +1476,81 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           end_datetime: end_datetime
         })
 
-        # Fetch all tracked characters
-        case WandererNotifier.Resources.TrackedCharacter.list_all() do
-          {:ok, characters} ->
-            # Generate comparison data for each character
-            character_comparisons =
-              generate_character_breakdowns(
-                characters,
-                start_datetime,
-                end_datetime
-              )
+        # Calculate a cache key based on the time range
+        cache_key =
+          "kill_comparison:all:#{DateTime.to_iso8601(start_datetime)}:#{DateTime.to_iso8601(end_datetime)}"
 
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              200,
-              Jason.encode!(%{
-                character_breakdown: character_comparisons,
-                count: length(character_comparisons),
-                time_range: %{
-                  start_date: DateTime.to_iso8601(start_datetime),
-                  end_date: DateTime.to_iso8601(end_datetime)
+        # Try to get data from cache first
+        case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+          nil ->
+            # Not in cache, generate the data
+            AppLogger.api_info("Cache miss for kill comparison data, generating fresh data")
+
+            # Fetch all tracked characters
+            case WandererNotifier.Resources.TrackedCharacter.list_all() do
+              {:ok, characters} ->
+                # Generate comparison data for each character using the KillmailComparison service
+                character_comparisons =
+                  WandererNotifier.Services.KillmailComparison.generate_character_breakdowns(
+                    characters,
+                    start_datetime,
+                    end_datetime
+                  )
+
+                # Cache the generated data for 1 hour (3600 seconds)
+                # This provides a reasonable balance between freshness and performance
+                cache_ttl = 3600
+
+                comparison_data = %{
+                  character_breakdown: character_comparisons,
+                  count: length(character_comparisons),
+                  time_range: %{
+                    start_date: DateTime.to_iso8601(start_datetime),
+                    end_date: DateTime.to_iso8601(end_datetime)
+                  },
+                  cached_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+                  cache_expires_at:
+                    DateTime.utc_now()
+                    |> DateTime.add(cache_ttl, :second)
+                    |> DateTime.to_iso8601()
                 }
-              })
-            )
 
-          {:error, reason} ->
-            AppLogger.api_error("Error fetching characters", %{
-              error: inspect(reason)
-            })
+                # Store in cache
+                WandererNotifier.Data.Cache.Repository.set(cache_key, comparison_data, cache_ttl)
+                AppLogger.api_info("Cached comparison data", ttl_seconds: cache_ttl)
+
+                # Return the freshly generated data
+                conn
+                |> put_resp_content_type("application/json")
+                |> send_resp(200, Jason.encode!(comparison_data))
+
+              {:error, reason} ->
+                AppLogger.api_error("Error fetching characters", %{
+                  error: inspect(reason)
+                })
+
+                conn
+                |> put_resp_content_type("application/json")
+                |> send_resp(
+                  500,
+                  Jason.encode!(%{
+                    error: "Failed to fetch tracked characters",
+                    details: inspect(reason),
+                    success: false
+                  })
+                )
+            end
+
+          cached_data ->
+            # Cache hit - return the cached data
+            AppLogger.api_info("Cache hit for kill comparison data",
+              cached_at: cached_data[:cached_at],
+              expires_at: cached_data[:cache_expires_at]
+            )
 
             conn
             |> put_resp_content_type("application/json")
-            |> send_resp(
-              500,
-              Jason.encode!(%{
-                error: "Failed to fetch tracked characters",
-                details: inspect(reason),
-                success: false
-              })
-            )
+            |> send_resp(200, Jason.encode!(cached_data))
         end
       else
         {:error, reason} ->
@@ -1621,6 +1581,140 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           })
         )
     end
+  end
+
+  # Get cached comparison data with pre-generated timeframes
+  get "/kills/compare-cache" do
+    try do
+      cache_type = conn.query_params["type"] || "1h"
+
+      # Define time ranges based on the requested type
+      {start_datetime, end_datetime} =
+        case cache_type do
+          "1h" -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
+          "4h" -> {DateTime.utc_now() |> DateTime.add(-14400, :second), DateTime.utc_now()}
+          "12h" -> {DateTime.utc_now() |> DateTime.add(-43200, :second), DateTime.utc_now()}
+          "24h" -> {DateTime.utc_now() |> DateTime.add(-86400, :second), DateTime.utc_now()}
+          "7d" -> {DateTime.utc_now() |> DateTime.add(-604_800, :second), DateTime.utc_now()}
+          _ -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
+        end
+
+      AppLogger.api_info("Requested cached comparison data", %{
+        type: cache_type,
+        start_time: DateTime.to_iso8601(start_datetime),
+        end_time: DateTime.to_iso8601(end_datetime)
+      })
+
+      # Generate the cache key
+      cache_key = "kill_comparison:#{cache_type}"
+
+      # Check if data exists in cache already
+      case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+        nil ->
+          # Not in cache - generate and store it using the KillmailComparison service
+          case WandererNotifier.Services.KillmailComparison.generate_and_cache_comparison_data(
+                 cache_type,
+                 start_datetime,
+                 end_datetime
+               ) do
+            {:ok, comparison_data} ->
+              # Return the cached data
+              conn
+              |> put_resp_content_type("application/json")
+              |> send_resp(200, Jason.encode!(comparison_data))
+
+            {:error, reason} ->
+              AppLogger.api_error("Failed to generate comparison data", %{
+                error: inspect(reason)
+              })
+
+              conn
+              |> put_resp_content_type("application/json")
+              |> send_resp(
+                500,
+                Jason.encode!(%{
+                  error: "Failed to generate comparison data",
+                  details: inspect(reason),
+                  success: false
+                })
+              )
+          end
+
+        cached_data ->
+          # Return the cached data
+          AppLogger.api_info("Cache hit for pre-generated comparison data", type: cache_type)
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(200, Jason.encode!(cached_data))
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error in kills/compare-cache endpoint", error: Exception.message(e))
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            error: "Internal server error",
+            success: false,
+            details: Exception.message(e)
+          })
+        )
+    end
+  end
+
+  # Helper function to parse date strings - expects ISO8601 format with timezone
+  defp parse_date_string(date_str) do
+    AppLogger.api_info("Parsing ISO8601 date string", %{
+      raw_string: date_str
+    })
+
+    # First try parsing with NaiveDateTime to handle milliseconds
+    case NaiveDateTime.from_iso8601(date_str) do
+      {:ok, naive_dt} ->
+        # Convert to UTC DateTime
+        {:ok, DateTime.from_naive!(naive_dt, "Etc/UTC")}
+
+      {:error, _} ->
+        # Fallback to DateTime.from_iso8601 if NaiveDateTime fails
+        case DateTime.from_iso8601(date_str) do
+          {:ok, datetime, _offset} ->
+            AppLogger.api_info("Successfully parsed ISO8601 date", %{
+              datetime: inspect(datetime)
+            })
+
+            {:ok, datetime}
+
+          {:error, reason} ->
+            AppLogger.api_error("Failed to parse ISO8601 date", %{
+              error: inspect(reason),
+              raw_string: date_str
+            })
+
+            {:error, :invalid_format}
+        end
+    end
+  end
+
+  # Helper function to get the type of a value
+  defp get_type(value) when is_binary(value), do: "string"
+  defp get_type(value) when is_integer(value), do: "integer"
+  defp get_type(value) when is_float(value), do: "float"
+  defp get_type(value) when is_boolean(value), do: "boolean"
+  defp get_type(value) when is_nil(value), do: "nil"
+  defp get_type(value) when is_map(value), do: "map"
+  defp get_type(value) when is_list(value), do: "list"
+  defp get_type(value), do: inspect(value.__struct__)
+
+  # Helper function to delegate to the KillmailComparison service
+  defp generate_character_breakdowns(characters, start_datetime, end_datetime) do
+    WandererNotifier.Services.KillmailComparison.generate_character_breakdowns(
+      characters,
+      start_datetime,
+      end_datetime
+    )
   end
 
   # Catch-all route

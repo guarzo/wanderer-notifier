@@ -21,6 +21,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Only log feature status if we haven't logged it before
     if !Process.get(:kill_charts_status_logged) do
       status_text = if enabled, do: "enabled", else: "disabled"
+
       AppLogger.persistence_info("Kill charts feature status: #{status_text}", %{enabled: enabled})
 
       # Mark as logged to avoid future log messages

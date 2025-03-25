@@ -19,6 +19,14 @@
   - [x] Fetch and display full kill details from zKill
   - [x] Show possible reason why the kill was missed
 
+## Performance Improvements
+
+- [x] Implement server-side caching
+  - [x] Create cached endpoints for common time ranges
+  - [x] Add cache invalidation mechanism
+  - [x] Implement UI to leverage cached data
+  - [x] Provide fallback to custom date ranges when needed
+
 ## Missing Kill Tracking
 
 - [ ] Create a "rejected_killmails" tracking system

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, Card, CardContent, Grid, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { format, isWithinInterval, subHours } from 'date-fns';
+import { Box, Button, Card, CardContent, Grid, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, IconButton, Collapse, Alert, CircularProgress, Select, MenuItem, InputLabel, FormControl } from '@mui/material';
+import { format } from 'date-fns';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { fetchApi } from '../utils/api';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import SyncIcon from '@mui/icons-material/Sync';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import KillComparisonTrends from './KillComparisonTrends';
 
 // Cache constants
 const CACHE_KEY = 'killComparisonCache';
@@ -36,19 +36,20 @@ interface CacheItem {
 }
 
 // Row component for character comparison
-const CharacterRow = ({ character, onAnalyze }: { 
+const CharacterRow = ({ character, timeRangeType, onAnalyze }: { 
   character: CharacterComparison, 
+  timeRangeType: string,
   onAnalyze: (characterId: number, killIds: number[]) => void 
 }) => {
   const [open, setOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [showTrends, setShowTrends] = useState(false);
 
   const syncCharacterKills = async () => {
     setSyncing(true);
     setSyncResult(null);
     try {
-      // API call to sync this specific character's kills
       await fetchApi(`/api/character-kills?character_id=${character.character_id}`);
       setSyncResult('Sync completed successfully!');
       setTimeout(() => setSyncResult(null), 3000);
@@ -105,6 +106,13 @@ const CharacterRow = ({ character, onAnalyze }: {
                 Analyze
               </Button>
             )}
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setShowTrends(!showTrends)}
+            >
+              {showTrends ? 'Hide Trends' : 'Show Trends'}
+            </Button>
           </Box>
           {syncResult && (
             <Typography variant="caption" color={syncResult.includes('failed') ? 'error' : 'success'}>
@@ -115,27 +123,40 @@ const CharacterRow = ({ character, onAnalyze }: {
       </TableRow>
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
+          <Collapse in={open || showTrends} timeout="auto" unmountOnExit>
             <Box sx={{ margin: 1 }}>
-              <Typography variant="h6" gutterBottom component="div">
-                Missing Kill IDs
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {character.missing_kills.length > 0 ? (
-                  character.missing_kills.map((killId) => (
-                    <Chip 
-                      key={killId} 
-                      label={killId} 
-                      onClick={() => window.open(`https://zkillboard.com/kill/${killId}/`, '_blank')}
-                      clickable
-                    />
-                  ))
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No missing kills found
+              {open && (
+                <>
+                  <Typography variant="h6" gutterBottom component="div">
+                    Missing Kill IDs
                   </Typography>
-                )}
-              </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {character.missing_kills.length > 0 ? (
+                      character.missing_kills.map((killId) => (
+                        <Chip 
+                          key={killId} 
+                          label={killId} 
+                          onClick={() => window.open(`https://zkillboard.com/kill/${killId}/`, '_blank')}
+                          clickable
+                        />
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        No missing kills found
+                      </Typography>
+                    )}
+                  </Box>
+                </>
+              )}
+              
+              {showTrends && (
+                <Box mt={2}>
+                  <KillComparisonTrends 
+                    characterId={character.character_id}
+                    timeRangeType={timeRangeType}
+                  />
+                </Box>
+              )}
             </Box>
           </Collapse>
         </TableCell>
@@ -145,234 +166,65 @@ const CharacterRow = ({ character, onAnalyze }: {
 };
 
 const KillComparison: React.FC = () => {
-  const [startDate, setStartDate] = useState<Date | null>(new Date(Date.now() - 4 * 60 * 60 * 1000));
-  const [endDate, setEndDate] = useState<Date | null>(new Date());
+  const timeRangeOptions = [
+    { value: "1h", label: "Last Hour" },
+    { value: "4h", label: "Last 4 Hours" },
+    { value: "12h", label: "Last 12 Hours" },
+    { value: "24h", label: "Last 24 Hours" },
+    { value: "7d", label: "Last 7 Days" }
+  ];
+  
+  const [timeRangeType, setTimeRangeType] = useState<string>("4h");
   const [characterData, setCharacterData] = useState<CharacterComparison[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // New state for background refreshes
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [analyzingCharacter, setAnalyzingCharacter] = useState<number | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[] | null>(null);
-  const [cacheStatus, setCacheStatus] = useState<'fresh' | 'stale' | 'none'>('none');
+  const [cacheInfo, setCacheInfo] = useState<{cached_at?: string, cache_expires_at?: string} | null>(null);
 
-  // Function to save data to cache
-  const saveToCache = (
-    data: CharacterComparison[], 
-    start: Date | null, 
-    end: Date | null
-  ) => {
-    if (!start || !end) return;
-    
-    const cacheItem: CacheItem = {
-      timestamp: Date.now(),
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      data: data
-    };
-    
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheItem));
-      console.log('Saved comparison data to cache');
-    } catch (error) {
-      console.error('Failed to save to cache:', error);
-    }
-  };
-
-  // Function to load data from cache
-  const loadFromCache = (
-    start: Date | null, 
-    end: Date | null
-  ): CharacterComparison[] | null => {
-    try {
-      const cacheJson = localStorage.getItem(CACHE_KEY);
-      
-      if (!cacheJson) {
-        console.log('No cache found');
-        return null;
-      }
-      
-      const cache: CacheItem = JSON.parse(cacheJson);
-      const cacheDate = new Date(cache.timestamp);
-      const expiryDate = subHours(new Date(), CACHE_EXPIRY_HOURS);
-      
-      // Check if cache is fresh (less than CACHE_EXPIRY_HOURS old)
-      if (cacheDate > expiryDate) {
-        setCacheStatus('fresh');
-        console.log('Found fresh cache from', cacheDate.toLocaleString());
-      } else {
-        setCacheStatus('stale');
-        console.log('Found stale cache from', cacheDate.toLocaleString());
-      }
-      
-      // Check if the date ranges match (approximate match is fine)
-      if (start && end) {
-        const cacheStart = new Date(cache.startDate);
-        const cacheEnd = new Date(cache.endDate);
-        
-        // If the date ranges are too different, don't use the cache
-        const startDiff = Math.abs(start.getTime() - cacheStart.getTime());
-        const endDiff = Math.abs(end.getTime() - cacheEnd.getTime());
-        
-        // Allow for a difference of up to 15 minutes for the dates
-        if (startDiff > 15 * 60 * 1000 || endDiff > 15 * 60 * 1000) {
-          console.log('Cache date range does not match current selection');
-          return null;
-        }
-      }
-      
-      return cache.data;
-    } catch (error) {
-      console.error('Failed to load from cache:', error);
-      return null;
-    }
-  };
-
-  // Function to load comparison data for all characters
-  const loadComparisonData = async (useCache = true, isBackgroundRefresh = false) => {
-    if (!startDate || !endDate) {
-      setError("Please select a valid date range");
-      return;
-    }
-
-    // Set loading state based on whether this is a background refresh
-    if (!isBackgroundRefresh) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
-    
+  const loadComparisonData = async () => {
+    setLoading(true);
     setError(null);
-    
-    if (!isBackgroundRefresh) {
-      setAnalysisResults(null);
-    }
-
-    // Try loading from cache first if allowed
-    if (useCache && !isBackgroundRefresh) {
-      const cachedData = loadFromCache(startDate, endDate);
-      
-      if (cachedData && cachedData.length > 0) {
-        console.log(`Loaded ${cachedData.length} characters from cache`);
-        setCharacterData(cachedData);
-        setLoading(false);
-        
-        // If we have a stale cache, refresh in the background
-        if (cacheStatus === 'stale') {
-          console.log('Cache is stale, refreshing in background');
-          // Refresh data in background without showing loading indicator
-          setTimeout(() => loadComparisonData(false, true), 100);
-        }
-        
-        return;
-      }
-    }
+    setAnalysisResults(null);
+    setCacheInfo(null);
 
     try {
-      // Format dates to ISO-8601 format with UTC timezone
-      const formatDateToISO = (date: Date) => {
-        // Ensure we're working with UTC
-        const utcDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-        // Format to ISO string and ensure it ends with Z for UTC
-        return utcDate.toISOString();
-      };
+      const response = await fetchApi(`/api/kills/compare-cache?type=${timeRangeType}`);
+      
+      if (!response || !response.data) {
+        throw new Error('No response data received');
+      }
+      
+      if (!response.data.character_breakdown || !Array.isArray(response.data.character_breakdown)) {
+        throw new Error('No character breakdown data received');
+      }
 
-      const start_date = formatDateToISO(startDate);
-      const end_date = formatDateToISO(endDate);
-
-      console.log(`Fetching comparison data from ${start_date} to ${end_date}`);
-
-      // Use the new endpoint that directly returns all character data
-      const params = new URLSearchParams({
-        start_date,
-        end_date
+      setCacheInfo({
+        cached_at: response.data.cached_at,
+        cache_expires_at: response.data.cache_expires_at
       });
 
-      // Set a longer timeout for this API call (30 seconds)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      try {
-        const response = await fetchApi(`/api/kills/compare-all?${params}`, {
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        console.log('API Response:', response);
-        
-        if (!response || !response.data) {
-          throw new Error('No response data received');
-        }
-        
-        if (!response.data.character_breakdown || !Array.isArray(response.data.character_breakdown)) {
-          console.error('Invalid character breakdown data:', response.data);
-          throw new Error('No character breakdown data received');
-        }
-
-        if (response.data.character_breakdown.length === 0) {
-          console.log('Received empty character breakdown array');
-          setCharacterData([]);
-          
-          // Save the empty result to cache too
-          saveToCache([], startDate, endDate);
-          return;
-        }
-
-        // Sort by missing percentage in descending order
-        const sortedData = [...response.data.character_breakdown].sort(
-          (a, b) => b.missing_percentage - a.missing_percentage
-        );
-        
-        console.log(`Loaded ${sortedData.length} character records from API`);
-        setCharacterData(sortedData);
-        
-        // Save to cache
-        saveToCache(sortedData, startDate, endDate);
-        
-        // If this was a background refresh, show a brief success message
-        if (isBackgroundRefresh) {
-          setSyncMessage({ 
-            type: 'success', 
-            text: 'Data refreshed successfully!' 
-          });
-          setTimeout(() => setSyncMessage(null), 3000);
-        }
-      } catch (fetchError) {
-        if (fetchError.name === 'AbortError') {
-          throw new Error('Request timed out. The data processing may be taking too long. Try a shorter date range.');
-        }
-        throw fetchError;
-      }
+      const sortedData = [...response.data.character_breakdown].sort(
+        (a, b) => b.missing_percentage - a.missing_percentage
+      );
+      
+      setCharacterData(sortedData);
+      
     } catch (error) {
       console.error('Failed to load comparison data:', error);
-      
-      // Only show the error if this wasn't a background refresh or if we don't have cached data
-      if (!isBackgroundRefresh || characterData.length === 0) {
-        setError(`Failed to load data: ${error instanceof Error ? error.message : String(error)}`);
-      } else if (isBackgroundRefresh) {
-        // Show a non-intrusive error for background refreshes
-        setSyncMessage({ 
-          type: 'error', 
-          text: 'Failed to refresh data in background. Using cached data.' 
-        });
-        setTimeout(() => setSyncMessage(null), 5000);
-      }
+      setError(`Failed to load data: ${error instanceof Error ? error.message : String(error)}`);
+      setCharacterData([]);
     } finally {
-      if (!isBackgroundRefresh) {
-        setLoading(false);
-      } else {
-        setRefreshing(false);
-      }
+      setLoading(false);
     }
   };
 
-  // Load data on initial render
   useEffect(() => {
-    loadComparisonData(true);
-  }, []);
+    loadComparisonData();
+  }, [timeRangeType]);
 
-  // Handle syncing all characters with missing kills
   const handleSyncAllMissing = async () => {
     if (!confirm("This will fetch and sync kills for all characters with missing data. Continue?")) {
       return;
@@ -389,7 +241,6 @@ const KillComparison: React.FC = () => {
     try {
       setSyncMessage({ type: 'success', text: 'Starting sync of all characters...' });
       
-      // Process each character in sequence
       for (const character of charactersWithMissing) {
         setSyncMessage({ 
           type: 'success', 
@@ -400,17 +251,13 @@ const KillComparison: React.FC = () => {
       }
       
       setSyncMessage({ type: 'success', text: 'All characters synced successfully!' });
-      
-      // Reload the data to show updated stats
-      await loadComparisonData();
-      
+      loadComparisonData();
       setTimeout(() => setSyncMessage(null), 5000);
     } catch (error) {
       setSyncMessage({ type: 'error', text: `Error syncing characters: ${error}` });
     }
   };
 
-  // Handle analyzing missing kills for a specific character
   const handleAnalyzeMissing = async (characterId: number, killIds: number[]) => {
     if (killIds.length === 0) return;
     
@@ -437,7 +284,16 @@ const KillComparison: React.FC = () => {
     }
   };
 
-  // Get character name for the current analysis
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString();
+    } catch (e) {
+      return dateString;
+    }
+  };
+
   const getCharacterName = (characterId: number | null) => {
     if (!characterId) return '';
     const character = characterData.find(c => c.character_id === characterId);
@@ -450,55 +306,56 @@ const KillComparison: React.FC = () => {
         Kill Comparison Tool
       </Typography>
 
-      {/* Date Range Filter */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={4}>
-              <DatePicker
-                label="Start Date"
-                value={startDate}
-                onChange={setStartDate}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="timerange-select-label">Time Range</InputLabel>
+                <Select
+                  labelId="timerange-select-label"
+                  value={timeRangeType}
+                  label="Time Range"
+                  onChange={(e) => setTimeRangeType(e.target.value)}
+                >
+                  {timeRangeOptions.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
-            <Grid item xs={12} md={4}>
-              <DatePicker
-                label="End Date"
-                value={endDate}
-                onChange={setEndDate}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            
+            <Grid item xs={12} md={6}>
               <Button
                 variant="contained"
-                onClick={() => loadComparisonData(false)}
-                disabled={loading || !startDate || !endDate}
-                startIcon={refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
+                onClick={loadComparisonData}
+                disabled={loading}
+                startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
                 fullWidth
                 sx={{ height: '56px' }}
               >
-                {loading ? 'Loading...' : refreshing ? 'Refreshing...' : 'Refresh Data'}
+                {loading ? 'Loading...' : 'Refresh Data'}
               </Button>
             </Grid>
           </Grid>
           
           <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary">
-              Note: For best performance, use a shorter date range (under 24 hours). Longer ranges may time out.
+              Using pre-cached data for better performance.
             </Typography>
             
-            {cacheStatus !== 'none' && (
-              <Typography variant="caption" color={cacheStatus === 'fresh' ? 'success.main' : 'text.secondary'}>
-                {cacheStatus === 'fresh' ? 'Using fresh cached data' : 'Using stale cached data, refreshing...'}
+            {cacheInfo && (
+              <Typography variant="caption" color="text.secondary">
+                Cached at: {formatDate(cacheInfo.cached_at)} 
+                {cacheInfo.cache_expires_at && ` (expires: ${formatDate(cacheInfo.cache_expires_at)})`}
               </Typography>
             )}
           </Box>
         </CardContent>
       </Card>
 
-      {/* Status Messages */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
           {error}
@@ -515,7 +372,6 @@ const KillComparison: React.FC = () => {
         </Alert>
       )}
 
-      {/* Character Comparison Table */}
       {loading ? (
         <Box display="flex" justifyContent="center" alignItems="center" py={4}>
           <CircularProgress />
@@ -559,7 +415,8 @@ const KillComparison: React.FC = () => {
                   {characterData.map((character) => (
                     <CharacterRow 
                       key={character.character_id} 
-                      character={character} 
+                      character={character}
+                      timeRangeType={timeRangeType}
                       onAnalyze={handleAnalyzeMissing}
                     />
                   ))}
@@ -580,7 +437,6 @@ const KillComparison: React.FC = () => {
         </Alert>
       )}
 
-      {/* Analysis Results */}
       {analysisResults && (
         <Card>
           <CardContent>

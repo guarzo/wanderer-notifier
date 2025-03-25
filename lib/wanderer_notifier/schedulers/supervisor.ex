@@ -190,8 +190,4 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     end
   end
 
-  # Check if kill charts feature is enabled
-  defp kill_charts_enabled? do
-    WandererNotifier.Core.Config.kill_charts_enabled?()
-  end
 end

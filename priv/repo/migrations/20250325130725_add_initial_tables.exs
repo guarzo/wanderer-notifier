@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Repo.Migrations.AddKillStats do
+defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
   @moduledoc """
   Updates resources based on their most recent snapshots.
 

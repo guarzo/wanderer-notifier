@@ -10,11 +10,11 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
 
- # @node_chart_service_path "chart-service"
+  # @node_chart_service_path "chart-service"
   @default_port 3001
   # 5 seconds between restart attempts
- # @restart_delay 5000
-#  @max_restart_attempts 5
+  # @restart_delay 5000
+  #  @max_restart_attempts 5
 
   # Client API
 
