@@ -97,3 +97,15 @@ config :wanderer_notifier, WandererNotifier.Repo,
   database: System.get_env("POSTGRES_DB", "wanderer_notifier_#{config_env()}"),
   port: String.to_integer(System.get_env("POSTGRES_PORT", "5432")),
   pool_size: String.to_integer(System.get_env("POSTGRES_POOL_SIZE", "10"))
+
+if config_env() == :prod do
+  notifier_api_token =
+    System.get_env("NOTIFIER_API_TOKEN") ||
+      raise """
+      environment variable NOTIFIER_API_TOKEN is missing.
+      This token should be set during the build process.
+      """
+
+  config :wanderer_notifier,
+    api_token: notifier_api_token
+end
