@@ -14,6 +14,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   @api_version "1.0.0"
   @service_start_time System.monotonic_time(:millisecond)
 
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason
+  )
+
   plug(:match)
   plug(:dispatch)
 
@@ -1198,7 +1204,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     |> send_resp(200, Jason.encode!(response_data))
   end
 
-  # Compare kills for a character within a date range
+  # Compare kills for a character in the last 24 hours
   get "/kills/compare" do
     try do
       # Log raw query parameters
@@ -1220,40 +1226,31 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         }
       })
 
-      # Extract and validate query parameters
-      %{
-        "character_id" => character_id,
-        "start_date" => start_date_str,
-        "end_date" => end_date_str
-      } = conn.query_params
+      # Extract and validate parameters
+      character_id = conn.query_params["character_id"]
+      start_date = conn.query_params["start_date"]
+      end_date = conn.query_params["end_date"]
 
       AppLogger.api_info("Kill comparison requested", %{
         character_id: character_id,
-        start_date_str: start_date_str,
-        end_date_str: end_date_str,
-        param_details: %{
-          start_date_length: String.length(start_date_str),
-          end_date_length: String.length(end_date_str),
-          character_id_type: get_type(character_id),
-          start_date_type: get_type(start_date_str),
-          end_date_type: get_type(end_date_str)
-        }
+        start_date: start_date,
+        end_date: end_date
       })
 
-      # Parse dates with better error handling
+      # Parse parameters with better error handling
       with {character_id_int, ""} <- Integer.parse(character_id),
-           {:ok, start_date} <- parse_date_string(start_date_str),
-           {:ok, end_date} <- parse_date_string(end_date_str) do
+           {:ok, start_datetime} <- parse_date_string(start_date),
+           {:ok, end_datetime} <- parse_date_string(end_date) do
         AppLogger.api_info("Parsed parameters for kill comparison", %{
           character_id: character_id_int,
-          start_date: inspect(start_date),
-          end_date: inspect(end_date)
+          start_datetime: start_datetime,
+          end_datetime: end_datetime
         })
 
         case WandererNotifier.Services.KillmailComparison.compare_killmails(
                character_id_int,
-               start_date,
-               end_date
+               start_datetime,
+               end_datetime
              ) do
           {:ok, comparison_result} ->
             conn
@@ -1263,153 +1260,97 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           {:error, reason} ->
             AppLogger.api_error("Error comparing kills", %{
               error: inspect(reason),
-              character_id: character_id_int,
-              start_date: inspect(start_date),
-              end_date: inspect(end_date)
+              character_id: character_id_int
             })
 
+            # Return empty results with error message
             conn
             |> put_resp_content_type("application/json")
             |> send_resp(
               500,
-              Jason.encode!(%{error: "Failed to compare kills", details: inspect(reason)})
+              Jason.encode!(%{
+                kills_found: [],
+                kills_missing: [],
+                total_kills: 0,
+                coverage_percentage: 0,
+                error: "Failed to fetch kills: #{inspect(reason)}"
+              })
             )
         end
       else
         :error ->
-          AppLogger.api_error("Invalid character ID format", %{character_id: character_id})
+          AppLogger.api_error("Invalid character ID format", character_id: character_id)
 
           conn
           |> put_resp_content_type("application/json")
-          |> send_resp(400, Jason.encode!(%{error: "Invalid character ID format"}))
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              error: "Invalid character ID format",
+              success: false
+            })
+          )
 
         {:error, reason} ->
-          AppLogger.api_error("Error parsing dates", %{
-            error: inspect(reason),
-            start_date: start_date_str,
-            end_date: end_date_str
-          })
+          AppLogger.api_error("Invalid date format", error: inspect(reason))
 
           conn
           |> put_resp_content_type("application/json")
-          |> send_resp(400, Jason.encode!(%{error: "Invalid date format"}))
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              error: "Invalid date format. Expected ISO-8601 format (e.g. 2024-03-24T18:42:00Z)",
+              success: false
+            })
+          )
       end
     rescue
       e ->
-        AppLogger.api_error("Error in kills/compare endpoint", %{
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
+        AppLogger.api_error("Error in kills/compare endpoint", error: Exception.message(e))
 
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(
           500,
-          Jason.encode!(%{error: "Internal server error", details: Exception.message(e)})
+          Jason.encode!(%{
+            error: "Internal server error",
+            success: false,
+            details: Exception.message(e)
+          })
         )
     end
   end
 
-  # Helper function to parse date strings in YYYYMMDDHHmm format
-  defp parse_date_string(
-         <<year::binary-size(4), month::binary-size(2), day::binary-size(2), hour::binary-size(2),
-           minute::binary-size(2)>> = date_str
-       ) do
-    AppLogger.api_info("Attempting to parse YYYYMMDDHHmm format", %{
-      raw_string: date_str,
-      components: %{
-        year: year,
-        month: month,
-        day: day,
-        hour: hour,
-        minute: minute
-      }
-    })
-
-    with {year_int, ""} <- Integer.parse(year),
-         {month_int, ""} <- Integer.parse(month),
-         {day_int, ""} <- Integer.parse(day),
-         {hour_int, ""} <- Integer.parse(hour),
-         {minute_int, ""} <- Integer.parse(minute) do
-      AppLogger.api_debug("Successfully parsed date components", %{
-        parsed_components: %{
-          year: year_int,
-          month: month_int,
-          day: day_int,
-          hour: hour_int,
-          minute: minute_int
-        }
-      })
-
-      case NaiveDateTime.new(year_int, month_int, day_int, hour_int, minute_int, 0) do
-        {:ok, naive_dt} ->
-          AppLogger.api_debug("Created NaiveDateTime", %{
-            naive_datetime: inspect(naive_dt)
-          })
-
-          case DateTime.from_naive(naive_dt, "Etc/UTC") do
-            {:ok, datetime_utc} ->
-              AppLogger.api_info("Successfully created UTC DateTime", %{
-                final_datetime: inspect(datetime_utc)
-              })
-
-              {:ok, datetime_utc}
-
-            error ->
-              AppLogger.api_error("Failed to convert to UTC DateTime", %{
-                error: inspect(error),
-                naive_datetime: inspect(naive_dt)
-              })
-
-              error
-          end
-
-        error ->
-          AppLogger.api_error("Failed to create NaiveDateTime", %{
-            error: inspect(error),
-            components: %{
-              year: year_int,
-              month: month_int,
-              day: day_int,
-              hour: hour_int,
-              minute: minute_int
-            }
-          })
-
-          error
-      end
-    else
-      error ->
-        AppLogger.api_error("Failed to parse date components", %{
-          error: inspect(error),
-          raw_string: date_str
-        })
-
-        {:error, :invalid_format}
-    end
-  end
-
+  # Helper function to parse date strings - expects ISO8601 format with timezone
   defp parse_date_string(date_str) do
-    AppLogger.api_info("Attempting to parse as ISO8601", %{
+    AppLogger.api_info("Parsing ISO8601 date string", %{
       raw_string: date_str
     })
 
-    case DateTime.from_iso8601(date_str) do
-      {:ok, datetime, offset} ->
-        AppLogger.api_info("Successfully parsed ISO8601 date", %{
-          datetime: inspect(datetime),
-          offset: offset
-        })
+    # First try parsing with NaiveDateTime to handle milliseconds
+    case NaiveDateTime.from_iso8601(date_str) do
+      {:ok, naive_dt} ->
+        # Convert to UTC DateTime
+        {:ok, DateTime.from_naive!(naive_dt, "Etc/UTC")}
 
-        {:ok, datetime}
+      {:error, _} ->
+        # Fallback to DateTime.from_iso8601 if NaiveDateTime fails
+        case DateTime.from_iso8601(date_str) do
+          {:ok, datetime, _offset} ->
+            AppLogger.api_info("Successfully parsed ISO8601 date", %{
+              datetime: inspect(datetime)
+            })
 
-      error ->
-        AppLogger.api_error("Failed to parse ISO8601 date", %{
-          error: inspect(error),
-          raw_string: date_str
-        })
+            {:ok, datetime}
 
-        error
+          {:error, reason} ->
+            AppLogger.api_error("Failed to parse ISO8601 date", %{
+              error: inspect(reason),
+              raw_string: date_str
+            })
+
+            {:error, :invalid_format}
+        end
     end
   end
 
@@ -1422,6 +1363,82 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   defp get_type(value) when is_map(value), do: "map"
   defp get_type(value) when is_list(value), do: "list"
   defp get_type(value), do: inspect(value.__struct__)
+
+  # Analyze missing kills
+  post "/kills/analyze-missing" do
+    try do
+      # Log request info
+      AppLogger.api_info("Received analyze-missing request", %{
+        headers: conn.req_headers,
+        content_type: get_req_header(conn, "content-type"),
+        content_length: get_req_header(conn, "content-length"),
+        method: conn.method,
+        request_path: conn.request_path,
+        body_params: conn.body_params
+      })
+
+      character_id = conn.body_params["character_id"]
+      kill_ids = conn.body_params["kill_ids"]
+
+      if is_nil(character_id) or is_nil(kill_ids) do
+        AppLogger.api_error("Missing required parameters", %{
+          character_id: character_id,
+          has_kill_ids: not is_nil(kill_ids)
+        })
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          400,
+          Jason.encode!(%{
+            error: "Missing required parameters",
+            details: "Both character_id and kill_ids are required"
+          })
+        )
+      else
+        AppLogger.api_info("Analyzing missing kills", %{
+          character_id: character_id,
+          kill_count: length(kill_ids)
+        })
+
+        case WandererNotifier.Services.KillmailComparison.analyze_missing_kills(
+               character_id,
+               kill_ids
+             ) do
+          {:ok, analysis} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(200, Jason.encode!(analysis))
+
+          {:error, reason} ->
+            AppLogger.api_error("Error analyzing missing kills", %{
+              error: inspect(reason),
+              character_id: character_id
+            })
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{error: "Failed to analyze kills: #{inspect(reason)}"})
+            )
+        end
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error in analyze-missing endpoint", %{
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{error: "Internal server error", details: Exception.message(e)})
+        )
+    end
+  end
 
   # Catch-all route
   match _ do

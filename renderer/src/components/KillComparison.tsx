@@ -52,27 +52,16 @@ const KillComparison: React.FC = () => {
     mutationFn: async () => {
       if (!selectedCharacter || !startDate || !endDate) return null;
 
-      // Format dates to YYYYMMDDHHmm format
-      const formatDateForZKill = (date: Date) => {
-        // Convert to UTC first
+      // Format dates to ISO-8601 format with UTC timezone
+      const formatDateToISO = (date: Date) => {
+        // Ensure we're working with UTC
         const utcDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-        const year = utcDate.getUTCFullYear();
-        const month = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(utcDate.getUTCDate()).padStart(2, '0');
-        const hours = String(utcDate.getUTCHours()).padStart(2, '0');
-        const minutes = String(utcDate.getUTCMinutes()).padStart(2, '0');
-        const formatted = `${year}${month}${day}${hours}${minutes}`;
-        console.log('Formatting date:', {
-          original: date.toISOString(),
-          utc: utcDate.toISOString(),
-          formatted,
-          components: { year, month, day, hours, minutes }
-        });
-        return formatted;
+        // Format to ISO string and ensure it ends with Z for UTC
+        return utcDate.toISOString();
       };
 
-      const start_date = formatDateForZKill(startDate);
-      const end_date = formatDateForZKill(endDate);
+      const start_date = formatDateToISO(startDate);
+      const end_date = formatDateToISO(endDate);
 
       console.log('Sending request with dates:', { start_date, end_date });
 
@@ -82,14 +71,28 @@ const KillComparison: React.FC = () => {
         end_date
       });
 
-      const response = await fetchApi(`/api/kills/compare?${params}`);
-      return response.data;
+      try {
+        const response = await fetchApi(`/api/kills/compare?${params}`);
+        if (!response.data) {
+          throw new Error('No data received from API');
+        }
+        return response.data;
+      } catch (error) {
+        // Log the error for debugging
+        console.error('API Error:', error);
+        // Re-throw to let the mutation handler deal with it
+        throw error;
+      }
     },
     onSuccess: (data) => {
       if (data) {
         setComparisonResults(data);
         setAnalysisResults(null); // Reset analysis when new comparison is made
       }
+    },
+    onError: (error) => {
+      console.error('Comparison failed:', error);
+      // You might want to show this error to the user through your UI
     }
   });
 
