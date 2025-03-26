@@ -38,7 +38,7 @@ jobs:
           echo "vtag=${VTAG}" >> "$GITHUB_OUTPUT"
           echo "major_vtag=${MAJOR_VTAG}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          
+
           echo "Generated Elixir version: ${VERSION}"
           echo "Generated Docker version: ${DOCKER_VERSION}"
           echo "Generated v-tag: ${VTAG}"
@@ -51,7 +51,7 @@ jobs:
           SHORT_SHA="${{ steps.version.outputs.short_sha }}"
           VTAG="${{ steps.version.outputs.vtag }}"
           GIT_TAG="${VTAG}-${SHORT_SHA}"
-          
+
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git tag -a "${GIT_TAG}" -m "Release ${GIT_TAG}"
@@ -64,7 +64,7 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: "renderer/package-lock.json"
-          
+
       - name: Build React application
         run: |
           # Ensure the static app directory exists first
