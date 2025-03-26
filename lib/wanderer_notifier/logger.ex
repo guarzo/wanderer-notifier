@@ -65,8 +65,10 @@ defmodule WandererNotifier.Logger do
 
     # Merge with Logger context, but ensure our category takes precedence
     Logger.metadata()
-    |> Keyword.delete(:category)  # Remove existing category if present
-    |> Keyword.merge(metadata_with_category)  # Add our metadata with correct category
+    # Remove existing category if present
+    |> Keyword.delete(:category)
+    # Add our metadata with correct category
+    |> Keyword.merge(metadata_with_category)
   end
 
   # Adds metadata type information for debugging
@@ -98,22 +100,70 @@ defmodule WandererNotifier.Logger do
 
   # Formats the log message with optional debug information
   defp maybe_add_debug_metadata(message, metadata) do
+    # Always include key metadata fields in the log message, regardless of debug mode
+    # Extract the important fields into a simple string
+    important_fields = extract_important_metadata(metadata)
+
+    message_with_data =
+      if important_fields != "", do: "#{message} #{important_fields}", else: message
+
+    # If debug mode is enabled, add full detailed metadata
     if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
-      metadata_keys = extract_metadata_keys(metadata)
-      "#{message} [META-KEYS:#{metadata_keys}]"
+      # Include both keys and values in debug mode
+      metadata_summary = extract_metadata_for_debug(metadata)
+      "#{message_with_data} [META:#{metadata_summary}]"
     else
-      message
+      message_with_data
     end
   end
 
-  # Extracts and formats metadata keys for debug logging
-  defp extract_metadata_keys(metadata) do
-    metadata
-    |> Enum.map(fn {k, _} -> k end)
-    |> inspect()
-    # Limit length for readability
-    |> String.slice(0, 100)
+  # Extract important metadata to always include in log messages
+  defp extract_important_metadata(metadata) do
+    # List of important fields that should always be shown in logs
+    important_keys = [
+      :character_id,
+      :kill_id,
+      :system_id,
+      :error,
+      :reason,
+      :start_str,
+      :end_str,
+      :count,
+      :status_code
+    ]
+
+    # Filter only important fields that exist in the metadata
+    important_data = Enum.filter(metadata, fn {k, _v} -> k in important_keys end)
+
+    # Format them nicely for the log message
+    if Enum.empty?(important_data) do
+      ""
+    else
+      "(" <>
+        Enum.map_join(important_data, ", ", fn {k, v} -> "#{k}=#{inspect(v)}" end) <>
+        ")"
+    end
   end
+
+  # Extracts and formats metadata for debug logging - shows both keys and values
+  defp extract_metadata_for_debug(metadata) do
+    metadata
+    |> Enum.map_join(", ", fn {k, v} ->
+      # Format value based on type for better readability
+      formatted_value = format_value_for_debug(v)
+      "#{k}=#{formatted_value}"
+    end)
+    # Limit length for readability
+    |> String.slice(0, 200)
+  end
+
+  # Formats different value types for debug output
+  defp format_value_for_debug(value) when is_binary(value),
+    do: "\"#{String.slice(value, 0, 30)}\""
+
+  defp format_value_for_debug(value) when is_list(value), do: "list[#{length(value)}]"
+  defp format_value_for_debug(value) when is_map(value), do: "map{#{map_size(value)}}"
+  defp format_value_for_debug(value), do: inspect(value, limit: 10)
 
   # Helper to convert metadata to keyword list
   defp convert_metadata_to_keyword_list(metadata) when is_map(metadata) do
@@ -148,13 +198,20 @@ defmodule WandererNotifier.Logger do
           "[LOGGER] Non-keyword list passed as metadata! Convert to map. List: #{inspect(metadata)}\nCaller: #{caller}"
         )
 
-        # Convert the data to a keyword list with diagnostics
-        [
-          _metadata_source: "invalid_list",
-          _metadata_warning: "Non-keyword list converted to keyword list",
-          _original_data: inspect(metadata),
-          _caller: caller
-        ]
+        # Convert the non-keyword list to a map with indices as keys, then to keyword list
+        converted_data =
+          metadata
+          |> Enum.with_index()
+          |> Enum.map(fn {value, index} -> {"item_#{index}", value} end)
+          |> Enum.into(%{})
+          |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
+
+        # Add diagnostics about the conversion
+        converted_data
+        |> Keyword.put(:_metadata_source, "invalid_list_converted")
+        |> Keyword.put(:_metadata_warning, "Non-keyword list converted to keyword list")
+        |> Keyword.put(:_original_data, inspect(metadata))
+        |> Keyword.put(:_caller, caller)
     end
   end
 

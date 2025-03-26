@@ -65,6 +65,7 @@ LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 # ENABLE_KILL_NOTIFICATIONS=true
 # ENABLE_CHARACTER_NOTIFICATIONS=true
 # ENABLE_SYSTEM_NOTIFICATIONS=true
+# ENABLE_TRACK_KSPACE_SYSTEMS=false  # Set to 'true' to track K-Space systems in addition to wormholes
 ```
 
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
@@ -94,7 +95,15 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-4000}/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:${PORT:-4000}/health",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -123,7 +132,7 @@ Your notifier is now up and running, delivering alerts to your Discord channel a
 
 - **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
 - **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process only kills from systems you care about
+- **Map-Based Filtering:** Uses a custom map API to track wormhole systems (with option to include K-Space systems) and process only kills from systems you care about
 - **Periodic Maintenance:** Automatically updates system data and processes backup kills
 - **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
 - **Web Dashboard:** Access system status and notification statistics via the built-in web interface

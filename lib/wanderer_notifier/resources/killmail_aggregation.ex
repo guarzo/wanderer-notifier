@@ -217,7 +217,10 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
         :region_name,
         :total_value,
         :ship_type_id,
-        :ship_type_name
+        :ship_type_name,
+        :zkb_data,
+        :victim_data,
+        :attacker_data
       ])
       |> WandererNotifier.Resources.Api.read()
 
@@ -243,6 +246,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     Logger.info(
       "[KillmailAggregation] Statistics for #{character.character_name}: " <>
         "kills=#{stats.kills_count}, deaths=#{stats.deaths_count}, " <>
+        "solo_kills=#{stats.solo_kills_count}, final_blows=#{stats.final_blows_count}, " <>
         "isk_destroyed=#{Decimal.to_string(stats.isk_destroyed)}, " <>
         "regions=#{map_size(stats.region_activity)}, ships=#{map_size(stats.ship_usage)}"
     )
@@ -267,6 +271,8 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       deaths_count: stats.deaths_count,
       isk_destroyed: stats.isk_destroyed,
       isk_lost: stats.isk_lost,
+      solo_kills_count: stats.solo_kills_count,
+      final_blows_count: stats.final_blows_count,
       region_activity: stats.region_activity,
       ship_usage: stats.ship_usage,
       top_victim_corps: stats.top_victim_corps,
@@ -391,11 +397,13 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   # Calculate statistics from killmails
   defp calculate_statistics(killmails) do
     # Initialize empty statistics
-    stats = %{
+    initial_stats = %{
       kills_count: 0,
       deaths_count: 0,
       isk_destroyed: Decimal.new(0),
       isk_lost: Decimal.new(0),
+      solo_kills_count: 0,
+      final_blows_count: 0,
       region_activity: %{},
       ship_usage: %{},
       top_victim_corps: %{},
@@ -404,60 +412,95 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     }
 
     # Process each killmail and aggregate statistics
-    Enum.reduce(killmails, stats, fn killmail, acc ->
-      # Determine if this is a kill or death
+    Enum.reduce(killmails, initial_stats, fn killmail, acc ->
       case killmail.character_role do
-        :attacker ->
-          # This is a kill
-          kills_count = acc.kills_count + 1
-          isk_destroyed = Decimal.add(acc.isk_destroyed, killmail.total_value || Decimal.new(0))
-
-          # Update region activity
-          region_activity = update_region_count(acc.region_activity, killmail.region_name)
-
-          # Update ship usage
-          ship_usage = update_ship_usage(acc.ship_usage, killmail.ship_type_name)
-
-          # Update victim information from victim_data
-          victim_data = killmail.victim_data || %{}
-
-          # Extract victim corporation
-          victim_corp = Map.get(victim_data, "corporation_name", "Unknown")
-          top_victim_corps = update_count_map(acc.top_victim_corps, victim_corp)
-
-          # Extract victim ship
-          victim_ship = Map.get(victim_data, "ship_type_name", "Unknown")
-          top_victim_ships = update_count_map(acc.top_victim_ships, victim_ship)
-
-          # Update detailed ship usage (which ship was used to kill which ship)
-          detailed_usage_key = "#{killmail.ship_type_name || "Unknown"} → #{victim_ship}"
-          detailed_ship_usage = update_count_map(acc.detailed_ship_usage, detailed_usage_key)
-
-          # Return updated statistics
-          %{
-            acc
-            | kills_count: kills_count,
-              isk_destroyed: isk_destroyed,
-              region_activity: region_activity,
-              ship_usage: ship_usage,
-              top_victim_corps: top_victim_corps,
-              top_victim_ships: top_victim_ships,
-              detailed_ship_usage: detailed_ship_usage
-          }
-
-        :victim ->
-          # This is a death
-          deaths_count = acc.deaths_count + 1
-          isk_lost = Decimal.add(acc.isk_lost, killmail.total_value || Decimal.new(0))
-
-          # Return updated statistics
-          %{
-            acc
-            | deaths_count: deaths_count,
-              isk_lost: isk_lost
-          }
+        :attacker -> process_kill(killmail, acc)
+        :victim -> process_death(killmail, acc)
       end
     end)
+  end
+
+  # Process a kill (when character is attacker)
+  defp process_kill(killmail, stats) do
+    # This is a kill
+    kills_count = stats.kills_count + 1
+    isk_destroyed = Decimal.add(stats.isk_destroyed, killmail.total_value || Decimal.new(0))
+
+    # Solo kill tracking
+    solo_kills_count = update_solo_kills_count(stats.solo_kills_count, killmail.zkb_data)
+
+    # Final blow tracking
+    final_blows_count = update_final_blows_count(stats.final_blows_count, killmail.attacker_data)
+
+    # Update region and ship stats
+    region_activity = update_region_count(stats.region_activity, killmail.region_name)
+    ship_usage = update_ship_usage(stats.ship_usage, killmail.ship_type_name)
+
+    # Process victim data
+    {top_victim_corps, top_victim_ships, detailed_ship_usage} =
+      process_victim_data(
+        stats.top_victim_corps,
+        stats.top_victim_ships,
+        stats.detailed_ship_usage,
+        killmail
+      )
+
+    # Return updated statistics
+    %{
+      stats
+      | kills_count: kills_count,
+        isk_destroyed: isk_destroyed,
+        solo_kills_count: solo_kills_count,
+        final_blows_count: final_blows_count,
+        region_activity: region_activity,
+        ship_usage: ship_usage,
+        top_victim_corps: top_victim_corps,
+        top_victim_ships: top_victim_ships,
+        detailed_ship_usage: detailed_ship_usage
+    }
+  end
+
+  # Process a death (when character is victim)
+  defp process_death(killmail, stats) do
+    deaths_count = stats.deaths_count + 1
+    isk_lost = Decimal.add(stats.isk_lost, killmail.total_value || Decimal.new(0))
+
+    %{stats | deaths_count: deaths_count, isk_lost: isk_lost}
+  end
+
+  # Check and update solo kills count
+  defp update_solo_kills_count(current_count, zkb_data) do
+    zkb_data = zkb_data || %{}
+    is_solo = Map.get(zkb_data, "solo", false) == true
+
+    if is_solo, do: current_count + 1, else: current_count
+  end
+
+  # Check and update final blows count
+  defp update_final_blows_count(current_count, attacker_data) do
+    attacker_data = attacker_data || %{}
+    is_final_blow = Map.get(attacker_data, "final_blow", false) in [true, "true"]
+
+    if is_final_blow, do: current_count + 1, else: current_count
+  end
+
+  # Process victim data and update relevant statistics
+  defp process_victim_data(top_victim_corps, top_victim_ships, detailed_ship_usage, killmail) do
+    victim_data = killmail.victim_data || %{}
+
+    # Extract victim corporation
+    victim_corp = Map.get(victim_data, "corporation_name", "Unknown")
+    updated_corps = update_count_map(top_victim_corps, victim_corp)
+
+    # Extract victim ship
+    victim_ship = Map.get(victim_data, "ship_type_name", "Unknown")
+    updated_ships = update_count_map(top_victim_ships, victim_ship)
+
+    # Update detailed ship usage (which ship was used to kill which ship)
+    detailed_usage_key = "#{killmail.ship_type_name || "Unknown"} → #{victim_ship}"
+    updated_detail = update_count_map(detailed_ship_usage, detailed_usage_key)
+
+    {updated_corps, updated_ships, updated_detail}
   end
 
   # Update count in a map for a given key

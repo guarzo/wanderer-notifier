@@ -35,6 +35,8 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
     attribute(:deaths_count, :integer, default: 0)
     attribute(:isk_destroyed, :decimal, default: 0)
     attribute(:isk_lost, :decimal, default: 0)
+    attribute(:solo_kills_count, :integer, default: 0)
+    attribute(:final_blows_count, :integer, default: 0)
 
     # Activity breakdown by region
     attribute(:region_activity, :map, default: %{})
@@ -138,6 +140,8 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
         :deaths_count,
         :isk_destroyed,
         :isk_lost,
+        :solo_kills_count,
+        :final_blows_count,
         :region_activity,
         :ship_usage,
         :top_victim_corps,
@@ -171,6 +175,8 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
         :deaths_count,
         :isk_destroyed,
         :isk_lost,
+        :solo_kills_count,
+        :final_blows_count,
         :region_activity,
         :ship_usage,
         :top_victim_corps,

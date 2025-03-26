@@ -73,8 +73,8 @@ dev: build.npm
 
 # Watch both frontend and start the application
 watch:
-	@echo "Starting watchers for both Elixir and frontend..."
-	@(cd renderer && npm run watch) & (iex -S mix)
+	@echo "Starting watchers for both Elixir and frontend with auto-sync..."
+	@(cd renderer && npm run sync) & (iex -S mix)
 
 watch.frontend:
 	@cd renderer && npm run watch
@@ -88,5 +88,5 @@ deps.update:
 
 # Alias for watch with initial clean+compile and npm build
 s: clean compile build.npm
-	@echo "Starting watchers for both Elixir and frontend..."
-	@(cd renderer && npm run watch) & (iex -S mix)
+	@echo "Starting watchers for both Elixir and frontend with auto-sync..."
+	@(cd renderer && npm run sync) & (iex -S mix)

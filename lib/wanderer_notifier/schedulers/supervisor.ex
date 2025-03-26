@@ -81,8 +81,11 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       core_schedulers ++ kill_chart_schedulers
     else
       if Config.kill_charts_enabled?() do
-        AppLogger.scheduler_warn("Kill charts enabled but database not ready, skipping kill chart schedulers")
+        AppLogger.scheduler_warn(
+          "Kill charts enabled but database not ready, skipping kill chart schedulers"
+        )
       end
+
       core_schedulers
     end
   end
@@ -93,10 +96,12 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   end
 
   # Check if database is ready
-  defp database_ready? do
-    if !database_required?() do
-      true
-    else
+  @doc """
+  Checks if the database connection is ready.
+  Returns true if the database is not required or if the connection is established.
+  """
+  def database_ready? do
+    if database_required?() do
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 
@@ -107,7 +112,11 @@ defmodule WandererNotifier.Schedulers.Supervisor do
             true
 
           {:error, reason} ->
-            record_database_error("Database connection check failed during scheduler setup", reason)
+            record_database_error(
+              "Database connection check failed during scheduler setup",
+              reason
+            )
+
             false
         end
       rescue
@@ -115,6 +124,8 @@ defmodule WandererNotifier.Schedulers.Supervisor do
           record_database_exception("Database health check exception during scheduler setup", e)
           false
       end
+    else
+      true
     end
   end
 
@@ -188,10 +199,5 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
         {:error, reason}
     end
-  end
-
-  # Check if kill charts feature is enabled
-  defp kill_charts_enabled? do
-    WandererNotifier.Core.Config.kill_charts_enabled?()
   end
 end

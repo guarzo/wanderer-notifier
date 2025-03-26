@@ -260,6 +260,64 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     end
   end
 
+  # Generate a weekly ISK destroyed chart
+  get "/killmail/generate/weekly_isk" do
+    if Config.kill_charts_enabled?() do
+      AppLogger.api_info("Generating weekly ISK destroyed chart")
+
+      # Parse limit parameter with default of 20
+      limit =
+        case conn.params["limit"] do
+          nil ->
+            20
+
+          val when is_binary(val) ->
+            case Integer.parse(val) do
+              {num, _} -> num
+              :error -> 20
+            end
+
+          _ ->
+            20
+        end
+
+      case KillmailChartAdapter.generate_weekly_isk_chart(limit) do
+        {:ok, chart_url} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              title: "Weekly ISK Destroyed",
+              chart_url: chart_url
+            })
+          )
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to generate weekly ISK destroyed chart: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
   # Send a killmail chart to Discord
   get "/killmail/send-to-discord/weekly_kills" do
     if Config.kill_charts_enabled?() do
@@ -326,13 +384,40 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     end
   end
 
-  # Send all killmail charts to Discord
-  get "/killmail/send-all" do
+  # Send a weekly ISK destroyed chart to Discord
+  get "/killmail/send-to-discord/weekly_isk" do
     if Config.kill_charts_enabled?() do
-      AppLogger.api_info("Sending all killmail charts to Discord")
+      title = conn.params["title"] || "Weekly ISK Destroyed"
 
-      # Currently only weekly kills chart is available
-      case KillmailChartAdapter.send_weekly_kills_chart_to_discord() do
+      description =
+        conn.params["description"] || "Top 20 characters by ISK destroyed in the past week"
+
+      channel_id = conn.params["channel_id"]
+
+      # Parse limit parameter with default of 20
+      limit =
+        case conn.params["limit"] do
+          nil ->
+            20
+
+          val when is_binary(val) ->
+            case Integer.parse(val) do
+              {num, _} -> num
+              :error -> 20
+            end
+
+          _ ->
+            20
+        end
+
+      AppLogger.api_info("Sending weekly ISK destroyed chart to Discord", title: title)
+
+      case KillmailChartAdapter.send_weekly_isk_chart_to_discord(
+             title,
+             description,
+             channel_id,
+             limit
+           ) do
         :ok ->
           conn
           |> put_resp_content_type("application/json")
@@ -340,7 +425,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             200,
             Jason.encode!(%{
               status: "ok",
-              message: "All killmail charts sent to Discord successfully"
+              message: "ISK destroyed chart sent to Discord successfully"
             })
           )
 
@@ -351,7 +436,70 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             400,
             Jason.encode!(%{
               status: "error",
-              message: "Failed to send all killmail charts to Discord: #{reason}"
+              message: "Failed to send ISK destroyed chart to Discord: #{reason}"
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        403,
+        Jason.encode!(%{
+          status: "error",
+          message: "Killmail persistence is not enabled"
+        })
+      )
+    end
+  end
+
+  # Send all killmail charts to Discord
+  get "/killmail/send-all" do
+    if Config.kill_charts_enabled?() do
+      AppLogger.api_info("Sending all killmail charts to Discord")
+
+      # Send both the weekly kills chart and the weekly ISK destroyed chart
+      kills_result = KillmailChartAdapter.send_weekly_kills_chart_to_discord()
+      isk_result = KillmailChartAdapter.send_weekly_isk_chart_to_discord()
+
+      case {kills_result, isk_result} do
+        {:ok, :ok} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "All killmail charts sent to Discord successfully"
+            })
+          )
+
+        {kills_error, isk_error} ->
+          # Format error messages
+          error_details = %{}
+
+          error_details =
+            if kills_error != :ok do
+              Map.put(error_details, "kills_chart", inspect(kills_error))
+            else
+              error_details
+            end
+
+          error_details =
+            if isk_error != :ok do
+              Map.put(error_details, "isk_chart", inspect(isk_error))
+            else
+              error_details
+            end
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            400,
+            Jason.encode!(%{
+              status: "error",
+              message: "Failed to send some or all killmail charts to Discord",
+              details: error_details
             })
           )
       end

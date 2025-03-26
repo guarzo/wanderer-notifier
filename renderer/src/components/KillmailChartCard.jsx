@@ -221,7 +221,9 @@ function KillmailChartCard({ title, description, chartType }) {
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
       <div className="p-4 border-b">
         <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
-        <p className="text-gray-600 text-sm mt-1">{description}</p>
+        {chartType !== 'weekly_kills' && (
+          <p className="text-gray-600 text-sm mt-1">{description}</p>
+        )}
       </div>
       
       <div className="p-4">

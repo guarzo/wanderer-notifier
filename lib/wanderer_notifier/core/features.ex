@@ -212,11 +212,30 @@ defmodule WandererNotifier.Core.Features do
   end
 
   @doc """
-  Convenience function to check if all systems should be tracked,
-  delegating to Config.track_all_systems?
+  Check if we should load tracking data (systems and characters) for use in kill notifications.
+  This ensures that kill notifications can still function even when character/system
+  notifications themselves are disabled.
+  """
+  def should_load_tracking_data? do
+    # Always load tracking data if kill notifications are enabled
+    # regardless of character/system notification settings
+    kill_notifications_enabled?()
+  end
+
+  @doc """
+  Convenience function to check if K-Space (non-wormhole) systems should be tracked,
+  delegating to Config.track_kspace_systems?
+  """
+  def track_kspace_systems? do
+    WandererNotifier.Core.Config.track_kspace_systems?()
+  end
+
+  @doc """
+  Legacy function for backward compatibility.
+  @deprecated Use track_kspace_systems?/0 instead
   """
   def track_all_systems? do
-    WandererNotifier.Core.Config.track_all_systems?()
+    track_kspace_systems?()
   end
 
   @doc """
@@ -271,8 +290,10 @@ defmodule WandererNotifier.Core.Features do
       kill_notifications_enabled: kill_notifications_enabled?(),
       # Processing all kills (usually for testing)
       processing_all_kills: process_all_kills?(),
-      # Tracking all systems
-      tracking_all_systems: track_all_systems?(),
+      # Tracking K-Space (non-wormhole) systems
+      tracking_kspace_systems: track_kspace_systems?(),
+      # Legacy key for backward compatibility
+      tracking_all_systems: track_kspace_systems?(),
       # Activity charts status
       activity_charts: WandererNotifier.Core.Config.map_charts_enabled?()
     }

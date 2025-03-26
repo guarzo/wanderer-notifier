@@ -14,6 +14,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
+  alias WandererNotifier.Services.CharacterKillsService
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0
@@ -30,6 +31,9 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   def execute(state) do
     if kill_charts_enabled?() do
       AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail aggregation")
+
+      # First, fetch latest kills for all tracked characters
+      fetch_result = fetch_latest_kills()
 
       # Get today's date
       today = Date.utc_today()
@@ -56,8 +60,14 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
       # Log results
       log_aggregation_results(daily_result, weekly_result, monthly_result)
 
-      # Return the aggregation results
-      {:ok, %{daily: daily_result, weekly: weekly_result, monthly: monthly_result}, state}
+      # Return the aggregation results including fetch results
+      {:ok,
+       %{
+         fetch: fetch_result,
+         daily: daily_result,
+         weekly: weekly_result,
+         monthly: monthly_result
+       }, state}
     else
       Logger.info(
         "#{inspect(@scheduler_name)}: Skipping killmail aggregation (persistence disabled)"
@@ -73,6 +83,46 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
       AppLogger.scheduler_debug(Exception.format_stacktrace())
       {:error, e, state}
+  end
+
+  # Fetch latest kills for all tracked characters
+  defp fetch_latest_kills do
+    AppLogger.scheduler_info(
+      "#{inspect(@scheduler_name)}: Fetching latest character kills before aggregation"
+    )
+
+    # Set a reasonable limit for the scheduler (higher than the UI default)
+    # Fetch up to 50 recent kills per character
+    limit = 50
+
+    try do
+      case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
+        {:ok, stats} ->
+          AppLogger.scheduler_info(
+            "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",
+            characters: stats.characters,
+            processed: stats.processed,
+            persisted: stats.persisted
+          )
+
+          {:ok, stats}
+
+        {:error, reason} ->
+          AppLogger.scheduler_error(
+            "#{inspect(@scheduler_name)}: Failed to fetch character kills",
+            error: inspect(reason)
+          )
+
+          {:error, :fetch_failed, reason}
+      end
+    rescue
+      e ->
+        AppLogger.scheduler_error(
+          "#{inspect(@scheduler_name)}: Exception during kill fetch: #{Exception.message(e)}"
+        )
+
+        {:error, :fetch_exception, e}
+    end
   end
 
   # Run aggregation for a specific period

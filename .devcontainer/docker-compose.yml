@@ -28,7 +28,6 @@ services:
     user: elixir
     ports:
       - "4000:4000" # Main application
-      - "4111:4111" # Dev server
       - "3001:3001" # Chart service
     # This allows the container to access host.docker.internal
     extra_hosts:

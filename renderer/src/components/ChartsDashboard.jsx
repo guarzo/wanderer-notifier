@@ -92,7 +92,11 @@ export default function ChartsDashboard() {
           setSendAllSuccess(true);
           setTimeout(() => setSendAllSuccess(false), 5000);
         } else {
-          throw new Error(data.message || 'Failed to send all charts to Discord');
+          let errorMessage = data.message || 'Failed to send charts to Discord';
+          if (data.details) {
+            errorMessage += `: ${JSON.stringify(data.details)}`;
+          }
+          throw new Error(errorMessage);
         }
       })
       .catch(error => {
@@ -169,7 +173,7 @@ export default function ChartsDashboard() {
           
           {sendAllSuccess && (
             <div className="mb-4 px-4 py-2 bg-green-100 text-green-700 rounded">
-              All charts have been sent to Discord successfully!
+              Both weekly kills and ISK destroyed charts have been sent to Discord successfully!
             </div>
           )}
           
@@ -215,6 +219,14 @@ export default function ChartsDashboard() {
               chartType="weekly_kills"
             />
             
+            <KillmailChartCard 
+              title="Weekly ISK Destroyed" 
+              description="Top 20 characters by ISK destroyed in the past week"
+              chartType="weekly_isk"
+            />
+          </div>
+          
+          <div className="mt-6">
             <CharacterKillsCard
               title="Character Kill History" 
               description="Fetch and store historical kills for tracked characters"
