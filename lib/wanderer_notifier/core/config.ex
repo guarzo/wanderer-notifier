@@ -425,15 +425,34 @@ defmodule WandererNotifier.Core.Config do
   Returns whether all systems should be tracked.
   By default, only specific systems are tracked unless explicitly enabled.
   """
-  def track_all_systems? do
-    case System.get_env("TRACK_ALL_SYSTEMS") do
-      "true" -> true
-      "1" -> true
-      # Default to false if not set
-      nil -> false
+  def track_kspace_systems? do
+    case System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS") do
+      "true" ->
+        true
+
+      "1" ->
+        true
+
+      # For backward compatibility, also check the old environment variable
+      nil ->
+        case System.get_env("TRACK_ALL_SYSTEMS") do
+          "true" -> true
+          "1" -> true
+          _ -> false
+        end
+
       # Any other value is considered false
-      _ -> false
+      _ ->
+        false
     end
+  end
+
+  @doc """
+  Legacy function for backward compatibility.
+  @deprecated Use track_kspace_systems?/0 instead
+  """
+  def track_all_systems? do
+    track_kspace_systems?()
   end
 
   @doc """

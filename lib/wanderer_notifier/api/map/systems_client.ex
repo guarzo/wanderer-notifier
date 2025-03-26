@@ -82,17 +82,30 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     # Transform each system into a MapSystem struct
     systems = Enum.map(systems_data, &create_map_system/1)
 
-    # Filter for wormhole systems
-    wormhole_systems = Enum.filter(systems, &MapSystem.wormhole?/1)
+    # Filter systems based on configuration
+    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
+
+    tracked_systems =
+      if track_all_systems do
+        systems
+      else
+        # Only track wormhole systems if track_all_systems is false
+        Enum.filter(systems, &MapSystem.wormhole?/1)
+      end
 
     # Log status
-    log_wormhole_systems_status(wormhole_systems)
+    wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
+
+    AppLogger.api_info(
+      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes) " <>
+        "out of #{length(systems)} total systems (track_all_systems=#{track_all_systems})"
+    )
 
     # Cache systems and notify about new ones
-    cache_systems_data(wormhole_systems)
-    _ = notify_new_systems(wormhole_systems, cached_systems)
+    cache_systems_data(tracked_systems)
+    _ = notify_new_systems(tracked_systems, cached_systems)
 
-    {:ok, wormhole_systems}
+    {:ok, tracked_systems}
   end
 
   defp create_map_system(system_data) do
@@ -116,14 +129,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       {:error, _reason} ->
         # If enrichment fails, still use the base MapSystem
         map_system
-    end
-  end
-
-  defp log_wormhole_systems_status(wormhole_systems) do
-    if wormhole_systems == [] do
-      AppLogger.api_warn("[SystemsClient] No wormhole systems found in map API response")
-    else
-      AppLogger.api_debug("[SystemsClient] Found #{length(wormhole_systems)} wormhole systems")
     end
   end
 

@@ -140,7 +140,7 @@ All configuration is managed through environment variables in the `.env` file. A
    - `ENABLE_CHARACTER_NOTIFICATIONS`: Enable character tracking (default: `true`)
    - `ENABLE_MAP_CHARTS`: Enable map/activity charts (default: `false`)
    - `ENABLE_CHARTS`: General charts functionality (default: `false`)
-   - `TRACK_ALL_SYSTEMS`: Track all systems instead of specific ones (default: `false`)
+   - `ENABLE_TRACK_KSPACE_SYSTEMS`: Track K-Space systems in addition to wormholes (default: `false`)
 
 4. **Feature-specific Discord Channels**
    - `DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
@@ -202,9 +202,8 @@ This project is licensed according to the terms in the LICENSE file.
 
 If you encounter issues or have questions, please open an issue on the project repository.
 
-
 ## Notes
 
 ```
  mix archive.install hex bunt
- ```
+```

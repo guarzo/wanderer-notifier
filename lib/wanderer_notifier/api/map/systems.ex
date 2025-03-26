@@ -209,17 +209,27 @@ defmodule WandererNotifier.Api.Map.Systems do
         })
       end)
 
-    # Filter for wormhole systems
-    wormhole_systems =
+    # Filter systems based on configuration
+    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
+
+    processed_systems =
       systems_with_static_info
-      |> Enum.filter(&wormhole_system?/1)
+      |> Enum.filter(fn system ->
+        # If track_all_systems is true, include all systems
+        # Otherwise only include wormhole systems
+        track_all_systems || wormhole_system?(system)
+      end)
       |> Enum.map(&extract_system_data/1)
 
+    # Log the filtering results
+    wormhole_count = Enum.count(systems_with_static_info, &wormhole_system?/1)
+
     Logger.info(
-      "[process_system_list] Found #{length(wormhole_systems)} wormhole systems out of #{length(systems)} total systems"
+      "[process_system_list] Tracking #{length(processed_systems)} systems (#{wormhole_count} wormholes) " <>
+        "out of #{length(systems)} total systems (track_all_systems=#{track_all_systems})"
     )
 
-    {:ok, wormhole_systems}
+    {:ok, processed_systems}
   end
 
   # Classifies a system type based on its ID.

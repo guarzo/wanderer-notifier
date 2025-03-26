@@ -243,20 +243,37 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     tracked_systems = get_tracked_systems()
     AppLogger.processor_info("Found tracked systems", count: length(tracked_systems))
 
-    # Select a random wormhole system if available, or any system if no wormholes
-    selected_system =
-      tracked_systems
-      |> Enum.filter(&wormhole_system?/1)
-      |> case do
-        [] ->
-          # No wormhole systems, just pick any system
-          AppLogger.processor_info("No wormhole systems found", action: "selecting random system")
-          Enum.random(tracked_systems)
+    # Check if we should include all systems or just wormholes
+    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
 
-        wormhole_systems ->
-          # Pick a random wormhole system
-          AppLogger.processor_info("Found wormhole systems", count: length(wormhole_systems))
-          Enum.random(wormhole_systems)
+    # If track_all_systems is true, we can select from all systems
+    # Otherwise, prefer wormhole systems but fall back to any system if needed
+    selected_system =
+      if track_all_systems do
+        # When tracking all systems, just pick a random one
+        AppLogger.processor_info("Using track_all_systems=true",
+          action: "selecting from all systems"
+        )
+
+        Enum.random(tracked_systems)
+      else
+        # When only tracking wormholes, filter first
+        wormhole_systems = Enum.filter(tracked_systems, &wormhole_system?/1)
+
+        case wormhole_systems do
+          [] ->
+            # No wormhole systems, just pick any system
+            AppLogger.processor_info("No wormhole systems found",
+              action: "selecting random system"
+            )
+
+            Enum.random(tracked_systems)
+
+          _ ->
+            # Pick a random wormhole system
+            AppLogger.processor_info("Found wormhole systems", count: length(wormhole_systems))
+            Enum.random(wormhole_systems)
+        end
       end
 
     # Convert to MapSystem struct if not already

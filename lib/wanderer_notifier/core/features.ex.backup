@@ -212,19 +212,19 @@ defmodule WandererNotifier.Core.Features do
   end
 
   @doc """
+  Convenience function to check if all systems should be tracked,
+  delegating to Config.track_all_systems?
+  """
+  def track_all_systems? do
+    WandererNotifier.Core.Config.track_all_systems?()
+  end
+
+  @doc """
   Convenience function to check if K-Space (non-wormhole) systems should be tracked,
   delegating to Config.track_kspace_systems?
   """
   def track_kspace_systems? do
     WandererNotifier.Core.Config.track_kspace_systems?()
-  end
-
-  @doc """
-  Legacy function for backward compatibility.
-  @deprecated Use track_kspace_systems?/0 instead
-  """
-  def track_all_systems? do
-    track_kspace_systems?()
   end
 
   @doc """
@@ -315,5 +315,13 @@ defmodule WandererNotifier.Core.Features do
   """
   def character_notifications_enabled? do
     WandererNotifier.Core.Config.character_notifications_enabled?()
+  end
+
+  @doc """
+  Legacy function for backward compatibility.
+  @deprecated Use track_kspace_systems?/0 instead
+  """
+  def track_all_systems? do
+    track_kspace_systems?()
   end
 end
