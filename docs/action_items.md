@@ -1,5 +1,7 @@
 # Refactoring & Troubleshooting Tasks
 
+- [ ] Review RELASE_CONFIG usage -- it is needed, can we simplify things?
+
 ## API Clients and HTTP Patterns
 - [ ] Create a shared HTTP client module (`WandererNotifier.Api.HTTPClient`)
   - [ ] Implement helper functions for GET/POST requests with built-in retries and exponential backoff.
