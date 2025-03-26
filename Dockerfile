@@ -41,6 +41,7 @@ RUN mix do compile, release
 FROM elixir:1.18-otp-27-slim
 
 # Declare runtime environment variables
+ARG NOTIFIER_API_TOKEN
 ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
 ENV RELEASE_CONFIG=/app
 
