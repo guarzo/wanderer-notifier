@@ -82,6 +82,7 @@ jobs:
           build-args: |
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
+            RELEASE_CONFIG=/app/config/release.exs
           load: true
 
       # Test the Docker image to verify it can start

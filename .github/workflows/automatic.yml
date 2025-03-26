@@ -73,6 +73,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.docker_version }}
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            RELEASE_CONFIG=/app/config/release.exs
           tags: |
             guarzo/wanderer-notifier:dev
             guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
@@ -83,7 +84,7 @@ jobs:
           # Only verify GLIBC version and basic Elixir functionality without starting the full app
           docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }} /bin/sh -c "echo 'GLIBC Version:' && ldd --version | head -n1 && /app/bin/wanderer_notifier eval '1+1'"
         continue-on-error: true
-        
+
       - name: Create and push Git tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

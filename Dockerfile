@@ -42,6 +42,7 @@ FROM elixir:1.18-otp-27-slim
 
 # Declare runtime environment variables
 ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
+ENV RELEASE_CONFIG=/app/config/release.exs
 
 # Install runtime dependencies
 RUN apt-get update -y && \
@@ -56,8 +57,14 @@ WORKDIR /app
 RUN mkdir -p /app/data/cache && \
     chmod -R 777 /app/data
 
+# Create config directory
+RUN mkdir -p /app/config
+
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
+
+# Copy config files
+COPY --from=builder /app/config/runtime.exs /app/config/release.exs
 
 # Set environment
 ENV HOME=/app
