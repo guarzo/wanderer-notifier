@@ -90,18 +90,13 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     end
   end
 
-  # Check if database is required based on feature flags
-  defp database_required? do
-    Config.map_charts_enabled?() || Config.kill_charts_enabled?()
-  end
-
   # Check if database is ready
   @doc """
   Checks if the database connection is ready.
   Returns true if the database is not required or if the connection is established.
   """
   def database_ready? do
-    if database_required?() do
+    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 

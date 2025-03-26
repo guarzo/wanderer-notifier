@@ -39,6 +39,11 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         AppLogger.scheduler_info("Successfully updated #{length(characters)} characters")
         {:ok, %{character_count: length(characters)}, state}
 
+      {:error, :feature_disabled} ->
+        # Log as info instead of error when feature is disabled
+        AppLogger.scheduler_info("Character tracking feature is disabled, skipping update")
+        {:ok, %{status: "skipped", reason: "feature_disabled"}, state}
+
       {:error, reason} ->
         AppLogger.scheduler_error("Failed to update characters: #{inspect(reason)}")
         {:error, reason, state}
