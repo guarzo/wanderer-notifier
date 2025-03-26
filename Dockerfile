@@ -42,6 +42,7 @@ FROM elixir:1.18-otp-27-slim
 
 # Declare runtime environment variables
 ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
+ENV RELEASE_CONFIG=/etc/wanderer_notifier.exs
 
 # Install runtime dependencies
 RUN apt-get update -y && \
@@ -55,6 +56,10 @@ WORKDIR /app
 # Create data directory for persistence
 RUN mkdir -p /app/data/cache && \
     chmod -R 777 /app/data
+
+# Create a minimal config file
+RUN mkdir -p /etc && \
+    echo "import Config" > /etc/wanderer_notifier.exs
 
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
