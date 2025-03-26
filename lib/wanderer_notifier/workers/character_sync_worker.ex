@@ -106,12 +106,19 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   defp handle_inconsistencies(cached_characters, missing, different) do
     if missing > 0 || different > 0 do
       AppLogger.scheduler_warn("Inconsistencies found", missing: missing, different: different)
-      # Run sync to fix inconsistencies
-      sync_result =
-        WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
+      
+      # Only attempt to sync if database operations are enabled
+      if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+        # Run sync to fix inconsistencies
+        sync_result =
+          WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
 
-      AppLogger.scheduler_info("Auto-fixed inconsistencies", result: inspect(sync_result))
-      {:ok, %{inconsistent: true, sync_result: sync_result}}
+        AppLogger.scheduler_info("Auto-fixed inconsistencies", result: inspect(sync_result))
+        {:ok, %{inconsistent: true, sync_result: sync_result}}
+      else
+        AppLogger.scheduler_info("Inconsistencies found but database operations are disabled")
+        {:ok, %{inconsistent: true, sync_skipped: true}}
+      end
     else
       AppLogger.scheduler_info("Cache and database are consistent")
       {:ok, :consistent}

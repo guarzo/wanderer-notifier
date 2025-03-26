@@ -325,125 +325,218 @@ defmodule WandererNotifier.Services.KillmailComparison do
   @spec generate_and_cache_comparison_data(String.t(), DateTime.t(), DateTime.t()) ::
           {:ok, map()} | {:error, term()}
   def generate_and_cache_comparison_data(cache_type, start_datetime, end_datetime) do
+    # Check if database operations are enabled before proceeding
+    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      generate_with_database(cache_type, start_datetime, end_datetime)
+    else
+      generate_without_database(cache_type)
+    end
+  end
+
+  # Handle the case when database is enabled
+  defp generate_with_database(cache_type, start_datetime, end_datetime) do
     try do
-      # Fetch all tracked characters
-      case WandererNotifier.Resources.TrackedCharacter.list_all() do
+      case fetch_tracked_characters() do
         {:ok, characters} ->
-          AppLogger.processor_info("Generating comparison data for cache", %{
-            type: cache_type,
-            character_count: length(characters)
-          })
-
-          # Process each character, using historical data when available
-          character_comparisons =
-            characters
-            |> Task.async_stream(
-              fn character ->
-                character_id = extract_character_id(character)
-                character_name = extract_character_name(character)
-
-                if character_id do
-                  # Rate limiting
-                  Process.sleep(500)
-
-                  # Check if we need fresh data
-                  case WandererNotifier.Services.KillTrackingHistory.needs_refresh?(
-                         character_id,
-                         cache_type
-                       ) do
-                    false ->
-                      # Use historical data
-                      case WandererNotifier.Services.KillTrackingHistory.get_latest_comparison(
-                             character_id,
-                             cache_type
-                           ) do
-                        {:ok, historical_data} ->
-                          AppLogger.processor_info("Using historical data for character", %{
-                            character_id: character_id,
-                            cache_type: cache_type
-                          })
-
-                          format_character_comparison(
-                            character_id,
-                            character_name,
-                            historical_data
-                          )
-
-                        _ ->
-                          # Fallback to fresh comparison if historical data not found
-                          generate_fresh_comparison(
-                            character_id,
-                            character_name,
-                            start_datetime,
-                            end_datetime,
-                            cache_type
-                          )
-                      end
-
-                    true ->
-                      # Generate fresh comparison data
-                      generate_fresh_comparison(
-                        character_id,
-                        character_name,
-                        start_datetime,
-                        end_datetime,
-                        cache_type
-                      )
-                  end
-                end
-              end,
-              max_concurrency: 2,
-              timeout: 60_000
-            )
-            |> Enum.filter(fn
-              {:ok, result} when not is_nil(result) -> true
-              _ -> false
-            end)
-            |> Enum.map(fn {:ok, result} -> result end)
-
-          # Create the cache response
-          comparison_data = %{
-            character_breakdown: character_comparisons,
-            count: length(character_comparisons),
-            time_range: %{
-              start_date: DateTime.to_iso8601(start_datetime),
-              end_date: DateTime.to_iso8601(end_datetime),
-              type: cache_type
-            },
-            cached_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-            cache_expires_at:
-              DateTime.utc_now()
-              |> DateTime.add(get_cache_ttl(cache_type), :second)
-              |> DateTime.to_iso8601()
-          }
-
-          # Store in cache
-          CacheRepo.set(get_cache_key(cache_type), comparison_data, get_cache_ttl(cache_type))
-
-          AppLogger.processor_info("Cached comparison data", %{
-            type: cache_type,
-            ttl_seconds: get_cache_ttl(cache_type),
-            character_count: length(character_comparisons)
-          })
-
-          {:ok, comparison_data}
+          process_characters_for_cache(characters, cache_type, start_datetime, end_datetime)
 
         {:error, reason} ->
-          AppLogger.processor_error("Error fetching characters for cache generation", %{
-            error: inspect(reason)
-          })
-
+          log_character_fetch_error(reason)
           {:error, reason}
       end
     rescue
-      e ->
-        AppLogger.processor_error("Error generating cached comparison data", %{
-          error: Exception.message(e),
+      e -> handle_comparison_error(e, cache_type)
+    end
+  end
+
+  # Fetch the tracked characters from the database
+  defp fetch_tracked_characters do
+    AppLogger.processor_info("Fetching characters for comparison data generation")
+    WandererNotifier.Resources.TrackedCharacter.list_all()
+  end
+
+  # Log error when fetching characters fails
+  defp log_character_fetch_error(reason) do
+    AppLogger.processor_error("Error fetching characters for cache generation", %{
+      error: inspect(reason)
+    })
+  end
+
+  # Process the characters to generate cache data
+  defp process_characters_for_cache(characters, cache_type, start_datetime, end_datetime) do
+    AppLogger.processor_info("Generating comparison data for cache", %{
+      type: cache_type,
+      character_count: length(characters)
+    })
+
+    character_comparisons =
+      gather_character_comparisons(
+        characters,
+        cache_type,
+        start_datetime,
+        end_datetime
+      )
+
+    # Build and cache the result
+    build_and_cache_result(character_comparisons, cache_type)
+  end
+
+  # Gather comparisons for all characters with controlled concurrency
+  defp gather_character_comparisons(characters, cache_type, start_datetime, end_datetime) do
+    characters
+    |> Task.async_stream(
+      fn character ->
+        process_single_character(character, cache_type, start_datetime, end_datetime)
+      end,
+      max_concurrency: 2,
+      timeout: 60_000
+    )
+    |> Enum.filter(fn
+      {:ok, result} when not is_nil(result) -> true
+      _ -> false
+    end)
+    |> Enum.map(fn {:ok, result} -> result end)
+    |> Enum.sort_by(fn %{character_name: name} -> name end)
+  end
+
+  # Process a single character for comparison
+  defp process_single_character(character, cache_type, start_datetime, end_datetime) do
+    character_id = extract_character_id(character)
+    character_name = extract_character_name(character)
+
+    if is_nil(character_id) do
+      nil
+    else
+      # Rate limiting
+      Process.sleep(500)
+      get_character_data(character_id, character_name, cache_type, start_datetime, end_datetime)
+    end
+  end
+
+  # Get character data, either from history or fresh comparison
+  defp get_character_data(character_id, character_name, cache_type, start_datetime, end_datetime) do
+    case needs_fresh_data?(character_id, cache_type) do
+      false ->
+        use_historical_data(character_id, character_name, cache_type)
+
+      true ->
+        generate_fresh_comparison(
+          character_id,
+          character_name,
+          start_datetime,
+          end_datetime,
+          cache_type
+        )
+    end
+  end
+
+  # Check if we need fresh data or can use historical
+  defp needs_fresh_data?(character_id, cache_type) do
+    WandererNotifier.Services.KillTrackingHistory.needs_refresh?(character_id, cache_type)
+  end
+
+  # Use historical data when available
+  defp use_historical_data(character_id, character_name, cache_type) do
+    case WandererNotifier.Services.KillTrackingHistory.get_latest_comparison(
+           character_id,
+           cache_type
+         ) do
+      {:ok, historical_data} ->
+        AppLogger.processor_info("Using historical data for character", %{
+          character_id: character_id,
           cache_type: cache_type
         })
 
-        {:error, {:exception, Exception.message(e)}}
+        format_character_comparison(character_id, character_name, historical_data)
+
+      _ ->
+        # If historical data retrieval fails, return nil and it will be filtered out
+        nil
     end
+  end
+
+  # Build and cache the final result
+  defp build_and_cache_result(character_comparisons, cache_type) do
+    # Build the aggregate comparison data
+    kill_totals = calculate_kill_totals(character_comparisons)
+    comparison_aggregate = calculate_comparison_aggregate(character_comparisons)
+
+    # Create the cache result
+    result = %{
+      time_range: cache_type,
+      character_breakdown: character_comparisons,
+      kill_totals: kill_totals,
+      comparison_aggregate: comparison_aggregate,
+      generated_at: DateTime.utc_now()
+    }
+
+    # Cache the result
+    CacheRepo.set(
+      "kill_comparison:#{cache_type}",
+      result,
+      86_400 * 7
+    )
+
+    # Also save to history if enabled
+    save_to_history(character_comparisons, cache_type)
+
+    {:ok, result}
+  end
+
+  # Save data to history if database is enabled
+  defp save_to_history(character_comparisons, cache_type) do
+    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      Enum.each(character_comparisons, fn comp ->
+        # Create comparison data map from the comp structure
+        comparison_data = %{
+          our_kills: comp.our_kills,
+          zkill_kills: comp.zkill_kills,
+          missing_kills: comp.missing_kills
+        }
+
+        WandererNotifier.Services.KillTrackingHistory.record_comparison(
+          comp.character_id,
+          cache_type,
+          comparison_data
+        )
+      end)
+    end
+  end
+
+  # Handle error during comparison generation
+  defp handle_comparison_error(e, cache_type) do
+    AppLogger.processor_error("Error generating comparison data", %{
+      error: Exception.message(e),
+      cache_type: cache_type,
+      stacktrace: inspect(Exception.format_stacktrace())
+    })
+
+    {:error, {:comparison_error, Exception.message(e)}}
+  end
+
+  # Generate an empty result when database is disabled
+  defp generate_without_database(cache_type) do
+    AppLogger.processor_info(
+      "Database operations disabled, skipping comparison data generation for #{cache_type}"
+    )
+
+    # Create an empty result to return
+    empty_result = %{
+      time_range: cache_type,
+      character_breakdown: [],
+      kill_totals: %{our_kills: 0, zkill_kills: 0, missing_kills: 0, extra_kills: 0},
+      comparison_aggregate: %{percentage_match: 100, analysis: "Database operations disabled"},
+      generated_at: DateTime.utc_now()
+    }
+
+    # Cache the empty result to prevent repeated generation attempts
+    CacheRepo.set(
+      "kill_comparison:#{cache_type}",
+      empty_result,
+      86_400 * 7
+    )
+
+    {:ok, empty_result}
   end
 
   @doc """
@@ -1011,6 +1104,22 @@ defmodule WandererNotifier.Services.KillmailComparison do
     end
   end
 
+  defp format_character_comparison(character_id, character_name, comparison_data) do
+    %{
+      character_id: character_id,
+      character_name: character_name,
+      our_kills: comparison_data.our_kills,
+      zkill_kills: comparison_data.zkill_kills,
+      missing_kills: comparison_data.missing_kills,
+      missing_percentage:
+        if comparison_data.zkill_kills > 0 do
+          length(comparison_data.missing_kills) / comparison_data.zkill_kills * 100
+        else
+          0.0
+        end
+    }
+  end
+
   defp generate_fresh_comparison(
          character_id,
          character_name,
@@ -1028,8 +1137,8 @@ defmodule WandererNotifier.Services.KillmailComparison do
         # Store in historical tracking
         WandererNotifier.Services.KillTrackingHistory.record_comparison(
           character_id,
-          comparison_data,
-          cache_type
+          cache_type,
+          comparison_data
         )
 
         result
@@ -1044,38 +1153,68 @@ defmodule WandererNotifier.Services.KillmailComparison do
     end
   end
 
-  defp format_character_comparison(character_id, character_name, comparison_data) do
-    %{
-      character_id: character_id,
-      character_name: character_name,
-      our_kills: comparison_data.our_kills,
-      zkill_kills: comparison_data.zkill_kills,
-      missing_kills: comparison_data.missing_kills,
-      missing_percentage:
-        if comparison_data.zkill_kills > 0 do
-          length(comparison_data.missing_kills) / comparison_data.zkill_kills * 100
-        else
-          0.0
-        end
+  # Calculate the total kills across all characters
+  defp calculate_kill_totals(character_comparisons) do
+    # Initialize totals
+    totals = %{
+      our_kills: 0,
+      zkill_kills: 0,
+      missing_kills: 0,
+      extra_kills: 0
     }
+
+    # Sum up totals from all character comparisons
+    Enum.reduce(character_comparisons, totals, fn comparison, acc ->
+      %{
+        our_kills: acc.our_kills + Map.get(comparison, :our_kills, 0),
+        zkill_kills: acc.zkill_kills + Map.get(comparison, :zkill_kills, 0),
+        missing_kills: acc.missing_kills + length(Map.get(comparison, :missing_kills, [])),
+        extra_kills: acc.extra_kills + length(Map.get(comparison, :extra_kills, []))
+      }
+    end)
   end
 
-  defp get_cache_key(cache_type), do: "kill_comparison:#{cache_type}"
+  # Calculate aggregate statistics for all characters
+  defp calculate_comparison_aggregate(character_comparisons) do
+    if Enum.empty?(character_comparisons) do
+      %{
+        percentage_match: 100.0,
+        analysis: "No character data available"
+      }
+    else
+      # Get total kills from all characters
+      _total_our_kills = Enum.sum(Enum.map(character_comparisons, & &1.our_kills))
+      total_zkill_kills = Enum.sum(Enum.map(character_comparisons, & &1.zkill_kills))
 
-  defp get_cache_ttl(cache_type) do
-    case cache_type do
-      # 10 minutes
-      "1h" -> 600
-      # 30 minutes
-      "4h" -> 1800
-      # 1 hour
-      "12h" -> 3600
-      # 2 hours
-      "24h" -> 7200
-      # 4 hours
-      "7d" -> 14_400
-      # 30 minutes default
-      _ -> 1800
+      # Calculate total missing kills
+      total_missing_kills =
+        Enum.reduce(character_comparisons, 0, fn comp, acc ->
+          acc + length(Map.get(comp, :missing_kills, []))
+        end)
+
+      # Calculate match percentage
+      percentage_match =
+        if total_zkill_kills > 0 do
+          (total_zkill_kills - total_missing_kills) / total_zkill_kills * 100
+        else
+          100.0
+        end
+
+      # Generate analysis based on percentage
+      analysis =
+        cond do
+          percentage_match >= 95.0 -> "Excellent tracking coverage across all characters"
+          percentage_match >= 85.0 -> "Very good tracking coverage"
+          percentage_match >= 75.0 -> "Good tracking coverage"
+          percentage_match >= 60.0 -> "Moderate tracking coverage"
+          percentage_match >= 40.0 -> "Poor tracking coverage"
+          true -> "Very poor tracking coverage"
+        end
+
+      %{
+        percentage_match: Float.round(percentage_match, 2),
+        analysis: analysis
+      }
     end
   end
 end

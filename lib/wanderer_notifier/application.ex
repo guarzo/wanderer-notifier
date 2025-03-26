@@ -27,19 +27,17 @@ defmodule WandererNotifier.Application do
 
   @impl true
   def start(_type, _args) do
-    if should_skip_app_start?() do
-      AppLogger.startup_info(
-        "Skipping full application start due to test environment configuration"
-      )
-
+    # Start main application or minimal test version based on config
+    if Application.get_env(:wanderer_notifier, :minimal_test_mode, false) do
+      AppLogger.startup_info("Starting in minimal test mode")
       start_minimal_test_components()
     else
-      start_full_application()
+      start_main_application()
     end
   end
 
   # Start the application with all components
-  defp start_full_application do
+  defp start_main_application do
     # Initialize the startup tracker for consolidated logging
     WandererNotifier.Logger.StartupTracker.init()
 
@@ -287,16 +285,6 @@ defmodule WandererNotifier.Application do
     end
   end
 
-  defp should_skip_app_start? do
-    disable_start = System.get_env("DISABLE_APP_START") == "true"
-    app_env_disable = Application.get_env(:wanderer_notifier, :start_application) == false
-
-    test_env_disable =
-      Application.get_env(:wanderer_notifier, :start_external_connections) == false
-
-    disable_start || app_env_disable || test_env_disable
-  end
-
   defp send_startup_message do
     # Only record this activity in the tracker, avoid redundant logs
     if Process.get(:startup_tracker) do
@@ -370,9 +358,19 @@ defmodule WandererNotifier.Application do
   @doc """
   Called when a file is changed and code is reloaded in development.
   This replaces the functionality in DevCallbacks.
+
+  Handles two reload cases:
+  - When ExSync reloads modules and passes a list of reloaded modules
+  - When ExSync sends a {Module, :reload} tuple message
   """
-  def reload(modules) do
+  @spec reload(list(module()) | {module(), :reload}) :: :ok
+  def reload(modules) when is_list(modules) do
     AppLogger.startup_info("Reloaded modules: #{inspect(modules)}")
+    :ok
+  end
+
+  def reload({_module, :reload}) do
+    AppLogger.startup_info("Module reloaded")
     :ok
   end
 
@@ -479,12 +477,31 @@ defmodule WandererNotifier.Application do
 
   # Schedule the generation of cached comparison data
   defp schedule_comparison_cache_generation() do
-    # Start a separate process to avoid blocking application startup
+    # Check if database operations are enabled
+    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      # Database is enabled, start a task to generate the cache
+      schedule_cache_generation_task()
+    else
+      # Database is disabled, log the information
+      log_database_disabled_for_cache()
+      :ok
+    end
+  end
+
+  # Log when database operations are disabled
+  defp log_database_disabled_for_cache do
+    AppLogger.startup_info(
+      "Database operations disabled, skipping kill comparison cache pre-generation"
+    )
+  end
+
+  # Schedule the actual cache generation as a separate task
+  defp schedule_cache_generation_task do
     Task.start(fn ->
       # Add a delay to ensure the DB is ready
       Process.sleep(10_000)
 
-      # Check if database is ready
+      # Only proceed if database is ready
       if WandererNotifier.Schedulers.Supervisor.database_ready?() do
         generate_cache_for_time_ranges()
       else

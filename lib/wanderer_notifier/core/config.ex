@@ -114,29 +114,69 @@ defmodule WandererNotifier.Core.Config do
   def feature_enabled?(feature) when is_atom(feature) do
     feature_config = Map.get(@features, feature)
 
-    if feature_config do
-      env_var = feature_config.enabled_var
-      default_enabled = feature_config.default_enabled
-
-      case System.get_env(env_var) do
-        "true" -> true
-        "1" -> true
-        "false" -> false
-        "0" -> false
-        nil -> default_enabled
-        _ -> default_enabled
-      end
-    else
+    if feature_config == nil do
       # Unknown feature, default to false for safety
       AppLogger.config_warn("Unknown feature #{feature} when checking if enabled")
       false
+    else
+      env_var = feature_config.enabled_var
+      default_enabled = feature_config.default_enabled
+
+      # Get environment variable value
+      raw_value = System.get_env(env_var)
+
+      # Process the value to determine if feature is enabled
+      process_feature_flag_value(raw_value, default_enabled)
     end
+  end
+
+  # Process environment variable value to determine if feature is enabled
+  defp process_feature_flag_value(raw_value, default_enabled) do
+    cond do
+      # Common true values
+      raw_value in ["true", "1", "yes", "y"] ->
+        true
+
+      # Common false values
+      raw_value in ["false", "0", "no", "n"] ->
+        false
+
+      # Handle nil (unset variable)
+      is_nil(raw_value) ->
+        default_enabled
+
+      # Handle non-standard values by normalizing
+      true ->
+        downcased = String.trim(raw_value) |> String.downcase()
+        normalize_flag_value(downcased, default_enabled)
+    end
+  end
+
+  # Normalize unusual flag values
+  defp normalize_flag_value(downcased, default_enabled) do
+    cond do
+      # Additional truthy values
+      downcased in ["true", "yes", "y", "1", "on", "enabled"] -> true
+      # Additional falsey values
+      downcased in ["false", "no", "n", "0", "off", "disabled"] -> false
+      # Use default for anything else
+      true -> default_enabled
+    end
+  end
+
+  @doc """
+  Returns whether kill charts functionality is enabled.
+  """
+  def kill_charts_enabled? do
+    # Use normal feature flag logic
+    feature_enabled?(:kill_charts)
   end
 
   @doc """
   Returns whether map charts functionality is enabled.
   """
   def map_charts_enabled? do
+    # Use normal feature flag logic
     feature_enabled?(:map_charts)
   end
 
@@ -159,13 +199,6 @@ defmodule WandererNotifier.Core.Config do
   """
   def character_notifications_enabled? do
     feature_enabled?(:character_tracking)
-  end
-
-  @doc """
-  Returns whether kill charts functionality is enabled.
-  """
-  def kill_charts_enabled? do
-    feature_enabled?(:kill_charts)
   end
 
   @doc """

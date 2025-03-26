@@ -304,12 +304,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   # Separate function to handle character persistence with isolated error handling
   defp handle_character_persistence(tracked_characters) do
     try do
-      # Check feature status - log feature status only once using Process dictionary
-      # to avoid repetitive logs
-      character_tracking_enabled = Config.character_tracking_enabled?()
-      kill_charts_enabled = WandererNotifier.Resources.KillmailPersistence.kill_charts_enabled?()
+      # Check if database is enabled using the TrackedCharacter module function
+      database_enabled = WandererNotifier.Resources.TrackedCharacter.database_enabled?()
 
-      if character_tracking_enabled && kill_charts_enabled do
+      # Only continue if database is enabled
+      if database_enabled do
         AppLogger.api_info(
           "[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database"
         )
@@ -318,8 +317,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         ensure_database_available_and_persist(tracked_characters)
       else
         AppLogger.api_debug(
-          "[CharactersClient] Character tracking or kill charts disabled, skipping database persistence"
+          "[CharactersClient] Database operations disabled, skipping character persistence"
         )
+
+        # Return empty result
+        return_empty_sync_result()
       end
     rescue
       e ->
@@ -335,17 +337,20 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Ensure database is available and persist characters if so
   defp ensure_database_available_and_persist(tracked_characters) do
+    # Check if the repo is started, wait if needed
     if !repo_started?() do
       wait_for_database_connection()
     end
 
-    # Check if the repo is started before attempting database operations
+    # After waiting, verify the repo is started
     if repo_started?() do
       persist_characters_to_database(tracked_characters)
     else
       AppLogger.api_warn(
         "[CharactersClient] Database repository not started, character persistence skipped"
       )
+
+      return_empty_sync_result()
     end
   end
 
@@ -388,16 +393,19 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Persist characters to the database
   defp persist_characters_to_database(tracked_characters) do
-    # Sample log for debugging
-    AppLogger.api_debug(
-      "[CharactersClient] First character for persistence (sample): #{inspect(Enum.at(tracked_characters, 0))}"
-    )
+    # Log the first character for debugging
+    sample_char = Enum.at(tracked_characters, 0)
 
-    # Call directly with the module and function to avoid behavior issues
-    # Pass the Character structs directly without converting them
-    case apply(WandererNotifier.Resources.TrackedCharacter, :sync_from_characters, [
-           %{characters: tracked_characters}
-         ]) do
+    if sample_char do
+      AppLogger.api_debug(
+        "[CharactersClient] First character for persistence (sample): #{inspect(sample_char)}"
+      )
+    end
+
+    # Call TrackedCharacter.sync_from_characters directly
+    case WandererNotifier.Resources.TrackedCharacter.sync_from_characters(%{
+           characters: tracked_characters
+         }) do
       {:ok, stats} ->
         AppLogger.api_info(
           "[CharactersClient] Successfully persisted characters: #{inspect(stats)}"
@@ -406,6 +414,20 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       {:error, reason} ->
         AppLogger.api_error("[CharactersClient] Failed to persist characters: #{inspect(reason)}")
     end
+  end
+
+  # Return an empty sync result for when database operations are disabled
+  defp return_empty_sync_result do
+    empty_stats = %{
+      stats: %{total: 0, created: 0, updated: 0, unchanged: 0, errors: 0},
+      errors: []
+    }
+
+    AppLogger.api_info(
+      "[CharactersClient] Returning empty sync result due to disabled database operations"
+    )
+
+    {:ok, empty_stats}
   end
 
   # Helper function to check if the repo is started and provide diagnostics

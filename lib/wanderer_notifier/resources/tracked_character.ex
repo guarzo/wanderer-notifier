@@ -105,235 +105,246 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     # Add sync_from_cache as a custom action
     action :sync_from_cache, :map do
       run(fn _, _ ->
-        # Get the current cached characters using the Cache Helper
-        require Logger
+        # Check if database operations are enabled
+        if database_enabled?() do
+          # Get the current cached characters using the Cache Helper
+          require Logger
 
-        # Get characters from the map:characters cache
-        cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+          # Get characters from the map:characters cache
+          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
 
-        AppLogger.persistence_info(
-          "Syncing characters from tracking system",
-          character_count: length(cached_characters)
-        )
-
-        # Debug: Log the format of the first few characters in the cache
-        if length(cached_characters) > 0 do
-          sample = Enum.take(cached_characters, min(3, length(cached_characters)))
-
-          AppLogger.persistence_debug("Sample characters from cache",
-            sample: inspect(sample)
+          AppLogger.persistence_info(
+            "Syncing characters from tracking system",
+            character_count: length(cached_characters)
           )
-        end
 
-        # Process each tracked character
-        results =
-          Enum.map(cached_characters, fn char_data ->
-            # Extract character ID directly instead of using the helper function
-            character_id =
-              case extract_character_id_from_data(char_data) do
-                nil ->
-                  AppLogger.persistence_warn("Unable to extract character ID",
-                    character_data: inspect(char_data)
-                  )
+          # Debug: Log the format of the first few characters in the cache
+          if length(cached_characters) > 0 do
+            sample = Enum.take(cached_characters, min(3, length(cached_characters)))
 
-                  nil
-
-                id_str ->
-                  # Convert string ID to integer
-                  case Integer.parse(to_string(id_str)) do
-                    {int_id, ""} ->
-                      # Log the parsed integer ID
-                      AppLogger.persistence_debug("Parsed character ID", id: int_id)
-                      int_id
-
-                    _ ->
-                      AppLogger.persistence_warn("Invalid character ID format",
-                        id: inspect(id_str)
-                      )
-
-                      nil
-                  end
-              end
-
-            # Skip invalid character IDs
-            if is_nil(character_id) do
-              AppLogger.persistence_warn("Skipping character with invalid ID",
-                character_data: inspect(char_data)
-              )
-
-              {:error, :invalid_character_id}
-            else
-              # Extract character name if available
-              character_name = extract_character_name(char_data)
-
-              # Log character details for debugging
-              AppLogger.persistence_debug(
-                "Processing character",
-                character_id: character_id,
-                character_name: character_name
-              )
-
-              # Check if character already exists in the Ash resource using string comparison
-              str_char_id = to_string(character_id)
-
-              # Use the read function to look for existing character
-              AppLogger.persistence_debug(
-                "Looking for existing character in database",
-                character_id: character_id
-              )
-
-              # Use Ash.Query to build the query with a filter - don't pass filter directly to read
-              read_result =
-                __MODULE__
-                |> Ash.Query.filter(character_id: character_id)
-                |> WandererNotifier.Resources.Api.read()
-
-              AppLogger.persistence_debug("Read result", result: inspect(read_result))
-
-              case read_result do
-                {:ok, [existing | _]} ->
-                  # Character exists, update if needed
-                  AppLogger.persistence_debug(
-                    "Found existing character",
-                    character_id: character_id,
-                    character_name: existing.character_name
-                  )
-
-                  changes = %{}
-
-                  # Update name if it's different and not nil
-                  changes =
-                    if character_name && character_name != existing.character_name do
-                      AppLogger.persistence_debug(
-                        "Updating character name",
-                        character_id: character_id,
-                        old_name: existing.character_name,
-                        new_name: character_name
-                      )
-
-                      Map.put(changes, :character_name, character_name)
-                    else
-                      changes
-                    end
-
-                  # Apply updates if needed
-                  if map_size(changes) > 0 do
-                    AppLogger.persistence_info(
-                      "Updating character",
-                      character_id: character_id,
-                      character_name: character_name,
-                      changes: map_size(changes)
-                    )
-
-                    update_result =
-                      WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
-
-                    AppLogger.persistence_debug(
-                      "Update result",
-                      result: inspect(update_result)
-                    )
-
-                    case update_result do
-                      {:ok, _updated} -> {:ok, :updated}
-                      {:error, reason} -> {:error, reason}
-                    end
-                  else
-                    AppLogger.persistence_debug(
-                      "No changes needed for character",
-                      character_id: character_id
-                    )
-
-                    {:ok, :unchanged}
-                  end
-
-                {:ok, []} ->
-                  # Character doesn't exist, create it
-                  AppLogger.persistence_info(
-                    "Creating new character",
-                    character_id: character_id,
-                    character_name: character_name || "Unknown"
-                  )
-
-                  create_attrs = %{
-                    character_id: character_id,
-                    character_name: character_name || "Unknown Character",
-                    corporation_id: extract_corporation_id(char_data),
-                    corporation_name: extract_corporation_name(char_data),
-                    alliance_id: extract_alliance_id(char_data),
-                    alliance_name: extract_alliance_name(char_data)
-                  }
-
-                  AppLogger.persistence_debug(
-                    "Create attributes",
-                    attributes: inspect(create_attrs)
-                  )
-
-                  create_result = WandererNotifier.Resources.Api.create(__MODULE__, create_attrs)
-
-                  AppLogger.persistence_debug(
-                    "Create result",
-                    result: inspect(create_result)
-                  )
-
-                  create_result
-
-                {:error, reason} ->
-                  # Error querying
-                  AppLogger.persistence_error(
-                    "Error checking for existing character",
-                    character_id: character_id,
-                    error: inspect(reason)
-                  )
-
-                  {:error, reason}
-              end
-            end
-          end)
-
-        # Count successes and failures
-        successes =
-          Enum.count(results, fn
-            {:ok, _} -> true
-            _ -> false
-          end)
-
-        failures = length(results) - successes
-
-        # Track specific error reasons
-        errors =
-          Enum.filter(results, fn
-            {:error, _} -> true
-            _ -> false
-          end)
-
-        if length(errors) > 0 do
-          error_sample = Enum.take(errors, min(5, length(errors)))
-
-          AppLogger.persistence_error("Character sync errors",
-            error_sample: inspect(error_sample)
-          )
-        end
-
-        AppLogger.persistence_info(
-          "Sync complete",
-          successful: successes,
-          failed: failures
-        )
-
-        # After sync, verify the count in the database
-        db_count_result =
-          __MODULE__
-          |> WandererNotifier.Resources.Api.read()
-
-        db_count =
-          case db_count_result do
-            {:ok, chars} -> length(chars)
-            _ -> 0
+            AppLogger.persistence_debug("Sample characters from cache",
+              sample: inspect(sample)
+            )
           end
 
-        AppLogger.persistence_info("Database character count", count: db_count)
+          # Process each tracked character
+          results =
+            Enum.map(cached_characters, fn char_data ->
+              # Extract character ID directly instead of using the helper function
+              character_id =
+                case extract_character_id_from_data(char_data) do
+                  nil ->
+                    AppLogger.persistence_warn("Unable to extract character ID",
+                      character_data: inspect(char_data)
+                    )
 
-        {:ok, %{successes: successes, failures: failures, db_count: db_count}}
+                    nil
+
+                  id_str ->
+                    # Convert string ID to integer
+                    case Integer.parse(to_string(id_str)) do
+                      {int_id, ""} ->
+                        # Log the parsed integer ID
+                        AppLogger.persistence_debug("Parsed character ID", id: int_id)
+                        int_id
+
+                      _ ->
+                        AppLogger.persistence_warn("Invalid character ID format",
+                          id: inspect(id_str)
+                        )
+
+                        nil
+                    end
+                end
+
+              # Skip invalid character IDs
+              if is_nil(character_id) do
+                AppLogger.persistence_warn("Skipping character with invalid ID",
+                  character_data: inspect(char_data)
+                )
+
+                {:error, :invalid_character_id}
+              else
+                # Extract character name if available
+                character_name = extract_character_name(char_data)
+
+                # Log character details for debugging
+                AppLogger.persistence_debug(
+                  "Processing character",
+                  character_id: character_id,
+                  character_name: character_name
+                )
+
+                # Check if character already exists in the Ash resource using string comparison
+                str_char_id = to_string(character_id)
+
+                # Use the read function to look for existing character
+                AppLogger.persistence_debug(
+                  "Looking for existing character in database",
+                  character_id: character_id
+                )
+
+                # Use Ash.Query to build the query with a filter - don't pass filter directly to read
+                read_result =
+                  __MODULE__
+                  |> Ash.Query.filter(character_id: character_id)
+                  |> WandererNotifier.Resources.Api.read()
+
+                AppLogger.persistence_debug("Read result", result: inspect(read_result))
+
+                case read_result do
+                  {:ok, [existing | _]} ->
+                    # Character exists, update if needed
+                    AppLogger.persistence_debug(
+                      "Found existing character",
+                      character_id: character_id,
+                      character_name: existing.character_name
+                    )
+
+                    changes = %{}
+
+                    # Update name if it's different and not nil
+                    changes =
+                      if character_name && character_name != existing.character_name do
+                        AppLogger.persistence_debug(
+                          "Updating character name",
+                          character_id: character_id,
+                          old_name: existing.character_name,
+                          new_name: character_name
+                        )
+
+                        Map.put(changes, :character_name, character_name)
+                      else
+                        changes
+                      end
+
+                    # Apply updates if needed
+                    if map_size(changes) > 0 do
+                      AppLogger.persistence_info(
+                        "Updating character",
+                        character_id: character_id,
+                        character_name: character_name,
+                        changes: map_size(changes)
+                      )
+
+                      update_result =
+                        WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
+
+                      AppLogger.persistence_debug(
+                        "Update result",
+                        result: inspect(update_result)
+                      )
+
+                      case update_result do
+                        {:ok, _updated} -> {:ok, :updated}
+                        {:error, reason} -> {:error, reason}
+                      end
+                    else
+                      AppLogger.persistence_debug(
+                        "No changes needed for character",
+                        character_id: character_id
+                      )
+
+                      {:ok, :unchanged}
+                    end
+
+                  {:ok, []} ->
+                    # Character doesn't exist, create it
+                    AppLogger.persistence_info(
+                      "Creating new character",
+                      character_id: character_id,
+                      character_name: character_name || "Unknown"
+                    )
+
+                    create_attrs = %{
+                      character_id: character_id,
+                      character_name: character_name || "Unknown Character",
+                      corporation_id: extract_corporation_id(char_data),
+                      corporation_name: extract_corporation_name(char_data),
+                      alliance_id: extract_alliance_id(char_data),
+                      alliance_name: extract_alliance_name(char_data)
+                    }
+
+                    AppLogger.persistence_debug(
+                      "Create attributes",
+                      attributes: inspect(create_attrs)
+                    )
+
+                    create_result =
+                      WandererNotifier.Resources.Api.create(__MODULE__, create_attrs)
+
+                    AppLogger.persistence_debug(
+                      "Create result",
+                      result: inspect(create_result)
+                    )
+
+                    create_result
+
+                  {:error, reason} ->
+                    # Error querying
+                    AppLogger.persistence_error(
+                      "Error checking for existing character",
+                      character_id: character_id,
+                      error: inspect(reason)
+                    )
+
+                    {:error, reason}
+                end
+              end
+            end)
+
+          # Count successes and failures
+          successes =
+            Enum.count(results, fn
+              {:ok, _} -> true
+              _ -> false
+            end)
+
+          failures = length(results) - successes
+
+          # Track specific error reasons
+          errors =
+            Enum.filter(results, fn
+              {:error, _} -> true
+              _ -> false
+            end)
+
+          if length(errors) > 0 do
+            error_sample = Enum.take(errors, min(5, length(errors)))
+
+            AppLogger.persistence_error("Character sync errors",
+              error_sample: inspect(error_sample)
+            )
+          end
+
+          AppLogger.persistence_info(
+            "Sync complete",
+            successful: successes,
+            failed: failures
+          )
+
+          # After sync, verify the count in the database
+          db_count_result =
+            __MODULE__
+            |> WandererNotifier.Resources.Api.read()
+
+          db_count =
+            case db_count_result do
+              {:ok, chars} -> length(chars)
+              _ -> 0
+            end
+
+          AppLogger.persistence_info("Database character count", count: db_count)
+
+          {:ok, %{successes: successes, failures: failures, db_count: db_count}}
+        else
+          AppLogger.persistence_info(
+            "[TrackedCharacter] Database operations disabled, skipping cache sync"
+          )
+
+          # Return a safe empty result
+          {:ok, %{successes: 0, failures: 0, db_count: 0, skipped: true}}
+        end
       end)
     end
 
@@ -352,102 +363,114 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
           characters_type: characters |> inspect() |> String.slice(0, 30)
         )
 
-        # Add debug logging to inspect the incoming data
-        AppLogger.persistence_debug(
-          "[TrackedCharacter] Received characters for sync",
-          count: if(is_list(characters), do: length(characters), else: 0),
-          sample:
-            if(is_list(characters) && length(characters) > 0,
-              do: inspect(Enum.at(characters, 0), limit: 100),
-              else: "nil"
-            )
-        )
+        # Early check if database operations are enabled before any database access
+        # This prevents any attempt to access the database when disabled
+        if database_enabled?() do
+          # Add debug logging to inspect the incoming data
+          AppLogger.persistence_debug(
+            "[TrackedCharacter] Received characters for sync",
+            count: if(is_list(characters), do: length(characters), else: 0),
+            sample:
+              if(is_list(characters) && length(characters) > 0,
+                do: inspect(Enum.at(characters, 0), limit: 100),
+                else: "nil"
+              )
+          )
 
-        # Early return if characters is nil or empty
-        if is_nil(characters) || (is_list(characters) && characters == []) do
-          AppLogger.persistence_info("[TrackedCharacter] No characters to sync to database")
-          return_empty_stats()
-        else
-          # Continue with normal sync logic for non-empty characters
-          try do
-            # Ensure we have a list
-            characters_list = ensure_list(characters)
+          # Early return if characters is nil or empty
+          if is_nil(characters) || (is_list(characters) && characters == []) do
+            AppLogger.persistence_info("[TrackedCharacter] No characters to sync to database")
+            return_empty_stats()
+          else
+            # Continue with normal sync logic for non-empty characters
+            try do
+              # Ensure we have a list
+              characters_list = ensure_list(characters)
 
-            AppLogger.persistence_info(
-              "[TrackedCharacter] Syncing characters directly to database",
-              character_count: length(characters_list)
-            )
+              AppLogger.persistence_info(
+                "[TrackedCharacter] Syncing characters directly to database",
+                character_count: length(characters_list)
+              )
 
-            # Initialize stats counters
-            stats = %{
-              total: length(characters_list),
-              created: 0,
-              updated: 0,
-              unchanged: 0,
-              errors: 0
-            }
+              # Initialize stats counters
+              stats = %{
+                total: length(characters_list),
+                created: 0,
+                updated: 0,
+                unchanged: 0,
+                errors: 0
+              }
 
-            # Process each character and track results
-            results =
-              Enum.reduce(characters_list, {stats, []}, fn character,
-                                                           {current_stats, current_errors} ->
-                # Add character type info for debugging
-                AppLogger.persistence_debug(
-                  "[TrackedCharacter] Processing character",
-                  type: inspect(character.__struct__),
-                  struct?: is_struct(character),
-                  map?: is_map(character)
+              # Process each character and track results
+              results =
+                Enum.reduce(characters_list, {stats, []}, fn character,
+                                                             {current_stats, current_errors} ->
+                  # Add character type info for debugging
+                  AppLogger.persistence_debug(
+                    "[TrackedCharacter] Processing character",
+                    type: inspect(character.__struct__),
+                    struct?: is_struct(character),
+                    map?: is_map(character)
+                  )
+
+                  case sync_single_character(character) do
+                    {:ok, :created} ->
+                      {Map.update!(current_stats, :created, &(&1 + 1)), current_errors}
+
+                    {:ok, :updated} ->
+                      {Map.update!(current_stats, :updated, &(&1 + 1)), current_errors}
+
+                    {:ok, :unchanged} ->
+                      {Map.update!(current_stats, :unchanged, &(&1 + 1)), current_errors}
+
+                    {:error, reason} ->
+                      error_info = %{
+                        character: inspect(character),
+                        reason: reason
+                      }
+
+                      {Map.update!(current_stats, :errors, &(&1 + 1)),
+                       [error_info | current_errors]}
+                  end
+                end)
+
+              {final_stats, errors} = results
+
+              # Log the results
+              AppLogger.persistence_info(
+                "[TrackedCharacter] Sync completed",
+                stats: inspect(final_stats)
+              )
+
+              if length(errors) > 0 do
+                AppLogger.persistence_warning(
+                  "[TrackedCharacter] Sync had errors",
+                  error_count: length(errors),
+                  errors: inspect(errors)
+                )
+              end
+
+              # Return the results
+              {:ok, %{stats: final_stats, errors: errors}}
+            rescue
+              e ->
+                # Log the full error details for better debugging
+                AppLogger.persistence_error(
+                  "[TrackedCharacter] Exception in character sync: #{Exception.message(e)}"
                 )
 
-                case sync_single_character(character) do
-                  {:ok, :created} ->
-                    {Map.update!(current_stats, :created, &(&1 + 1)), current_errors}
-
-                  {:ok, :updated} ->
-                    {Map.update!(current_stats, :updated, &(&1 + 1)), current_errors}
-
-                  {:ok, :unchanged} ->
-                    {Map.update!(current_stats, :unchanged, &(&1 + 1)), current_errors}
-
-                  {:error, reason} ->
-                    error_info = %{
-                      character: inspect(character),
-                      reason: reason
-                    }
-
-                    {Map.update!(current_stats, :errors, &(&1 + 1)),
-                     [error_info | current_errors]}
-                end
-              end)
-
-            {final_stats, errors} = results
-
-            # Log the results
-            AppLogger.persistence_info(
-              "[TrackedCharacter] Sync completed",
-              stats: inspect(final_stats)
-            )
-
-            if length(errors) > 0 do
-              AppLogger.persistence_warning(
-                "[TrackedCharacter] Sync had errors",
-                error_count: length(errors),
-                errors: inspect(errors)
-              )
+                AppLogger.persistence_error("[TrackedCharacter] #{Exception.format_stacktrace()}")
+                {:error, Exception.message(e)}
             end
-
-            # Return the results
-            {:ok, %{stats: final_stats, errors: errors}}
-          rescue
-            e ->
-              # Log the full error details for better debugging
-              AppLogger.persistence_error(
-                "[TrackedCharacter] Exception in character sync: #{Exception.message(e)}"
-              )
-
-              AppLogger.persistence_error("[TrackedCharacter] #{Exception.format_stacktrace()}")
-              {:error, Exception.message(e)}
           end
+        else
+          # When database operations are disabled, return empty stats without any database access
+          AppLogger.persistence_info(
+            "[TrackedCharacter] Database operations disabled, skipping character sync to database"
+          )
+
+          # Return safe empty stats without touching the database
+          return_empty_stats()
         end
       end)
     end
@@ -1074,74 +1097,104 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   # Helper function to find a character by ID
   defp find_by_character_id(character_id) do
-    query = Ash.Query.filter(__MODULE__, character_id == ^character_id)
-    WandererNotifier.Resources.Api.read(query)
+    if database_enabled?() do
+      query = Ash.Query.filter(__MODULE__, character_id == ^character_id)
+      WandererNotifier.Resources.Api.read(query)
+    else
+      # Database operations are disabled, return empty result
+      AppLogger.persistence_debug(
+        "[TrackedCharacter] Database operations disabled, skipping character lookup",
+        character_id: character_id
+      )
+
+      {:ok, []}
+    end
   end
 
   # Helper function to create a new character record
   defp create_new_character(character_id, character_data) do
-    character_name = character_data[:name] || "Unknown Character"
+    if database_enabled?() do
+      character_name = character_data[:name] || "Unknown Character"
 
-    AppLogger.persistence_info(
-      "[TrackedCharacter] Creating new character record: #{character_name} (#{character_id})"
-    )
+      AppLogger.persistence_info(
+        "[TrackedCharacter] Creating new character record: #{character_name} (#{character_id})"
+      )
 
-    # Prepare attributes for creation
-    attributes = %{
-      character_id: character_id,
-      character_name: character_name,
-      corporation_id: character_data[:corporation_id],
-      corporation_name: character_data[:corporation_name],
-      alliance_id: character_data[:alliance_id],
-      alliance_name: character_data[:alliance_name]
-    }
+      # Prepare attributes for creation
+      attributes = %{
+        character_id: character_id,
+        character_name: character_name,
+        corporation_id: character_data[:corporation_id],
+        corporation_name: character_data[:corporation_name],
+        alliance_id: character_data[:alliance_id],
+        alliance_name: character_data[:alliance_name]
+      }
 
-    AppLogger.persistence_debug(
-      "Create attributes",
-      attributes: inspect(attributes)
-    )
+      AppLogger.persistence_debug(
+        "Create attributes",
+        attributes: inspect(attributes)
+      )
 
-    # Create the character record
-    case WandererNotifier.Resources.Api.create(__MODULE__, attributes) do
-      {:ok, record} ->
-        # Update cache for this character
-        update_character_cache(record)
+      # Create the character record
+      case WandererNotifier.Resources.Api.create(__MODULE__, attributes) do
+        {:ok, record} ->
+          # Update cache for this character
+          update_character_cache(record)
 
-        # Update the tracked characters list
-        update_tracked_characters_cache()
+          # Update the tracked characters list
+          update_tracked_characters_cache()
 
-        {:ok, :created}
+          {:ok, :created}
 
-      {:error, reason} ->
-        AppLogger.persistence_error(
-          "[TrackedCharacter] Failed to create character #{character_id}: #{inspect(reason)}"
-        )
+        {:error, reason} ->
+          AppLogger.persistence_error(
+            "[TrackedCharacter] Failed to create character #{character_id}: #{inspect(reason)}"
+          )
 
-        {:error, reason}
+          {:error, reason}
+      end
+    else
+      AppLogger.persistence_info(
+        "[TrackedCharacter] Database operations disabled, skipping character creation",
+        character_id: character_id
+      )
+
+      # Return as if created successfully
+      {:ok, :created}
     end
   end
 
   # Update an existing character record
   defp update_existing_character(existing, character_data) do
-    # Character exists, update if needed
-    character_name = character_data[:name] || existing.character_name
+    if database_enabled?() do
+      # Character exists, update if needed
+      character_name = character_data[:name] || existing.character_name
 
-    AppLogger.persistence_debug("Found existing character",
-      character_id: character_data[:character_id],
-      character_name: character_name
-    )
+      AppLogger.persistence_debug("Found existing character",
+        character_id: character_data[:character_id],
+        character_name: character_name
+      )
 
-    # Build changes map by comparing fields and adding only what's different
-    changes = build_character_changes(existing, character_data)
+      # Build changes map by comparing fields and adding only what's different
+      changes = build_character_changes(existing, character_data)
 
-    # Apply updates if needed
-    if map_size(changes) > 0 do
-      apply_character_updates(existing, changes, character_data[:character_id])
+      # Apply updates if needed
+      if map_size(changes) > 0 do
+        apply_character_updates(existing, changes, character_data[:character_id])
+      else
+        AppLogger.persistence_debug("No changes needed for character",
+          character_id: character_data[:character_id]
+        )
+
+        {:ok, :unchanged}
+      end
     else
-      AppLogger.persistence_debug("No changes needed for character",
+      AppLogger.persistence_info(
+        "[TrackedCharacter] Database operations disabled, skipping character update",
         character_id: character_data[:character_id]
       )
 
+      # Return as if updated successfully
       {:ok, :unchanged}
     end
   end
@@ -1199,28 +1252,37 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   # Helper to apply updates and handle the result
   defp apply_character_updates(existing, changes, character_id) do
-    AppLogger.persistence_info("Updating character",
-      character_id: character_id,
-      changes: map_size(changes),
-      change_fields: Map.keys(changes)
-    )
+    if database_enabled?() do
+      AppLogger.persistence_info("Updating character",
+        character_id: character_id,
+        changes: map_size(changes),
+        change_fields: Map.keys(changes)
+      )
 
-    AppLogger.persistence_debug(
-      "Character update changes",
-      changes: inspect(changes)
-    )
+      AppLogger.persistence_debug(
+        "Character update changes",
+        changes: inspect(changes)
+      )
 
-    update_result =
-      WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
+      update_result =
+        WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
 
-    AppLogger.persistence_debug(
-      "Update result",
-      result: inspect(update_result)
-    )
+      AppLogger.persistence_debug(
+        "Update result",
+        result: inspect(update_result)
+      )
 
-    case update_result do
-      {:ok, _updated} -> {:ok, :updated}
-      {:error, reason} -> {:error, reason}
+      case update_result do
+        {:ok, _updated} -> {:ok, :updated}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      AppLogger.persistence_info(
+        "[TrackedCharacter] Database operations disabled, skipping character update",
+        character_id: character_id
+      )
+
+      {:ok, :unchanged}
     end
   end
 
@@ -1259,27 +1321,43 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   # Update the global tracked characters list
   defp update_tracked_characters_cache do
-    # Function to read all tracked characters from the database
-    db_read_fun = fn -> fetch_and_format_characters() end
+    if database_enabled?() do
+      # Function to read all tracked characters from the database
+      db_read_fun = fn -> fetch_and_format_characters() end
 
-    # Sync the cache with database
-    WandererNotifier.Data.Cache.Repository.sync_with_db(
-      "map:characters",
-      db_read_fun,
-      WandererNotifier.Core.Config.Timings.characters_cache_ttl()
-    )
+      # Sync the cache with database
+      WandererNotifier.Data.Cache.Repository.sync_with_db(
+        "map:characters",
+        db_read_fun,
+        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+      )
+    else
+      AppLogger.persistence_debug(
+        "[TrackedCharacter] Database operations disabled, skipping cache update"
+      )
+
+      {:ok, []}
+    end
   end
 
   # Fetch characters from database and format them for cache
   defp fetch_and_format_characters do
-    case list_all() do
-      {:ok, characters} ->
-        # Convert to format expected by the cache
-        cache_characters = Enum.map(characters, &format_character_for_cache/1)
-        {:ok, cache_characters}
+    if database_enabled?() do
+      case list_all() do
+        {:ok, characters} ->
+          # Convert to format expected by the cache
+          cache_characters = Enum.map(characters, &format_character_for_cache/1)
+          {:ok, cache_characters}
 
-      error ->
-        error
+        error ->
+          error
+      end
+    else
+      AppLogger.persistence_debug(
+        "[TrackedCharacter] Database operations disabled, returning empty character list"
+      )
+
+      {:ok, []}
     end
   end
 
@@ -1296,42 +1374,18 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     }
   end
 
-  # Add a function to get all tracked characters
+  @doc """
+  Lists all tracked characters from the database, with safety checks for database availability.
+  Returns {:ok, characters} if successful or {:error, reason} if failed.
+  When database is disabled, returns {:ok, []} for safe consumption.
+  """
   def list_all do
-    # Simple query to get all tracked characters
-    query = Ash.Query.new(__MODULE__)
-
-    # Order by character_id for consistency
-    query = Ash.Query.sort(query, :character_id)
-
-    # Execute the query
-    case WandererNotifier.Resources.Api.read(query) do
-      {:ok, records} ->
-        AppLogger.persistence_debug(
-          "[TrackedCharacter] Retrieved #{length(records)} characters from database"
-        )
-
-        {:ok, records}
-
-      {:error, reason} = error ->
-        AppLogger.persistence_error(
-          "[TrackedCharacter] Failed to retrieve characters: #{inspect(reason)}"
-        )
-
-        error
-    end
-  rescue
-    e ->
-      AppLogger.persistence_error(
-        "[TrackedCharacter] Exception retrieving characters: #{Exception.message(e)}"
-      )
-
-      {:error, e}
+    read_safely()
   end
 
-  # Helper to return empty stats when no characters are found
+  # Helper function to return empty stats object
   defp return_empty_stats do
-    {:ok, %{successes: 0, failures: 0, db_count: 0}}
+    {:ok, %{stats: %{total: 0, created: 0, updated: 0, unchanged: 0, errors: 0}, errors: []}}
   end
 
   # Helper function to ensure input is a list
@@ -1340,4 +1394,48 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   defp ensure_list({:ok, list}) when is_list(list), do: list
   defp ensure_list({:error, _}), do: []
   defp ensure_list(_other), do: []
+
+  @doc """
+  Checks if database operations are enabled based on feature flags.
+  Returns true if either map_charts or kill_charts is enabled.
+  """
+  def database_enabled? do
+    # Use the Config module functions to determine if features are enabled
+    map_charts_enabled = WandererNotifier.Core.Config.map_charts_enabled?()
+    kill_charts_enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
+
+    # Combined result (either feature enables database)
+    map_charts_enabled || kill_charts_enabled
+  end
+
+  @doc """
+  Safely reads characters from the database, with a fallback when database is disabled.
+  """
+  def read_safely(query \\ nil) do
+    if database_enabled?() do
+      # Database is enabled, proceed with normal read
+      case query do
+        nil -> WandererNotifier.Resources.Api.read(__MODULE__)
+        query -> WandererNotifier.Resources.Api.read(query)
+      end
+    else
+      # Database is disabled, return empty list
+      AppLogger.persistence_debug("Database operations disabled, skipping character read")
+      {:ok, []}
+    end
+  end
+
+  @doc """
+  Called when a file is changed and code is reloaded in development.
+  This replaces the functionality in DevCallbacks.
+  """
+  def reload(modules) when is_list(modules) do
+    AppLogger.startup_info("Reloaded modules: #{inspect(modules)}")
+    :ok
+  end
+
+  def reload({_module, :reload}) do
+    AppLogger.startup_info("Module reloaded")
+    :ok
+  end
 end
