@@ -1,4 +1,8 @@
 defmodule WandererNotifier.Resources.KillTrackingHistory do
+  @moduledoc """
+  Resource for tracking and storing historical kill comparison data.
+  Provides functionality to record, retrieve, and analyze kill tracking metrics over time.
+  """
   use Ash.Resource,
     domain: WandererNotifier.Resources.Api,
     data_layer: AshPostgres.DataLayer,

@@ -478,74 +478,77 @@ defmodule WandererNotifier.Application do
   end
 
   # Schedule the generation of cached comparison data
-  defp schedule_comparison_cache_generation do
-    # Don't block startup - schedule the cache generation to run after startup completes
+  defp schedule_comparison_cache_generation() do
+    # Start a separate process to avoid blocking application startup
     Task.start(fn ->
-      # Wait longer to ensure database and resources are fully initialized
+      # Add a delay to ensure the DB is ready
       Process.sleep(10_000)
 
-      # Verify database connection before proceeding
-      case check_database_connection() do
-        {:ok, _} ->
-          AppLogger.startup_info("Starting pre-generation of kill comparison cache data")
+      # Check if database is ready
+      if WandererNotifier.Schedulers.Supervisor.database_ready?() do
+        generate_cache_for_time_ranges()
+      else
+        AppLogger.startup_error("Skipping cache pre-generation - database not ready")
+      end
+    end)
+  end
 
-          # Define the time ranges we want to pre-cache
-          time_ranges = ["1h", "4h", "12h", "24h", "7d"]
+  defp generate_cache_for_time_ranges do
+    AppLogger.startup_info("Starting pre-generation of kill comparison cache data")
 
-          # Generate cache for each time range
-          Enum.each(time_ranges, fn range ->
-            try do
-              AppLogger.startup_info("Pre-generating kill comparison data for range: #{range}")
+    # Define the time ranges we want to pre-cache
+    time_ranges = ["1h", "4h", "12h", "24h", "7d"]
 
-              # Determine time range
-              {start_datetime, end_datetime} = get_time_range_for_cache(range)
+    # Generate cache for each time range
+    Enum.each(time_ranges, fn range ->
+      generate_cache_for_range(range)
+      # Add a small delay between generations to avoid overloading the system
+      Process.sleep(1000)
+    end)
 
-              # Generate cache using the KillmailComparison service instead of the API controller
-              case WandererNotifier.Services.KillmailComparison.generate_and_cache_comparison_data(
-                     range,
-                     start_datetime,
-                     end_datetime
-                   ) do
-                {:ok, data} ->
-                  AppLogger.startup_info("Successfully pre-generated comparison data",
-                    range: range,
-                    character_count: length(data.character_breakdown)
-                  )
+    AppLogger.startup_info("Completed pre-generation of kill comparison cache data")
+  end
 
-                {:error, reason} ->
-                  AppLogger.startup_warn("Failed to pre-generate comparison data",
-                    range: range,
-                    error: inspect(reason)
-                  )
-              end
-            rescue
-              e ->
-                AppLogger.startup_error("Error pre-generating cache for range #{range}",
-                  error: Exception.message(e)
-                )
-            end
+  defp generate_cache_for_range(range) do
+    try do
+      AppLogger.startup_info("Pre-generating kill comparison data for range: #{range}")
 
-            # Add a small delay between generations to avoid overloading the system
-            Process.sleep(1000)
-          end)
+      # Determine time range
+      {start_datetime, end_datetime} = get_time_range_for_cache(range)
 
-          AppLogger.startup_info("Completed pre-generation of kill comparison cache data")
+      # Generate cache using the KillmailComparison service instead of the API controller
+      case WandererNotifier.Services.KillmailComparison.generate_and_cache_comparison_data(
+             range,
+             start_datetime,
+             end_datetime
+           ) do
+        {:ok, data} ->
+          AppLogger.startup_info("Successfully pre-generated comparison data",
+            range: range,
+            character_count: length(data.character_breakdown)
+          )
 
         {:error, reason} ->
-          AppLogger.startup_error("Skipping cache pre-generation - database not ready",
+          AppLogger.startup_warn("Failed to pre-generate comparison data",
+            range: range,
             error: inspect(reason)
           )
       end
-    end)
+    rescue
+      e ->
+        AppLogger.startup_error("Error pre-generating cache for range #{range}",
+          error: Exception.message(e)
+        )
+    end
   end
 
   # Get the start and end datetime for a given time range
   defp get_time_range_for_cache(range) do
     case range do
       "1h" -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
-      "4h" -> {DateTime.utc_now() |> DateTime.add(-14400, :second), DateTime.utc_now()}
-      "12h" -> {DateTime.utc_now() |> DateTime.add(-43200, :second), DateTime.utc_now()}
-      "24h" -> {DateTime.utc_now() |> DateTime.add(-86400, :second), DateTime.utc_now()}
+      "4h" -> {DateTime.utc_now() |> DateTime.add(-14_400, :second), DateTime.utc_now()}
+      "12h" -> {DateTime.utc_now() |> DateTime.add(-43_200, :second), DateTime.utc_now()}
+      "24h" -> {DateTime.utc_now() |> DateTime.add(-86_400, :second), DateTime.utc_now()}
       "7d" -> {DateTime.utc_now() |> DateTime.add(-604_800, :second), DateTime.utc_now()}
       _ -> {DateTime.utc_now() |> DateTime.add(-3600, :second), DateTime.utc_now()}
     end

@@ -72,30 +72,6 @@
 
 ## Additional Critical & High Priority Action Items
 
-### Security & Stability
-- [ ] Review environment variable handling and validation.
-- [ ] Add request rate limiting for web endpoints.
-- [ ] Add circuit breakers for external API calls.
-- [ ] Add startup timeout protection.
-- [ ] Add startup health checks.
-
-### Performance
-- [ ] Implement connection pooling for HTTP requests.
-- [ ] Optimize cache expiration strategies.
-- [ ] Implement batching for Discord notifications.
-- [ ] Add cache consistency validation.
-- [ ] Implement cache warming strategy.
-- [ ] Add cache performance monitoring.
-- [ ] Add telemetry for performance monitoring.
-
-### Data Integrity
-- [ ] Add input validation for critical fields in the `MapSystem` module.
-- [ ] Enhance error handling with proper return types.
-- [ ] Add data normalization for names and tickers.
-- [ ] Implement safe creation with error recovery.
-- [ ] Add missing typespecs in core modules.
-- [ ] Enhance validation with more specific checks.
-
 ### Technical Debt
 - [ ] Remove backwards compatibility layers in notifier modules.
   - [ ] Audit usages of old non-namespaced modules.
@@ -116,16 +92,10 @@
 - [ ] Standardize feature flag testing approach.
 
 ### Architecture Improvements
-- [ ] Split `Application.ex` into smaller modules:
-  - [ ] Create `StartupPhases` module.
-  - [ ] Create `DatabaseManager` module.
-  - [ ] Create `CacheManager` module.
-  - [ ] Create `WatcherSupervisor` module.
 - [ ] Split large modules (e.g., `MapSystem`, `Character`) into more focused components.
 - [ ] Implement data versioning.
 - [ ] Add audit logging.
 - [ ] Review and optimize database schema design.
-- [ ] Remove duplicate code from schedulers; ensure each is registered and provides a status for reporting.
 
 ### Version Management
 - [ ] Add `git_ops` for semantic versioning.
@@ -146,10 +116,10 @@
 - [ ] Document the reason for any dependency overrides (e.g., `ranch` in `mix.exs`).
 
 ### Documentation
-- [ ] Review existing documentation and update it based on the current code.
+- [ ] Create high-level project documentation in the docs folder
 - [ ] Create a troubleshooting guide.
 - [ ] Document all feature flags and their purposes.
-- [ ] Document all environment variables in the README.
+- [ ] Document all environment variables in the README and index.md (GH-pages source)
 
 ### Feature Enhancements
-- [ ] Add support for more notification channels.
+- [ ] Add support for more notification channels per notification type

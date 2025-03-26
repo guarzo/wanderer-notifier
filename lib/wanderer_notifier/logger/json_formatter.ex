@@ -73,44 +73,39 @@ defmodule WandererNotifier.Logger.JsonFormatter do
   # Helper function to ensure values are JSON serializable
   defp prepare_value_for_json(value) do
     cond do
-      # Simple scalar types are directly serializable
-      is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value) ->
-        value
+      simple_scalar?(value) -> value
+      is_atom(value) -> Atom.to_string(value)
+      is_map(value) -> prepare_map_for_json(value)
+      is_list(value) -> prepare_list_for_json(value)
+      is_tuple(value) -> value |> Tuple.to_list() |> prepare_list_for_json()
+      true -> inspect(value)
+    end
+  end
 
-      # For atoms, convert to strings
-      is_atom(value) ->
-        Atom.to_string(value)
+  # Check if value is a simple scalar type
+  defp simple_scalar?(value) do
+    is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value)
+  end
 
-      # For maps, recursively prepare all values
-      is_map(value) ->
-        value
-        |> Enum.map(fn {k, v} ->
-          # Convert key to string if it's an atom
-          key_str = if is_atom(k), do: Atom.to_string(k), else: k
-          {key_str, prepare_value_for_json(v)}
-        end)
-        |> Enum.into(%{})
+  # Prepare map for JSON serialization
+  defp prepare_map_for_json(map) do
+    map
+    |> Enum.map(fn {k, v} ->
+      # Convert key to string if it's an atom
+      key_str = if is_atom(k), do: Atom.to_string(k), else: k
+      {key_str, prepare_value_for_json(v)}
+    end)
+    |> Enum.into(%{})
+  end
 
-      # For lists, recursively prepare all items
-      is_list(value) ->
-        # Handle keyword lists specially to preserve their key-value nature
-        if Keyword.keyword?(value) do
-          value
-          |> Enum.map(fn {k, v} -> {Atom.to_string(k), prepare_value_for_json(v)} end)
-          |> Enum.into(%{})
-        else
-          Enum.map(value, &prepare_value_for_json/1)
-        end
-
-      # For tuples, convert to lists
-      is_tuple(value) ->
-        value
-        |> Tuple.to_list()
-        |> Enum.map(&prepare_value_for_json/1)
-
-      # For other types (pids, refs, etc.) convert to strings
-      true ->
-        inspect(value)
+  # Prepare list for JSON serialization
+  defp prepare_list_for_json(list) do
+    if Keyword.keyword?(list) do
+      list
+      |> Enum.map(fn {k, v} -> {Atom.to_string(k), prepare_value_for_json(v)} end)
+      |> Enum.into(%{})
+    else
+      Enum.map(list, &prepare_value_for_json/1)
     end
   end
 end

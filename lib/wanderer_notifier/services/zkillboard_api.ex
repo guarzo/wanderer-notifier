@@ -14,7 +14,7 @@ defmodule WandererNotifier.Services.ZKillboardApi do
   # 2 second initial backoff
   @backoff_base_ms 2000
   # 30 seconds maximum backoff
-  @max_backoff_ms 30000
+  @max_backoff_ms 30_000
 
   @doc """
   Gets kills for a specific character.
