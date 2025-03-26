@@ -110,6 +110,11 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         {:ok, characters} ->
           handle_successful_character_update(state, now, characters)
 
+        {:error, :feature_disabled} ->
+          # Handle feature_disabled case differently - log as info instead of error
+          AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
+          return_state_with_updated_timestamp(state, now)
+
         {:error, reason} ->
           AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
           return_state_with_updated_timestamp(state, now)

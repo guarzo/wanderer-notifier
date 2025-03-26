@@ -410,37 +410,44 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Helper function to check if the repo is started and provide diagnostics
   defp repo_started? do
-    try do
-      # Check if the repo process exists
-      pid = Process.whereis(WandererNotifier.Repo)
+    # First, check if database operations are required/enabled
+    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      try do
+        # Check if the repo process exists
+        pid = Process.whereis(WandererNotifier.Repo)
 
-      cond do
-        is_pid(pid) && Process.alive?(pid) ->
-          # Repo process exists and is alive, perform a simple query test
-          check_database_connectivity(pid)
+        cond do
+          is_pid(pid) && Process.alive?(pid) ->
+            # Repo process exists and is alive, perform a simple query test
+            check_database_connectivity(pid)
 
-        is_pid(pid) ->
-          AppLogger.api_warn("[CharactersClient] Database repo process exists but is not alive")
+          is_pid(pid) ->
+            AppLogger.api_warn("[CharactersClient] Database repo process exists but is not alive")
+            false
+
+          true ->
+            log_repo_missing_diagnostics()
+            false
+        end
+      rescue
+        e ->
+          AppLogger.api_error(
+            "[CharactersClient] Error checking database connection: #{Exception.message(e)}"
+          )
+
           false
+      catch
+        type, value ->
+          AppLogger.api_error(
+            "[CharactersClient] Caught #{inspect(type)} while checking database: #{inspect(value)}"
+          )
 
-        true ->
-          log_repo_missing_diagnostics()
           false
       end
-    rescue
-      e ->
-        AppLogger.api_error(
-          "[CharactersClient] Error checking database connection: #{Exception.message(e)}"
-        )
-
-        false
-    catch
-      type, value ->
-        AppLogger.api_error(
-          "[CharactersClient] Caught #{inspect(type)} while checking database: #{inspect(value)}"
-        )
-
-        false
+    else
+      # Database is not required for the current configuration
+      AppLogger.api_debug("[CharactersClient] Database operations disabled, skipping repo check")
+      false
     end
   end
 

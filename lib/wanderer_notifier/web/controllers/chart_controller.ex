@@ -523,72 +523,92 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
       # Perform diagnostic queries
       try do
-        # Check total killmail records
-        killmail_query = "SELECT COUNT(*) FROM killmails"
-        {:ok, %{rows: [[total_killmails]]}} = WandererNotifier.Repo.query(killmail_query)
+        # First check if database operations are enabled
+        if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+          # Check total killmail records
+          killmail_query = "SELECT COUNT(*) FROM killmails"
+          {:ok, %{rows: [[total_killmails]]}} = WandererNotifier.Repo.query(killmail_query)
 
-        # Check total statistics records
-        stats_query = "SELECT COUNT(*) FROM killmail_statistics"
-        {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(stats_query)
+          # Check total statistics records
+          stats_query = "SELECT COUNT(*) FROM killmail_statistics"
+          {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(stats_query)
 
-        # Check stats by period
-        period_query =
-          "SELECT period_type, COUNT(*) FROM killmail_statistics GROUP BY period_type"
+          # Check stats by period
+          period_query =
+            "SELECT period_type, COUNT(*) FROM killmail_statistics GROUP BY period_type"
 
-        {:ok, period_results} = WandererNotifier.Repo.query(period_query)
+          {:ok, period_results} = WandererNotifier.Repo.query(period_query)
 
-        # Check recent killmails
-        recent_query =
-          "SELECT killmail_id, related_character_name, character_role, kill_time, solar_system_name FROM killmails ORDER BY kill_time DESC LIMIT 5"
+          # Check recent killmails
+          recent_query =
+            "SELECT killmail_id, related_character_name, character_role, kill_time, solar_system_name FROM killmails ORDER BY kill_time DESC LIMIT 5"
 
-        {:ok, recent_results} = WandererNotifier.Repo.query(recent_query)
+          {:ok, recent_results} = WandererNotifier.Repo.query(recent_query)
 
-        # Format the period results
-        period_counts =
-          period_results.rows
-          |> Enum.map(fn [period, count] ->
-            {period, count}
-          end)
-          |> Enum.into(%{})
+          # Format the period results
+          period_counts =
+            period_results.rows
+            |> Enum.map(fn [period, count] ->
+              {period, count}
+            end)
+            |> Enum.into(%{})
 
-        # Format recent killmails
-        recent_killmails =
-          recent_results.rows
-          |> Enum.map(fn [killmail_id, character_name, role, kill_time, system_name] ->
-            %{
-              killmail_id: killmail_id,
-              character_name: character_name,
-              role: role,
-              kill_time: kill_time,
-              system_name: system_name
-            }
-          end)
+          # Format recent killmails
+          recent_killmails =
+            recent_results.rows
+            |> Enum.map(fn [killmail_id, character_name, role, kill_time, system_name] ->
+              %{
+                killmail_id: killmail_id,
+                character_name: character_name,
+                role: role,
+                kill_time: kill_time,
+                system_name: system_name
+              }
+            end)
 
-        # Count tracked characters in database
-        char_query = "SELECT COUNT(*) FROM tracked_characters"
-        {:ok, %{rows: [[total_chars]]}} = WandererNotifier.Repo.query(char_query)
+          # Count tracked characters in database
+          char_query = "SELECT COUNT(*) FROM tracked_characters"
+          {:ok, %{rows: [[total_chars]]}} = WandererNotifier.Repo.query(char_query)
 
-        # Count characters in cache
-        cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+          # Count characters in cache
+          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
 
-        # Send the diagnostic info
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          200,
-          Jason.encode!(%{
-            status: "ok",
-            message: "Diagnostic information for killmail aggregation",
-            counts: %{
-              killmails: total_killmails,
-              statistics: total_stats,
-              tracked_characters_db: total_chars,
-              tracked_characters_cache: length(cached_characters),
-              by_period: period_counts
-            },
-            recent_killmails: recent_killmails
-          })
-        )
+          # Send the diagnostic info
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Diagnostic information for killmail aggregation",
+              counts: %{
+                killmails: total_killmails,
+                statistics: total_stats,
+                tracked_characters_db: total_chars,
+                tracked_characters_cache: length(cached_characters),
+                by_period: period_counts
+              },
+              recent_killmails: recent_killmails
+            })
+          )
+        else
+          # Database is disabled, return limited diagnostic info
+          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              message: "Limited diagnostic information (database operations disabled)",
+              counts: %{
+                tracked_characters_cache: length(cached_characters)
+              },
+              database_status: "disabled"
+            })
+          )
+        end
       rescue
         e ->
           AppLogger.api_error("Error in killmail debug endpoint", error: Exception.message(e))

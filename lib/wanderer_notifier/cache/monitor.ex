@@ -105,17 +105,27 @@ defmodule WandererNotifier.Cache.Monitor do
     # Get the cached characters
     cached_characters = CacheRepo.get("map:characters") || []
 
-    # Get the characters from database
-    case TrackedCharacter.list_all() do
-      {:ok, db_characters} ->
-        process_character_comparison(results, cached_characters, db_characters)
+    # Check if database operations are enabled
+    if TrackedCharacter.database_enabled?() do
+      # Get the characters from database
+      case TrackedCharacter.read_safely() do
+        {:ok, db_characters} ->
+          process_character_comparison(results, cached_characters, db_characters)
 
-      {:error, reason} ->
-        AppLogger.cache_error(
-          "[CacheMonitor] Error retrieving characters from database: #{inspect(reason)}"
-        )
+        {:error, reason} ->
+          AppLogger.cache_error(
+            "[CacheMonitor] Error retrieving characters from database: #{inspect(reason)}"
+          )
 
-        results
+          results
+      end
+    else
+      # Database operations are disabled, log and return unchanged results
+      AppLogger.cache_info(
+        "[CacheMonitor] Skipping database character check - database operations disabled"
+      )
+      
+      results
     end
   end
 

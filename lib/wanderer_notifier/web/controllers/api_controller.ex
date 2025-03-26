@@ -169,25 +169,43 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     try do
       # Check if kill charts is enabled
       if WandererNotifier.Core.Config.kill_charts_enabled?() do
-        # Get killmail statistics
-        killmail_stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+        # Check if database operations are enabled
+        if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+          # Get killmail statistics
+          killmail_stats =
+            WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
 
-        # Get database health status
-        db_health =
-          case WandererNotifier.Repo.health_check() do
-            {:ok, ping_time} -> %{status: "connected", ping_ms: ping_time}
-            {:error, reason} -> %{status: "error", reason: inspect(reason)}
-          end
+          # Get database health status
+          db_health =
+            case WandererNotifier.Repo.health_check() do
+              {:ok, ping_time} -> %{status: "connected", ping_ms: ping_time}
+              {:error, reason} -> %{status: "error", reason: inspect(reason)}
+            end
 
-        # Combine all DB statistics
-        db_stats = %{
-          killmail: killmail_stats,
-          db_health: db_health
-        }
+          # Combine all DB statistics
+          db_stats = %{
+            killmail: killmail_stats,
+            db_health: db_health
+          }
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Jason.encode!(%{success: true, stats: db_stats}))
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(200, Jason.encode!(%{success: true, stats: db_stats}))
+        else
+          # Database is disabled but kill charts is enabled (unusual state)
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              success: true,
+              stats: %{
+                killmail: %{tracked_characters: 0, total_kills: 0},
+                db_health: %{status: "disabled", reason: "Database operations are disabled"}
+              }
+            })
+          )
+        end
       else
         conn
         |> put_resp_content_type("application/json")
@@ -422,34 +440,71 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
     # Check if kill charts is enabled
     if Config.kill_charts_enabled?() do
-      try do
-        # Get total statistics count
-        query = "SELECT COUNT(*) FROM killmail_statistics"
-        {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(query)
+      # Check if database operations are enabled
+      if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+        try do
+          # Get total statistics count
+          query = "SELECT COUNT(*) FROM killmail_statistics"
+          {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(query)
 
-        # Get count of characters with aggregated stats
-        query = "SELECT COUNT(DISTINCT character_id) FROM killmail_statistics"
-        {:ok, %{rows: [[aggregated_characters]]}} = WandererNotifier.Repo.query(query)
+          # Get count of characters with aggregated stats
+          query = "SELECT COUNT(DISTINCT character_id) FROM killmail_statistics"
+          {:ok, %{rows: [[aggregated_characters]]}} = WandererNotifier.Repo.query(query)
 
-        # Get the most recent aggregation date
-        query = "SELECT MAX(inserted_at) FROM killmail_statistics"
-        {:ok, %{rows: [[last_aggregation]]}} = WandererNotifier.Repo.query(query)
+          # Get the most recent aggregation date
+          query = "SELECT MAX(inserted_at) FROM killmail_statistics"
+          {:ok, %{rows: [[last_aggregation]]}} = WandererNotifier.Repo.query(query)
 
-        # Format the date nicely if it exists
-        formatted_date =
-          if last_aggregation do
-            # Convert to human-readable format
-            DateTime.from_naive!(last_aggregation, "Etc/UTC")
-            |> DateTime.to_string()
-          else
-            nil
-          end
+          # Format the date nicely if it exists
+          formatted_date =
+            if last_aggregation do
+              # Convert to human-readable format
+              DateTime.from_naive!(last_aggregation, "Etc/UTC")
+              |> DateTime.to_string()
+            else
+              nil
+            end
 
-        AppLogger.api_info("Retrieved aggregation statistics",
-          total_stats: total_stats,
-          aggregated_characters: aggregated_characters,
-          last_update: formatted_date
-        )
+          AppLogger.api_info("Retrieved aggregation statistics",
+            total_stats: total_stats,
+            aggregated_characters: aggregated_characters,
+            last_update: formatted_date
+          )
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              success: true,
+              stats: %{
+                total_stats: total_stats,
+                aggregated_characters: aggregated_characters,
+                last_aggregation: formatted_date
+              }
+            })
+          )
+        rescue
+          e ->
+            AppLogger.api_error("Failed to fetch aggregation statistics",
+              error: Exception.message(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            )
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                success: false,
+                message: "Error fetching aggregation statistics",
+                error: Exception.message(e)
+              })
+            )
+        end
+      else
+        # Database operations are disabled
+        AppLogger.api_info("Database operations are disabled for aggregation stats")
 
         conn
         |> put_resp_content_type("application/json")
@@ -457,30 +512,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           200,
           Jason.encode!(%{
             success: true,
+            message: "Database operations are disabled",
             stats: %{
-              total_stats: total_stats,
-              aggregated_characters: aggregated_characters,
-              last_aggregation: formatted_date
+              total_stats: 0,
+              aggregated_characters: 0,
+              last_aggregation: nil
             }
           })
         )
-      rescue
-        e ->
-          AppLogger.api_error("Failed to fetch aggregation statistics",
-            error: Exception.message(e),
-            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-          )
-
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            500,
-            Jason.encode!(%{
-              success: false,
-              message: "Error fetching aggregation statistics",
-              error: Exception.message(e)
-            })
-          )
       end
     else
       AppLogger.api_info("Kill charts feature not enabled for aggregation stats")

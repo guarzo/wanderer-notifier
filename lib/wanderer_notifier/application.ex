@@ -370,9 +370,19 @@ defmodule WandererNotifier.Application do
   @doc """
   Called when a file is changed and code is reloaded in development.
   This replaces the functionality in DevCallbacks.
+
+  Handles two reload cases:
+  - When ExSync reloads modules and passes a list of reloaded modules
+  - When ExSync sends a {Module, :reload} tuple message
   """
-  def reload(modules) do
+  @spec reload(list(module()) | {module(), :reload}) :: :ok
+  def reload(modules) when is_list(modules) do
     AppLogger.startup_info("Reloaded modules: #{inspect(modules)}")
+    :ok
+  end
+
+  def reload({_module, :reload}) do
+    AppLogger.startup_info("Module reloaded")
     :ok
   end
 
