@@ -59,7 +59,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Update systems from the map
   defp update_systems(state, now, force \\ false) do
-    if Features.tracked_systems_notifications_enabled?() do
+    if Features.tracked_systems_notifications_enabled?() || Features.should_load_tracking_data?() do
       AppLogger.maintenance_info("Updating systems", force: force)
 
       cached_systems = if force, do: nil, else: CacheHelpers.get_tracked_systems()
@@ -82,8 +82,9 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Update characters from the map
   defp update_characters(state, now, force \\ false) do
-    # Check if character tracking is enabled
-    if Features.tracked_characters_notifications_enabled?() do
+    # Check if character tracking is enabled or tracking data is needed for kill notifications
+    if Features.tracked_characters_notifications_enabled?() ||
+         Features.should_load_tracking_data?() do
       update_tracked_characters(state, now, force)
     else
       AppLogger.maintenance_debug("Character tracking is disabled, skipping update")

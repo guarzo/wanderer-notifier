@@ -212,6 +212,17 @@ defmodule WandererNotifier.Core.Features do
   end
 
   @doc """
+  Check if we should load tracking data (systems and characters) for use in kill notifications.
+  This ensures that kill notifications can still function even when character/system
+  notifications themselves are disabled.
+  """
+  def should_load_tracking_data? do
+    # Always load tracking data if kill notifications are enabled
+    # regardless of character/system notification settings
+    kill_notifications_enabled?()
+  end
+
+  @doc """
   Convenience function to check if K-Space (non-wormhole) systems should be tracked,
   delegating to Config.track_kspace_systems?
   """

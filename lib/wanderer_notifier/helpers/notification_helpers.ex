@@ -243,18 +243,15 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
     tracked_systems = get_tracked_systems()
     AppLogger.processor_info("Found tracked systems", count: length(tracked_systems))
 
-    # Check if we should include all systems or just wormholes
-    track_all_systems = WandererNotifier.Core.Config.track_all_systems?()
+    # Check if we should include K-Space systems in addition to wormholes
+    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
 
-    # If track_all_systems is true, we can select from all systems
+    # If K-Space tracking is enabled, we can select from all systems
     # Otherwise, prefer wormhole systems but fall back to any system if needed
     selected_system =
       if track_all_systems do
-        # When tracking all systems, just pick a random one
-        AppLogger.processor_info("Using track_all_systems=true",
-          action: "selecting from all systems"
-        )
-
+        # When tracking K-Space systems, just pick a random one from all systems
+        AppLogger.processor_info("K-Space tracking enabled", action: "selecting from all systems")
         Enum.random(tracked_systems)
       else
         # When only tracking wormholes, filter first
