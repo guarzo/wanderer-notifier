@@ -139,6 +139,28 @@ run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || echo 'import Config\n
 
 echo "======= Application Tests ======="
 
+echo "Checking Config.Reader implementation..."
+run_in_container "elixir -e 'IO.puts(\"Exploring Config.Reader module...\"); \
+Code.ensure_loaded(Config.Reader); \
+if function_exported?(Code, :fetch_docs, 1) do \
+  case Code.fetch_docs(Config.Reader) do \
+    {:docs_v1, _, _, _, module_doc, _, _} when is_binary(module_doc) -> \
+      IO.puts(\"Module docs: #{String.slice(module_doc, 0, 200)}...\"); \
+    _ -> \
+      IO.puts(\"No documentation available for Config.Reader\") \
+  end \
+end; \
+if function_exported?(Config.Reader, :read!, 2) do \
+  IO.puts(\"Function Config.Reader.read!/2 is exported\"); \
+else \
+  IO.puts(\"Function Config.Reader.read!/2 is NOT exported!\") \
+end; \
+if function_exported?(Config.Reader, :load, 2) do \
+  IO.puts(\"Function Config.Reader.load/2 is exported\"); \
+else \
+  IO.puts(\"Function Config.Reader.load/2 is NOT exported!\") \
+end'" "-e WANDERER_ENV=test"
+
 if [ "$BASIC_ONLY" = true ]; then
   echo "Running basic application tests only (without starting the app)..."
   

@@ -70,29 +70,6 @@ RUN if [ -d renderer ] && [ -f renderer/package.json ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Validate Config.Reader implementation
-RUN echo "Checking Elixir Config.Reader implementation..." && \
-    mix run -e 'IO.puts("Exploring Config.Reader module..."); \
-    Code.ensure_loaded(Config.Reader); \
-    if function_exported?(Code, :fetch_docs, 1) do \
-      case Code.fetch_docs(Config.Reader) do \
-        {:docs_v1, _, _, _, module_doc, _, _} when is_binary(module_doc) -> \
-          IO.puts("Module docs: #{String.slice(module_doc, 0, 200)}..."); \
-        _ -> \
-          IO.puts("No documentation available for Config.Reader") \
-      end \
-    end; \
-    if function_exported?(Config.Reader, :read!, 2) do \
-      IO.puts("Function Config.Reader.read!/2 is exported"); \
-    else \
-      IO.puts("Function Config.Reader.read!/2 is NOT exported!") \
-    end; \
-    if function_exported?(Config.Reader, :load, 2) do \
-      IO.puts("Function Config.Reader.load/2 is exported"); \
-    else \
-      IO.puts("Function Config.Reader.load/2 is NOT exported!") \
-    end'
-
 # Compile and build release
 RUN mix compile --warnings-as-errors && \
     mix release --overwrite
