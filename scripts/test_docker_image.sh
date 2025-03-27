@@ -201,11 +201,25 @@ else
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
     
+    # Debug: Show what environment variables we're going to use
+    echo "Environment variables being passed to container:"
+    echo "DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
+    echo "Extra env vars: $EXTRA_ENV_VARS"
+    
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
-      -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" -e MAP_URL="http://somemap.com" -e MAP_TOKEN="some token" \
-      $EXTRA_ENV_VARS \
+      -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
+      -e WANDERER_ENV=test \
+      -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
+      -e MAP_URL="http://example.com/map" \
+      -e MAP_TOKEN="test-map-token" \
+      -e DISCORD_CHANNEL_ID="123456789" \
+      -e LICENSE_KEY="test-license-key" \
       "$FULL_IMAGE"
+    
+    # Debug: Verify environment variables in the container
+    echo "Verifying environment variables in container:"
+    docker exec "$CONTAINER_NAME" env || echo "Could not check environment variables"
     
     echo "Waiting for application to start (up to 20 seconds)..."
     MAX_ATTEMPTS=20
