@@ -132,7 +132,7 @@ jobs:
       - name: Full Docker validation with web server
         env:
           DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-          MAP_URL: "http://example.com/map"
+          MAP_URL_WITH_NAME: "http://example.com/map?name=testmap"
           MAP_TOKEN: "test-map-token"
           DISCORD_CHANNEL_ID: "123456789"
           LICENSE_KEY: "test-license-key"
@@ -143,7 +143,7 @@ jobs:
           # Run full validation including web server startup test
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} \
             --discord-token "$DISCORD_TOKEN" \
-            --env "MAP_URL=$MAP_URL" \
+            --env "MAP_URL_WITH_NAME=$MAP_URL_WITH_NAME" \
             --env "MAP_TOKEN=$MAP_TOKEN" \
             --env "DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
             --env "LICENSE_KEY=$LICENSE_KEY" \

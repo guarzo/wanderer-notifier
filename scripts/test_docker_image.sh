@@ -11,7 +11,22 @@ TAG="latest"
 TIMEOUT=30
 BASIC_ONLY=false
 DISCORD_TOKEN="test_token_for_validation"
+
+# Default environment variables
+DEFAULT_ENV_VARS=(
+  "MAP_URL_WITH_NAME=http://example.com/map?name=testmap"
+  "MAP_TOKEN=test-map-token"
+  "DISCORD_CHANNEL_ID=123456789"
+  "LICENSE_KEY=test-license-key"
+  "WANDERER_ENV=test"
+  "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+)
+
+# Initialize EXTRA_ENV_VARS with defaults
 EXTRA_ENV_VARS=""
+for var in "${DEFAULT_ENV_VARS[@]}"; do
+  EXTRA_ENV_VARS="$EXTRA_ENV_VARS -e $var"
+done
 
 # Display help information
 show_help() {
@@ -23,8 +38,13 @@ show_help() {
   echo "  -t, --tag TAG            Docker image tag (default: $TAG)"
   echo "  -b, --basic              Run only basic validation tests without starting the app"
   echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token_for_validation)"
-  echo "  -e, --env VAR=VALUE      Add environment variable (can be used multiple times)"
+  echo "  -e, --env VAR=VALUE      Add/override environment variable (can be used multiple times)"
   echo "  -h, --help               Display this help message"
+  echo
+  echo "Default environment variables:"
+  for var in "${DEFAULT_ENV_VARS[@]}"; do
+    echo "  $var"
+  done
   echo
 }
 
@@ -48,7 +68,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -e|--env)
-      EXTRA_ENV_VARS="$EXTRA_ENV_VARS -e $2"
+      # Override or append environment variable
+      key="${2%%=*}"  # Get the part before =
+      EXTRA_ENV_VARS=$(echo "$EXTRA_ENV_VARS" | sed -E "s/-e ${key}=[^ ]*/-e $2/")
+      if ! echo "$EXTRA_ENV_VARS" | grep -q " -e $key="; then
+        EXTRA_ENV_VARS="$EXTRA_ENV_VARS -e $2"
+      fi
       shift 2
       ;;
     -h|--help)
@@ -209,12 +234,7 @@ else
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
-      -e WANDERER_ENV=test \
-      -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
-      -e MAP_URL="http://example.com/map" \
-      -e MAP_TOKEN="test-map-token" \
-      -e DISCORD_CHANNEL_ID="123456789" \
-      -e LICENSE_KEY="test-license-key" \
+      $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
     # Debug: Verify environment variables in the container
