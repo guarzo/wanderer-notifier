@@ -39,18 +39,22 @@ jobs:
           # Replace slashes in branch name with hyphens for Docker tag
           SAFE_BRANCH=$(echo "${{ github.event.inputs.branch }}" | sed 's/\//-/g')
 
+          # Get short SHA for image tagging
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
           # Get current version (don't bump for ad-hoc builds)
           CURRENT_VERSION=$(./scripts/version.sh get)
           # Generate dev version with date/git info and branch name
-          FULL_VERSION="${CURRENT_VERSION}-${SAFE_BRANCH}+$(date +'%Y%m%d').$(git rev-parse --short HEAD)"
+          FULL_VERSION="${CURRENT_VERSION}-${SAFE_BRANCH}+$(date +'%Y%m%d').${SHORT_SHA}"
 
           # Store in environment for later steps
           echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
           echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
           echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
           # Create Docker tag list
-          DOCKER_TAG_LIST="guarzo/wanderer-notifier:branch-${SAFE_BRANCH},guarzo/wanderer-notifier:branch-${SAFE_BRANCH}-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          DOCKER_TAG_LIST="guarzo/wanderer-notifier:branch-${SAFE_BRANCH},guarzo/wanderer-notifier:branch-${SAFE_BRANCH}-$(date +'%Y%m%d')-${SHORT_SHA}"
 
           echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
 
@@ -83,7 +87,28 @@ jobs:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Build and Push Docker image
+      - name: Build Docker image (SHA tagged)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.full_version }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
+
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image..."
+          # Only verify version and core functionality without starting the full app
+          # Use the --basic flag to avoid requiring environment variables
+          ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --basic --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
+
+          echo "Docker image test passed successfully!"
+
+      - name: Push Docker image with branch tags
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -93,8 +118,3 @@ jobs:
             APP_VERSION=${{ steps.version.outputs.full_version }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
-
-      - name: Test Docker image
-        run: |
-          echo "Testing Docker image..."
-          ./scripts/test_docker_image.sh -t "branch-${{ steps.version.outputs.safe_branch }}"

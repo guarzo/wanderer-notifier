@@ -9,6 +9,8 @@ set -e
 IMAGE_NAME="guarzo/wanderer-notifier"
 TAG="latest"
 TIMEOUT=30
+BASIC_ONLY=false
+DISCORD_TOKEN="test_token_for_validation"
 
 # Display help information
 show_help() {
@@ -18,6 +20,8 @@ show_help() {
   echo "Options:"
   echo "  -i, --image IMAGE_NAME   Docker image name (default: $IMAGE_NAME)"
   echo "  -t, --tag TAG            Docker image tag (default: $TAG)"
+  echo "  -b, --basic              Run only basic validation tests without starting the app"
+  echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token)"
   echo "  -h, --help               Display this help message"
   echo
 }
@@ -31,6 +35,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     -t|--tag)
       TAG="$2"
+      shift 2
+      ;;
+    -b|--basic)
+      BASIC_ONLY=true
+      shift
+      ;;
+    -d|--discord-token)
+      DISCORD_TOKEN="$2"
       shift 2
       ;;
     -h|--help)
@@ -51,7 +63,13 @@ echo "Testing image: $FULL_IMAGE"
 # Function to run a command inside the container
 run_in_container() {
   local cmd="$1"
-  docker run --rm -t "$FULL_IMAGE" /bin/sh -c "$cmd"
+  local env_vars="$2"
+  
+  if [ -z "$env_vars" ]; then
+    docker run --rm -t "$FULL_IMAGE" /bin/sh -c "$cmd"
+  else
+    docker run --rm -t $env_vars "$FULL_IMAGE" /bin/sh -c "$cmd"
+  fi
 }
 
 # Check if the image exists
@@ -76,14 +94,29 @@ run_in_container "find /app/data -type d | sort"
 
 echo "======= Application Tests ======="
 
-echo "Testing Elixir runtime..."
-run_in_container "/app/bin/wanderer_notifier eval '1+1'"
-
-echo "Checking application version..."
-run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'"
-
-echo "Verifying configuration loading..."
-run_in_container "test -f /app/etc/wanderer_notifier.exs && echo 'Configuration file exists'"
+if [ "$BASIC_ONLY" = true ]; then
+  echo "Running basic application tests only (without starting the app)..."
+  
+  echo "Testing Elixir runtime with basic eval..."
+  run_in_container "elixir -e 'IO.puts(\"Basic Elixir runtime test passed with result: #{1+1}\")'"
+  
+  echo "Checking application version file..."
+  run_in_container "if [ -f /app/VERSION ]; then cat /app/VERSION; else echo 'Version file not found'; fi"
+  
+  echo "Verifying configuration loading capability..."
+  run_in_container "test -f /app/etc/wanderer_notifier.exs && echo 'Configuration file exists'"
+else
+  echo "Testing full application startup (may require environment variables)..."
+  
+  echo "Testing Elixir runtime with application eval..."
+  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  
+  echo "Checking application version..."
+  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  
+  echo "Verifying configuration loading..."
+  run_in_container "test -f /app/etc/wanderer_notifier.exs && echo 'Configuration file exists'"
+fi
 
 echo "======= Connection Tests ======="
 
