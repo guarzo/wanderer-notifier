@@ -17,19 +17,50 @@ jobs:
         with:
           fetch-depth: 0 # required for pushing tags
 
-      - name: Generate version string
+      - name: Set up build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+            priv/static
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Generate version information
         id: version
         run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date +'%Y%m%d')
-          # Create version strings
-          VERSION="0.0.0"  # Default version for automatic builds
-          DOCKER_VERSION="${DATE}-${SHORT_SHA}"
+          chmod +x ./scripts/version.sh
 
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Generated Docker version: ${DOCKER_VERSION}"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          # Get current version (don't bump for automatic builds)
+          CURRENT_VERSION=$(./scripts/version.sh get)
+          # Generate dev version with date/git info
+          FULL_VERSION=$(./scripts/version.sh full dev)
+
+          # Store in environment for later steps
+          echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Generate Docker tags
+          DOCKER_TAGS=$(./scripts/version.sh tags | grep -v latest)
+          DOCKER_TAGS="${DOCKER_TAGS}"$'\n'"dev"
+          DOCKER_TAG_LIST=""
+
+          # Convert newline-separated tags to comma-separated list for Docker build action
+          while IFS= read -r tag; do
+            if [ -n "$DOCKER_TAG_LIST" ]; then
+              DOCKER_TAG_LIST="${DOCKER_TAG_LIST},guarzo/wanderer-notifier:${tag}"
+            else
+              DOCKER_TAG_LIST="guarzo/wanderer-notifier:${tag}"
+            fi
+          done <<< "$DOCKER_TAGS"
+
+          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
+
+          echo "Current version: ${CURRENT_VERSION}"
+          echo "Full version: ${FULL_VERSION}"
+          echo "Docker tags: ${DOCKER_TAG_LIST}"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,26 +69,17 @@ jobs:
           cache: "npm"
           cache-dependency-path: "renderer/package-lock.json"
 
-      - name: Build React application
+      - name: Install frontend dependencies and build
         run: |
-          # Ensure the static app directory exists first
-          mkdir -p priv/static/app
           cd renderer
           npm ci
           npm run build
           cd ..
-          # Copy the built React app to the static directory if needed
-          # This may be redundant if the postbuild script works
-          cp -r renderer/dist/* priv/static/app/ || true
-
-      - name: Update version in mix.exs
-        run: |
-          # Update the version with a valid Elixir version format
-          sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
-          cat mix.exs
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          buildkitd-flags: --debug
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -65,26 +87,21 @@ jobs:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Build Docker image
+      - name: Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          tags: ${{ steps.version.outputs.docker_tags }}
           build-args: |
-            APP_VERSION=${{ steps.version.outputs.docker_version }}
-            WANDERER_APP_VERSION=${{ steps.version.outputs.docker_version }}
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-          tags: |
-            guarzo/wanderer-notifier:dev
-            guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
+            APP_VERSION=${{ steps.version.outputs.full_version }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
+          cache-to: type=inline
 
       - name: Test Docker image
         run: |
-          echo "Testing Docker image startup..."
-          # Only verify GLIBC version and basic Elixir functionality without starting the full app
-          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }} /bin/sh -c "echo 'GLIBC Version:' && ldd --version | head -n1 && /app/bin/wanderer_notifier eval '1+1'"
-        continue-on-error: true
+          echo "Testing Docker image..."
+          ./scripts/test_docker_image.sh -t "dev"
 
       - name: Create and push Git tag
         env:
@@ -92,5 +109,5 @@ jobs:
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git tag ${{ steps.version.outputs.docker_version }}
-          git push origin ${{ steps.version.outputs.docker_version }}
+          git tag "dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          git push origin "dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"

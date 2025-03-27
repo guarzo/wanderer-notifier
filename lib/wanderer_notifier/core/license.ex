@@ -126,10 +126,8 @@ defmodule WandererNotifier.Core.License do
     )
 
     Logger.info(
-      "License validation - token length: #{if token, do: String.length(token), else: 0}"
+      "License validation - environment: #{Application.get_env(:wanderer_notifier, :env, :prod)}"
     )
-
-    Logger.info("License validation - token is binary: #{is_binary(token)}")
 
     # Basic validation - ensure token exists and is a non-empty string
     is_valid = is_binary(token) && String.trim(token) != ""

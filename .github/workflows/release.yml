@@ -3,10 +3,15 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      release_version:
-        description: "Release version (format: major.minor.patch)"
-        required: false
-        default: "1.1.0"
+      version_type:
+        description: "Version increment type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   release:
@@ -17,46 +22,63 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # required for getting commit SHA
+          fetch-depth: 0 # required for getting commit history
 
-      - name: Generate version string
+      - name: Set up build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+            priv/static
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Generate version information
         id: version
         run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date +'%Y%m%d')
-          # Create a valid Elixir version string
-          VERSION="${{ github.event.inputs.release_version }}"
-          DOCKER_VERSION="${{ github.event.inputs.release_version }}-${DATE}-${SHORT_SHA}"
-          # Extract the major and minor version numbers and create v-prefixed tags
-          MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
-          MINOR_VERSION=$(echo "$VERSION" | cut -d. -f2)
-          VTAG="v${MAJOR_VERSION}.${MINOR_VERSION}"
-          MAJOR_VTAG="v${MAJOR_VERSION}"
+          chmod +x ./scripts/version.sh
 
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "docker_version=${DOCKER_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "vtag=${VTAG}" >> "$GITHUB_OUTPUT"
-          echo "major_vtag=${MAJOR_VTAG}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          # Generate new version based on input
+          NEW_VERSION=$(./scripts/version.sh bump ${{ github.event.inputs.version_type }})
+          FULL_VERSION=$(./scripts/version.sh full)
 
-          echo "Generated Elixir version: ${VERSION}"
-          echo "Generated Docker version: ${DOCKER_VERSION}"
-          echo "Generated v-tag: ${VTAG}"
-          echo "Generated major v-tag: ${MAJOR_VTAG}"
-          echo "Short SHA: ${SHORT_SHA}"
+          # Store in environment for later steps
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Git tag for release
+          # Update version files
+          ./scripts/version.sh update ${{ github.event.inputs.version_type }}
+
+          # List Docker tags
+          DOCKER_TAGS=$(./scripts/version.sh tags)
+          DOCKER_TAG_LIST=""
+
+          # Convert newline-separated tags to comma-separated list for Docker build action
+          while IFS= read -r tag; do
+            if [ -n "$DOCKER_TAG_LIST" ]; then
+              DOCKER_TAG_LIST="${DOCKER_TAG_LIST},guarzo/wanderer-notifier:${tag}"
+            else
+              DOCKER_TAG_LIST="guarzo/wanderer-notifier:${tag}"
+            fi
+          done <<< "$DOCKER_TAGS"
+
+          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
+
+          echo "Generated version: ${NEW_VERSION}"
+          echo "Full version: ${FULL_VERSION}"
+          echo "Docker tags: ${DOCKER_TAG_LIST}"
+
+      - name: Create Git tag
         run: |
-          VERSION="${{ github.event.inputs.release_version }}"
-          SHORT_SHA="${{ steps.version.outputs.short_sha }}"
-          VTAG="${{ steps.version.outputs.vtag }}"
-          GIT_TAG="${VTAG}-${SHORT_SHA}"
-
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          git tag -a "${GIT_TAG}" -m "Release ${GIT_TAG}"
-          git push origin "${GIT_TAG}"
-          echo "Created and pushed tag ${GIT_TAG}"
+          git add VERSION mix.exs
+          git commit -m "Release version ${{ steps.version.outputs.version }}"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+          git push
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -65,26 +87,17 @@ jobs:
           cache: "npm"
           cache-dependency-path: "renderer/package-lock.json"
 
-      - name: Build React application
+      - name: Install frontend dependencies and build
         run: |
-          # Ensure the static app directory exists first
-          mkdir -p priv/static/app
           cd renderer
           npm ci
           npm run build
           cd ..
-          # Copy the built React app to the static directory if needed
-          # This may be redundant if the postbuild script works
-          cp -r renderer/dist/* priv/static/app/ || true
-
-      - name: Update version in mix.exs
-        run: |
-          # Update the version with a valid Elixir version format
-          sed -i "s/version: \"[^\"]*\"/version: \"${{ steps.version.outputs.version }}\"/" mix.exs
-          cat mix.exs
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          buildkitd-flags: --debug
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
@@ -93,29 +106,35 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PAT }}
 
       - name: Build and Push Docker image
-        id: docker_build
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: |
-            guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }}
-            guarzo/wanderer-notifier:${{ steps.version.outputs.major_vtag }}
-            guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}            
-            guarzo/wanderer-notifier:latest
+          tags: ${{ steps.version.outputs.docker_tags }}
           build-args: |
-            NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-            APP_VERSION=${{ steps.version.outputs.docker_version }}
-            WANDERER_APP_VERSION=${{ steps.version.outputs.docker_version }}
-          load: true
-          # Force overwrite existing tags
-          push-args: --force
+            APP_VERSION=${{ steps.version.outputs.full_version }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
 
-      # Test the Docker image to verify it can start
       - name: Test Docker image
         run: |
-          echo "Testing Docker image startup..."
-          # Only verify GLIBC version and basic Elixir functionality without starting the full app
-          docker run --rm guarzo/wanderer-notifier:${{ steps.version.outputs.vtag }} /bin/sh -c "echo 'GLIBC Version:' && ldd --version | head -n1 && /app/bin/wanderer_notifier eval '1+1'"
-        continue-on-error: true
+          echo "Testing Docker image..."
+          ./scripts/test_docker_image.sh -t "v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "Release v${{ steps.version.outputs.version }}"
+          body: |
+            ## Wanderer Notifier v${{ steps.version.outputs.version }}
+
+            Build: ${{ steps.version.outputs.full_version }}
+
+            ### Docker Image
+            ```
+            docker pull guarzo/wanderer-notifier:v${{ steps.version.outputs.version }}
+            ```
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

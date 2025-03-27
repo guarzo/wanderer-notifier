@@ -19,7 +19,8 @@ jobs:
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -33,23 +34,17 @@ jobs:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-
-      - name: Clean dependencies
-        run: |
-          mix deps.clean --all
-          rm -rf _build
+          key: ${{ runner.os }}-mix-test-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-test-
+            ${{ runner.os }}-mix-
 
       - name: Install dependencies
         run: |
           mix deps.get
-          mix deps.compile --force
+          mix deps.compile
 
-      - name: Clean and recompile Ash (to ensure correct config)
-        run: mix deps.clean ash ash_postgres --build && mix deps.compile
-
-      - name: Check formatting (non-blocking)
+      - name: Check formatting
         run: mix format --check-formatted
         continue-on-error: true
 
@@ -59,21 +54,50 @@ jobs:
       - name: Run tests
         run: mix test
 
-      # - name: Generate test coverage
-      #   run: mix test --cover
-      #   continue-on-error: true
+      - name: Generate test coverage
+        run: mix test --cover
+        continue-on-error: true
 
       - name: Run code quality checks
         run: mix credo
+        continue-on-error: true
 
-  # Optionally you could add a matrix test job for multiple Elixir/OTP versions
-  # test-matrix:
-  #   name: Test with Elixir ${{ matrix.elixir }} and OTP ${{ matrix.otp }}
-  #   runs-on: ubuntu-latest
-  #   needs: test
-  #   strategy:
-  #     matrix:
-  #       elixir: ['1.13.x', '1.14.x']
-  #       otp: ['24.x', '25.x']
-  #   steps:
-  #     # Same steps as above but using matrix versions
+  lint:
+    name: Lint code
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      MIX_ENV: "dev"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-lint-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-lint-
+            ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix deps.get
+          mix deps.compile
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Run code quality checks
+        run: mix credo
