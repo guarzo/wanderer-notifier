@@ -160,7 +160,7 @@ run_in_container "echo 'Using fixed config path: /app/etc/wanderer_notifier.exs'
 
 # Create an empty config file for testing if needed - don't pass NOTIFIER_CONFIG_PATH here
 echo "Creating minimal config file if needed..."
-run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || echo 'import Config\n# Minimal test config\nconfig :wanderer_notifier, test_config: true' > /app/etc/wanderer_notifier.exs" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
+run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || printf 'import Config\n# Minimal test config\nconfig :wanderer_notifier, test_config: true' > /app/etc/wanderer_notifier.exs" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
 
 echo "======= Application Tests ======="
 
@@ -213,14 +213,14 @@ else
   
   echo "Testing minimal application boot (with clean shutdown)..."
   # Use a shorter timeout and force kill if needed
-  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true" || {
-    if [ $? -eq 124 ] || [ $? -eq 137 ]; then
-      echo "✅ Minimal boot test completed"
-    else
-      echo "❌ Minimal boot test failed unexpectedly"
-      false
-    fi
-  }
+  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  EXIT_CODE=$?
+  if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 137 ] || [ $EXIT_CODE -eq 143 ]; then
+    echo "✅ Minimal boot test completed (timeout/termination as expected)"
+  else
+    echo "❌ Minimal boot test failed with unexpected exit code: $EXIT_CODE"
+    exit 1
+  fi
   
   # Only run the functional web test if not in basic mode
   if [ "$BASIC_ONLY" = false ]; then
