@@ -4,6 +4,8 @@ defmodule WandererNotifier.Api.ZKill.Client do
   Handles making HTTP requests to the zKillboard API endpoints.
   """
 
+  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
@@ -20,6 +22,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   @max_retries 3
   @retry_backoff_ms 2000
 
+  @impl true
   @doc """
   Retrieves a single killmail from zKillboard by ID.
 
@@ -55,6 +58,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
+  @impl true
   @doc """
   Retrieves recent kills from zKillboard.
 
@@ -97,6 +101,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
+  @impl true
   @doc """
   Retrieves kills for a specific system from zKillboard.
 
@@ -152,6 +157,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets recent kill information for a specific character from zKillboard.
 

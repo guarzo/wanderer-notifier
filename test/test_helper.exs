@@ -5,6 +5,7 @@ Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HTTP.Behaviour)
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.Behaviour)
 Mox.defmock(WandererNotifier.MockDiscord, for: WandererNotifier.Discord.Behaviour)
 Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.WebSocket.Behaviour)
+Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 
 # Needed for cache_helpers_test.exs
 defmodule WandererNotifier.Data.Cache.RepositoryBehavior do

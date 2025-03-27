@@ -3,6 +3,19 @@ import Dotenvy
 
 env_dir_prefix = Path.expand("..", __DIR__)
 
+# Debug: Print all environment variables
+IO.puts("DEBUG: Environment variables loaded:")
+
+System.get_env()
+|> Enum.sort()
+|> Enum.each(fn {k, v} ->
+  # Mask sensitive values
+  masked_value =
+    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+
+  IO.puts("  #{k}=#{masked_value}")
+end)
+
 # Load environment variables from files and system env
 env_vars =
   source!([
@@ -10,6 +23,19 @@ env_vars =
     Path.absname(".#{config_env()}.env", env_dir_prefix),
     System.get_env()
   ])
+
+# Debug: Print loaded environment variables
+IO.puts("\nDEBUG: Variables after Dotenvy source:")
+
+env_vars
+|> Enum.sort()
+|> Enum.each(fn {k, v} ->
+  # Mask sensitive values
+  masked_value =
+    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+
+  IO.puts("  #{k}=#{masked_value}")
+end)
 
 # Make sure MIX_ENV is explicitly set in the system environment
 mix_env = Map.get(env_vars, "MIX_ENV", Atom.to_string(config_env()))
@@ -99,18 +125,23 @@ config :nostrum,
   token: trimmed_token
 
 # Discord and Map Configuration
+map_url_with_name = get_env.("MAP_URL_WITH_NAME", nil)
+
+# Parse map_url_with_name to extract map_url and map_name
+{map_url, map_name} =
+  case String.split(map_url_with_name || "", "?name=") do
+    [url, name] -> {url, name}
+    # Default empty values, let app handle validation
+    _ -> {"", ""}
+  end
+
 config :wanderer_notifier,
   discord_bot_token: trimmed_token,
   discord_channel_id: get_env.("DISCORD_CHANNEL_ID", nil),
-  map_url: get_env.("MAP_URL", nil),
-  map_name: get_env.("MAP_NAME", nil),
-  map_url_with_name: get_env.("MAP_URL_WITH_NAME", nil),
+  map_url: map_url,
+  map_name: map_name,
+  map_url_with_name: map_url_with_name,
   map_token: get_env.("MAP_TOKEN", nil)
-
-# EVE Corp Tools API Configuration
-config :wanderer_notifier,
-  corp_tools_api_url: get_env.("CORP_TOOLS_API_URL", nil),
-  corp_tools_api_token: get_env.("CORP_TOOLS_API_TOKEN", nil)
 
 # License Configuration
 license_key = get_env.("WANDERER_LICENSE_KEY", get_env.("LICENSE_KEY", nil))
