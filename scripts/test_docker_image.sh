@@ -11,6 +11,7 @@ TAG="latest"
 TIMEOUT=30
 BASIC_ONLY=false
 DISCORD_TOKEN="test_token_for_validation"
+EXTRA_ENV_VARS=""
 
 # Display help information
 show_help() {
@@ -22,6 +23,7 @@ show_help() {
   echo "  -t, --tag TAG            Docker image tag (default: $TAG)"
   echo "  -b, --basic              Run only basic validation tests without starting the app"
   echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token_for_validation)"
+  echo "  -e, --env VAR=VALUE      Add environment variable (can be used multiple times)"
   echo "  -h, --help               Display this help message"
   echo
 }
@@ -43,6 +45,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -d|--discord-token)
       DISCORD_TOKEN="$2"
+      shift 2
+      ;;
+    -e|--env)
+      EXTRA_ENV_VARS="$EXTRA_ENV_VARS -e $2"
       shift 2
       ;;
     -h|--help)
@@ -175,6 +181,7 @@ else
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
       -e WANDERER_ENV=test \
       -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
+      $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
     echo "Waiting for application to start (up to 20 seconds)..."
