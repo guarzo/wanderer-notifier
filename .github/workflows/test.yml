@@ -130,19 +130,24 @@ jobs:
             APP_VERSION=0.0.0-ci-test
 
       - name: Full Docker validation with web server
+        env:
+          DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+          MAP_URL: "http://example.com/map"
+          MAP_TOKEN: "test-map-token"
+          DISCORD_CHANNEL_ID: "123456789"
+          LICENSE_KEY: "test-license-key"
         run: |
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
 
           # Run full validation including web server startup test
-          # No --basic flag to ensure we test the running application
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} \
-            --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}" \
-            -e "DISCORD_CHANNEL_ID=123456789" \
-            -e "LICENSE_KEY=test-license-key" \
-            -e "MAP_URL=https://example.com/map" \
-            -e "MAP_TOKEN=test-map-token" \
-            -e "WANDERER_ENV=test" \
-            -e "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+            --discord-token "$DISCORD_TOKEN" \
+            --env "MAP_URL=$MAP_URL" \
+            --env "MAP_TOKEN=$MAP_TOKEN" \
+            --env "DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
+            --env "LICENSE_KEY=$LICENSE_KEY" \
+            --env "WANDERER_ENV=test" \
+            --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
 
           echo "Docker image validation successful!"

@@ -204,12 +204,6 @@ else
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
-      -e WANDERER_ENV=test \
-      -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
-      -e MAP_URL="http://example.com/map" \
-      -e MAP_TOKEN="test-map-token" \
-      -e DISCORD_CHANNEL_ID="123456789" \
-      -e LICENSE_KEY="test-license-key" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
