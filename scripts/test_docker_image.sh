@@ -70,7 +70,7 @@ while [[ $# -gt 0 ]]; do
     -e|--env)
       # Override or append environment variable
       key="${2%%=*}"  # Get the part before =
-      EXTRA_ENV_VARS=$(echo "$EXTRA_ENV_VARS" | sed -E "s/-e ${key}=[^ ]*/-e $2/")
+      EXTRA_ENV_VARS=$(echo "$EXTRA_ENV_VARS" | sed -E "s#-e ${key}=[^ ]*#-e $2#")
       if ! echo "$EXTRA_ENV_VARS" | grep -q " -e $key="; then
         EXTRA_ENV_VARS="$EXTRA_ENV_VARS -e $2"
       fi
