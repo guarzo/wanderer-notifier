@@ -1,6 +1,6 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v2
+    image: guarzo/wanderer-notifier:latest
     container_name: wanderer-notifier
     restart: unless-stopped
     environment:
@@ -21,8 +21,8 @@ services:
     ports:
       - "${WANDERER_PORT:-4000}:4000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
     volumes:
       - wanderer_data:/app/data
     deploy:
@@ -50,6 +50,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
   # Database service
   postgres:
     image: postgres:16-alpine
@@ -60,8 +61,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - wanderer-network
     environment:
       - POSTGRES_USER=${WANDERER_DB_USER:-postgres}
       - POSTGRES_PASSWORD=${WANDERER_DB_PASSWORD:-postgres}
@@ -69,8 +68,25 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Database initialization container
+  db_init:
+    image: guarzo/wanderer-notifier:latest
+    profiles: ["database"]
+    environment:
+      # Database configuration
+      WANDERER_DB_HOST: postgres
+      WANDERER_DB_USER: ${WANDERER_DB_USER:-postgres}
+      WANDERER_DB_PASSWORD: ${WANDERER_DB_PASSWORD:-postgres}
+      WANDERER_DB_NAME: ${WANDERER_DB_NAME:-wanderer_notifier}
+      WANDERER_DB_PORT: "5432"
+    command: sh -c '/app/bin/wanderer_notifier eval "WandererNotifier.Release.createdb()" && /app/bin/wanderer_notifier eval "WandererNotifier.Release.migrate()"'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   wanderer_data:
   postgres_data:
     name: wanderer_postgres_data
-
+  db_backups:
+    name: wanderer_db_backups

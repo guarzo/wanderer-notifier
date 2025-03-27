@@ -1,7 +1,9 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.watch test.cover test.license test.license_manager test.bot_registration test.features test.config test.application test.mock format shell run deps.get deps.update build.npm dev watch
+.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch
 
-# Build tasks
+# ============================
+# BUILD TASKS
+# ============================
 compile:
 	@mix compile
 
@@ -11,15 +13,18 @@ compile.strict:
 clean:
 	@mix clean
 
-# Testing and formatting tasks
+# ============================
+# TESTING AND FORMATTING TASKS
+# ============================
 test:
 	@./test/run_tests.sh
 
+# Pattern matching for test targets
+test.%:
+	@MIX_ENV=test mix test test/wanderer_notifier/$*_test.exs
+
 test.all:
 	@MIX_ENV=test mix test --trace
-
-test.mock:
-	@MIX_ENV=test mix test --no-start
 
 test.watch:
 	@mix test.watch
@@ -27,34 +32,21 @@ test.watch:
 test.cover:
 	@mix test --cover
 
-test.license:
-	@MIX_ENV=test mix test test/wanderer_notifier/license_test.exs
-
-test.license_manager:
-	@MIX_ENV=test mix test test/wanderer_notifier/license_manager/client_test.exs
-
-test.bot_registration:
-	@MIX_ENV=test mix test test/wanderer_notifier/bot_registration_test.exs
-
-test.features:
-	@MIX_ENV=test mix test test/wanderer_notifier/features_test.exs
-
-test.config:
-	@MIX_ENV=test mix test test/wanderer_notifier/config_test.exs
-
-test.application:
-	@MIX_ENV=test mix test test/wanderer_notifier/application_test.exs
-
 format:
 	@mix format
 
-# Running the application
+# ============================
+# RUNNING THE APPLICATION
+# ============================
 shell:
 	@iex -S mix
 
 run:
 	@mix run
 
+# ============================
+# FRONTEND DEVELOPMENT TASKS
+# ============================
 # Build tasks for NPM components
 build.npm: build.frontend build.chart-service
 
@@ -79,13 +71,45 @@ watch:
 watch.frontend:
 	@cd renderer && npm run watch
 
-# Dependency management
+# ============================
+# DEPENDENCY MANAGEMENT
+# ============================
 deps.get:
 	@mix deps.get
 
 deps.update:
 	@mix deps.update --all
 
+# ============================
+# PRODUCTION TASKS
+# ============================
+release:
+	@MIX_ENV=prod mix release
+
+# Build Docker image
+docker.build:
+	@docker build -t guarzo/wanderer-notifier:latest .
+
+# Test Docker image
+docker.test:
+	@./scripts/test_docker_image.sh
+
+# Build and test Docker image
+docker: docker.build docker.test
+
+# Generate version
+version.get:
+	@./scripts/version.sh get
+
+version.bump:
+	@./scripts/version.sh bump $(type)
+
+version.update:
+	@./scripts/version.sh update $(type)
+
+# ============================
+# SHORTCUTS
+# ============================
 # Alias for watch with initial clean+compile and npm build
 s: clean compile build.npm
 	@echo "Starting watchers for both Elixir and frontend with auto-sync..."

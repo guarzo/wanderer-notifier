@@ -1,6 +1,6 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:v2
+    image: guarzo/wanderer-notifier:latest
     container_name: wanderer
     restart: unless-stopped
     environment:

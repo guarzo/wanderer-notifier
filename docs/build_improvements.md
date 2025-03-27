@@ -5,46 +5,6 @@
 This document outlines specific steps to address issues with the build and release process for the Wanderer Notifier application. The recommended improvements aim to reduce duplication, simplify configuration, and create a more maintainable deployment process.
 
 
-
-## 3. Release Configuration Simplification
-
-### Current Issues:
-
-- Confusing RELEASE_CONFIG variable usage
-- Discrepancy between paths in Dockerfile and mix.exs
-- Multiple configuration loading mechanisms
-
-### Improvement Steps:
-
-1. **Standardize configuration paths**:
-
-   - Update mix.exs to use a consistent path:
-
-   ```elixir
-   config_providers: [
-     {Config.Reader, {:system, "CONFIG_PATH", "/app/etc/wanderer_notifier.exs"}}
-   ]
-   ```
-
-2. **Update Dockerfile to match the new path**:
-
-   ```docker
-   # Create configuration directory
-   RUN mkdir -p /app/etc
-
-   # Set the standardized environment variable
-   ENV CONFIG_PATH=/app/etc
-   ```
-
-3. **Simplify runtime configuration loading**:
-
-   - Update runtime.exs to avoid redundant loading
-   - Document the configuration precedence clearly
-
-4. **Create a configuration verification step**:
-   - Add a startup script to verify configuration
-   - Ensure consistent configuration across environments
-
 ## 4. Build Process Streamlining
 
 ### Current Issues:
