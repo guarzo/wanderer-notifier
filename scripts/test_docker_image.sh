@@ -187,8 +187,11 @@ else
   run_in_container "/app/bin/wanderer_notifier eval 'System.version |> IO.puts'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test" || echo "Simple boot test failed, but continuing..."
   
   echo "Testing minimal application boot (with clean shutdown)..."
-  # Set a lower timeout to prevent hanging if there's an issue
-  run_in_container "timeout 10 /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true" || echo "Minimal boot test failed, but continuing..."
+  # Use a shorter timeout and force kill if needed
+  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true" || {
+    echo "Minimal boot test timed out, but continuing..."
+    true
+  }
   
   # Only run the functional web test if not in basic mode
   if [ "$BASIC_ONLY" = false ]; then
