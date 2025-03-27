@@ -38,7 +38,7 @@ RUN mix deps.get --only prod && \
 # ----------------------------------------
 FROM deps AS builder
 
-# Declare build argument for version and other environment variables
+# Declare build argument for version
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
 

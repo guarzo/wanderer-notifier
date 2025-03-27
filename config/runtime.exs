@@ -116,14 +116,11 @@ config :nostrum,
 
 # Discord and Map Configuration
 map_url_with_name = get_env.("MAP_URL_WITH_NAME", nil)
-if is_nil(map_url_with_name) or map_url_with_name == "" do
-  raise "Map URL with name is required but not set"
-end
 
 # Parse map_url_with_name to extract map_url and map_name
-{map_url, map_name} = case String.split(map_url_with_name, "?name=") do
+{map_url, map_name} = case String.split(map_url_with_name || "", "?name=") do
   [url, name] -> {url, name}
-  _ -> raise "MAP_URL_WITH_NAME must be in format 'url?name=mapname'"
+  _ -> {"", ""}  # Default empty values, let app handle validation
 end
 
 config :wanderer_notifier,
@@ -133,11 +130,6 @@ config :wanderer_notifier,
   map_name: map_name,
   map_url_with_name: map_url_with_name,
   map_token: get_env.("MAP_TOKEN", nil)
-
-# EVE Corp Tools API Configuration
-config :wanderer_notifier,
-  corp_tools_api_url: get_env.("CORP_TOOLS_API_URL", nil),
-  corp_tools_api_token: get_env.("CORP_TOOLS_API_TOKEN", nil)
 
 # License Configuration
 license_key = get_env.("WANDERER_LICENSE_KEY", get_env.("LICENSE_KEY", nil))
