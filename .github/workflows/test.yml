@@ -107,6 +107,12 @@ jobs:
         with:
           fetch-depth: 0 # required for getting commit history
 
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
       - name: Print config provider implementation
         run: |
           echo "Checking Elixir Config.Reader implementation..."
