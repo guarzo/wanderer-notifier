@@ -110,11 +110,11 @@ else
   run_in_container "find /app -name 'etc' | grep -v '^/app/etc$' || echo 'No duplicate etc directories found'"
 fi
 
-# Always check CONFIG_PATH environment variable
-echo "Verifying CONFIG_PATH environment variable..."
-run_in_container "echo 'CONFIG_PATH is set to: $CONFIG_PATH'" "-e CONFIG_PATH=/app/etc/wanderer_notifier.exs"
+echo "Verifying configuration path variables..."
+# Display but don't actually set the config path variables in this command
+run_in_container "echo 'NOTIFIER_CONFIG_PATH should be set to: /app/etc/wanderer_notifier.exs'"
 
-# Create an empty config file for testing if needed
+# Create an empty config file for testing if needed - don't pass NOTIFIER_CONFIG_PATH here
 echo "Creating minimal config file if needed..."
 run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || echo 'import Config\n# Minimal test config\nconfig :wanderer_notifier, test_config: true' > /app/etc/wanderer_notifier.exs" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
 
@@ -129,20 +129,20 @@ if [ "$BASIC_ONLY" = true ]; then
   echo "Checking application version file..."
   run_in_container "if [ -f /app/VERSION ]; then cat /app/VERSION; else echo 'Version file not found'; fi"
   
-  echo "Testing configuration loading with CONFIG_PATH..."
-  run_in_container "elixir -e 'IO.puts(\"Config test: #{File.exists?(\"/app/etc/wanderer_notifier.exs\")}\")'" "-e CONFIG_PATH=/app/etc/wanderer_notifier.exs"
+  echo "Testing config file exists (without setting CONFIG_PATH)..."
+  run_in_container "elixir -e 'IO.puts(\"Config test: #{File.exists?(\"/app/etc/wanderer_notifier.exs\")}\")'"
 else
   echo "Testing full application startup (may require environment variables)..."
   
   echo "Testing Elixir runtime with application eval..."
-  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
   
   echo "Checking application version..."
-  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
   
   echo "Testing minimal application boot (with clean shutdown)..."
   # Set a lower timeout to prevent hanging if there's an issue
-  run_in_container "timeout 10 /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  run_in_container "timeout 10 /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
   
   # Only run the functional web test if not in basic mode
   if [ "$BASIC_ONLY" = false ]; then
@@ -152,10 +152,9 @@ else
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
     
-    # Start the container in the background
+    # Start the container in the background - don't pass CONFIG_PATH
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
-      -e CONFIG_PATH=/app/etc/wanderer_notifier.exs \
       -e WANDERER_ENV=test \
       -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
       "$FULL_IMAGE"

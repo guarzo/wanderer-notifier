@@ -80,7 +80,7 @@ RUN mix compile --warnings-as-errors && \
 FROM elixir:1.18-otp-27-slim AS runtime
 
 # Set runtime environment variables
-ENV CONFIG_PATH=/app/etc/wanderer_notifier.exs \
+ENV NOTIFIER_CONFIG_PATH=/app/etc/wanderer_notifier.exs \
     LANG=C.UTF-8 \
     HOME=/app
 
@@ -112,6 +112,21 @@ COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
 RUN chmod +x /app/bin/start_with_db.sh /app/bin/db_operations.sh
 
+# Add a startup validation script to ensure CONFIG_PATH isn't duplicated
+RUN echo '#!/bin/bash\n\
+# Verify CONFIG_PATH is correctly set\n\
+if [[ "$CONFIG_PATH" == *"/app/etc/"*"/app/etc/"* ]]; then\n\
+  echo "ERROR: CONFIG_PATH contains duplicate paths: $CONFIG_PATH"\n\
+  exit 1\n\
+fi\n\
+if [[ "$NOTIFIER_CONFIG_PATH" == *"/app/etc/"*"/app/etc/"* ]]; then\n\
+  echo "ERROR: NOTIFIER_CONFIG_PATH contains duplicate paths: $NOTIFIER_CONFIG_PATH"\n\
+  exit 1\n\
+fi\n\
+# Continue with original command\n\
+exec "$@"' > /app/bin/validate_and_start.sh && \
+chmod +x /app/bin/validate_and_start.sh
+
 # Add version file
 ARG APP_VERSION
 RUN if [ -n "$APP_VERSION" ]; then echo "$APP_VERSION" > /app/VERSION; fi
@@ -123,6 +138,7 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q -O- http://localhost:4000/health || exit 1
 
-# Set entrypoint
+# Set entrypoint to use the validation wrapper
+ENTRYPOINT ["/app/bin/validate_and_start.sh"]
 CMD ["/app/bin/start_with_db.sh"]
     
