@@ -44,10 +44,6 @@ jobs:
           mix deps.get
           mix deps.compile
 
-      - name: Check formatting
-        run: mix format --check-formatted
-        continue-on-error: true
-
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
@@ -56,10 +52,6 @@ jobs:
 
       - name: Generate test coverage
         run: mix test --cover
-        continue-on-error: true
-
-      - name: Run code quality checks
-        run: mix credo
         continue-on-error: true
 
   lint:

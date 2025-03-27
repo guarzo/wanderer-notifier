@@ -372,7 +372,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
       license_status = %{
         valid: true,
-        premium: true
+        premium: false
       }
 
       # 1 day, 1 hour, 1 minute, 30 seconds
@@ -409,7 +409,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       # Check license field
       license_field = Enum.find(result.fields, fn field -> field.name == "License" end)
       assert license_field
-      assert license_field.value =~ "💎"
+      assert license_field.value =~ "✅"
 
       # Check systems field
       systems_field = Enum.find(result.fields, fn field -> field.name == "Systems" end)

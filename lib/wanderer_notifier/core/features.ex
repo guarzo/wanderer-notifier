@@ -12,9 +12,6 @@ defmodule WandererNotifier.Core.Features do
     # Core features - available even with invalid license
     core: [
       :basic_notifications,
-      :web_dashboard_basic,
-      :license_status_display,
-      # Added these features to core to enable them even without a license
       :tracked_systems_notifications,
       :tracked_characters_notifications,
       :system_tracking
@@ -22,35 +19,28 @@ defmodule WandererNotifier.Core.Features do
 
     # Standard features - require valid license
     standard: [
-      :web_dashboard_full
-    ],
-
-    # Premium features - require valid license and premium tier
-    premium: [
-      :advanced_statistics,
-      :character_tracking_unlimited,
-      :system_tracking_unlimited,
-      :custom_notification_templates
+      :kill_charts,
+      :map_charts
     ]
   }
 
   # Maximum limits for free/invalid license
   @free_limits %{
-    # Changed from 10 to nil (unlimited)
+    # No limits on tracking systems - previously was 10
     tracked_systems: nil,
-    # Changed from 20 to nil (unlimited)
+    # No limits on tracking characters - previously was 20
     tracked_characters: nil,
-    # hours
+    # hours of notification history
     notification_history: 24
   }
 
   # Maximum limits for standard license
   @standard_limits %{
-    # unlimited
+    # No limits on tracking systems
     tracked_systems: nil,
-    # unlimited
+    # No limits on tracking characters
     tracked_characters: nil,
-    # hours
+    # hours of notification history
     notification_history: 72
   }
 
@@ -58,52 +48,70 @@ defmodule WandererNotifier.Core.Features do
   Checks if a specific feature is enabled based on the current license status.
   """
   def enabled?(feature) do
-    # Special case for character tracking - check if it's explicitly enabled in config
+    # Delegate to specific handler functions based on feature type
     cond do
       feature == :tracked_characters_notifications ->
-        character_tracking_config_enabled? =
-          WandererNotifier.Core.Config.character_tracking_enabled?()
+        check_character_tracking_enabled(feature)
 
-        character_notifications_enabled? =
-          WandererNotifier.Core.Config.character_notifications_enabled?()
-
-        if not character_tracking_config_enabled? or not character_notifications_enabled? do
-          Logger.debug(
-            "[Features] Character tracking or notifications are explicitly disabled in configuration"
-          )
-
-          false
-        else
-          # If enabled in config, continue with normal license check
-          Logger.debug(
-            "[Features] Character tracking and notifications are enabled (default), checking license"
-          )
-
-          check_license_for_feature(feature)
-        end
-
-      # Special case for system tracking notifications - check if it's explicitly enabled in config
       feature == :tracked_systems_notifications ->
-        system_notifications_enabled? =
-          WandererNotifier.Core.Config.system_notifications_enabled?()
+        check_system_tracking_enabled(feature)
 
-        if system_notifications_enabled? do
-          # If enabled in config, continue with normal license check
-          AppLogger.config_debug(
-            "[Features] System notifications are enabled (default), checking license"
-          )
+      feature == :activity_charts ->
+        WandererNotifier.Core.Config.map_charts_enabled?()
 
-          check_license_for_feature(feature)
-        else
-          AppLogger.config_debug(
-            "[Features] System notifications are explicitly disabled in configuration"
-          )
+      feature == :kill_charts ->
+        WandererNotifier.Core.Config.kill_charts_enabled?()
 
-          false
-        end
+      feature == :map_charts ->
+        WandererNotifier.Core.Config.map_charts_enabled?()
 
       true ->
         check_license_for_feature(feature)
+    end
+  end
+
+  # Checks if character tracking notifications are enabled
+  defp check_character_tracking_enabled(feature) do
+    character_tracking_config_enabled? =
+      WandererNotifier.Core.Config.character_tracking_enabled?()
+
+    character_notifications_enabled? =
+      WandererNotifier.Core.Config.character_notifications_enabled?()
+
+    if not character_tracking_config_enabled? or not character_notifications_enabled? do
+      Logger.debug(
+        "[Features] Character tracking or notifications are explicitly disabled in configuration"
+      )
+
+      false
+    else
+      # If enabled in config, continue with normal license check
+      Logger.debug(
+        "[Features] Character tracking and notifications are enabled (default), checking license"
+      )
+
+      check_license_for_feature(feature)
+    end
+  end
+
+  # Checks if system tracking notifications are enabled
+  defp check_system_tracking_enabled(feature) do
+    system_notifications_enabled? =
+      WandererNotifier.Core.Config.system_notifications_enabled?()
+
+    if system_notifications_enabled? do
+      # If enabled in config, continue with normal license check
+      AppLogger.config_debug(
+        "[Features] System notifications are enabled (default), checking license"
+      )
+
+      check_license_for_feature(feature)
+    else
+      AppLogger.config_debug(
+        "[Features] System notifications are explicitly disabled in configuration"
+      )
+
+      false
     end
   end
 
@@ -115,10 +123,6 @@ defmodule WandererNotifier.Core.Features do
     else
       # Check license status
       case License.status() do
-        %{valid: true, premium: true} ->
-          # Premium license - all features enabled
-          true
-
         %{valid: true} ->
           # Standard license - standard features enabled
           feature in @features.standard
@@ -134,18 +138,14 @@ defmodule WandererNotifier.Core.Features do
   Returns the limit for a specific resource based on the current license status.
   """
   def get_limit(resource) do
-    cond do
-      # If license is invalid or bot not assigned, use free limits
-      not License.status().valid or not License.status().bot_assigned ->
-        Map.get(@free_limits, resource)
+    # If license is invalid or bot not assigned, use free limits
+    license_status = License.status()
 
-      # If premium, unlimited (nil means no limit)
-      License.premium?() ->
-        nil
-
+    if not license_status.valid or not license_status.bot_assigned do
+      Map.get(@free_limits, resource)
+    else
       # Otherwise use standard limits
-      true ->
-        Map.get(@standard_limits, resource)
+      Map.get(@standard_limits, resource)
     end
   end
 
@@ -168,18 +168,14 @@ defmodule WandererNotifier.Core.Features do
   Returns a map of all feature limits based on the current license status.
   """
   def get_all_limits do
-    cond do
-      # If license is invalid or bot not assigned, use free limits
-      not License.status().valid or not License.status().bot_assigned ->
-        @free_limits
+    # If license is invalid or bot not assigned, use free limits
+    license_status = License.status()
 
-      # If premium, unlimited
-      License.premium?() ->
-        Map.new(@free_limits, fn {k, _} -> {k, nil} end)
-
+    if not license_status.valid or not license_status.bot_assigned do
+      @free_limits
+    else
       # Otherwise use standard limits
-      true ->
-        @standard_limits
+      @standard_limits
     end
   end
 
@@ -269,15 +265,6 @@ defmodule WandererNotifier.Core.Features do
         {feature, License.status().valid}
       end)
 
-    # Premium features - safely handle missing premium key
-    license_status = License.status()
-    is_premium = Map.get(license_status, :premium, false)
-
-    premium_features =
-      Map.new(@features.premium, fn feature ->
-        {feature, license_status.valid && is_premium}
-      end)
-
     # Special overrides based on configuration
     special_features = %{
       # WebSocket connection status
@@ -300,7 +287,6 @@ defmodule WandererNotifier.Core.Features do
 
     # Merge all feature maps
     Map.merge(core_features, standard_features)
-    |> Map.merge(premium_features)
     |> Map.merge(special_features)
   end
 
@@ -326,5 +312,26 @@ defmodule WandererNotifier.Core.Features do
   """
   def character_notifications_enabled? do
     WandererNotifier.Core.Config.character_notifications_enabled?()
+  end
+
+  @doc """
+  Convenience function to check if activity charts are enabled.
+  """
+  def activity_charts_enabled? do
+    enabled?(:activity_charts)
+  end
+
+  @doc """
+  Convenience function to check if kill charts are enabled.
+  """
+  def kill_charts_enabled? do
+    enabled?(:kill_charts)
+  end
+
+  @doc """
+  Convenience function to check if map charts are enabled.
+  """
+  def map_charts_enabled? do
+    enabled?(:map_charts)
   end
 end

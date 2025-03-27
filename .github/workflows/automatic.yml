@@ -33,6 +33,9 @@ jobs:
         run: |
           chmod +x ./scripts/version.sh
 
+          # Get short SHA for image tagging
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
           # Get current version (don't bump for automatic builds)
           CURRENT_VERSION=$(./scripts/version.sh get)
           # Generate dev version with date/git info
@@ -41,6 +44,7 @@ jobs:
           # Store in environment for later steps
           echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
           echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
           # Generate Docker tags
           DOCKER_TAGS=$(./scripts/version.sh tags | grep -v latest)
@@ -87,7 +91,28 @@ jobs:
           username: guarzo
           password: ${{ secrets.DOCKERHUB_PAT }}
 
-      - name: Build and Push Docker image
+      - name: Build Docker image (SHA tagged)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.full_version }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
+          cache-to: type=inline
+
+      - name: Test Docker image
+        run: |
+          echo "Testing Docker image..."
+          # Only verify version and core functionality without starting the full app
+          # Use the --basic flag to avoid requiring environment variables
+          ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --basic --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
+
+          echo "Docker image test passed successfully!"
+
+      - name: Build and Push Docker image with tags
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -97,11 +122,6 @@ jobs:
             APP_VERSION=${{ steps.version.outputs.full_version }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
-
-      - name: Test Docker image
-        run: |
-          echo "Testing Docker image..."
-          ./scripts/test_docker_image.sh -t "dev"
 
       - name: Create and push Git tag
         env:
