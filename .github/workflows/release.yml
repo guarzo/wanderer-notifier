@@ -125,19 +125,11 @@ jobs:
       - name: Test Docker image
         run: |
           echo "Testing Docker image..."
-          # Only verify version and core functionality without starting the full app
-          # Set the required environment variables to bypass config validation
-          docker run --rm \
-            -e DISCORD_BOT_TOKEN=${{ secrets.FAKE_DISCORD_TOKEN }} \
-            -e WANDERER_ENV=test \
-            guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }} \
-            /bin/sh -c "echo 'Testing Docker image basic functionality:' && \
-                     echo 'GLIBC Version:' && ldd --version | head -n1 && \
-                     echo 'Elixir Version:' && elixir --version && \
-                     echo 'Notifier Version:' && cat /app/VERSION && \
-                     echo 'Basic validation successful'"
+          # For releases, run the most thorough tests including the functional web test
+          # to ensure the application fully boots and serves requests
+          ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
 
-          echo "Docker image test passed successfully!"
+          echo "Docker image validation successful!"
 
       - name: Push Docker image with release tags
         uses: docker/build-push-action@v5

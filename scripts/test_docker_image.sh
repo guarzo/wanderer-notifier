@@ -94,6 +94,25 @@ run_in_container "ls -la /app/bin/ && ls -la /app/data/"
 echo "Checking data directories..."
 run_in_container "find /app/data -type d | sort"
 
+echo "======= Configuration Tests ======="
+
+echo "Verifying configuration file path..."
+run_in_container "test -f /app/etc/wanderer_notifier.exs && echo '✅ Configuration file exists at: /app/etc/wanderer_notifier.exs' || echo '❌ Configuration file missing!'"
+
+echo "Checking for duplicate paths in configuration..."
+run_in_container "! find /app -path '*/app/etc/*' | grep -q ."
+if [ $? -eq 0 ]; then
+  echo "✅ No duplicated app/etc paths found"
+else
+  echo "❌ WARNING: Duplicate app/etc paths detected!"
+  run_in_container "find /app -path '*/app/etc/*'"
+  exit 1
+fi
+
+# Create an empty config file for testing if needed
+echo "Creating minimal config file if needed..."
+run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || echo 'import Config\n# Minimal test config\nconfig :wanderer_notifier, test_config: true' > /app/etc/wanderer_notifier.exs" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
+
 echo "======= Application Tests ======="
 
 if [ "$BASIC_ONLY" = true ]; then
@@ -105,19 +124,69 @@ if [ "$BASIC_ONLY" = true ]; then
   echo "Checking application version file..."
   run_in_container "if [ -f /app/VERSION ]; then cat /app/VERSION; else echo 'Version file not found'; fi"
   
-  echo "Verifying configuration loading capability..."
-  run_in_container "test -f /app/etc/wanderer_notifier.exs && echo 'Configuration file exists'"
+  echo "Testing configuration loading with CONFIG_PATH..."
+  run_in_container "elixir -e 'IO.puts(\"Config test: #{File.exists?(\"/app/etc/wanderer_notifier.exs\")}\")'" "-e CONFIG_PATH=/app/etc/wanderer_notifier.exs"
 else
   echo "Testing full application startup (may require environment variables)..."
   
   echo "Testing Elixir runtime with application eval..."
-  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test"
   
   echo "Checking application version..."
-  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test"
   
-  echo "Verifying configuration loading..."
-  run_in_container "test -f /app/etc/wanderer_notifier.exs && echo 'Configuration file exists'"
+  echo "Testing minimal application boot (with clean shutdown)..."
+  # Set a lower timeout to prevent hanging if there's an issue
+  run_in_container "timeout 10 /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e CONFIG_PATH=/app/etc/wanderer_notifier.exs -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  
+  echo "======= Functional Web Test ======="
+  echo "Starting application container in background..."
+  
+  # Create a unique container name for this test
+  CONTAINER_NAME="wanderer-test-$(date +%s)"
+  
+  # Start the container in the background
+  docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
+    -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
+    -e CONFIG_PATH=/app/etc/wanderer_notifier.exs \
+    -e WANDERER_ENV=test \
+    -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
+    "$FULL_IMAGE"
+  
+  echo "Waiting for application to start (up to 20 seconds)..."
+  MAX_ATTEMPTS=20
+  ATTEMPT=0
+  SUCCESS=false
+  
+  while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    ATTEMPT=$((ATTEMPT+1))
+    echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+    
+    # Check if we can access the health endpoint
+    if curl -s http://localhost:4000/health 2>/dev/null | grep -q "ok"; then
+      echo "✅ Health check successful! Application is running correctly."
+      SUCCESS=true
+      break
+    fi
+    
+    if ! docker ps | grep -q "$CONTAINER_NAME"; then
+      echo "❌ ERROR: Container stopped running! Checking logs:"
+      docker logs "$CONTAINER_NAME"
+      break
+    fi
+    
+    sleep 1
+  done
+  
+  # Cleanup the container
+  echo "Stopping test container..."
+  docker stop "$CONTAINER_NAME" >/dev/null
+  docker rm "$CONTAINER_NAME" >/dev/null
+  
+  if [ "$SUCCESS" != "true" ]; then
+    echo "❌ ERROR: Application failed to start properly or health check failed."
+    exit 1
+  fi
 fi
 
 echo "======= Connection Tests ======="
@@ -134,5 +203,5 @@ echo "Checking startup script..."
 run_in_container "test -f /app/bin/start_with_db.sh && echo 'Startup script exists'"
 
 echo "======= Summary ======="
-echo "✅ All basic validation tests completed for $FULL_IMAGE"
+echo "✅ All validation tests completed for $FULL_IMAGE"
 echo "Note: These are basic validation tests. For complete testing, additional integration tests should be run." 
