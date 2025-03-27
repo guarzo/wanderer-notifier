@@ -34,6 +34,27 @@ defmodule WandererNotifier.Notifiers.Discord.Test do
     :ok
   end
 
+  def send_kill_notification(kill_data) do
+    kill_id = Map.get(kill_data, "killmail_id") || Map.get(kill_data, :killmail_id) || "unknown"
+
+    AppLogger.processor_debug("[TEST] Discord kill notification",
+      kill_id: kill_id,
+      kill_data: inspect(kill_data, limit: 50)
+    )
+
+    :ok
+  end
+
+  def send_image_embed(title, description, image_url, _color \\ nil, _feature \\ :general) do
+    AppLogger.processor_debug("[TEST] Discord image embed",
+      title: title,
+      description: description,
+      image_url: image_url
+    )
+
+    :ok
+  end
+
   def send_new_tracked_character_notification(character) do
     char_id = Map.get(character, "character_id") || Map.get(character, :character_id)
     char_name = Map.get(character, "name") || Map.get(character, :name)

@@ -124,7 +124,7 @@ defmodule WandererNotifier.Cache.Monitor do
       AppLogger.cache_info(
         "[CacheMonitor] Skipping database character check - database operations disabled"
       )
-      
+
       results
     end
   end

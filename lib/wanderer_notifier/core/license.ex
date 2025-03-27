@@ -134,7 +134,7 @@ defmodule WandererNotifier.Core.License do
     # Basic validation - ensure token exists and is a non-empty string
     is_valid = is_binary(token) && String.trim(token) != ""
 
-    unless is_valid do
+    if !is_valid do
       Logger.warning("License validation warning: Invalid notifier API token")
     end
 

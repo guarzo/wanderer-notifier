@@ -7,7 +7,11 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Get the repository module to use - either the mock during testing or the real repo
   defp repo_module do
-    Application.get_env(:wanderer_notifier, :cache_repository, WandererNotifier.Data.Cache.Repository)
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_repository,
+      WandererNotifier.Data.Cache.Repository
+    )
   end
 
   @doc """
@@ -428,10 +432,11 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     list = repo_module().get(cache_key) || []
 
     # Remove the entity from the list
-    updated_list = Enum.reject(list, fn entity ->
-      entity_id = id_extractor.(entity)
-      entity_id_str == to_string(entity_id)
-    end)
+    updated_list =
+      Enum.reject(list, fn entity ->
+        entity_id = id_extractor.(entity)
+        entity_id_str == to_string(entity_id)
+      end)
 
     # Update the list in the cache
     repo_module().put(cache_key, updated_list)
