@@ -6,6 +6,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     test "creates a character from map with standard fields" do
       map = %{
         "character_id" => "12345",
+        "eve_id" => "12345",
         "name" => "Test Character",
         "corporation_id" => "67_890",
         "corporation_ticker" => "CORP",
@@ -29,6 +30,7 @@ defmodule WandererNotifier.Data.CharacterTest do
       map = %{
         "character" => %{
           "character_id" => "12345",
+          "eve_id" => "12345",
           "name" => "Nested Character",
           "corporation_id" => "67_890",
           "corporation_ticker" => "CORP"
@@ -48,6 +50,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     test "handles alternative field names" do
       map = %{
         "id" => "12345",
+        "eve_id" => "12345",
         "character_name" => "Alt Field Character",
         "corporationID" => "67_890",
         "corporation_name" => "CORP",
@@ -69,6 +72,7 @@ defmodule WandererNotifier.Data.CharacterTest do
     test "handles tracked field" do
       map = %{
         "character_id" => "12345",
+        "eve_id" => "12345",
         "name" => "Untracked Character",
         "tracked" => false
       }
