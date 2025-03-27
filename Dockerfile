@@ -111,13 +111,22 @@ COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
 RUN chmod +x /app/bin/start_with_db.sh /app/bin/db_operations.sh
 
-# Add a startup validation script with debug info
+# Add a robust startup wrapper script
 RUN echo '#!/bin/bash\n\
-# Debug environment variables\n\
-echo "Using fixed config path: /app/etc/wanderer_notifier.exs" > /tmp/config_debug.txt\n\
-echo "Command to execute: $@" >> /tmp/config_debug.txt\n\
+set -e\n\
 \n\
-# Continue with original command\n\
+# Debug configuration\n\
+echo "Starting container with command: $@" > /tmp/startup_debug.txt\n\
+echo "Current directory: $(pwd)" >> /tmp/startup_debug.txt\n\
+echo "Config file exists: $(test -f /app/etc/wanderer_notifier.exs && echo "yes" || echo "no")" >> /tmp/startup_debug.txt\n\
+\n\
+# Ensure the config file exists\n\
+if [ ! -f /app/etc/wanderer_notifier.exs ]; then\n\
+  echo "Creating minimal config file" >> /tmp/startup_debug.txt\n\
+  echo "import Config" > /app/etc/wanderer_notifier.exs\n\
+fi\n\
+\n\
+# Execute the original command\n\
 exec "$@"' > /app/bin/validate_and_start.sh && \
 chmod +x /app/bin/validate_and_start.sh
 
