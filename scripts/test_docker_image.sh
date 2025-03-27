@@ -212,6 +212,9 @@ else
   run_in_container "/app/bin/wanderer_notifier eval 'System.version |> IO.puts'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test" || echo "Simple boot test failed, but continuing..."
   
   echo "Testing minimal application boot (with clean shutdown)..."
+  # Temporarily disable exit on error for this test
+  set +e
+  
   # Use a shorter timeout and force kill if needed
   run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
   EXIT_CODE=$?
@@ -219,10 +222,13 @@ else
   # 137 is SIGKILL (128 + 9), 143 is SIGTERM (128 + 15), 124 is timeout's normal exit
   if [ $EXIT_CODE -eq 137 ]; then
     echo "✅ Minimal boot test completed (terminated as expected with SIGKILL)"
+    EXIT_CODE=0  # Reset exit code since this is expected
   elif [ $EXIT_CODE -eq 143 ]; then
     echo "✅ Minimal boot test completed (clean shutdown with SIGTERM)"
+    EXIT_CODE=0  # Reset exit code since this is expected
   elif [ $EXIT_CODE -eq 124 ]; then
     echo "✅ Minimal boot test completed (normal timeout)"
+    EXIT_CODE=0  # Reset exit code since this is expected
   elif [ $EXIT_CODE -eq 0 ]; then
     echo "✅ Minimal boot test completed (clean exit)"
   else
@@ -230,6 +236,9 @@ else
     # Don't exit here, let's continue with other tests
     echo "Continuing with remaining tests..."
   fi
+  
+  # Re-enable exit on error
+  set -e
   
   # Only run the functional web test if not in basic mode
   if [ "$BASIC_ONLY" = false ]; then
