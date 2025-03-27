@@ -106,8 +106,8 @@ jobs:
       - name: Test Docker image
         run: |
           echo "Testing Docker image..."
-          # Only verify version and core functionality without starting the full app
-          # Use the --basic flag to avoid requiring environment variables
+          # Run our enhanced tests with the basic flag for CI speed
+          # But ensure configuration path testing is included
           ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --basic --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
 
           echo "Docker image test passed successfully!"

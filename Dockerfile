@@ -80,7 +80,7 @@ RUN mix compile --warnings-as-errors && \
 FROM elixir:1.18-otp-27-slim AS runtime
 
 # Set runtime environment variables
-ENV CONFIG_PATH=/app/etc \
+ENV CONFIG_PATH=/app/etc/wanderer_notifier.exs \
     LANG=C.UTF-8 \
     HOME=/app
 
