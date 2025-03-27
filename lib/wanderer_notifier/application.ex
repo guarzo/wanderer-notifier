@@ -27,6 +27,19 @@ defmodule WandererNotifier.Application do
 
   @impl true
   def start(_type, _args) do
+    # Get the runtime environment from config
+    env =
+      Application.get_env(:wanderer_notifier, :env) ||
+        String.to_atom(System.get_env("MIX_ENV", "prod"))
+
+    Logger.info("[STARTUP] Starting application")
+    Logger.info("[STARTUP] INITIALIZATION: Starting WandererNotifier")
+    Logger.info("[STARTUP] ENVIRONMENT: #{env}")
+    WandererNotifier.Logger.config_info("ENVIRONMENT: #{env}")
+
+    # Continue with regular startup
+    WandererNotifier.Logger.config_info("DEPENDENCIES: Checking feature status")
+
     # Start main application or minimal test version based on config
     if Application.get_env(:wanderer_notifier, :minimal_test_mode, false) do
       AppLogger.startup_info("Starting in minimal test mode")

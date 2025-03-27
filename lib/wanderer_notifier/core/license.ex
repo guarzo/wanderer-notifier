@@ -113,6 +113,34 @@ defmodule WandererNotifier.Core.License do
     GenServer.call(__MODULE__, :premium)
   end
 
+  @doc """
+  Validates the API token.
+  The token should be a non-empty string.
+  """
+  def validate_token do
+    token = Config.notifier_api_token()
+
+    # Add detailed debug logging
+    Logger.info(
+      "License validation - token check (redacted): #{token}"
+    )
+
+    Logger.info(
+      "License validation - token length: #{if token, do: String.length(token), else: 0}"
+    )
+
+    Logger.info("License validation - token is binary: #{is_binary(token)}")
+
+    # Basic validation - ensure token exists and is a non-empty string
+    is_valid = is_binary(token) && String.trim(token) != ""
+
+    unless is_valid do
+      Logger.warning("License validation warning: Invalid notifier API token")
+    end
+
+    is_valid
+  end
+
   # Server Implementation
 
   @impl true

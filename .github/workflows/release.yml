@@ -105,7 +105,9 @@ jobs:
             guarzo/wanderer-notifier:latest
           build-args: |
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
+            WANDERER_APP_VERSION=${{ steps.version.outputs.docker_version }}
           load: true
           # Force overwrite existing tags
           push-args: --force

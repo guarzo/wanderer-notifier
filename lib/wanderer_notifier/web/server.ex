@@ -22,12 +22,12 @@ defmodule WandererNotifier.Web.Server do
 
   @impl true
   def init(_opts) do
-    # Read port from config or env, using explicit PORT in environment
+    # Read port from config or env, prioritizing WANDERER_PORT environment variable
     port =
-      System.get_env("PORT")
-      |> case do
+      case System.get_env("WANDERER_PORT") || System.get_env("PORT") do
         nil ->
-          WandererNotifier.Core.Config.web_port() || @default_port
+          config_port = WandererNotifier.Core.Config.web_port()
+          if is_integer(config_port), do: config_port, else: @default_port
 
         str_port ->
           case Integer.parse(str_port) do
@@ -62,7 +62,7 @@ defmodule WandererNotifier.Web.Server do
 
   # Helper functions
 
-  defp start_server(port) do
+  defp start_server(port) when is_integer(port) do
     Plug.Cowboy.http(Router, [], port: port, ip: {0, 0, 0, 0})
   end
 end

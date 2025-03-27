@@ -1,6 +1,6 @@
 # Refactoring & Troubleshooting Tasks
 
-- [ ] Review RELASE_CONFIG usage -- it is needed, can we simplify things?
+- [ ] Review features.ex -- remove premium, how are we using the features?
 
 ## API Clients and HTTP Patterns
 - [ ] Create a shared HTTP client module (`WandererNotifier.Api.HTTPClient`)

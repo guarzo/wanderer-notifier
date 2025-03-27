@@ -43,27 +43,39 @@ FROM elixir:1.18-otp-27-slim
 # Declare runtime environment variables
 ARG NOTIFIER_API_TOKEN
 ENV NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN
-ENV RELEASE_CONFIG=/app
+ENV CONFIG_PATH=/app/etc
 
-# Install runtime dependencies
+# Install runtime dependencies (including PostgreSQL client tools)
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends libstdc++6 openssl ca-certificates ncurses-bin && \
+    apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    openssl \
+    ca-certificates \
+    ncurses-bin \
+    postgresql-client && \
     apt-get clean && \
     rm -f /var/lib/apt/lists/*_*
 
 # Set working directory
 WORKDIR /app
 
-# Create data directory for persistence
+# Create data directory for persistence and configuration directory
 RUN mkdir -p /app/data/cache && \
+    mkdir -p /app/data/backups && \
+    mkdir -p /app/etc && \
     chmod -R 777 /app/data
 
 # Create a minimal config file
-RUN mkdir -p /app/etc && \
-    echo "import Config" > /app/etc/wanderer_notifier.exs
+RUN echo "import Config" > /app/etc/wanderer_notifier.exs
 
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
+
+# Copy runtime scripts
+COPY scripts/start_with_db.sh /app/bin/
+COPY scripts/db_operations.sh /app/bin/
+RUN chmod +x /app/bin/start_with_db.sh
+RUN chmod +x /app/bin/db_operations.sh
 
 # Set environment
 ENV HOME=/app
@@ -71,6 +83,6 @@ ENV HOME=/app
 # Expose port
 EXPOSE 4000
 
-# Run the application
-CMD ["./bin/wanderer_notifier", "start"]
+# Use the start script as entrypoint
+CMD ["/app/bin/start_with_db.sh"]
     

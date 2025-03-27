@@ -201,7 +201,7 @@ defmodule WandererNotifier.Core.Features do
   Convenience function to check if kill notifications are enabled.
   """
   def kill_notifications_enabled? do
-    case System.get_env("ENABLE_KILL_NOTIFICATIONS") do
+    case System.get_env("WANDERER_FEATURE_KILL_NOTIFICATIONS") do
       "false" -> false
       "0" -> false
       # Default to true if not set
@@ -242,10 +242,10 @@ defmodule WandererNotifier.Core.Features do
   Convenience function to check if all kills should be processed for notifications.
   By default, only specific systems' kills are tracked unless explicitly enabled.
 
-  Setting PROCESS_ALL_KILLS=true in the environment is useful for testing kill notifications.
+  Setting WANDERER_FEATURE_PROCESS_ALL_KILLS=true in the environment is useful for testing kill notifications.
   """
   def process_all_kills? do
-    case System.get_env("PROCESS_ALL_KILLS") do
+    case System.get_env("WANDERER_FEATURE_PROCESS_ALL_KILLS") do
       "true" -> true
       "1" -> true
       # Default to false if not set
