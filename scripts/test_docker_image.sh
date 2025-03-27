@@ -201,11 +201,15 @@ else
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
     
-    # Start the container in the background
+    # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
       -e WANDERER_ENV=test \
       -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
+      -e MAP_URL="http://example.com/map" \
+      -e MAP_TOKEN="test-map-token" \
+      -e DISCORD_CHANNEL_ID="123456789" \
+      -e LICENSE_KEY="test-license-key" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
@@ -237,6 +241,7 @@ else
       if ! docker ps | grep -q "$CONTAINER_NAME"; then
         echo "❌ ERROR: Container stopped running! Checking logs:"
         docker logs "$CONTAINER_NAME"
+        SUCCESS=false
         break
       fi
       
@@ -264,8 +269,9 @@ else
     docker rm "$CONTAINER_NAME" >/dev/null
     
     if [ "$SUCCESS" != "true" ]; then
-      echo "⚠️ WARNING: Application failed to start properly or health check failed."
-      echo "This is a non-blocking warning. The image might still work correctly."
+      echo "❌ ERROR: Application failed to start properly or health check failed."
+      echo "This is a blocking error - the application must start successfully for validation to pass."
+      exit 1
     fi
   else
     echo "Skipping functional web test in basic mode..."
