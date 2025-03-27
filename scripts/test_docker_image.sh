@@ -203,7 +203,7 @@ else
     
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
-      -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
+      -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" -e MAP_URL="http://somemap.com" -e MAP_TOKEN="some token" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
