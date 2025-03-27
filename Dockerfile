@@ -81,7 +81,6 @@ FROM elixir:1.18-otp-27-slim AS runtime
 
 # Set runtime environment variables
 ENV NOTIFIER_CONFIG_PATH=/app/etc/wanderer_notifier.exs \
-    CONFIG_PATH="" \
     LANG=C.UTF-8 \
     HOME=/app
 
@@ -118,6 +117,11 @@ RUN echo '#!/bin/bash\n\
 # Debug environment variables\n\
 echo "CONFIG_PATH=$CONFIG_PATH" > /tmp/config_debug.txt\n\
 echo "NOTIFIER_CONFIG_PATH=$NOTIFIER_CONFIG_PATH" >> /tmp/config_debug.txt\n\
+echo "Command to execute: $@" >> /tmp/config_debug.txt\n\
+\n\
+# Force CONFIG_PATH to be completely unset to prevent any path duplication\n\
+unset CONFIG_PATH\n\
+\n\
 # Verify CONFIG_PATH is correctly set\n\
 if [[ "$CONFIG_PATH" == *"/app/etc/"*"/app/etc/"* ]]; then\n\
   echo "ERROR: CONFIG_PATH contains duplicate paths: $CONFIG_PATH"\n\
