@@ -382,8 +382,15 @@ defmodule WandererNotifier.Logger do
   def config_error(message, metadata \\ []),
     do: log(@level_error, @category_config, message, metadata)
 
-  def config_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_config, message, metadata)
+  @doc """
+  Log debug configuration information.
+  Only outputs if WANDERER_DEBUG_LOGGING=true.
+  """
+  def config_debug(message, metadata \\ []) do
+    if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
+      log(:debug, "CONFIG", message, metadata)
+    end
+  end
 
   # Maintenance category helpers
   def maintenance_debug(message, metadata \\ []),

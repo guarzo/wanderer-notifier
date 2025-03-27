@@ -80,7 +80,9 @@ jobs:
             guarzo/wanderer-notifier:branch-${{ steps.version.outputs.safe_branch }}
             guarzo/wanderer-notifier:${{ steps.version.outputs.docker_version }}
           build-args: |
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
             NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+            WANDERER_APP_VERSION=${{ steps.version.outputs.docker_version }}
             APP_VERSION=${{ steps.version.outputs.docker_version }}
           load: true
 

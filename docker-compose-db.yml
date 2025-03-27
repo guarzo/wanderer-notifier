@@ -1,7 +1,7 @@
 services:
   wanderer_notifier:
     image: guarzo/wanderer-notifier:v2
-    container_name: wanderer
+    container_name: wanderer-notifier
     restart: unless-stopped
     environment:
       # Core application configuration
@@ -12,11 +12,19 @@ services:
       WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
       WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
 
-      # Feature flags
-      WANDERER_FEATURE_KILL_CHARTS: "false"
-      WANDERER_FEATURE_MAP_CHARTS: "false"
+      # Database configuration
+      WANDERER_DB_HOST: postgres
+      WANDERER_DB_USER: postgres
+      WANDERER_DB_PASSWORD: postgres
+      WANDERER_DB_NAME: wanderer_notifier
+      WANDERER_DB_PORT: "5432"
     ports:
       - "${WANDERER_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - wanderer_data:/app/data
     deploy:
       resources:
         limits:
@@ -31,7 +39,7 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://localhost:${WANDERER_PORT:-4000}/health",
+          "http://localhost:4000/health",
         ]
       interval: 30s
       timeout: 5s
@@ -42,9 +50,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  # Database service
+  postgres:
+    image: postgres:16-alpine
+    container_name: wanderer-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wanderer-network
+    environment:
+      - POSTGRES_USER=${WANDERER_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${WANDERER_DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${WANDERER_DB_NAME:-wanderer_notifier}
     volumes:
-      - wanderer_data:/app/data
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
   wanderer_data:
-    name: wanderer_data
+  postgres_data:
+    name: wanderer_postgres_data
+

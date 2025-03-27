@@ -850,7 +850,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Get application version - first check env var, then Application.spec, fallback to "dev"
   defp get_app_version do
-    System.get_env("APP_VERSION") ||
+    System.get_env("WANDERER_APP_VERSION") ||
+      System.get_env("APP_VERSION") ||
       Application.spec(:wanderer_notifier, :vsn) ||
       "dev"
   end

@@ -13,8 +13,10 @@ jobs:
     env:
       # Add environment variables for testing
       DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+      WANDERER_DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       MIX_ENV: "test"
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
+      WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
 
     steps:
       - uses: actions/checkout@v3

@@ -4,7 +4,15 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   """
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+  # Get the repository module to use - either the mock during testing or the real repo
+  defp repo_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_repository,
+      WandererNotifier.Data.Cache.Repository
+    )
+  end
 
   @doc """
   Gets all tracked systems from the cache.
@@ -48,7 +56,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     with system_id when not is_nil(system_id) <- extract_system_id(system) do
       system_id_str = to_string(system_id)
       # Cache for direct lookup
-      CacheRepo.put("tracked:system:#{system_id_str}", true)
+      repo_module().put("tracked:system:#{system_id_str}", true)
 
       # Ensure system data is stored
       ensure_system_data_cached(system, system_id_str)
@@ -57,10 +65,10 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Ensure system data is cached
   defp ensure_system_data_cached(system, system_id_str) do
-    if !CacheRepo.get("map:system:#{system_id_str}") do
+    if !repo_module().get("map:system:#{system_id_str}") do
       # Create and store system data
       system_data = create_system_data(system, system_id_str)
-      CacheRepo.put("map:system:#{system_id_str}", system_data)
+      repo_module().put("map:system:#{system_id_str}", system_data)
     end
   end
 
@@ -109,7 +117,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     update_tracked_systems_list(system_id_str, system_data)
 
     # Update direct lookup cache
-    CacheRepo.put("tracked:system:#{system_id_str}", true)
+    repo_module().put("tracked:system:#{system_id_str}", true)
 
     # Add to map:system:{id} if not already there
     add_to_system_map_if_needed(system_id_str, system_data)
@@ -117,7 +125,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Update the tracked systems list
   defp update_tracked_systems_list(system_id_str, system_data) do
-    CacheRepo.get_and_update("tracked:systems", fn systems ->
+    repo_module().get_and_update("tracked:systems", fn systems ->
       systems = systems || []
 
       if system_already_tracked?(systems, system_id_str) do
@@ -135,8 +143,8 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Add system to map cache if needed
   defp add_to_system_map_if_needed(system_id_str, system_data) do
-    if !CacheRepo.get("map:system:#{system_id_str}") do
-      CacheRepo.put("map:system:#{system_id_str}", system_data)
+    if !repo_module().get("map:system:#{system_id_str}") do
+      repo_module().put("map:system:#{system_id_str}", system_data)
     end
   end
 
@@ -209,7 +217,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Get and validate data from cache by key
   defp get_and_validate_cache_data(cache_key) do
-    data = CacheRepo.get(cache_key)
+    data = repo_module().get(cache_key)
 
     # Validate expected data types
     if !(is_nil(data) || is_list(data)) do
@@ -298,7 +306,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     with character_id when not is_nil(character_id) <- extract_character_id(character) do
       character_id_str = to_string(character_id)
       # Cache for direct lookup
-      CacheRepo.put("tracked:character:#{character_id_str}", true)
+      repo_module().put("tracked:character:#{character_id_str}", true)
 
       # Ensure character data is stored
       ensure_character_data_cached(character, character_id_str)
@@ -307,10 +315,10 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Ensure character data is cached
   defp ensure_character_data_cached(character, character_id_str) do
-    if !CacheRepo.get("map:character:#{character_id_str}") do
+    if !repo_module().get("map:character:#{character_id_str}") do
       # Create and store character data
       character_data = create_character_data(character, character_id_str)
-      CacheRepo.put("map:character:#{character_id_str}", character_data)
+      repo_module().put("map:character:#{character_id_str}", character_data)
     end
   end
 
@@ -356,7 +364,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     update_tracked_characters_list(character_id_str, character_data)
 
     # Update direct lookup cache
-    CacheRepo.put("tracked:character:#{character_id_str}", true)
+    repo_module().put("tracked:character:#{character_id_str}", true)
 
     # Add to map:character:{id} if not already there
     add_to_character_map_if_needed(character_id_str, character_data)
@@ -364,7 +372,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Update the tracked characters list
   defp update_tracked_characters_list(character_id_str, character_data) do
-    CacheRepo.get_and_update("tracked:characters", fn characters ->
+    repo_module().get_and_update("tracked:characters", fn characters ->
       characters = characters || []
 
       if character_already_tracked?(characters, character_id_str) do
@@ -382,8 +390,8 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Add character to map cache if needed
   defp add_to_character_map_if_needed(character_id_str, character_data) do
-    if !CacheRepo.get("map:character:#{character_id_str}") do
-      CacheRepo.put("map:character:#{character_id_str}", character_data)
+    if !repo_module().get("map:character:#{character_id_str}") do
+      repo_module().put("map:character:#{character_id_str}", character_data)
     end
   end
 
@@ -399,105 +407,96 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
   # Helper to get systems from a specific cache key
   defp get_systems_from_cache(cache_key) do
-    case CacheRepo.get(cache_key) do
-      nil -> []
-      systems when is_list(systems) -> process_systems_list(systems)
-      _ -> []
+    systems = repo_module().get(cache_key)
+
+    if is_list(systems) do
+      systems
+    else
+      []
     end
   end
 
-  # Process a list of systems
-  defp process_systems_list([]), do: []
-
-  defp process_systems_list([first | _] = systems) when is_map(first) do
-    # We have the full system objects
-    systems
+  # Helper to find an ID from multiple possible keys in a map
+  defp find_id_from_keys(map, possible_keys) do
+    Enum.find_value(possible_keys, fn key ->
+      value = Map.get(map, key)
+      if value, do: value, else: nil
+    end)
   end
 
-  defp process_systems_list(system_ids) do
-    # We have a list of system IDs, fetch each system
-    fetch_systems_by_ids(system_ids)
-  end
+  # Remove entity (system or character) from tracked list and cache
+  defp remove_entity_from_tracked(entity_type, entity_id_str, id_extractor) do
+    cache_key = "tracked:#{entity_type}"
 
-  # Helper to fetch systems by IDs
-  defp fetch_systems_by_ids(system_ids) do
-    system_ids
-    |> Enum.map(&fetch_system_by_id/1)
-    |> Enum.filter(& &1)
-  end
+    # Get current tracked list
+    list = repo_module().get(cache_key) || []
 
-  # Helper to fetch a single system by ID
-  defp fetch_system_by_id(system_id) do
-    case CacheRepo.get("map:system:#{system_id}") do
-      # Keep the ID even if we can't fetch the system
-      nil -> system_id
-      system -> system
-    end
-  end
-
-  # Helper to merge systems lists avoiding duplicates
-  defp merge_systems_lists(list1, list2) do
-    merge_entity_lists(list1, list2, &extract_system_id/1)
-  end
-
-  # Helper to merge characters lists avoiding duplicates
-  defp merge_characters_lists(list1, list2) do
-    merge_entity_lists(list1, list2, &extract_character_id/1)
-  end
-
-  # Generic function to merge entity lists (DRY principle)
-  defp merge_entity_lists(list1, list2, id_extractor) do
-    # Extract IDs from first list to check for duplicates
-    list1_ids =
-      list1
-      |> Enum.map(id_extractor)
-      |> Enum.filter(& &1)
-      |> MapSet.new()
-
-    # Filter out duplicates from second list
-    unique_list2 =
-      Enum.filter(list2, fn entity ->
-        id = id_extractor.(entity)
-        id && !MapSet.member?(list1_ids, id)
+    # Remove the entity from the list
+    updated_list =
+      Enum.reject(list, fn entity ->
+        entity_id = id_extractor.(entity)
+        entity_id_str == to_string(entity_id)
       end)
 
-    # Combine lists
-    list1 ++ unique_list2
-  end
+    # Update the list in the cache
+    repo_module().put(cache_key, updated_list)
 
-  # Generic entity removal function (DRY principle)
-  defp remove_entity_from_tracked(entity_type, id_str, id_extractor) do
-    # Remove from tracked list
-    CacheRepo.get_and_update("tracked:#{entity_type}", fn entities ->
-      entities = entities || []
-
-      # Filter out the entity to remove
-      updated_entities =
-        Enum.reject(entities, fn entity ->
-          id_extractor.(entity) == id_str
-        end)
-
-      {updated_entities, :removed}
-    end)
-
-    # Remove direct lookup cache entry
-    CacheRepo.delete("tracked:#{entity_type |> String.slice(0..-2//1)}:#{id_str}")
+    # Remove the direct lookup entry
+    repo_module().delete("tracked:#{entity_type |> String.slice(0..-2//-1)}:#{entity_id_str}")
 
     :ok
   end
 
-  # Generic entity tracking check function (DRY principle)
-  defp entity_already_tracked?(entities, id_str, id_extractor) do
+  # Helper to merge two lists of systems avoiding duplicates
+  defp merge_systems_lists(map_systems, tracked_systems) do
+    # Create lookup map of system IDs already seen
+    {result, _seen} =
+      Enum.reduce(map_systems, {[], %{}}, fn system, {acc, seen} ->
+        system_id = extract_system_id(system)
+
+        if is_nil(system_id) || seen[to_string(system_id)] do
+          {acc, seen}
+        else
+          {[system | acc], Map.put(seen, to_string(system_id), true)}
+        end
+      end)
+
+    # Add systems from tracked_systems if not already seen
+    {merged, _seen} =
+      Enum.reduce(tracked_systems, {result, %{}}, fn system, {acc, seen} ->
+        system_id = extract_system_id(system)
+
+        if is_nil(system_id) || seen[to_string(system_id)] do
+          {acc, seen}
+        else
+          {[system | acc], Map.put(seen, to_string(system_id), true)}
+        end
+      end)
+
+    merged
+  end
+
+  # Helper to check if an entity is already tracked
+  defp entity_already_tracked?(entities, entity_id_str, id_extractor) do
     Enum.any?(entities, fn entity ->
-      extracted_id = id_extractor.(entity)
-      extracted_id && to_string(extracted_id) == id_str
+      entity_id = id_extractor.(entity)
+      entity_id && to_string(entity_id) == entity_id_str
     end)
   end
 
-  # Helper to find an ID from a list of possible keys
-  defp find_id_from_keys(map, keys) do
-    Enum.find_value(keys, fn key ->
-      Map.get(map, key)
-    end)
+  # Helper to merge character lists, avoiding duplicates
+  defp merge_characters_lists(map_characters, tracked_characters) do
+    characters_map =
+      Enum.reduce(map_characters ++ tracked_characters, %{}, fn char, acc ->
+        char_id = extract_character_id(char)
+
+        if is_nil(char_id) do
+          acc
+        else
+          Map.put_new(acc, char_id, char)
+        end
+      end)
+
+    Map.values(characters_map)
   end
 end

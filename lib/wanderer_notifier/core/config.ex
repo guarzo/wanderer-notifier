@@ -15,43 +15,43 @@ defmodule WandererNotifier.Core.Config do
 
   # Production bot API token - use environment variable or Application config
   # This should be set at runtime, not hardcoded
-  @production_token_env "NOTIFIER_API_TOKEN"
+  @production_token_env "WANDERER_NOTIFIER_API_TOKEN"
 
-  # Feature definitions with their environment variables
+  # Feature definitions with their environment variables - using new naming convention
   @features %{
     general: %{
-      enabled_var: "ENABLE_NOTIFICATIONS",
-      channel_var: "DISCORD_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_NOTIFICATIONS",
+      channel_var: "WANDERER_DISCORD_CHANNEL_ID",
       default_enabled: true,
       description: "General notifications"
     },
     kill_notifications: %{
-      enabled_var: "ENABLE_KILL_NOTIFICATIONS",
-      channel_var: "DISCORD_KILL_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_KILL_NOTIFICATIONS",
+      channel_var: "WANDERER_DISCORD_KILL_CHANNEL_ID",
       default_enabled: true,
       description: "Kill notifications"
     },
     system_tracking: %{
-      enabled_var: "ENABLE_SYSTEM_NOTIFICATIONS",
-      channel_var: "DISCORD_SYSTEM_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_SYSTEM_NOTIFICATIONS",
+      channel_var: "WANDERER_DISCORD_SYSTEM_CHANNEL_ID",
       default_enabled: true,
       description: "System tracking notifications"
     },
     character_tracking: %{
-      enabled_var: "ENABLE_CHARACTER_NOTIFICATIONS",
-      channel_var: "DISCORD_CHARACTER_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_CHARACTER_NOTIFICATIONS",
+      channel_var: "WANDERER_DISCORD_CHARACTER_CHANNEL_ID",
       default_enabled: true,
       description: "Character tracking notifications"
     },
     map_charts: %{
-      enabled_var: "ENABLE_MAP_CHARTS",
-      channel_var: "DISCORD_MAP_CHARTS_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_MAP_CHARTS",
+      channel_var: "WANDERER_DISCORD_CHARTS_CHANNEL_ID",
       default_enabled: false,
       description: "Map-based activity charts"
     },
     kill_charts: %{
-      enabled_var: "ENABLE_KILL_CHARTS",
-      channel_var: "DISCORD_KILL_CHARTS_CHANNEL_ID",
+      enabled_var: "WANDERER_FEATURE_KILL_CHARTS",
+      channel_var: "WANDERER_DISCORD_CHARTS_CHANNEL_ID",
       default_enabled: false,
       description: "Killmail charts and history"
     }
@@ -206,7 +206,7 @@ defmodule WandererNotifier.Core.Config do
   Defaults to 3001 if not specified.
   """
   def chart_service_port do
-    case System.get_env("CHART_SERVICE_PORT") do
+    case System.get_env("WANDERER_CHART_SERVICE_PORT") do
       nil ->
         @default_chart_service_port
 
@@ -267,49 +267,51 @@ defmodule WandererNotifier.Core.Config do
   In development, uses the value from environment variable.
   """
   def notifier_api_token do
-    env = Application.get_env(:wanderer_notifier, :env, :prod)
+    # First check environment variables
+    token_from_env = get_token_from_env()
+    baked_token = get_baked_token()
 
-    if env == :prod do
-      # Production mode: strictly use baked-in token, never fall back to env vars
-      token = Application.get_env(:wanderer_notifier, :notifier_api_token)
+    cond do
+      # First priority: Environment variables
+      token_from_env ->
+        AppLogger.config_info("Using API token from environment variable")
+        token_from_env
 
-      if is_binary(token) && token != "" do
-        token
-      else
-        message =
-          "Missing baked-in notifier API token in production. Token should be compiled into the release."
+      # Second priority: Baked token
+      baked_token ->
+        AppLogger.config_info("Using baked-in API token")
+        baked_token
 
-        AppLogger.config_error(message)
-        # In production, return a dummy token that will fail validation
-        "invalid-prod-token-missing"
-      end
-    else
-      # Development mode: always use environment variable
-      get_token_from_env()
+      # Last resort: Fallback based on environment
+      true ->
+        handle_missing_token()
     end
   end
 
+  # Get token from environment variables
   defp get_token_from_env do
-    token = System.get_env(@production_token_env)
+    direct_env_var = System.get_env(@production_token_env)
+    legacy_env_var = System.get_env("NOTIFIER_API_TOKEN")
+    direct_env_var || legacy_env_var
+  end
 
-    if is_binary(token) && token != "" do
-      token
+  # Get token from application config
+  defp get_baked_token do
+    Application.get_env(:wanderer_notifier, :api_token) ||
+      Application.get_env(:wanderer_notifier, :notifier_api_token)
+  end
+
+  # Handle case when no token is available
+  defp handle_missing_token do
+    env = Application.get_env(:wanderer_notifier, :env, :prod)
+    AppLogger.config_warn("No API token found in environment or application config")
+
+    if env == :prod do
+      AppLogger.config_error("Missing API token in production")
+      "invalid-prod-token-missing"
     else
-      env = Application.get_env(:wanderer_notifier, :env, :prod)
-
-      if env == :prod do
-        message =
-          "Missing notifier API token in production. Token should be compiled into the release."
-
-        AppLogger.config_error(message)
-        # In production, return a dummy token that will fail validation
-        "invalid-prod-token-missing"
-      else
-        # In development, log a warning but use a development token
-        message = "Missing NOTIFIER_API_TOKEN environment variable for development"
-        AppLogger.config_warn(message)
-        "dev-environment-token"
-      end
+      AppLogger.config_warn("Using development fallback token")
+      "dev-environment-token"
     end
   end
 
@@ -326,36 +328,85 @@ defmodule WandererNotifier.Core.Config do
   def esi_base_url, do: @esi_base_url
 
   @doc """
-  Returns the License Manager API URL.
-  In development environment, this can be overridden with LICENSE_MANAGER_API_URL.
-  In production, it always uses the default URL for security.
+  Returns the license manager API URL.
+  In production environment, this cannot be overridden with environment variables.
+  In development/test, environment variable overrides are allowed.
   """
   def license_manager_api_url do
     env = Application.get_env(:wanderer_notifier, :env, :prod)
 
     if env == :prod do
-      # In production, always use the default URL for security
+      get_production_license_manager_url()
+    else
+      get_development_license_manager_url()
+    end
+  end
+
+  # Get license manager URL for production environment
+  defp get_production_license_manager_url do
+    url = Application.get_env(:wanderer_notifier, :license_manager_api_url)
+
+    if is_nil(url) || url == "" do
       @default_license_manager_url
     else
-      # In development/test, allow override from environment variable
-      Application.get_env(:wanderer_notifier, :license_manager_api_url) ||
-        @default_license_manager_url
+      url
     end
+  end
+
+  # Get license manager URL for development environment
+  defp get_development_license_manager_url do
+    url = Application.get_env(:wanderer_notifier, :license_manager_api_url)
+
+    if is_nil(url) || url == "" do
+      get_license_manager_url_from_env() || @default_license_manager_url
+    else
+      url
+    end
+  end
+
+  # Try to get license manager URL from environment variables
+  defp get_license_manager_url_from_env do
+    System.get_env("WANDERER_LICENSE_MANAGER_URL") ||
+      System.get_env("LICENSE_MANAGER_API_URL")
   end
 
   @doc """
   Returns the web server port from the environment or the default (4000).
   """
   def web_port do
-    case System.get_env("PORT") do
+    # Try WANDERER_PORT first
+    case get_port_from_env("WANDERER_PORT") do
       nil ->
-        Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
+        # Then try PORT
+        case get_port_from_env("PORT") do
+          nil -> get_port_from_config()
+          port -> port
+        end
 
       port ->
-        case Integer.parse(port) do
-          {port_num, _} when port_num > 0 -> port_num
-          _ -> Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
-        end
+        port
+    end
+  end
+
+  # Parse port from environment variable
+  defp get_port_from_env(var_name) do
+    case System.get_env(var_name) do
+      nil -> nil
+      port_str -> parse_port(port_str)
+    end
+  end
+
+  # Parse port from config
+  defp get_port_from_config do
+    port = Application.get_env(:wanderer_notifier, :web_port, @default_web_port)
+    if is_integer(port), do: port, else: @default_web_port
+  end
+
+  # Parse port string to integer
+  defp parse_port(port_str) do
+    case Integer.parse(port_str) do
+      {port_num, _} when port_num > 0 -> port_num
+      _ -> @default_web_port
     end
   end
 
@@ -459,20 +510,15 @@ defmodule WandererNotifier.Core.Config do
   By default, only wormhole systems are tracked unless explicitly enabled.
   """
   def track_kspace_systems? do
-    case System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS") do
+    case System.get_env("WANDERER_FEATURE_TRACK_KSPACE") do
       "true" ->
         true
 
       "1" ->
         true
 
-      # For backward compatibility, also check the old environment variable
       nil ->
-        case System.get_env("TRACK_ALL_SYSTEMS") do
-          "true" -> true
-          "1" -> true
-          _ -> false
-        end
+        false
 
       # Any other value is considered false
       _ ->

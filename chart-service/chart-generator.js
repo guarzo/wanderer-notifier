@@ -201,9 +201,9 @@ app.post('/save', async (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.CHART_SERVICE_PORT || 3001;
+const PORT = process.env.WANDERER_CHART_SERVICE_PORT || process.env.CHART_SERVICE_PORT || 3001;
 console.log(`Starting chart service on port ${PORT}`);
-console.log(`Environment variables: CHART_SERVICE_PORT=${process.env.CHART_SERVICE_PORT || 'not set'}`);
+console.log(`Environment variables: WANDERER_CHART_SERVICE_PORT=${process.env.WANDERER_CHART_SERVICE_PORT || 'not set'}, CHART_SERVICE_PORT=${process.env.CHART_SERVICE_PORT || 'not set'}`);
 
 app.listen(PORT, () => {
   console.log(`Chart service running on port ${PORT}`);
