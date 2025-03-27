@@ -122,7 +122,7 @@ defmodule WandererNotifier.Core.License do
 
     # Add detailed debug logging
     Logger.info(
-      "License validation - token check (redacted): #{token}"
+      "License validation - token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}"
     )
 
     Logger.info(
