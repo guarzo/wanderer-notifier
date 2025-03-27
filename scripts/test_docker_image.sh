@@ -214,8 +214,12 @@ else
   echo "Testing minimal application boot (with clean shutdown)..."
   # Use a shorter timeout and force kill if needed
   run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true" || {
-    echo "Minimal boot test timed out, but continuing..."
-    true
+    if [ $? -eq 124 ] || [ $? -eq 137 ]; then
+      echo "✅ Minimal boot test completed"
+    else
+      echo "❌ Minimal boot test failed unexpectedly"
+      false
+    fi
   }
   
   # Only run the functional web test if not in basic mode
