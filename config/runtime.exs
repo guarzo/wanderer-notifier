@@ -5,9 +5,14 @@ env_dir_prefix = Path.expand("..", __DIR__)
 
 # Debug: Print all environment variables
 IO.puts("DEBUG: Environment variables loaded:")
-System.get_env() |> Enum.sort() |> Enum.each(fn {k, v} ->
+
+System.get_env()
+|> Enum.sort()
+|> Enum.each(fn {k, v} ->
   # Mask sensitive values
-  masked_value = if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+  masked_value =
+    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+
   IO.puts("  #{k}=#{masked_value}")
 end)
 
@@ -21,9 +26,14 @@ env_vars =
 
 # Debug: Print loaded environment variables
 IO.puts("\nDEBUG: Variables after Dotenvy source:")
-env_vars |> Enum.sort() |> Enum.each(fn {k, v} ->
+
+env_vars
+|> Enum.sort()
+|> Enum.each(fn {k, v} ->
   # Mask sensitive values
-  masked_value = if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+  masked_value =
+    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
+
   IO.puts("  #{k}=#{masked_value}")
 end)
 
@@ -118,10 +128,12 @@ config :nostrum,
 map_url_with_name = get_env.("MAP_URL_WITH_NAME", nil)
 
 # Parse map_url_with_name to extract map_url and map_name
-{map_url, map_name} = case String.split(map_url_with_name || "", "?name=") do
-  [url, name] -> {url, name}
-  _ -> {"", ""}  # Default empty values, let app handle validation
-end
+{map_url, map_name} =
+  case String.split(map_url_with_name || "", "?name=") do
+    [url, name] -> {url, name}
+    # Default empty values, let app handle validation
+    _ -> {"", ""}
+  end
 
 config :wanderer_notifier,
   discord_bot_token: trimmed_token,

@@ -1,4 +1,5 @@
 ## Scheduler Modules & Registration
+
 - [ ] Refine the `BaseScheduler` module to encapsulate common scheduling logic.
   - [ ] Include standardized error handling, logging, and a generic retry mechanism.
 - [ ] Define a common behaviour for schedulers to enforce a uniform callback interface.
@@ -20,17 +21,19 @@
   - [ ] Optionally, evaluate auto-discovery or configuration-based approaches for the dashboard.
 
 ## Notification Services
+
 - [ ] Define a notification behaviour that specifies a common interface (e.g., `prepare_message/1`, `send_notification/1`).
 - [ ] Extract common formatting functions (e.g., for creating Discord embeds) into a shared module (`WandererNotifier.Notifications.Formatter`).
 - [ ] Implement a standardized fallback mechanism for notification delivery failures.
 
 ## Helper Modules and Code Organization
+
 - [ ] Review and consolidate overlapping helper modules.
 - [ ] Standardize naming conventions for helper functions to improve clarity.
 - [ ] Enhance documentation for all helper modules and functions with clear `@doc` annotations.
 
-
 ## API Clients and HTTP Patterns
+
 - [ ] Create a shared HTTP client module (`WandererNotifier.Api.HTTPClient`)
   - [ ] Implement helper functions for GET/POST requests with built-in retries and exponential backoff.
   - [ ] Standardize response parsing (JSON decoding, status code checking) and error wrapping.
@@ -38,6 +41,7 @@
 - [ ] Define a behaviour for API clients to enforce implementation of common functions (e.g., `fetch/1`, `validate_response/1`, `handle_error/1`).
 
 ## Error Handling and Logging
+
 - [ ] Create a unified error module (`WandererNotifier.Error`)
   - [ ] Standardize error creation for API errors, validation errors, etc.
   - [ ] Provide logging functions that automatically enrich log messages with contextual data (e.g., endpoint, parameters, correlation IDs).
@@ -45,6 +49,7 @@
 - [ ] Enhance logging across modules to include meaningful context for easier debugging.
 
 ## Configuration Management
+
 - [ ] Establish a base configuration file for common settings shared across environments.
 - [ ] Create a dedicated configuration module (`WandererNotifier.Config`) for environment variable parsing.
   - [ ] Implement a function like `get_env/3` to retrieve and parse environment variables (e.g., converting to integer or boolean).
@@ -52,13 +57,14 @@
 - [ ] Document configuration dependencies and relationships to clarify which settings affect which features.
 
 ## Caching Strategy
+
 - [ ] Build a dedicated caching utility module (`WandererNotifier.Cache.Utils`)
   - [ ] Create helper functions for consistent cache key naming and TTL management.
   - [ ] Standardize error handling for cache operations.
 - [ ] Centralize TTL values in configuration rather than hardcoding them across modules.
 
-
 ## Application Startup and Supervisor Tree
+
 - [ ] Review and refactor the `WandererNotifier.Application` startup code:
   - [ ] Ensure the supervision tree is clearly defined and follows a consistent strategy (e.g., one_for_one) for independent children.
   - [ ] Consolidate and centralize startup logic, including configuration initialization, database connections, and external API health checks.
@@ -72,8 +78,8 @@
 
 ## Additional Critical & High Priority Action Items
 
-
 ### Testing & Quality
+
 - [ ] Increase unit test coverage across core functionality.
 - [ ] Add test suites for edge cases.
 - [ ] Add benchmarks for critical functions.
@@ -82,21 +88,34 @@
 - [ ] Standardize feature flag testing approach.
 
 ### Architecture Improvements
+
 - [ ] Implement data versioning.
 - [ ] Add audit logging.
 - [ ] Review and optimize database schema design.
-
-
 
 ### Dependencies
 
 - [ ] Document the reason for any dependency overrides (e.g., `ranch` in `mix.exs`).
 
 ### Documentation
+
 - [ ] Create high-level project documentation in the docs folder
 - [ ] Create a troubleshooting guide.
 - [ ] Document all feature flags and their purposes.
 - [ ] Document all environment variables in the README and index.md (GH-pages source)
 
 ### Feature Enhancements
+
 - [ ] Add support for more notification channels per notification type
+
+## Environment Variable Validation
+
+- [ ] Move MAP_URL_WITH_NAME validation from runtime.exs to application code
+  - Validation should happen when the application starts, not during configuration
+  - Add proper validation in the application supervision tree or service initialization
+  - Ensure clear error messages for missing or malformed values
+  - Follow OTP best practices for handling configuration errors
+
+## Completed Items
+
+None yet
