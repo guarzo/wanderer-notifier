@@ -74,8 +74,8 @@ COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 # Copy runtime scripts
 COPY scripts/start_with_db.sh /app/bin/
 COPY scripts/db_operations.sh /app/bin/
-RUN chmod +x /app/bin/start_with_db.sh
-RUN chmod +x /app/bin/db_operations.sh
+RUN chmod +x /app/bin/start_with_db.sh \
+    && chmod +x /app/bin/db_operations.sh
 
 # Set environment
 ENV HOME=/app
