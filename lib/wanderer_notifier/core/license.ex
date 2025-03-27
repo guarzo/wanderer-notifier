@@ -107,13 +107,6 @@ defmodule WandererNotifier.Core.License do
   end
 
   @doc """
-  Checks if the license is for a premium tier.
-  """
-  def premium? do
-    GenServer.call(__MODULE__, :premium)
-  end
-
-  @doc """
   Validates the API token.
   The token should be a non-empty string.
   """
@@ -288,24 +281,10 @@ defmodule WandererNotifier.Core.License do
 
   @impl true
   def handle_call(:premium, _from, state) do
-    is_premium =
-      case state do
-        %{valid: true, details: details} when is_map(details) and is_map_key(details, "tier") ->
-          tier = details["tier"]
-          premium = tier in ["premium", "enterprise"]
-
-          Logger.debug(
-            "Premium check: #{if premium, do: "premium", else: "not premium"} (tier: #{tier})"
-          )
-
-          premium
-
-        _ ->
-          AppLogger.config_debug("Premium check: not premium (invalid license state)")
-          false
-      end
-
-    {:reply, is_premium, state}
+    # Since we no longer have premium licenses, always return false
+    # This is kept for backward compatibility
+    AppLogger.config_debug("Premium check: not premium (premium tier removed)")
+    {:reply, false, state}
   end
 
   @impl true

@@ -921,10 +921,9 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Get license icon based on validity and premium status
   defp get_license_icon(license_status) do
-    is_premium = Map.get(license_status, :premium, false)
-
+    # Since premium tier is removed, we only check for license validity
     if license_status.valid do
-      if is_premium, do: "💎", else: "✅"
+      "✅"
     else
       "❌"
     end

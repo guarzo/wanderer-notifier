@@ -131,11 +131,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             tracked_systems_notifications: features.enabled?(:tracked_systems_notifications),
             tracked_characters_notifications:
               features.enabled?(:tracked_characters_notifications),
-            backup_kills_processing: features.enabled?(:backup_kills_processing),
-            web_dashboard_full: features.enabled?(:web_dashboard_full),
-            advanced_statistics: features.enabled?(:advanced_statistics),
-            kill_charts_enabled: WandererNotifier.Core.Config.kill_charts_enabled?(),
-            map_charts_enabled: WandererNotifier.Core.Config.map_charts_enabled?()
+            kill_charts: features.kill_charts_enabled?(),
+            map_charts: features.map_charts_enabled?()
           },
           config: %{
             character_tracking_enabled:

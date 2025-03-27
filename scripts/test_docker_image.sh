@@ -21,7 +21,7 @@ show_help() {
   echo "  -i, --image IMAGE_NAME   Docker image name (default: $IMAGE_NAME)"
   echo "  -t, --tag TAG            Docker image tag (default: $TAG)"
   echo "  -b, --basic              Run only basic validation tests without starting the app"
-  echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token)"
+  echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token_for_validation)"
   echo "  -h, --help               Display this help message"
   echo
 }
@@ -68,6 +68,8 @@ run_in_container() {
   if [ -z "$env_vars" ]; then
     docker run --rm -t "$FULL_IMAGE" /bin/sh -c "$cmd"
   else
+    # shellcheck disable=SC2086
+    # We intentionally want word splitting for env vars, but each var is properly quoted
     docker run --rm -t $env_vars "$FULL_IMAGE" /bin/sh -c "$cmd"
   fi
 }
