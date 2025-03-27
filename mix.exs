@@ -62,7 +62,7 @@ defmodule WandererNotifier.MixProject do
         validate_compile_env: false,
         overlays: ["rel/overlays"],
         config_providers: [
-          {Config.Reader, {:system, "NOTIFIER_CONFIG_PATH", "/app/etc/wanderer_notifier.exs"}}
+          {Config.Reader, "/app/etc/wanderer_notifier.exs"}
         ]
       ]
     ]

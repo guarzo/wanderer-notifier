@@ -80,8 +80,7 @@ RUN mix compile --warnings-as-errors && \
 FROM elixir:1.18-otp-27-slim AS runtime
 
 # Set runtime environment variables
-ENV NOTIFIER_CONFIG_PATH=/app/etc/wanderer_notifier.exs \
-    LANG=C.UTF-8 \
+ENV LANG=C.UTF-8 \
     HOME=/app
 
 # Install runtime dependencies (minimal set)
@@ -112,25 +111,12 @@ COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
 RUN chmod +x /app/bin/start_with_db.sh /app/bin/db_operations.sh
 
-# Add a startup validation script to ensure CONFIG_PATH isn't duplicated
+# Add a startup validation script with debug info
 RUN echo '#!/bin/bash\n\
 # Debug environment variables\n\
-echo "CONFIG_PATH=$CONFIG_PATH" > /tmp/config_debug.txt\n\
-echo "NOTIFIER_CONFIG_PATH=$NOTIFIER_CONFIG_PATH" >> /tmp/config_debug.txt\n\
+echo "Using fixed config path: /app/etc/wanderer_notifier.exs" > /tmp/config_debug.txt\n\
 echo "Command to execute: $@" >> /tmp/config_debug.txt\n\
 \n\
-# Force CONFIG_PATH to be completely unset to prevent any path duplication\n\
-unset CONFIG_PATH\n\
-\n\
-# Verify CONFIG_PATH is correctly set\n\
-if [[ "$CONFIG_PATH" == *"/app/etc/"*"/app/etc/"* ]]; then\n\
-  echo "ERROR: CONFIG_PATH contains duplicate paths: $CONFIG_PATH"\n\
-  exit 1\n\
-fi\n\
-if [[ "$NOTIFIER_CONFIG_PATH" == *"/app/etc/"*"/app/etc/"* ]]; then\n\
-  echo "ERROR: NOTIFIER_CONFIG_PATH contains duplicate paths: $NOTIFIER_CONFIG_PATH"\n\
-  exit 1\n\
-fi\n\
 # Continue with original command\n\
 exec "$@"' > /app/bin/validate_and_start.sh && \
 chmod +x /app/bin/validate_and_start.sh

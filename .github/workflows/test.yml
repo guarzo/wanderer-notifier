@@ -134,30 +134,6 @@ jobs:
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
 
-          # Create a temp script to explicitly test without CONFIG_PATH
-          cat > test_startup.sh << 'EOF'
-          #!/bin/bash
-          set -x
-          docker run --rm \
-            -e DISCORD_BOT_TOKEN="${1:-test_token}" \
-            -e WANDERER_ENV=test \
-            -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
-            wanderer-notifier:pr-$2 \
-            /bin/sh -c '
-              # Explicitly unset CONFIG_PATH
-              unset CONFIG_PATH
-              # Print environment for debugging
-              env | grep -E "CONFIG_PATH|NOTIFIER"
-              # Start the app with eval and immediately exit
-              timeout 10 /app/bin/wanderer_notifier eval "IO.puts(\"Application started successfully\"); :init.stop()"
-            '
-          EOF
-          chmod +x test_startup.sh
-
-          # Direct test with CONFIG_PATH unset
-          echo "Direct startup test with CONFIG_PATH unset..."
-          ./test_startup.sh "${{ secrets.FAKE_DISCORD_TOKEN }}" "${{ steps.sha.outputs.short_sha }}"
-
           # Run full validation including web server startup test
           # No --basic flag to ensure we test the running application
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"

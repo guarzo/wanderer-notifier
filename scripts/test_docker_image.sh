@@ -119,7 +119,7 @@ fi
 
 echo "Verifying configuration path variables..."
 # Display but don't actually set the config path variables in this command
-run_in_container "echo 'NOTIFIER_CONFIG_PATH should be set to: /app/etc/wanderer_notifier.exs'"
+run_in_container "echo 'Using fixed config path: /app/etc/wanderer_notifier.exs'"
 
 # Create an empty config file for testing if needed - don't pass NOTIFIER_CONFIG_PATH here
 echo "Creating minimal config file if needed..."
@@ -142,14 +142,14 @@ else
   echo "Testing full application startup (may require environment variables)..."
   
   echo "Testing Elixir runtime with application eval..."
-  run_in_container "/bin/sh -c 'unset CONFIG_PATH && /app/bin/wanderer_notifier eval \"1+1\"'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval '1+1'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
   
   echo "Checking application version..."
-  run_in_container "/bin/sh -c 'unset CONFIG_PATH && /app/bin/wanderer_notifier eval \"IO.puts Application.spec(:wanderer_notifier, :vsn)\"'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
+  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts Application.spec(:wanderer_notifier, :vsn)'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test"
   
   echo "Testing minimal application boot (with clean shutdown)..."
   # Set a lower timeout to prevent hanging if there's an issue
-  run_in_container "/bin/sh -c 'unset CONFIG_PATH && timeout 10 /app/bin/wanderer_notifier eval \"IO.puts(\\\"Application started\\\"); :init.stop()\"'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  run_in_container "timeout 10 /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
   
   # Only run the functional web test if not in basic mode
   if [ "$BASIC_ONLY" = false ]; then
@@ -159,13 +159,12 @@ else
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
     
-    # Start the container in the background with unset CONFIG_PATH
+    # Start the container in the background
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
       -e WANDERER_ENV=test \
       -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true \
-      "$FULL_IMAGE" \
-      /bin/sh -c 'unset CONFIG_PATH && exec /app/bin/start_with_db.sh'
+      "$FULL_IMAGE"
     
     echo "Waiting for application to start (up to 20 seconds)..."
     MAX_ATTEMPTS=20
