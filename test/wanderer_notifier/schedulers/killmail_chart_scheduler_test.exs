@@ -1,115 +1,90 @@
 defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
-  use ExUnit.Case, async: false
-  import Mock
+  use ExUnit.Case, async: true
+  import Mox
 
   alias WandererNotifier.Schedulers.KillmailChartScheduler
-  alias WandererNotifier.ChartService.KillmailChartAdapter
-  alias WandererNotifier.Core.Config
+
+  setup :verify_on_exit!
 
   describe "execute/1" do
     test "executes on Sunday and sends chart to Discord" do
-      # Mock Date.utc_today to return a Sunday (day 7)
-      with_mocks([
-        {Date, [], [utc_today: fn -> ~D[2023-01-01] end, day_of_week: fn _ -> 7 end]},
-        {Config, [],
-         [
-           discord_channel_id_for: fn :kill_charts -> "123456789" end,
-           kill_charts_enabled?: fn -> true end
-         ]},
-        {KillmailChartAdapter, [],
-         [
-           send_weekly_kills_chart_to_discord: fn _, _, _ ->
-             {:ok, %{status_code: 200}}
-           end
-         ]},
-        {KillmailChartScheduler, [:passthrough],
-         [
-           kill_charts_enabled?: fn -> true end
-         ]}
-      ]) do
-        result = KillmailChartScheduler.execute(%{})
-        assert {:ok, {:ok, %{status_code: 200}}, %{}} = result
-      end
+      # Set up mocks
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+
+      expect(WandererNotifier.MockConfig, :discord_channel_id_for, fn :kill_charts ->
+        "success"
+      end)
+
+      # Create a Sunday date
+      sunday = ~D[2024-03-24]
+
+      result = KillmailChartScheduler.execute(sunday)
+      assert {:ok, {:ok, %{status_code: 200}}, %{}} = result
     end
 
-    test "skips execution on non-Sunday days" do
-      # Mock Date.utc_today to return a Monday (day 1)
-      with_mocks([
-        {Date, [], [utc_today: fn -> ~D[2023-01-02] end, day_of_week: fn _ -> 1 end]},
-        {KillmailChartScheduler, [:passthrough],
-         [
-           kill_charts_enabled?: fn -> true end
-         ]}
-      ]) do
-        result = KillmailChartScheduler.execute(%{})
-        assert {:ok, :skipped, %{}} = result
-      end
+    test "skips execution on non-Sunday" do
+      # Set up mocks
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+
+      # Create a Monday date
+      monday = ~D[2024-03-25]
+
+      result = KillmailChartScheduler.execute(monday)
+      assert {:ok, :skipped, %{}} = result
     end
 
     test "handles errors when sending chart" do
-      # Mock Date.utc_today to return a Sunday (day 7)
-      with_mocks([
-        {Date, [], [utc_today: fn -> ~D[2023-01-01] end, day_of_week: fn _ -> 7 end]},
-        {Config, [],
-         [
-           discord_channel_id_for: fn :kill_charts -> "123456789" end,
-           kill_charts_enabled?: fn -> true end
-         ]},
-        {KillmailChartAdapter, [],
-         [
-           send_weekly_kills_chart_to_discord: fn _, _, _ ->
-             {:error, "Failed to generate chart"}
-           end
-         ]},
-        {KillmailChartScheduler, [:passthrough],
-         [
-           kill_charts_enabled?: fn -> true end
-         ]}
-      ]) do
-        result = KillmailChartScheduler.execute(%{})
-        assert {:error, "Failed to generate chart", %{}} = result
-      end
+      # Set up mocks
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+      expect(WandererNotifier.MockConfig, :discord_channel_id_for, fn :kill_charts -> "error" end)
+
+      # Create a Sunday date
+      sunday = ~D[2024-03-24]
+
+      result = KillmailChartScheduler.execute(sunday)
+      assert {:error, "Test error", %{}} = result
     end
 
     test "handles exceptions when sending chart" do
-      # Mock Date.utc_today to return a Sunday (day 7)
-      with_mocks([
-        {Date, [], [utc_today: fn -> ~D[2023-01-01] end, day_of_week: fn _ -> 7 end]},
-        {Config, [],
-         [
-           discord_channel_id_for: fn :kill_charts -> "123456789" end,
-           kill_charts_enabled?: fn -> true end
-         ]},
-        {KillmailChartAdapter, [],
-         [
-           send_weekly_kills_chart_to_discord: fn _, _, _ ->
-             raise "Test exception"
-           end
-         ]},
-        {KillmailChartScheduler, [:passthrough],
-         [
-           kill_charts_enabled?: fn -> true end
-         ]}
-      ]) do
-        result = KillmailChartScheduler.execute(%{})
-        assert {:error, "Test exception", %{}} = result
-      end
+      # Set up mocks
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+
+      expect(WandererNotifier.MockConfig, :discord_channel_id_for, fn :kill_charts ->
+        "exception"
+      end)
+
+      # Create a Sunday date
+      sunday = ~D[2024-03-24]
+
+      result = KillmailChartScheduler.execute(sunday)
+      assert {:error, "Test exception", %{}} = result
+    end
+
+    test "handles unknown channel error" do
+      # Set up mocks
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+
+      expect(WandererNotifier.MockConfig, :discord_channel_id_for, fn :kill_charts ->
+        "unknown_channel"
+      end)
+
+      # Create a Sunday date
+      sunday = ~D[2024-03-24]
+
+      result = KillmailChartScheduler.execute(sunday)
+      assert {:error, "Unknown Channel", %{}} = result
     end
   end
 
   describe "kill_charts_enabled?/0" do
     test "returns true when kill charts is enabled" do
-      # Mock Config.kill_charts_enabled? to return true
-      with_mock(Config, [], kill_charts_enabled?: fn -> true end) do
-        assert KillmailChartScheduler.kill_charts_enabled?() == true
-      end
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> true end)
+      assert KillmailChartScheduler.kill_charts_enabled?() == true
     end
 
     test "returns false when kill charts is disabled" do
-      # Mock Config.kill_charts_enabled? to return false
-      with_mock(Config, [], kill_charts_enabled?: fn -> false end) do
-        assert KillmailChartScheduler.kill_charts_enabled?() == false
-      end
+      expect(WandererNotifier.MockConfig, :kill_charts_enabled?, fn -> false end)
+      assert KillmailChartScheduler.kill_charts_enabled?() == false
     end
   end
 

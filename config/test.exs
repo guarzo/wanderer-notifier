@@ -7,6 +7,14 @@ config :wanderer_notifier,
   websocket_client: WandererNotifier.MockWebSocket,
   cache_name: :test_cache,
 
+  # Service dependencies
+  zkill_client: WandererNotifier.MockZKillClient,
+  esi_service: WandererNotifier.MockESI,
+  cache_helpers: WandererNotifier.MockCacheHelpers,
+  repository: WandererNotifier.MockRepository,
+  killmail_persistence: WandererNotifier.MockKillmailPersistence,
+  logger: WandererNotifier.MockLogger,
+
   # Faster timeouts for tests
   api_timeout: 100,
 
@@ -16,7 +24,8 @@ config :wanderer_notifier,
     "track_character_changes" => true,
     # Disable for tests
     "generate_tps_charts" => false
-  }
+  },
+  config_module: WandererNotifier.MockConfig
 
 # Prevent Nostrum from starting during tests
 config :nostrum,

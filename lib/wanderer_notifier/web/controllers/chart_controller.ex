@@ -322,11 +322,11 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   get "/killmail/send-to-discord/weekly_kills" do
     if Config.kill_charts_enabled?() do
       title = conn.params["title"] || "Weekly Character Kills"
-      description = conn.params["description"] || "Top 20 characters by kills in the past week"
+      _description = conn.params["description"] || "Top 20 characters by kills in the past week"
       channel_id = conn.params["channel_id"]
 
       # Parse limit parameter with default of 20
-      limit =
+      _limit =
         case conn.params["limit"] do
           nil ->
             20
@@ -343,13 +343,18 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
       AppLogger.api_info("Sending weekly kills chart to Discord", title: title)
 
+      # Get the current date and calculate the most recent week start
+      today = Date.utc_today()
+      days_since_monday = Date.day_of_week(today) - 1
+      date_from = Date.add(today, -days_since_monday)
+      date_to = Date.add(date_from, 6)
+
       case KillmailChartAdapter.send_weekly_kills_chart_to_discord(
-             title,
-             description,
              channel_id,
-             limit
+             date_from,
+             date_to
            ) do
-        :ok ->
+        {:ok, _} ->
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(
@@ -458,12 +463,18 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     if Config.kill_charts_enabled?() do
       AppLogger.api_info("Sending all killmail charts to Discord")
 
-      # Send both the weekly kills chart and the weekly ISK destroyed chart
-      kills_result = KillmailChartAdapter.send_weekly_kills_chart_to_discord()
-      isk_result = KillmailChartAdapter.send_weekly_isk_chart_to_discord()
+      # Get the current date and calculate the most recent week start
+      today = Date.utc_today()
+      days_since_monday = Date.day_of_week(today) - 1
+      date_from = Date.add(today, -days_since_monday)
+      date_to = Date.add(date_from, 6)
 
-      case {kills_result, isk_result} do
-        {:ok, :ok} ->
+      # Get the appropriate channel ID for kill charts
+      channel_id = Config.discord_channel_id_for(:kill_charts)
+
+      # Send both the weekly kills chart and the weekly ISK destroyed chart
+      case KillmailChartAdapter.send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
+        {:ok, _} ->
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(
@@ -474,32 +485,15 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             })
           )
 
-        {kills_error, isk_error} ->
-          # Format error messages
-          error_details = %{}
-
-          error_details =
-            if kills_error != :ok do
-              Map.put(error_details, "kills_chart", inspect(kills_error))
-            else
-              error_details
-            end
-
-          error_details =
-            if isk_error != :ok do
-              Map.put(error_details, "isk_chart", inspect(isk_error))
-            else
-              error_details
-            end
-
+        {:error, reason} ->
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(
             400,
             Jason.encode!(%{
               status: "error",
-              message: "Failed to send some or all killmail charts to Discord",
-              details: error_details
+              message: "Failed to send killmail charts to Discord",
+              details: inspect(reason)
             })
           )
       end

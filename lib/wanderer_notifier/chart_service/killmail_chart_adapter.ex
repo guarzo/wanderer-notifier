@@ -6,12 +6,15 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   such as top character kills, kill statistics, and other killmail-related visualizations.
   """
 
+  @behaviour WandererNotifier.ChartService.KillmailChartAdapterBehaviour
+
   require Logger
   require Ash.Query
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter
+  alias WandererNotifier.Discord.Client, as: DiscordClient
   alias Ash.Query
 
   @doc """
@@ -213,42 +216,60 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     end
   end
 
-  @doc """
-  Sends a weekly killmail chart to Discord.
+  @impl true
+  def send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
+    try do
+      # Generate both kills and ISK charts
+      with {:ok, kills_chart_url} <- generate_weekly_kills_chart(%{limit: 20}),
+           {:ok, isk_chart_url} <- generate_weekly_isk_chart(%{limit: 20}) do
+        # Send both charts to Discord
+        kill_title =
+          "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
 
-  ## Parameters
-    - title: The title for the chart embed (optional)
-    - description: Optional description for the Discord embed
-    - channel_id: Optional Discord channel ID to send the chart to
-    - limit: Maximum number of characters to display (default 20)
+        isk_title =
+          "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
 
-  ## Returns
-    - {:ok, message_id} if successful
-    - {:error, reason} if something fails
-  """
-  def send_weekly_kills_chart_to_discord(
-        title \\ "Weekly Character Kills",
-        description \\ nil,
-        channel_id \\ nil,
-        limit \\ 20
-      ) do
-    # Determine actual description if not provided
-    actual_description = description || "Top #{limit} characters by kills in the past week"
+        # Create embeds with chart URLs
+        kill_embed = %{
+          "title" => kill_title,
+          "image" => %{
+            "url" => kills_chart_url
+          },
+          # Discord blue
+          "color" => 3_447_003
+        }
 
-    # Generate the chart URL
-    case generate_weekly_kills_chart(limit) do
-      {:ok, url} ->
-        # Send chart to Discord
-        ChartService.send_chart_to_discord(
-          url,
-          title,
-          actual_description,
-          channel_id
+        isk_embed = %{
+          "title" => isk_title,
+          "image" => %{
+            "url" => isk_chart_url
+          },
+          # Discord blue
+          "color" => 3_447_003
+        }
+
+        # Send kills chart and handle potential errors
+        with {:ok, kills_message} <- DiscordClient.send_embed(kill_embed, channel_id),
+             {:ok, isk_message} <- DiscordClient.send_embed(isk_embed, channel_id) do
+          {:ok, %{kills_message: kills_message, isk_message: isk_message}}
+        else
+          {:error, reason} ->
+            AppLogger.kill_error("Failed to send charts to Discord", error: inspect(reason))
+            {:error, reason}
+        end
+      else
+        {:error, reason} ->
+          AppLogger.kill_error("Failed to generate weekly charts", error: inspect(reason))
+          {:error, reason}
+      end
+    rescue
+      e ->
+        AppLogger.kill_error("Error sending weekly charts to Discord",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
 
-      {:error, reason} ->
-        AppLogger.kill_error("Failed to generate weekly kills chart", error: inspect(reason))
-        {:error, reason}
+        {:error, "Error sending weekly charts: #{Exception.message(e)}"}
     end
   end
 
@@ -310,24 +331,31 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     - {:error, reason} if something fails
   """
   def send_weekly_charts_to_discord(
-        kill_title \\ "Weekly Character Kills",
+        _kill_title \\ "Weekly Character Kills",
         isk_title \\ "Weekly ISK Destroyed",
         description \\ nil,
         channel_id \\ nil,
         limit \\ 20
       ) do
-    # Send kill chart
-    kill_result = send_weekly_kills_chart_to_discord(kill_title, description, channel_id, limit)
+    # Get date range for the current week
+    today = Date.utc_today()
+    days_since_monday = Date.day_of_week(today) - 1
+    date_from = Date.add(today, -days_since_monday)
+    date_to = Date.add(date_from, 6)
+
+    # Use the behavior-compliant function for kills chart
+    kill_result = send_weekly_kills_chart_to_discord(channel_id, date_from, date_to)
 
     # Send ISK chart
     isk_result = send_weekly_isk_chart_to_discord(isk_title, description, channel_id, limit)
 
     case {kill_result, isk_result} do
-      {{:ok, kill_id}, {:ok, isk_id}} ->
-        {:ok, [kill_id, isk_id]}
+      {{:ok, %{kills_message: kill_msg, isk_message: isk_msg}}, _} ->
+        # Since the new function already sends both charts, we can ignore the isk_result
+        {:ok, [kill_msg, isk_msg]}
 
       {{:error, kill_reason}, _} ->
-        {:error, "Failed to send kill chart: #{inspect(kill_reason)}"}
+        {:error, "Failed to send charts: #{inspect(kill_reason)}"}
 
       {_, {:error, isk_reason}} ->
         {:error, "Failed to send ISK chart: #{inspect(isk_reason)}"}

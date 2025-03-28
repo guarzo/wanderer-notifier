@@ -73,4 +73,19 @@ defmodule WandererNotifier.Api.ESI.Service do
   def get_region_name(region_id, _opts \\ []) do
     ESIClient.get_region(region_id)
   end
+
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_character(character_id) do
+    get_character_info(character_id)
+  end
+
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_system(system_id) do
+    get_system_info(system_id)
+  end
+
+  @impl WandererNotifier.Api.ESI.ServiceBehaviour
+  def get_type(type_id) do
+    get_type_info(type_id)
+  end
 end

@@ -2,8 +2,13 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   @moduledoc """
   Helper functions for working with the cache.
   """
+
+  @behaviour WandererNotifier.Helpers.CacheHelpersBehaviour
+
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Data.Cache.Repository
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
 
   # Get the repository module to use - either the mock during testing or the real repo
   defp repo_module do
@@ -174,11 +179,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     find_id_from_keys(map, [:solar_system_id, :system_id, "solar_system_id", "system_id"])
   end
 
-  @doc """
-  Gets all tracked characters from the cache.
-  Handles both character objects and character IDs, similar to systems.
-  Also checks both "map:characters" and "tracked:characters" keys for comprehensive tracking.
-  """
+  @impl true
   def get_tracked_characters do
     try do
       # Get and validate characters from each source
@@ -192,23 +193,11 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
         Enum.flat_map(tracked_characters_list, &normalize_character_data/1)
 
       # Merge characters from both sources, removing duplicates by ID
-      all_characters =
-        merge_characters_lists(map_characters_processed, tracked_characters_processed)
-
-      # Sample log character details occasionally
-      sample_log_character_data(
-        all_characters,
-        map_characters_processed,
-        tracked_characters_processed
-      )
-
-      all_characters
-    rescue
-      e ->
-        # Log any errors in character processing
-        AppLogger.cache_error(
-          "ERROR retrieving tracked characters: #{Exception.message(e)}",
-          stacktrace: Exception.format_stacktrace()
+      merge_characters_lists(map_characters_processed, tracked_characters_processed)
+    catch
+      kind, error ->
+        AppLogger.cache_error("Error getting tracked characters",
+          error: Exception.format(kind, error, __STACKTRACE__)
         )
 
         []
@@ -228,26 +217,6 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
 
     # Return as list or empty list if nil/invalid
     if is_list(data), do: data, else: []
-  end
-
-  # Sample log character data occasionally for debugging
-  defp sample_log_character_data(all_characters, map_characters, tracked_characters) do
-    # Only log character details occasionally (10% of requests)
-    # This is extremely high-volume during kill processing
-    if :rand.uniform(10) == 1 do
-      AppLogger.cache_debug(
-        "Retrieved tracked characters (sampled 10%)",
-        total_count: length(all_characters),
-        map_characters_count: length(map_characters),
-        tracked_characters_count: length(tracked_characters)
-      )
-
-      # Sample for debugging (only when sampling)
-      if length(all_characters) > 0 do
-        sample = Enum.take(all_characters, min(2, length(all_characters)))
-        AppLogger.cache_debug("Sample character data (sampled): #{inspect(sample)}")
-      end
-    end
   end
 
   # Helper to normalize character data regardless of its format
@@ -442,7 +411,7 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
     repo_module().put(cache_key, updated_list)
 
     # Remove the direct lookup entry
-    repo_module().delete("tracked:#{entity_type |> String.slice(0..-2//-1)}:#{entity_id_str}")
+    repo_module().delete("tracked:#{String.slice(entity_type, 0..-2//1)}:#{entity_id_str}")
 
     :ok
   end
@@ -498,5 +467,53 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
       end)
 
     Map.values(characters_map)
+  end
+
+  @impl true
+  def get_character_name(nil), do: {:ok, "Unknown"}
+
+  def get_character_name(character_id) do
+    cache_key = "character:name:#{character_id}"
+
+    case Repository.get(cache_key) do
+      nil ->
+        case ESIService.get_character_info(to_string(character_id)) do
+          {:ok, char_info} ->
+            name = char_info["name"]
+            # Cache for 24 hours
+            Repository.set(cache_key, name, 86_400)
+            {:ok, name}
+
+          error ->
+            error
+        end
+
+      name ->
+        {:ok, name}
+    end
+  end
+
+  @impl true
+  def get_ship_name(nil), do: {:ok, "Unknown"}
+
+  def get_ship_name(ship_type_id) do
+    cache_key = "ship:name:#{ship_type_id}"
+
+    case Repository.get(cache_key) do
+      nil ->
+        case ESIService.get_type_info(ship_type_id) do
+          {:ok, type_info} ->
+            name = type_info["name"]
+            # Cache for 24 hours
+            Repository.set(cache_key, name, 86_400)
+            {:ok, name}
+
+          error ->
+            error
+        end
+
+      name ->
+        {:ok, name}
+    end
   end
 end

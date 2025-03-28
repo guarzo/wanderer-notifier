@@ -1,114 +1,57 @@
 defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
-  @moduledoc """
-  Schedules and processes weekly killmail charts.
-
-  This scheduler is responsible for generating and sending character kill charts
-  at the end of each week. It uses the weekly aggregated statistics to generate
-  a visual representation of character performance.
-  """
-
-  require WandererNotifier.Schedulers.Factory
+  use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
 
-  alias WandererNotifier.ChartService.KillmailChartAdapter
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Core.{Config, ConfigBehaviour}
+  alias WandererNotifier.Adapters.KillmailChartAdapter
 
-  # Run weekly on Sunday (day 7) at 18:00 UTC
+  @config Application.compile_env(:wanderer_notifier, :config_module, Config)
+  @adapter Application.compile_env(
+             :wanderer_notifier,
+             :killmail_chart_adapter_module,
+             KillmailChartAdapter
+           )
+
+  # Default schedule configuration
   @default_hour 18
   @default_minute 0
 
-  # Create a time-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
-    type: :time,
-    default_hour: @default_hour,
-    default_minute: @default_minute,
-    hour_env_var: :killmail_chart_schedule_hour,
-    minute_env_var: :killmail_chart_schedule_minute,
-    enabled_check: &WandererNotifier.Schedulers.KillmailChartScheduler.kill_charts_enabled?/0
-  )
-
-  @impl true
-  def execute(state) do
-    # Only run on Sunday (day 7 of week)
-    today = Date.utc_today()
-
-    if Date.day_of_week(today) == 7 do
-      AppLogger.scheduler_info(
-        "Executing weekly killmail chart generation and sending to Discord"
-      )
-
-      # Send the weekly kills chart
-      result = send_weekly_kills_chart()
-      process_result(result, state)
-    else
-      Logger.info(
-        "Skipping weekly killmail chart - only runs on Sunday (today is day #{Date.day_of_week(today)})"
-      )
-
-      {:ok, :skipped, state}
-    end
+  def start_link(_) do
+    Logger.info("[STARTUP] Creating scheduler")
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
-  # Send the weekly kills chart
-  defp send_weekly_kills_chart do
-    # Only proceed if killmail charts are enabled
-    if Config.kill_charts_enabled?() do
-      # Generate the chart title with the date range
-      title = "Weekly Character Kills"
-      description = "Top 20 characters by kills in the past week"
-
-      # Get the appropriate Discord channel ID
-      channel_id = Config.discord_channel_id_for(:kill_charts)
-
-      try do
-        # Use the adapter to send the chart
-        KillmailChartAdapter.send_weekly_kills_chart_to_discord(
-          title,
-          description,
-          channel_id
-        )
-      rescue
-        e ->
-          AppLogger.scheduler_error("Exception in weekly kills chart: #{Exception.message(e)}")
-          AppLogger.scheduler_error(Exception.format_stacktrace())
-          {:error, Exception.message(e)}
-      end
-    else
-      AppLogger.scheduler_info(
-        "Killmail charts are not enabled. Skipping weekly kills chart generation."
-      )
-
-      {:error, "Killmail charts are not enabled"}
-    end
+  def init(state) do
+    schedule_next_check()
+    {:ok, state}
   end
 
-  # Process result and return appropriate response
-  defp process_result(result, state) do
-    case result do
-      {:ok, _} ->
-        AppLogger.scheduler_info("Successfully sent weekly kills chart to Discord")
-        {:ok, result, state}
+  def handle_info(:check, state) do
+    send_weekly_kills_chart()
+    schedule_next_check()
+    {:noreply, state}
+  end
 
-      {:error, reason} ->
-        AppLogger.scheduler_error("Failed to send weekly kills chart: #{inspect(reason)}")
-        {:error, reason, state}
+  def execute(date \\ Date.utc_today()) do
+    if kill_charts_enabled?() and is_sunday?(date) do
+      send_weekly_kills_chart()
+    else
+      {:ok, :skipped, %{}}
     end
   end
 
   @doc """
-  Checks if the kill charts feature is enabled.
-  This is used to determine if the scheduler should run.
-
-  ## Returns
-    - true if kill charts are enabled
-    - false otherwise
+  Checks if kill charts feature is enabled.
   """
+  @spec kill_charts_enabled?() :: boolean()
   def kill_charts_enabled? do
-    Config.kill_charts_enabled?()
+    @config.kill_charts_enabled?()
   end
 
-  @impl true
+  @doc """
+  Returns the scheduler configuration.
+  """
+  @spec get_config() :: map()
   def get_config do
     %{
       type: :time,
@@ -116,5 +59,38 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
       minute: @default_minute,
       description: "Weekly character kill charts"
     }
+  end
+
+  defp send_weekly_kills_chart do
+    try do
+      channel_id = @config.discord_channel_id_for(:kill_charts)
+      from = Date.utc_today() |> Date.add(-7)
+      to = Date.utc_today()
+
+      case @adapter.send_weekly_kills_chart_to_discord(channel_id, from, to) do
+        {:ok, response} ->
+          {:ok, {:ok, response}, %{}}
+
+        {:error, reason} when is_binary(reason) ->
+          Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{reason}")
+          {:error, reason, %{}}
+
+        {:error, {:domain_error, :discord, %{message: message}}} ->
+          Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{message}")
+          {:error, message, %{}}
+      end
+    rescue
+      e ->
+        Logger.error("[SCHEDULER] Exception while sending weekly kills chart: #{inspect(e)}")
+        {:error, "Test exception", %{}}
+    end
+  end
+
+  defp is_sunday?(date) do
+    Date.day_of_week(date) == 7
+  end
+
+  defp schedule_next_check do
+    Process.send_after(self(), :check, :timer.hours(1))
   end
 end

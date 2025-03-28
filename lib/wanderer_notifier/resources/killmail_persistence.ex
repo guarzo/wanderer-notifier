@@ -2,6 +2,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   @moduledoc """
   Handles persistence of killmails to database for historical analysis and reporting.
   """
+
+  @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
+
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
@@ -92,10 +95,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @doc """
-  Maybe persists a killmail if it meets persistence criteria.
-  This is a wrapper around persist_killmail/1 that adds additional checks.
-  """
+  @impl true
   def maybe_persist_killmail(killmail) do
     # Skip if the killmail is nil
     if is_nil(killmail) do
