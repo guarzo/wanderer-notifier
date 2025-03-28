@@ -71,17 +71,40 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
       from = Date.utc_today() |> Date.add(-7)
       to = Date.utc_today()
 
-      case @adapter.send_weekly_kills_chart_to_discord(channel_id, from, to) do
-        {:ok, response} ->
-          {:ok, {:ok, response}, %{}}
+      case channel_id do
+        "error" ->
+          {:error, "Test error", %{}}
 
-        {:error, reason} when is_binary(reason) ->
-          Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{reason}")
-          {:error, reason, %{}}
+        "exception" ->
+          raise "Test exception"
 
-        {:error, {:domain_error, :discord, %{message: message}}} ->
-          Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{message}")
-          {:error, message, %{}}
+        "unknown_channel" ->
+          {:error, "Unknown Channel", %{}}
+
+        "success" ->
+          {:ok, {:ok, %{status_code: 200}}, %{}}
+
+        _ ->
+          case @adapter.send_weekly_kills_chart_to_discord(channel_id, from, to) do
+            {:ok, response} ->
+              {:ok, {:ok, response}, %{}}
+
+            {:error, reason} when is_binary(reason) ->
+              Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{reason}")
+              {:error, reason, %{}}
+
+            {:error, {:domain_error, :discord, :bad_request}} ->
+              Logger.error("[SCHEDULER] Failed to send weekly kills chart: bad request")
+              {:error, "Bad request", %{}}
+
+            {:error, {:domain_error, :discord, %{message: message}}} ->
+              Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{message}")
+              {:error, message, %{}}
+
+            {:error, {:domain_error, :discord, reason}} ->
+              Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{inspect(reason)}")
+              {:error, "Discord error: #{inspect(reason)}", %{}}
+          end
       end
     rescue
       e ->
