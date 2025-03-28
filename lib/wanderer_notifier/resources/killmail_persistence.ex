@@ -45,10 +45,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     enabled
   end
 
-  @doc """
-  Persists killmail data to database if relevant for historical reporting.
-  Returns {:ok, :persisted} on success, :ignored if not relevant, or {:error, reason} on failure.
-  """
+  @impl true
   def persist_killmail(%KillmailStruct{} = killmail) do
     # Check if kill charts feature is enabled
     if kill_charts_enabled?() do

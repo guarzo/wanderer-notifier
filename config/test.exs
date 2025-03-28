@@ -8,8 +8,8 @@ config :wanderer_notifier,
   cache_name: :test_cache,
 
   # Service dependencies
-  zkill_client: WandererNotifier.MockZKillClient,
-  esi_service: WandererNotifier.MockESI,
+  zkill_client: WandererNotifier.Api.ZKill.Client,
+  esi_service: WandererNotifier.Api.ESI.Service,
   cache_helpers: WandererNotifier.MockCacheHelpers,
   repository: WandererNotifier.MockRepository,
   killmail_persistence: WandererNotifier.MockKillmailPersistence,

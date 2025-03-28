@@ -4,7 +4,8 @@ defmodule WandererNotifier.Api.ZKill.Client do
   Handles making HTTP requests to the zKillboard API endpoints.
   """
 
-  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+
+@behaviour WandererNotifier.Api.ZKill.ClientBehaviour
 
   require Logger
   alias WandererNotifier.Logger, as: AppLogger

@@ -1,8 +1,8 @@
 ExUnit.start()
 
 # Set up application environment for testing
-Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.MockZKillClient)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.MockESI)
+Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
+Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
 Application.put_env(:wanderer_notifier, :cache_helpers, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :repository, WandererNotifier.MockRepository)
 Application.put_env(:wanderer_notifier, :logger, WandererNotifier.MockLogger)

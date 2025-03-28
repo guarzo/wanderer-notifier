@@ -324,16 +324,25 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               })
             )
 
-          {:error, {:domain_error, :zkill, {:api_error, error_msg}}} ->
-            # Handle ZKill API errors specifically
+          {:error, :no_tracked_characters} ->
             conn
             |> put_resp_content_type("application/json")
             |> send_resp(
-              502,
+              404,
               Jason.encode!(%{
                 success: false,
-                message: "ZKill API error",
-                details: error_msg
+                message: "No tracked characters found"
+              })
+            )
+
+          {:error, :no_successful_results} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                success: false,
+                message: "Failed to process any character kills successfully"
               })
             )
 

@@ -1,8 +1,12 @@
 defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
+  @moduledoc """
+  Scheduler for generating and sending weekly killmail charts.
+  """
+
   use GenServer
   require Logger
 
-  alias WandererNotifier.Core.{Config, ConfigBehaviour}
+  alias WandererNotifier.Core.Config
   alias WandererNotifier.Adapters.KillmailChartAdapter
 
   @config Application.compile_env(:wanderer_notifier, :config_module, Config)
@@ -33,7 +37,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   end
 
   def execute(date \\ Date.utc_today()) do
-    if kill_charts_enabled?() and is_sunday?(date) do
+    if kill_charts_enabled?() and sunday?(date) do
       send_weekly_kills_chart()
     else
       {:ok, :skipped, %{}}
@@ -86,7 +90,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
     end
   end
 
-  defp is_sunday?(date) do
+  defp sunday?(date) do
     Date.day_of_week(date) == 7
   end
 

@@ -44,29 +44,32 @@ defmodule WandererNotifier.Logger do
   def error(message), do: Logger.error(message)
 
   @impl true
-  def api_error(message), do: api_error(message, [])
-  @impl true
+  def api_error(message, metadata \\ [])
   def api_error(message, metadata), do: Logger.error("[API] #{message}", metadata)
 
   @impl true
-  def processor_debug(message), do: processor_debug(message, [])
-  @impl true
-  def processor_debug(message, metadata), do: Logger.debug("[PROCESSOR] #{message}", metadata)
+  def processor_debug(message, metadata \\ [])
+
+  def processor_debug(message, metadata),
+    do: log(@level_debug, @category_processor, message, metadata)
 
   @impl true
-  def processor_info(message), do: processor_info(message, [])
-  @impl true
-  def processor_info(message, metadata), do: Logger.info("[PROCESSOR] #{message}", metadata)
+  def processor_info(message, metadata \\ [])
+
+  def processor_info(message, metadata),
+    do: log(@level_info, @category_processor, message, metadata)
 
   @impl true
-  def processor_warn(message), do: processor_warn(message, [])
-  @impl true
-  def processor_warn(message, metadata), do: Logger.warning("[PROCESSOR] #{message}", metadata)
+  def processor_warn(message, metadata \\ [])
+
+  def processor_warn(message, metadata),
+    do: log(@level_warn, @category_processor, message, metadata)
 
   @impl true
-  def processor_error(message), do: processor_error(message, [])
-  @impl true
-  def processor_error(message, metadata), do: Logger.error("[PROCESSOR] #{message}", metadata)
+  def processor_error(message, metadata \\ [])
+
+  def processor_error(message, metadata),
+    do: log(@level_error, @category_processor, message, metadata)
 
   @doc """
   Logs a message at the specified level with structured metadata.
@@ -374,19 +377,6 @@ defmodule WandererNotifier.Logger do
 
   def persistence_error(message, metadata \\ []),
     do: log(@level_error, @category_persistence, message, metadata)
-
-  # Processor category helpers
-  def processor_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_processor, message, metadata)
-
-  def processor_info(message, metadata \\ []),
-    do: log(@level_info, @category_processor, message, metadata)
-
-  def processor_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_processor, message, metadata)
-
-  def processor_error(message, metadata \\ []),
-    do: log(@level_error, @category_processor, message, metadata)
 
   # Cache category helpers
   def cache_debug(message, metadata \\ []),

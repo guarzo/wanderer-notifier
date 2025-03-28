@@ -516,4 +516,15 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
         {:ok, name}
     end
   end
+
+  @impl true
+  def get_cached_kills(character_id) do
+    cache_key = "zkill:character_kills:#{character_id}:1"
+
+    case repo_module().get(cache_key) do
+      nil -> {:ok, []}
+      kills when is_list(kills) -> {:ok, kills}
+      _ -> {:error, :invalid_cache_data}
+    end
+  end
 end
