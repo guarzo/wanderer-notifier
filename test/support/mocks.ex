@@ -4,6 +4,18 @@ defmodule WandererNotifier.MockZKillClient do
   """
 
   @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+
+  @impl true
+  def get_single_killmail(_kill_id), do: {:ok, []}
+
+  @impl true
+  def get_recent_kills(_limit \\ 10), do: {:ok, []}
+
+  @impl true
+  def get_system_kills(_system_id, _limit \\ 5), do: {:ok, []}
+
+  @impl true
+  def get_character_kills(_character_id, _limit \\ 25, _page \\ 1), do: {:ok, []}
 end
 
 defmodule WandererNotifier.MockESI do
@@ -12,6 +24,33 @@ defmodule WandererNotifier.MockESI do
   """
 
   @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
+
+  @impl true
+  def get_killmail(_kill_id, _hash), do: {:ok, %{}}
+
+  @impl true
+  def get_character_info(_character_id), do: {:ok, %{}}
+
+  @impl true
+  def get_corporation_info(_corporation_id), do: {:ok, %{}}
+
+  @impl true
+  def get_alliance_info(_alliance_id), do: {:ok, %{}}
+
+  @impl true
+  def get_system_info(_system_id), do: {:ok, %{}}
+
+  @impl true
+  def get_type_info(_type_id), do: {:ok, %{}}
+
+  @impl true
+  def get_system(_system_id), do: {:ok, %{}}
+
+  @impl true
+  def get_character(_character_id), do: {:ok, %{}}
+
+  @impl true
+  def get_type(_type_id), do: {:ok, %{}}
 end
 
 defmodule WandererNotifier.MockCacheHelpers do
@@ -20,6 +59,18 @@ defmodule WandererNotifier.MockCacheHelpers do
   """
 
   @behaviour WandererNotifier.Helpers.CacheHelpersBehaviour
+
+  @impl true
+  def get_cached_kills(_character_id), do: {:ok, []}
+
+  @impl true
+  def get_character_name(_character_id), do: {:ok, "Test Character"}
+
+  @impl true
+  def get_ship_name(_ship_id), do: {:ok, "Test Ship"}
+
+  @impl true
+  def get_tracked_characters, do: {:ok, []}
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -28,6 +79,27 @@ defmodule WandererNotifier.MockRepository do
   """
 
   @behaviour WandererNotifier.Data.Cache.RepositoryBehaviour
+
+  @impl true
+  def delete(_key), do: :ok
+
+  @impl true
+  def exists?(_key), do: false
+
+  @impl true
+  def get(_key), do: {:ok, nil}
+
+  @impl true
+  def get_and_update(_key, _fun), do: {:ok, nil}
+
+  @impl true
+  def get_tracked_characters, do: {:ok, []}
+
+  @impl true
+  def put(_key, _value), do: :ok
+
+  @impl true
+  def set(_key, _value, _ttl), do: :ok
 end
 
 defmodule WandererNotifier.MockKillmailPersistence do
@@ -36,6 +108,12 @@ defmodule WandererNotifier.MockKillmailPersistence do
   """
 
   @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
+
+  @impl true
+  def maybe_persist_killmail(_killmail), do: {:ok, %{}}
+
+  @impl true
+  def persist_killmail(_killmail), do: :ok
 end
 
 defmodule WandererNotifier.MockLogger do
@@ -43,5 +121,38 @@ defmodule WandererNotifier.MockLogger do
   Mock implementation of the logger for testing.
   """
 
-  @behaviour WandererNotifier.Logger
+  def debug(_message, _metadata \\ []), do: :ok
+  def info(_message, _metadata \\ []), do: :ok
+  def warn(_message, _metadata \\ []), do: :ok
+  def error(_message, _metadata \\ []), do: :ok
+  def api_debug(_message, _metadata \\ []), do: :ok
+  def api_info(_message, _metadata \\ []), do: :ok
+  def api_warn(_message, _metadata \\ []), do: :ok
+  def api_error(_message, _metadata \\ []), do: :ok
+  def websocket_info(_message, _metadata \\ []), do: :ok
+  def websocket_error(_message, _metadata \\ []), do: :ok
+end
+
+defmodule WandererNotifier.MockConfig do
+  @moduledoc """
+  Mock implementation of the config for testing.
+  """
+
+  @behaviour WandererNotifier.Core.ConfigBehaviour
+
+  def start_link do
+    Agent.start_link(fn -> %{kill_charts_enabled: true} end, name: __MODULE__)
+  end
+
+  def set_kill_charts_enabled(value) do
+    Agent.update(__MODULE__, &Map.put(&1, :kill_charts_enabled, value))
+  end
+
+  @impl true
+  def discord_channel_id_for(_feature), do: "123456789"
+
+  @impl true
+  def kill_charts_enabled? do
+    Agent.get(__MODULE__, & &1.kill_charts_enabled)
+  end
 end
