@@ -5,10 +5,11 @@ defmodule WandererNotifier.Services.KillmailComparison do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Resources.{Killmail, Api}
-  alias WandererNotifier.Services.ZKillboardApi
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Resources.{Api, Killmail, TrackedCharacter}
+  alias WandererNotifier.Services.{KillTrackingHistory, ZKillboardApi}
   import Ash.Query
 
   # Note: ZKillboard API no longer supports direct date filtering via startTime/endTime parameters.
@@ -109,7 +110,10 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Log ZKB data for a kill
   defp log_zkb_data(kill_id, kill_data) do
-    Logger.info("ZKB Data for #{kill_id}: #{inspect(kill_data)}")
+    AppLogger.processor_info("ZKB Data", %{
+      kill_id: kill_id,
+      data: inspect(kill_data)
+    })
   end
 
   # Process kill data from ZKB and ESI
@@ -118,7 +122,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     hash = get_in(kill_data, ["zkb", "hash"])
 
     # Fetch ESI data
-    case WandererNotifier.Api.ESI.Service.get_killmail(kill_id, hash) do
+    case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
         process_esi_data(character_id, kill_id, kill_data, esi_data)
 
@@ -130,11 +134,17 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Process ESI data for a kill
   defp process_esi_data(character_id, kill_id, kill_data, esi_data) do
-    Logger.info("ESI Data for #{kill_id}: #{inspect(esi_data)}")
+    AppLogger.processor_info("ESI Data", %{
+      kill_id: kill_id,
+      data: inspect(esi_data)
+    })
 
     # Merge ZKB and ESI data
     merged_data = Map.merge(kill_data, esi_data)
-    Logger.info("Merged Data for #{kill_id}: #{inspect(merged_data)}")
+    AppLogger.processor_info("Merged Data", %{
+      kill_id: kill_id,
+      data: inspect(merged_data)
+    })
 
     # Add basic analysis of why we might have missed it
     analysis = analyze_kill_miss_reason(merged_data, character_id)
@@ -143,7 +153,10 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Log ESI fetch error
   defp log_esi_fetch_error(kill_id, error) do
-    Logger.error("Failed to get ESI data for #{kill_id}: #{inspect(error)}")
+    AppLogger.processor_error("Failed to get ESI data", %{
+      kill_id: kill_id,
+      error: inspect(error)
+    })
   end
 
   # Group kills by reason for analysis
@@ -326,7 +339,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
           {:ok, map()} | {:error, term()}
   def generate_and_cache_comparison_data(cache_type, start_datetime, end_datetime) do
     # Check if database operations are enabled before proceeding
-    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+    if TrackedCharacter.database_enabled?() do
       generate_with_database(cache_type, start_datetime, end_datetime)
     else
       generate_without_database(cache_type)
@@ -335,24 +348,26 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Handle the case when database is enabled
   defp generate_with_database(cache_type, start_datetime, end_datetime) do
-    try do
-      case fetch_tracked_characters() do
-        {:ok, characters} ->
-          process_characters_for_cache(characters, cache_type, start_datetime, end_datetime)
+    case fetch_tracked_characters() do
+      {:ok, characters} ->
+        process_characters_for_cache(characters, cache_type, start_datetime, end_datetime)
 
-        {:error, reason} ->
-          log_character_fetch_error(reason)
-          {:error, reason}
-      end
-    rescue
-      e -> handle_comparison_error(e, cache_type)
+      {:error, reason} ->
+        log_character_fetch_error(reason)
+        {:error, reason}
     end
+  rescue
+    e -> handle_comparison_error(e, cache_type)
   end
 
   # Fetch the tracked characters from the database
   defp fetch_tracked_characters do
-    AppLogger.processor_info("Fetching characters for comparison data generation")
-    WandererNotifier.Resources.TrackedCharacter.list_all()
+    # Check if database is enabled and fetch characters
+    if TrackedCharacter.database_enabled?() do
+      TrackedCharacter.list_all()
+    else
+      []
+    end
   end
 
   # Log error when fetching characters fails
@@ -432,12 +447,12 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Check if we need fresh data or can use historical
   defp needs_fresh_data?(character_id, cache_type) do
-    WandererNotifier.Services.KillTrackingHistory.needs_refresh?(character_id, cache_type)
+    KillTrackingHistory.needs_refresh?(character_id, cache_type)
   end
 
   # Use historical data when available
   defp use_historical_data(character_id, character_name, cache_type) do
-    case WandererNotifier.Services.KillTrackingHistory.get_latest_comparison(
+    case KillTrackingHistory.get_latest_comparison(
            character_id,
            cache_type
          ) do
@@ -485,7 +500,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
   # Save data to history if database is enabled
   defp save_to_history(character_comparisons, cache_type) do
-    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+    if TrackedCharacter.database_enabled?() do
       Enum.each(character_comparisons, fn comp ->
         # Create comparison data map from the comp structure
         comparison_data = %{
@@ -494,7 +509,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
           missing_kills: comp.missing_kills
         }
 
-        WandererNotifier.Services.KillTrackingHistory.record_comparison(
+        KillTrackingHistory.record_comparison(
           comp.character_id,
           cache_type,
           comparison_data
@@ -651,10 +666,11 @@ defmodule WandererNotifier.Services.KillmailComparison do
   end
 
   defp fetch_zkill_kills(character_id, start_date, end_date) do
-    # Get all recent kills for the character - no date parameters as ZKill API doesn't use them anymore
-    case WandererNotifier.Services.ZKillboardApi.get_character_kills(character_id) do
+    case ZKillboardApi.get_character_kills(character_id) do
       {:ok, kills} ->
-        Logger.info("Got #{length(kills)} kills from ZKillboard")
+        AppLogger.processor_info("ZKill data received", %{
+          kill_count: length(kills)
+        })
         process_kills(kills, start_date, end_date)
 
       error ->
@@ -692,7 +708,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     # First check if we have this kill cached
     cache_key = "esi:killmail:#{kill["killmail_id"]}"
 
-    case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+    case CacheRepo.get(cache_key) do
       nil -> fetch_and_check_kill(kill, cache_key, start_date, end_date)
       esi_data -> check_cached_kill(kill, esi_data, start_date, end_date)
     end
@@ -701,17 +717,20 @@ defmodule WandererNotifier.Services.KillmailComparison do
   # Fetch a kill from ESI and check if it's in the date range
   defp fetch_and_check_kill(kill, cache_key, start_date, end_date) do
     # Not in cache, fetch from ESI
-    case WandererNotifier.Api.ESI.Service.get_killmail(
+    case ESIService.get_killmail(
            kill["killmail_id"],
            get_in(kill, ["zkb", "hash"])
          ) do
       {:ok, esi_data} ->
         # Cache the ESI data for 24 hours
-        WandererNotifier.Data.Cache.Repository.set(cache_key, esi_data, 86_400)
+        CacheRepo.set(cache_key, esi_data, 86_400)
         check_kill_in_date_range(kill, esi_data, start_date, end_date)
 
       {:error, reason} ->
-        Logger.error("Failed to get ESI data for kill #{kill["killmail_id"]}: #{inspect(reason)}")
+        AppLogger.processor_error("Failed to get ESI data", %{
+          kill_id: kill["killmail_id"],
+          error: inspect(reason)
+        })
 
         :skip
     end
@@ -734,7 +753,10 @@ defmodule WandererNotifier.Services.KillmailComparison do
         end
 
       error ->
-        Logger.error("Failed to parse kill time for #{kill["killmail_id"]}: #{inspect(error)}")
+        AppLogger.processor_error("Failed to parse kill time", %{
+          kill_id: kill["killmail_id"],
+          error: inspect(error)
+        })
 
         :skip
     end
@@ -789,9 +811,10 @@ defmodule WandererNotifier.Services.KillmailComparison do
   end
 
   defp analyze_kill_miss_reason(kill_data, character_id) do
-    Logger.info(
-      "TEST LOG - Analyzing kill #{kill_data["killmail_id"]} for character #{character_id}"
-    )
+    AppLogger.processor_debug("Analyzing kill", %{
+      kill_id: kill_data["killmail_id"],
+      character_id: character_id
+    })
 
     # Log the full kill data structure for debugging
     AppLogger.processor_info("Full kill data for analysis", %{
@@ -909,9 +932,12 @@ defmodule WandererNotifier.Services.KillmailComparison do
     victim_match = to_string(victim_id) == str_char_id
 
     # Log victim details
-    Logger.info(
-      "VICTIM CHECK - Kill #{kill_data["killmail_id"]} - Victim ID: #{victim_id}, Character ID: #{character_id}, Match: #{victim_match}"
-    )
+    AppLogger.processor_debug("Victim tracking check", %{
+      kill_id: kill_data["killmail_id"],
+      victim_id: victim_id,
+      character_id: character_id,
+      match: victim_match
+    })
 
     # Check attackers
     attackers = kill_data["attackers"] || []
@@ -923,16 +949,23 @@ defmodule WandererNotifier.Services.KillmailComparison do
         str_attacker_id = if(attacker_char_id, do: to_string(attacker_char_id), else: nil)
         is_match = str_attacker_id == str_char_id
 
-        Logger.info(
-          "ATTACKER CHECK - Kill #{kill_data["killmail_id"]} - Attacker ID: #{attacker_char_id}, Character ID: #{character_id}, Match: #{is_match}"
-        )
+        AppLogger.processor_debug("Attacker tracking check", %{
+          kill_id: kill_data["killmail_id"],
+          attacker_id: attacker_char_id,
+          character_id: character_id,
+          match: is_match
+        })
 
         is_match
       end)
 
-    Logger.info(
-      "FINAL CHECK - Kill #{kill_data["killmail_id"]} - Character #{character_id} - Victim Match: #{victim_match}, Attacker Match: #{attacker_match}, Total Attackers: #{length(attackers)}"
-    )
+    AppLogger.processor_debug("Final tracking determination", %{
+      kill_id: kill_data["killmail_id"],
+      character_id: character_id,
+      victim_match: victim_match,
+      attacker_match: attacker_match,
+      total_attackers: length(attackers)
+    })
 
     not (victim_match or attacker_match)
   end
@@ -1135,7 +1168,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     case get_character_comparison(character_id, character_name, start_datetime, end_datetime) do
       {:ok, comparison_data} = result ->
         # Store in historical tracking
-        WandererNotifier.Services.KillTrackingHistory.record_comparison(
+        KillTrackingHistory.record_comparison(
           character_id,
           cache_type,
           comparison_data

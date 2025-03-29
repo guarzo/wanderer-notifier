@@ -3,13 +3,14 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   API controller for the web interface.
   """
   use Plug.Router
-  alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Helpers.NotificationHelpers
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.License
-  alias WandererNotifier.Services.CharacterKillsService
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.{Config, License, Stats}
+  alias WandererNotifier.Data.Cache.Repository
+  alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Repo
+  alias WandererNotifier.Resources.{KillmailPersistence, TrackedCharacter}
+  alias WandererNotifier.Services.{CharacterKillsService, KillmailComparison, Service}
 
   # Module attributes
   @api_version "1.0.0"
@@ -64,7 +65,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Status endpoint for the dashboard
   get "/status" do
     try do
-      license_status = WandererNotifier.Core.License.status()
+      license_status = License.status()
 
       license_info = %{
         valid: license_status[:valid],
@@ -74,36 +75,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         error_message: license_status[:error_message]
       }
 
-      stats = WandererNotifier.Core.Stats.get_stats()
+      stats = Stats.get_stats()
       features = Features
       limits = features.get_all_limits()
 
       # Add error handling for tracked systems and characters
-      tracked_systems =
-        try do
-          WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-        rescue
-          e ->
-            AppLogger.api_error("Error retrieving tracked systems",
-              error: inspect(e),
-              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-            )
-
-            []
-        end
-
-      tracked_characters =
-        try do
-          WandererNotifier.Data.Cache.Repository.get("map:characters") || []
-        rescue
-          e ->
-            AppLogger.api_error("Error retrieving tracked characters",
-              error: inspect(e),
-              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-            )
-
-            []
-        end
+      tracked_systems = get_tracked_systems_safely()
+      tracked_characters = get_tracked_characters_safely()
 
       usage = %{
         tracked_systems: %{
@@ -159,20 +137,45 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
   end
 
+  # Helper function to safely get tracked systems
+  defp get_tracked_systems_safely do
+    CacheHelpers.get_tracked_systems()
+  rescue
+    e ->
+      AppLogger.api_error("Error retrieving tracked systems",
+        error: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      []
+  end
+
+  # Helper function to safely get tracked characters
+  defp get_tracked_characters_safely do
+    Repository.get("map:characters") || []
+  rescue
+    e ->
+      AppLogger.api_error("Error retrieving tracked characters",
+        error: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      []
+  end
+
   # Database statistics endpoint for the dashboard
   get "/db-stats" do
     try do
       # Check if kill charts is enabled
       if Features.kill_charts_enabled?() do
         # Check if database operations are enabled
-        if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+        if TrackedCharacter.database_enabled?() do
           # Get killmail statistics
-          killmail_stats =
-            WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+          killmail_stats = KillmailPersistence.get_tracked_kills_stats()
 
           # Get database health status
           db_health =
-            case WandererNotifier.Repo.health_check() do
+            case Repo.health_check() do
               {:ok, ping_time} -> %{status: "connected", ping_ms: ping_time}
               {:error, reason} -> %{status: "error", reason: inspect(reason)}
             end
@@ -263,7 +266,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     # Check if kill charts is enabled
     if Features.kill_charts_enabled?() do
       # Get stats using KillmailPersistence
-      stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
+      stats = KillmailPersistence.get_tracked_kills_stats()
 
       conn
       |> put_resp_content_type("application/json")
@@ -445,19 +448,19 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     # Check if kill charts is enabled
     if Features.kill_charts_enabled?() do
       # Check if database operations are enabled
-      if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      if TrackedCharacter.database_enabled?() do
         try do
           # Get total statistics count
           query = "SELECT COUNT(*) FROM killmail_statistics"
-          {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[total_stats]]}} = Repo.query(query)
 
           # Get count of characters with aggregated stats
           query = "SELECT COUNT(DISTINCT character_id) FROM killmail_statistics"
-          {:ok, %{rows: [[aggregated_characters]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[aggregated_characters]]}} = Repo.query(query)
 
           # Get the most recent aggregation date
           query = "SELECT MAX(inserted_at) FROM killmail_statistics"
-          {:ok, %{rows: [[last_aggregation]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[last_aggregation]]}} = Repo.query(query)
 
           # Format the date nicely if it exists
           formatted_date =
@@ -546,7 +549,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
     if Features.kill_charts_enabled?() do
       # Try to sync characters
-      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+      case TrackedCharacter.sync_from_cache() do
         {:ok, result} ->
           # Get the counts from the result
           conn
@@ -622,7 +625,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/test-notification" do
     AppLogger.api_info("Test notification endpoint called")
 
-    result = WandererNotifier.Services.KillProcessor.send_test_kill_notification()
+    # Use NotificationHelpers instead of CharacterKillsService
+    result = NotificationHelpers.send_test_kill_notification()
 
     response =
       case result do
@@ -631,6 +635,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             success: true,
             message: "Test notification sent for kill_id: #{kill_id}",
             details: "Check your Discord for the message."
+          }
+        {:error, reason} ->
+          %{
+            success: false,
+            message: "Failed to send test notification",
+            details: reason
           }
       end
 
@@ -643,7 +653,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/test-character-notification" do
     AppLogger.api_info("Test character notification endpoint called")
 
-    result = send_test_character_notification()
+    result = NotificationHelpers.send_test_character_notification()
 
     # Handle the result (should always return {:ok, character_id, character_name} with our changes)
     {:ok, character_id, character_name} = result
@@ -727,8 +737,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           has_api_token: notifier_api_token != nil
         )
 
+        alias WandererNotifier.LicenseManager.Client, as: LicenseClient
         # Call the license manager client directly
-        case WandererNotifier.LicenseManager.Client.validate_bot(notifier_api_token, license_key) do
+        case LicenseClient.validate_bot(notifier_api_token, license_key) do
           {:ok, response} ->
             # Get validation status directly from response
             license_valid = response["license_valid"] || false
@@ -798,7 +809,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/recent-kills" do
     AppLogger.api_info("Recent kills endpoint called")
 
-    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills()
+    # Use Service module to get recent kills
+    recent_kills = Service.get_recent_kills()
 
     response = %{
       success: true,
@@ -812,7 +824,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Handle test kill notification
   post "/test-kill" do
-    case WandererNotifier.Services.KillProcessor.send_test_kill_notification() do
+    # Use NotificationHelpers instead of CharacterKillsService
+    case NotificationHelpers.send_test_kill_notification() do
       {:ok, kill_id} ->
         conn
         |> put_resp_content_type("application/json")
@@ -824,6 +837,17 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             kill_id: kill_id
           })
         )
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            success: false,
+            message: "Failed to send test notification",
+            error: reason
+          })
+        )
     end
   end
 
@@ -831,259 +855,19 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Helper Functions
   #
 
-  #
-  # Character Notification
-  #
-  defp send_test_character_notification do
-    AppLogger.api_info("Triggering test character notification")
+  # Removed unused function send_test_character_notification
 
-    # Get tracked characters or use sample if none are available
-    tracked_characters = get_and_log_tracked_characters()
+  # Removed unused function get_and_log_tracked_characters
 
-    tracked_characters
-    |> get_valid_character_for_notification()
-    |> send_character_notification()
-  end
+  # Removed unused function get_valid_character_for_notification
 
-  # Get tracked characters and log their count
-  defp get_and_log_tracked_characters do
-    tracked_characters = CacheHelpers.get_tracked_characters()
+  # Removed unused function create_sample_character
 
-    AppLogger.api_debug("Retrieved tracked characters",
-      count: length(tracked_characters)
-    )
+  # Removed unused function send_character_notification
 
-    tracked_characters
-  end
+  # Removed unused function extract_character_details
 
-  # Find a valid character or return a sample one
-  defp get_valid_character_for_notification(tracked_characters) do
-    valid_chars = Enum.filter(tracked_characters, &valid_character_id?/1)
-
-    AppLogger.api_debug("Filtered valid characters",
-      valid_count: length(valid_chars),
-      total_count: length(tracked_characters)
-    )
-
-    if Enum.empty?(valid_chars) do
-      create_sample_character()
-    else
-      Enum.random(valid_chars)
-    end
-  end
-
-  # Create a standard sample character for testing
-  defp create_sample_character do
-    AppLogger.api_info("No valid characters found, using sample character")
-
-    %{
-      "character_id" => "1354830081",
-      "character_name" => "CCP Garthagk",
-      "corporation_id" => 98_356_193,
-      "corporation_ticker" => "CCP"
-    }
-  end
-
-  # Send notification with the provided character
-  defp send_character_notification(character) do
-    {character_id, character_name} = extract_character_details(character)
-
-    AppLogger.api_info("Sending test character notification",
-      character_id: character_id,
-      character_name: character_name
-    )
-
-    # Format the character for notification
-    formatted_character = format_character_for_notification(character)
-
-    # Send the notification
-    WandererNotifier.Notifiers.Factory.notify(
-      :send_new_tracked_character_notification,
-      [formatted_character]
-    )
-
-    {:ok, character_id, character_name}
-  end
-
-  # Extract character details
-  defp extract_character_details(character) do
-    character_id = extract_character_id(character)
-    character_name = extract_character_name(character)
-
-    AppLogger.api_debug("Extracted character details",
-      character_id: character_id,
-      character_name: character_name
-    )
-
-    {character_id, character_name}
-  end
-
-  # Extract character ID
-  defp extract_character_id(character) do
-    extract_character_id_by_type(character)
-  end
-
-  # Handle different types of character data for ID extraction
-  defp extract_character_id_by_type(character) when is_struct(character) do
-    extract_id_from_struct(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_map(character) do
-    extract_id_from_map(character)
-  end
-
-  defp extract_character_id_by_type(character) when is_binary(character) do
-    character
-  end
-
-  defp extract_character_id_by_type(character) when is_integer(character) do
-    to_string(character)
-  end
-
-  defp extract_character_id_by_type(_) do
-    nil
-  end
-
-  # Extract ID from a struct
-  defp extract_id_from_struct(struct) do
-    if Map.has_key?(struct, :character_id) do
-      struct.character_id
-    else
-      nil
-    end
-  end
-
-  # Extract ID from a map
-  defp extract_id_from_map(map) do
-    cond do
-      Map.has_key?(map, "character_id") -> map["character_id"]
-      Map.has_key?(map, :character_id) -> map.character_id
-      true -> nil
-    end
-  end
-
-  # Extract character name
-  defp extract_character_name(character) do
-    extract_character_name_by_type(character)
-  end
-
-  # Handle different types of character data for name extraction
-  defp extract_character_name_by_type(character) when is_struct(character) do
-    extract_name_from_struct(character)
-  end
-
-  defp extract_character_name_by_type(character) when is_map(character) do
-    extract_name_from_map(character)
-  end
-
-  defp extract_character_name_by_type(_) do
-    "Unknown Character"
-  end
-
-  # Extract name from a struct
-  defp extract_name_from_struct(struct) do
-    cond do
-      Map.has_key?(struct, :character_name) -> struct.character_name
-      Map.has_key?(struct, :name) -> struct.name
-      true -> "Unknown Character"
-    end
-  end
-
-  # Extract name from a map
-  defp extract_name_from_map(map) do
-    cond do
-      Map.has_key?(map, "character_name") -> map["character_name"]
-      Map.has_key?(map, "name") -> map["name"]
-      Map.has_key?(map, :character_name) -> map.character_name
-      Map.has_key?(map, :name) -> map.name
-      true -> "Unknown Character"
-    end
-  end
-
-  # Helper to format character data consistently for notification
-  defp format_character_for_notification(character) do
-    AppLogger.api_debug("Formatting character for notification",
-      character_type: inspect(character.__struct__),
-      character_content: inspect(character, pretty: true, limit: 300)
-    )
-
-    # Always prioritize EVE ID
-    character_id = extract_character_id(character)
-
-    %{
-      "character_id" => character_id,
-      "character_name" => extract_character_name(character),
-      "corporation_id" => extract_corporation_id(character),
-      "corporation_ticker" => extract_corporation_ticker(character)
-    }
-  end
-
-  # Extract corporation ID from character data
-  defp extract_corporation_id(character) do
-    cond do
-      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-        character.corporation_id
-
-      is_map(character) && Map.has_key?(character, "corporation_id") ->
-        character["corporation_id"]
-
-      true ->
-        nil
-    end
-  end
-
-  # Extract corporation ticker from character data
-  defp extract_corporation_ticker(character) do
-    cond do
-      is_struct(character) && character.__struct__ == WandererNotifier.Data.Character ->
-        character.corporation_ticker
-
-      is_map(character) && Map.has_key?(character, "corporation_ticker") ->
-        character["corporation_ticker"]
-
-      is_map(character) && Map.has_key?(character, "corporation_name") ->
-        character["corporation_name"]
-
-      true ->
-        nil
-    end
-  end
-
-  #
-  # Validate character ID
-  #
-  defp valid_character_id?(character) do
-    cond do
-      has_valid_direct_id?(character) -> true
-      has_valid_nested_character?(character) -> true
-      true -> false
-    end
-  end
-
-  # Check if character has a valid ID directly in its map
-  defp has_valid_direct_id?(character) do
-    # Only check character_id
-    id_keys = ["character_id"]
-
-    Enum.any?(id_keys, fn key ->
-      is_binary(character[key]) && NotificationHelpers.valid_numeric_id?(character[key])
-    end)
-  end
-
-  # Check if character has a valid nested character map
-  defp has_valid_nested_character?(character) do
-    is_map(character["character"]) && valid_nested?(character["character"])
-  end
-
-  # Check if nested map has a valid ID
-  defp valid_nested?(nested_map) do
-    # Only check character_id keys
-    id_keys = ["character_id", "id"]
-
-    Enum.any?(id_keys, fn key ->
-      is_binary(nested_map[key]) && NotificationHelpers.valid_numeric_id?(nested_map[key])
-    end)
-  end
+  # Removed unused character ID and validation functions
 
   # Return list of tracked characters
   get "/characters" do
@@ -1092,7 +876,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       tracked_characters =
         try do
           # Use CacheHelpers to get a properly formatted list
-          WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+          CacheHelpers.get_tracked_characters()
         rescue
           e ->
             AppLogger.api_error("Error getting tracked characters: #{inspect(e)}")
@@ -1162,7 +946,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     AppLogger.api_info("Triggering sync of tracked characters from cache to Ash resource")
 
     # Inspect the map cache first
-    cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    cached_characters = Repository.get("map:characters") || []
     AppLogger.api_info("Found #{length(cached_characters)} characters in map cache")
 
     # Log some sample characters to check their format
@@ -1172,12 +956,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     end
 
     # Call the sync function
-    case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+    case TrackedCharacter.sync_from_cache() do
       {:ok, stats} ->
         # Get count after sync
-        ash_count_result =
-          WandererNotifier.Resources.TrackedCharacter
-          |> WandererNotifier.Resources.Api.read()
+        ash_count_result = TrackedCharacter.list_all()
 
         ash_count =
           case ash_count_result do
@@ -1217,17 +999,16 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     AppLogger.api_info("Triggering forced character synchronization")
 
     # Get all relevant caches
-    map_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    map_characters = Repository.get("map:characters") || []
 
     tracked_characters_cache =
-      WandererNotifier.Data.Cache.Repository.get("tracked:characters") || []
+      Repository.get("tracked:characters") || []
 
-    all_from_helper = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+    all_from_helper = CacheHelpers.get_tracked_characters()
 
     # Get characters from the Ash resource
     ash_result =
-      WandererNotifier.Resources.TrackedCharacter
-      |> WandererNotifier.Resources.Api.read()
+      TrackedCharacter.list_all()
 
     ash_characters =
       case ash_result do
@@ -1249,12 +1030,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     AppLogger.api_info("Before sync: Ash resource has #{length(ash_characters)} characters")
 
     # Perform the sync operation directly (not in a spawned process)
-    sync_result = WandererNotifier.Resources.TrackedCharacter.sync_from_cache()
+    sync_result = TrackedCharacter.sync_from_cache()
 
     # Get counts after sync
-    ash_result_after =
-      WandererNotifier.Resources.TrackedCharacter
-      |> WandererNotifier.Resources.Api.read()
+    ash_result_after = TrackedCharacter.list_all()
 
     ash_count_after =
       case ash_result_after do
@@ -1347,7 +1126,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           end_datetime: end_datetime
         })
 
-        case WandererNotifier.Services.KillmailComparison.compare_killmails(
+        case KillmailComparison.compare_killmails(
                character_id_int,
                start_datetime,
                end_datetime
@@ -1357,7 +1136,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             result_with_breakdown =
               if include_breakdown do
                 # Fetch all characters
-                case WandererNotifier.Resources.TrackedCharacter.list_all() do
+                case TrackedCharacter.list_all() do
                   {:ok, characters} ->
                     # For each character, calculate data
                     character_breakdowns =
@@ -1483,7 +1262,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           kill_ids_count: length(kill_ids)
         })
 
-        case WandererNotifier.Services.KillmailComparison.analyze_missing_kills(
+        case KillmailComparison.analyze_missing_kills(
                character_id,
                kill_ids
              ) do
@@ -1568,17 +1347,17 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           "kill_comparison:all:#{DateTime.to_iso8601(start_datetime)}:#{DateTime.to_iso8601(end_datetime)}"
 
         # Try to get data from cache first
-        case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+        case Repository.get(cache_key) do
           nil ->
             # Not in cache, generate the data
             AppLogger.api_info("Cache miss for kill comparison data, generating fresh data")
 
             # Fetch all tracked characters
-            case WandererNotifier.Resources.TrackedCharacter.list_all() do
+            case TrackedCharacter.list_all() do
               {:ok, characters} ->
                 # Generate comparison data for each character using the KillmailComparison service
                 character_comparisons =
-                  WandererNotifier.Services.KillmailComparison.generate_character_breakdowns(
+                  KillmailComparison.generate_character_breakdowns(
                     characters,
                     start_datetime,
                     end_datetime
@@ -1603,7 +1382,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
                 }
 
                 # Store in cache
-                WandererNotifier.Data.Cache.Repository.set(cache_key, comparison_data, cache_ttl)
+                Repository.set(cache_key, comparison_data, cache_ttl)
                 AppLogger.api_info("Cached comparison data", ttl_seconds: cache_ttl)
 
                 # Return the freshly generated data
@@ -1696,10 +1475,10 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       cache_key = "kill_comparison:#{cache_type}"
 
       # Check if data exists in cache already
-      case WandererNotifier.Data.Cache.Repository.get(cache_key) do
+      case Repository.get(cache_key) do
         nil ->
           # Not in cache - generate and store it using the KillmailComparison service
-          case WandererNotifier.Services.KillmailComparison.generate_and_cache_comparison_data(
+          case KillmailComparison.generate_and_cache_comparison_data(
                  cache_type,
                  start_datetime,
                  end_datetime
@@ -1797,7 +1576,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Helper function to delegate to the KillmailComparison service
   defp generate_character_breakdowns(characters, start_datetime, end_datetime) do
-    WandererNotifier.Services.KillmailComparison.generate_character_breakdowns(
+    KillmailComparison.generate_character_breakdowns(
       characters,
       start_datetime,
       end_datetime

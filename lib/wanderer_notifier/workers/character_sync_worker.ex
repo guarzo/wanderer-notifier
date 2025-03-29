@@ -7,8 +7,10 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   This worker serves as a fallback and validation mechanism to ensure consistency.
   """
   use GenServer
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Repository
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Resources.TrackedCharacter
 
   # Change from 15 minutes to 1 hour for validation checks
   @sync_interval 60 * 60 * 1000
@@ -71,7 +73,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   # Validate characters if they are available in cache
   defp validate_characters_if_available do
     # Get character counts
-    cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    cached_characters = Repository.get("map:characters") || []
 
     # Only run if we have characters in the cache
     if length(cached_characters) > 0 do
@@ -109,10 +111,9 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
       AppLogger.scheduler_warn("Inconsistencies found", missing: missing, different: different)
 
       # Only attempt to sync if database operations are enabled
-      if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+      if TrackedCharacter.database_enabled?() do
         # Run sync to fix inconsistencies
-        sync_result =
-          WandererNotifier.Resources.TrackedCharacter.sync_from_characters(cached_characters)
+        sync_result = TrackedCharacter.sync_from_characters(cached_characters)
 
         AppLogger.scheduler_info("Auto-fixed inconsistencies", result: inspect(sync_result))
         {:ok, %{inconsistent: true, sync_result: sync_result}}
@@ -128,25 +129,23 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
 
   # Perform consistency validation between cache and database
   defp validate_character_consistency(cached_characters) do
-    try do
-      # Get all tracked characters from database
-      case WandererNotifier.Resources.TrackedCharacter.list_all() do
-        {:ok, db_characters} ->
-          # Compare cache and database
-          comparison_result = compare_characters(cached_characters, db_characters)
-          {:ok, comparison_result}
+    # Get all tracked characters from database
+    case TrackedCharacter.list_all() do
+      {:ok, db_characters} ->
+        # Compare cache and database
+        comparison_result = compare_characters(cached_characters, db_characters)
+        {:ok, comparison_result}
 
-        {:error, reason} ->
-          {:error, reason}
-      end
-    rescue
-      e ->
-        AppLogger.scheduler_error("Error fetching database characters",
-          error: Exception.message(e)
-        )
-
-        {:error, e}
+      {:error, reason} ->
+        {:error, reason}
     end
+  rescue
+    e ->
+      AppLogger.scheduler_error("Error fetching database characters",
+        error: Exception.message(e)
+      )
+
+      {:error, e}
   end
 
   # Compare characters in cache and database
