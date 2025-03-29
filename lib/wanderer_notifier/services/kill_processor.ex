@@ -1341,5 +1341,4 @@ defmodule WandererNotifier.Services.KillProcessor do
       nil
     end
   end
-
 end

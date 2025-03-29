@@ -11,7 +11,6 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Web
 
-
   # Client API
 
   def start_link(opts \\ []) do

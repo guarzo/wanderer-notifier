@@ -570,5 +570,4 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       false
     end
   end
-
 end
