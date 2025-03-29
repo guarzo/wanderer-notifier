@@ -37,10 +37,17 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   end
 
   def execute(date \\ Date.utc_today()) do
-    if kill_charts_enabled?() and sunday?(date) do
-      send_weekly_kills_chart()
-    else
-      {:ok, :skipped, %{}}
+    cond do
+      not kill_charts_enabled?() ->
+        Logger.info("[SCHEDULER] Skipping weekly kills chart - feature disabled")
+        {:ok, :skipped, %{reason: :feature_disabled}}
+
+      not sunday?(date) ->
+        Logger.info("[SCHEDULER] Skipping weekly kills chart - not Sunday")
+        {:ok, :skipped, %{reason: :not_sunday}}
+
+      true ->
+        send_weekly_kills_chart()
     end
   end
 
@@ -57,10 +64,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   """
   @spec get_config() :: map()
   def get_config do
+    hour = Application.get_env(:wanderer_notifier, :killmail_chart_hour, @default_hour)
+    minute = Application.get_env(:wanderer_notifier, :killmail_chart_minute, @default_minute)
+
     %{
       type: :time,
-      hour: @default_hour,
-      minute: @default_minute,
+      hour: hour,
+      minute: minute,
       description: "Weekly character kill charts"
     }
   end
@@ -71,8 +81,14 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
       handle_chart_sending(channel_id)
     rescue
       e ->
+        error_message =
+          case e do
+            %{message: msg} -> msg
+            _ -> "#{inspect(e)}"
+          end
+
         Logger.error("[SCHEDULER] Exception while sending weekly kills chart: #{inspect(e)}")
-        {:error, "#{inspect(e)}", %{}}
+        {:error, error_message, %{}}
     end
   end
 
@@ -106,6 +122,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
         handle_discord_error(error)
     end
   end
+
   defp handle_discord_error({:error, reason}) when is_binary(reason) do
     Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{reason}")
     {:error, reason, %{}}

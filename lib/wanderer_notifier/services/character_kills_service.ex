@@ -17,6 +17,20 @@ defmodule WandererNotifier.Services.CharacterKillsService do
 
   @doc """
   Gets kills for a character within a date range.
+
+  ## Options
+    * `:from` - Start date for filtering kills (inclusive). If not specified, no lower bound is applied.
+    * `:to` - End date for filtering kills (inclusive). If not specified, no upper bound is applied.
+
+  ## Examples
+      # Get all kills
+      get_kills_for_character(123456)
+
+      # Get kills from a specific date onwards
+      get_kills_for_character(123456, from: ~D[2024-03-01])
+
+      # Get kills within a date range
+      get_kills_for_character(123456, from: ~D[2024-03-01], to: ~D[2024-03-31])
   """
   @spec get_kills_for_character(integer(), Keyword.t(), map()) ::
           {:ok, list(map())} | {:error, term()}

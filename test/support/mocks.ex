@@ -87,13 +87,13 @@ defmodule WandererNotifier.MockRepository do
   def exists?(_key), do: false
 
   @impl true
-  def get(_key), do: {:ok, nil}
+  def get(_key), do: nil
 
   @impl true
-  def get_and_update(_key, _fun), do: {:ok, nil}
+  def get_and_update(_key, _fun), do: {nil, nil}
 
   @impl true
-  def get_tracked_characters, do: {:ok, []}
+  def get_tracked_characters, do: []
 
   @impl true
   def put(_key, _value), do: :ok
