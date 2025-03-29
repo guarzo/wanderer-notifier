@@ -1,42 +1,38 @@
 defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @moduledoc """
-  Scheduler for updating solar system data from the Map API.
-
-  This scheduler periodically fetches and updates solar system data,
-  detecting and notifying about new systems.
+  Scheduler for updating system information.
   """
 
-  require WandererNotifier.Schedulers.Factory
-  require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-
+  use GenServer
   alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Core.Features
 
-  # Get the default interval from Timings module
-  @default_interval Timings.system_update_scheduler_interval()
+  @doc """
+  Starts the scheduler.
+  """
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
 
-  # Create an interval-based scheduler with specific configuration
-  WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
-    type: :interval,
-    default_interval: @default_interval,
-    enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0
-  )
-
+  @doc """
+  Initializes the scheduler state.
+  """
   @impl true
-  def execute(state) do
-    AppLogger.scheduler_info("Executing solar system data update")
+  def init(opts) do
+    {:ok, opts}
+  end
 
-    result = SystemsClient.update_systems()
-
-    case result do
-      {:ok, systems} ->
-        AppLogger.scheduler_info("Successfully updated #{length(systems)} solar systems")
-        {:ok, %{system_count: length(systems)}, state}
-
-      {:error, reason} ->
-        AppLogger.scheduler_error("Failed to update solar systems: #{inspect(reason)}")
-        {:error, reason, state}
+  @doc """
+  Executes the system update task.
+  """
+  def execute(cached_systems \\ []) do
+    if Features.map_charts_enabled?() do
+      case SystemsClient.update_systems(cached_systems) do
+        {:ok, systems} -> {:ok, systems}
+        error -> error
+      end
+    else
+      {:error, :feature_disabled}
     end
   end
 end

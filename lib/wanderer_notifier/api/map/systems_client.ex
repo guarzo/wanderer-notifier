@@ -13,9 +13,10 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Config.Features
 
   @doc """
-  Updates the system information in the cache.
+  Updates the systems in the cache.
 
   If cached_systems is provided, it will also identify and notify about new systems.
 
@@ -83,7 +84,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     systems = Enum.map(systems_data, &create_map_system/1)
 
     # Filter systems based on configuration
-    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
+    track_all_systems = Features.track_kspace_systems?()
 
     tracked_systems =
       if track_all_systems do

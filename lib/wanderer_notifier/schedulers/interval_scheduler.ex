@@ -10,8 +10,9 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
       use WandererNotifier.Schedulers.BaseScheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
-      # Add the alias for Logger
+      # Add the aliases
       alias WandererNotifier.Logger, as: AppLogger
+      alias WandererNotifier.Config.Timing
 
       # Default interval is 1 hour (in milliseconds) if not specified
       @default_interval unquote(Keyword.get(opts, :default_interval, 60 * 60 * 1000))
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       def initialize(opts) do
         # Get interval from options or use default
-        interval = Keyword.get(opts, :interval, @default_interval)
+        interval = get_configured_interval() || Keyword.get(opts, :interval, @default_interval)
 
         # Initialize last run timestamp
         last_run = Keyword.get(opts, :last_run)
@@ -113,11 +114,40 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         end
       end
 
+      # Get the configured interval based on scheduler name
+      defp get_configured_interval do
+        case @scheduler_name do
+          WandererNotifier.Schedulers.CharacterUpdateScheduler ->
+            Timing.get_character_update_scheduler_interval()
+
+          WandererNotifier.Schedulers.SystemUpdateScheduler ->
+            Timing.get_system_update_scheduler_interval()
+
+          WandererNotifier.Schedulers.MaintenanceScheduler ->
+            Timing.get_maintenance_interval()
+
+          WandererNotifier.Schedulers.CacheCheckScheduler ->
+            Timing.get_cache_check_interval()
+
+          WandererNotifier.Schedulers.CacheSyncScheduler ->
+            Timing.get_cache_sync_interval()
+
+          WandererNotifier.Schedulers.CacheCleanupScheduler ->
+            Timing.get_cache_cleanup_interval()
+
+          WandererNotifier.Schedulers.LicenseRefreshScheduler ->
+            Timing.get_license_refresh_interval()
+
+          _ ->
+            nil
+        end
+      end
+
       @impl true
       def get_config do
         %{
           type: :interval,
-          interval: @default_interval
+          interval: get_configured_interval() || @default_interval
         }
       end
 

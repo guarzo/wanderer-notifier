@@ -17,9 +17,10 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Data.Character
+  alias WandererNotifier.Config.Application
+  alias WandererNotifier.Config.Cache
 
   @doc """
   Updates the tracked characters information in the cache.
@@ -291,7 +292,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     CacheRepo.set(
       "map:characters",
       tracked_characters,
-      Timings.characters_cache_ttl()
+      Cache.characters_cache_ttl()
     )
 
     # Handle character persistence separately to isolate errors
@@ -503,7 +504,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Log database configuration details to help with troubleshooting
   defp log_database_config do
-    db_config = Application.get_env(:wanderer_notifier, WandererNotifier.Repo)
+    db_config = get_db_config()
 
     if is_nil(db_config) do
       AppLogger.api_error("[CharactersClient] Database configuration is missing")
@@ -516,6 +517,13 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       AppLogger.api_debug(
         "[CharactersClient] Database configuration: #{user}@#{host}:#{port}/#{db}"
       )
+    end
+  end
+
+  defp get_db_config do
+    case Application.get_repo_config() do
+      {:ok, config} -> config
+      _ -> %{}
     end
   end
 

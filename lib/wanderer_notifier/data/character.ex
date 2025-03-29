@@ -17,6 +17,7 @@ defmodule WandererNotifier.Data.Character do
   @behaviour Access
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Application
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -242,9 +243,7 @@ defmodule WandererNotifier.Data.Character do
 
   # Get a fallback ID for test environment
   defp get_test_fallback_id(eve_id, character_data, map_response) do
-    is_test =
-      Application.get_env(:wanderer_notifier, :env) == :test ||
-        System.get_env("MIX_ENV") == "test"
+    is_test = Application.get_env() == :test
 
     if is_nil(eve_id) && is_test do
       # In test environment, use character_id as fallback

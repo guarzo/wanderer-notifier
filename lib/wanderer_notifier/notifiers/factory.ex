@@ -1,45 +1,35 @@
 defmodule WandererNotifier.Notifiers.Factory do
   @moduledoc """
-  Factory module for creating notifier instances.
-  Provides a unified way to get the appropriate notifier based on configuration.
+  Factory module for creating and managing notifiers.
   """
-  require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+
+  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Notifiers.TestNotifier
 
   @doc """
-  Returns the appropriate notifier module based on the current environment and configuration.
+  Sends a notification using the appropriate notifier based on the current configuration.
   """
-  @spec get_notifier() :: module()
-  def get_notifier do
-    env = Application.get_env(:wanderer_notifier, :env, :prod)
-
-    cond do
-      # If a specific notifier is configured, use it (useful for testing)
-      Application.get_env(:wanderer_notifier, :notifier) != nil ->
-        Application.get_env(:wanderer_notifier, :notifier)
-
-      # In test environment, use the test notifier
-      env == :test ->
-        WandererNotifier.Notifiers.Discord.Test
-
-      # Discord is the default and only supported notifier
-      true ->
-        WandererNotifier.Notifiers.Discord
+  def notify(type, data) do
+    if Features.notifications_enabled?() do
+      do_notify(get_notifier(), type, data)
+    else
+      {:error, :notifications_disabled}
     end
   end
 
   @doc """
-  Sends a notification using the configured notifier.
+  Gets the appropriate notifier based on the current configuration.
   """
-  @spec notify(atom(), list()) :: :ok | {:error, any()}
-  def notify(function, args) do
-    notifier = get_notifier()
-
-    # Add debug logging for character notifications
-    if function == :send_new_tracked_character_notification do
-      AppLogger.processor_debug("Sending character notification", args: inspect(args))
+  def get_notifier do
+    if Features.test_mode_enabled?() do
+      TestNotifier
+    else
+      DiscordNotifier
     end
+  end
 
-    apply(notifier, function, args)
+  defp do_notify(notifier, type, data) do
+    notifier.send_notification(type, data)
   end
 end

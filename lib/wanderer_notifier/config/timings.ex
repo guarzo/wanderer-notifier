@@ -7,127 +7,176 @@ defmodule WandererNotifier.Config.Timings do
   making it easier to manage and adjust these values without having to search through the codebase.
   """
 
-  # Cache TTLs (in seconds)
-
   @doc """
-  TTL for systems cache (24 hours)
+  Get the cache TTL for systems.
+  Default: 24 hours
   """
-  def systems_cache_ttl, do: 86_400
+  def systems_cache_ttl do
+    get_env(:systems_cache_ttl, 24 * 60 * 60)
+  end
 
   @doc """
-  TTL for characters cache (24 hours)
+  Get the cache TTL for characters.
+  Default: 24 hours
   """
-  def characters_cache_ttl, do: 86_400
+  def characters_cache_ttl do
+    get_env(:characters_cache_ttl, 300)
+  end
 
   @doc """
-  TTL for static info cache (1 week)
+  Get the cache TTL for static info.
+  Default: 1 week
   """
-  def static_info_cache_ttl, do: 604_800
-
-  # Maintenance intervals (in seconds)
+  def static_info_cache_ttl do
+    get_env(:static_info_cache_ttl, 86_400)
+  end
 
   @doc """
-  Interval for status updates (30 seconds)
+  Get the maintenance interval.
+  Default: 1 hour
   """
-  def status_update_interval, do: 30
+  def maintenance_interval do
+    get_env(:maintenance_interval, 300_000)
+  end
 
   @doc """
-  Interval for systems updates (30 seconds)
+  Get the reconnect delay.
+  Default: 5 seconds
   """
-  def systems_update_interval, do: 30
+  def reconnect_delay do
+    get_env(:reconnect_delay, 5000)
+  end
 
   @doc """
-  Interval for character updates (30 seconds)
+  Get the interval for status updates.
+  Default: 30 seconds
   """
-  def character_update_interval, do: 30
-
-  # Cache check intervals (in milliseconds)
+  def status_update_interval do
+    get_env(:status_update_interval, 30)
+  end
 
   @doc """
-  Interval for cache availability checks (5 seconds)
+  Get the interval for systems updates.
+  Default: 30 seconds
   """
-  def cache_check_interval, do: 5000
+  def systems_update_interval do
+    get_env(:systems_update_interval, 30)
+  end
 
   @doc """
-  Interval for cache disk sync (1 minute)
+  Get the interval for character updates.
+  Default: 30 seconds
   """
-  def cache_sync_interval, do: 60_000
+  def character_update_interval do
+    get_env(:character_update_interval, 30)
+  end
 
   @doc """
-  Interval for cache expired entry cleanup (1 minute)
+  Get the interval for cache availability checks.
+  Default: 5 seconds
   """
-  def cache_cleanup_interval, do: 60_000
-
-  # Retry configurations
+  def cache_check_interval do
+    get_env(:cache_check_interval, 5000)
+  end
 
   @doc """
-  Maximum number of retries for cache operations
+  Get the interval for cache disk sync.
+  Default: 1 minute
   """
-  def max_retries, do: 3
+  def cache_sync_interval do
+    get_env(:cache_sync_interval, 60_000)
+  end
 
   @doc """
-  Delay between retries for cache operations (in milliseconds)
+  Get the interval for cache expired entry cleanup.
+  Default: 1 minute
   """
-  def retry_delay, do: 1000
-
-  # Forced kill notification interval
+  def cache_cleanup_interval do
+    get_env(:cache_cleanup_interval, 60_000)
+  end
 
   @doc """
-  Interval between forced kill notifications (5 minutes)
+  Get the maximum number of retries for cache operations.
+  Default: 3
   """
-  def forced_kill_interval, do: 300
-
-  # WebSocket intervals
+  def max_retries do
+    get_env(:max_retries, 3)
+  end
 
   @doc """
-  Interval for WebSocket heartbeat (10 seconds)
+  Get the delay between retries for cache operations.
+  Default: 1 second
   """
-  def websocket_heartbeat_interval, do: 10_000
+  def retry_delay do
+    get_env(:retry_delay, 1000)
+  end
 
   @doc """
-  Interval for service maintenance (60 seconds)
+  Get the interval between forced kill notifications.
+  Default: 5 minutes
   """
-  def maintenance_interval, do: 60_000
+  def forced_kill_interval do
+    get_env(:forced_kill_interval, 300)
+  end
 
   @doc """
-  Delay before reconnecting to WebSocket (10 seconds)
+  Get the interval for WebSocket heartbeat.
+  Default: 10 seconds
   """
-  def reconnect_delay, do: 10_000
+  def websocket_heartbeat_interval do
+    get_env(:websocket_heartbeat_interval, 10_000)
+  end
 
   @doc """
-  Interval for license refresh (1 hours)
+  Get the interval for license refresh.
+  Default: 1 hour
   """
-  def license_refresh_interval, do: :timer.hours(1)
-
-  # Scheduler configurations (in milliseconds)
+  def license_refresh_interval do
+    get_env(:license_refresh_interval, :timer.hours(1))
+  end
 
   @doc """
-  Interval for activity chart generation and sending (24 hours)
+  Get the interval for activity chart generation and sending.
+  Default: 24 hours
   """
-  def activity_chart_interval, do: 24 * 60 * 60 * 1000
+  def activity_chart_interval do
+    get_env(:activity_chart_interval, 24 * 60 * 60 * 1000)
+  end
 
   @doc """
-  Hour for TPS chart generation and sending (UTC, 12:00)
+  Get the hour for TPS chart generation and sending (UTC).
+  Default: 12
   """
-  def tps_chart_hour, do: 12
+  def tps_chart_hour do
+    get_env(:tps_chart_hour, 12)
+  end
 
   @doc """
-  Minute for TPS chart generation and sending (UTC, 00)
+  Get the minute for TPS chart generation and sending (UTC).
+  Default: 0
   """
-  def tps_chart_minute, do: 0
+  def tps_chart_minute do
+    get_env(:tps_chart_minute, 0)
+  end
 
   @doc """
-  Interval for character data updates (1 minute)
+  Get the interval for character data updates.
+  Default: 1 minute
   """
-  def character_update_scheduler_interval, do: 1 * 60 * 1000
+  def character_update_scheduler_interval do
+    get_env(:character_update_scheduler_interval, 1 * 60 * 1000)
+  end
 
   @doc """
-  Interval for system data updates (1 minute)
+  Get the interval for system data updates.
+  Default: 1 minute
   """
-  def system_update_scheduler_interval, do: 1 * 60 * 1000
+  def system_update_scheduler_interval do
+    get_env(:system_update_scheduler_interval, 1 * 60 * 1000)
+  end
 
   @doc """
-  Returns a map of all scheduler configurations for easier reference
+  Returns a map of all scheduler configurations for easier reference.
   """
   def scheduler_configs do
     %{
@@ -156,7 +205,7 @@ defmodule WandererNotifier.Config.Timings do
   end
 
   @doc """
-  Returns a map of all cache TTLs for easier reference
+  Returns a map of all cache TTLs for easier reference.
   """
   def cache_ttls do
     %{
@@ -173,5 +222,10 @@ defmodule WandererNotifier.Config.Timings do
         description: "Static system information"
       }
     }
+  end
+
+  # Helper function to get environment variables
+  defp get_env(key, default) do
+    Application.get_env(:wanderer_notifier, key, default)
   end
 end

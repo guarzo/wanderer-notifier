@@ -15,21 +15,19 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
-
-  # Run once per day (24 hours) by default
-  @default_interval 24 * 60 * 60 * 1000
+  alias WandererNotifier.Config.{Timing, Features}
 
   # Use the interval scheduler as our base
   use WandererNotifier.Schedulers.IntervalScheduler,
-    default_interval: @default_interval
+    default_interval: 24 * 60 * 60 * 1000
 
   @impl true
   def execute(state) do
-    if kill_charts_enabled?() do
+    if Features.kill_charts_enabled?() do
       AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
 
       # Get the configured retention period
-      retention_days = get_retention_period()
+      retention_days = Timing.get_persistence_config() |> Keyword.get(:retention_period_days, 180)
 
       # Run the cleanup operation
       {deleted_count, error_count} = KillmailAggregation.cleanup_old_killmails(retention_days)
@@ -64,22 +62,11 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
       {:error, e, state}
   end
 
-  # Get the configured retention period
-  defp get_retention_period do
-    Application.get_env(:wanderer_notifier, :persistence, [])
-    |> Keyword.get(:retention_period_days, 180)
-  end
-
-  # Check if kill charts feature is enabled
-  defp kill_charts_enabled? do
-    WandererNotifier.Core.Config.kill_charts_enabled?()
-  end
-
   @impl true
   def get_config do
     %{
       type: :interval,
-      interval: @default_interval,
+      interval: Timing.get_activity_chart_interval(),
       description: "Cleanup old killmail data based on retention policy"
     }
   end

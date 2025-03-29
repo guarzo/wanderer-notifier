@@ -1,91 +1,35 @@
 defmodule WandererNotifier.Cache.Repository do
   @moduledoc """
-  Cachex repository for WandererNotifier.
-  Provides a simple interface for caching data with optional TTL.
+  Repository for caching data in memory and on disk.
+  Provides a unified interface for cache operations.
   """
+
   use GenServer
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Timings
 
-  @cache_name :wanderer_notifier_cache
+  # Use the cache name from configuration
+  @cache_name CacheConfig.get_cache_name()
 
-  def start_link(_args \\ []) do
-    AppLogger.cache_info("Starting cache repository")
+  # -- STARTUP AND INITIALIZATION --
 
-    # Ensure cache directory exists
-    # Use a path that works in both dev container and production
-    cache_dir = determine_cache_dir()
-
-    # Ensure the directory exists
-    case File.mkdir_p(cache_dir) do
-      :ok ->
-        AppLogger.cache_info("Using cache directory", path: cache_dir)
-
-      {:error, reason} ->
-        AppLogger.cache_warn("Failed to create cache directory",
-          path: cache_dir,
-          reason: inspect(reason)
-        )
-
-        # Fall back to a temporary directory that should be writable
-        cache_dir = System.tmp_dir!() |> Path.join("wanderer_notifier_cache")
-        File.mkdir_p!(cache_dir)
-        AppLogger.cache_info("Using fallback cache directory", path: cache_dir)
-    end
-
-    # Configure Cachex with optimized settings
+  def start_link(_args) do
+    # Initialize the cache with default options
     cachex_options = [
-      # Set a higher limit for maximum entries (default is often too low)
-      limit: 10_000,
-
-      # Configure memory limits (in bytes) - 256MB
-      max_size: 256 * 1024 * 1024,
-
-      # Policy for when the cache hits the limit
-      policy: Cachex.Policy.LRW,
-
-      # Enable statistics for better monitoring
-      stats: true,
-
-      # Set fallback function for cache misses
-      fallback: &handle_cache_miss/1
+      stats: true
     ]
 
-    # Start Cachex
-    result = Cachex.start_link(@cache_name, cachex_options)
-    AppLogger.cache_info("Cache repository started", result: inspect(result))
-
-    # Start the cache monitoring process
-    GenServer.start_link(__MODULE__, [cache_dir], name: __MODULE__)
-
-    result
-  end
-
-  # Helper function to determine the appropriate cache directory
-  defp determine_cache_dir do
-    # Get the configured cache directory
-    configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
-
-    # Check if we're in a dev environment
-    in_dev_environment =
-      String.contains?(File.cwd!(), "dev-container") or
-        String.contains?(File.cwd!(), "workspaces")
-
-    if in_dev_environment do
-      # Use a directory in the current workspace
-      Path.join(File.cwd!(), "tmp/cache")
-    else
-      # Otherwise use the configured directory (for production)
-      configured_dir
+    # Start Cachex with the configured name and options
+    case Cachex.start_link(@cache_name, cachex_options) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      error -> error
     end
   end
 
-  # Fallback function for cache misses
-  defp handle_cache_miss(key) do
-    AppLogger.cache_debug("Cache miss handled by fallback", key: key)
-    {:ignore, nil}
-  end
+  # -- PRIVATE HELPERS --
 
   def child_spec(opts) do
     %{

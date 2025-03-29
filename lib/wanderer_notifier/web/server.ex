@@ -6,8 +6,7 @@ defmodule WandererNotifier.Web.Server do
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
-
-  @default_port 4000
+  alias WandererNotifier.Config.Web, as: WebConfig
 
   # Client API
 
@@ -22,19 +21,8 @@ defmodule WandererNotifier.Web.Server do
 
   @impl true
   def init(_opts) do
-    # Read port from config or env, prioritizing WANDERER_PORT environment variable
-    port =
-      case System.get_env("WANDERER_PORT") || System.get_env("PORT") do
-        nil ->
-          config_port = WandererNotifier.Core.Config.web_port()
-          if is_integer(config_port), do: config_port, else: @default_port
-
-        str_port ->
-          case Integer.parse(str_port) do
-            {num, _} -> num
-            :error -> @default_port
-          end
-      end
+    # Get port from configuration
+    port = WebConfig.get_web_port()
 
     AppLogger.startup_info("Starting web server", port: port)
 

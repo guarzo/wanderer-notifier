@@ -11,6 +11,7 @@ defmodule WandererNotifier.Discord.Notifier do
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Config.{Notifications, Application}
 
   @behaviour WandererNotifier.NotifierBehaviour
 
@@ -29,18 +30,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  # Use runtime configuration so tests can override it
-  defp env, do: Application.get_env(:wanderer_notifier, :env, :prod)
-
-  defp get_config!(key, error_msg) do
-    environment = env()
-
-    case Application.get_env(:wanderer_notifier, key) do
-      nil when environment != :test -> raise error_msg
-      "" when environment != :test -> raise error_msg
-      value -> value
-    end
-  end
+  defp env, do: Application.get_env()
 
   # Helper function to handle test mode logging and response
   defp handle_test_mode(log_message) do
@@ -49,19 +39,19 @@ defmodule WandererNotifier.Discord.Notifier do
     :ok
   end
 
-  defp channel_id,
-    do:
-      get_config!(
-        :discord_channel_id,
-        "Discord channel ID not configured. Please set :discord_channel_id in your configuration."
-      )
+  defp channel_id do
+    case env() do
+      :test -> "test_channel_id"
+      _ -> Notifications.get_discord_channel_id_for(:general)
+    end
+  end
 
-  defp bot_token,
-    do:
-      get_config!(
-        :discord_bot_token,
-        "Discord bot token not configured. Please set :discord_bot_token in your configuration."
-      )
+  defp bot_token do
+    case env() do
+      :test -> "test_bot_token"
+      _ -> Notifications.get_discord_bot_token()
+    end
+  end
 
   defp build_url, do: "#{@base_url}/#{channel_id()}/messages"
 

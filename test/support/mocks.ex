@@ -141,7 +141,16 @@ defmodule WandererNotifier.MockConfig do
   @behaviour WandererNotifier.Core.ConfigBehaviour
 
   def start_link do
-    Agent.start_link(fn -> %{kill_charts_enabled: true} end, name: __MODULE__)
+    Agent.start_link(
+      fn ->
+        %{
+          kill_charts_enabled: true,
+          map_charts_enabled: true,
+          env: :test
+        }
+      end,
+      name: __MODULE__
+    )
   end
 
   def set_kill_charts_enabled(value) do
@@ -149,10 +158,23 @@ defmodule WandererNotifier.MockConfig do
   end
 
   @impl true
-  def discord_channel_id_for(_feature), do: "123456789"
+  def get_config(_key, default), do: default
+
+  @impl true
+  def get_env, do: :test
+
+  @impl true
+  def map_charts_enabled?, do: true
 
   @impl true
   def kill_charts_enabled? do
     Agent.get(__MODULE__, & &1.kill_charts_enabled)
   end
+
+  @impl true
+  def discord_channel_id_for_activity_charts, do: "123456789"
+
+  @impl true
+  def discord_channel_id_for(:kill_charts), do: "123456789"
+  def discord_channel_id_for(_), do: nil
 end

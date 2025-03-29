@@ -9,19 +9,18 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   require WandererNotifier.Schedulers.Factory
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
-
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Config.{Timing, Features}
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
-  # Get the default interval from Timings module
-  @default_interval Timings.character_update_scheduler_interval()
+  # Get the default interval from Timing module
+  @default_interval Timing.get_character_update_scheduler_interval()
 
   # Create an interval-based scheduler with specific configuration
   WandererNotifier.Schedulers.Factory.create_scheduler(__MODULE__,
     type: :interval,
     default_interval: @default_interval,
-    enabled_check: &WandererNotifier.Core.Config.map_charts_enabled?/0
+    enabled_check: &Features.map_tools_enabled?/0
   )
 
   @impl true

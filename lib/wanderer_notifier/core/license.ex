@@ -8,7 +8,8 @@ defmodule WandererNotifier.Core.License do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Core.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Config.Application
 
   # Remove hardcoded interval
   # @refresh_interval :timer.hours(24)
@@ -96,7 +97,10 @@ defmodule WandererNotifier.Core.License do
   Returns the current license status.
   """
   def status do
-    GenServer.call(__MODULE__, :status)
+    %{
+      valid: valid?(),
+      bot_assigned: bot_assigned?()
+    }
   end
 
   @doc """
@@ -118,9 +122,7 @@ defmodule WandererNotifier.Core.License do
       "License validation - token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}"
     )
 
-    Logger.info(
-      "License validation - environment: #{Application.get_env(:wanderer_notifier, :env, :prod)}"
-    )
+    Logger.info("License validation - environment: #{Application.get_env()}")
 
     # Basic validation - ensure token exists and is a non-empty string
     is_valid = is_binary(token) && String.trim(token) != ""
@@ -130,6 +132,54 @@ defmodule WandererNotifier.Core.License do
     end
 
     is_valid
+  end
+
+  @doc """
+  Gets the license key from configuration.
+  """
+  def get_license_key do
+    Application.get_env(:wanderer_notifier, :license_key)
+  end
+
+  @doc """
+  Gets the license manager URL from configuration.
+  """
+  def get_license_manager_url do
+    Application.get_env(:wanderer_notifier, :license_manager_url)
+  end
+
+  @doc """
+  Checks if the current license is valid.
+  """
+  def check_license do
+    if valid?() do
+      {:ok, :valid}
+    else
+      {:error, :invalid_license}
+    end
+  end
+
+  # Private helper to check if license is valid
+  defp valid? do
+    bot_assigned?() && license_key_valid?()
+  end
+
+  # Private helper to check if bot token is assigned
+  defp bot_assigned? do
+    case Application.get_env(:wanderer_notifier, :bot_token) do
+      nil -> false
+      "" -> false
+      _ -> true
+    end
+  end
+
+  # Private helper to check if license key is valid
+  defp license_key_valid? do
+    case Application.get_env(:wanderer_notifier, :license_key) do
+      nil -> false
+      "" -> false
+      _ -> true
+    end
   end
 
   # Server Implementation
@@ -330,7 +380,7 @@ defmodule WandererNotifier.Core.License do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :refresh, Timings.license_refresh_interval())
+    Process.send_after(self(), :refresh, Timing.get_license_refresh_interval())
   end
 
   defp do_validate do

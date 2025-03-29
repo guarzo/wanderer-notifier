@@ -6,6 +6,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   use GenServer
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Cache
 
   @cache_name :wanderer_notifier_cache
 
@@ -135,18 +136,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Helper function to determine the appropriate cache directory
   defp determine_cache_dir do
-    # Get the configured cache directory
-    configured_dir = Application.get_env(:wanderer_notifier, :cache_dir, "/app/data/cache")
-
-    # Check if we're in a dev container
-    if String.contains?(File.cwd!(), "dev-container") or
-         String.contains?(File.cwd!(), "workspaces") do
-      # Use a directory in the current workspace
-      Path.join(File.cwd!(), "tmp/cache")
-    else
-      # Otherwise use the configured directory (for production)
-      configured_dir
-    end
+    Cache.get_cache_dir()
   end
 
   # GENSERVER CALLBACKS

@@ -9,7 +9,7 @@ defmodule WandererNotifier.Notifiers.Discord do
   alias WandererNotifier.Core.License
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Config.{Application, Notifications}
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.MapSystem
@@ -26,16 +26,14 @@ defmodule WandererNotifier.Notifiers.Discord do
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  # Use runtime configuration so tests can override it
-  defp env, do: Application.get_env(:wanderer_notifier, :env, :prod)
+  defp env do
+    Application.get_env()
+  end
 
-  defp get_config!(key, error_msg) do
-    environment = env()
-
-    case Application.get_env(:wanderer_notifier, key) do
-      nil when environment != :test -> raise error_msg
-      "" when environment != :test -> raise error_msg
-      value -> value
+  defp get_config(key, default \\ nil) do
+    case Notifications.get_discord_config() do
+      {:ok, config} -> Map.get(config, key, default)
+      _ -> default
     end
   end
 
@@ -46,15 +44,15 @@ defmodule WandererNotifier.Notifiers.Discord do
   end
 
   defp channel_id_for_feature(feature) do
-    Config.discord_channel_id_for(feature)
+    Notifications.get_discord_channel_id_for(feature)
   end
 
-  defp bot_token,
-    do:
-      get_config!(
-        :discord_bot_token,
-        "Discord bot token not configured. Please set :discord_bot_token in your configuration."
-      )
+  defp bot_token do
+    case get_config(:bot_token) do
+      nil -> raise "Discord bot token not configured"
+      token -> token
+    end
+  end
 
   defp build_url(feature) do
     channel = channel_id_for_feature(feature)

@@ -12,9 +12,12 @@ defmodule WandererNotifier.Services.SystemTracker do
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Config.Timing
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Config.API
+  alias WandererNotifier.Config.Cache
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.processor_debug("Starting systems update")
@@ -101,17 +104,20 @@ defmodule WandererNotifier.Services.SystemTracker do
   defp update_systems_cache(fresh_systems) do
     AppLogger.processor_debug("Updating systems cache", count: length(fresh_systems))
 
+    # Get the cache TTL from the Timing configuration
+    ttl = Timing.get_systems_cache_ttl()
+
     # Store each system individually with its system_id as the key
     Enum.each(fresh_systems, fn system ->
-      CacheRepo.set("map:system:#{system["system_id"]}", system, Config.systems_cache_ttl())
+      CacheRepo.set("map:system:#{system["system_id"]}", system, ttl)
     end)
 
     # Cache just the system IDs for faster lookups
     system_ids = Enum.map(fresh_systems, & &1["system_id"])
-    CacheRepo.set("map:system_ids", system_ids, Config.systems_cache_ttl())
+    CacheRepo.set("map:system_ids", system_ids, ttl)
 
     # Also store the full list of systems for backward compatibility
-    CacheRepo.set("map:systems", fresh_systems, Config.systems_cache_ttl())
+    CacheRepo.set("map:systems", fresh_systems, ttl)
   end
 
   # Helper function to get all systems from the cache
@@ -212,7 +218,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   end
 
   defp fetch_get_body(url) do
-    map_token = Config.map_token()
+    map_token = API.map_token()
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
     label = "SystemTracker"
 
@@ -448,7 +454,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     AppLogger.processor_debug("Processing systems from API response", %{count: length(data)})
 
     # Check if we should track K-Space systems in addition to wormhole systems
-    track_all_systems = Config.track_kspace_systems?()
+    track_all_systems = Features.track_kspace_systems?()
     AppLogger.processor_debug("K-Space systems tracking setting", %{enabled: track_all_systems})
 
     # Process systems from the map API
@@ -506,13 +512,13 @@ defmodule WandererNotifier.Services.SystemTracker do
   end
 
   defp fetch_and_cache_system_info(url, system_id) do
-    map_token = Config.map_token()
+    map_token = API.map_token()
     headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
     cache_key = "static_info:#{system_id}"
 
     case Client.request("GET", url, headers) do
       {:ok, %{status_code: 200, body: body}} ->
-        CacheRepo.set(cache_key, body, Config.static_info_cache_ttl())
+        CacheRepo.set(cache_key, body, Cache.static_info_cache_ttl())
         Jason.decode(body)
 
       {:ok, %{status_code: status}} ->
@@ -526,22 +532,13 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Main function to validate map environment variables
   defp validate_map_env do
     # Extract config values
-    config = extract_map_config()
+    config = API.get_map_config()
 
     # Determine the URL to use
     map_url = determine_map_url(config)
 
     # Validate the URL if we have one
     validate_map_url(map_url)
-  end
-
-  # Extract map configuration from the environment
-  defp extract_map_config do
-    %{
-      map_url_with_name: Application.get_env(:wanderer_notifier, :map_url_with_name),
-      map_url_base: Application.get_env(:wanderer_notifier, :map_url),
-      map_name: Application.get_env(:wanderer_notifier, :map_name)
-    }
   end
 
   # Determine the map URL to use based on configuration
@@ -556,22 +553,22 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Log map configuration values
   defp log_map_configuration(config) do
     AppLogger.processor_debug("Validating map configuration:")
-    AppLogger.processor_debug("Map URL with name", value: inspect(config.map_url_with_name))
-    AppLogger.processor_debug("Map URL base", value: inspect(config.map_url_base))
-    AppLogger.processor_debug("Map name", value: inspect(config.map_name))
+    AppLogger.processor_debug("Map URL with name", value: inspect(config.url_with_name))
+    AppLogger.processor_debug("Map URL base", value: inspect(config.url_base))
+    AppLogger.processor_debug("Map name", value: inspect(config.name))
   end
 
   # Choose the appropriate URL based on available configuration
   defp choose_url_from_config(config) do
     cond do
       has_url_with_name?(config) ->
-        use_url_with_name(config.map_url_with_name)
+        use_url_with_name(config.url_with_name)
 
       has_url_and_name?(config) ->
-        combine_url_and_name(config.map_url_base, config.map_name)
+        combine_url_and_name(config.url_base, config.name)
 
       has_url_base?(config) ->
-        use_url_base(config.map_url_base)
+        use_url_base(config.url_base)
 
       true ->
         log_map_config_error()
@@ -580,17 +577,17 @@ defmodule WandererNotifier.Services.SystemTracker do
 
   # Check if we have a valid URL with name
   defp has_url_with_name?(config) do
-    valid_string?(config.map_url_with_name)
+    valid_string?(config.url_with_name)
   end
 
   # Check if we have both URL base and name
   defp has_url_and_name?(config) do
-    valid_string?(config.map_url_base) && valid_string?(config.map_name)
+    valid_string?(config.url_base) && valid_string?(config.name)
   end
 
   # Check if we have just URL base
   defp has_url_base?(config) do
-    valid_string?(config.map_url_base)
+    valid_string?(config.url_base)
   end
 
   # Check if a string is valid (not nil or empty)
@@ -653,7 +650,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   # Send notification for new system
   defp send_notification(system) do
     # Skip if notifications are disabled
-    if !Config.system_notifications_enabled?() do
+    if !Features.system_notifications_enabled?() do
       AppLogger.processor_debug("System notifications are disabled")
       return(:ok)
     end
@@ -882,8 +879,14 @@ defmodule WandererNotifier.Services.SystemTracker do
   end
 
   defp schedule_systems_update do
-    # Default to 5 minutes if not configured
-    interval = Application.get_env(:wanderer_notifier, :systems_update_interval, 300_000)
+    # Get the interval from the Timing configuration
+    interval = Timing.get_systems_update_interval()
+
+    # Schedule the next update
     Process.send_after(self(), :update_systems, interval)
+
+    AppLogger.processor_debug("Scheduled next systems update",
+      minutes: Float.round(interval / 1000 / 60, 2)
+    )
   end
 end

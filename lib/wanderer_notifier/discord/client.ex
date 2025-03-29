@@ -6,33 +6,30 @@ defmodule WandererNotifier.Discord.Client do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
+  alias WandererNotifier.Config.Notifications
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  defp env, do: Application.get_env(:wanderer_notifier, :env, :prod)
+  defp env, do: Notifications.get_env()
 
-  defp get_config!(key, error_msg) do
-    environment = env()
-
-    case Application.get_env(:wanderer_notifier, key) do
-      nil when environment != :test -> raise error_msg
-      "" when environment != :test -> raise error_msg
-      value -> value
+  @doc """
+  Gets the configured Discord channel ID.
+  """
+  def channel_id do
+    case Notifications.get_discord_config() do
+      {:ok, %{channel_id: channel_id}} -> channel_id
+      _ -> nil
     end
   end
 
-  defp channel_id do
-    get_config!(
-      :discord_channel_id,
-      "Discord channel ID not configured. Please set :discord_channel_id in your configuration."
-    )
-  end
-
-  defp bot_token do
-    get_config!(
-      :discord_bot_token,
-      "Discord bot token not configured. Please set :discord_bot_token in your configuration."
-    )
+  @doc """
+  Gets the configured Discord bot token.
+  """
+  def bot_token do
+    case Notifications.get_discord_config() do
+      {:ok, %{bot_token: token}} -> token
+      _ -> nil
+    end
   end
 
   defp build_url do
