@@ -17,5 +17,5 @@ defmodule WandererNotifier.Resources.KillmailPersistenceBehaviour do
   @callback maybe_persist_killmail(killmail :: map()) ::
               {:ok, map()} | {:error, term()} | :ignored
 
-  @callback persist_killmail(killmail :: map()) :: :ok | {:error, term()}
+  @callback persist_killmail(killmail :: KillmailStruct.t()) :: :ok | {:error, term()}
 end
