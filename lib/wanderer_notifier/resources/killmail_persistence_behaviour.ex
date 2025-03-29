@@ -14,7 +14,7 @@ defmodule WandererNotifier.Resources.KillmailPersistenceBehaviour do
     - {:error, reason} on failure
     - :ignored if the killmail already exists
   """
-  @callback maybe_persist_killmail(killmail :: map()) ::
+  @callback maybe_persist_killmail(killmail :: KillmailStruct.t() | map()) ::
               {:ok, map()} | {:error, term()} | :ignored
 
   @callback persist_killmail(killmail :: KillmailStruct.t()) :: :ok | {:error, term()}
