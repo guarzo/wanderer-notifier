@@ -39,17 +39,8 @@ defmodule WandererNotifier.Services.Service do
   Starts the service.
   """
   def start_link(opts \\ []) do
-    Logger.info("Service.start_link called with opts: #{inspect(opts)}")
-
-    # Check for common errors
-    try do
-      GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-    rescue
-      e ->
-        Logger.error("ERROR starting Service: #{Exception.message(e)}")
-        Logger.error("#{Exception.format_stacktrace(__STACKTRACE__)}")
-        {:error, e}
-    end
+    AppLogger.startup_info("Starting WandererNotifier Service")
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   def stop do
@@ -58,7 +49,6 @@ defmodule WandererNotifier.Services.Service do
 
   @impl true
   def init(_opts) do
-    Logger.info("Service.init called - process: #{inspect(self())}")
     AppLogger.startup_info("Initializing WandererNotifier Service")
     # Trap exits so the GenServer doesn't crash when a linked process dies
     Process.flag(:trap_exit, true)
@@ -88,7 +78,7 @@ defmodule WandererNotifier.Services.Service do
     {:ok, state}
   rescue
     e ->
-      Logger.error("ERROR in Service.init: #{Exception.message(e)}")
+      Logger.error("Error in Service.init: #{Exception.message(e)}")
       Logger.error("#{Exception.format_stacktrace(__STACKTRACE__)}")
       # Return a basic valid state to avoid crashing
       {:ok, %State{service_start_time: :os.system_time(:second)}}

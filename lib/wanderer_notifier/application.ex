@@ -64,64 +64,34 @@ defmodule WandererNotifier.Application do
 
   defp start_main_application do
     children = get_children()
-    # Log each child to help debug startup issues
-    IO.puts(">>> SUPERVISOR CHILDREN:")
-
-    Enum.each(children, fn child ->
-      child_id =
-        case child do
-          {module, _opts} -> module
-          %{id: id} -> id
-          other -> inspect(other)
-        end
-
-      IO.puts(">>>   - #{inspect(child_id)}")
-    end)
-
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
     Logger.info(
-      "About to start WandererNotifier.Supervisor with #{length(children)} top-level children"
+      "Starting WandererNotifier.Supervisor with #{length(children)} top-level children"
     )
 
-    try do
-      case Supervisor.start_link(children, opts) do
-        {:ok, pid} ->
-          Logger.info("Application started successfully")
-          IO.puts(">>> SUPERVISOR STARTED with pid #{inspect(pid)}")
-          {:ok, pid}
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        Logger.info("Application started successfully")
+        {:ok, pid}
 
-        {:error, {:already_started, pid}} ->
-          Logger.warn("Supervisor already started with pid: #{inspect(pid)}")
-          {:ok, pid}
+      {:error, {:already_started, pid}} ->
+        Logger.warn("Supervisor already started with pid: #{inspect(pid)}")
+        {:ok, pid}
 
-        {:error, reason} = error ->
-          Logger.error("Failed to start application: #{inspect(reason)}")
-          IO.puts(">>> CRITICAL ERROR starting supervisor: #{inspect(reason)}")
-          error
-      end
-    rescue
-      e ->
-        error_msg = "Exception starting application: #{Exception.message(e)}"
-        Logger.error(error_msg)
-        Logger.error("#{Exception.format_stacktrace(__STACKTRACE__)}")
-        IO.puts(">>> CRITICAL EXCEPTION in supervisor: #{error_msg}")
-        {:error, e}
+      {:error, reason} = error ->
+        Logger.error("Failed to start application: #{inspect(reason)}")
+        error
     end
   end
 
   defp get_children do
-    # Define all services as direct children of the main supervisor
     [
       # Core services
       {WandererNotifier.NoopConsumer, []},
       {WandererNotifier.Core.License, []},
       {WandererNotifier.Core.Stats, []},
-
-      # Move Service earlier in the list to diagnose startup order issues
       {WandererNotifier.Services.Service, []},
-
-      # Remaining services
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Repo, []},
       {WandererNotifier.Web.Server, []},
