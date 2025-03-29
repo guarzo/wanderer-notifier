@@ -99,13 +99,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
     case @adapter.send_weekly_kills_chart_to_discord(channel_id, from, to) do
       {:ok, response} ->
+        Logger.info("[SCHEDULER] Successfully sent weekly kills chart.")
         {:ok, {:ok, response}, %{}}
 
       error ->
         handle_discord_error(error)
     end
   end
-
   defp handle_discord_error({:error, reason}) when is_binary(reason) do
     Logger.error("[SCHEDULER] Failed to send weekly kills chart: #{reason}")
     {:error, reason, %{}}
