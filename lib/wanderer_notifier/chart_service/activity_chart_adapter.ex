@@ -7,12 +7,12 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   delivery to the ChartService module.
   """
 
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.ChartService
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartTypes
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Core.Features
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Generates a chart URL for character activity summary.
@@ -48,45 +48,43 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
       AppLogger.api_error("No activity data provided")
       {:error, "No activity data provided"}
     else
-      try do
-        # Extract character data based on format
-        characters = extract_character_data(activity_data)
+      # Extract character data based on format
+      characters = extract_character_data(activity_data)
 
-        if characters && length(characters) > 0 do
-          # Get top characters by activity
-          top_characters = get_top_characters(characters, 5)
+      if characters && length(characters) > 0 do
+        # Get top characters by activity
+        top_characters = get_top_characters(characters, 5)
 
-          AppLogger.api_info("Selected characters for activity chart",
-            count: length(top_characters)
+        AppLogger.api_info("Selected characters for activity chart",
+          count: length(top_characters)
+        )
+
+        # Extract chart elements
+        character_labels = extract_character_labels(top_characters)
+
+        {connections_data, passages_data, signatures_data} =
+          extract_activity_metrics(top_characters)
+
+        # Create chart data structure
+        chart_data =
+          create_summary_chart_data(
+            character_labels,
+            connections_data,
+            passages_data,
+            signatures_data
           )
 
-          # Extract chart elements
-          character_labels = extract_character_labels(top_characters)
+        options = create_summary_chart_options()
 
-          {connections_data, passages_data, signatures_data} =
-            extract_activity_metrics(top_characters)
-
-          # Create chart data structure
-          chart_data =
-            create_summary_chart_data(
-              character_labels,
-              connections_data,
-              passages_data,
-              signatures_data
-            )
-
-          options = create_summary_chart_options()
-
-          {:ok, chart_data, "Character Activity Summary", options}
-        else
-          {:error, "No character data available"}
-        end
-      rescue
-        e ->
-          AppLogger.api_error("Error preparing activity summary data", error: inspect(e))
-          {:error, "Error preparing activity summary data: #{inspect(e)}"}
+        {:ok, chart_data, "Character Activity Summary", options}
+      else
+        {:error, "No character data available"}
       end
     end
+  rescue
+    e ->
+      AppLogger.api_error("Error preparing activity summary data", error: inspect(e))
+      {:error, "Error preparing activity summary data: #{inspect(e)}"}
   end
 
   # Extracts character data from various formats

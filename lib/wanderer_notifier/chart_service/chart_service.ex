@@ -10,13 +10,13 @@ defmodule WandererNotifier.ChartService do
   falling back to QuickChart.io if not.
   """
 
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartConfigHandler
   alias WandererNotifier.ChartService.ChartTypes
   alias WandererNotifier.ChartService.NodeChartAdapter
   alias WandererNotifier.Discord.Client, as: DiscordClient
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Chart service configuration
   @quickchart_url "https://quickchart.io/chart"
@@ -294,53 +294,46 @@ defmodule WandererNotifier.ChartService do
 
   # Core function to generate chart URL from a map
   defp do_generate_chart_url(chart_map, width, height, background_color) do
-    try do
-      # Try to encode the chart configuration to JSON
-      case Jason.encode(chart_map) do
-        {:ok, json} ->
-          # Check JSON size to determine approach
-          json_size = byte_size(json)
-          AppLogger.api_debug("Chart config prepared", json_size_bytes: json_size)
+    case Jason.encode(chart_map) do
+      {:ok, json_config} ->
+        case Base.encode64(json_config) do
+          encoded_config when is_binary(encoded_config) ->
+            build_chart_url(encoded_config, width, height, background_color, chart_map)
 
-          if json_size > 8000 or String.length(json) > 2000 do
-            AppLogger.api_warn("Chart JSON is large, using POST method instead",
-              json_size_bytes: json_size
-            )
+          _ ->
+            {:error, "Failed to encode chart configuration"}
+        end
 
-            create_chart_via_post(chart_map, width, height, background_color)
-          else
-            # Standard encoding for normal-sized JSON
-            encoded_config = URI.encode_www_form(json)
+      {:error, reason} ->
+        AppLogger.api_error("Failed to encode chart configuration", error: inspect(reason))
+        {:error, "Failed to encode chart configuration: #{inspect(reason)}"}
+    end
+  rescue
+    e ->
+      AppLogger.api_error("Exception encoding chart", exception: inspect(e))
+      {:error, "Exception encoding chart: #{inspect(e)}"}
+  end
 
-            # Construct URL with query parameters
-            url = "#{@quickchart_url}?c=#{encoded_config}"
-            url = "#{url}&backgroundColor=#{URI.encode_www_form(background_color)}"
-            url = "#{url}&width=#{width}&height=#{height}"
+  # Helper to build the chart URL with all parameters
+  defp build_chart_url(encoded_config, width, height, background_color, chart_map) do
+    # Construct URL with query parameters
+    url = "#{@quickchart_url}?c=#{encoded_config}"
+    url = "#{url}&backgroundColor=#{URI.encode_www_form(background_color)}"
+    url = "#{url}&width=#{width}&height=#{height}"
 
-            # Check URL length
-            url_length = String.length(url)
-            AppLogger.api_debug("Generated chart URL", url_length: url_length)
+    # Check URL length
+    url_length = String.length(url)
+    AppLogger.api_debug("Generated chart URL", url_length: url_length)
 
-            if url_length > 2000 do
-              AppLogger.api_warn(
-                "Chart URL is very long, using POST method instead",
-                url_length: url_length
-              )
+    if url_length > 2000 do
+      AppLogger.api_warn(
+        "Chart URL is very long, using POST method instead",
+        url_length: url_length
+      )
 
-              create_chart_via_post(chart_map, width, height, background_color)
-            else
-              {:ok, url}
-            end
-          end
-
-        {:error, reason} ->
-          AppLogger.api_error("Failed to encode chart configuration", error: inspect(reason))
-          {:error, "Failed to encode chart configuration: #{inspect(reason)}"}
-      end
-    rescue
-      e ->
-        AppLogger.api_error("Exception encoding chart", exception: inspect(e))
-        {:error, "Exception encoding chart: #{inspect(e)}"}
+      create_chart_via_post(chart_map, width, height, background_color)
+    else
+      {:ok, url}
     end
   end
 

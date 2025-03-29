@@ -6,8 +6,8 @@ defmodule WandererNotifier.Api.ESI.Service do
   @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.ESI.Client, as: ESIClient
+  alias WandererNotifier.Logger, as: AppLogger
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash) do

@@ -5,13 +5,13 @@ defmodule WandererNotifier.Web.Router do
   use Plug.Router
   import Plug.Conn
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Services.Service
 
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Services.Service
   alias WandererNotifier.Web.Controllers.{
-    ChartController,
     ApiController,
+    ChartController,
     DebugController
   }
 

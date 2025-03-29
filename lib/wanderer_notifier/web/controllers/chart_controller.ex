@@ -4,11 +4,15 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+
+  alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.ChartService.KillmailChartAdapter
-  alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Core.Config
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Resources.KillmailAggregation
+  alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Web.Controllers.ActivityChartController
 
   plug(:match)
@@ -32,26 +36,18 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
   # Get character activity data
   get "/character-activity" do
-    # Check if map charts functionality is enabled
-    if Config.map_charts_enabled?() do
-      # Extract slug parameter if provided
-      slug = conn.params["slug"]
+    AppLogger.api_info("Character activity data request received")
 
-      # Log the slug for debugging
-      if slug do
-        AppLogger.api_info("Character activity request", slug: slug)
-      else
-        configured_slug = Config.map_name()
-
-        AppLogger.api_info(
-          "Character activity request",
-          slug: configured_slug || "none",
-          slug_source: "configured"
-        )
-      end
-
-      case CharactersClient.get_character_activity(slug) do
+    response =
+      case CharactersClient.get_character_activity(nil, 7) do
         {:ok, data} ->
+          # Log the data information
+          AppLogger.api_info("Retrieved character activity data")
+
+          AppLogger.api_debug("Character activity data structure",
+            data: inspect(data, pretty: true, limit: 2000)
+          )
+
           conn
           |> put_resp_content_type("application/json")
           |> send_resp(200, Jason.encode!(%{status: "ok", data: data}))
@@ -84,14 +80,8 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
             })
           )
       end
-    else
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        404,
-        Jason.encode!(%{status: "error", message: "Map Charts functionality is not enabled"})
-      )
-    end
+
+    response
   end
 
   # Generate a chart based on the provided type
@@ -124,7 +114,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
       # Get character activity data
       activity_data =
-        case CharactersClient.get_character_activity() do
+        case CharactersClient.get_character_activity(nil, 7) do
           {:ok, data} ->
             AppLogger.api_info("Retrieved character activity data",
               preview: inspect(data, limit: 500)
@@ -518,7 +508,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
       # Perform diagnostic queries
       try do
         # First check if database operations are enabled
-        if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+        if TrackedCharacter.database_enabled?() do
           # Check total killmail records
           killmail_query = "SELECT COUNT(*) FROM killmails"
           {:ok, %{rows: [[total_killmails]]}} = WandererNotifier.Repo.query(killmail_query)
@@ -565,7 +555,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           {:ok, %{rows: [[total_chars]]}} = WandererNotifier.Repo.query(char_query)
 
           # Count characters in cache
-          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+          cached_characters = CacheRepo.get("map:characters") || []
 
           # Send the diagnostic info
           conn
@@ -587,7 +577,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
           )
         else
           # Database is disabled, return limited diagnostic info
-          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+          cached_characters = CacheRepo.get("map:characters") || []
 
           conn
           |> put_resp_content_type("application/json")
@@ -636,10 +626,10 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
     if Config.kill_charts_enabled?() do
       AppLogger.api_info("Forcing character sync from cache to database")
 
-      cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+      cached_characters = CacheRepo.get("map:characters") || []
       AppLogger.api_info("Found characters in cache", count: length(cached_characters))
 
-      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
+      case TrackedCharacter.sync_from_cache() do
         {:ok, result} ->
           conn
           |> put_resp_content_type("application/json")
@@ -688,7 +678,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         action: "database-clear"
       )
 
-      case WandererNotifier.Resources.TrackedCharacter.force_sync_from_cache() do
+      case TrackedCharacter.force_sync_from_cache() do
         {:ok, result} ->
           conn
           |> put_resp_content_type("application/json")
@@ -763,7 +753,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         end
 
       # Run the aggregation
-      case WandererNotifier.Resources.KillmailAggregation.aggregate_statistics(
+      case KillmailAggregation.aggregate_statistics(
              period_type,
              target_date
            ) do

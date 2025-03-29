@@ -3,7 +3,11 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   Helper functions for notification formatting and data extraction.
   """
   require Logger
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo, as: CacheRepo
+  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """
   Extracts a valid EVE character ID from a character map.
@@ -14,7 +18,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @spec extract_character_id(map()) :: String.t() | nil
   def extract_character_id(character) when is_map(character) do
     # Handle Character struct specially
-    if is_struct(character, WandererNotifier.Data.Character) do
+    if is_struct(character, Character) do
       character.character_id
     else
       # Try extracting from different possible locations in order of preference
@@ -219,118 +223,96 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   def valid_numeric_id?(_), do: false
 
   @doc """
-  Sends a test system notification using a real system from the cache.
-
-  This function retrieves a random wormhole system from the tracked systems and
-  sends a system notification for it. It uses the normal notification pathway to ensure
-  accurate test behavior.
-
-  ## Returns
-  - `{:ok, system_id, system_name}` - The ID and name of the system that was used for the test notification
+  Sends a test system notification using a real tracked system.
+  Returns an error if no systems are being tracked.
   """
-  @spec send_test_system_notification() :: {:ok, String.t() | integer(), String.t()}
-  def send_test_system_notification() do
-    require Logger
-
-    AppLogger.processor_info("Manually triggering a test system notification",
-      type: "TEST NOTIFICATION"
-    )
-
-    alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-    alias WandererNotifier.Data.MapSystem
-
-    # Get all tracked systems from cache
+  @spec send_test_system_notification() ::
+          {:ok, String.t(), String.t()} | {:error, :no_tracked_systems}
+  def send_test_system_notification do
+    # Get tracked systems
     tracked_systems = get_tracked_systems()
     AppLogger.processor_info("Found tracked systems", count: length(tracked_systems))
 
-    # Check if we should include K-Space systems in addition to wormholes
-    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
+    case tracked_systems do
+      [] ->
+        AppLogger.processor_warn("No systems are currently being tracked")
+        {:error, :no_tracked_systems}
 
-    # If K-Space tracking is enabled, we can select from all systems
-    # Otherwise, prefer wormhole systems but fall back to any system if needed
-    selected_system =
-      if track_all_systems do
-        # When tracking K-Space systems, just pick a random one from all systems
-        AppLogger.processor_info("K-Space tracking enabled", action: "selecting from all systems")
-        Enum.random(tracked_systems)
-      else
-        # When only tracking wormholes, filter first
-        wormhole_systems = Enum.filter(tracked_systems, &wormhole_system?/1)
+      systems ->
+        # Use an existing system
+        selected_system = Enum.random(systems)
+        map_system = MapSystem.new(selected_system)
+        notifier = NotifierFactory.get_notifier()
+        notifier.send_new_system_notification(map_system)
+        {:ok, map_system.solar_system_id, map_system.name}
+    end
+  end
 
-        case wormhole_systems do
-          [] ->
-            # No wormhole systems, just pick any system
-            AppLogger.processor_info("No wormhole systems found",
-              action: "selecting random system"
-            )
+  @doc """
+  Sends a test kill notification using a real recent kill.
+  Returns an error if no kills are available.
+  """
+  @spec send_test_kill_notification() :: {:ok, String.t()} | {:error, :no_recent_kills}
+  def send_test_kill_notification do
+    case CacheRepo.get("kills:recent") do
+      nil ->
+        AppLogger.processor_warn("No recent kills available in cache")
+        {:error, :no_recent_kills}
 
-            Enum.random(tracked_systems)
+      [] ->
+        AppLogger.processor_warn("Recent kills cache is empty")
+        {:error, :no_recent_kills}
 
-          _ ->
-            # Pick a random wormhole system
-            AppLogger.processor_info("Found wormhole systems", count: length(wormhole_systems))
-            Enum.random(wormhole_systems)
-        end
-      end
+      kills when is_list(kills) ->
+        # Use most recent kill
+        kill = List.first(kills)
+        notifier = NotifierFactory.get_notifier()
+        notifier.send_enriched_kill_embed(kill, kill.killmail_id)
+        {:ok, kill.killmail_id}
+    end
+  end
 
-    # Convert to MapSystem struct if not already
-    map_system =
-      if is_struct(selected_system, MapSystem) do
-        selected_system
-      else
-        AppLogger.processor_debug("Converting to MapSystem struct for consistent handling")
-        MapSystem.new(selected_system)
-      end
+  @doc """
+  Sends a test character notification using a real tracked character.
+  Returns an error if no characters are being tracked.
+  """
+  @spec send_test_character_notification() ::
+          {:ok, String.t(), String.t()} | {:error, :no_tracked_characters}
+  def send_test_character_notification do
+    case CacheRepo.get("map:characters") do
+      nil ->
+        AppLogger.processor_warn("No characters are currently being tracked")
+        {:error, :no_tracked_characters}
 
-    AppLogger.processor_info(
-      "Using system for test notification",
-      system_name: map_system.name,
-      system_id: map_system.solar_system_id
-    )
+      [] ->
+        AppLogger.processor_warn("No characters are currently being tracked")
+        {:error, :no_tracked_characters}
 
-    # Enrich the MapSystem with static info
-    enriched_system =
-      case WandererNotifier.Api.Map.SystemStaticInfo.enrich_system(map_system) do
-        {:ok, enriched} ->
-          AppLogger.processor_info("Successfully enriched system with static info")
-          enriched
-
-        {:error, reason} ->
-          AppLogger.processor_warn("Failed to enrich system", error: inspect(reason))
-          # Return the original system if enrichment fails
-          map_system
-      end
-
-    # Log key fields for debugging
-    AppLogger.processor_debug("Enriched system fields",
-      solar_system_id: enriched_system.solar_system_id,
-      name: enriched_system.name,
-      type_description: enriched_system.type_description,
-      is_wormhole: MapSystem.wormhole?(enriched_system),
-      statics: inspect(enriched_system.statics)
-    )
-
-    # Send notification with the enriched system struct directly
-    notifier = NotifierFactory.get_notifier()
-    notifier.send_new_system_notification(enriched_system)
-
-    {:ok, enriched_system.solar_system_id, enriched_system.name}
+      characters when is_list(characters) ->
+        selected = Enum.random(characters)
+        character = Character.new(selected)
+        notifier = NotifierFactory.get_notifier()
+        notifier.send_new_tracked_character_notification(character)
+        {:ok, character.character_id, character.name}
+    end
   end
 
   # Helper functions for test system notification
 
   # Get tracked systems from cache
-  defp get_tracked_systems() do
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-
+  defp get_tracked_systems do
     # Try to get systems from the "map:systems" cache key
     get_systems_from_main_cache(CacheRepo) || get_systems_from_individual_caches(CacheRepo)
   end
 
   defp get_systems_from_main_cache(cache_repo) do
     case cache_repo.get("map:systems") do
-      systems when is_list(systems) and length(systems) > 0 -> systems
-      _ -> nil
+      systems when is_list(systems) and length(systems) > 0 ->
+        # Filter for wormhole systems only
+        Enum.filter(systems, &wormhole_system?/1)
+
+      _ ->
+        nil
     end
   end
 
@@ -372,22 +354,37 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   defp wormhole_system?(_), do: false
 
   # Get system ID from either a MapSystem struct or a map
-  defp get_system_id(system) do
-    cond do
-      is_struct(system, WandererNotifier.Data.MapSystem) ->
-        system.solar_system_id
+  defp get_system_id(%WandererNotifier.Data.MapSystem{} = system), do: system.solar_system_id
 
-      is_map(system) ->
-        # Try various possible keys for system ID
-        Map.get(system, "solar_system_id") ||
-          Map.get(system, :solar_system_id) ||
-          Map.get(system, "system_id") ||
-          Map.get(system, :system_id) ||
-          Map.get(system, "systemId") ||
-          Map.get(system, :systemId)
+  defp get_system_id(%{} = system) do
+    system_id = find_system_id_in_map(system)
+    parse_system_id(system_id)
+  end
 
-      true ->
-        nil
+  defp get_system_id(_), do: nil
+
+  # Helper to find system ID in map using various possible keys
+  defp find_system_id_in_map(system) do
+    possible_keys = [
+      "solar_system_id",
+      :solar_system_id,
+      "system_id",
+      :system_id,
+      "systemId",
+      :systemId
+    ]
+
+    Enum.find_value(possible_keys, fn key -> Map.get(system, key) end)
+  end
+
+  # Helper to parse system ID from string or integer
+  defp parse_system_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {num, ""} -> num
+      _ -> nil
     end
   end
+
+  defp parse_system_id(id) when is_integer(id), do: id
+  defp parse_system_id(_), do: nil
 end

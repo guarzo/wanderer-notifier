@@ -7,9 +7,9 @@ defmodule WandererNotifier.Api.ZKill.Client do
   @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Update user agent to a more proper and identifiable value for ZKill
   @user_agent "WandererNotifier/1.0 (github.com/your-username/wanderer-notifier)"

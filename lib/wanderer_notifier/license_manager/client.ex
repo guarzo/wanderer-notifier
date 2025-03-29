@@ -4,9 +4,9 @@ defmodule WandererNotifier.LicenseManager.Client do
   Provides functions for validating licenses and bots.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Core.Config
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}
@@ -163,17 +163,15 @@ defmodule WandererNotifier.LicenseManager.Client do
 
   # Make the license validation request with error handling
   defp safely_make_license_request(url, body, headers) do
-    try do
-      make_license_validation_request(url, body, headers)
-    rescue
-      e ->
-        AppLogger.api_error("Exception during license validation",
-          exception: inspect(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
+    make_license_validation_request(url, body, headers)
+  rescue
+    e ->
+      AppLogger.api_error("Exception during license validation",
+        exception: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
 
-        {:error, "Exception: #{inspect(e)}"}
-    end
+      {:error, "Exception: #{inspect(e)}"}
   end
 
   # Make the actual HTTP request for license validation

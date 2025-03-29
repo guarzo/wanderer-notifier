@@ -94,4 +94,10 @@ defmodule WandererNotifier.Discord.TestNotifier do
 
     :ok
   end
+
+  @impl true
+  def send_kill_embed(_kill, kill_id) do
+    AppLogger.processor_info("Discord test kill embed", kill_id: kill_id)
+    :ok
+  end
 end

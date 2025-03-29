@@ -3,19 +3,6 @@ import Dotenvy
 
 env_dir_prefix = Path.expand("..", __DIR__)
 
-# Debug: Print all environment variables
-IO.puts("DEBUG: Environment variables loaded:")
-
-System.get_env()
-|> Enum.sort()
-|> Enum.each(fn {k, v} ->
-  # Mask sensitive values
-  masked_value =
-    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
-
-  IO.puts("  #{k}=#{masked_value}")
-end)
-
 # Load environment variables from files and system env
 env_vars =
   source!([
@@ -23,19 +10,6 @@ env_vars =
     Path.absname(".#{config_env()}.env", env_dir_prefix),
     System.get_env()
   ])
-
-# Debug: Print loaded environment variables
-IO.puts("\nDEBUG: Variables after Dotenvy source:")
-
-env_vars
-|> Enum.sort()
-|> Enum.each(fn {k, v} ->
-  # Mask sensitive values
-  masked_value =
-    if String.contains?(String.downcase(k), ["token", "key", "password"]), do: "***", else: v
-
-  IO.puts("  #{k}=#{masked_value}")
-end)
 
 # Make sure MIX_ENV is explicitly set in the system environment
 mix_env = Map.get(env_vars, "MIX_ENV", Atom.to_string(config_env()))
@@ -61,9 +35,7 @@ legacy_to_new_mapping = %{
   "ENABLE_MAP_CHARTS" => "WANDERER_FEATURE_MAP_CHARTS",
   "ENABLE_TRACK_KSPACE_SYSTEMS" => "WANDERER_FEATURE_TRACK_KSPACE",
   "FEATURE_ACTIVITY_CHARTS" => "WANDERER_FEATURE_ACTIVITY_CHARTS",
-  "FEATURE_TPS_CHARTS" => "WANDERER_FEATURE_TPS_CHARTS",
   "FEATURE_MAP_TOOLS" => "WANDERER_FEATURE_MAP_TOOLS",
-  "FEATURE_CORP_TOOLS" => "WANDERER_FEATURE_CORP_TOOLS",
   "DISCORD_KILL_CHANNEL_ID" => "WANDERER_DISCORD_KILL_CHANNEL_ID",
   "DISCORD_SYSTEM_CHANNEL_ID" => "WANDERER_DISCORD_SYSTEM_CHANNEL_ID",
   "DISCORD_CHARACTER_CHANNEL_ID" => "WANDERER_DISCORD_CHARACTER_CHANNEL_ID",
@@ -78,9 +50,7 @@ legacy_to_new_mapping = %{
   "PERSISTENCE_AGGREGATION_SCHEDULE" => "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
   "CACHE_DIR" => "WANDERER_CACHE_DIR",
   "NOTIFIER_API_TOKEN" => "WANDERER_NOTIFIER_API_TOKEN",
-  "LICENSE_MANAGER_API_URL" => "WANDERER_LICENSE_MANAGER_URL",
-  "CORP_TOOLS_API_URL" => "WANDERER_CORP_TOOLS_API_URL",
-  "CORP_TOOLS_API_TOKEN" => "WANDERER_CORP_TOOLS_API_TOKEN"
+  "LICENSE_MANAGER_API_URL" => "WANDERER_LICENSE_MANAGER_URL"
 }
 
 # Helper function to get env var with new naming priority
@@ -129,10 +99,14 @@ map_url_with_name = get_env.("MAP_URL_WITH_NAME", nil)
 
 # Parse map_url_with_name to extract map_url and map_name
 {map_url, map_name} =
-  case String.split(map_url_with_name || "", "?name=") do
-    [url, name] -> {url, name}
-    # Default empty values, let app handle validation
-    _ -> {"", ""}
+  if map_url_with_name do
+    # Parse the URL properly
+    uri = URI.parse(map_url_with_name)
+    name = uri.path |> String.trim("/") |> String.split("/") |> List.last()
+    url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+    {url, name}
+  else
+    {"", ""}
   end
 
 config :wanderer_notifier,
@@ -179,10 +153,31 @@ config :wanderer_notifier, api_token: api_token_value
 
 # Feature flag configuration
 config :wanderer_notifier,
-  feature_activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true"),
-  feature_tps_charts: get_env.("FEATURE_TPS_CHARTS", "false"),
-  feature_map_tools: get_env.("FEATURE_MAP_TOOLS", "true"),
-  feature_corp_tools: get_env.("FEATURE_CORP_TOOLS", "false")
+  features: %{
+    notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
+    character_notifications_enabled:
+      get_env.("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", "true") == "true",
+    system_notifications_enabled:
+      get_env.("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", "true") == "true",
+    kill_notifications_enabled: get_env.("WANDERER_KILL_NOTIFICATIONS_ENABLED", "true") == "true",
+    character_tracking_enabled: get_env.("WANDERER_CHARACTER_TRACKING_ENABLED", "true") == "true",
+    system_tracking_enabled: get_env.("WANDERER_SYSTEM_TRACKING_ENABLED", "true") == "true",
+    tracked_systems_notifications_enabled:
+      get_env.("WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED", "true") == "true",
+    tracked_characters_notifications_enabled:
+      get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
+    activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
+    kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "true") == "true",
+    map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "true") == "true"
+  }
+
+# Websocket Configuration
+config :wanderer_notifier, :websocket,
+  enabled: get_env.("WANDERER_WEBSOCKET_ENABLED", "true") == "true",
+  url: get_env.("WANDERER_WEBSOCKET_URL", "wss://zkillboard.com/websocket/"),
+  reconnect_delay: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_DELAY", "5000")),
+  max_reconnects: String.to_integer(get_env.("WANDERER_WEBSOCKET_MAX_RECONNECTS", "20")),
+  reconnect_window: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_WINDOW", "3600"))
 
 # Define a function to parse integer environment variables with default value
 parse_integer_env_var = fn

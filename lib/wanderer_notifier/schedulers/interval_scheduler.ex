@@ -11,8 +11,8 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Add the aliases
-      alias WandererNotifier.Logger, as: AppLogger
       alias WandererNotifier.Config.Timing
+      alias WandererNotifier.Logger, as: AppLogger
 
       # Default interval is 1 hour (in milliseconds) if not specified
       @default_interval unquote(Keyword.get(opts, :default_interval, 60 * 60 * 1000))

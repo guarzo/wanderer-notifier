@@ -5,11 +5,11 @@ defmodule WandererNotifier.Core.License do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Application
+  alias WandererNotifier.Config.Timing
   alias WandererNotifier.Core.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
-  alias WandererNotifier.Config.Timing
-  alias WandererNotifier.Config.Application
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Remove hardcoded interval
   # @refresh_interval :timer.hours(24)
@@ -32,65 +32,63 @@ defmodule WandererNotifier.Core.License do
   Returns a map with license status information.
   """
   def validate do
-    try do
-      # Safely validate with fallback to a complete default state
-      case GenServer.call(__MODULE__, :validate, 5000) do
-        result when is_map(result) and is_map_key(result, :valid) ->
-          # Proper result received
-          result
+    # Safely validate with fallback to a complete default state
+    case GenServer.call(__MODULE__, :validate, 5000) do
+      result when is_map(result) and is_map_key(result, :valid) ->
+        # Proper result received
+        result
 
-        unexpected_result ->
-          # Create a safe default state
-          AppLogger.config_error(
-            "Unexpected result from license validation: #{inspect(unexpected_result)}"
-          )
-
-          %{
-            valid: false,
-            bot_assigned: false,
-            details: nil,
-            error: :unexpected_result,
-            error_message: "Unexpected validation result",
-            last_validated: :os.system_time(:second)
-          }
-      end
-    rescue
-      e ->
-        AppLogger.config_error("Error in license validation: #{inspect(e)}")
+      unexpected_result ->
+        # Create a safe default state
+        AppLogger.config_error(
+          "Unexpected result from license validation: #{inspect(unexpected_result)}"
+        )
 
         %{
           valid: false,
           bot_assigned: false,
           details: nil,
-          error: :exception,
-          error_message: "License validation error: #{inspect(e)}",
-          last_validated: :os.system_time(:second)
-        }
-    catch
-      :exit, {:timeout, _} ->
-        AppLogger.config_error("License validation timed out")
-
-        %{
-          valid: false,
-          bot_assigned: false,
-          details: nil,
-          error: :timeout,
-          error_message: "License validation timed out",
-          last_validated: :os.system_time(:second)
-        }
-
-      type, reason ->
-        AppLogger.config_error("License validation error: #{inspect(type)}, #{inspect(reason)}")
-
-        %{
-          valid: false,
-          bot_assigned: false,
-          details: nil,
-          error: type,
-          error_message: "License validation error: #{inspect(reason)}",
+          error: :unexpected_result,
+          error_message: "Unexpected validation result",
           last_validated: :os.system_time(:second)
         }
     end
+  rescue
+    e ->
+      AppLogger.config_error("Error in license validation: #{inspect(e)}")
+
+      %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: :exception,
+        error_message: "License validation error: #{inspect(e)}",
+        last_validated: :os.system_time(:second)
+      }
+  catch
+    :exit, {:timeout, _} ->
+      AppLogger.config_error("License validation timed out")
+
+      %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: :timeout,
+        error_message: "License validation timed out",
+        last_validated: :os.system_time(:second)
+      }
+
+    type, reason ->
+      AppLogger.config_error("License validation error: #{inspect(type)}, #{inspect(reason)}")
+
+      %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: type,
+        error_message: "License validation error: #{inspect(reason)}",
+        last_validated: :os.system_time(:second)
+      }
   end
 
   @doc """
@@ -203,37 +201,35 @@ defmodule WandererNotifier.Core.License do
   @impl true
   def handle_continue(:initial_validation, _state) do
     # Perform initial license validation at startup
-    try do
-      new_state = do_validate()
+    new_state = do_validate()
 
-      if new_state.valid do
-        AppLogger.config_info(
-          "License validated successfully: #{new_state.details["status"] || "valid"}"
-        )
-      else
-        error_msg = new_state.error_message || "No error message provided"
-        AppLogger.config_warn("License validation warning: #{error_msg}")
-      end
-
-      {:noreply, new_state}
-    rescue
-      e ->
-        Logger.error(
-          "License validation failed, continuing with invalid license state: #{inspect(e)}"
-        )
-
-        # Return invalid license state but don't crash
-        invalid_state = %{
-          valid: false,
-          bot_assigned: false,
-          details: nil,
-          error: :exception,
-          error_message: "Exception during validation: #{inspect(e)}",
-          last_validated: :os.system_time(:second)
-        }
-
-        {:noreply, invalid_state}
+    if new_state.valid do
+      AppLogger.config_info(
+        "License validated successfully: #{new_state.details["status"] || "valid"}"
+      )
+    else
+      error_msg = new_state.error_message || "No error message provided"
+      AppLogger.config_warn("License validation warning: #{error_msg}")
     end
+
+    {:noreply, new_state}
+  rescue
+    e ->
+      Logger.error(
+        "License validation failed, continuing with invalid license state: #{inspect(e)}"
+      )
+
+      # Return invalid license state but don't crash
+      invalid_state = %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: :exception,
+        error_message: "License validation error: #{inspect(e)}",
+        last_validated: :os.system_time(:second)
+      }
+
+      {:noreply, invalid_state}
   end
 
   @impl true
@@ -248,50 +244,39 @@ defmodule WandererNotifier.Core.License do
 
     # Validate the license with a timeout - use validate_bot for consistency with init/startup
     validation_result =
-      try do
-        Task.await(
-          Task.async(fn ->
-            # Use validate_bot for consistency with init/startup validation
-            LicenseClient.validate_bot(notifier_api_token, license_key)
-          end),
-          3000
-        )
-      catch
-        :exit, {:timeout, _} ->
-          AppLogger.config_error("License validation HTTP request timed out")
-          {:error, "License validation timed out"}
-
-        type, reason ->
-          AppLogger.config_error(
-            "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
-          )
-
-          {:error, "License validation error: #{inspect(reason)}"}
-      end
+      Task.await(
+        Task.async(fn ->
+          # Use validate_bot for consistency with init/startup validation
+          LicenseClient.validate_bot(notifier_api_token, license_key)
+        end),
+        3000
+      )
 
     # Process the validation result
     {valid, bot_assigned, details, error, error_message} =
       case validation_result do
-        # Handle validate_bot response format
-        {:ok, %{"license_valid" => true} = response} ->
-          AppLogger.config_info("License is valid and bot is assigned")
-          {true, true, response, nil, nil}
-
-        {:ok, %{"license_valid" => false} = response} ->
-          error_msg = response["message"] || "License is invalid"
-          AppLogger.config_error("License is invalid: #{error_msg}")
-          {false, false, response, :invalid_license, error_msg}
+        {:ok, response} ->
+          # Extract validation details from response
+          {
+            response["valid"] || false,
+            response["bot_assigned"] || false,
+            response,
+            nil,
+            nil
+          }
 
         {:error, reason} ->
-          AppLogger.config_error("License validation failed: #{inspect(reason)}")
-          {false, false, %{}, :validation_failed, "License validation failed: #{inspect(reason)}"}
-
-        unexpected ->
-          AppLogger.config_error("Unexpected license validation result: #{inspect(unexpected)}")
-          {false, false, %{}, :unexpected_result, "Unexpected validation result"}
+          # Handle validation error
+          {
+            false,
+            false,
+            nil,
+            :validation_error,
+            "License validation failed: #{inspect(reason)}"
+          }
       end
 
-    # Create a new state map with all necessary fields
+    # Update state with validation results
     new_state = %{
       valid: valid,
       bot_assigned: bot_assigned,
@@ -301,11 +286,38 @@ defmodule WandererNotifier.Core.License do
       last_validated: :os.system_time(:second)
     }
 
-    # Schedule the next validation
-    schedule_refresh()
-
-    # Return the validation result and the updated state
+    # Return the validation result and new state
     {:reply, new_state, new_state}
+  catch
+    :exit, {:timeout, _} ->
+      AppLogger.config_error("License validation HTTP request timed out")
+
+      error_state = %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: :timeout,
+        error_message: "License validation timed out",
+        last_validated: :os.system_time(:second)
+      }
+
+      {:reply, error_state, error_state}
+
+    type, reason ->
+      AppLogger.config_error(
+        "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
+      )
+
+      error_state = %{
+        valid: false,
+        bot_assigned: false,
+        details: nil,
+        error: :http_error,
+        error_message: "License validation error: #{inspect(reason)}",
+        last_validated: :os.system_time(:second)
+      }
+
+      {:reply, error_state, error_state}
   end
 
   @impl true

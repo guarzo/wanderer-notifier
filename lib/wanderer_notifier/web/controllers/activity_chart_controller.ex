@@ -4,10 +4,11 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
   """
   use Plug.Router
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.ChartService.ActivityChartAdapter
+
   alias WandererNotifier.Api.Map.CharactersClient
+  alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.Core.Config
+  alias WandererNotifier.Logger, as: AppLogger
 
   plug(:match)
   plug(:dispatch)
@@ -39,7 +40,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     else
       # Get activity data using new CharactersClient
       activity_data =
-        case CharactersClient.get_character_activity() do
+        case CharactersClient.get_character_activity(nil, 7) do
           {:ok, data} ->
             AppLogger.api_info("Retrieved activity data for chart generation")
             data
@@ -135,7 +136,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     else
       # Get activity data using new CharactersClient
       activity_data =
-        case CharactersClient.get_character_activity() do
+        case CharactersClient.get_character_activity(nil, 7) do
           {:ok, data} ->
             AppLogger.api_info("Retrieved activity data for sending chart")
             data
@@ -199,7 +200,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
     # Get character activity data
     activity_data =
-      case CharactersClient.get_character_activity() do
+      case CharactersClient.get_character_activity(nil, 7) do
         {:ok, data} -> data
         _ -> nil
       end
@@ -257,7 +258,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     AppLogger.api_info("Character activity data request received")
 
     response =
-      case CharactersClient.get_character_activity() do
+      case CharactersClient.get_character_activity(nil, 7) do
         {:ok, data} ->
           # Log the data information
           AppLogger.api_info("Retrieved character activity data")
@@ -372,7 +373,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
     AppLogger.api_debug("Preparing chart for Discord", chart_type: chart_type)
 
     # Get the appropriate channel ID for activity charts
-    channel_id = WandererNotifier.Core.Config.discord_channel_id_for_activity_charts()
+    channel_id = Config.discord_channel_id_for_activity_charts()
     AppLogger.api_debug("Using Discord channel", channel_id: channel_id, chart_type: "activity")
 
     # Log the activity data info
@@ -410,13 +411,16 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
   # Fetch activity data from the API
   defp fetch_activity_data do
-    case CharactersClient.get_character_activity() do
-      {:ok, data} ->
-        data
+    case CharactersClient.get_character_activity(nil, 7) do
+      {:ok, activity_data} ->
+        {:ok, activity_data}
 
       {:error, reason} ->
-        AppLogger.api_error("Failed to fetch activity data", error: inspect(reason))
-        nil
+        AppLogger.processor_error(
+          "[ActivityChartController] Failed to fetch activity data: #{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 

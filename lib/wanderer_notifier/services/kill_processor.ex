@@ -20,7 +20,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   alias WandererNotifier.Logger.BatchLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.KillmailPersistence
-  alias WandererNotifier.Service
+  alias WandererNotifier.Services.Service
   alias WandererNotifier.Services.NotificationDeterminer
 
   # Cache keys for recent kills
@@ -46,9 +46,6 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     # Initialize system names cache
     Process.put(@system_names_cache_key, %{})
-
-    # Start a timer to periodically log stats
-    schedule_stats_logging()
   end
 
   # Schedule periodic stats logging (every 5 minutes)
@@ -270,9 +267,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
       {:ok, other} ->
         # Any other successful result
-        AppLogger.kill_debug(
-          "Persistence returned unexpected success format: #{inspect(other)}"
-        )
+        AppLogger.kill_debug("Persistence returned unexpected success format: #{inspect(other)}")
 
         {:ok, :persisted}
 

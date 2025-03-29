@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   use ExUnit.Case
-  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Notifiers.StructuredFormatter
 
   describe "colors/0" do
     test "returns a map of color constants" do

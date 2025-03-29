@@ -6,9 +6,9 @@ defmodule WandererNotifier.Cache.Repository do
 
   use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Logger, as: AppLogger
 
   # Use the cache name from configuration
   @cache_name CacheConfig.get_cache_name()
@@ -275,36 +275,34 @@ defmodule WandererNotifier.Cache.Repository do
 
   # Retry a function with exponential backoff
   defp retry_with_backoff(fun, retries \\ Timings.max_retries()) do
-    try do
-      fun.()
-    rescue
-      e ->
-        AppLogger.cache_error("[CacheRepo] Error in cache operation: #{inspect(e)}")
+    fun.()
+  rescue
+    e ->
+      AppLogger.cache_error("[CacheRepo] Error in cache operation: #{inspect(e)}")
 
-        if retries <= 0 do
-          AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
-          {:error, e}
-        else
-          AppLogger.cache_warn("[CacheRepo] Retrying after error (#{retries} retries left)")
-          Process.sleep(Timings.retry_delay())
-          retry_with_backoff(fun, retries - 1)
-        end
-    catch
-      :exit, reason ->
-        AppLogger.cache_error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
+      if retries <= 0 do
+        AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
+        {:error, e}
+      else
+        AppLogger.cache_warn("[CacheRepo] Retrying after error (#{retries} retries left)")
+        Process.sleep(Timings.retry_delay())
+        retry_with_backoff(fun, retries - 1)
+      end
+  catch
+    :exit, reason ->
+      AppLogger.cache_error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
 
-        if retries <= 0 do
-          AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
-          {:error, reason}
-        else
-          AppLogger.cache_warn("[CacheRepo] Retrying after exit (#{retries} retries left)")
-          Process.sleep(Timings.retry_delay())
-          retry_with_backoff(fun, retries - 1)
-        end
+      if retries <= 0 do
+        AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
+        {:error, reason}
+      else
+        AppLogger.cache_warn("[CacheRepo] Retrying after exit (#{retries} retries left)")
+        Process.sleep(Timings.retry_delay())
+        retry_with_backoff(fun, retries - 1)
+      end
 
-      result ->
-        result
-    end
+    result ->
+      result
   end
 
   # Helper function to safely get the length of a value

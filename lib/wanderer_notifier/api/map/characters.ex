@@ -2,13 +2,15 @@ defmodule WandererNotifier.Api.Map.Characters do
   @moduledoc """
   Tracked characters API calls.
   """
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Config.Timings
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.NotificationHelpers
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Resources.TrackedCharacter
+  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_tracked_characters(cached_characters \\ nil) do
     AppLogger.api_debug("Starting update of tracked characters")
@@ -265,36 +267,34 @@ defmodule WandererNotifier.Api.Map.Characters do
     AppLogger.api_info("Starting synchronization with Ash resource")
 
     # Run sync synchronously
-    try do
-      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
-        {:ok, stats} ->
-          AppLogger.api_info("Successfully synced characters to Ash resource",
-            stats: inspect(stats)
-          )
+    case TrackedCharacter.sync_from_cache() do
+      {:ok, stats} ->
+        AppLogger.api_info("Successfully synced characters to Ash resource",
+          stats: inspect(stats)
+        )
 
-        {:error, reason} ->
-          AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
-      end
-    rescue
-      e ->
-        AppLogger.api_error("Exception in sync process",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    catch
-      kind, reason ->
-        AppLogger.api_error("Caught error in sync process",
-          kind: kind,
-          error: inspect(reason)
-        )
+      {:error, reason} ->
+        AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
     end
+  rescue
+    e ->
+      AppLogger.api_error("Exception in sync process",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+  catch
+    kind, reason ->
+      AppLogger.api_error("Caught error in sync process",
+        kind: kind,
+        error: inspect(reason)
+      )
 
-    {:ok, new_characters}
+      {:ok, new_characters}
   end
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do
     # Use the centralized notification determiner to check if character notifications are enabled globally
-    if WandererNotifier.Services.NotificationDeterminer.should_notify_character?(nil) do
+    if NotificationDeterminer.should_notify_character?(nil) do
       # Check if we have both new and cached characters
       new_chars = new_characters || []
       cached_chars = cached_characters || []
@@ -380,21 +380,19 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp try_send_character_notification(char) do
-    try do
-      # Extract the character ID
-      character_id = NotificationHelpers.extract_character_id(char)
-      notify_character_if_needed(character_id, char)
-    rescue
-      e ->
-        AppLogger.api_error("Error sending character notification",
-          error: inspect(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    end
+    # Extract the character ID
+    character_id = NotificationHelpers.extract_character_id(char)
+    notify_character_if_needed(character_id, char)
+  rescue
+    e ->
+      AppLogger.api_error("Error sending character notification",
+        error: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
   end
 
   defp notify_character_if_needed(character_id, char) do
-    determiner = WandererNotifier.Services.NotificationDeterminer
+    determiner = NotificationDeterminer
 
     if determiner.should_notify_character?(character_id) do
       send_notification_for_character(character_id, char)

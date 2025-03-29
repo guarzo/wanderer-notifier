@@ -5,10 +5,13 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Cache
+  alias WandererNotifier.Logger, as: AppLogger
 
   @cache_name :wanderer_notifier_cache
+
+  # Default number of retries for cache operations
+  @default_retries 3
 
   def start_link(_args \\ []) do
     AppLogger.cache_info("Starting cache repository")
@@ -226,37 +229,35 @@ defmodule WandererNotifier.Data.Cache.Repository do
     schedule_cache_purge()
 
     # Perform the purge operation
-    try do
-      # Get cache stats for monitoring
-      case get_cachex_stats() do
-        {:ok, stats} ->
-          AppLogger.cache_debug("Cache statistics", stats: inspect(stats))
+    # Get cache stats for monitoring
+    case get_cachex_stats() do
+      {:ok, stats} ->
+        AppLogger.cache_debug("Cache statistics", stats: inspect(stats))
 
-        {:error, :stats_disabled} ->
-          AppLogger.cache_debug("Cache statistics are disabled")
+      {:error, :stats_disabled} ->
+        AppLogger.cache_debug("Cache statistics are disabled")
 
-        other_error ->
-          AppLogger.cache_warn("Failed to get cache statistics", error: inspect(other_error))
-      end
-
-      # Log purge operation at info level
-      AppLogger.cache_info("Performing hourly cache purge")
-
-      # Perform the actual purge
-      purge_expired_entries()
-    rescue
-      e ->
-        # Update state with error
-        updated_state = %{
-          state
-          | last_error: Exception.message(e),
-            last_error_time: System.os_time(:second)
-        }
-
-        {:noreply, updated_state}
+      other_error ->
+        AppLogger.cache_warn("Failed to get cache statistics", error: inspect(other_error))
     end
 
-    {:noreply, state}
+    # Log purge operation at info level
+    AppLogger.cache_info("Performing hourly cache purge")
+
+    # Perform the actual purge
+    purge_expired_entries()
+  rescue
+    e ->
+      # Update state with error
+      updated_state = %{
+        state
+        | last_error: Exception.message(e),
+          last_error_time: System.os_time(:second)
+      }
+
+      {:noreply, updated_state}
+
+      {:noreply, state}
   end
 
   @impl true
@@ -323,7 +324,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Don't log individual cache hits, but count them for batch logging
     key_pattern = extract_key_pattern(key)
 
-    WandererNotifier.Logger.BatchLogger.count_event(:cache_hit, %{
+    AppLogger.BatchLogger.count_event(:cache_hit, %{
       key_pattern: key_pattern
     })
 
@@ -344,7 +345,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Count cache misses for batch logging
     key_pattern = extract_key_pattern(key)
 
-    WandererNotifier.Logger.BatchLogger.count_event(:cache_miss, %{
+    AppLogger.BatchLogger.count_event(:cache_miss, %{
       key_pattern: key_pattern
     })
 
@@ -613,21 +614,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   def sync_with_db(key, db_read_fun, ttl) do
     # Don't use a transaction here to avoid holding locks during DB access
-    try do
-      # Fetch fresh data from the database
-      db_result = db_read_fun.()
+    # Fetch fresh data from the database
+    db_result = db_read_fun.()
 
-      # Store the result in cache with TTL
-      cache_db_result(key, db_result, ttl)
-    rescue
-      e ->
-        AppLogger.cache_error("Error syncing cache with DB",
-          key: key,
-          error: Exception.message(e)
-        )
+    # Store the result in cache with TTL
+    cache_db_result(key, db_result, ttl)
+  rescue
+    e ->
+      AppLogger.cache_error("Error syncing cache with DB",
+        key: key,
+        error: Exception.message(e)
+      )
 
-        {:error, :sync_failed}
-    end
+      {:error, :sync_failed}
   end
 
   # Helper to cache database query results with appropriate handling
@@ -671,38 +670,36 @@ defmodule WandererNotifier.Data.Cache.Repository do
     end
   end
 
-  # Retry a function with exponential backoff
-  defp retry_with_backoff(fun, retries \\ 3) do
-    try do
-      fun.()
-    rescue
-      e ->
-        AppLogger.cache_error("Error in cache operation", error: inspect(e))
+  defp retry_with_backoff(fun) when is_function(fun, 0) do
+    retry_with_backoff(fun, @default_retries)
+  end
 
-        if retries <= 0 do
-          AppLogger.cache_error("Max retries reached, giving up")
-          {:error, e}
-        else
-          AppLogger.cache_warn("Retrying after error", retries_left: retries)
-          Process.sleep(500)
-          retry_with_backoff(fun, retries - 1)
-        end
-    catch
-      :exit, reason ->
-        AppLogger.cache_error("Exit in cache operation", reason: inspect(reason))
+  defp retry_with_backoff(fun, retries) when is_function(fun, 0) and is_integer(retries) do
+    fun.()
+  rescue
+    e ->
+      if retries > 0 do
+        # Calculate backoff with jitter
+        backoff = :math.pow(2, @default_retries - retries) * 100
+        jitter = :rand.uniform(50)
+        sleep_time = round(backoff + jitter)
 
-        if retries <= 0 do
-          AppLogger.cache_error("Max retries reached, giving up")
-          {:error, reason}
-        else
-          AppLogger.cache_warn("Retrying after exit", retries_left: retries)
-          Process.sleep(500)
-          retry_with_backoff(fun, retries - 1)
-        end
+        # Log the retry
+        AppLogger.cache_warn("Cache operation failed, retrying",
+          error: Exception.message(e),
+          retries_left: retries - 1,
+          sleep_ms: sleep_time
+        )
 
-      result ->
-        result
-    end
+        :timer.sleep(sleep_time)
+        retry_with_backoff(fun, retries - 1)
+      else
+        AppLogger.cache_error("Cache operation failed after retries",
+          error: Exception.message(e)
+        )
+
+        nil
+      end
   end
 
   @doc """

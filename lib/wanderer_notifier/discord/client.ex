@@ -3,10 +3,10 @@ defmodule WandererNotifier.Discord.Client do
   Client for interacting with the Discord API.
   Provides a simplified interface for common Discord operations.
   """
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Config.Notifications
+  alias WandererNotifier.Logger, as: AppLogger
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 

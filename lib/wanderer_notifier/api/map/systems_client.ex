@@ -4,16 +4,16 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   Uses structured data types and consistent parsing to simplify the logic.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
-  alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Api.Map.UrlBuilder
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Config.Timings
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """
   Updates the systems in the cache.

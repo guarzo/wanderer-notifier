@@ -3,13 +3,13 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
 
   import Mox
 
-  alias WandererNotifier.Services.CharacterKillsService
-  alias WandererNotifier.MockZKillClient
-  alias WandererNotifier.MockESI
   alias WandererNotifier.MockCacheHelpers
-  alias WandererNotifier.MockRepository
+  alias WandererNotifier.MockESI
   alias WandererNotifier.MockKillmailPersistence
   alias WandererNotifier.MockLogger
+  alias WandererNotifier.MockRepository
+  alias WandererNotifier.MockZKillClient
+  alias WandererNotifier.Services.CharacterKillsService
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!

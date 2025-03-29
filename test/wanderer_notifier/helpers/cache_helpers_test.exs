@@ -3,12 +3,10 @@ defmodule WandererNotifier.Helpers.CacheHelpersTest do
   require Logger
 
   import Mox
-
   # Setup mocks before tests
   setup :verify_on_exit!
-
-  alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Data.Cache.RepositoryMock
+  alias WandererNotifier.Helpers.CacheHelpers
 
   setup do
     # Set the mock as the implementation for Repository

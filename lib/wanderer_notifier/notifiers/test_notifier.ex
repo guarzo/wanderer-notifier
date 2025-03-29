@@ -1,26 +1,57 @@
 defmodule WandererNotifier.Notifiers.TestNotifier do
   @moduledoc """
-  Test notifier for development and testing purposes.
+  Test notifier for use in test environment.
   """
+
+  @behaviour WandererNotifier.NotifierBehaviour
 
   require Logger
 
-  @doc """
-  Sends a test notification for a new tracked character.
-  """
-  def send_new_tracked_character_notification(character_info) do
-    Logger.info(
-      "TEST NOTIFIER: Would send notification for new tracked character: #{inspect(character_info)}"
-    )
-
+  @impl true
+  def send_message(message) do
+    Logger.info("TEST NOTIFIER: #{message}")
     :ok
   end
 
-  @doc """
-  Sends a test notification for a new system.
-  """
-  def send_new_system_notification(system_info) do
-    Logger.info("TEST NOTIFIER: Would send notification for new system: #{inspect(system_info)}")
+  @impl true
+  def send_embed(title, description, url \\ nil, color \\ nil) do
+    Logger.info("TEST NOTIFIER EMBED: #{title} - #{description} (#{url}) [#{color}]")
+    :ok
+  end
+
+  @impl true
+  def send_file(filename, _file_data, title \\ nil, description \\ nil) do
+    Logger.info("TEST NOTIFIER FILE: #{filename} - #{title} - #{description}")
+    :ok
+  end
+
+  @impl true
+  def send_image_embed(title, description, image_url, color \\ nil) do
+    Logger.info("TEST NOTIFIER IMAGE: #{title} - #{description} - #{image_url} [#{color}]")
+    :ok
+  end
+
+  @impl true
+  def send_enriched_kill_embed(killmail, kill_id) do
+    Logger.info("TEST NOTIFIER KILL: #{inspect(killmail)} - #{kill_id}")
+    :ok
+  end
+
+  @impl true
+  def send_kill_embed(kill, kill_id) do
+    Logger.info("TEST NOTIFIER KILL: #{inspect(kill)} - #{kill_id}")
+    :ok
+  end
+
+  @impl true
+  def send_new_system_notification(system) do
+    Logger.info("TEST NOTIFIER SYSTEM: #{inspect(system)}")
+    :ok
+  end
+
+  @impl true
+  def send_new_tracked_character_notification(character) do
+    Logger.info("TEST NOTIFIER CHARACTER: #{inspect(character)}")
     :ok
   end
 

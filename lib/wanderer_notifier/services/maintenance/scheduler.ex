@@ -3,12 +3,13 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Schedules and executes maintenance tasks.
   Handles periodic updates for systems and characters.
   """
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Core.Features
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Performs periodic maintenance tasks.
@@ -105,31 +106,29 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     )
 
     # Update characters through the MapClient with exception handling
-    try do
-      case MapClient.update_tracked_characters(cached_characters_safe) do
-        {:ok, characters} ->
-          handle_successful_character_update(state, now, characters)
+    case MapClient.update_tracked_characters(cached_characters_safe) do
+      {:ok, characters} ->
+        handle_successful_character_update(state, now, characters)
 
-        {:error, :feature_disabled} ->
-          # Handle feature_disabled case differently - log as info instead of error
-          AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
-          return_state_with_updated_timestamp(state, now)
+      {:error, :feature_disabled} ->
+        # Handle feature_disabled case differently - log as info instead of error
+        AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
+        return_state_with_updated_timestamp(state, now)
 
-        {:error, reason} ->
-          AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
-          return_state_with_updated_timestamp(state, now)
-      end
-    rescue
-      e ->
-        # Catch any exception, log it, and return the state with updated timestamp
-        AppLogger.maintenance_error("Exception while updating characters",
-          error: Exception.message(e),
-          stacktrace: inspect(Process.info(self(), :current_stacktrace))
-        )
-
-        # Return original state with updated timestamp to prevent rapid retries
+      {:error, reason} ->
+        AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
         return_state_with_updated_timestamp(state, now)
     end
+  rescue
+    e ->
+      # Catch any exception, log it, and return the state with updated timestamp
+      AppLogger.maintenance_error("Exception while updating characters",
+        error: Exception.message(e),
+        stacktrace: inspect(Process.info(self(), :current_stacktrace))
+      )
+
+      # Return original state with updated timestamp to prevent rapid retries
+      return_state_with_updated_timestamp(state, now)
   end
 
   # Normalize cached characters to ensure it's a list or nil
@@ -187,7 +186,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       CacheRepo.set(
         "map:characters",
         characters_list,
-        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+        Config.Timings.characters_cache_ttl()
       )
 
       # Double-check the cache again
@@ -209,160 +208,41 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 
-    uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-
     # Create a deduplication key based on a time window (e.g., hourly)
     # We'll use the current day as part of the key to deduplicate within the same day
     current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
+    case DeduplicationHelper.check_and_mark(dedup_key) do
+      {:ok, :new} ->
+        AppLogger.maintenance_info("Service status notification allowed",
+          action: "skipping_duplicate",
+          uptime: "#{days}d #{hours}h #{minutes}m #{seconds}s"
+        )
+
+        {:ok, :new}
+
       {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent",
+        AppLogger.maintenance_info("Service status notification skipped (duplicate)",
           action: "skipping_duplicate"
         )
 
-        :ok
-
-      {:ok, :new} ->
-        # Get current stats
-        stats = WandererNotifier.Core.Stats.get_stats()
-
-        # Get license information safely
-        license_status =
-          try do
-            WandererNotifier.Core.License.status()
-          rescue
-            e ->
-              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
-              %{valid: false, error_message: "Error retrieving license status"}
-          catch
-            type, error ->
-              AppLogger.maintenance_error("Error getting license status",
-                error_type: inspect(type),
-                error: inspect(error)
-              )
-
-              %{valid: false, error_message: "Error retrieving license status"}
-          end
-
-        # Get feature information
-        features_status = WandererNotifier.Core.Features.get_feature_status()
-
-        # Get tracked systems and characters counts
-        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-        characters = CacheRepo.get("map:characters") || []
-
-        # Create a structured notification for the status message
-        title = "Service Status Report"
-        description = "Periodic status update for the notification service."
-
-        # Create a structured notification using our formatter
-        generic_notification =
-          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
-            title,
-            description,
-            stats,
-            uptime_seconds,
-            features_status,
-            license_status,
-            length(systems),
-            length(characters)
-          )
-
-        # Convert to Discord format
-        discord_embed =
-          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
-
-        # Log simple status message
-        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
-
-        # Send the rich notification
-        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+        {:ok, :duplicate}
     end
   end
 
   def send_status_report do
-    # Calculate uptime
-    uptime_seconds = :os.system_time(:second) - Process.get(:service_start_time, 0)
+    dedup_key = "service_status:report"
 
-    days = div(uptime_seconds, 86_400)
-    hours = div(rem(uptime_seconds, 86_400), 3600)
-    minutes = div(rem(uptime_seconds, 3600), 60)
-    seconds = rem(uptime_seconds, 60)
-
-    uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-
-    # Create a deduplication key based on a time window
-    # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86_400)
-    dedup_key = "status_report:#{current_day}"
-
-    # Check if we've already sent a status report in this time window
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
-      {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent",
-          action: "skipping_duplicate"
-        )
-
-        :ok
-
+    case DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :new} ->
-        # Get current stats
-        stats = WandererNotifier.Core.Stats.get_stats()
+        AppLogger.maintenance_info("Service status report notification allowed")
+        {:ok, :new}
 
-        # Get license information safely
-        license_status =
-          try do
-            WandererNotifier.Core.License.status()
-          rescue
-            e ->
-              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
-              %{valid: false, error_message: "Error retrieving license status"}
-          catch
-            type, error ->
-              AppLogger.maintenance_error("Error getting license status",
-                error_type: inspect(type),
-                error: inspect(error)
-              )
-
-              %{valid: false, error_message: "Error retrieving license status"}
-          end
-
-        # Get feature information
-        features_status = WandererNotifier.Core.Features.get_feature_status()
-
-        # Get tracked systems and characters counts
-        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-        characters = CacheRepo.get("map:characters") || []
-
-        # Create a structured notification for the status message
-        title = "Service Status Report"
-        description = "Periodic status update for the notification service."
-
-        # Create a structured notification using our formatter
-        generic_notification =
-          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
-            title,
-            description,
-            stats,
-            uptime_seconds,
-            features_status,
-            license_status,
-            length(systems),
-            length(characters)
-          )
-
-        # Convert to Discord format
-        discord_embed =
-          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
-
-        # Log simple status message
-        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
-
-        # Send the rich notification
-        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+      {:ok, :duplicate} ->
+        AppLogger.maintenance_info("Service status report notification skipped (duplicate)")
+        {:ok, :duplicate}
     end
   end
 end

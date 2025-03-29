@@ -9,12 +9,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
-
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Data.Killmail
-
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Logger, as: AppLogger
   # Color constants for Discord notifications
   # Default blue
   @default_color 0x3498DB

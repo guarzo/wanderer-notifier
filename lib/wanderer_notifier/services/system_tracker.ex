@@ -10,20 +10,22 @@ defmodule WandererNotifier.Services.SystemTracker do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Config.Timing
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.API
   alias WandererNotifier.Config.Cache
+  alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.processor_debug("Starting systems update")
 
-    with {:ok, systems_url} <- build_systems_url(),
-         {:ok, body} <- fetch_get_body(systems_url),
+    with {:ok, url} <- UrlBuilder.build_url("map/systems"),
+         {:ok, body} <- fetch_get_body(url),
          {:ok, json} <- decode_json(body),
          {:ok, fresh_systems} <- process_systems(json) do
       process_fresh_systems(fresh_systems, cached_systems)
@@ -135,7 +137,7 @@ defmodule WandererNotifier.Services.SystemTracker do
       cache_keys = Enum.map(system_ids, &"map:system:#{&1}")
 
       # Use batch get to fetch all systems at once
-      systems_map = WandererNotifier.Data.Cache.Repository.get_many(cache_keys)
+      systems_map = CacheRepo.get_many(cache_keys)
 
       # Filter out any nil values and return the list of systems
       cache_keys
@@ -148,78 +150,8 @@ defmodule WandererNotifier.Services.SystemTracker do
     end
   end
 
-  defp build_systems_url do
-    AppLogger.processor_debug("Building systems URL from map configuration")
-
-    # Check if the URL has already been cached in the process dictionary
-    cached = Process.get(:systems_url_cache)
-
-    if cached != nil do
-      {url, cached_env_result} = cached
-
-      # Get the current environment state
-      current_env_result = validate_map_env()
-
-      # Compare the cached and current environment results
-      if current_env_result == cached_env_result do
-        AppLogger.processor_debug("Using cached systems URL", url: url)
-        {:ok, url}
-      else
-        # Environment changed, rebuild URL
-        build_and_cache_url()
-      end
-    else
-      # No cached URL, build it
-      build_and_cache_url()
-    end
-  end
-
-  # Helper to build and cache the URL
-  defp build_and_cache_url do
-    case validate_map_env() do
-      {:ok, map_url} = env_result ->
-        # Extract the base URL (without any path segments)
-        uri = URI.parse(map_url)
-        base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-
-        # Get the slug/map name from the path
-        slug =
-          case uri.path do
-            nil ->
-              ""
-
-            "/" ->
-              ""
-
-            path ->
-              # Remove leading slash and get the first path segment
-              segments = path |> String.trim_leading("/") |> String.split("/")
-              List.first(segments, "")
-          end
-
-        # Construct the systems URL with the correct path
-        systems_url =
-          if slug != "" do
-            "#{base_url}/api/map/systems?slug=#{slug}"
-          else
-            "#{base_url}/api/map/systems"
-          end
-
-        # Cache the result with the current environment state
-        Process.put(:systems_url_cache, {systems_url, env_result})
-
-        AppLogger.processor_debug("Successfully built systems URL", url: systems_url)
-        {:ok, systems_url}
-
-      {:error, reason} = err ->
-        AppLogger.processor_error("Failed to build systems URL", error: inspect(reason))
-        err
-    end
-  end
-
   defp fetch_get_body(url) do
-    map_token = API.map_token()
-    headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
+    headers = UrlBuilder.get_auth_headers()
     label = "SystemTracker"
 
     Client.get(url, headers)
@@ -512,8 +444,7 @@ defmodule WandererNotifier.Services.SystemTracker do
   end
 
   defp fetch_and_cache_system_info(url, system_id) do
-    map_token = API.map_token()
-    headers = if map_token, do: [{"Authorization", "Bearer " <> map_token}], else: []
+    headers = UrlBuilder.get_auth_headers()
     cache_key = "static_info:#{system_id}"
 
     case Client.request("GET", url, headers) do
@@ -667,7 +598,7 @@ defmodule WandererNotifier.Services.SystemTracker do
     system_id = extract_system_id_for_notification(enriched_system)
 
     # Perform deduplication check
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark_system(system_id) do
+    case DeduplicationHelper.check_and_mark_system(system_id) do
       {:ok, :duplicate} ->
         handle_duplicate_system(system_id)
 

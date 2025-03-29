@@ -123,11 +123,11 @@ defmodule WandererNotifier.Core.Config do
     Timing-related configuration.
     """
 
-    def characters_cache_ttl, do: WandererNotifier.Config.Timings.characters_cache_ttl()
-    def systems_cache_ttl, do: WandererNotifier.Config.Timings.systems_cache_ttl()
-    def reconnect_delay, do: WandererNotifier.Config.Timings.reconnect_delay()
-    def maintenance_interval, do: WandererNotifier.Config.Timings.maintenance_interval()
-    def static_info_cache_ttl, do: WandererNotifier.Config.Timings.static_info_cache_ttl()
+    def characters_cache_ttl, do: Timings.characters_cache_ttl()
+    def systems_cache_ttl, do: Timings.systems_cache_ttl()
+    def reconnect_delay, do: Timings.reconnect_delay()
+    def maintenance_interval, do: Timings.maintenance_interval()
+    def static_info_cache_ttl, do: Timings.static_info_cache_ttl()
   end
 
   @doc """

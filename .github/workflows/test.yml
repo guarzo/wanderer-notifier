@@ -92,7 +92,7 @@ jobs:
         run: mix format --check-formatted
 
       - name: Run code quality checks
-        run: mix credo
+        run: mix credo --strict
 
   docker:
     name: Validate Docker image

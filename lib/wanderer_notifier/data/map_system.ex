@@ -104,12 +104,10 @@ defmodule WandererNotifier.Data.MapSystem do
 
   # Helper to try converting a string to an existing atom
   defp try_convert_to_atom(struct, key) do
-    try do
-      atom_key = String.to_existing_atom(key)
-      fetch_field(struct, atom_key)
-    rescue
-      ArgumentError -> :error
-    end
+    atom_key = String.to_existing_atom(key)
+    fetch_field(struct, atom_key)
+  rescue
+    ArgumentError -> :error
   end
 
   @doc """

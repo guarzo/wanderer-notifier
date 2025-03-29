@@ -9,7 +9,7 @@ defmodule WandererNotifier.Schedulers.Registry do
   use GenServer
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
-
+  alias WandererNotifier.Logger.StartupTracker
   # Client API
 
   @doc """
@@ -46,7 +46,7 @@ defmodule WandererNotifier.Schedulers.Registry do
   def init(_opts) do
     # Use startup tracker if available
     if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_registry, %{
+      StartupTracker.record_event(:scheduler_registry, %{
         status: "initializing"
       })
     else
@@ -106,7 +106,7 @@ defmodule WandererNotifier.Schedulers.Registry do
       # Always use the startup tracker to consolidate logs
       if Process.get(:startup_tracker) do
         # Only track the event, it will be logged only once by the supervisor later
-        WandererNotifier.Logger.StartupTracker.record_event(:scheduler_status, %{
+        StartupTracker.record_event(:scheduler_status, %{
           total: total_count,
           enabled: enabled_count,
           disabled: disabled_count

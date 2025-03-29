@@ -3,8 +3,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   API controller for the web interface.
   """
   use Plug.Router
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.{Config, License, Stats}
+  alias WandererNotifier.Core.{Config, Features, License, Stats}
   alias WandererNotifier.Data.Cache.Repository
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
   alias WandererNotifier.Logger, as: AppLogger
@@ -65,75 +64,231 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   # Status endpoint for the dashboard
   get "/status" do
     try do
-      license_status = License.status()
+      AppLogger.api_info("Starting status endpoint processing")
 
-      license_info = %{
-        valid: license_status[:valid],
-        bot_assigned: license_status[:bot_assigned],
-        details: license_status[:details],
-        error: license_status[:error],
-        error_message: license_status[:error_message]
+      # Get license status safely
+      AppLogger.api_info("Fetching license status")
+      license_result = License.validate()
+      AppLogger.api_info("License status result", %{result: inspect(license_result)})
+
+      license_status = %{
+        valid: license_result.valid,
+        bot_assigned: license_result.bot_assigned,
+        details: license_result.details,
+        error: license_result.error,
+        error_message: license_result.error_message,
+        last_validated: license_result.last_validated
       }
 
-      stats = Stats.get_stats()
-      features = Features
-      limits = features.get_all_limits()
+      # Get stats safely
+      AppLogger.api_info("Fetching stats")
+
+      stats =
+        try do
+          case Stats.get_stats() do
+            nil ->
+              AppLogger.api_warn("Stats.get_stats() returned nil")
+              %{uptime: "Unknown", notifications: %{}, websocket: %{connected: false}}
+
+            stats ->
+              AppLogger.api_info("Stats retrieved successfully", %{stats: inspect(stats)})
+              stats
+          end
+        rescue
+          e ->
+            AppLogger.api_error("Error getting stats", %{
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            })
+
+            %{uptime: "Unknown", notifications: %{}, websocket: %{connected: false}}
+        end
+
+      AppLogger.api_info("Fetching features and limits")
+      features = Features.get_feature_status()
+
+      limits =
+        try do
+          result = Features.get_all_limits()
+          AppLogger.api_info("Retrieved limits", %{limits: inspect(result)})
+          result
+        rescue
+          e ->
+            AppLogger.api_error("Error getting limits", %{
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            })
+
+            %{tracked_systems: 0, tracked_characters: 0, notification_history: 0}
+        end
 
       # Add error handling for tracked systems and characters
-      tracked_systems = get_tracked_systems_safely()
-      tracked_characters = get_tracked_characters_safely()
+      AppLogger.api_info("Fetching tracked systems and characters")
 
-      usage = %{
-        tracked_systems: %{
-          current: length(tracked_systems),
-          limit: limits.tracked_systems,
-          percentage: calculate_percentage(length(tracked_systems), limits.tracked_systems)
-        },
-        tracked_characters: %{
-          current: length(tracked_characters),
-          limit: limits.tracked_characters,
-          percentage: calculate_percentage(length(tracked_characters), limits.tracked_characters)
-        },
-        notification_history: %{
-          limit: limits.notification_history
-        }
-      }
+      tracked_systems =
+        try do
+          systems = get_tracked_systems_safely()
+          AppLogger.api_info("Retrieved tracked systems", %{count: length(systems)})
+          systems
+        rescue
+          e ->
+            AppLogger.api_error("Error getting tracked systems", %{
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            })
 
-      response = %{
-        stats: stats,
-        license: license_info,
-        features: %{
-          limits: limits,
-          usage: usage,
-          enabled: %{
-            basic_notifications: features.enabled?(:basic_notifications),
-            tracked_systems_notifications: features.enabled?(:tracked_systems_notifications),
-            tracked_characters_notifications:
-              features.enabled?(:tracked_characters_notifications),
-            kill_charts: features.kill_charts_enabled?(),
-            map_charts: features.map_charts_enabled?()
-          },
-          config: %{
-            character_tracking_enabled: Features.character_tracking_enabled?(),
-            character_notifications_enabled: Features.character_notifications_enabled?(),
-            system_notifications_enabled: Features.system_notifications_enabled?()
+            []
+        end
+
+      tracked_characters =
+        try do
+          characters = get_tracked_characters_safely()
+          AppLogger.api_info("Retrieved tracked characters", %{count: length(characters)})
+          characters
+        rescue
+          e ->
+            AppLogger.api_error("Error getting tracked characters", %{
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            })
+
+            []
+        end
+
+      AppLogger.api_info("Building usage statistics", %{
+        tracked_systems: length(tracked_systems),
+        tracked_characters: length(tracked_characters),
+        limits: limits
+      })
+
+      usage =
+        try do
+          # Ensure limits has the required fields with defaults
+          limits =
+            Map.merge(
+              %{tracked_systems: 0, tracked_characters: 0, notification_history: 0},
+              limits || %{}
+            )
+
+          # Calculate percentages safely
+          system_percentage =
+            calculate_percentage(length(tracked_systems || []), limits.tracked_systems)
+
+          character_percentage =
+            calculate_percentage(length(tracked_characters || []), limits.tracked_characters)
+
+          AppLogger.api_info("Calculated usage percentages", %{
+            system_percentage: system_percentage,
+            character_percentage: character_percentage,
+            limits: limits
+          })
+
+          %{
+            tracked_systems: %{
+              current: length(tracked_systems || []),
+              limit: limits.tracked_systems,
+              percentage: system_percentage
+            },
+            tracked_characters: %{
+              current: length(tracked_characters || []),
+              limit: limits.tracked_characters,
+              percentage: character_percentage
+            },
+            notification_history: %{
+              limit: limits.notification_history
+            }
           }
-        }
-      }
+        rescue
+          e ->
+            AppLogger.api_error("Error building usage statistics", %{
+              error: inspect(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+            })
 
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(response))
-    rescue
-      e ->
-        AppLogger.api_error("Error processing status endpoint",
-          error: inspect(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
+            %{
+              tracked_systems: %{current: 0, limit: 0, percentage: 0},
+              tracked_characters: %{current: 0, limit: 0, percentage: 0},
+              notification_history: %{limit: 0}
+            }
+        end
+
+      # Build the response
+      AppLogger.api_info("Building response structure", %{
+        features: inspect(features),
+        limits: inspect(limits),
+        usage: inspect(usage),
+        license_status: inspect(license_status),
+        stats: inspect(stats)
+      })
+
+      try do
+        response = %{
+          license: license_status,
+          stats: stats,
+          features: %{
+            config: %{
+              character_notifications_enabled: Features.character_notifications_enabled?(),
+              system_notifications_enabled: Features.system_notifications_enabled?(),
+              character_tracking_enabled: Features.character_tracking_enabled?(),
+              system_tracking_enabled: Features.system_tracking_enabled?(),
+              tracked_systems_notifications_enabled:
+                Features.tracked_systems_notifications_enabled?(),
+              tracked_characters_notifications_enabled:
+                Features.tracked_characters_notifications_enabled?(),
+              activity_charts: Features.activity_charts_enabled?(),
+              kill_charts: Features.kill_charts_enabled?(),
+              map_charts: Features.map_charts_enabled?()
+            },
+            enabled: %{
+              basic_notifications: Features.notifications_enabled?(),
+              character_notifications: Features.character_notifications_enabled?(),
+              system_notifications: Features.system_notifications_enabled?(),
+              kill_notifications: Features.kill_notifications_enabled?(),
+              character_tracking: Features.character_tracking_enabled?(),
+              system_tracking: Features.system_tracking_enabled?(),
+              tracked_systems_notifications: Features.tracked_systems_notifications_enabled?(),
+              tracked_characters_notifications:
+                Features.tracked_characters_notifications_enabled?(),
+              activity_charts: Features.activity_charts_enabled?(),
+              kill_charts: Features.kill_charts_enabled?(),
+              map_charts: Features.map_charts_enabled?()
+            }
+          },
+          limits: limits,
+          usage: usage
+        }
+
+        AppLogger.api_info("Status response built successfully", %{response: inspect(response)})
 
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(500, Jason.encode!(%{error: "Internal server error", details: inspect(e)}))
+        |> send_resp(200, Jason.encode!(response))
+      rescue
+        e ->
+          AppLogger.api_error("Error building response structure", %{
+            error: inspect(e),
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+            features: inspect(features),
+            limits: inspect(limits),
+            usage: inspect(usage),
+            license_status: inspect(license_status),
+            stats: inspect(stats)
+          })
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(500, Jason.encode!(%{error: "Internal server error"}))
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error in status endpoint", %{
+          error: inspect(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{error: "Internal server error"}))
     end
   end
 
@@ -593,11 +748,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Helper functions
   defp calculate_percentage(_current, limit) when is_nil(limit), do: nil
-
-  defp calculate_percentage(current, limit) when limit > 0,
-    do: min(100, round(current / limit * 100))
-
-  defp calculate_percentage(_, _), do: 0
+  defp calculate_percentage(_current, limit) when limit <= 0, do: 0
+  defp calculate_percentage(current, limit), do: min(100, round(current / limit * 100))
 
   # Helper functions for parameter parsing
 
@@ -636,6 +788,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             message: "Test notification sent for kill_id: #{kill_id}",
             details: "Check your Discord for the message."
           }
+
         {:error, reason} ->
           %{
             success: false,
@@ -837,6 +990,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             kill_id: kill_id
           })
         )
+
       {:error, reason} ->
         conn
         |> put_resp_content_type("application/json")

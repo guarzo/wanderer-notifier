@@ -141,6 +141,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
     # Merge ZKB and ESI data
     merged_data = Map.merge(kill_data, esi_data)
+
     AppLogger.processor_info("Merged Data", %{
       kill_id: kill_id,
       data: inspect(merged_data)
@@ -511,8 +512,8 @@ defmodule WandererNotifier.Services.KillmailComparison do
 
         KillTrackingHistory.record_comparison(
           comp.character_id,
-          cache_type,
-          comparison_data
+          comparison_data,
+          cache_type
         )
       end)
     end
@@ -620,12 +621,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
     # even with low concurrency
     Process.sleep(500)
 
-    case get_character_comparison(
-           character_id,
-           character_name,
-           start_datetime,
-           end_datetime
-         ) do
+    case get_character_comparison(character_id, character_name, start_datetime, end_datetime) do
       {:ok, comparison_data} -> comparison_data
       _ -> nil
     end
@@ -671,6 +667,7 @@ defmodule WandererNotifier.Services.KillmailComparison do
         AppLogger.processor_info("ZKill data received", %{
           kill_count: length(kills)
         })
+
         process_kills(kills, start_date, end_date)
 
       error ->
@@ -1170,8 +1167,8 @@ defmodule WandererNotifier.Services.KillmailComparison do
         # Store in historical tracking
         KillTrackingHistory.record_comparison(
           character_id,
-          cache_type,
-          comparison_data
+          comparison_data,
+          cache_type
         )
 
         result

@@ -5,11 +5,12 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Http.ErrorHandler
-  alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Api.Map.ResponseValidator
+  alias WandererNotifier.Api.Map.UrlBuilder
+  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Fetches static information for a specific solar system.
@@ -112,7 +113,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   # Private helper functions
 
   defp extract_base_domain do
-    base_url = WandererNotifier.Core.Config.map_url()
+    base_url = Config.map_url()
 
     if is_nil(base_url) or base_url == "" do
       {:error, "MAP_URL is not configured"}

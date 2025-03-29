@@ -57,4 +57,9 @@ defmodule WandererNotifier.NotifierBehaviour do
               image_url :: String.t(),
               color :: integer()
             ) :: :ok | {:error, any()}
+
+  @doc """
+  Sends a kill embed message for a killmail.
+  """
+  @callback send_kill_embed(killmail :: map(), kill_id :: String.t()) :: :ok | {:error, any()}
 end

@@ -4,10 +4,10 @@ defmodule WandererNotifier.Web.Server do
   """
   use GenServer
   require Logger
+
+  alias WandererNotifier.Config.Web, as: WebConfig
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
-  alias WandererNotifier.Config.Web, as: WebConfig
-
   # Client API
 
   @doc """

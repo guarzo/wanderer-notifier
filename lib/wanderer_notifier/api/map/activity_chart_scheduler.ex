@@ -4,12 +4,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.ChartService.ActivityChartAdapter
+  alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Config.SystemTracking
   alias WandererNotifier.Core.Features
-  alias WandererNotifier.Config.Notifications
-
+  alias WandererNotifier.Logger, as: AppLogger
   # Default interval is 24 hours (in milliseconds)
   @default_interval 24 * 60 * 60 * 1000
 
@@ -174,32 +174,30 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   end
 
   defp generate_chart(config, activity_data, channel_id) do
-    try do
-      case config.type do
-        :activity_summary ->
-          generate_activity_summary(activity_data, config, channel_id)
+    case config.type do
+      :activity_summary ->
+        generate_activity_summary(activity_data, config, channel_id)
 
-        :activity_timeline ->
-          generate_activity_timeline(activity_data, channel_id)
+      :activity_timeline ->
+        generate_activity_timeline(activity_data, channel_id)
 
-        _ ->
-          {:error, "Unknown chart type: #{config.type}"}
-      end
-    rescue
-      e ->
-        error_message = "Chart generation crashed: #{inspect(e)}"
-        AppLogger.api_error(error_message)
-        {:error, error_message}
-    catch
-      kind, reason ->
-        error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
-        AppLogger.api_error(error_message)
-        {:error, error_message}
+      _ ->
+        {:error, "Unknown chart type: #{config.type}"}
     end
+  rescue
+    e ->
+      error_message = "Chart generation crashed: #{inspect(e)}"
+      AppLogger.api_error(error_message)
+      {:error, error_message}
+  catch
+    kind, reason ->
+      error_message = "Chart generation threw #{kind}: #{inspect(reason)}"
+      AppLogger.api_error(error_message)
+      {:error, error_message}
   end
 
   defp generate_activity_summary(activity_data, config, channel_id) do
-    WandererNotifier.ChartService.ActivityChartAdapter.send_chart_to_discord(
+    ActivityChartAdapter.send_chart_to_discord(
       activity_data,
       config.title,
       "activity_summary",

@@ -6,6 +6,7 @@ defmodule WandererNotifier.Api.Http.Client do
   @behaviour WandererNotifier.Api.Http.ClientBehaviour
 
   require Logger
+  alias WandererNotifier.Api.Http.ResponseHandler
   alias WandererNotifier.Logger, as: AppLogger
 
   @default_max_retries 3
@@ -162,7 +163,7 @@ defmodule WandererNotifier.Api.Http.Client do
       label: label
     }
 
-    # Asynchronously handle the request with retries
+    # Start the request in a separate task
     task =
       Task.async(fn ->
         do_request_with_retry(
@@ -175,8 +176,8 @@ defmodule WandererNotifier.Api.Http.Client do
         )
       end)
 
-    # Wait for the result with timeout
     try do
+      # Wait for the result with timeout
       Task.await(task, timeout * (max_retries + 1))
     catch
       :exit, {:timeout, _} ->
@@ -344,7 +345,7 @@ defmodule WandererNotifier.Api.Http.Client do
 
   @doc """
   Handles response status codes appropriately, converting them to meaningful atoms.
-  This is a convenience wrapper around WandererNotifier.Api.Http.ResponseHandler.
+  This is a convenience wrapper around ResponseHandler.
 
   ## Examples:
     - 200-299: {:ok, parsed_body}
@@ -370,7 +371,7 @@ defmodule WandererNotifier.Api.Http.Client do
 
     if decode_json and status in 200..299 do
       # Forward to ResponseHandler which can handle JSON responses consistently
-      WandererNotifier.Api.Http.ResponseHandler.handle_response(response, curl_example)
+      ResponseHandler.handle_response(response, curl_example)
     else
       handle_response_by_status(status, body, decode_json)
     end

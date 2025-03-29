@@ -16,8 +16,8 @@ defmodule WandererNotifier.Data.Character do
   """
   @behaviour Access
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Config.Application
+  alias WandererNotifier.Logger, as: AppLogger
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -86,13 +86,11 @@ defmodule WandererNotifier.Data.Character do
 
       # For any other field, try to convert to atom
       _ ->
-        try do
-          atom_key = String.to_existing_atom(key)
-          Map.fetch(Map.from_struct(struct), atom_key)
-        rescue
-          ArgumentError -> :error
-        end
+        atom_key = String.to_existing_atom(key)
+        Map.fetch(Map.from_struct(struct), atom_key)
     end
+  rescue
+    ArgumentError -> :error
   end
 
   @doc """
