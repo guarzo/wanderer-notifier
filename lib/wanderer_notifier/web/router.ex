@@ -3,16 +3,17 @@ defmodule WandererNotifier.Web.Router do
   Web router for the WandererNotifier dashboard.
   """
   use Plug.Router
+  import Plug.Conn
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Services.Service
 
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Web.Controllers.ChartController
-  alias WandererNotifier.Web.Controllers.ApiController
-  alias WandererNotifier.Web.Controllers.DebugController
-  # MapController was removed as part of the consolidation
-  # alias WandererNotifier.Web.Controllers.MapController
-  alias WandererNotifier.Web.Controllers.ActivityChartController
+  alias WandererNotifier.Web.Controllers.{
+    ChartController,
+    ApiController,
+    DebugController
+  }
 
   plug(Plug.Logger)
 
@@ -44,7 +45,6 @@ defmodule WandererNotifier.Web.Router do
   )
 
   plug(:match)
-  plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
   plug(:dispatch)
 
   # Forward chart requests to the ChartController
@@ -57,35 +57,35 @@ defmodule WandererNotifier.Web.Router do
   forward("/api", to: ApiController)
 
   # Only add activity chart routes if map tools are enabled
-  if Config.map_charts_enabled?() do
-    forward("/activity", to: ActivityChartController)
+  if Features.map_tools_enabled?() do
+    forward("/activity", to: ChartController)
   end
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
 
   # Map tools routes
   get "/map-tools" do
-    if Config.map_charts_enabled?() do
+    if Features.map_tools_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/app/index.html")
+      |> send_file(200, "priv/static/map-tools/index.html")
     else
       conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Map Charts functionality is not enabled")
+      |> put_resp_content_type("text/plain")
+      |> send_resp(404, "Map tools are disabled")
     end
   end
 
   # Handle client-side routing for the React app - Map Tools
   get "/map-tools/*path" do
-    if Config.map_charts_enabled?() do
+    if Features.map_tools_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/app/index.html")
+      |> send_file(200, "priv/static/map-tools/index.html")
     else
       conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, "Map Charts functionality is not enabled")
+      |> put_resp_content_type("text/plain")
+      |> send_resp(404, "Map tools are disabled")
     end
   end
 
@@ -105,7 +105,7 @@ defmodule WandererNotifier.Web.Router do
 
     # Check if the service GenServer is alive
     service_alive =
-      case Process.whereis(WandererNotifier.Services.Service) do
+      case Process.whereis(Service) do
         pid when is_pid(pid) -> Process.alive?(pid)
         _ -> false
       end

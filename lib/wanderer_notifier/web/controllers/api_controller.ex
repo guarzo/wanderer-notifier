@@ -9,6 +9,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Core.License
   alias WandererNotifier.Services.CharacterKillsService
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
 
   # Module attributes
   @api_version "1.0.0"
@@ -74,7 +75,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       }
 
       stats = WandererNotifier.Core.Stats.get_stats()
-      features = WandererNotifier.Core.Features
+      features = Features
       limits = features.get_all_limits()
 
       # Add error handling for tracked systems and characters
@@ -135,12 +136,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
             map_charts: features.map_charts_enabled?()
           },
           config: %{
-            character_tracking_enabled:
-              WandererNotifier.Core.Config.character_tracking_enabled?(),
-            character_notifications_enabled:
-              WandererNotifier.Core.Config.character_notifications_enabled?(),
-            system_notifications_enabled:
-              WandererNotifier.Core.Config.system_notifications_enabled?()
+            character_tracking_enabled: Features.character_tracking_enabled?(),
+            character_notifications_enabled: Features.character_notifications_enabled?(),
+            system_notifications_enabled: Features.system_notifications_enabled?()
           }
         }
       }
@@ -165,7 +163,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/db-stats" do
     try do
       # Check if kill charts is enabled
-      if WandererNotifier.Core.Config.kill_charts_enabled?() do
+      if Features.kill_charts_enabled?() do
         # Check if database operations are enabled
         if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
           # Get killmail statistics
@@ -263,7 +261,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     AppLogger.api_info("Character kills stats endpoint called")
 
     # Check if kill charts is enabled
-    if Config.kill_charts_enabled?() do
+    if Features.kill_charts_enabled?() do
       # Get stats using KillmailPersistence
       stats = WandererNotifier.Resources.KillmailPersistence.get_tracked_kills_stats()
 
@@ -303,7 +301,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     page = Map.get(conn_params, "page", "1") |> parse_integer(1)
 
     # Check if kill charts is enabled
-    if Config.kill_charts_enabled?() do
+    if Features.kill_charts_enabled?() do
       if all_characters do
         # Fetch kills for all tracked characters
         AppLogger.api_info("Fetching kills for all tracked characters",
@@ -324,16 +322,25 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               })
             )
 
-          {:error, {:domain_error, :zkill, {:api_error, error_msg}}} ->
-            # Handle ZKill API errors specifically
+          {:error, :no_tracked_characters} ->
             conn
             |> put_resp_content_type("application/json")
             |> send_resp(
-              502,
+              404,
               Jason.encode!(%{
                 success: false,
-                message: "ZKill API error",
-                details: error_msg
+                message: "No tracked characters found"
+              })
+            )
+
+          {:error, :no_successful_results} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                success: false,
+                message: "Failed to process any character kills successfully"
               })
             )
 
@@ -436,7 +443,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     AppLogger.api_info("Killmail aggregation stats requested")
 
     # Check if kill charts is enabled
-    if Config.kill_charts_enabled?() do
+    if Features.kill_charts_enabled?() do
       # Check if database operations are enabled
       if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
         try do
@@ -537,7 +544,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/sync-tracked-characters" do
     AppLogger.api_info("Sync tracked characters endpoint called")
 
-    if Config.kill_charts_enabled?() do
+    if Features.kill_charts_enabled?() do
       # Try to sync characters
       case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
         {:ok, result} ->

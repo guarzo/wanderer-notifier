@@ -132,6 +132,9 @@ defmodule WandererNotifier.Api.ESI.Client do
         AppLogger.api_error("[ESI] Failed to fetch solar system #{system_id}: #{inspect(error)}")
         {:error, error}
 
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, body}
+
       response ->
         ErrorHandler.handle_http_response(response, domain: :esi, tag: "ESI.solar_system")
     end

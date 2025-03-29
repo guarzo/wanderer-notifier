@@ -7,6 +7,8 @@ defmodule WandererNotifier.Logger do
   """
   require Logger
 
+  @behaviour WandererNotifier.LoggerBehaviour
+
   # Log categories as module attributes for consistency
   @category_api "API"
   @category_websocket "WEBSOCKET"
@@ -28,6 +30,46 @@ defmodule WandererNotifier.Logger do
   @level_warn :warning
   # Errors that affect functionality
   @level_error :error
+
+  @impl true
+  def debug(message), do: Logger.debug(message)
+
+  @impl true
+  def info(message), do: Logger.info(message)
+
+  @impl true
+  def warn(message), do: Logger.warning(message)
+
+  @impl true
+  def error(message), do: Logger.error(message)
+
+  @impl true
+  def api_error(message, metadata \\ [])
+  def api_error(message, metadata), do: Logger.error("[API] #{message}", metadata)
+
+  @impl true
+  def processor_debug(message, metadata \\ [])
+
+  def processor_debug(message, metadata),
+    do: log(@level_debug, @category_processor, message, metadata)
+
+  @impl true
+  def processor_info(message, metadata \\ [])
+
+  def processor_info(message, metadata),
+    do: log(@level_info, @category_processor, message, metadata)
+
+  @impl true
+  def processor_warn(message, metadata \\ [])
+
+  def processor_warn(message, metadata),
+    do: log(@level_warn, @category_processor, message, metadata)
+
+  @impl true
+  def processor_error(message, metadata \\ [])
+
+  def processor_error(message, metadata),
+    do: log(@level_error, @category_processor, message, metadata)
 
   @doc """
   Logs a message at the specified level with structured metadata.
@@ -296,7 +338,6 @@ defmodule WandererNotifier.Logger do
   def api_debug(message, metadata \\ []), do: log(@level_debug, @category_api, message, metadata)
   def api_info(message, metadata \\ []), do: log(@level_info, @category_api, message, metadata)
   def api_warn(message, metadata \\ []), do: log(@level_warn, @category_api, message, metadata)
-  def api_error(message, metadata \\ []), do: log(@level_error, @category_api, message, metadata)
 
   # WebSocket category helpers
   def websocket_debug(message, metadata \\ []),
@@ -315,8 +356,11 @@ defmodule WandererNotifier.Logger do
   def kill_debug(message, metadata \\ []),
     do: log(@level_debug, @category_kill, message, metadata)
 
-  def kill_info(message, metadata \\ []), do: log(@level_info, @category_kill, message, metadata)
-  def kill_warn(message, metadata \\ []), do: log(@level_warn, @category_kill, message, metadata)
+  def kill_info(message, metadata \\ []),
+    do: log(@level_info, @category_kill, message, metadata)
+
+  def kill_warn(message, metadata \\ []),
+    do: log(@level_warn, @category_kill, message, metadata)
 
   def kill_error(message, metadata \\ []),
     do: log(@level_error, @category_kill, message, metadata)
@@ -333,19 +377,6 @@ defmodule WandererNotifier.Logger do
 
   def persistence_error(message, metadata \\ []),
     do: log(@level_error, @category_persistence, message, metadata)
-
-  # Processor category helpers
-  def processor_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_processor, message, metadata)
-
-  def processor_info(message, metadata \\ []),
-    do: log(@level_info, @category_processor, message, metadata)
-
-  def processor_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_processor, message, metadata)
-
-  def processor_error(message, metadata \\ []),
-    do: log(@level_error, @category_processor, message, metadata)
 
   # Cache category helpers
   def cache_debug(message, metadata \\ []),

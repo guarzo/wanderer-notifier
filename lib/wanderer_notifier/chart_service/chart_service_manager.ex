@@ -9,12 +9,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   use GenServer
   require Logger
   alias WandererNotifier.Logger, as: AppLogger
-
-  # @node_chart_service_path "chart-service"
-  @default_port 3001
-  # 5 seconds between restart attempts
-  # @restart_delay 5000
-  #  @max_restart_attempts 5
+  alias WandererNotifier.Config.Web
 
   # Client API
 
@@ -198,7 +193,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   # Private helpers
 
   defp get_configured_port do
-    Application.get_env(:wanderer_notifier, :chart_service_port, @default_port)
+    Web.get_chart_service_port()
   end
 
   # defp start_chart_service_process(port) do

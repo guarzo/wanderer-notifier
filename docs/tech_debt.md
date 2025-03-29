@@ -1,56 +1,5 @@
 # Technical Debt Resolution Plan
 
-## 1. Migration from `mock` to `Mox` for Testing
-
-### Current State
-
-- The codebase has both `mock` and `Mox` as dependencies
-- Test files are using `mock` with `with_mock` and `with_mocks` calls
-- Behavior interfaces are defined for Mox but not fully utilized
-
-### Implementation Plan
-
-#### Phase 1: Preparation and Planning (2 days)
-
-- [ ] Create a comprehensive inventory of all test files using `mock`
-  - [ ] Run `grep -r "import Mock\|use Mock\|with_mock" test/` to find usages
-- [ ] Categorize test files by module/feature to prioritize migration
-- [ ] Document existing behavior interfaces for Mox and identify any gaps
-
-#### Phase 2: Create Missing Behavior Interfaces (3 days)
-
-- [ ] For each module being mocked with `mock`, ensure a proper behavior interface exists
-  - [ ] Create template behaviors for all needed modules
-  - [ ] Example:
-    ```elixir
-    defmodule WandererNotifier.ModuleName.Behaviour do
-      @callback function_name(arg1 :: type1, arg2 :: type2) :: return_type
-    end
-    ```
-- [ ] Update modules to implement these behaviors where needed
-- [ ] Register all behavior mocks in test_helper.exs using `Mox.defmock`
-
-#### Phase 3: Migrate Tests to Mox (5-7 days)
-
-- [ ] Convert one test file at a time, starting with simpler cases
-- [ ] For each test:
-  - [ ] Replace `import Mock` with `import Mox`
-  - [ ] Replace `with_mock` pattern with `expect` calls
-  - [ ] Replace `assert_called` with Mox verification
-  - [ ] Add `Mox.verify_on_exit!()` to setup blocks
-
-#### Phase 4: Testing and Validation (3 days)
-
-- [ ] Run the updated test suite to identify any issues
-- [ ] Check for any edge cases or complex mocking scenarios
-- [ ] Verify test coverage is maintained or improved
-
-#### Phase 5: Finalization (1 day)
-
-- [ ] Remove the `mock` dependency from mix.exs
-- [ ] Update documentation to reflect the new testing approach
-- [ ] Create testing guidelines for new test development
-
 ## 2. Refactoring config.exs
 
 ### Current State

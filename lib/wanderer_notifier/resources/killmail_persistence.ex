@@ -1,22 +1,46 @@
 defmodule WandererNotifier.Resources.KillmailPersistence do
+  use Ash.Resource,
+    domain: WandererNotifier.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshJsonApi.Resource]
+
   @moduledoc """
   Handles persistence of killmails to database for historical analysis and reporting.
   """
+
+  @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
+
   require Logger
+  require Ash.Query
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Resources.Api
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
+
+  postgres do
+    table("killmails")
+    repo(WandererNotifier.Repo)
+  end
+
+  attributes do
+    uuid_primary_key(:id)
+    attribute(:killmail_id, :integer)
+    attribute(:zkb_data, :map)
+    attribute(:esi_data, :map)
+    timestamps()
+  end
 
   @doc """
   Checks if kill charts feature is enabled.
   Only logs the status once at startup.
   """
   def kill_charts_enabled? do
-    enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
+    enabled = Features.kill_charts_enabled?()
 
     # Only log feature status if we haven't logged it before
     if !Process.get(:kill_charts_status_logged) do
@@ -36,16 +60,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   Use this function only when you specifically want to know the status.
   """
   def log_kill_charts_status do
-    enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
+    enabled = Features.kill_charts_enabled?()
     status_text = if enabled, do: "enabled", else: "disabled"
     AppLogger.persistence_info("Kill charts feature status: #{status_text}", %{enabled: enabled})
     enabled
   end
 
-  @doc """
-  Persists killmail data to database if relevant for historical reporting.
-  Returns {:ok, :persisted} on success, :ignored if not relevant, or {:error, reason} on failure.
-  """
+  @impl true
   def persist_killmail(%KillmailStruct{} = killmail) do
     # Check if kill charts feature is enabled
     if kill_charts_enabled?() do
@@ -92,10 +113,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @doc """
-  Maybe persists a killmail if it meets persistence criteria.
-  This is a wrapper around persist_killmail/1 that adds additional checks.
-  """
+  @impl true
   def maybe_persist_killmail(killmail) do
     # Skip if the killmail is nil
     if is_nil(killmail) do
@@ -249,7 +267,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
     try do
-      WandererNotifier.Resources.Api.read(Killmail,
+      Api.read(Killmail,
         action: :list_for_character,
         args: [character_id: character_id, from_date: from_date, to_date: to_date, limit: limit]
       )
@@ -406,7 +424,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Creates a new killmail record using Ash
   defp create_killmail_record(attrs) do
     # Create the record with proper error handling
-    case WandererNotifier.Resources.Api.create(Killmail, attrs) do
+    case Api.create(Killmail, attrs) do
       {:ok, record} ->
         {:ok, record}
 
@@ -471,29 +489,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  # Count total number of killmails in the database
-  defp count_total_killmails do
-    # Use a query that will return records and then count them
-    query = Ash.Query.new(Killmail)
-
-    case WandererNotifier.Resources.Api.read(query) do
-      {:ok, records} when is_list(records) ->
-        # We got a list, count it
-        length(records)
-
-      {:ok, _non_list} ->
-        # Got a successful result but not a list
-        AppLogger.persistence_warning("Got non-list result when counting killmails")
-        0
-
-      {:error, reason} ->
-        AppLogger.persistence_error("Error counting killmails", error: inspect(reason))
-        0
-
-      error ->
-        AppLogger.persistence_error("Unexpected error counting killmails", error: inspect(error))
-        0
-    end
+  def count_total_killmails do
+    __MODULE__
+    |> Ash.Query.new()
+    |> Ash.Query.aggregate(:count, [:id], :total)
   end
 
   # Updates the character's recent killmails cache after a new killmail is persisted
@@ -509,7 +508,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         |> Ash.Query.filter(related_character_id: character_id)
         |> Ash.Query.sort(kill_time: :desc)
         |> Ash.Query.limit(10)
-        |> WandererNotifier.Resources.Api.read()
+        |> Api.read()
 
       # Extract the actual list from the read result
       case result do
@@ -569,5 +568,47 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Also store the individual killmail
     individual_key = "#{cache_key}:#{killmail.killmail_id}"
     CacheRepo.update_after_db_write(individual_key, killmail, 3600)
+  end
+
+  @doc """
+  Gets all killmails for a specific character.
+  Returns an empty list if kill charts are not enabled.
+  """
+  def get_killmails_for_character(character_id) do
+    enabled = Features.kill_charts_enabled?()
+
+    if enabled do
+      case Api.read(
+             Killmail
+             |> Ash.Query.filter(related_character_id: character_id)
+             |> Ash.Query.sort(kill_time: :desc)
+           ) do
+        {:ok, records} when is_list(records) -> records
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  @doc """
+  Gets all killmails for a specific system.
+  Returns an empty list if kill charts are not enabled.
+  """
+  def get_killmails_for_system(system_id) do
+    enabled = Features.kill_charts_enabled?()
+
+    if enabled do
+      case Api.read(
+             Killmail
+             |> Ash.Query.filter(solar_system_id: system_id)
+             |> Ash.Query.sort(kill_time: :desc)
+           ) do
+        {:ok, records} when is_list(records) -> records
+        _ -> []
+      end
+    else
+      []
+    end
   end
 end

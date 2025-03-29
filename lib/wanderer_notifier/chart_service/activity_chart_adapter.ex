@@ -11,6 +11,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   alias WandererNotifier.ChartService
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartTypes
+  alias WandererNotifier.Config.Notifications
+  alias WandererNotifier.Core.Features
 
   @doc """
   Generates a chart URL for character activity summary.
@@ -398,7 +400,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     # Use provided channel ID or determine the appropriate channel with fallbacks
     actual_channel_id =
       if is_nil(channel_id) do
-        WandererNotifier.Core.Config.discord_channel_id_for_activity_charts()
+        get_activity_charts_channel_id()
       else
         channel_id
       end
@@ -429,5 +431,24 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     passage_color = "rgba(255, 99, 132, 0.8)"
     signature_color = "rgba(75, 192, 192, 0.8)"
     {connection_color, passage_color, signature_color}
+  end
+
+  @doc """
+  Updates activity charts.
+  """
+  def update_activity_charts do
+    if Features.activity_charts_enabled?() do
+      # Implementation here
+      {:ok, 0}
+    else
+      {:error, :feature_disabled}
+    end
+  end
+
+  @doc """
+  Gets the Discord channel ID for activity charts.
+  """
+  def get_activity_charts_channel_id do
+    Notifications.get_discord_channel_id_for(:activity_charts)
   end
 end

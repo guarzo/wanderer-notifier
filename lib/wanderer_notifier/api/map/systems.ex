@@ -16,6 +16,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Config.Features
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.api_debug("[update_systems] Starting systems update")
@@ -210,7 +211,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       end)
 
     # Filter systems based on configuration
-    track_all_systems = WandererNotifier.Core.Config.track_kspace_systems?()
+    track_all_systems = Features.track_kspace_systems?()
 
     processed_systems =
       systems_with_static_info
@@ -546,7 +547,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       added_systems = find_added_systems(fresh, cached)
 
       # Send notifications for added systems
-      track_all_systems = Config.track_kspace_systems?()
+      track_all_systems = Features.track_kspace_systems?()
 
       for system <- added_systems do
         Task.start(fn ->

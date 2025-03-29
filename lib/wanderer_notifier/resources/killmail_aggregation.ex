@@ -12,6 +12,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.TrackedCharacter
   alias Ash.Query
+  alias WandererNotifier.Config.Timing
 
   @doc """
   Aggregate killmail data into statistics for all tracked characters.
@@ -556,7 +557,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
 
   # Get the retention period from config
   defp get_retention_period do
-    Application.get_env(:wanderer_notifier, :persistence, [])
+    Timing.get_persistence_config()
     |> Keyword.get(:retention_period_days, 180)
   end
 end

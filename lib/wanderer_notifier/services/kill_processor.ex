@@ -12,6 +12,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Resources.KillmailPersistence
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Timing
 
   # Cache keys for recent kills
   @recent_kills_cache_key "zkill:recent_kills"
@@ -44,7 +45,11 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Schedule periodic stats logging (every 5 minutes)
   def schedule_stats_logging do
     # Send the message to the main Service module since that's where GenServer is implemented
-    Process.send_after(WandererNotifier.Service, :log_kill_stats, 5 * 60 * 1000)
+    Process.send_after(
+      WandererNotifier.Service,
+      :log_kill_stats,
+      Timing.get_cache_check_interval()
+    )
   end
 
   # Log kill statistics

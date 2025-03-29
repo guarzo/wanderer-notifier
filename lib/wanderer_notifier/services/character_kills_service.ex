@@ -1,617 +1,248 @@
 defmodule WandererNotifier.Services.CharacterKillsService do
   @moduledoc """
-  Service for fetching and processing character kills from ZKillboard.
-  This service provides functions to retrieve character kills and persist them.
+  Service for fetching and processing character kills from ESI.
   """
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
-  # Caching and throttling settings
-  # 5 minutes
-  @cache_ttl_seconds 300
-  # Slightly over 1 second to respect API rate limits
-  @rate_limit_ms 1100
+  require Logger
+
+  # Default implementations
+  @default_deps %{
+    logger: WandererNotifier.Logger,
+    repository: WandererNotifier.Repository,
+    esi_service: WandererNotifier.Api.ESI.Service,
+    persistence: WandererNotifier.Resources.KillmailPersistence,
+    zkill_client: WandererNotifier.Api.ZKill.Client,
+    cache_helpers: WandererNotifier.Helpers.CacheHelpers
+  }
 
   @doc """
-  Fetches and persists recent kills for a tracked character.
+  Gets kills for a character within a date range.
 
-  ## Parameters
-    - character_id: The character ID to fetch kills for
-    - limit: The maximum number of kills to retrieve (default: 25)
-    - page: The page of results to fetch (default: 1)
+  ## Options
+    * `:from` - Start date for filtering kills (inclusive). If not specified, no lower bound is applied.
+    * `:to` - End date for filtering kills (inclusive). If not specified, no upper bound is applied.
 
-  ## Returns
-    - {:ok, %{processed: number_processed, persisted: number_persisted}} on success
-    - {:error, reason} if fetching or processing fails
+  ## Examples
+      # Get all kills
+      get_kills_for_character(123456)
+
+      # Get kills from a specific date onwards
+      get_kills_for_character(123456, from: ~D[2024-03-01])
+
+      # Get kills within a date range
+      get_kills_for_character(123456, from: ~D[2024-03-01], to: ~D[2024-03-31])
   """
-  @spec fetch_and_persist_character_kills(integer() | nil, integer(), integer()) ::
-          {:ok, %{processed: integer(), persisted: integer()}} | {:error, term()}
-  def fetch_and_persist_character_kills(character_id, limit \\ 25, page \\ 1)
+  @spec get_kills_for_character(integer(), Keyword.t(), map()) ::
+          {:ok, list(map())} | {:error, term()}
+  def get_kills_for_character(character_id, opts \\ [], deps \\ @default_deps) do
+    deps.logger.debug("[CHARACTER_KILLS] Fetching kills for character #{character_id}")
 
-  # Handle nil or invalid character IDs
-  def fetch_and_persist_character_kills(nil, _limit, _page) do
-    AppLogger.api_error("Invalid character ID", value: nil)
-    {:error, "Invalid character ID: nil"}
-  end
-
-  # Handle string character IDs by converting them to integers
-  def fetch_and_persist_character_kills(character_id, limit, page) when is_binary(character_id) do
-    AppLogger.processor_debug("Converting string character ID to integer",
-      character_id: character_id
-    )
-
-    case Integer.parse(character_id) do
-      {int_id, ""} ->
-        # Successfully parsed, call the function again with integer ID
-        fetch_and_persist_character_kills(int_id, limit, page)
-
-      _ ->
-        AppLogger.api_error("Invalid character ID string", character_id: character_id)
-        {:error, "Invalid character ID string: #{character_id}"}
-    end
-  end
-
-  def fetch_and_persist_character_kills(character_id, limit, page)
-      when is_integer(character_id) and character_id > 0 do
-    AppLogger.processor_info("Fetching kills for character", character_id: character_id)
-    character_id_str = to_string(character_id)
-
-    # Use cache as rate-limiting mechanism too - don't fetch same character too frequently
-    cache_key = "zkill:character_kills:#{character_id_str}:#{page}"
-
-    if CacheRepo.exists?(cache_key) do
-      AppLogger.processor_info("Using cached kills for character", character_id: character_id)
-      cached_response = CacheRepo.get(cache_key)
-
-      # Ensure we're working with the expected format - the cache should contain
-      # only the kills array, not a tuple with {:ok, kills}
-      case cached_response do
-        kills when is_list(kills) ->
-          process_kills({:ok, kills}, character_id)
-
-        _unexpected ->
-          # If somehow the cache got corrupted, treat it as a cache miss and fetch fresh data
-          AppLogger.processor_warn(
-            "Cached data not in expected format",
-            character_id: character_id,
-            action: "fetching_fresh_data"
-          )
-
-          CacheRepo.delete(cache_key)
-          fetch_fresh_kills(character_id, limit, page, cache_key)
-      end
-    else
-      # Not in cache, fetch from API
-      fetch_fresh_kills(character_id, limit, page, cache_key)
-    end
-  end
-
-  # Handle any other invalid character ID type
-  def fetch_and_persist_character_kills(character_id, _limit, _page) do
-    AppLogger.api_error("Invalid character ID", character_id: inspect(character_id))
-    {:error, "Invalid character ID: #{inspect(character_id)}"}
-  end
-
-  # Extract the logic to fetch fresh data into a separate function
-  defp fetch_fresh_kills(character_id, limit, page, cache_key) do
-    # Rate limit API requests
-    throttle_request()
-
-    case ZKillClient.get_character_kills(character_id, limit, page) do
+    case fetch_character_kills(character_id, 25, 1, deps) do
       {:ok, kills} when is_list(kills) ->
-        # Cache the kills array directly, not the tuple
-        CacheRepo.set(cache_key, kills, @cache_ttl_seconds)
+        filtered_kills = filter_kills_by_date(kills, opts[:from], opts[:to])
+        transformed_kills = Enum.map(filtered_kills, &transform_kill(&1, deps))
 
-        # Process the kills
-        process_kills({:ok, kills}, character_id)
+        case Enum.find(transformed_kills, &match?({:error, _}, &1)) do
+          nil -> {:ok, Enum.map(transformed_kills, fn {:ok, kill} -> kill end)}
+          {:error, reason} -> {:error, reason}
+        end
 
-      {:error, _reason} = error ->
-        AppLogger.api_error(
-          "Failed to fetch kills for character",
-          character_id: character_id
-        )
-
-        error
+      {:error, reason} ->
+        deps.logger.error("[CHARACTER_KILLS] Failed to fetch kills: #{inspect(reason)}")
+        {:error, :api_error}
     end
   end
 
   @doc """
-  Fetches and persists recent kills for all tracked characters.
-
-  ## Parameters
-    - limit: The maximum number of kills to retrieve per character (default: 25)
-    - page: The page of results to fetch (default: 1)
-
-  ## Returns
-    - {:ok, %{processed: total_processed, persisted: total_persisted, characters: num_characters}} on success
-    - {:error, reason} if fetching or processing fails
+  Fetches and persists kills for all tracked characters.
   """
-  @spec fetch_and_persist_all_tracked_character_kills(integer(), integer()) ::
+  @spec fetch_and_persist_all_tracked_character_kills(integer(), integer(), map()) ::
           {:ok, %{processed: integer(), persisted: integer(), characters: integer()}}
           | {:error, term()}
-  def fetch_and_persist_all_tracked_character_kills(limit \\ 25, page \\ 1) do
-    # Get all tracked characters using the Helpers module that gets from all sources
-    tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
-
-    start_time = System.monotonic_time(:millisecond)
-
-    # Log detailed information about tracked characters
-    character_count = length(tracked_characters)
-
-    AppLogger.processor_info(
-      "Starting killmail fetch for all tracked characters",
-      character_count: character_count,
-      limit_per_character: limit,
-      page: page
+  def fetch_and_persist_all_tracked_character_kills(limit \\ 25, page \\ 1, deps \\ @default_deps) do
+    deps.logger.debug(
+      "[CHARACTER_KILLS] Fetching and persisting kills for all tracked characters"
     )
 
-    # Continue with processing the tracked characters list
+    tracked_characters = deps.repository.get_tracked_characters()
+
     if Enum.empty?(tracked_characters) do
-      AppLogger.processor_warn("No tracked characters found in any source")
-      {:ok, %{processed: 0, persisted: 0, characters: 0}}
+      deps.logger.warn("[CHARACTER_KILLS] No tracked characters found")
+      {:error, :no_tracked_characters}
     else
-      # Add estimated time based on count
-      estimated_time_seconds = character_count * (@rate_limit_ms / 1000)
-
-      AppLogger.processor_info(
-        "Beginning batch character processing",
-        estimated_completion_time_seconds: Float.round(estimated_time_seconds, 1),
-        estimated_completion_time_minutes: Float.round(estimated_time_seconds / 60, 1),
-        started_at: DateTime.utc_now() |> DateTime.to_string(),
-        cache_ttl_seconds: @cache_ttl_seconds
-      )
-
-      result = process_tracked_characters(tracked_characters, limit, page)
-
-      # Calculate elapsed time
-      end_time = System.monotonic_time(:millisecond)
-      duration_seconds = (end_time - start_time) / 1000
-
-      # Log duration information
-      case result do
-        {:ok, stats} ->
-          AppLogger.processor_info(
-            "Completed killmail fetch for all characters",
-            elapsed_seconds: Float.round(duration_seconds, 2),
-            characters_processed: stats.characters,
-            avg_seconds_per_character:
-              Float.round(duration_seconds / max(stats.characters, 1), 2),
-            completion_time: DateTime.utc_now() |> DateTime.to_string()
-          )
-
-        {:error, _} ->
-          AppLogger.processor_error(
-            "Failed to complete killmail fetch for all characters",
-            elapsed_seconds: Float.round(duration_seconds, 2),
-            completion_time: DateTime.utc_now() |> DateTime.to_string()
-          )
-      end
-
-      result
+      process_tracked_characters(tracked_characters, limit, page, deps)
     end
   end
 
-  # Process all tracked characters and return aggregated results
-  defp process_tracked_characters(tracked_characters, limit, page) do
-    # Process each character with a delay between requests
-    total_count = length(tracked_characters)
-
-    # Process each character with progress tracking
-    {results, _} =
-      Enum.reduce(tracked_characters, {[], 0}, fn character, {acc_results, index} ->
-        # Calculate progress percentage
-        progress_pct = Float.round(index / total_count * 100, 1)
-
-        if rem(index, 5) == 0 do
-          AppLogger.processor_info(
-            "Character batch progress update",
-            completed: index,
-            total: total_count,
-            progress_percentage: "#{progress_pct}%"
-          )
-        end
-
-        # Process the character
-        result = process_single_character(character, limit, page)
-
-        # Return updated accumulator
-        {[result | acc_results], index + 1}
+  defp process_tracked_characters(tracked_characters, limit, page, deps) do
+    results =
+      tracked_characters
+      |> Enum.map(&extract_character_id/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn character_id ->
+        fetch_and_persist_character_kills(character_id, limit, page, deps)
       end)
 
-    # Check for critical ZKill API errors
-    zkill_api_errors = find_api_errors(results)
+    case Enum.filter(results, &match?({:ok, _}, &1)) do
+      [] ->
+        {:error, :no_successful_results}
 
-    if Enum.empty?(zkill_api_errors) do
-      aggregate_successful_results(results, tracked_characters)
-    else
-      # Return the first ZKill API error
-      List.first(zkill_api_errors)
+      successful_results ->
+        processed_count =
+          Enum.reduce(successful_results, 0, fn
+            {:ok, %{processed: count}}, acc -> acc + count
+            _, acc -> acc
+          end)
+
+        persisted_count =
+          Enum.reduce(successful_results, 0, fn
+            {:ok, %{persisted: count}}, acc -> acc + count
+            _, acc -> acc
+          end)
+
+        {:ok,
+         %{
+           processed: processed_count,
+           persisted: persisted_count,
+           characters: length(successful_results)
+         }}
     end
   end
 
-  # Process a single character and return the result
-  defp process_single_character(character, limit, page) do
-    # Extract the character ID
-    character_id = extract_character_id(character)
+  @doc """
+  Fetches and persists kills for a single character.
+  """
+  @spec fetch_and_persist_character_kills(integer(), integer(), integer(), map()) ::
+          {:ok, %{processed: integer(), persisted: integer()}}
+          | {:error, term()}
+  def fetch_and_persist_character_kills(
+        character_id,
+        limit \\ 25,
+        page \\ 1,
+        deps \\ @default_deps
+      ) do
+    deps.logger.debug("[CHARACTER_KILLS] Fetching kills for character #{character_id}")
 
-    # Skip invalid character IDs
-    if is_nil(character_id) do
-      AppLogger.processor_warn(
-        "Skipping character with invalid ID",
-        character: inspect(character)
-      )
+    case fetch_character_kills(character_id, limit, page, deps) do
+      {:ok, kills} when is_list(kills) ->
+        kill_count = Enum.count(kills)
+        deps.logger.debug("[CHARACTER_KILLS] Processing #{kill_count} kills")
+        process_kills_batch(kills, deps)
 
-      {:error, :invalid_character_id}
-    else
-      # Add log to track individual character progress
-      AppLogger.processor_info("Fetching kills for individual character in batch",
-        character_id: character_id,
-        limit: limit,
-        page: page,
-        cache_ttl: @cache_ttl_seconds
-      )
-
-      result = fetch_character_kills_safely(character_id, limit, page)
-
-      # Log the result of this individual character's processing
-      case result do
-        {:ok, stats} ->
-          AppLogger.processor_info("Completed processing character in batch",
-            character_id: character_id,
-            processed: stats.processed,
-            persisted: stats.persisted
-          )
-
-        {:error, reason} ->
-          AppLogger.processor_warn("Failed to process character in batch",
-            character_id: character_id,
-            reason: inspect(reason)
-          )
-      end
-
-      result
+      {:error, reason} ->
+        deps.logger.error("[CHARACTER_KILLS] Failed to fetch kills: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
-  # Extract character ID from various character formats
-  defp extract_character_id(character) do
-    case character do
-      # Handle struct with character_id key
-      %{character_id: id} -> id
-      # Handle map with string keys
-      %{"character_id" => id} -> id
-      # If the character is a string directly
-      id when is_binary(id) -> id
-      id when is_integer(id) -> id
-      _ -> nil
+  defp fetch_character_kills(character_id, limit, page, deps) do
+    case deps.cache_helpers.get_cached_kills(character_id) do
+      {:ok, []} ->
+        # No cached data, fetch from ZKill
+        deps.zkill_client.get_character_kills(character_id, limit, page)
+
+      {:ok, kills} ->
+        # Use cached data
+        {:ok, kills}
+
+      {:error, _} ->
+        # Cache error, try ZKill
+        deps.zkill_client.get_character_kills(character_id, limit, page)
     end
   end
 
-  # Safely fetch kills for a character with error handling
-  defp fetch_character_kills_safely(character_id, limit, page) do
-    AppLogger.processor_info("Processing character ID", character_id: character_id)
-    throttle_request()
+  defp process_kills_batch(kills, deps) do
+    results =
+      kills
+      |> Enum.map(&enrich_killmail(&1, deps))
+      |> Enum.map(&maybe_persist_killmail(&1, deps))
+      |> Enum.split_with(&match?({:ok, _}, &1))
 
-    try do
-      fetch_and_persist_character_kills(character_id, limit, page)
-    rescue
-      e ->
-        AppLogger.processor_error(
-          "Error processing character",
-          character_id: character_id,
-          error: inspect(e)
-        )
+    {successful, failed} = results
+    persisted = length(successful)
+    processed = length(kills)
 
-        {:error, {:exception, e}}
-    catch
-      kind, reason ->
-        AppLogger.processor_error(
-          "Caught error while processing character",
-          character_id: character_id,
-          kind: kind,
-          reason: inspect(reason)
-        )
-
-        {:error, {kind, reason}}
+    if persisted > 0 do
+      deps.logger.debug("[CHARACTER_KILLS] Successfully persisted #{persisted} kills")
     end
-  end
 
-  # Find API errors in results
-  defp find_api_errors(results) do
-    Enum.filter(results, fn
-      {:error, {:domain_error, :zkill, {:api_error, _}}} -> true
-      _ -> false
-    end)
-  end
-
-  # Aggregate successful results
-  defp aggregate_successful_results(results, tracked_characters) do
-    # Filter successful results
-    successes =
-      Enum.filter(results, fn
-        {:ok, _} -> true
-        _ -> false
-      end)
-
-    if Enum.empty?(successes) do
-      {:error, "No characters processed successfully"}
-    else
-      # Calculate totals from successful results
-      total_processed = Enum.reduce(successes, 0, fn {:ok, %{processed: p}}, acc -> acc + p end)
-      total_persisted = Enum.reduce(successes, 0, fn {:ok, %{persisted: p}}, acc -> acc + p end)
-
-      # Calculate percentage of processed kills that were actually persisted (new)
-      persisted_percentage =
-        if total_processed > 0 do
-          Float.round(total_persisted / total_processed * 100, 1)
-        else
-          0.0
-        end
-
-      successful_characters = length(successes)
-      failed_characters = length(tracked_characters) - successful_characters
-
-      # Add intermediate progress info
-      AppLogger.processor_info(
-        "Character processing completed",
-        success_rate:
-          "#{Float.round(successful_characters / length(tracked_characters) * 100, 1)}%",
-        successful: successful_characters,
-        failed: failed_characters,
-        total: length(tracked_characters)
-      )
-
-      # Log summary of success with more details
-      AppLogger.processor_info(
-        "Summary of killmail fetch process",
-        characters_processed: successful_characters,
-        characters_attempted: length(tracked_characters),
-        kills_processed: total_processed,
-        new_kills_persisted: total_persisted,
-        already_existing_kills: total_processed - total_persisted,
-        new_kills_percentage: "#{persisted_percentage}%"
-      )
-
-      {:ok,
-       %{
-         processed: total_processed,
-         persisted: total_persisted,
-         characters: successful_characters
-       }}
+    if length(failed) > 0 do
+      deps.logger.warn("[CHARACTER_KILLS] Failed to persist #{length(failed)} kills")
     end
-  end
 
-  # Private helper functions
-
-  # Process kills returned from ZKill API
-  defp process_kills({:ok, kills}, character_id) do
-    AppLogger.processor_info(
-      "Processing kills for character",
-      kill_count: length(kills),
-      character_id: character_id
-    )
-
-    # Get a list of all processed killmail IDs from global cache (not per-character)
-    processed_cache_key = "processed:killmails:global"
-    already_processed = CacheRepo.get(processed_cache_key) || MapSet.new()
-
-    # Filter out kills that have already been processed
-    unprocessed_kills = filter_unprocessed_kills(kills, already_processed)
-
-    # Process unprocessed kills
-    {results, _updated_processed} =
-      process_unprocessed_kills(unprocessed_kills, already_processed)
-
-    # Count the results
-    processed = length(unprocessed_kills)
-    persisted = count_persisted_results(results)
-
-    # Return processed and persisted counts
     {:ok, %{processed: processed, persisted: persisted}}
   end
 
-  # Filter out kills that have already been processed
-  defp filter_unprocessed_kills(kills, already_processed) do
-    total_kills = length(kills)
-
-    unprocessed =
-      Enum.filter(kills, fn kill ->
-        kill_id = Map.get(kill, "killmail_id")
-        !MapSet.member?(already_processed, kill_id)
-      end)
-
-    skipped_count = total_kills - length(unprocessed)
-
-    if skipped_count > 0 do
-      skipped_percentage = Float.round(skipped_count / total_kills * 100, 1)
-
-      AppLogger.processor_info(
-        "Found previously processed kills",
-        total_kills: total_kills,
-        already_processed_count: skipped_count,
-        new_kills_count: length(unprocessed),
-        skipped_percentage: "#{skipped_percentage}%"
-      )
-    end
-
-    unprocessed
-  end
-
-  # Process the list of unprocessed kills
-  defp process_unprocessed_kills([], _already_processed), do: {[], MapSet.new()}
-
-  defp process_unprocessed_kills(unprocessed_kills, already_processed) do
-    # Track newly processed kills
-    newly_processed_set = MapSet.new()
-
-    # Process each kill and collect results and processed IDs
-    {results, updated_processed} =
-      Enum.reduce(unprocessed_kills, {[], newly_processed_set}, &process_single_kill/2)
-
-    # Update the global processed cache with new kill IDs
-    update_processed_cache(already_processed, updated_processed)
-
-    {results, updated_processed}
-  end
-
-  # Process a single kill and return updated results and processed set
-  defp process_single_kill(kill, {acc_results, acc_processed}) do
-    kill_id = Map.get(kill, "killmail_id")
-    zkb_data = Map.get(kill, "zkb", %{})
-
-    if is_nil(kill_id) do
-      AppLogger.processor_warn("Kill without ID", kill: inspect(kill))
-      # Add error result but don't update processed set
-      {[{:error, :missing_kill_id} | acc_results], acc_processed}
+  defp enrich_killmail(kill, deps) do
+    with victim_id when is_integer(victim_id) <- get_in(kill, ["victim", "character_id"]),
+         ship_id when is_integer(ship_id) <- get_in(kill, ["victim", "ship_type_id"]),
+         {:ok, victim} <- deps.esi_service.get_character(victim_id),
+         {:ok, ship} <- deps.esi_service.get_type(ship_id) do
+      Map.merge(kill, %{
+        "victim_name" => victim["name"],
+        "ship_name" => ship["name"]
+      })
     else
-      # Add to newly processed set immediately to prevent concurrent processing
-      # 24 hour cache
-      CacheRepo.set("processed:killmail:#{kill_id}", true, 86_400)
-
-      # Add this kill_id to our processed set
-      updated_set = MapSet.put(acc_processed, kill_id)
-
-      handle_kill_processing(kill_id, zkb_data, acc_results, updated_set)
+      _ -> kill
     end
   end
 
-  # Handle the actual kill processing after validation
-  defp handle_kill_processing(kill_id, zkb_data, acc_results, updated_set) do
-    # Get ESI data to enrich the killmail
-    case get_esi_data(kill_id, Map.get(zkb_data, "hash")) do
-      {:ok, esi_data} ->
-        # Create Killmail struct using the same structure as used by the websocket processor
-        killmail = WandererNotifier.Data.Killmail.new(kill_id, zkb_data, esi_data)
+  defp maybe_persist_killmail(kill, deps) do
+    case deps.persistence.maybe_persist_killmail(kill) do
+      {:ok, :persisted} = result ->
+        result
 
-        # Use the shared persistence logic from KillmailPersistence with error handling
-        result = safely_persist_killmail(killmail)
+      {:ok, :not_persisted} ->
+        {:error, :not_persisted}
 
-        process_result =
-          case result do
-            {:ok, _} -> {:ok, :persisted}
-            :ignored -> {:ok, :ignored}
-            {:error, reason} -> {:error, reason}
-          end
-
-        # Add to results list and return updated set
-        {[process_result | acc_results], updated_set}
-
-      {:error, reason} = error ->
-        AppLogger.api_error(
-          "Failed to get ESI data for kill",
-          kill_id: kill_id,
-          error: inspect(reason)
-        )
-
-        # Add error to results but keep the kill in processed set
-        {[error | acc_results], updated_set}
+      other ->
+        deps.logger.error("[CHARACTER_KILLS] Failed to persist killmail: #{inspect(other)}")
+        {:error, :persistence_failed}
     end
   end
 
-  # Update the global processed cache with new kill IDs
-  defp update_processed_cache(already_processed, updated_processed) do
-    processed_cache_key = "processed:killmails:global"
-    updated_processed_total = MapSet.union(already_processed, updated_processed)
-    # 24 hour cache
-    CacheRepo.set(processed_cache_key, updated_processed_total, 86_400)
-  end
+  defp extract_character_id(%{character_id: character_id}) when is_integer(character_id),
+    do: character_id
 
-  # Count the number of persisted results
-  defp count_persisted_results(results) do
-    Enum.count(results, fn
-      {:ok, :persisted} -> true
-      {:ok, :persisted_with_warning} -> true
-      _ -> false
+  defp extract_character_id(%{"character_id" => character_id}) when is_integer(character_id),
+    do: character_id
+
+  defp extract_character_id(_), do: nil
+
+  defp filter_kills_by_date(kills, from, to) do
+    kills
+    |> Enum.filter(fn kill ->
+      case DateTime.from_iso8601(kill["killmail_time"]) do
+        {:ok, kill_time, _} ->
+          kill_date = DateTime.to_date(kill_time)
+          Date.compare(kill_date, from) != :lt and Date.compare(kill_date, to) != :gt
+
+        _ ->
+          false
+      end
     end)
   end
 
-  # Get ESI data for a killmail using shared ESI service
-  defp get_esi_data(kill_id, kill_hash) do
-    # Return error if kill_hash is nil
-    if is_nil(kill_hash) do
-      AppLogger.processor_warn("Kill is missing hash", kill_id: kill_id)
-      {:error, :missing_kill_hash}
+  defp transform_kill(kill, deps) do
+    with victim_id when is_integer(victim_id) <- get_in(kill, ["victim", "character_id"]),
+         ship_id when is_integer(ship_id) <- get_in(kill, ["victim", "ship_type_id"]),
+         {:ok, victim} <- deps.esi_service.get_character(victim_id),
+         {:ok, ship} <- deps.esi_service.get_type(ship_id) do
+      {:ok,
+       %{
+         id: kill["killmail_id"],
+         time: kill["killmail_time"],
+         victim_name: victim["name"],
+         ship_name: ship["name"]
+       }}
     else
-      get_esi_data_with_hash(kill_id, kill_hash)
-    end
-  end
+      {:error, reason} ->
+        deps.logger.error("[CHARACTER_KILLS] Failed to enrich kill: #{inspect(reason)}")
+        {:error, :api_error}
 
-  # Get ESI data when we have a valid hash
-  defp get_esi_data_with_hash(kill_id, kill_hash) do
-    cache_key = "esi:killmail:#{kill_id}"
-
-    if CacheRepo.exists?(cache_key) do
-      # Use cached data
-      AppLogger.processor_debug("Using cached ESI data for kill", kill_id: kill_id)
-      {:ok, CacheRepo.get(cache_key)}
-    else
-      # Fetch data from ESI
-      fetch_esi_data(kill_id, kill_hash, cache_key)
-    end
-  end
-
-  # Fetch ESI data from the API
-  defp fetch_esi_data(kill_id, kill_hash, cache_key) do
-    # Throttle ESI requests
-    throttle_request()
-
-    # Use the shared ESI service
-    AppLogger.processor_debug("Fetching ESI data for kill", kill_id: kill_id)
-
-    case ESIService.get_killmail(kill_id, kill_hash) do
-      {:ok, esi_data} ->
-        # Cache the ESI data
-        CacheRepo.set(cache_key, esi_data, @cache_ttl_seconds)
-        {:ok, esi_data}
-
-      {:error, reason} = error ->
-        AppLogger.api_error(
-          "Failed to get ESI data for kill",
-          kill_id: kill_id,
-          error: inspect(reason)
-        )
-
-        error
-    end
-  end
-
-  # Apply rate limiting between requests
-  defp throttle_request do
-    Process.sleep(@rate_limit_ms)
-  end
-
-  # Safely persist killmail with proper error handling
-  defp safely_persist_killmail(killmail) do
-    try do
-      # Try to use the KillmailPersistence module
-      WandererNotifier.Resources.KillmailPersistence.maybe_persist_killmail(killmail)
-    rescue
-      e ->
-        # Handle the specific UndefinedFunctionError regarding atomic actions
-        err_msg = Exception.message(e)
-
-        if String.contains?(err_msg, "disable_atomic_actions") do
-          # Specific error we're catching - log a warning but consider it a success
-          # as this is just a transient DB configuration issue
-          AppLogger.processor_warn(
-            "Ash atomic transaction error - treating as successful",
-            error: err_msg
-          )
-
-          # Return a synthetic success - we know the killmail is valid, just can't persist it due to config
-          {:ok, :persisted_with_warning}
-        else
-          # For all other errors, log and return error
-          AppLogger.processor_error(
-            "Error persisting killmail",
-            error: inspect(e),
-            stacktrace: Exception.format_stacktrace()
-          )
-
-          {:error, "Persistence error: #{inspect(e)}"}
-        end
+      _ ->
+        deps.logger.error("[CHARACTER_KILLS] Failed to extract kill data")
+        {:error, :invalid_kill_data}
     end
   end
 end

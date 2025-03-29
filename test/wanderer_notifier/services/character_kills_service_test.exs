@@ -1,197 +1,294 @@
 defmodule WandererNotifier.Services.CharacterKillsServiceTest do
-  use ExUnit.Case, async: false
-  import Mock
+  use ExUnit.Case, async: true
+
+  import Mox
+
   alias WandererNotifier.Services.CharacterKillsService
+  alias WandererNotifier.MockZKillClient
+  alias WandererNotifier.MockESI
+  alias WandererNotifier.MockCacheHelpers
+  alias WandererNotifier.MockRepository
+  alias WandererNotifier.MockKillmailPersistence
+  alias WandererNotifier.MockLogger
 
-  # Sample test data
-  @sample_character_id 123_456_789
-  @sample_tracked_characters [
-    %{
-      "character_id" => "123456789",
-      "character_name" => "Test Character"
+  # Make sure mocks are verified when the test exits
+  setup :verify_on_exit!
+
+  setup do
+    # Set up default mock implementations
+    stub(MockLogger, :debug, fn _msg -> :ok end)
+    stub(MockLogger, :info, fn _msg -> :ok end)
+    stub(MockLogger, :warn, fn _msg -> :ok end)
+    stub(MockLogger, :error, fn _msg -> :ok end)
+    stub(MockLogger, :api_error, fn _msg, _metadata -> :ok end)
+    stub(MockLogger, :processor_debug, fn _msg, _metadata -> :ok end)
+    stub(MockLogger, :processor_info, fn _msg, _metadata -> :ok end)
+    stub(MockLogger, :processor_warn, fn _msg, _metadata -> :ok end)
+    stub(MockLogger, :processor_error, fn _msg, _metadata -> :ok end)
+
+    deps = %{
+      logger: MockLogger,
+      repository: MockRepository,
+      esi_service: MockESI,
+      persistence: MockKillmailPersistence,
+      zkill_client: MockZKillClient,
+      cache_helpers: MockCacheHelpers
     }
-  ]
 
-  @sample_zkill_response [
-    %{
-      "killmail_id" => 12_345,
-      "zkb" => %{
-        "hash" => "abcdef123456",
-        "totalValue" => 1_000_000_000
-      }
-    }
-  ]
-
-  @sample_esi_data %{
-    "killmail_time" => "2023-01-01T12:00:00Z",
-    "solar_system_id" => 30_000_142,
-    "victim" => %{
-      "character_id" => 987_654_321,
-      "character_name" => "Victim Name",
-      "ship_type_id" => 123,
-      "ship_type_name" => "Ship Name"
-    },
-    "attackers" => [
-      %{
-        "character_id" => 123_456_789,
-        "character_name" => "Test Character",
-        "ship_type_id" => 456,
-        "ship_type_name" => "Attacker Ship"
-      }
-    ]
-  }
-
-  @sample_system_info %{
-    "name" => "Jita"
-  }
+    {:ok, deps: deps}
+  end
 
   describe "fetch_and_persist_character_kills/3" do
-    setup do
-      # Clear any stored cached data
-      on_exit(fn ->
-        nil
-        # You can add cleanup here if needed
+    test "fetches and processes character kills successfully", %{deps: deps} do
+      character_id = 123_456
+      kill_time = "2024-01-03T12:00:00Z"
+
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
       end)
 
-      :ok
+      # Mock ZKill client to return kills
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:ok,
+         [
+           %{
+             "killmail_id" => 1,
+             "killmail_time" => kill_time,
+             "victim" => %{
+               "character_id" => 789,
+               "ship_type_id" => 123
+             }
+           }
+         ]}
+      end)
+
+      # Mock ESI responses
+      expect(MockESI, :get_character, fn 789 ->
+        {:ok, %{"name" => "Test Victim"}}
+      end)
+
+      expect(MockESI, :get_type, fn 123 ->
+        {:ok, %{"name" => "Test Ship"}}
+      end)
+
+      # Mock killmail persistence
+      expect(MockKillmailPersistence, :maybe_persist_killmail, fn _killmail ->
+        {:ok, :persisted}
+      end)
+
+      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
+
+      assert {:ok, %{persisted: 1, processed: 1}} = result
     end
 
-    test "fetches and processes character kills successfully" do
-      with_mocks([
-        {WandererNotifier.Api.ZKill.Client, [],
-         [
-           get_character_kills: fn _, _, _ -> {:ok, @sample_zkill_response} end
-         ]},
-        {WandererNotifier.Api.ESI.Service, [],
-         [
-           get_killmail: fn _, _ -> {:ok, @sample_esi_data} end,
-           get_system_info: fn _ -> {:ok, @sample_system_info} end
-         ]},
-        {WandererNotifier.Resources.KillmailPersistence, [],
-         [
-           maybe_persist_killmail: fn _ -> {:ok, %{id: "mock-id"}} end
-         ]},
-        {WandererNotifier.Data.Cache.Repository, [],
-         [
-           exists?: fn _ -> false end,
-           set: fn _, _, _ -> :ok end,
-           get: fn _ -> nil end
-         ]}
-      ]) do
-        result = CharacterKillsService.fetch_and_persist_character_kills(@sample_character_id)
+    test "handles API error gracefully", %{deps: deps} do
+      character_id = 123_456
 
-        assert {:ok, %{processed: 1, persisted: 1}} = result
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
+      end)
 
-        # Verify the ZKill client was called with correct params
-        assert_called(
-          WandererNotifier.Api.ZKill.Client.get_character_kills(@sample_character_id, 25, 1)
-        )
+      # Mock ZKill client to return error
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:error, :api_error}
+      end)
 
-        # Verify ESI service was called
-        assert_called(WandererNotifier.Api.ESI.Service.get_killmail(12_345, "abcdef123456"))
+      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
 
-        # Verify persistence was called
-        assert_called(WandererNotifier.Resources.KillmailPersistence.maybe_persist_killmail(:_))
-      end
+      assert {:error, :api_error} = result
     end
 
-    test "handles API error gracefully" do
-      with_mocks([
-        {WandererNotifier.Api.ZKill.Client, [],
+    test "uses cached data when available", %{deps: deps} do
+      character_id = 123_456
+      kill_time = "2024-01-03T12:00:00Z"
+
+      # Mock cache helpers to return cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok,
          [
-           get_character_kills: fn _, _, _ -> {:error, :api_error} end
-         ]},
-        {WandererNotifier.Data.Cache.Repository, [],
-         [
-           exists?: fn _ -> false end,
-           set: fn _, _, _ -> :ok end,
-           get: fn _ -> nil end
+           %{
+             "killmail_id" => 1,
+             "killmail_time" => kill_time,
+             "victim" => %{
+               "character_id" => 789,
+               "ship_type_id" => 123
+             }
+           }
          ]}
-      ]) do
-        result = CharacterKillsService.fetch_and_persist_character_kills(@sample_character_id)
+      end)
 
-        assert {:error, :api_error} = result
-      end
-    end
+      # Mock ESI responses
+      expect(MockESI, :get_character, fn 789 ->
+        {:ok, %{"name" => "Test Victim"}}
+      end)
 
-    test "uses cached data when available" do
-      with_mocks([
-        {WandererNotifier.Resources.KillmailPersistence, [],
-         [
-           maybe_persist_killmail: fn _ -> {:ok, %{id: "mock-id"}} end
-         ]},
-        {WandererNotifier.Data.Cache.Repository, [],
-         [
-           exists?: fn key ->
-             key == "zkill:character_kills:#{@sample_character_id}:1"
-           end,
-           get: fn key ->
-             cond do
-               key == "zkill:character_kills:#{@sample_character_id}:1" ->
-                 @sample_zkill_response
+      expect(MockESI, :get_type, fn 123 ->
+        {:ok, %{"name" => "Test Ship"}}
+      end)
 
-               key == "esi:killmail:12345" ->
-                 @sample_esi_data
+      # Mock killmail persistence
+      expect(MockKillmailPersistence, :maybe_persist_killmail, fn _killmail ->
+        {:ok, :persisted}
+      end)
 
-               true ->
-                 nil
-             end
-           end,
-           set: fn _, _, _ -> :ok end,
-           delete: fn _ -> :ok end
-         ]},
-        {WandererNotifier.Api.ESI.Service, [],
-         [
-           get_killmail: fn _, _ -> {:ok, @sample_esi_data} end,
-           get_system_info: fn _ -> {:ok, @sample_system_info} end
-         ]},
-        {WandererNotifier.Api.ZKill.Client, [],
-         [
-           get_character_kills: fn _, _, _ -> {:ok, []} end
-         ]}
-      ]) do
-        result = CharacterKillsService.fetch_and_persist_character_kills(@sample_character_id)
+      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
 
-        assert {:ok, %{processed: 1, persisted: 1}} = result
-
-        # Verify the ZKill client was NOT called
-        assert_not_called(WandererNotifier.Api.ZKill.Client.get_character_kills(:_, :_, :_))
-      end
+      assert {:ok, %{persisted: 1, processed: 1}} = result
     end
   end
 
   describe "fetch_and_persist_all_tracked_character_kills/2" do
-    test "fetches and processes kills for all tracked characters" do
-      with_mocks([
-        {WandererNotifier.Helpers.CacheHelpers, [],
-         [
-           get_tracked_characters: fn -> @sample_tracked_characters end
-         ]},
-        {WandererNotifier.Data.Cache.Repository, [],
-         [
-           get: fn _ -> nil end,
-           exists?: fn _ -> false end,
-           set: fn _, _, _ -> :ok end,
-           put: fn _, _ -> :ok end
-         ]},
-        {WandererNotifier.Api.ZKill.Client, [],
-         [
-           get_character_kills: fn _, _, _ -> {:ok, @sample_zkill_response} end
-         ]},
-        {WandererNotifier.Api.ESI.Service, [],
-         [
-           get_killmail: fn _, _ -> {:ok, @sample_esi_data} end,
-           get_system_info: fn _ -> {:ok, @sample_system_info} end
-         ]},
-        {WandererNotifier.Resources.KillmailPersistence, [],
-         [
-           maybe_persist_killmail: fn _ -> {:ok, %{id: "mock-id"}} end
-         ]}
-      ]) do
-        result = CharacterKillsService.fetch_and_persist_all_tracked_character_kills()
+    test "fetches and processes kills for all tracked characters", %{deps: deps} do
+      character_id = 123_456
+      kill_time = "2024-01-03T12:00:00Z"
 
-        assert {:ok, %{processed: 1, persisted: 1, characters: 1}} = result
-      end
+      # Mock repository to return tracked characters
+      expect(MockRepository, :get_tracked_characters, fn ->
+        [%{character_id: character_id}]
+      end)
+
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
+      end)
+
+      # Mock ZKill client to return kills
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:ok,
+         [
+           %{
+             "killmail_id" => 1,
+             "killmail_time" => kill_time,
+             "victim" => %{
+               "character_id" => 789,
+               "ship_type_id" => 123
+             }
+           }
+         ]}
+      end)
+
+      # Mock ESI responses
+      expect(MockESI, :get_character, fn 789 ->
+        {:ok, %{"name" => "Test Victim"}}
+      end)
+
+      expect(MockESI, :get_type, fn 123 ->
+        {:ok, %{"name" => "Test Ship"}}
+      end)
+
+      # Mock killmail persistence
+      expect(MockKillmailPersistence, :maybe_persist_killmail, fn _killmail ->
+        {:ok, :persisted}
+      end)
+
+      result = CharacterKillsService.fetch_and_persist_all_tracked_character_kills(25, 1, deps)
+
+      assert {:ok, %{characters: 1, persisted: 1, processed: 1}} = result
+    end
+  end
+
+  describe "get_kills_for_character/2" do
+    test "returns kills for a character within date range", %{deps: deps} do
+      character_id = 123_456
+      from = ~D[2024-01-01]
+      to = ~D[2024-01-07]
+      kill_time = "2024-01-03T12:00:00Z"
+
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
+      end)
+
+      # Mock ZKill client to return kills
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:ok,
+         [
+           %{
+             "killmail_id" => 1,
+             "killmail_time" => kill_time,
+             "victim" => %{
+               "character_id" => 789,
+               "ship_type_id" => 123
+             }
+           }
+         ]}
+      end)
+
+      # Mock ESI responses
+      expect(MockESI, :get_character, fn 789 ->
+        {:ok, %{"name" => "Test Victim"}}
+      end)
+
+      expect(MockESI, :get_type, fn 123 ->
+        {:ok, %{"name" => "Test Ship"}}
+      end)
+
+      result =
+        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+
+      assert {:ok,
+              [%{id: 1, time: ^kill_time, victim_name: "Test Victim", ship_name: "Test Ship"}]} =
+               result
+    end
+
+    test "handles error from ZKillboard API", %{deps: deps} do
+      character_id = 123_456
+      from = ~D[2024-01-01]
+      to = ~D[2024-01-07]
+
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
+      end)
+
+      # Mock ZKill client to return error
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:error, :api_error}
+      end)
+
+      result =
+        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+
+      assert {:error, :api_error} = result
+    end
+
+    test "handles error from ESI API", %{deps: deps} do
+      character_id = 123_456
+      from = ~D[2024-01-01]
+      to = ~D[2024-01-07]
+      kill_time = "2024-01-03T12:00:00Z"
+
+      # Mock cache helpers to return no cached kills
+      expect(MockCacheHelpers, :get_cached_kills, fn ^character_id ->
+        {:ok, []}
+      end)
+
+      # Mock ZKill client to return kills
+      expect(MockZKillClient, :get_character_kills, fn ^character_id, 25, 1 ->
+        {:ok,
+         [
+           %{
+             "killmail_id" => 1,
+             "killmail_time" => kill_time,
+             "victim" => %{
+               "character_id" => 789,
+               "ship_type_id" => 123
+             }
+           }
+         ]}
+      end)
+
+      # Mock ESI responses with error
+      expect(MockESI, :get_character, fn 789 ->
+        {:error, :api_error}
+      end)
+
+      result =
+        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+
+      assert {:error, :api_error} = result
     end
   end
 end

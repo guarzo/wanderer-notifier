@@ -15,6 +15,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Services.CharacterKillsService
+  alias WandererNotifier.Config.Features
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0
@@ -29,7 +30,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
   @impl true
   def execute(state) do
-    if kill_charts_enabled?() do
+    if should_process_killmails?() do
       AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail aggregation")
 
       # First, fetch latest kills for all tracked characters
@@ -174,9 +175,8 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     end
   end
 
-  # Check if kill charts feature is enabled
-  defp kill_charts_enabled? do
-    WandererNotifier.Core.Config.kill_charts_enabled?()
+  defp should_process_killmails? do
+    Features.kill_charts_enabled?()
   end
 
   @impl true

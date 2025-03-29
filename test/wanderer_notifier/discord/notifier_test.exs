@@ -4,25 +4,21 @@ defmodule WandererNotifier.Discord.NotifierTest do
   require Logger
   alias WandererNotifier.Discord.Notifier
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Config.Application
 
   setup do
-    # Set app to test environment
     previous_env = Application.get_env(:wanderer_notifier, :env)
+    previous_log_level = Logger.level()
+
     Application.put_env(:wanderer_notifier, :env, :test)
+    Logger.configure(level: :info)
 
-    # Configure logger for testing
-    :ok = Logger.configure(level: :info)
-
-    # Ensure we restore the original environment after the test
     on_exit(fn ->
-      if previous_env do
-        Application.put_env(:wanderer_notifier, :env, previous_env)
-      else
-        Application.delete_env(:wanderer_notifier, :env)
-      end
+      Application.put_env(:wanderer_notifier, :env, previous_env)
+      Logger.configure(level: previous_log_level)
     end)
 
-    :ok
+    {:ok, %{previous_env: previous_env, previous_log_level: previous_log_level}}
   end
 
   describe "send_message/2" do

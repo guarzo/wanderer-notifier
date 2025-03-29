@@ -9,6 +9,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
 
   @doc """
   Determine if a kill notification should be sent.
@@ -138,7 +139,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
     # If system notifications are disabled but kill notifications are enabled,
     # we still want to check if the system is tracked for kill notification purposes
-    if !WandererNotifier.Core.Config.system_notifications_enabled?() &&
+    if !Features.system_notifications_enabled?() &&
          !Features.kill_notifications_enabled?() do
       # System notifications disabled and kill notifications are also disabled, so nothing is tracked
       false
@@ -223,7 +224,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def has_tracked_character?(killmail) do
     # If character notifications are disabled but kill notifications are enabled,
     # we still want to check for tracked characters for kill notification purposes
-    if !WandererNotifier.Core.Config.character_notifications_enabled?() &&
+    if !Features.character_notifications_enabled?() &&
          !Features.kill_notifications_enabled?() do
       # Character notifications disabled and kill notifications are also disabled, nothing is tracked
       false

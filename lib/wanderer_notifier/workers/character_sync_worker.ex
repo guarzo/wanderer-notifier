@@ -8,6 +8,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   """
   use GenServer
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
 
   # Change from 15 minutes to 1 hour for validation checks
   @sync_interval 60 * 60 * 1000
@@ -51,7 +52,7 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
     AppLogger.scheduler_info("Running periodic character consistency validation")
 
     # Check if kill charts feature is enabled first
-    if kill_charts_enabled?() do
+    if should_generate_charts?() do
       validate_characters_if_available()
     else
       AppLogger.scheduler_info("Kill charts feature is disabled", action: "skipping_validation")
@@ -200,8 +201,8 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   end
 
   # Check if kill charts feature is enabled
-  defp kill_charts_enabled? do
-    WandererNotifier.Core.Config.kill_charts_enabled?()
+  defp should_generate_charts? do
+    Features.kill_charts_enabled?()
   end
 
   # Schedule next sync with default interval
