@@ -5,11 +5,13 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   a notification based on configured tracking rules.
   """
   require Logger
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepository
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Logger.BatchLogger
 
   @doc """
   Determine if a kill notification should be sent.
@@ -154,7 +156,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       tracked = directly_tracked?(system_id_str) || tracked_via_track_all?(system_id_str)
 
       # Use batch logger for system tracking checks
-      WandererNotifier.Logger.BatchLogger.count_event(:system_tracked, %{
+      BatchLogger.count_event(:system_tracked, %{
         system_id: system_id_str,
         tracked: tracked
       })
@@ -178,13 +180,13 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
 
   defp directly_tracked?(system_id_str) do
     cache_key = "tracked:system:#{system_id_str}"
-    WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+    CacheRepository.get(cache_key) != nil
   end
 
   defp tracked_via_track_all?(system_id_str) do
     # Check if system exists in main cache and K-Space tracking is enabled
     system_cache_key = "map:system:#{system_id_str}"
-    exists_in_cache = WandererNotifier.Data.Cache.Repository.get(system_cache_key) != nil
+    exists_in_cache = CacheRepository.get(system_cache_key) != nil
     Features.track_kspace_systems?() && exists_in_cache
   end
 
@@ -234,7 +236,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
       kill_id = extract_kill_id(killmail)
 
       # Use batch logger for character tracking checks
-      WandererNotifier.Logger.BatchLogger.count_event(:character_tracked, %{
+      BatchLogger.count_event(:character_tracked, %{
         kill_id: kill_id
       })
 
@@ -278,7 +280,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
 
   # Get all tracked character IDs
   defp get_all_tracked_character_ids do
-    all_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    all_characters = CacheRepository.get("map:characters") || []
 
     Enum.map(all_characters, fn char ->
       # Use character_id for consistency
@@ -316,7 +318,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   # Check if victim is tracked through direct cache lookup
   defp check_direct_victim_tracking(victim_id_str) do
     direct_cache_key = "tracked:character:#{victim_id_str}"
-    direct_tracked = WandererNotifier.Data.Cache.Repository.get(direct_cache_key) != nil
+    direct_tracked = CacheRepository.get(direct_cache_key) != nil
 
     if direct_tracked do
       # Keep this info log as it indicates a successful tracking match - useful information
@@ -400,7 +402,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     # Check each attacker ID in the cache
     Enum.find_value(attacker_ids, false, fn attacker_id ->
       cache_key = "tracked:character:#{attacker_id}"
-      tracked = WandererNotifier.Data.Cache.Repository.get(cache_key) != nil
+      tracked = CacheRepository.get(cache_key) != nil
 
       if tracked do
         AppLogger.processor_info("Found tracked attacker via direct cache lookup",
@@ -448,7 +450,7 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
-    case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+    case ESIService.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
       _ -> nil
     end

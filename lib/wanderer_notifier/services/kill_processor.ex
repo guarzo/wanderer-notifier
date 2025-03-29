@@ -8,11 +8,20 @@ defmodule WandererNotifier.Services.KillProcessor do
   require Logger
 
   # App-specific aliases
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Resources.KillmailPersistence
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.BatchLogger
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Resources.KillmailPersistence
+  alias WandererNotifier.Service
+  alias WandererNotifier.Services.NotificationDeterminer
 
   # Cache keys for recent kills
   @recent_kills_cache_key "zkill:recent_kills"
@@ -46,7 +55,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   def schedule_stats_logging do
     # Send the message to the main Service module since that's where GenServer is implemented
     Process.send_after(
-      WandererNotifier.Service,
+      Service,
       :log_kill_stats,
       Timing.get_cache_check_interval()
     )
@@ -248,45 +257,43 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Helper function to handle killmail persistence synchronously
   defp persist_killmail_synchronously(killmail) do
-    try do
-      result = KillmailPersistence.maybe_persist_killmail(killmail)
-      # Properly handle all possible return types
-      case result do
-        {:ok, record} when is_map(record) or is_struct(record) ->
-          # Normal success case with a record
-          {:ok, record}
+    result = KillmailPersistence.maybe_persist_killmail(killmail)
+    # Properly handle all possible return types
+    case result do
+      {:ok, record} when is_map(record) or is_struct(record) ->
+        # Normal success case with a record
+        {:ok, record}
 
-        {:ok, nil} ->
-          # Success with no data
-          {:ok, :persisted_with_no_data}
+      {:ok, nil} ->
+        # Success with no data
+        {:ok, :persisted_with_no_data}
 
-        {:ok, other} ->
-          # Any other successful result
-          AppLogger.kill_debug(
-            "Persistence returned unexpected success format: #{inspect(other)}"
-          )
+      {:ok, other} ->
+        # Any other successful result
+        AppLogger.kill_debug(
+          "Persistence returned unexpected success format: #{inspect(other)}"
+        )
 
-          {:ok, :persisted}
+        {:ok, :persisted}
 
-        :ignored ->
-          # Ignored case
-          :ignored
+      :ignored ->
+        # Ignored case
+        :ignored
 
-        {:error, reason} ->
-          # Error case
-          {:error, reason}
+      {:error, reason} ->
+        # Error case
+        {:error, reason}
 
-        unexpected ->
-          # Handle truly unexpected return values
-          AppLogger.kill_warn("Persistence returned unexpected format: #{inspect(unexpected)}")
-          {:ok, :persisted_with_unexpected_response}
-      end
-    rescue
-      e ->
-        AppLogger.kill_error("Error in persistence: #{Exception.message(e)}")
-        AppLogger.kill_debug("Stacktrace: #{Exception.format_stacktrace()}")
-        {:error, Exception.message(e)}
+      unexpected ->
+        # Handle truly unexpected return values
+        AppLogger.kill_warn("Persistence returned unexpected format: #{inspect(unexpected)}")
+        {:ok, :persisted_with_unexpected_response}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("Error in persistence: #{Exception.message(e)}")
+      AppLogger.kill_debug("Stacktrace: #{Exception.format_stacktrace()}")
+      {:error, Exception.message(e)}
   end
 
   # Helper function to process killmail notification
@@ -318,30 +325,28 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Simplified to remove validate_killmail since we're now using the Killmail struct properly
   defp enrich_and_notify(%Killmail{} = killmail) do
-    try do
-      # Extract basic kill information
-      kill_info = extract_kill_info(killmail)
+    # Extract basic kill information
+    kill_info = extract_kill_info(killmail)
 
-      # Debug tracking for this specific system
-      debug_system_tracking(kill_info.system_id)
+    # Debug tracking for this specific system
+    debug_system_tracking(kill_info.system_id)
 
-      # Extract and log victim/attacker information
-      victim_info = extract_victim_info(killmail, kill_info.kill_id)
-      attacker_info = extract_attacker_info(killmail, kill_info.kill_id)
+    # Extract and log victim/attacker information
+    victim_info = extract_victim_info(killmail, kill_info.kill_id)
+    attacker_info = extract_attacker_info(killmail, kill_info.kill_id)
 
-      # Get tracking information
-      tracking_info = get_tracking_info(killmail, victim_info, attacker_info)
+    # Get tracking information
+    tracking_info = get_tracking_info(killmail, victim_info, attacker_info)
 
-      # Log tracking status
-      log_tracking_status(tracking_info, kill_info)
+    # Log tracking status
+    log_tracking_status(tracking_info, kill_info)
 
-      # Determine if notification should be sent and handle it
-      handle_notification_decision(killmail, kill_info, tracking_info)
-    rescue
-      e ->
-        AppLogger.kill_error("⚠️ EXCEPTION: Error during kill enrichment: #{Exception.message(e)}")
-        {:error, "Failed to enrich kill: #{Exception.message(e)}"}
-    end
+    # Determine if notification should be sent and handle it
+    handle_notification_decision(killmail, kill_info, tracking_info)
+  rescue
+    e ->
+      AppLogger.kill_error("⚠️ EXCEPTION: Error during kill enrichment: #{Exception.message(e)}")
+      {:error, "Failed to enrich kill: #{Exception.message(e)}"}
   end
 
   # Extract basic kill information (id, system)
@@ -419,7 +424,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Get tracking information (systems and characters)
   defp get_tracking_info(killmail, victim_info, attacker_info) do
     # Get tracked systems - should always be a plain list
-    tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+    tracked_systems = CacheHelpers.get_tracked_systems()
 
     if not is_list(tracked_systems) do
       AppLogger.kill_error(
@@ -428,7 +433,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     end
 
     # Get tracked characters - should always be a plain list
-    tracked_characters = WandererNotifier.Helpers.CacheHelpers.get_tracked_characters()
+    tracked_characters = CacheHelpers.get_tracked_characters()
 
     if not is_list(tracked_characters) do
       AppLogger.kill_error(
@@ -463,10 +468,10 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     # Check if system or any character is tracked using notification determiner
     is_system_tracked =
-      WandererNotifier.Services.NotificationDeterminer.tracked_system?(system_id)
+      NotificationDeterminer.tracked_system?(system_id)
 
     is_character_tracked =
-      WandererNotifier.Services.NotificationDeterminer.has_tracked_character?(killmail)
+      NotificationDeterminer.has_tracked_character?(killmail)
 
     # Return tracking information
     %{
@@ -543,7 +548,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Log tracking status information
   defp log_tracking_status(tracking_info, kill_info) do
     # Use batch logger for kill received events
-    WandererNotifier.Logger.BatchLogger.count_event(:kill_received, %{
+    BatchLogger.count_event(:kill_received, %{
       kill_id: kill_info.kill_id,
       system_id: kill_info.system_id,
       system_name: kill_info.system_name
@@ -603,7 +608,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Handle notification decision logic
   defp handle_notification_decision(killmail, kill_info, tracking_info) do
-    if WandererNotifier.Services.NotificationDeterminer.should_notify_kill?(
+    if NotificationDeterminer.should_notify_kill?(
          killmail,
          kill_info.system_id
        ) do
@@ -676,7 +681,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   # Determine reason for skipping notification
   defp determine_skip_reason(is_system_tracked, is_character_tracked) do
     cond do
-      !WandererNotifier.Core.Features.kill_notifications_enabled?() ->
+      !Features.kill_notifications_enabled?() ->
         "kill notifications are globally disabled"
 
       !is_system_tracked && !is_character_tracked ->
@@ -748,7 +753,7 @@ defmodule WandererNotifier.Services.KillProcessor do
         "✅ TEST KILL: Sending test notification for killmail #{kill_id}, bypassing deduplication"
       )
 
-      WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+      DiscordNotifier.send_enriched_kill_embed(enriched_killmail, kill_id)
 
       # Update statistics for notification sent
       update_kill_stats(:notification_sent)
@@ -761,17 +766,17 @@ defmodule WandererNotifier.Services.KillProcessor do
       :ok
     else
       # Use the centralized deduplication check for normal notifications
-      case WandererNotifier.Services.NotificationDeterminer.check_deduplication(:kill, kill_id) do
+      case NotificationDeterminer.check_deduplication(:kill, kill_id) do
         {:ok, :send} ->
           # This is not a duplicate, send the notification
           AppLogger.kill_info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
-          WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+          DiscordNotifier.send_enriched_kill_embed(enriched_killmail, kill_id)
 
           # Update statistics for notification sent
           update_kill_stats(:notification_sent)
 
           # Use batch logger for notification tracking
-          WandererNotifier.Logger.BatchLogger.count_event(:notification_sent, %{
+          BatchLogger.count_event(:notification_sent, %{
             type: :kill,
             id: kill_id
           })
@@ -797,7 +802,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
           # Default to sending the notification in case of errors
           AppLogger.kill_info("⚠️ FALLBACK: Sending notification despite deduplication error")
-          WandererNotifier.Discord.Notifier.send_enriched_kill_embed(enriched_killmail, kill_id)
+          DiscordNotifier.send_enriched_kill_embed(enriched_killmail, kill_id)
           :ok
       end
     end
@@ -852,7 +857,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       AppLogger.kill_error(error_message)
 
       # Notify the user through Discord
-      WandererNotifier.Notifiers.Factory.notify(
+      NotifierFactory.notify(
         :send_message,
         [
           "Error: #{error_message} - No test notification sent. Please wait for some kills to be processed."
@@ -893,7 +898,7 @@ defmodule WandererNotifier.Services.KillProcessor do
           AppLogger.kill_error(error_message)
 
           # Notify the user through Discord
-          WandererNotifier.Notifiers.Factory.notify(
+          NotifierFactory.notify(
             :send_message,
             [error_message]
           )
@@ -997,7 +1002,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       entity,
       "character_id",
       "character_name",
-      &WandererNotifier.Api.ESI.Service.get_character_info/1,
+      &ESIService.get_character_info/1,
       "Unknown Pilot"
     )
   end
@@ -1008,7 +1013,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       entity,
       "corporation_id",
       "corporation_name",
-      &WandererNotifier.Api.ESI.Service.get_corporation_info/1,
+      &ESIService.get_corporation_info/1,
       "Unknown Corp"
     )
   end
@@ -1019,7 +1024,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       entity,
       "alliance_id",
       "alliance_name",
-      &WandererNotifier.Api.ESI.Service.get_alliance_info/1,
+      &ESIService.get_alliance_info/1,
       "Unknown Alliance"
     )
   end
@@ -1030,7 +1035,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       entity,
       "ship_type_id",
       "ship_type_name",
-      &WandererNotifier.Api.ESI.Service.get_ship_type_name/1,
+      &ESIService.get_ship_type_name/1,
       "Unknown Ship"
     )
   end
@@ -1102,7 +1107,7 @@ defmodule WandererNotifier.Services.KillProcessor do
       nil ->
         # Not in cache, fetch from ESI
         system_name =
-          case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+          case ESIService.get_system_info(system_id) do
             {:ok, system_info} ->
               Map.get(system_info, "name")
 
@@ -1139,13 +1144,13 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp debug_system_tracking(system_id) do
     system_id_str = to_string(system_id)
     system_info = get_system_info_string(system_id)
-    tracked_systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
+    tracked_systems = CacheHelpers.get_tracked_systems()
 
     # Log basic information
     log_basic_tracking_info(system_info, tracked_systems)
 
     # Check using standard method
-    standard_check = check_standard_tracking(system_id)
+    standard_check = NotificationDeterminer.tracked_system?(system_id)
 
     # Check using manual matching
     {found, matches} = find_matching_systems(tracked_systems, system_id_str)
@@ -1176,13 +1181,6 @@ defmodule WandererNotifier.Services.KillProcessor do
   defp log_basic_tracking_info(system_info, tracked_systems) do
     AppLogger.kill_debug("DEBUG: Checking tracking for system #{system_info}")
     AppLogger.kill_debug("DEBUG: Found #{length(tracked_systems)} tracked systems")
-  end
-
-  # Check if system is tracked using the standard notification determiner
-  defp check_standard_tracking(system_id) do
-    standard_check = WandererNotifier.Services.NotificationDeterminer.tracked_system?(system_id)
-    AppLogger.kill_debug("DEBUG: Standard tracking check result: #{standard_check}")
-    standard_check
   end
 
   # Check for system matches using various key formats
@@ -1266,7 +1264,7 @@ defmodule WandererNotifier.Services.KillProcessor do
 
   # Check for the system in direct cache lookup
   defp check_direct_cache_lookup(system_id_str) do
-    direct_system = WandererNotifier.Data.Cache.Repository.get("map:system:#{system_id_str}")
+    direct_system = CacheRepo.get("map:system:#{system_id_str}")
 
     if direct_system != nil do
       AppLogger.kill_debug(
@@ -1296,14 +1294,14 @@ defmodule WandererNotifier.Services.KillProcessor do
 
     AppLogger.kill_info("Triggering special debug for system ID: #{system_id}")
     # Send the message to the main Service module
-    Process.send(WandererNotifier.Service, {:debug_special_system, system_id}, [])
+    Process.send(Service, {:debug_special_system, system_id}, [])
   end
 
   # Extract character ID from character data
   defp extract_character_id(char) do
     cond do
       # Handle the Character struct directly
-      is_struct(char, WandererNotifier.Data.Character) ->
+      is_struct(char, Character) ->
         to_string(char.character_id)
 
       is_map(char) ->
