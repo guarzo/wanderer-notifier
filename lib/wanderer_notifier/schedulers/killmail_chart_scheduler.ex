@@ -72,7 +72,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
     rescue
       e ->
         Logger.error("[SCHEDULER] Exception while sending weekly kills chart: #{inspect(e)}")
-        {:error, "Test exception", %{}}
+        {:error, "#{inspect(e)}", %{}}
     end
   end
 
