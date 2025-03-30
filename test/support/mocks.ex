@@ -146,6 +146,10 @@ defmodule WandererNotifier.MockConfig do
         %{
           kill_charts_enabled: true,
           map_charts_enabled: true,
+          character_notifications_enabled: true,
+          character_tracking_enabled: true,
+          system_notifications_enabled: true,
+          track_kspace_systems: true,
           env: :test
         }
       end,
@@ -158,10 +162,15 @@ defmodule WandererNotifier.MockConfig do
   end
 
   @impl true
-  def get_config(_key, default), do: default
+  def get_env(key, default \\ nil) do
+    case key do
+      :features -> %{track_kspace_systems: true}
+      _ -> default
+    end
+  end
 
   @impl true
-  def get_env, do: :test
+  def get_map_config, do: %{}
 
   @impl true
   def map_charts_enabled?, do: true
@@ -170,6 +179,45 @@ defmodule WandererNotifier.MockConfig do
   def kill_charts_enabled? do
     Agent.get(__MODULE__, & &1.kill_charts_enabled)
   end
+
+  @impl true
+  def character_notifications_enabled?, do: true
+
+  @impl true
+  def character_tracking_enabled?, do: true
+
+  @impl true
+  def system_notifications_enabled?, do: true
+
+  @impl true
+  def track_kspace_systems?, do: true
+
+  @impl true
+  def license_key, do: "test-license-key"
+
+  @impl true
+  def license_manager_api_key, do: "test-api-key"
+
+  @impl true
+  def license_manager_api_url, do: "https://test-license-api.example.com"
+
+  @impl true
+  def map_csrf_token, do: "test-csrf-token"
+
+  @impl true
+  def map_name, do: "Test Map"
+
+  @impl true
+  def map_token, do: "test-map-token"
+
+  @impl true
+  def map_url, do: "https://test-map.example.com"
+
+  @impl true
+  def notifier_api_token, do: "test-notifier-token"
+
+  @impl true
+  def static_info_cache_ttl, do: 3600
 
   @impl true
   def discord_channel_id_for_activity_charts, do: "123456789"
