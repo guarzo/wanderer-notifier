@@ -8,7 +8,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger, as: AppLogger
@@ -75,146 +74,171 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp process_and_cache_systems(parsed_response, cached_systems) do
-    try do
-      # Extract systems data with fallbacks for different API formats
-      systems_data =
-        case parsed_response do
-          %{"data" => data} when is_list(data) -> data
-          %{"systems" => systems} when is_list(systems) -> systems
-          data when is_list(data) -> data
-          _ -> []
-        end
+    # Extract systems data with fallbacks for different API formats
+    systems_data = extract_systems_data(parsed_response)
 
-      AppLogger.api_info("[SystemsClient] Received #{length(systems_data)} systems from API")
+    AppLogger.api_info("[SystemsClient] Received #{length(systems_data)} systems from API")
 
-      # Create MapSystem structs
-      systems = Enum.map(systems_data, &MapSystem.new/1)
+    # Create MapSystem structs
+    systems = Enum.map(systems_data, &MapSystem.new/1)
 
-      # Filter systems based on configuration
-      track_all_systems = Features.track_kspace_systems?()
-      AppLogger.api_info("[SystemsClient] K-space tracking enabled: #{track_all_systems}")
+    # Filter systems based on configuration
+    tracked_systems = filter_systems_for_tracking(systems)
 
-      tracked_systems =
-        if track_all_systems do
-          systems
-        else
-          # Only track wormhole systems if K-Space tracking is disabled
-          AppLogger.api_info("[SystemsClient] Filtering to wormhole systems only")
-          Enum.filter(systems, &MapSystem.wormhole?/1)
-        end
+    # Enrich all systems before caching any of them
+    AppLogger.api_info("[SystemsClient] Enriching all systems before caching...")
+    enriched_systems = enrich_tracked_systems(tracked_systems)
 
-      # Log counts
-      wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
+    # Cache the ENRICHED systems
+    AppLogger.api_info("[SystemsClient] Caching #{length(enriched_systems)} enriched systems")
+    updated_systems = update_systems_cache(enriched_systems)
 
-      AppLogger.api_info(
-        "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes) " <>
-          "out of #{length(systems)} total systems"
+    # Verify systems were cached successfully
+    verify_systems_cached(updated_systems)
+
+    # Check for new systems
+    AppLogger.api_info("[SystemsClient] Checking for new systems to notify about")
+    notify_new_systems(enriched_systems, cached_systems)
+
+    # Return the enriched systems
+    {:ok, updated_systems}
+  rescue
+    e ->
+      # Log the error with full details
+      AppLogger.api_error(
+        "[SystemsClient] Exception in process_and_cache_systems",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       )
 
-      # Enrich all systems before caching any of them
-      AppLogger.api_info("[SystemsClient] Enriching all systems before caching...")
+      # Return any successfully cached systems if possible
+      cached = cached_systems || CacheRepo.get("map:systems") || []
+      {:ok, cached}
+  end
 
-      # Create a map of system_id => system for easier lookup and replacement
-      system_map =
-        Enum.reduce(tracked_systems, %{}, fn sys, acc ->
-          Map.put(acc, sys.solar_system_id, sys)
-        end)
+  # Extract systems data from different response formats
+  defp extract_systems_data(parsed_response) do
+    case parsed_response do
+      %{"data" => data} when is_list(data) -> data
+      %{"systems" => systems} when is_list(systems) -> systems
+      data when is_list(data) -> data
+      _ -> []
+    end
+  end
 
-      # Enrich wormhole systems
-      wormhole_systems = Enum.filter(tracked_systems, &MapSystem.wormhole?/1)
+  # Filter systems based on configuration
+  defp filter_systems_for_tracking(systems) do
+    track_all_systems = Features.track_kspace_systems?()
+    AppLogger.api_info("[SystemsClient] K-space tracking enabled: #{track_all_systems}")
 
-      AppLogger.api_info(
-        "[SystemsClient] Found #{length(wormhole_systems)} wormhole systems to enrich"
-      )
+    tracked_systems =
+      if track_all_systems do
+        systems
+      else
+        # Only track wormhole systems if K-Space tracking is disabled
+        AppLogger.api_info("[SystemsClient] Filtering to wormhole systems only")
+        Enum.filter(systems, &MapSystem.wormhole?/1)
+      end
 
-      # Enrich ALL systems but with appropriate timeouts
-      enriched_map =
-        Enum.reduce(tracked_systems, system_map, fn system, acc ->
-          if MapSystem.wormhole?(system) do
-            # Try to enrich with a strict timeout
-            task =
-              Task.async(fn ->
-                try do
-                  SystemStaticInfo.enrich_system(system)
-                rescue
-                  e ->
-                    AppLogger.api_error(
-                      "[SystemsClient] Enrichment failed for system #{system.name}: #{Exception.message(e)}"
-                    )
+    # Log counts
+    wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
 
-                    {:error, :exception}
-                end
-              end)
+    AppLogger.api_info(
+      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes) " <>
+        "out of #{length(systems)} total systems"
+    )
 
-            # Wait for enrichment with a 2 second timeout per system
-            case Task.yield(task, 2_000) do
-              {:ok, {:ok, enriched_system}} ->
-                AppLogger.api_debug("[SystemsClient] Successfully enriched system #{system.name}")
-                # Update the map with the enriched system
-                Map.put(acc, system.solar_system_id, enriched_system)
+    tracked_systems
+  end
 
-              _ ->
-                # Enrichment error or timeout - kill the task and keep the original system
-                Task.shutdown(task, :brutal_kill)
+  # Enrich tracked systems with static data
+  defp enrich_tracked_systems(tracked_systems) do
+    # Create a map of system_id => system for easier lookup and replacement
+    system_map =
+      Enum.reduce(tracked_systems, %{}, fn sys, acc ->
+        Map.put(acc, sys.solar_system_id, sys)
+      end)
 
-                AppLogger.api_debug(
-                  "[SystemsClient] Using basic system info for #{system.name} (enrichment skipped or failed)"
-                )
+    # Enrich wormhole systems
+    wormhole_systems = Enum.filter(tracked_systems, &MapSystem.wormhole?/1)
 
-                # Make sure we add an explicit empty statics list if enrichment didn't happen
-                updated_system =
-                  if is_nil(system.statics) do
-                    %{system | statics: []}
-                  else
-                    system
-                  end
+    AppLogger.api_info(
+      "[SystemsClient] Found #{length(wormhole_systems)} wormhole systems to enrich"
+    )
 
-                # Return updated system
-                Map.put(acc, system.solar_system_id, updated_system)
-            end
-          else
-            # Non-wormhole systems don't need enrichment, but ensure statics is never nil
-            updated_system =
-              if is_nil(system.statics) do
-                %{system | statics: []}
-              else
-                system
-              end
+    # Process each system
+    enriched_map = process_systems_for_enrichment(tracked_systems, system_map)
 
-            Map.put(acc, system.solar_system_id, updated_system)
-          end
-        end)
+    # Convert the map back to a list
+    enriched_systems = Map.values(enriched_map)
 
-      # Convert the map back to a list
-      enriched_systems = Map.values(enriched_map)
+    AppLogger.api_info("[SystemsClient] System enrichment complete")
 
-      AppLogger.api_info("[SystemsClient] System enrichment complete")
+    enriched_systems
+  end
 
-      # Cache the ENRICHED systems
-      AppLogger.api_info("[SystemsClient] Caching #{length(enriched_systems)} enriched systems")
-      updated_systems = update_systems_cache(enriched_systems)
+  # Process each system for enrichment
+  defp process_systems_for_enrichment(tracked_systems, system_map) do
+    Enum.reduce(tracked_systems, system_map, fn system, acc ->
+      if MapSystem.wormhole?(system) do
+        process_wormhole_system(system, acc)
+      else
+        process_non_wormhole_system(system, acc)
+      end
+    end)
+  end
 
-      # Verify systems were cached successfully
-      verify_systems_cached(updated_systems)
+  # Process a wormhole system with enrichment
+  defp process_wormhole_system(system, acc) do
+    # Try to enrich with a strict timeout
+    task =
+      Task.async(fn ->
+        try do
+          SystemStaticInfo.enrich_system(system)
+        rescue
+          e ->
+            AppLogger.api_error(
+              "[SystemsClient] Enrichment failed for system #{system.name}: #{Exception.message(e)}"
+            )
 
-      # Check for new systems
-      AppLogger.api_info("[SystemsClient] Checking for new systems to notify about")
-      notify_new_systems(enriched_systems, cached_systems)
+            {:error, :exception}
+        end
+      end)
 
-      # Return the enriched systems
-      {:ok, updated_systems}
-    rescue
-      e ->
-        # Log the error with full details
-        AppLogger.api_error(
-          "[SystemsClient] Exception in process_and_cache_systems",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+    # Wait for enrichment with a 2 second timeout per system
+    case Task.yield(task, 2_000) do
+      {:ok, {:ok, enriched_system}} ->
+        AppLogger.api_debug("[SystemsClient] Successfully enriched system #{system.name}")
+        # Update the map with the enriched system
+        Map.put(acc, system.solar_system_id, enriched_system)
+
+      _ ->
+        # Enrichment error or timeout - kill the task and keep the original system
+        Task.shutdown(task, :brutal_kill)
+
+        AppLogger.api_debug(
+          "[SystemsClient] Using basic system info for #{system.name} (enrichment skipped or failed)"
         )
 
-        # Return any successfully cached systems if possible
-        cached = cached_systems || CacheRepo.get("map:systems") || []
-        {:ok, cached}
+        # Ensure statics is never nil
+        updated_system = ensure_statics_not_nil(system)
+        Map.put(acc, system.solar_system_id, updated_system)
+    end
+  end
+
+  # Process a non-wormhole system (no enrichment needed)
+  defp process_non_wormhole_system(system, acc) do
+    # Non-wormhole systems don't need enrichment, but ensure statics is never nil
+    updated_system = ensure_statics_not_nil(system)
+    Map.put(acc, system.solar_system_id, updated_system)
+  end
+
+  # Ensure statics field is never nil
+  defp ensure_statics_not_nil(system) do
+    if is_nil(system.statics) do
+      %{system | statics: []}
+    else
+      system
     end
   end
 
@@ -296,7 +320,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   ## Returns
     - list of systems on success (may be empty)
   """
-  def get_systems() do
+  def get_systems do
     # Try to get systems from cache first
     case CacheRepo.get("map:systems") do
       systems when is_list(systems) and length(systems) > 0 ->
@@ -354,10 +378,11 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     - {:ok, system} on success
     - {:error, reason} on failure
   """
-  def get_system_for_notification() do
+  def get_system_for_notification do
     # Try to get systems from cache first
     systems = get_systems()
 
+    # Check if we have systems in cache
     if is_list(systems) and length(systems) > 0 do
       # Select just one random system for notification
       selected_system = Enum.random(systems)
@@ -367,55 +392,15 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         "[SystemsClient] Selected system #{selected_system.name} for notification test"
       )
 
-      # For test notifications only: Try to enrich wormhole systems
-      # This makes the notification more useful, but with safety timeout
+      # Handle wormhole systems differently
       if MapSystem.wormhole?(selected_system) do
         # Try to enrich with a timeout using Task
         AppLogger.api_info(
           "[SystemsClient] Attempting to enrich wormhole system #{selected_system.name} for test notification"
         )
 
-        # Create a task for the enrichment to add timeout handling
-        task =
-          Task.async(fn ->
-            try do
-              SystemStaticInfo.enrich_system(selected_system)
-            rescue
-              e ->
-                AppLogger.api_error(
-                  "[SystemsClient] Enrichment failed with exception: #{Exception.message(e)}"
-                )
-
-                {:error, :exception}
-            end
-          end)
-
-        # Wait for enrichment with a timeout (5 seconds maximum)
-        case Task.yield(task, 5_000) do
-          {:ok, {:ok, enriched_system}} ->
-            AppLogger.api_info(
-              "[SystemsClient] Successfully enriched system for test notification"
-            )
-
-            {:ok, enriched_system}
-
-          {:ok, {:error, reason}} ->
-            AppLogger.api_warn(
-              "[SystemsClient] Enrichment failed: #{inspect(reason)}. Using basic system."
-            )
-
-            {:ok, selected_system}
-
-          nil ->
-            # Enrichment took too long, kill the task
-            Task.shutdown(task, :brutal_kill)
-
-            AppLogger.api_warn(
-              "[SystemsClient] Enrichment timed out after 5 seconds. Using basic system."
-            )
-
-            {:ok, selected_system}
-        end
+        # Try to enrich the wormhole system
+        enrich_system_with_timeout(selected_system)
       else
         # Non-wormhole systems don't need enrichment
         {:ok, selected_system}
@@ -424,6 +409,49 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       # No systems in cache, return error
       AppLogger.api_error("[SystemsClient] No systems found in cache for notification")
       {:error, :no_systems_in_cache}
+    end
+  end
+
+  # Helper to enrich a system with a timeout
+  defp enrich_system_with_timeout(system) do
+    # Create a task for the enrichment to add timeout handling
+    task =
+      Task.async(fn ->
+        try do
+          SystemStaticInfo.enrich_system(system)
+        rescue
+          e ->
+            AppLogger.api_error(
+              "[SystemsClient] Enrichment failed with exception: #{Exception.message(e)}"
+            )
+
+            {:error, :exception}
+        end
+      end)
+
+    # Wait for enrichment with a timeout (5 seconds maximum)
+    case Task.yield(task, 5_000) do
+      {:ok, {:ok, enriched_system}} ->
+        AppLogger.api_info("[SystemsClient] Successfully enriched system for test notification")
+
+        {:ok, enriched_system}
+
+      {:ok, {:error, reason}} ->
+        AppLogger.api_warn(
+          "[SystemsClient] Enrichment failed: #{inspect(reason)}. Using basic system."
+        )
+
+        {:ok, system}
+
+      nil ->
+        # Enrichment took too long, kill the task
+        Task.shutdown(task, :brutal_kill)
+
+        AppLogger.api_warn(
+          "[SystemsClient] Enrichment timed out after 5 seconds. Using basic system."
+        )
+
+        {:ok, system}
     end
   end
 
@@ -488,15 +516,22 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp extract_system_id(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
-      is_map(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
-      is_map(system) && Map.has_key?(system, "solar_system_id") -> system["solar_system_id"]
-      is_struct(system) && Map.has_key?(system, :id) -> system.id
-      is_map(system) && Map.has_key?(system, :id) -> system.id
-      is_map(system) && Map.has_key?(system, "id") -> system["id"]
-      true -> nil
-    end
+    # Check solar_system_id first (most common field)
+    system_id = extract_id_field(system, [:solar_system_id, "solar_system_id"])
+
+    # If not found, try more generic id fields
+    if system_id, do: system_id, else: extract_id_field(system, [:id, "id"])
+  end
+
+  # Helper to extract ID from various field names
+  defp extract_id_field(system, field_names) do
+    Enum.find_value(field_names, fn field ->
+      cond do
+        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        true -> nil
+      end
+    end)
   end
 
   defp log_added_systems([]), do: :ok
@@ -508,25 +543,23 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp send_system_notification(system) do
-    try do
-      map_system = ensure_map_system(system)
-      log_system_details(map_system)
+    map_system = ensure_map_system(system)
+    log_system_details(map_system)
 
-      # Get notifier and send notification directly - simplified approach
-      AppLogger.api_info("[SystemsClient] Sending system notification via NotifierFactory")
-      notifier = NotifierFactory.get_notifier()
-      notifier.send_new_system_notification(map_system)
+    # Get notifier and send notification directly - simplified approach
+    AppLogger.api_info("[SystemsClient] Sending system notification via NotifierFactory")
+    notifier = NotifierFactory.get_notifier()
+    notifier.send_new_system_notification(map_system)
 
-      # Return success
-      {:ok, map_system.id}
-    rescue
-      e ->
-        AppLogger.api_error(
-          "[SystemsClient] Error sending system notification: #{Exception.message(e)}"
-        )
+    # Return success
+    {:ok, map_system.id}
+  rescue
+    e ->
+      AppLogger.api_error(
+        "[SystemsClient] Error sending system notification: #{Exception.message(e)}"
+      )
 
-        {:error, e}
-    end
+      {:error, e}
   end
 
   defp ensure_map_system(system) do
@@ -537,14 +570,12 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       # Try to create MapSystem from a map or other structure
       try do
         # Check if we need to convert it
-        cond do
-          is_map(system) ->
-            MapSystem.new(system)
-
-          true ->
-            # Log error and return original
-            AppLogger.api_error("[SystemsClient] Cannot convert to MapSystem: #{inspect(system)}")
-            system
+        if is_map(system) do
+          MapSystem.new(system)
+        else
+          # Log error and return original
+          AppLogger.api_error("[SystemsClient] Cannot convert to MapSystem: #{inspect(system)}")
+          system
         end
       rescue
         e ->

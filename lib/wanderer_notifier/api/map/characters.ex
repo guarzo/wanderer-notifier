@@ -458,7 +458,6 @@ defmodule WandererNotifier.Api.Map.Characters do
     notifier.send_new_tracked_character_notification(character_info)
   end
 
-
   defp find_new_characters(_new_chars, []) do
     # If there are no cached characters, this might be the first run
     # In that case, don't notify about all characters to avoid spamming

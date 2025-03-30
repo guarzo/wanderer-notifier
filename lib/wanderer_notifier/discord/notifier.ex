@@ -447,17 +447,15 @@ defmodule WandererNotifier.Discord.Notifier do
       # Try to create MapSystem from a map or other structure
       try do
         # Check if we need to convert it
-        cond do
-          is_map(system) ->
-            MapSystem.new(system)
+        if is_map(system) do
+          MapSystem.new(system)
+        else
+          # Log error and return original
+          AppLogger.processor_error(
+            "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
+          )
 
-          true ->
-            # Log error and return original
-            AppLogger.processor_error(
-              "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
-            )
-
-            system
+          system
         end
       rescue
         e ->
@@ -471,80 +469,40 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Helper functions for safe data extraction
-
   # Safely extract system ID
   defp extract_system_id(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
-      is_map(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
-      is_map(system) && Map.has_key?(system, "solar_system_id") -> system["solar_system_id"]
-      is_map(system) && Map.has_key?(system, :id) -> system.id
-      is_map(system) && Map.has_key?(system, "id") -> system["id"]
-      true -> "unknown"
-    end
+    # Check solar_system_id first (most common field)
+    system_id = extract_id_field(system, [:solar_system_id, "solar_system_id"])
+
+    # If not found, try more generic id fields
+    if system_id, do: system_id, else: extract_id_field(system, [:id, "id"]) || "unknown"
+  end
+
+  # Helper to extract ID from various field names
+  defp extract_id_field(system, field_names) do
+    Enum.find_value(field_names, fn field ->
+      cond do
+        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        true -> nil
+      end
+    end)
   end
 
   # Safely extract system name
   defp extract_system_name(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :name) -> system.name
-      is_map(system) && Map.has_key?(system, :name) -> system.name
-      is_map(system) && Map.has_key?(system, "name") -> system["name"]
-      true -> "Unknown System"
-    end
+    extract_field_value(system, [:name, "name"], "Unknown System")
   end
 
-  # Extract statics from system
-  defp extract_statics(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :statics) -> system.statics
-      is_map(system) && Map.has_key?(system, :statics) -> system.statics
-      is_map(system) && Map.has_key?(system, "statics") -> system["statics"]
-      true -> nil
-    end
-  end
-
-  # Extract type description from system
-  defp extract_type_description(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :type_description) -> system.type_description
-      is_map(system) && Map.has_key?(system, :type_description) -> system.type_description
-      is_map(system) && Map.has_key?(system, "type_description") -> system["type_description"]
-      true -> nil
-    end
-  end
-
-  # Extract class title from system
-  defp extract_class_title(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :class_title) -> system.class_title
-      is_map(system) && Map.has_key?(system, :class_title) -> system.class_title
-      is_map(system) && Map.has_key?(system, "class_title") -> system["class_title"]
-      true -> nil
-    end
-  end
-
-  # Extract effect from system
-  defp extract_effect(system) do
-    cond do
-      is_struct(system) && Map.has_key?(system, :effect) -> system.effect
-      is_map(system) && Map.has_key?(system, :effect) -> system.effect
-      is_map(system) && Map.has_key?(system, "effect") -> system["effect"]
-      true -> nil
-    end
-  end
-
-  # Add image URL for wormhole systems
-  defp add_system_image_url(embed, system_name) do
-    # Add image URL if system_name is a wormhole name (J-code)
-    if Regex.match?(~r/^J\d{6}$/, system_name) do
-      Map.put(embed, "image", %{
-        "url" => "https://images.evetech.net/systems/#{system_name}/render"
-      })
-    else
-      embed
-    end
+  # Helper to extract a field with a default value
+  defp extract_field_value(system, field_names, default) do
+    Enum.find_value(field_names, default, fn field ->
+      cond do
+        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        true -> nil
+      end
+    end)
   end
 
   # -- HELPER FOR SENDING PAYLOAD --

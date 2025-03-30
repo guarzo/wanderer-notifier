@@ -27,8 +27,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
       query_params =
         params
         |> Map.to_list()
-        |> Enum.map(fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
-        |> Enum.join("&")
+        |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
 
       # Add slug parameter to query
       slug_param = "slug=#{URI.encode_www_form(final_slug)}"
@@ -71,8 +70,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         query_params =
           params
           |> Map.to_list()
-          |> Enum.map(fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
-          |> Enum.join("&")
+          |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
 
         # Build the final URL
         url = "#{base}?#{query_params}"

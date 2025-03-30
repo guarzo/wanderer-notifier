@@ -4,13 +4,13 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Handles periodic updates for systems and characters.
   """
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Api.Map.SystemsClient
 
   @doc """
   Performs periodic maintenance tasks.
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   end
 
   # Update systems from the map
-  defp update_systems(state, now, force \\ false) do
+  defp update_systems(state, now, _force \\ false) do
     # Log all feature flags related to system updates
     system_notifications = Features.tracked_systems_notifications_enabled?()
     should_load_tracking = Features.should_load_tracking_data?()

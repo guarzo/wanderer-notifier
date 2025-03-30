@@ -9,7 +9,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Core.Config
   alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
@@ -28,54 +27,20 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     AppLogger.api_info("[SystemStaticInfo] Fetching static info for system #{solar_system_id}")
 
     # Create a task for the API request to add timeout handling
-    task = Task.async(fn ->
-      # Build the system static info URL using UrlBuilder
-      case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
-        {:ok, url} ->
-          # Log URL for debugging
-          AppLogger.api_debug("[SystemStaticInfo] Requesting static info from URL: #{url}")
-
-          # Get auth headers
-          headers = UrlBuilder.get_auth_headers()
-
-          # Make API request
-          case Client.get(url, headers) do
-            {:ok, response} ->
-              # Process the response with proper validation
-              case process_api_response(response) do
-                {:ok, parsed_response} ->
-                  # Validate the static info format
-                  case validate_static_info(parsed_response) do
-                    {:ok, data} ->
-                      # Successfully validated
-                      AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
-                      {:ok, data}
-
-                    error -> error
-                  end
-
-                error -> error
-              end
-
-            {:error, reason} ->
-              AppLogger.api_error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          AppLogger.api_error("[SystemStaticInfo] Failed to build URL: #{inspect(reason)}")
-          {:error, reason}
-      end
-    end)
+    task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
 
     # Wait for the task with a timeout (3 seconds)
     case Task.yield(task, 3_000) do
       {:ok, result} ->
         # Log result and return
         case result do
-          {:ok, _} -> AppLogger.api_info("[SystemStaticInfo] Successfully got static info")
-          {:error, reason} -> AppLogger.api_warn("[SystemStaticInfo] Static info failed: #{inspect(reason)}")
+          {:ok, _} ->
+            AppLogger.api_info("[SystemStaticInfo] Successfully got static info")
+
+          {:error, reason} ->
+            AppLogger.api_warn("[SystemStaticInfo] Static info failed: #{inspect(reason)}")
         end
+
         result
 
       nil ->
@@ -83,6 +48,45 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         Task.shutdown(task, :brutal_kill)
         AppLogger.api_error("[SystemStaticInfo] Static info request timed out")
         {:error, :timeout}
+    end
+  end
+
+  # Separate function to fetch the system static info (reduces nesting)
+  defp fetch_system_static_info(solar_system_id) do
+    case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
+      {:ok, url} ->
+        # Log URL for debugging
+        AppLogger.api_debug("[SystemStaticInfo] Requesting static info from URL: #{url}")
+
+        # Get auth headers
+        headers = UrlBuilder.get_auth_headers()
+
+        # Make API request and process
+        make_static_info_request(url, headers)
+
+      {:error, reason} ->
+        AppLogger.api_error("[SystemStaticInfo] Failed to build URL: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  # Make the actual API request for static info
+  defp make_static_info_request(url, headers) do
+    case Client.get(url, headers) do
+      {:ok, response} ->
+        # Process the response with proper validation
+        case process_api_response(response) do
+          {:ok, parsed_response} ->
+            # Validate the static info format
+            validate_static_info(parsed_response)
+
+          error ->
+            error
+        end
+
+      {:error, reason} ->
+        AppLogger.api_error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -100,6 +104,8 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   defp validate_static_info(parsed_response) do
     case ResponseValidator.validate_system_static_info_response(parsed_response) do
       {:ok, _data} = success ->
+        # Successfully validated
+        AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
         success
 
       {:error, reason} = error ->
@@ -122,7 +128,9 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     alias WandererNotifier.Data.MapSystem
 
     # Log the start of enrichment
-    AppLogger.api_info("[SystemStaticInfo] Starting enrichment for system #{system.name} (ID: #{system.solar_system_id})")
+    AppLogger.api_info(
+      "[SystemStaticInfo] Starting enrichment for system #{system.name} (ID: #{system.solar_system_id})"
+    )
 
     # Only try to enrich if the system has a valid ID
     if system.solar_system_id && system.solar_system_id > 0 do

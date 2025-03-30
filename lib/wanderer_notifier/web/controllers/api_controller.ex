@@ -8,14 +8,17 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Cache.CacheHelpers
   alias WandererNotifier.Core.{Config, Features, License, Stats}
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.{KillmailPersistence, TrackedCharacter}
-  alias WandererNotifier.Services.CharacterKillsService
-  alias WandererNotifier.Services.KillmailComparison
-  alias WandererNotifier.Services.Service
+
+  alias WandererNotifier.Services.{
+    CharacterKillsService,
+    KillmailComparison,
+    KillProcessor,
+    Service
+  }
 
   # Module attributes
   @api_version "1.0.0"
@@ -828,7 +831,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
       # Get notifier and send notification
       notifier = NotifierFactory.get_notifier()
-      notification_result = notifier.send_new_system_notification(system)
+      _notification_result = notifier.send_new_system_notification(system)
 
       # Return success
       conn
@@ -861,7 +864,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
           # Get notifier and send notification
           notifier = NotifierFactory.get_notifier()
-          notification_result = notifier.send_new_system_notification(system)
+          _notification_result = notifier.send_new_system_notification(system)
 
           # Return success
           conn
@@ -895,43 +898,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   end
 
   # Helper function to get systems for notification
-
-  # Ensure we have a proper MapSystem for notifications
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      system
-    else
-      # Try to create one from the map
-      try do
-        MapSystem.new(system)
-      rescue
-        # Fall back to the original if conversion fails
-        _ -> system
-      end
-    end
-  end
-
-  # Extract system name safely
-  defp extract_system_name(system) do
-    cond do
-      is_struct(system, MapSystem) -> system.name
-      is_map(system) && Map.has_key?(system, "name") -> system["name"]
-      is_map(system) && Map.has_key?(system, :name) -> system[:name]
-      true -> "Unknown System"
-    end
-  end
-
-  # Extract system ID safely
-  defp extract_system_id(system) do
-    cond do
-      is_struct(system, MapSystem) -> system.solar_system_id
-      is_map(system) && Map.has_key?(system, "solar_system_id") -> system["solar_system_id"]
-      is_map(system) && Map.has_key?(system, :solar_system_id) -> system[:solar_system_id]
-      is_map(system) && Map.has_key?(system, "id") -> system["id"]
-      is_map(system) && Map.has_key?(system, :id) -> system[:id]
-      true -> "Unknown ID"
-    end
-  end
 
   # Helper to get the type of a value
   defp typeof(nil), do: "nil"
@@ -1068,8 +1034,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/recent-kills" do
     AppLogger.api_info("Recent kills endpoint called")
 
-    # Use correct service module name - likely WandererNotifier.Services.Service
-    recent_kills = Service.get_recent_kills()
+    # Use KillProcessor instead of Service to get recent kills
+    recent_kills = KillProcessor.get_recent_kills()
 
     response = %{
       success: true,
