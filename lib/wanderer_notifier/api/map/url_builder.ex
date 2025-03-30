@@ -1,119 +1,170 @@
 defmodule WandererNotifier.Api.Map.UrlBuilder do
   @moduledoc """
-  Centralized URL construction for Map API requests.
-  Handles extracting slugs and building properly formatted URLs for the Map API.
+  Builds URLs for the map API endpoints.
   """
-  require Logger
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Core.Config
 
   @doc """
-  Builds a URL for the Map API.
+  Builds a URL for a map API endpoint with query parameters and a custom slug.
 
   ## Parameters
-    - endpoint: The API endpoint path (e.g., "map/systems")
-    - params: Map of query parameters to include in the URL
-    - slug: Optional map slug. If not provided, extracts from config
+    - endpoint: The API endpoint to call
+    - params: A map of query parameters to include in the URL
+    - slug: An optional slug override
 
   ## Returns
     - {:ok, url} on success
     - {:error, reason} on failure
   """
-  def build_url(endpoint, params \\ %{}, slug \\ nil) do
-    with {:ok, base_domain} <- get_base_domain(),
-         {:ok, map_slug} <- get_slug(slug) do
-      # Ensure endpoint doesn't start with a slash
-      endpoint = String.trim_leading(endpoint, "/")
-
-      # Add the slug to params
-      params = Map.put(params, "slug", map_slug)
+  def build_url(endpoint, params, slug) when is_map(params) do
+    with {:ok, base_url} <- get_base_url(),
+         {:ok, final_slug} <- get_final_slug(slug) do
+      # Start with the base URL and endpoint
+      base = "#{base_url}/api/#{endpoint}"
 
       # Convert params to query string
-      query_string = build_query_string(params)
+      query_params =
+        params
+        |> Map.to_list()
+        |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
 
-      # Return the full URL
-      {:ok, "#{base_domain}/api/#{endpoint}#{query_string}"}
+      # Add slug parameter to query
+      slug_param = "slug=#{URI.encode_www_form(final_slug)}"
+      query = if query_params == "", do: slug_param, else: "#{query_params}&#{slug_param}"
+
+      # Build the final URL
+      url = "#{base}?#{query}"
+
+      AppLogger.api_info("Building URL with params: #{url}",
+        base_url: base_url,
+        endpoint: endpoint,
+        params: inspect(params),
+        slug: final_slug
+      )
+
+      {:ok, url}
     end
   end
 
   @doc """
-  Gets the authentication headers for Map API requests.
+  Builds a URL for a map API endpoint with query parameters.
+  Can build URLs with no slug for system-static-info endpoint.
+
+  ## Parameters
+    - endpoint: The API endpoint to call
+    - params: A map of query parameters to include in the URL
 
   ## Returns
-    - List of HTTP headers including authorization if available
+    - {:ok, url} on success
+    - {:error, reason} on failure
+  """
+  def build_url(endpoint, params) when is_map(params) do
+    # For system-static-info endpoint, we don't need a slug
+    if endpoint == "common/system-static-info" do
+      with {:ok, base_url} <- get_base_url() do
+        # Start with the base URL and endpoint
+        base = "#{base_url}/api/#{endpoint}"
+
+        # Convert params to query string
+        query_params =
+          params
+          |> Map.to_list()
+          |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
+
+        # Build the final URL
+        url = "#{base}?#{query_params}"
+
+        AppLogger.api_info("Building URL with params (no slug): #{url}",
+          base_url: base_url,
+          endpoint: endpoint,
+          params: inspect(params)
+        )
+
+        {:ok, url}
+      end
+    else
+      # For regular endpoints, include the slug
+      build_url(endpoint, params, nil)
+    end
+  end
+
+  @doc """
+  Builds a URL for a map API endpoint.
+  """
+  def build_url(endpoint) do
+    with {:ok, base_url} <- get_base_url(),
+         {:ok, slug} <- get_slug() do
+      url = "#{base_url}/api/#{endpoint}?slug=#{URI.encode_www_form(slug)}"
+
+      AppLogger.api_info("Building URL: #{url}",
+        base_url: base_url,
+        endpoint: endpoint,
+        slug: slug
+      )
+
+      # Log URL components for debugging
+      AppLogger.api_debug("URL Components breakdown",
+        scheme: URI.parse(url).scheme,
+        host: URI.parse(url).host,
+        port: URI.parse(url).port,
+        path: URI.parse(url).path,
+        query: URI.parse(url).query
+      )
+
+      {:ok, url}
+    end
+  end
+
+  @doc """
+  Gets the authorization headers for map API requests.
   """
   def get_auth_headers do
-    token = Config.map_token()
-    csrf_token = Config.map_csrf_token()
+    headers =
+      case Config.map_token() do
+        nil -> []
+        token -> [{"Authorization", "Bearer " <> token}]
+      end
 
-    # Debug logs for token availability
-    if token do
-      AppLogger.api_debug("[UrlBuilder] Map token is available")
-    else
-      Logger.warning(
-        "[UrlBuilder] Map token is NOT available - bearer token authentication will not be used"
-      )
-    end
-
-    headers = [
-      {"accept", "application/json"},
-      {"Content-Type", "application/json"}
-    ]
-
-    headers = if token, do: [{"Authorization", "Bearer #{token}"} | headers], else: headers
-    headers = if csrf_token, do: [{"x-csrf-token", csrf_token} | headers], else: headers
+    AppLogger.api_info("Auth headers configured",
+      has_token: Config.map_token() != nil
+    )
 
     headers
   end
 
-  # Private helper functions
+  # Get the base URL from the map URL
+  defp get_base_url do
+    case Config.map_url() do
+      nil ->
+        {:error, "Map URL not configured"}
 
-  defp get_base_domain do
-    base_url = Config.map_url()
+      "" ->
+        {:error, "Map URL not configured"}
 
-    if is_nil(base_url) or base_url == "" do
-      AppLogger.api_error("[UrlBuilder] MAP_URL not configured. Cannot construct API URL.")
-      {:error, "MAP_URL is required but not configured"}
-    else
-      # Extract base domain - should be just the domain without the slug path
-      base_domain = base_url |> String.split("/") |> Enum.take(3) |> Enum.join("/")
-      {:ok, base_domain}
+      url ->
+        uri = URI.parse(url)
+        base = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+        {:ok, base}
     end
   end
 
-  defp get_slug(nil) do
-    # Try to get the slug from config or extract from map_url
-    slug =
-      Config.map_name() ||
-        extract_slug_from_url(Config.map_url())
+  # Get the slug from the map configuration
+  defp get_slug do
+    case Config.map_name() do
+      nil ->
+        {:error, "Map name not configured"}
 
-    if is_nil(slug) do
-      AppLogger.api_error("[UrlBuilder] No map slug provided or configured")
-      {:error, "Map slug is required but not available"}
-    else
-      {:ok, slug}
+      "" ->
+        {:error, "Map name not configured"}
+
+      slug ->
+        {:ok, slug}
     end
   end
 
-  defp get_slug(slug) when is_binary(slug) do
-    {:ok, slug}
-  end
-
-  defp extract_slug_from_url(url) when is_binary(url) do
-    # Example: "https://wanderer.zoolanders.space/flygd" -> "flygd"
-    # Split by "/" and take the last part
-    parts = String.split(url, "/")
-    List.last(parts)
-  end
-
-  defp extract_slug_from_url(_), do: nil
-
-  defp build_query_string(params) when map_size(params) > 0 do
-    "?" <>
-      Enum.map_join(params, "&", fn {key, value} ->
-        "#{key}=#{URI.encode_www_form(to_string(value))}"
-      end)
-  end
-
-  defp build_query_string(_), do: ""
+  # Helper to get final slug, using custom slug or falling back to config
+  defp get_final_slug(nil), do: get_slug()
+  defp get_final_slug(""), do: get_slug()
+  defp get_final_slug(slug), do: {:ok, slug}
 end

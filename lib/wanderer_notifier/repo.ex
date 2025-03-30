@@ -3,6 +3,7 @@ defmodule WandererNotifier.Repo do
     otp_app: :wanderer_notifier,
     adapter: Ecto.Adapters.Postgres
 
+  alias Ecto.Adapters.SQL
   alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
@@ -10,7 +11,7 @@ defmodule WandererNotifier.Repo do
   This is used by AshPostgres.MigrationGenerator for code generation.
   """
   def installed_extensions do
-    case Ecto.Adapters.SQL.query(__MODULE__, "SELECT extname FROM pg_extension") do
+    case SQL.query(__MODULE__, "SELECT extname FROM pg_extension") do
       {:ok, result} ->
         Enum.map(result.rows, fn [ext] -> ext end)
 
@@ -62,11 +63,11 @@ defmodule WandererNotifier.Repo do
   def health_check do
     start_time = System.monotonic_time(:millisecond)
 
-    # First check if the repo is started
-    if Process.whereis(__MODULE__) do
-      try do
+    try do
+      # First check if the repo is started
+      if Process.whereis(__MODULE__) do
         # Execute a simple query to check connectivity
-        case Ecto.Adapters.SQL.query(__MODULE__, "SELECT 1") do
+        case SQL.query(__MODULE__, "SELECT 1") do
           {:ok, _} ->
             end_time = System.monotonic_time(:millisecond)
             ping_time = end_time - start_time
@@ -76,17 +77,17 @@ defmodule WandererNotifier.Repo do
             AppLogger.persistence_error("Database health check failed", error: inspect(error))
             {:error, error}
         end
-      rescue
-        e ->
-          AppLogger.persistence_error("Database health check exception",
-            error: Exception.message(e)
-          )
-
-          {:error, e}
+      else
+        AppLogger.persistence_error("Database health check failed", reason: "Repo not started")
+        {:error, "Repo not started"}
       end
-    else
-      AppLogger.persistence_error("Database health check failed", reason: "Repo not started")
-      {:error, "Repo not started"}
+    rescue
+      e ->
+        AppLogger.persistence_error("Database health check exception",
+          error: Exception.message(e)
+        )
+
+        {:error, e}
     end
   end
 end

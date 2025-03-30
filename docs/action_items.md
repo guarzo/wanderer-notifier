@@ -1,5 +1,6 @@
 ## Scheduler Modules & Registration
 
+- [ ] Consider splitting large supervisors into domain-specific supervisors for improved modularity.
 - [ ] Refine the `BaseScheduler` module to encapsulate common scheduling logic.
   - [ ] Include standardized error handling, logging, and a generic retry mechanism.
 - [ ] Define a common behaviour for schedulers to enforce a uniform callback interface.
@@ -71,27 +72,9 @@
   - [ ] Implement uniform logging during startup to record the initialization status of key components.
   - [ ] Verify that child specifications are properly defined with consistent restart strategies.
   - [ ] Add startup health checks and environment validation (e.g., ensuring all required environment variables are set) to fail fast if necessary.
-  - [ ] Consider splitting large supervisors into domain-specific supervisors for improved modularity.
 - [ ] Improve application shutdown and release handling:
   - [ ] Ensure that all processes terminate gracefully on shutdown.
   - [ ] Implement any necessary cleanup tasks during application shutdown.
-
-## Additional Critical & High Priority Action Items
-
-### Testing & Quality
-
-- [ ] Increase unit test coverage across core functionality.
-- [ ] Add test suites for edge cases.
-- [ ] Add benchmarks for critical functions.
-- [ ] Document test environment setup.
-- [ ] Review test timeouts and consider making them configurable.
-- [ ] Standardize feature flag testing approach.
-
-### Architecture Improvements
-
-- [ ] Implement data versioning.
-- [ ] Add audit logging.
-- [ ] Review and optimize database schema design.
 
 ### Dependencies
 
@@ -107,15 +90,3 @@
 ### Feature Enhancements
 
 - [ ] Add support for more notification channels per notification type
-
-## Environment Variable Validation
-
-- [ ] Move MAP_URL_WITH_NAME validation from runtime.exs to application code
-  - Validation should happen when the application starts, not during configuration
-  - Add proper validation in the application supervision tree or service initialization
-  - Ensure clear error messages for missing or malformed values
-  - Follow OTP best practices for handling configuration errors
-
-## Completed Items
-
-None yet

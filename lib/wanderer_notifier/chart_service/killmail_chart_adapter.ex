@@ -10,12 +10,14 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   require Logger
   require Ash.Query
-  alias WandererNotifier.Logger, as: AppLogger
+  alias Ash.Query
+
   alias WandererNotifier.ChartService
+  alias WandererNotifier.Discord.Client, as: DiscordClient
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter
-  alias WandererNotifier.Discord.Client, as: DiscordClient
-  alias Ash.Query
 
   @doc """
   Generates a chart showing the top characters by kills for the past week.
@@ -115,55 +117,53 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   def prepare_weekly_kills_data(limit) do
     AppLogger.kill_info("Preparing weekly kills chart data")
 
-    try do
-      # Get tracked characters
-      tracked_characters = get_tracked_characters()
+    # Get tracked characters
+    tracked_characters = get_tracked_characters()
 
-      # Get weekly statistics for these characters
-      weekly_stats = get_weekly_stats(tracked_characters)
+    # Get weekly statistics for these characters
+    weekly_stats = get_weekly_stats(tracked_characters)
 
-      if length(weekly_stats) > 0 do
-        # Get top characters by kills
-        top_characters = get_top_characters_by_kills(weekly_stats, limit)
+    if length(weekly_stats) > 0 do
+      # Get top characters by kills
+      top_characters = get_top_characters_by_kills(weekly_stats, limit)
 
-        AppLogger.kill_info("Selected top characters for weekly kills chart",
-          count: length(top_characters)
+      AppLogger.kill_info("Selected top characters for weekly kills chart",
+        count: length(top_characters)
+      )
+
+      # Extract chart elements
+      {character_labels, kills_data, _, solo_kills_data, final_blows_data} =
+        extract_kill_metrics(top_characters)
+
+      # Create chart data structure for kills only
+      chart_data =
+        create_weekly_kills_only_chart_data(
+          character_labels,
+          kills_data,
+          solo_kills_data,
+          final_blows_data
         )
 
-        # Extract chart elements
-        {character_labels, kills_data, _, solo_kills_data, final_blows_data} =
-          extract_kill_metrics(top_characters)
+      options = create_weekly_kills_chart_options()
 
-        # Create chart data structure for kills only
-        chart_data =
-          create_weekly_kills_only_chart_data(
-            character_labels,
-            kills_data,
-            solo_kills_data,
-            final_blows_data
-          )
+      {:ok, chart_data, "Weekly Character Kills", options}
+    else
+      AppLogger.kill_warn("No weekly statistics available for tracked characters")
 
-        options = create_weekly_kills_chart_options()
+      # Create an empty chart with a message instead of returning an error
+      empty_chart_data = create_empty_kills_chart_data("No kill statistics available yet")
+      options = create_empty_chart_options()
 
-        {:ok, chart_data, "Weekly Character Kills", options}
-      else
-        AppLogger.kill_warn("No weekly statistics available for tracked characters")
-
-        # Create an empty chart with a message instead of returning an error
-        empty_chart_data = create_empty_kills_chart_data("No kill statistics available yet")
-        options = create_empty_chart_options()
-
-        {:ok, empty_chart_data, "Weekly Character Kills", options}
-      end
-    rescue
-      e ->
-        AppLogger.kill_error("Error preparing weekly kills data",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        {:error, "Error preparing weekly kills data: #{Exception.message(e)}"}
+      {:ok, empty_chart_data, "Weekly Character Kills", options}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("Error preparing weekly kills data",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error preparing weekly kills data: #{Exception.message(e)}"}
   end
 
   @doc """
@@ -173,104 +173,100 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   def prepare_weekly_isk_data(limit) do
     AppLogger.kill_info("Preparing weekly ISK destroyed chart data")
 
-    try do
-      # Get tracked characters
-      tracked_characters = get_tracked_characters()
+    # Get tracked characters
+    tracked_characters = get_tracked_characters()
 
-      # Get weekly statistics for these characters
-      weekly_stats = get_weekly_stats(tracked_characters)
+    # Get weekly statistics for these characters
+    weekly_stats = get_weekly_stats(tracked_characters)
 
-      if length(weekly_stats) > 0 do
-        # Get top characters by ISK destroyed
-        top_characters = get_top_characters_by_isk_destroyed(weekly_stats, limit)
+    if length(weekly_stats) > 0 do
+      # Get top characters by ISK destroyed
+      top_characters = get_top_characters_by_isk_destroyed(weekly_stats, limit)
 
-        AppLogger.kill_info("Selected top characters for weekly ISK destroyed chart",
-          count: length(top_characters)
-        )
+      AppLogger.kill_info("Selected top characters for weekly ISK destroyed chart",
+        count: length(top_characters)
+      )
 
-        # Extract chart elements
-        {character_labels, _, isk_destroyed_data, _, _} = extract_kill_metrics(top_characters)
+      # Extract chart elements
+      {character_labels, _, isk_destroyed_data, _, _} = extract_kill_metrics(top_characters)
 
-        # Create chart data structure for ISK only
-        chart_data = create_weekly_isk_only_chart_data(character_labels, isk_destroyed_data)
-        options = create_weekly_isk_chart_options()
+      # Create chart data structure for ISK only
+      chart_data = create_weekly_isk_only_chart_data(character_labels, isk_destroyed_data)
+      options = create_weekly_isk_chart_options()
 
-        {:ok, chart_data, "Weekly ISK Destroyed", options}
-      else
-        AppLogger.kill_warn("No weekly statistics available for tracked characters")
+      {:ok, chart_data, "Weekly ISK Destroyed", options}
+    else
+      AppLogger.kill_warn("No weekly statistics available for tracked characters")
 
-        # Create an empty chart with a message instead of returning an error
-        empty_chart_data = create_empty_isk_chart_data("No ISK statistics available yet")
-        options = create_empty_chart_options()
+      # Create an empty chart with a message instead of returning an error
+      empty_chart_data = create_empty_isk_chart_data("No ISK statistics available yet")
+      options = create_empty_chart_options()
 
-        {:ok, empty_chart_data, "Weekly ISK Destroyed", options}
-      end
-    rescue
-      e ->
-        AppLogger.kill_error("Error preparing weekly ISK data",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        {:error, "Error preparing weekly ISK data: #{Exception.message(e)}"}
+      {:ok, empty_chart_data, "Weekly ISK Destroyed", options}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("Error preparing weekly ISK data",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error preparing weekly ISK data: #{Exception.message(e)}"}
   end
 
   @impl true
   def send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
-    try do
-      # Generate both kills and ISK charts
-      with {:ok, kills_chart_url} <- generate_weekly_kills_chart(%{limit: 20}),
-           {:ok, isk_chart_url} <- generate_weekly_isk_chart(%{limit: 20}) do
-        # Send both charts to Discord
-        kill_title =
-          "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
+    # Generate both kills and ISK charts
+    with {:ok, kills_chart_url} <- generate_weekly_kills_chart(%{limit: 20}),
+         {:ok, isk_chart_url} <- generate_weekly_isk_chart(%{limit: 20}) do
+      # Send both charts to Discord
+      kill_title =
+        "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
 
-        isk_title =
-          "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
+      isk_title =
+        "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
 
-        # Create embeds with chart URLs
-        kill_embed = %{
-          "title" => kill_title,
-          "image" => %{
-            "url" => kills_chart_url
-          },
-          # Discord blue
-          "color" => 3_447_003
-        }
+      # Create embeds with chart URLs
+      kill_embed = %{
+        "title" => kill_title,
+        "image" => %{
+          "url" => kills_chart_url
+        },
+        # Discord blue
+        "color" => 3_447_003
+      }
 
-        isk_embed = %{
-          "title" => isk_title,
-          "image" => %{
-            "url" => isk_chart_url
-          },
-          # Discord blue
-          "color" => 3_447_003
-        }
+      isk_embed = %{
+        "title" => isk_title,
+        "image" => %{
+          "url" => isk_chart_url
+        },
+        # Discord blue
+        "color" => 3_447_003
+      }
 
-        # Send kills chart and handle potential errors
-        with {:ok, kills_message} <- DiscordClient.send_embed(kill_embed, channel_id),
-             {:ok, isk_message} <- DiscordClient.send_embed(isk_embed, channel_id) do
-          {:ok, %{kills_message: kills_message, isk_message: isk_message}}
-        else
-          {:error, reason} ->
-            AppLogger.kill_error("Failed to send charts to Discord", error: inspect(reason))
-            {:error, reason}
-        end
+      # Send kills chart and handle potential errors
+      with {:ok, kills_message} <- DiscordClient.send_embed(kill_embed, channel_id),
+           {:ok, isk_message} <- DiscordClient.send_embed(isk_embed, channel_id) do
+        {:ok, %{kills_message: kills_message, isk_message: isk_message}}
       else
         {:error, reason} ->
-          AppLogger.kill_error("Failed to generate weekly charts", error: inspect(reason))
+          AppLogger.kill_error("Failed to send charts to Discord", error: inspect(reason))
           {:error, reason}
       end
-    rescue
-      e ->
-        AppLogger.kill_error("Error sending weekly charts to Discord",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        {:error, "Error sending weekly charts: #{Exception.message(e)}"}
+    else
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to generate weekly charts", error: inspect(reason))
+        {:error, reason}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("Error sending weekly charts to Discord",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error sending weekly charts: #{Exception.message(e)}"}
   end
 
   @doc """
@@ -368,7 +364,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   defp get_tracked_characters do
     case TrackedCharacter
          |> Query.load([:character_id, :character_name])
-         |> WandererNotifier.Resources.Api.read() do
+         |> Api.read() do
       {:ok, characters} ->
         characters
 
@@ -408,7 +404,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
            :period_start,
            :period_end
          ])
-         |> WandererNotifier.Resources.Api.read() do
+         |> Api.read() do
       {:ok, stats} ->
         stats
 

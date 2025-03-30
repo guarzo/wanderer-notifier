@@ -48,7 +48,7 @@ Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
   for: WandererNotifier.Adapters.KillmailChartAdapterBehaviour
 )
 
-Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Core.ConfigBehaviour)
+Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.Behaviour)
 
 # Needed for cache_helpers_test.exs
 defmodule WandererNotifier.Data.Cache.RepositoryBehavior do

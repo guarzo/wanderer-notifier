@@ -13,8 +13,8 @@ defmodule WandererNotifier.Release do
   def createdb do
     Logger.info("Checking if database exists")
 
-    for repo <- repos() do
-      try do
+    try do
+      Enum.each(repos(), fn repo ->
         case repo.__adapter__().storage_up(repo.config()) do
           :ok ->
             Logger.info("Database created successfully")
@@ -28,10 +28,10 @@ defmodule WandererNotifier.Release do
           {:error, error} ->
             Logger.warning("Failed to create database: #{inspect(error)}")
         end
-      rescue
-        e ->
-          Logger.error("Exception during database creation: #{inspect(e)}")
-      end
+      end)
+    rescue
+      e ->
+        Logger.error("Exception during database creation: #{inspect(e)}")
     end
   end
 
@@ -41,8 +41,8 @@ defmodule WandererNotifier.Release do
   def migrate do
     Logger.info("Running migrations")
 
-    for repo <- repos() do
-      try do
+    try do
+      Enum.each(repos(), fn repo ->
         case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true)) do
           {:ok, _, _} ->
             Logger.info("Migrations for #{inspect(repo)} completed successfully")
@@ -54,15 +54,15 @@ defmodule WandererNotifier.Release do
           other ->
             Logger.info("Migration returned: #{inspect(other)}")
         end
-      rescue
-        e ->
-          Logger.error("Exception during migration: #{inspect(e)}")
-          # Re-raise to stop the migration process with proper error
-          reraise e, __STACKTRACE__
-      end
-    end
+      end)
 
-    Logger.info("All migrations completed")
+      Logger.info("All migrations completed")
+    rescue
+      e ->
+        Logger.error("Exception during migration: #{inspect(e)}")
+        # Re-raise to stop the migration process with proper error
+        reraise e, __STACKTRACE__
+    end
   end
 
   @doc """
@@ -71,45 +71,41 @@ defmodule WandererNotifier.Release do
   def rollback(repo, version) do
     Logger.info("Rolling back migrations to version #{version}")
 
-    try do
-      case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version)) do
-        {:ok, _, _} ->
-          Logger.info("Rollback to version #{version} completed successfully")
+    case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version)) do
+      {:ok, _, _} ->
+        Logger.info("Rollback to version #{version} completed successfully")
 
-        {:error, {:logger, _}} = error ->
-          # Handle logger error but continue
-          Logger.info("Rollback completed with logger warning: #{inspect(error)}")
+      {:error, {:logger, _}} = error ->
+        # Handle logger error but continue
+        Logger.info("Rollback completed with logger warning: #{inspect(error)}")
 
-        other ->
-          Logger.info("Rollback returned: #{inspect(other)}")
-      end
-    rescue
-      e ->
-        Logger.error("Exception during rollback: #{inspect(e)}")
-        # Re-raise to stop the rollback process with proper error
-        reraise e, __STACKTRACE__
+      other ->
+        Logger.info("Rollback returned: #{inspect(other)}")
     end
+  rescue
+    e ->
+      Logger.error("Exception during rollback: #{inspect(e)}")
+      # Re-raise to stop the rollback process with proper error
+      reraise e, __STACKTRACE__
   end
 
   defp repos do
     # First, ensure the application is loaded
-    try do
-      Application.load(@app)
+    Application.load(@app)
 
-      # Try to get ecto_repos config, with fallback to avoid crashes
-      case Application.fetch_env(@app, :ecto_repos) do
-        {:ok, repos} ->
-          repos
+    # Try to get ecto_repos config, with fallback to avoid crashes
+    case Application.fetch_env(@app, :ecto_repos) do
+      {:ok, repos} ->
+        repos
 
-        :error ->
-          Logger.warning("Could not find ecto_repos configuration, using default")
-          [WandererNotifier.Repo]
-      end
-    rescue
-      e ->
-        Logger.error("Error loading application config: #{inspect(e)}")
-        # Default to known repo
+      :error ->
+        Logger.warning("Could not find ecto_repos configuration, using default")
         [WandererNotifier.Repo]
     end
+  rescue
+    e ->
+      Logger.error("Error loading application config: #{inspect(e)}")
+      # Default to known repo
+      [WandererNotifier.Repo]
   end
 end

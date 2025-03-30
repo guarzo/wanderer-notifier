@@ -40,10 +40,8 @@ export default function Dashboard() {
       setStatus(data);
       setError(null);
 
-      // If kill charts is enabled, also fetch database stats
-      if (data?.features?.enabled?.kill_charts_enabled) {
-        await fetchDbStats();
-      }
+      // Always fetch database stats
+      await fetchDbStats();
     } catch (err) {
       console.error("Error fetching status:", err);
       setError("Failed to load dashboard data. Please try again.");
@@ -294,7 +292,7 @@ export default function Dashboard() {
         </section>
 
         {/* Database Statistics */}
-        {status?.features?.enabled?.kill_charts_enabled && (
+        {dbStats && (
           <section>
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
               <FaChartBar className="text-purple-600" />
@@ -307,7 +305,7 @@ export default function Dashboard() {
                   Tracked Characters in Database
                 </h4>
                 <p className="text-2xl font-bold text-gray-700">
-                  {dbStats?.killmail?.tracked_characters || status?.features?.usage?.tracked_characters?.current || 0}
+                  {dbStats?.killmail?.tracked_characters || 0}
                 </p>
               </div>
 
@@ -558,19 +556,7 @@ export default function Dashboard() {
                 </h4>
                 <p className="mb-2 text-gray-800">
                   {status.features.usage.tracked_systems.current}
-                  {status.features.usage.tracked_systems.limit &&
-                    ` / ${status.features.usage.tracked_systems.limit}`}
                 </p>
-                {status.features.usage.tracked_systems.percentage && (
-                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-green-500 h-full rounded-full"
-                      style={{
-                        width: `${status.features.usage.tracked_systems.percentage}%`
-                      }}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Tracked Characters */}
@@ -580,19 +566,7 @@ export default function Dashboard() {
                 </h4>
                 <p className="mb-2 text-gray-800">
                   {status.features.usage.tracked_characters.current}
-                  {status.features.usage.tracked_characters.limit &&
-                    ` / ${status.features.usage.tracked_characters.limit}`}
                 </p>
-                {status.features.usage.tracked_characters.percentage && (
-                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-green-500 h-full rounded-full"
-                      style={{
-                        width: `${status.features.usage.tracked_characters.percentage}%`
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             </div>
           </section>

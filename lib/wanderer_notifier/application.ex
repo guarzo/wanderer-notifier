@@ -16,6 +16,7 @@ defmodule WandererNotifier.Application do
 
   use Application
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Starts the application.
@@ -34,23 +35,21 @@ defmodule WandererNotifier.Application do
   Reloads modules.
   """
   def reload(modules) do
-    Logger.info("Reloading modules: #{inspect(modules)}")
+    AppLogger.config_info("Reloading modules", modules: inspect(modules))
     Code.compiler_options(ignore_module_conflict: true)
 
-    try do
-      Enum.each(modules, fn module ->
-        :code.purge(module)
-        :code.delete(module)
-        :code.load_file(module)
-      end)
+    Enum.each(modules, fn module ->
+      :code.purge(module)
+      :code.delete(module)
+      :code.load_file(module)
+    end)
 
-      Logger.info("Module reloaded")
-      {:ok, modules}
-    rescue
-      error ->
-        Logger.error("Error reloading modules: #{inspect(error)}")
-        {:error, error}
-    end
+    AppLogger.config_info("Module reload complete")
+    {:ok, modules}
+  rescue
+    error ->
+      AppLogger.config_error("Error reloading modules", error: inspect(error))
+      {:error, error}
   end
 
   # Private functions
@@ -68,25 +67,36 @@ defmodule WandererNotifier.Application do
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
+    AppLogger.startup_info("Starting supervisor", child_count: length(children))
+
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
-        Logger.info("Application started successfully")
+        AppLogger.startup_info("Application started successfully")
         {:ok, pid}
 
-      error ->
-        Logger.error("Failed to start application: #{inspect(error)}")
+      {:error, {:already_started, pid}} ->
+        AppLogger.startup_warn("Supervisor already started", pid: inspect(pid))
+        {:ok, pid}
+
+      {:error, reason} = error ->
+        AppLogger.startup_error("Failed to start application", error: inspect(reason))
         error
     end
   end
 
   defp get_children do
     [
+      # Core services
       {WandererNotifier.NoopConsumer, []},
+      {WandererNotifier.Core.License, []},
+      {WandererNotifier.Core.Stats, []},
+      {WandererNotifier.Helpers.DeduplicationHelper, []},
+      {WandererNotifier.Services.Service, []},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Repo, []},
       {WandererNotifier.Web.Server, []},
       {WandererNotifier.Schedulers.ActivityChartScheduler, []},
-      {WandererNotifier.Schedulers.SystemUpdateScheduler, []}
+      {WandererNotifier.Services.Maintenance, []}
     ]
   end
 end

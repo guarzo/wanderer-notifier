@@ -2,16 +2,38 @@ defmodule WandererNotifier.Api.Map.Characters do
   @moduledoc """
   Tracked characters API calls.
   """
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Config
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Helpers.NotificationHelpers
+  alias WandererNotifier.Resources.TrackedCharacter
+  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_tracked_characters(cached_characters \\ nil) do
+    AppLogger.api_info(
+      "[CRITICAL] Characters.update_tracked_characters called, input type: #{typeof(cached_characters)}"
+    )
+
+    AppLogger.api_info(
+      "[CRITICAL] Stack trace: #{inspect(Process.info(self(), :current_stacktrace), limit: 1000)}"
+    )
+
     AppLogger.api_debug("Starting update of tracked characters")
+
+    # EXTREMELY IMPORTANT: If we're passed a list of processed characters, just return them directly
+    # This prevents a duplicate HTTP call when called from CharactersClient
+    if is_list(cached_characters) && length(cached_characters) > 0 do
+      sample = Enum.at(cached_characters, 0)
+
+      AppLogger.api_info(
+        "[CRITICAL] Input is a list of #{length(cached_characters)} items, returning directly. Sample: #{inspect(sample, limit: 200)}"
+      )
+
+      update_cache(cached_characters, nil)
+      {:ok, cached_characters}
+    end
 
     with {:ok, chars_url} <- build_characters_url(),
          _ <- AppLogger.api_debug("Characters URL built", url: chars_url),
@@ -26,6 +48,47 @@ defmodule WandererNotifier.Api.Map.Characters do
       error ->
         AppLogger.api_error("Failed to update tracked characters", error: inspect(error))
         {:error, error}
+    end
+  end
+
+  @doc """
+  Updates tracked characters using a raw API response body.
+  This is the new primary method that should be used by CharactersClient.
+
+  ## Parameters
+    - raw_body: The raw API response body as string
+    - cached_characters: Optional list of cached characters for comparison
+
+  ## Returns
+    - {:ok, characters} on success
+    - {:error, reason} on failure
+  """
+  def update_tracked_characters(raw_body, cached_characters) when is_binary(raw_body) do
+    AppLogger.api_info(
+      "[CRITICAL] Characters.update_tracked_characters called with raw body, length: #{String.length(raw_body)}"
+    )
+
+    # Log sample of the raw body for debugging
+    AppLogger.api_debug(
+      "Processing raw API response body",
+      body_preview: String.slice(raw_body, 0, 150)
+    )
+
+    # Process the raw response body
+    case parse_characters_response(raw_body) do
+      {:ok, parsed_chars} ->
+        # Update the cache with the parsed characters
+        update_cache(parsed_chars, cached_characters)
+
+        # Check for and notify about new characters
+        notify_new_tracked_characters(parsed_chars, cached_characters)
+
+        # Return the parsed characters
+        {:ok, parsed_chars}
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to parse character response body", error: inspect(reason))
+        {:error, reason}
     end
   end
 
@@ -52,6 +115,10 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp build_characters_url do
+    AppLogger.api_info(
+      "[CRITICAL] build_characters_url called, stacktrace: #{inspect(Process.info(self(), :current_stacktrace), limit: 1000)}"
+    )
+
     base_url_with_slug = Config.map_url()
     map_token = Config.map_token()
 
@@ -246,55 +313,128 @@ defmodule WandererNotifier.Api.Map.Characters do
     {:ok, transformed_characters}
   end
 
-  defp update_cache(new_characters, _cached_characters) do
-    # Update the cache
-    CacheRepo.set("map:characters", new_characters, Timings.characters_cache_ttl())
+  defp update_cache(new_characters, cached_characters) do
+    # Get existing characters from cache if not provided - use only one cache source
+    current_characters = get_current_characters_from_cache(cached_characters)
 
-    AppLogger.api_info("Updated characters cache",
-      count: length(new_characters),
-      ttl: Timings.characters_cache_ttl()
+    # Log the current state
+    AppLogger.api_info(
+      "Character cache update",
+      current_count: length(current_characters),
+      new_count: length(new_characters || [])
     )
 
-    # Log a sample of characters for debugging
-    if length(new_characters) > 0 do
-      sample = Enum.take(new_characters, min(2, length(new_characters)))
-      AppLogger.api_debug("Sample from updated cache", sample: inspect(sample, limit: 500))
-    end
+    # Merge current and new characters
+    merged_characters = merge_characters(current_characters, new_characters)
 
-    # Sync with TrackedCharacter Ash resource synchronously - no more background process
+    # Update the cache with a long TTL (24 hours) for persistence
+    update_characters_cache(merged_characters)
+
+    # Sync with TrackedCharacter Ash resource
+    sync_with_ash_resource()
+
+    # Return the merged characters
+    {:ok, merged_characters}
+  rescue
+    e ->
+      AppLogger.api_error("Exception in update_cache",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, e}
+  end
+
+  # Get current characters from cache, using provided list if available
+  defp get_current_characters_from_cache(cached_characters) do
+    if is_list(cached_characters) && length(cached_characters) > 0 do
+      # Use provided cached characters if available
+      cached_characters
+    else
+      # Otherwise just get from cache directly - this is our single source of truth
+      CacheRepo.get("map:characters") || []
+    end
+  end
+
+  # Merge current and new characters based on character_id
+  defp merge_characters(current_characters, new_characters) do
+    # Create a map of character_id -> character for merging
+    character_map = build_character_map_from_list(current_characters)
+
+    # Update the map with new characters (overwriting existing ones with same ID)
+    updated_map = add_new_characters_to_map(character_map, new_characters)
+
+    # Convert back to a list for the cache
+    Map.values(updated_map)
+  end
+
+  # Build a map of character_id -> character from a list
+  defp build_character_map_from_list(characters) do
+    Enum.reduce(characters, %{}, fn char, acc ->
+      # Handle both struct and map character types
+      char_id =
+        if is_struct(char, Character) do
+          char.character_id
+        else
+          Map.get(char, "character_id") || Map.get(char, :character_id)
+        end
+
+      if char_id, do: Map.put(acc, char_id, char), else: acc
+    end)
+  end
+
+  # Add new characters to an existing map
+  defp add_new_characters_to_map(map, characters) do
+    Enum.reduce(characters || [], map, fn char, acc ->
+      # Handle both struct and map character types
+      char_id =
+        if is_struct(char, Character) do
+          char.character_id
+        else
+          Map.get(char, "character_id") || Map.get(char, :character_id)
+        end
+
+      if char_id, do: Map.put(acc, char_id, char), else: acc
+    end)
+  end
+
+  # Update the cache with the merged characters list
+  defp update_characters_cache(merged_characters) do
+    # Use a long TTL (24 hours) for persistence
+    long_ttl = 86_400
+
+    # Update the cache
+    CacheRepo.set("map:characters", merged_characters, long_ttl)
+
+    # Verify the update (with brief delay to ensure it's written)
+    Process.sleep(50)
+    post_update_count = length(CacheRepo.get("map:characters") || [])
+
+    AppLogger.api_info(
+      "Character cache updated",
+      final_count: post_update_count,
+      expected_count: length(merged_characters)
+    )
+  end
+
+  # Sync character data with the Ash resource
+  defp sync_with_ash_resource do
     AppLogger.api_info("Starting synchronization with Ash resource")
 
-    # Run sync synchronously
-    try do
-      case WandererNotifier.Resources.TrackedCharacter.sync_from_cache() do
-        {:ok, stats} ->
-          AppLogger.api_info("Successfully synced characters to Ash resource",
-            stats: inspect(stats)
-          )
+    case TrackedCharacter.sync_from_cache() do
+      {:ok, stats} ->
+        AppLogger.api_info("Successfully synced characters to Ash resource",
+          stats: inspect(stats)
+        )
 
-        {:error, reason} ->
-          AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
-      end
-    rescue
-      e ->
-        AppLogger.api_error("Exception in sync process",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    catch
-      kind, reason ->
-        AppLogger.api_error("Caught error in sync process",
-          kind: kind,
-          error: inspect(reason)
-        )
+      {:error, reason} ->
+        AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
     end
-
-    {:ok, new_characters}
   end
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do
     # Use the centralized notification determiner to check if character notifications are enabled globally
-    if WandererNotifier.Services.NotificationDeterminer.should_notify_character?(nil) do
+    if NotificationDeterminer.should_notify_character?(nil) do
       # Check if we have both new and cached characters
       new_chars = new_characters || []
       cached_chars = cached_characters || []
@@ -318,12 +458,6 @@ defmodule WandererNotifier.Api.Map.Characters do
     notifier.send_new_tracked_character_notification(character_info)
   end
 
-  defp remove_nil_values(map) do
-    map
-    |> Enum.reject(fn {_, v} -> is_nil(v) end)
-    |> Map.new()
-  end
-
   defp find_new_characters(_new_chars, []) do
     # If there are no cached characters, this might be the first run
     # In that case, don't notify about all characters to avoid spamming
@@ -335,42 +469,65 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp new_character?(char, cached_chars) do
-    char_id = Map.get(char, "character_id")
+    # Get character_id from either struct or map
+    char_id =
+      if is_struct(char, Character) do
+        char.character_id
+      else
+        Map.get(char, "character_id") || Map.get(char, :character_id)
+      end
+
     not character_exists_in_cache?(char_id, cached_chars)
   end
 
   defp character_exists_in_cache?(char_id, cached_chars) do
     Enum.any?(cached_chars, fn c ->
-      Map.get(c, "character_id") == char_id
+      # Get the character_id from either a struct or map
+      c_id =
+        if is_struct(c, Character) do
+          c.character_id
+        else
+          Map.get(c, "character_id") || Map.get(c, :character_id)
+        end
+
+      c_id == char_id
     end)
   end
 
   defp transform_character_data(character_data) do
-    # IMPORTANT: Convert eve_id from map API to character_id
-    # The map API uses eve_id but our application uses character_id consistently
-    # After this transformation, we should never see eve_id again in the application
+    # CRITICAL: We must use eve_id from the API as our character_id
+    # The API returns both a UUID-style ID (which we ignore) and a numeric eve_id (which we use)
     eve_id = Map.get(character_data, "eve_id")
 
+    # Log detailed character ID information for debugging
+    AppLogger.api_debug(
+      "Character ID conversion",
+      eve_id: eve_id,
+      uuid_char_id: Map.get(character_data, "character_id"),
+      id: Map.get(character_data, "id"),
+      all_keys: Map.keys(character_data)
+    )
+
     if is_nil(eve_id) do
-      AppLogger.api_warn("Character data missing eve_id", data: inspect(character_data))
+      # This is a critical warning - we can't process characters without a valid eve_id
+      AppLogger.api_warn(
+        "[Characters] Character data missing eve_id - cannot process correctly",
+        character_data: inspect(character_data, limit: 200)
+      )
+
+      nil
+    else
+      # Create a Character struct directly with the required fields
+      %Character{
+        character_id: eve_id,
+        name: Map.get(character_data, "name"),
+        corporation_id: character_data["corporation_id"],
+        corporation_ticker: character_data["corporation_ticker"],
+        alliance_id: character_data["alliance_id"],
+        alliance_ticker: character_data["alliance_ticker"],
+        tracked: Map.get(character_data, "tracked", true)
+      }
     end
-
-    character_map = %{
-      # Convert eve_id to character_id for consistent field naming in the app
-      "character_id" => eve_id,
-      "character_name" =>
-        Map.get(character_data, "name") || Map.get(character_data, "character_name"),
-      "corporation_id" => Map.get(character_data, "corporation_id"),
-      "corporation_name" =>
-        Map.get(character_data, "corporation_name") ||
-          Map.get(character_data, "corporation_ticker"),
-      "alliance_id" => Map.get(character_data, "alliance_id"),
-      "alliance_name" =>
-        Map.get(character_data, "alliance_name") || Map.get(character_data, "alliance_ticker")
-    }
-
-    # Remove nil values
-    remove_nil_values(character_map)
   end
 
   defp process_character_notification(char) do
@@ -380,21 +537,19 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp try_send_character_notification(char) do
-    try do
-      # Extract the character ID
-      character_id = NotificationHelpers.extract_character_id(char)
-      notify_character_if_needed(character_id, char)
-    rescue
-      e ->
-        AppLogger.api_error("Error sending character notification",
-          error: inspect(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    end
+    # Extract the character ID
+    character_id = Map.get(char, :character_id)
+    notify_character_if_needed(character_id, char)
+  rescue
+    e ->
+      AppLogger.api_error("Error sending character notification",
+        error: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
   end
 
   defp notify_character_if_needed(character_id, char) do
-    determiner = WandererNotifier.Services.NotificationDeterminer
+    determiner = NotificationDeterminer
 
     if determiner.should_notify_character?(character_id) do
       send_notification_for_character(character_id, char)
@@ -407,8 +562,8 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Create the character notification data structure
     character_info = %{
       "character_id" => character_id,
-      "character_name" => NotificationHelpers.extract_character_name(char),
-      "corporation_name" => NotificationHelpers.extract_corporation_name(char)
+      "character_name" => char.name,
+      "corporation_name" => char.corporation_ticker || char.corporation_name || "Unknown"
     }
 
     send_character_notification(character_info)
@@ -420,13 +575,49 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp transform_nested_character(char) do
-    # The API might return data in a nested structure with a "character" key
-    # or it might return a flat structure with the data directly in the map
-    character_data = Map.get(char, "character", char)
+    # The API returns data in a nested structure with a "character" key
+    # Get the nested character data
+    character_data = Map.get(char, "character")
 
-    AppLogger.api_debug("Processing character data", data: inspect(character_data, limit: 500))
+    # Log what we're working with for debugging
+    AppLogger.api_debug("Processing nested character data",
+      has_nested_character: Map.has_key?(char, "character"),
+      nested_keys: Map.keys(character_data || %{}),
+      has_eve_id: Map.has_key?(character_data || %{}, "eve_id"),
+      eve_id: Map.get(character_data || %{}, "eve_id")
+    )
 
-    # Transform the data to use consistent field names, prioritizing eve_id
-    transform_character_data(character_data)
+    if is_nil(character_data) do
+      AppLogger.api_error(
+        "Missing character data in nested structure - this is critical. API format may have changed.",
+        char: inspect(char, limit: 200)
+      )
+
+      nil
+    else
+      # Extract the critical eve_id from nested data
+      eve_id = Map.get(character_data, "eve_id")
+
+      if is_nil(eve_id) do
+        AppLogger.api_error(
+          "Missing eve_id in character data - this is critical. API format may have changed.",
+          character_data: inspect(character_data, limit: 200)
+        )
+
+        nil
+      else
+        # Create a Character struct directly with the fields from the nested structure
+        # Also incorporate top-level fields like "tracked" if present
+        %Character{
+          character_id: eve_id,
+          name: Map.get(character_data, "name"),
+          corporation_id: character_data["corporation_id"],
+          corporation_ticker: character_data["corporation_ticker"],
+          alliance_id: character_data["alliance_id"],
+          alliance_ticker: character_data["alliance_ticker"],
+          tracked: Map.get(char, "tracked", true)
+        }
+      end
+    end
   end
 end

@@ -1,9 +1,9 @@
 defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   use ExUnit.Case
-  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Notifiers.StructuredFormatter
 
   describe "colors/0" do
     test "returns a map of color constants" do
@@ -103,10 +103,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       assert result.author.icon_url =~ "12345"
 
       # Check fields
-      assert length(result.fields) == 4
+      assert length(result.fields) == 5
       assert Enum.any?(result.fields, fn field -> field.name == "Value" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Attackers" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Final Blow" end)
+      assert Enum.any?(result.fields, fn field -> field.name == "Security" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Alliance" end)
 
       # Check final blow field details

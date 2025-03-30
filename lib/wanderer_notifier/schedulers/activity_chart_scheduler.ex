@@ -5,7 +5,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
   use GenServer
   alias WandererNotifier.ChartService.ActivityChartAdapter
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Config.Features
 
   @doc """
   Starts the scheduler with the given options.

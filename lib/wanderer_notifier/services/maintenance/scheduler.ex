@@ -3,12 +3,14 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Schedules and executes maintenance tasks.
   Handles periodic updates for systems and characters.
   """
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Api.Map.SystemsClient
+  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Application
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Core.Features
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Performs periodic maintenance tasks.
@@ -52,30 +54,76 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   def do_initial_checks(state) do
     # Perform full update of all systems and characters
     now = :os.system_time(:second)
-    state = update_systems(state, now, true)
+
+    # Log all feature flag configs related to character tracking
+    _features_config = Application.get_env(:wanderer_notifier, :features, %{})
+
+    # Check character tracking specifically
+    _character_tracking = Features.character_tracking_enabled?()
+    _characters_notifications = Features.tracked_characters_notifications_enabled?()
+    _kill_notifications = Features.should_load_tracking_data?()
+
     state = update_characters(state, now, true)
+    state = update_systems(state, now, true)
+
     state
   end
 
   # Update systems from the map
-  defp update_systems(state, now, force \\ false) do
-    if Features.tracked_systems_notifications_enabled?() || Features.should_load_tracking_data?() do
-      AppLogger.maintenance_info("Updating systems", force: force)
+  defp update_systems(state, now, _force \\ false) do
+    # Log all feature flags related to system updates
+    system_notifications = Features.tracked_systems_notifications_enabled?()
+    should_load_tracking = Features.should_load_tracking_data?()
+    map_charts = Features.map_charts_enabled?()
 
-      cached_systems = if force, do: nil, else: CacheHelpers.get_tracked_systems()
+    AppLogger.api_info(
+      "Updating systems with feature flags: " <>
+        "tracked_systems_notifications=#{system_notifications}, " <>
+        "should_load_tracking=#{should_load_tracking}, " <>
+        "map_charts=#{map_charts}"
+    )
 
-      case MapClient.update_systems_with_cache(cached_systems) do
-        {:ok, systems} ->
-          AppLogger.maintenance_info("Systems updated", count: length(systems))
+    # Only update systems if system tracking feature is enabled
+    if should_load_tracking do
+      AppLogger.api_info("System tracking is enabled, proceeding with update")
+
+      # Use Task with timeout to prevent hanging
+      task =
+        Task.async(fn ->
+          try do
+            # Simply call SystemsClient.update_systems which handles caching
+            SystemsClient.update_systems()
+          rescue
+            e ->
+              AppLogger.api_error("Exception in systems update: #{Exception.message(e)}")
+
+              {:error, :exception}
+          end
+        end)
+
+      # Wait for the task with a timeout (30 seconds)
+      case Task.yield(task, 30_000) do
+        {:ok, {:ok, systems}} ->
+          AppLogger.api_info("Systems updated successfully", count: length(systems))
           %{state | last_systems_update: now, systems_count: length(systems)}
 
-        {:error, reason} ->
-          AppLogger.maintenance_error("Failed to update systems", error: inspect(reason))
+        {:ok, {:error, reason}} ->
+          AppLogger.api_error("Failed to update systems", error: inspect(reason))
           # Return original state with updated timestamp to prevent rapid retries
+          %{state | last_systems_update: now}
+
+        nil ->
+          # Task took too long, kill it and return
+          Task.shutdown(task, :brutal_kill)
+          AppLogger.api_error("Systems update timed out after 30 seconds")
+          %{state | last_systems_update: now}
+
+        {:exit, reason} ->
+          AppLogger.api_error("Systems update crashed: #{inspect(reason)}")
           %{state | last_systems_update: now}
       end
     else
-      AppLogger.maintenance_debug("System tracking is disabled, skipping update")
+      AppLogger.api_info("System tracking is disabled, skipping update")
       %{state | last_systems_update: now}
     end
   end
@@ -83,8 +131,21 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   # Update characters from the map
   defp update_characters(state, now, force \\ false) do
     # Check if character tracking is enabled or tracking data is needed for kill notifications
-    if Features.tracked_characters_notifications_enabled?() ||
-         Features.should_load_tracking_data?() do
+    AppLogger.maintenance_info("Checking if character tracking is enabled")
+
+    # First check if character tracking is enabled directly
+    character_tracking = Features.character_tracking_enabled?()
+    characters_notifications = Features.tracked_characters_notifications_enabled?()
+    kill_notifications = Features.should_load_tracking_data?()
+
+    AppLogger.maintenance_info("Character tracking status check",
+      character_tracking: character_tracking,
+      characters_notifications: characters_notifications,
+      kill_notifications: kill_notifications
+    )
+
+    if character_tracking || characters_notifications || kill_notifications do
+      AppLogger.maintenance_info("Updating characters", force: force)
       update_tracked_characters(state, now, force)
     else
       AppLogger.maintenance_debug("Character tracking is disabled, skipping update")
@@ -94,42 +155,77 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Process tracked characters update
   defp update_tracked_characters(state, now, force) do
-    AppLogger.maintenance_info("Updating characters", force: force)
+    AppLogger.maintenance_info("Starting character tracking update", force: force)
 
     # Get cached characters and ensure they're in the right format
     cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
     cached_characters_safe = normalize_cached_characters(cached_characters)
 
     AppLogger.maintenance_debug("Retrieved cached characters before update",
-      characters: inspect(cached_characters_safe)
+      count: length(cached_characters_safe)
     )
 
-    # Update characters through the MapClient with exception handling
-    try do
-      case MapClient.update_tracked_characters(cached_characters_safe) do
-        {:ok, characters} ->
-          handle_successful_character_update(state, now, characters)
+    # Use Task with timeout to prevent hanging
+    task =
+      Task.async(fn ->
+        try do
+          # Update characters through the MapClient with exception handling
+          MapClient.update_tracked_characters(cached_characters_safe)
+        rescue
+          e ->
+            AppLogger.maintenance_error("Exception in character update task",
+              error: Exception.message(e),
+              stacktrace: inspect(Process.info(self(), :current_stacktrace))
+            )
 
-        {:error, :feature_disabled} ->
-          # Handle feature_disabled case differently - log as info instead of error
-          AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
-          return_state_with_updated_timestamp(state, now)
+            {:error, :exception}
+        end
+      end)
 
-        {:error, reason} ->
-          AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
-          return_state_with_updated_timestamp(state, now)
-      end
-    rescue
-      e ->
-        # Catch any exception, log it, and return the state with updated timestamp
-        AppLogger.maintenance_error("Exception while updating characters",
-          error: Exception.message(e),
-          stacktrace: inspect(Process.info(self(), :current_stacktrace))
+    # Wait for the task with a timeout (10 seconds should be plenty)
+    case Task.yield(task, 10_000) do
+      {:ok, {:ok, characters}} ->
+        AppLogger.maintenance_info("Character update successful",
+          count: length(ensure_list(characters))
         )
 
-        # Return original state with updated timestamp to prevent rapid retries
+        handle_successful_character_update(state, now, characters)
+
+      {:ok, {:error, :feature_disabled}} ->
+        # Handle feature_disabled case differently - log as info instead of error
+        AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
+        return_state_with_updated_timestamp(state, now)
+
+      {:ok, {:error, reason}} ->
+        AppLogger.maintenance_error("Failed to update characters",
+          error: inspect(reason)
+        )
+
+        return_state_with_updated_timestamp(state, now)
+
+      nil ->
+        # Task took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.maintenance_error("Character update timed out after 10 seconds")
+        return_state_with_updated_timestamp(state, now)
+
+      {:exit, reason} ->
+        AppLogger.maintenance_error("Character update task crashed",
+          reason: inspect(reason)
+        )
+
         return_state_with_updated_timestamp(state, now)
     end
+  rescue
+    e ->
+      # Catch any exception outside the task, log it, and return the state with updated timestamp
+      AppLogger.maintenance_error("Exception while setting up character update",
+        error: Exception.message(e),
+        stacktrace: inspect(Process.info(self(), :current_stacktrace))
+      )
+
+      # Return original state with updated timestamp to prevent rapid retries
+      return_state_with_updated_timestamp(state, now)
   end
 
   # Normalize cached characters to ensure it's a list or nil
@@ -165,6 +261,33 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Verify characters are stored in cache and force update if needed
   defp verify_and_update_characters_cache(characters) do
+    # Use a task with timeout to prevent hanging
+    task =
+      Task.async(fn ->
+        try do
+          _perform_character_cache_verification(characters)
+        rescue
+          e ->
+            AppLogger.maintenance_error("Exception in character cache verification",
+              error: Exception.message(e)
+            )
+        end
+      end)
+
+    # Wait max 5 seconds for verification
+    case Task.yield(task, 5_000) do
+      {:ok, _} ->
+        :ok
+
+      nil ->
+        # Verification took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.maintenance_error("Character cache verification TIMED OUT after 5 seconds")
+    end
+  end
+
+  # Internal function to perform the actual verification
+  defp _perform_character_cache_verification(characters) do
     # Ensure we're working with a list
     characters_list = ensure_list(characters)
 
@@ -187,7 +310,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       CacheRepo.set(
         "map:characters",
         characters_list,
-        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+        Config.Timings.characters_cache_ttl()
       )
 
       # Double-check the cache again
@@ -209,160 +332,41 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
 
-    uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-
     # Create a deduplication key based on a time window (e.g., hourly)
     # We'll use the current day as part of the key to deduplicate within the same day
     current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
     # Check if we've already sent a status report in this time window
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
+    case DeduplicationHelper.check_and_mark(dedup_key) do
+      {:ok, :new} ->
+        AppLogger.maintenance_info("Service status notification allowed",
+          action: "skipping_duplicate",
+          uptime: "#{days}d #{hours}h #{minutes}m #{seconds}s"
+        )
+
+        {:ok, :new}
+
       {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent",
+        AppLogger.maintenance_info("Service status notification skipped (duplicate)",
           action: "skipping_duplicate"
         )
 
-        :ok
-
-      {:ok, :new} ->
-        # Get current stats
-        stats = WandererNotifier.Core.Stats.get_stats()
-
-        # Get license information safely
-        license_status =
-          try do
-            WandererNotifier.Core.License.status()
-          rescue
-            e ->
-              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
-              %{valid: false, error_message: "Error retrieving license status"}
-          catch
-            type, error ->
-              AppLogger.maintenance_error("Error getting license status",
-                error_type: inspect(type),
-                error: inspect(error)
-              )
-
-              %{valid: false, error_message: "Error retrieving license status"}
-          end
-
-        # Get feature information
-        features_status = WandererNotifier.Core.Features.get_feature_status()
-
-        # Get tracked systems and characters counts
-        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-        characters = CacheRepo.get("map:characters") || []
-
-        # Create a structured notification for the status message
-        title = "Service Status Report"
-        description = "Periodic status update for the notification service."
-
-        # Create a structured notification using our formatter
-        generic_notification =
-          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
-            title,
-            description,
-            stats,
-            uptime_seconds,
-            features_status,
-            license_status,
-            length(systems),
-            length(characters)
-          )
-
-        # Convert to Discord format
-        discord_embed =
-          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
-
-        # Log simple status message
-        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
-
-        # Send the rich notification
-        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+        {:ok, :duplicate}
     end
   end
 
   def send_status_report do
-    # Calculate uptime
-    uptime_seconds = :os.system_time(:second) - Process.get(:service_start_time, 0)
+    dedup_key = "service_status:report"
 
-    days = div(uptime_seconds, 86_400)
-    hours = div(rem(uptime_seconds, 86_400), 3600)
-    minutes = div(rem(uptime_seconds, 3600), 60)
-    seconds = rem(uptime_seconds, 60)
-
-    uptime_str = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-
-    # Create a deduplication key based on a time window
-    # We'll use the current day as part of the key to deduplicate within the same day
-    current_day = div(:os.system_time(:second), 86_400)
-    dedup_key = "status_report:#{current_day}"
-
-    # Check if we've already sent a status report in this time window
-    case WandererNotifier.Helpers.DeduplicationHelper.check_and_mark(dedup_key) do
-      {:ok, :duplicate} ->
-        AppLogger.maintenance_info("Status report for current day already sent",
-          action: "skipping_duplicate"
-        )
-
-        :ok
-
+    case DeduplicationHelper.check_and_mark(dedup_key) do
       {:ok, :new} ->
-        # Get current stats
-        stats = WandererNotifier.Core.Stats.get_stats()
+        AppLogger.maintenance_info("Service status report notification allowed")
+        {:ok, :new}
 
-        # Get license information safely
-        license_status =
-          try do
-            WandererNotifier.Core.License.status()
-          rescue
-            e ->
-              AppLogger.maintenance_error("Error getting license status", error: inspect(e))
-              %{valid: false, error_message: "Error retrieving license status"}
-          catch
-            type, error ->
-              AppLogger.maintenance_error("Error getting license status",
-                error_type: inspect(type),
-                error: inspect(error)
-              )
-
-              %{valid: false, error_message: "Error retrieving license status"}
-          end
-
-        # Get feature information
-        features_status = WandererNotifier.Core.Features.get_feature_status()
-
-        # Get tracked systems and characters counts
-        systems = WandererNotifier.Helpers.CacheHelpers.get_tracked_systems()
-        characters = CacheRepo.get("map:characters") || []
-
-        # Create a structured notification for the status message
-        title = "Service Status Report"
-        description = "Periodic status update for the notification service."
-
-        # Create a structured notification using our formatter
-        generic_notification =
-          WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
-            title,
-            description,
-            stats,
-            uptime_seconds,
-            features_status,
-            license_status,
-            length(systems),
-            length(characters)
-          )
-
-        # Convert to Discord format
-        discord_embed =
-          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(generic_notification)
-
-        # Log simple status message
-        AppLogger.maintenance_info("Service status report", uptime: uptime_str)
-
-        # Send the rich notification
-        NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
+      {:ok, :duplicate} ->
+        AppLogger.maintenance_info("Service status report notification skipped (duplicate)")
+        {:ok, :duplicate}
     end
   end
 end

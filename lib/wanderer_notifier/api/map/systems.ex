@@ -10,19 +10,21 @@ defmodule WandererNotifier.Api.Map.Systems do
   2. Fall back to ID-based classification only when API doesn't provide type information
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Config.Timings
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Api.Map.SystemStaticInfo
+  alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.api_debug("[update_systems] Starting systems update")
 
-    with {:ok, systems_url} <- build_systems_url(),
-         {:ok, body} <- fetch_get_body(systems_url),
+    with {:ok, url} <- UrlBuilder.build_url("map/systems"),
+         {:ok, body} <- fetch_get_body(url),
          {:ok, json} <- decode_json(body),
          {:ok, fresh_systems} <- process_systems(json) do
       if fresh_systems == [] do
@@ -45,90 +47,8 @@ defmodule WandererNotifier.Api.Map.Systems do
     end
   end
 
-  defp build_systems_url do
-    base_url_with_slug = Config.map_url()
-    map_token = Config.map_token()
-
-    # Validate required configuration
-    with :ok <- validate_map_url(base_url_with_slug),
-         :ok <- validate_map_token(map_token) do
-      # Build the URL with validated parameters
-      build_url_from_parameters(base_url_with_slug)
-    end
-  end
-
-  # Validate that map URL is configured
-  defp validate_map_url(nil), do: {:error, "Map URL is not configured"}
-  defp validate_map_url(""), do: {:error, "Map URL is not configured"}
-  defp validate_map_url(_url), do: :ok
-
-  # Validate that map token is configured
-  defp validate_map_token(nil), do: {:error, "Map token is not configured"}
-  defp validate_map_token(""), do: {:error, "Map token is not configured"}
-  defp validate_map_token(_token), do: :ok
-
-  # Build URL from base URL with slug
-  defp build_url_from_parameters(base_url_with_slug) do
-    # Parse the URL to separate the base URL from the slug
-    uri = URI.parse(base_url_with_slug)
-    AppLogger.api_debug("[build_systems_url] Parsed URI: #{inspect(uri)}")
-
-    # Extract components
-    path = extract_path(uri)
-    slug_id = extract_slug_id(path)
-    base_host = build_base_host(uri)
-
-    # Construct final URL
-    url = build_systems_api_url(base_host, slug_id)
-
-    AppLogger.api_info("[build_systems_url] Final URL: #{url}")
-    {:ok, url}
-  end
-
-  # Extract the path which contains the slug
-  defp extract_path(uri) do
-    path = uri.path || ""
-    path = String.trim_trailing(path, "/")
-    AppLogger.api_debug("[build_systems_url] Extracted path: #{path}")
-    path
-  end
-
-  # Extract the slug id from the path
-  defp extract_slug_id(path) do
-    slug_id =
-      path
-      |> String.split("/")
-      |> Enum.filter(fn part -> part != "" end)
-      |> List.last() || ""
-
-    AppLogger.api_debug("[build_systems_url] Extracted slug ID: #{slug_id}")
-    slug_id
-  end
-
-  # Build the base host portion of the URL
-  defp build_base_host(uri) do
-    "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-  end
-
-  # Build the complete systems API URL
-  defp build_systems_api_url(base_host, slug_id) do
-    encoded_slug = URI.encode_www_form(slug_id)
-
-    if String.ends_with?(base_host, "/") do
-      "#{base_host}api/map/systems?slug=#{encoded_slug}"
-    else
-      "#{base_host}/api/map/systems?slug=#{encoded_slug}"
-    end
-  end
-
   defp fetch_get_body(url) do
-    map_token = Config.map_token()
-    # Request headers
-    headers = [
-      {"Authorization", "Bearer #{map_token}"},
-      {"Content-Type", "application/json"},
-      {"Accept", "application/json"}
-    ]
+    headers = UrlBuilder.get_auth_headers()
 
     # Make the request
     case HttpClient.get(url, headers) do
@@ -136,7 +56,7 @@ defmodule WandererNotifier.Api.Map.Systems do
         {:ok, body}
 
       {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error(
+        AppLogger.api_error(
           "[fetch_get_body] API returned non-200 status: #{status_code}. Body: #{body}"
         )
 
@@ -397,7 +317,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   # Add static info to system data
   defp add_static_info(system, system_id) do
-    case WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id) do
+    case SystemStaticInfo.get_system_static_info(system_id) do
       {:ok, static_info} ->
         AppLogger.api_info(
           "[notify_new_systems] Successfully got static info for system #{system_id}"
@@ -503,42 +423,38 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   # Process notification for a single system
   defp process_system_notification(system, track_all_systems) do
-    try do
-      system_name = get_system_name(system)
-      system_id = Map.get(system, "systemId")
+    system_name = get_system_name(system)
+    system_id = Map.get(system, "systemId")
 
-      # Check if this specific system should trigger a notification
-      if WandererNotifier.Services.NotificationDeterminer.should_notify_system?(system_id) do
-        # Prepare system data with static info
-        system_data = prepare_system_data(system, system_name, system_id)
+    # Check if this specific system should trigger a notification
+    if NotificationDeterminer.should_notify_system?(system_id) do
+      # Prepare system data with static info
+      system_data = prepare_system_data(system, system_name, system_id)
 
-        # Send the notification with the enriched system data
-        notifier = NotifierFactory.get_notifier()
-        notifier.send_new_system_notification(system_data)
+      # Send the notification with the enriched system data
+      notifier = NotifierFactory.get_notifier()
+      notifier.send_new_system_notification(system_data)
 
-        if track_all_systems do
-          Logger.info(
-            "[notify_new_systems] System #{system_name} added and tracked (tracking K-Space=true)"
-          )
-        else
-          AppLogger.api_info("[notify_new_systems] New system #{system_name} discovered")
-        end
+      if track_all_systems do
+        Logger.info(
+          "[notify_new_systems] System #{system_name} added and tracked (tracking K-Space=true)"
+        )
       else
-        Logger.debug(
-          "[notify_new_systems] System #{system_name} (ID: #{system_id}) is not marked for notification"
-        )
+        AppLogger.api_info("[notify_new_systems] New system #{system_name} discovered")
       end
-    rescue
-      e ->
-        AppLogger.api_error(
-          "[notify_new_systems] Error sending system notification: #{inspect(e)}"
-        )
+    else
+      Logger.debug(
+        "[notify_new_systems] System #{system_name} (ID: #{system_id}) is not marked for notification"
+      )
     end
+  rescue
+    e ->
+      AppLogger.api_error("[notify_new_systems] Error sending system notification: #{inspect(e)}")
   end
 
   defp notify_new_systems(fresh_systems, cached_systems) do
     # Use the centralized notification determiner to check if system notifications are enabled
-    if WandererNotifier.Services.NotificationDeterminer.should_notify_system?(nil) do
+    if NotificationDeterminer.should_notify_system?(nil) do
       # Ensure we have both fresh and cached systems as lists
       fresh = fresh_systems || []
       cached = cached_systems || []
@@ -561,6 +477,4 @@ defmodule WandererNotifier.Api.Map.Systems do
       {:ok, []}
     end
   end
-
-  # URL generation is now handled in the systems_client.ex module
 end

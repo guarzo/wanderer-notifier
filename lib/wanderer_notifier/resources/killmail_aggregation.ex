@@ -5,14 +5,16 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   based on their killmail history.
   """
 
-  require Logger
-  alias WandererNotifier.Logger, as: AppLogger
   require Ash.Query
-  alias WandererNotifier.Resources.KillmailStatistic
-  alias WandererNotifier.Resources.Killmail
-  alias WandererNotifier.Resources.TrackedCharacter
+  require Logger
+
   alias Ash.Query
   alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Resources.Api
+  alias WandererNotifier.Resources.Killmail
+  alias WandererNotifier.Resources.KillmailStatistic
+  alias WandererNotifier.Resources.TrackedCharacter
 
   @doc """
   Aggregate killmail data into statistics for all tracked characters.
@@ -26,50 +28,53 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     - {:error, reason} if aggregation fails
   """
   def aggregate_statistics(period_type \\ :daily, date \\ nil) do
-    try do
-      date = date || Date.utc_today()
+    date = date || Date.utc_today()
 
-      # Get date ranges for the specified period
-      {period_start, period_end} = get_period_range(period_type, date)
+    # Get date ranges for the specified period
+    {period_start, period_end} = get_period_range(period_type, date)
 
-      Logger.info(
-        "[KillmailAggregation] Starting aggregation for #{period_type} period: #{period_start} to #{period_end}"
-      )
+    AppLogger.persistence_info(
+      "Starting aggregation",
+      period_type: period_type,
+      period_start: "#{period_start}",
+      period_end: "#{period_end}"
+    )
 
-      # Get all tracked characters
-      case get_tracked_characters() do
-        [] ->
-          AppLogger.persistence_info(
-            "[KillmailAggregation] No tracked characters found, skipping aggregation"
-          )
-
-          :ok
-
-        tracked_characters ->
-          # Process each character and create/update statistics
-          results =
-            Enum.map(tracked_characters, fn character ->
-              aggregate_character_statistics(character, period_type, period_start, period_end)
-            end)
-
-          # Log results
-          success_count = Enum.count(results, &(&1 == :ok))
-
-          Logger.info(
-            "[KillmailAggregation] Completed aggregation: #{success_count}/#{length(results)} successful"
-          )
-
-          :ok
-      end
-    rescue
-      e ->
-        AppLogger.persistence_error(
-          "[KillmailAggregation] Error during aggregation: #{Exception.message(e)}"
+    # Get all tracked characters
+    case get_tracked_characters() do
+      [] ->
+        AppLogger.persistence_info(
+          "[KillmailAggregation] No tracked characters found, skipping aggregation"
         )
 
-        AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
-        {:error, e}
+        :ok
+
+      tracked_characters ->
+        # Process each character and create/update statistics
+        results =
+          Enum.map(tracked_characters, fn character ->
+            aggregate_character_statistics(character, period_type, period_start, period_end)
+          end)
+
+        # Log results
+        success_count = Enum.count(results, &(&1 == :ok))
+
+        AppLogger.persistence_info(
+          "Completed aggregation",
+          success_count: success_count,
+          total_count: length(results)
+        )
+
+        :ok
     end
+  rescue
+    e ->
+      AppLogger.persistence_error(
+        "[KillmailAggregation] Error during aggregation: #{Exception.message(e)}"
+      )
+
+      AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
+      {:error, e}
   end
 
   @doc """
@@ -92,39 +97,36 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       "[KillmailAggregation] Cleaning up killmails older than #{cutoff_date}"
     )
 
-    # Find killmails older than the cutoff date
-    try do
-      # Query killmails older than the cutoff date
-      old_killmails =
-        Killmail
-        |> Query.filter(kill_time: [<: cutoff_datetime])
-        |> Query.load([:id, :killmail_id, :kill_time])
-        |> Query.data_layer_query()
+    # Query killmails older than the cutoff date
+    old_killmails =
+      Killmail
+      |> Query.filter(kill_time: [<: cutoff_datetime])
+      |> Query.load([:id, :killmail_id, :kill_time])
+      |> Query.data_layer_query()
 
-      # Count how many records we're going to delete
-      count = Enum.count(old_killmails)
+    # Count how many records we're going to delete
+    count = Enum.count(old_killmails)
 
-      if count > 0 do
-        AppLogger.persistence_info("[KillmailAggregation] Found #{count} killmails to delete")
+    if count > 0 do
+      AppLogger.persistence_info("[KillmailAggregation] Found #{count} killmails to delete")
 
-        # Delete the old killmails in batches
-        delete_in_batches(old_killmails)
-      else
-        AppLogger.persistence_info(
-          "[KillmailAggregation] No killmails found older than the cutoff date"
-        )
+      # Delete the old killmails in batches
+      delete_in_batches(old_killmails)
+    else
+      AppLogger.persistence_info(
+        "[KillmailAggregation] No killmails found older than the cutoff date"
+      )
 
-        {0, 0}
-      end
-    rescue
-      e ->
-        AppLogger.persistence_error(
-          "[KillmailAggregation] Error during cleanup: #{Exception.message(e)}"
-        )
-
-        AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
-        {0, 1}
+      {0, 0}
     end
+  rescue
+    e ->
+      AppLogger.persistence_error(
+        "[KillmailAggregation] Error during cleanup: #{Exception.message(e)}"
+      )
+
+      AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
+      {0, 1}
   end
 
   # Get date range for a specific period type
@@ -154,7 +156,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   defp get_tracked_characters do
     case TrackedCharacter
          |> Query.load([:character_id, :character_name])
-         |> WandererNotifier.Resources.Api.read() do
+         |> Api.read() do
       {:ok, characters} -> characters
       _ -> []
     end
@@ -164,42 +166,44 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   defp aggregate_character_statistics(character, period_type, period_start, period_end) do
     character_id = character.character_id
 
-    Logger.info(
-      "[KillmailAggregation] Processing statistics for character #{character.character_name} (#{character_id})"
+    AppLogger.persistence_info(
+      "Processing character statistics",
+      character_name: character.character_name,
+      character_id: character_id
     )
 
     # Convert dates to datetime ranges for querying
     start_datetime = DateTime.new!(period_start, ~T[00:00:00.000], "Etc/UTC")
     end_datetime = DateTime.new!(period_end, ~T[23:59:59.999], "Etc/UTC")
 
-    try do
-      # Find and process all kills for this character in the date range
-      killmails = fetch_character_killmails(character, character_id, start_datetime, end_datetime)
+    # Find and process all kills for this character in the date range
+    killmails = fetch_character_killmails(character, character_id, start_datetime, end_datetime)
 
-      # Calculate statistics
-      stats = calculate_statistics(killmails)
+    # Calculate statistics
+    stats = calculate_statistics(killmails)
 
-      # Log statistics summary
-      log_character_statistics(character, stats)
+    # Log statistics summary
+    log_character_statistics(character, stats)
 
-      # Update or create statistics record
-      save_character_statistics(
-        character,
-        stats,
-        period_type,
-        period_start,
-        period_end,
-        character_id
+    # Update or create statistics record
+    save_character_statistics(
+      character,
+      stats,
+      period_type,
+      period_start,
+      period_end,
+      character_id
+    )
+  rescue
+    e ->
+      AppLogger.persistence_error(
+        "Error aggregating character statistics",
+        character_name: character.character_name,
+        error: Exception.message(e)
       )
-    rescue
-      e ->
-        Logger.error(
-          "[KillmailAggregation] Error aggregating statistics for character #{character.character_name}: #{Exception.message(e)}"
-        )
 
-        AppLogger.persistence_debug("[KillmailAggregation] #{Exception.format_stacktrace()}")
-        {:error, e}
-    end
+      AppLogger.persistence_debug("Error stacktrace: #{Exception.format_stacktrace()}")
+      {:error, e}
   end
 
   # Fetch killmails for a character within a specific time period
@@ -210,32 +214,34 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       |> Query.filter(kill_time: [>=: start_datetime])
       |> Query.filter(kill_time: [<=: end_datetime])
       |> Query.load([
-        :id,
         :killmail_id,
         :kill_time,
         :character_role,
-        :solar_system_name,
-        :region_name,
         :total_value,
+        :region_name,
         :ship_type_id,
         :ship_type_name,
         :zkb_data,
         :victim_data,
         :attacker_data
       ])
-      |> WandererNotifier.Resources.Api.read()
+      |> Api.read()
 
     case result do
       {:ok, records} ->
-        Logger.info(
-          "[KillmailAggregation] Successfully queried #{length(records)} killmails for character #{character.character_name}"
+        AppLogger.persistence_info(
+          "Successfully queried killmails",
+          count: length(records),
+          character_name: character.character_name
         )
 
         records
 
       error ->
-        Logger.error(
-          "[KillmailAggregation] Error querying killmails for character #{character.character_name}: #{inspect(error)}"
+        AppLogger.persistence_error(
+          "Error querying killmails",
+          character_name: character.character_name,
+          error: inspect(error)
         )
 
         []
@@ -320,7 +326,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       |> Query.filter(character_id: character_id)
       |> Query.filter(period_type: period_type)
       |> Query.filter(period_start: period_start)
-      |> WandererNotifier.Resources.Api.read()
+      |> Api.read()
 
     case result do
       {:ok, [stat | _]} ->
@@ -345,7 +351,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     )
 
     result =
-      WandererNotifier.Resources.Api.update(
+      Api.update(
         KillmailStatistic,
         existing_stat.id,
         statistic_attrs,
@@ -376,7 +382,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     )
 
     result =
-      WandererNotifier.Resources.Api.create(KillmailStatistic, statistic_attrs, action: :create)
+      Api.create(KillmailStatistic, statistic_attrs, action: :create)
 
     case result do
       {:ok, _created} ->
@@ -540,7 +546,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     batch_results =
       Enum.map(batch, fn killmail ->
         # Use proper destroy pattern for Ash resources
-        WandererNotifier.Resources.Api.destroy(Killmail, killmail.id)
+        Api.destroy(Killmail, killmail.id)
       end)
 
     # Count successes and errors

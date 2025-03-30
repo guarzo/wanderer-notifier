@@ -6,8 +6,9 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
   use Plug.Router
   import Plug.Conn
-  require Logger
-  alias WandererNotifier.Core.{Features, License, Stats}
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.{License, Stats}
+  alias WandererNotifier.Logger, as: AppLogger
 
   # This controller handles debug endpoints
 
@@ -37,7 +38,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     System.put_env("WANDERER_DEBUG_LOGGING", new_state)
 
     # Log the change
-    Logger.info("Debug logging #{if new_state == "true", do: "enabled", else: "disabled"}")
+    AppLogger.api_info("Debug logging #{if new_state == "true", do: "enabled", else: "disabled"}")
 
     # Redirect back to debug page
     conn

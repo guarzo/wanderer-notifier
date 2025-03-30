@@ -12,10 +12,11 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   """
 
   require Logger
+
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Services.CharacterKillsService
-  alias WandererNotifier.Config.Features
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0
@@ -96,34 +97,32 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     # Fetch up to 50 recent kills per character
     limit = 50
 
-    try do
-      case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
-        {:ok, stats} ->
-          AppLogger.scheduler_info(
-            "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",
-            characters: stats.characters,
-            processed: stats.processed,
-            persisted: stats.persisted
-          )
-
-          {:ok, stats}
-
-        {:error, reason} ->
-          AppLogger.scheduler_error(
-            "#{inspect(@scheduler_name)}: Failed to fetch character kills",
-            error: inspect(reason)
-          )
-
-          {:error, :fetch_failed, reason}
-      end
-    rescue
-      e ->
-        AppLogger.scheduler_error(
-          "#{inspect(@scheduler_name)}: Exception during kill fetch: #{Exception.message(e)}"
+    case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
+      {:ok, stats} ->
+        AppLogger.scheduler_info(
+          "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",
+          characters: stats.characters,
+          processed: stats.processed,
+          persisted: stats.persisted
         )
 
-        {:error, :fetch_exception, e}
+        {:ok, stats}
+
+      {:error, reason} ->
+        AppLogger.scheduler_error(
+          "#{inspect(@scheduler_name)}: Failed to fetch character kills",
+          error: inspect(reason)
+        )
+
+        {:error, :fetch_failed, reason}
     end
+  rescue
+    e ->
+      AppLogger.scheduler_error(
+        "#{inspect(@scheduler_name)}: Exception during kill fetch: #{Exception.message(e)}"
+      )
+
+      {:error, :fetch_exception, e}
   end
 
   # Run aggregation for a specific period
@@ -132,19 +131,17 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
       "#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}"
     )
 
-    try do
-      case KillmailAggregation.aggregate_statistics(period_type, date) do
-        :ok -> {:ok, period_type}
-        {:error, reason} -> {:error, period_type, reason}
-      end
-    rescue
-      e ->
-        Logger.error(
-          "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation: #{Exception.message(e)}"
-        )
-
-        {:error, period_type, e}
+    case KillmailAggregation.aggregate_statistics(period_type, date) do
+      :ok -> {:ok, period_type}
+      {:error, reason} -> {:error, period_type, reason}
     end
+  rescue
+    e ->
+      Logger.error(
+        "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation: #{Exception.message(e)}"
+      )
+
+      {:error, period_type, e}
   end
 
   # Log aggregation results

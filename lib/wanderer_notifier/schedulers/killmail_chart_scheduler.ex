@@ -6,8 +6,8 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Core.Config
   alias WandererNotifier.Adapters.KillmailChartAdapter
+  alias WandererNotifier.Config
 
   @config Application.compile_env(:wanderer_notifier, :config_module, Config)
   @adapter Application.compile_env(
@@ -76,20 +76,18 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   end
 
   defp send_weekly_kills_chart do
-    try do
-      channel_id = @config.discord_channel_id_for(:kill_charts)
-      handle_chart_sending(channel_id)
-    rescue
-      e ->
-        error_message =
-          case e do
-            %{message: msg} -> msg
-            _ -> "#{inspect(e)}"
-          end
+    channel_id = @config.discord_channel_id_for(:kill_charts)
+    handle_chart_sending(channel_id)
+  rescue
+    e ->
+      error_message =
+        case e do
+          %{message: msg} -> msg
+          _ -> "#{inspect(e)}"
+        end
 
-        Logger.error("[SCHEDULER] Exception while sending weekly kills chart: #{inspect(e)}")
-        {:error, error_message, %{}}
-    end
+      Logger.error("[SCHEDULER] Exception while sending weekly kills chart: #{inspect(e)}")
+      {:error, error_message, %{}}
   end
 
   defp handle_chart_sending(channel_id) do

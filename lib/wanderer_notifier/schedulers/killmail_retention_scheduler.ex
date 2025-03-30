@@ -13,9 +13,9 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   """
 
   require Logger
+  alias WandererNotifier.Config.{Features, Timing}
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
-  alias WandererNotifier.Config.{Timing, Features}
 
   # Use the interval scheduler as our base
   use WandererNotifier.Schedulers.IntervalScheduler,

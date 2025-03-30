@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Schedulers.Supervisor do
+defmodule Schedulers.Supervisor do
   @moduledoc """
   Supervisor for all schedulers in the application.
 
@@ -7,8 +7,12 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   use Supervisor
   require Logger
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Logger.StartupTracker
+  alias WandererNotifier.Resources.TrackedCharacter
+  alias WandererNotifier.Schedulers
+  alias WandererNotifier.Schedulers.Registry
 
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -22,7 +26,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     AppLogger.scheduler_info("Starting Scheduler Supervisor...")
 
     # Define the scheduler registry
-    registry = {WandererNotifier.Schedulers.Registry, []}
+    registry = {Registry, []}
 
     # Define core schedulers and build complete list
     core_schedulers = define_core_schedulers()
@@ -41,23 +45,23 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   # Start the scheduler phase in the startup tracker
   defp start_scheduler_phase do
     if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.begin_phase(:schedulers, "Initializing schedulers")
+      StartupTracker.begin_phase(:schedulers, "Initializing schedulers")
     end
   end
 
   # Define the core schedulers
   defp define_core_schedulers do
     schedulers = [
-      {WandererNotifier.Schedulers.ActivityChartScheduler, []},
-      {WandererNotifier.Schedulers.CharacterUpdateScheduler, []},
-      {WandererNotifier.Schedulers.SystemUpdateScheduler, []}
+      {Schedulers.ActivityChartScheduler, []}
     ]
 
     # Track core schedulers
-    if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+    try do
+      StartupTracker.record_event(:scheduler_setup, %{
         core_schedulers: length(schedulers)
       })
+    rescue
+      _ -> :ok
     end
 
     schedulers
@@ -67,13 +71,13 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   defp maybe_add_kill_chart_schedulers(core_schedulers) do
     if Config.kill_charts_enabled?() && database_ready?() do
       kill_chart_schedulers = [
-        {WandererNotifier.Schedulers.KillmailRetentionScheduler, []},
-        {WandererNotifier.Schedulers.KillmailAggregationScheduler, []}
+        {Schedulers.KillmailRetentionScheduler, []},
+        {Schedulers.KillmailAggregationScheduler, []}
       ]
 
       # Track kill chart schedulers
       if Process.get(:startup_tracker) do
-        WandererNotifier.Logger.StartupTracker.record_event(:scheduler_setup, %{
+        StartupTracker.record_event(:scheduler_setup, %{
           kill_chart_schedulers: length(kill_chart_schedulers)
         })
       end
@@ -96,27 +100,21 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   Returns true if the database is not required or if the connection is established.
   """
   def database_ready? do
-    if WandererNotifier.Resources.TrackedCharacter.database_enabled?() do
+    if TrackedCharacter.database_enabled?() do
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 
-      try do
-        case WandererNotifier.Repo.health_check() do
-          {:ok, ping_time} ->
-            record_database_status("verified", ping_time)
-            true
+      case WandererNotifier.Repo.health_check() do
+        {:ok, ping_time} ->
+          record_database_status("verified", ping_time)
+          true
 
-          {:error, reason} ->
-            record_database_error(
-              "Database connection check failed during scheduler setup",
-              reason
-            )
+        {:error, reason} ->
+          record_database_error(
+            "Database connection check failed during scheduler setup",
+            reason
+          )
 
-            false
-        end
-      rescue
-        e ->
-          record_database_exception("Database health check exception during scheduler setup", e)
           false
       end
     else
@@ -127,7 +125,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   # Record database status
   defp record_database_status(status, ping_time) do
     if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_event(:database_status, %{
+      StartupTracker.record_event(:database_status, %{
         status: status,
         ping_time: ping_time
       })
@@ -137,7 +135,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   # Record database error
   defp record_database_error(message, reason) do
     if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_error(
+      StartupTracker.record_error(
         message,
         %{reason: inspect(reason)}
       )
@@ -146,24 +144,10 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     end
   end
 
-  # Record database exception
-  defp record_database_exception(message, exception) do
-    if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.record_error(
-        message,
-        %{error: Exception.message(exception)}
-      )
-    else
-      AppLogger.scheduler_error(
-        "Database health check failed with exception: #{Exception.message(exception)}"
-      )
-    end
-  end
-
   # Log a summary of all schedulers being started
   defp log_scheduler_summary(schedulers) do
     if Process.get(:startup_tracker) do
-      WandererNotifier.Logger.StartupTracker.log_state_change(
+      StartupTracker.log_state_change(
         :scheduler_summary,
         "#{length(schedulers)} schedulers initialized"
       )
@@ -180,7 +164,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     case Supervisor.start_child(__MODULE__, {scheduler_module, []}) do
       {:ok, _pid} ->
         # Register the scheduler with the registry
-        WandererNotifier.Schedulers.Registry.register(scheduler_module)
+        Registry.register(scheduler_module)
         :ok
 
       {:error, {:already_started, _pid}} ->

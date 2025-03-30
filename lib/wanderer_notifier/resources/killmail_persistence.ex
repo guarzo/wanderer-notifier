@@ -12,12 +12,12 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   require Logger
   require Ash.Query
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Data.Killmail, as: KillmailStruct
-  alias WandererNotifier.Resources.Killmail
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Killmail, as: KillmailStruct
+  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
+  alias WandererNotifier.Resources.Killmail
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
@@ -254,7 +254,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @doc """
-  Gets all killmails for a specific character within a date range.
+  Gets killmails for a specific character within a date range.
 
   ## Parameters
     - character_id: The character ID to get killmails for
@@ -266,16 +266,14 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - List of killmail records
   """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
-    try do
-      Api.read(Killmail,
-        action: :list_for_character,
-        args: [character_id: character_id, from_date: from_date, to_date: to_date, limit: limit]
-      )
-    rescue
-      e ->
-        AppLogger.persistence_error("Error fetching killmails", error: Exception.message(e))
-        []
-    end
+    Api.read(Killmail,
+      action: :list_for_character,
+      args: [character_id: character_id, from_date: from_date, to_date: to_date, limit: limit]
+    )
+  rescue
+    e ->
+      AppLogger.persistence_error("Error fetching killmails", error: Exception.message(e))
+      []
   end
 
   # Helper function to ensure a list of characters
@@ -469,30 +467,32 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - Map containing tracked_characters (count), total_kills (count)
   """
   def get_tracked_kills_stats do
-    try do
-      # Get the number of tracked characters from the cache
-      tracked_characters = get_tracked_characters()
-      character_count = length(tracked_characters)
+    # Get the number of tracked characters from the cache
+    tracked_characters = get_tracked_characters()
+    character_count = length(tracked_characters)
 
-      # Count the total number of killmails in the database
-      total_kills = count_total_killmails()
+    # Count the total number of killmails in the database
+    total_kills = count_total_killmails()
 
-      # Return the stats as a map
-      %{
-        tracked_characters: character_count,
-        total_kills: total_kills
-      }
-    rescue
-      e ->
-        AppLogger.persistence_error("Error getting stats", error: Exception.message(e))
-        %{tracked_characters: 0, total_kills: 0}
-    end
+    # Return the stats as a map
+    %{
+      tracked_characters: character_count,
+      total_kills: total_kills
+    }
+  rescue
+    e ->
+      AppLogger.persistence_error("Error getting stats", error: Exception.message(e))
+      %{tracked_characters: 0, total_kills: 0}
   end
 
   def count_total_killmails do
-    __MODULE__
-    |> Ash.Query.new()
-    |> Ash.Query.aggregate(:count, [:id], :total)
+    case Killmail
+         |> Ash.Query.new()
+         |> Ash.Query.aggregate(:count, :id, :total)
+         |> Api.read() do
+      {:ok, [%{total: count}]} -> count
+      _ -> 0
+    end
   end
 
   # Updates the character's recent killmails cache after a new killmail is persisted

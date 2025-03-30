@@ -7,8 +7,8 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   and providing alternative chart generation methods.
   """
 
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Logger, as: AppLogger
 
   @typedoc """
   Options for fallback strategies

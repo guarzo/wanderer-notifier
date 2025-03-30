@@ -4,10 +4,19 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   Uses Postgres as the data layer for persistence.
   """
   require Logger
+
+  alias Ecto.Adapters.SQL
+  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Character
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Repo
+  alias WandererNotifier.Resources.Api
+  alias WandererNotifier.Resources.Killmail
 
   use Ash.Resource,
-    domain: WandererNotifier.Resources.Api,
+    domain: Api,
     data_layer: AshPostgres.DataLayer,
     extensions: [
       AshPostgres.Resource
@@ -17,7 +26,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   postgres do
     table("tracked_characters")
-    repo(WandererNotifier.Repo)
+    repo(Repo)
   end
 
   attributes do
@@ -40,7 +49,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   end
 
   relationships do
-    has_many(:killmails, WandererNotifier.Resources.Killmail,
+    has_many(:killmails, Killmail,
       destination_attribute: :related_character_id,
       validate_destination_attribute?: false
     )
@@ -111,7 +120,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
           require Logger
 
           # Get characters from the map:characters cache
-          cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+          cached_characters = CacheRepo.get("map:characters") || []
 
           AppLogger.persistence_info(
             "Syncing characters from tracking system",
@@ -188,7 +197,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                 read_result =
                   __MODULE__
                   |> Ash.Query.filter(character_id: character_id)
-                  |> WandererNotifier.Resources.Api.read()
+                  |> Api.read()
 
                 AppLogger.persistence_debug("Read result", result: inspect(read_result))
 
@@ -228,7 +237,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                       )
 
                       update_result =
-                        WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
+                        Api.update(__MODULE__, existing.id, changes)
 
                       AppLogger.persistence_debug(
                         "Update result",
@@ -271,7 +280,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                     )
 
                     create_result =
-                      WandererNotifier.Resources.Api.create(__MODULE__, create_attrs)
+                      Api.create(__MODULE__, create_attrs)
 
                     AppLogger.persistence_debug(
                       "Create result",
@@ -326,7 +335,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
           # After sync, verify the count in the database
           db_count_result =
             __MODULE__
-            |> WandererNotifier.Resources.Api.read()
+            |> Api.read()
 
           db_count =
             case db_count_result do
@@ -477,33 +486,106 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # Helper functions for extracting character information
     defp extract_character_id_from_data(char_data) do
-      extract_from_struct(char_data) ||
-        extract_from_map(char_data) ||
-        extract_from_primitive(char_data)
+      AppLogger.persistence_debug("Extracting character ID",
+        data_type: typeof(char_data),
+        has_struct: is_struct(char_data),
+        has_map: is_map(char_data),
+        keys: if(is_map(char_data), do: Map.keys(char_data), else: "not a map")
+      )
+
+      # Try extracting in order of preference
+      character_id =
+        extract_from_struct(char_data) ||
+          extract_from_map(char_data) ||
+          extract_from_primitive(char_data)
+
+      # Log the extracted ID for debugging
+      AppLogger.persistence_debug("Extracted character ID result: #{inspect(character_id)}")
+
+      character_id
     end
 
     # Extract character ID from struct
     defp extract_from_struct(char_data) do
       if is_struct(char_data) && Map.has_key?(char_data, :character_id) do
-        to_string(char_data.character_id)
+        id = char_data.character_id
+        # Only return valid numeric IDs
+        if is_integer(id) || (is_binary(id) && numeric_string?(id)) do
+          to_string(id)
+        else
+          AppLogger.persistence_warn("Invalid character_id in struct", id: id)
+          nil
+        end
       end
     end
 
     # Extract character ID from map
+    defp extract_from_map(char_data) when not is_map(char_data), do: nil
+
     defp extract_from_map(char_data) do
-      if is_map(char_data) &&
-           (Map.has_key?(char_data, "character_id") || Map.has_key?(char_data, :character_id)) do
-        char_id = char_data["character_id"] || char_data[:character_id]
-        if char_id, do: to_string(char_id), else: nil
+      # Try multiple possible key formats for character_id, with consistent type handling
+      char_id = char_data["character_id"] || char_data[:character_id]
+
+      # Log what we're extracting
+      AppLogger.persistence_debug("Extracting from map",
+        found_id: char_id,
+        id_type: typeof(char_id)
+      )
+
+      # Early return for nil values
+      if is_nil(char_id) do
+        nil
+      else
+        # Process character ID based on type
+        process_character_id_from_map(char_id)
       end
     end
 
-    # Extract character ID from primitive value
-    defp extract_from_primitive(char_data) do
-      if is_integer(char_data) || is_binary(char_data) do
-        to_string(char_data)
+    # Process character ID from map based on its type
+    defp process_character_id_from_map(id) when is_integer(id), do: to_string(id)
+
+    defp process_character_id_from_map(id) when is_binary(id) do
+      # Validate that it's a numeric string before accepting it
+      if numeric_string?(id) do
+        # Valid integer string
+        id
+      else
+        # Log invalid ID format - this might be a UUID we want to reject
+        AppLogger.persistence_warn("Invalid character ID format (non-numeric)",
+          id: id
+        )
+
+        nil
       end
     end
+
+    defp process_character_id_from_map(_), do: nil
+
+    # Helper to check if a string is numeric (contains only digits)
+    defp numeric_string?(str) when is_binary(str) do
+      case Integer.parse(str) do
+        {_, ""} -> true
+        _ -> false
+      end
+    end
+
+    defp numeric_string?(_), do: false
+
+    # Helper to get a string representation of a data type for debugging
+    defp typeof(nil), do: "nil"
+    defp typeof(value) when is_binary(value), do: "string"
+    defp typeof(value) when is_integer(value), do: "integer"
+    defp typeof(value) when is_float(value), do: "float"
+    defp typeof(value) when is_boolean(value), do: "boolean"
+    defp typeof(value) when is_map(value) and not is_struct(value), do: "map"
+    defp typeof(value) when is_list(value), do: "list"
+    defp typeof(value) when is_atom(value), do: "atom"
+    defp typeof(value) when is_function(value), do: "function"
+    defp typeof(value) when is_pid(value), do: "pid"
+    defp typeof(value) when is_reference(value), do: "reference"
+    defp typeof(value) when is_tuple(value), do: "tuple"
+    defp typeof(value) when is_struct(value), do: "struct:#{inspect(value.__struct__)}"
+    defp typeof(_), do: "unknown"
 
     defp extract_character_name(char_data) when is_map(char_data) do
       char_data["name"] ||
@@ -539,6 +621,23 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     end
 
     defp extract_alliance_name(_), do: nil
+
+    # Extract character ID from primitive value
+    defp extract_from_primitive(char_data) when is_integer(char_data), do: to_string(char_data)
+
+    defp extract_from_primitive(char_data) when is_binary(char_data) do
+      # Validate that it's a numeric string
+      if numeric_string?(char_data) do
+        # Valid integer string
+        char_data
+      else
+        AppLogger.persistence_debug("Non-numeric string ID rejected", id: char_data)
+        # Not a valid integer string
+        nil
+      end
+    end
+
+    defp extract_from_primitive(_), do: nil
   end
 
   code_interface do
@@ -569,7 +668,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                  AND tablename = 'tracked_characters'
                )"
 
-      case Ecto.Adapters.SQL.query(WandererNotifier.Repo, query) do
+      case SQL.query(Repo, query) do
         {:ok, %{rows: [[true]]}} ->
           AppLogger.persistence_info("[TrackedCharacter] tracked_characters table exists")
 
@@ -614,12 +713,12 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # Try the full create, read, delete cycle
     with {:create, {:ok, record}} <-
-           {:create, WandererNotifier.Resources.Api.create(__MODULE__, test_attrs)},
+           {:create, Api.create(__MODULE__, test_attrs)},
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully created test record"),
          {:read, {:ok, [_fetched_record | _]}} <- {:read, read_test_record(test_id)},
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully read test record"),
          {:delete, {:ok, _}} <-
-           {:delete, WandererNotifier.Resources.Api.destroy(__MODULE__, record.id)},
+           {:delete, Api.destroy(__MODULE__, record.id)},
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully deleted test record") do
       # All operations successful
       :ok
@@ -656,9 +755,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
   # Helper to read a test record by character_id
   defp read_test_record(test_id) do
-    __MODULE__
-    |> Ash.Query.filter(character_id: test_id)
-    |> WandererNotifier.Resources.Api.read()
+    query = Ash.Query.filter(__MODULE__, character_id: test_id)
+    Api.read(query)
   end
 
   @doc """
@@ -699,7 +797,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   # Delete all existing characters from the database
   defp delete_existing_characters do
     # Get current tracked characters from database
-    db_result = __MODULE__ |> WandererNotifier.Resources.Api.read()
+    db_result = __MODULE__ |> Api.read()
 
     existing_chars =
       case db_result do
@@ -726,7 +824,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       Enum.chunk_every(existing_chars, 50)
       |> Enum.map(fn batch ->
         Enum.map(batch, fn char ->
-          WandererNotifier.Resources.Api.destroy(__MODULE__, char.id)
+          Api.destroy(__MODULE__, char.id)
         end)
       end)
       |> List.flatten()
@@ -749,34 +847,32 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   defp sync_characters_from_cache do
     require Logger
 
-    try do
-      # Get characters from cache
-      cached_characters = WandererNotifier.Data.Cache.Repository.get("map:characters") || []
+    # Get characters from cache
+    cached_characters = CacheRepo.get("map:characters") || []
 
-      AppLogger.persistence_info("Syncing characters from tracking system",
-        character_count: length(cached_characters)
+    AppLogger.persistence_info("Syncing characters from tracking system",
+      character_count: length(cached_characters)
+    )
+
+    # Handle case where cache is empty
+    if Enum.empty?(cached_characters) do
+      AppLogger.persistence_warn("No characters found in cache, nothing to sync")
+      return_empty_stats()
+    else
+      # For debugging, log a sample of characters
+      log_character_sample(cached_characters)
+
+      # Process each character
+      process_cached_characters(cached_characters)
+    end
+  rescue
+    e ->
+      AppLogger.persistence_error("Error syncing characters",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       )
 
-      # Handle case where cache is empty
-      if Enum.empty?(cached_characters) do
-        AppLogger.persistence_warn("No characters found in cache, nothing to sync")
-        return_empty_stats()
-      else
-        # For debugging, log a sample of characters
-        log_character_sample(cached_characters)
-
-        # Process each character
-        process_cached_characters(cached_characters)
-      end
-    rescue
-      e ->
-        AppLogger.persistence_error("Error syncing characters",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        return_empty_stats()
-    end
+      return_empty_stats()
   end
 
   # Log a sample of characters for debugging
@@ -885,7 +981,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     read_result =
       __MODULE__
       |> Ash.Query.filter(character_id == ^character_id)
-      |> WandererNotifier.Resources.Api.read()
+      |> Api.read()
 
     AppLogger.persistence_debug("Read result", result: inspect(read_result))
 
@@ -944,7 +1040,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   # Determine what format the character data is in
   defp determine_character_format(character) do
     cond do
-      is_struct(character, WandererNotifier.Data.Character) -> :character_struct
+      is_struct(character, Character) -> :character_struct
       match?({:ok, _}, character) -> :ok_tuple
       is_map(character) && has_string_keys?(character) -> :string_map
       is_map(character) && map_size(character) > 0 -> :atom_map
@@ -1099,7 +1195,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   defp find_by_character_id(character_id) do
     if database_enabled?() do
       query = Ash.Query.filter(__MODULE__, character_id == ^character_id)
-      WandererNotifier.Resources.Api.read(query)
+      Api.read(query)
     else
       # Database operations are disabled, return empty result
       AppLogger.persistence_debug(
@@ -1136,7 +1232,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       )
 
       # Create the character record
-      case WandererNotifier.Resources.Api.create(__MODULE__, attributes) do
+      case Api.create(__MODULE__, attributes) do
         {:ok, record} ->
           # Update cache for this character
           update_character_cache(record)
@@ -1265,7 +1361,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       )
 
       update_result =
-        WandererNotifier.Resources.Api.update(__MODULE__, existing.id, changes)
+        Api.update(__MODULE__, existing.id, changes)
 
       AppLogger.persistence_debug(
         "Update result",
@@ -1305,17 +1401,17 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     }
 
     # Update the cache
-    WandererNotifier.Data.Cache.Repository.update_after_db_write(
+    CacheRepo.update_after_db_write(
       cache_key,
       cache_character,
-      WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+      Timings.characters_cache_ttl()
     )
 
     # Also ensure this character is marked as tracked
-    WandererNotifier.Data.Cache.Repository.update_after_db_write(
+    CacheRepo.update_after_db_write(
       "tracked:character:#{character_id}",
       true,
-      WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+      Timings.characters_cache_ttl()
     )
   end
 
@@ -1326,10 +1422,10 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       db_read_fun = fn -> fetch_and_format_characters() end
 
       # Sync the cache with database
-      WandererNotifier.Data.Cache.Repository.sync_with_db(
+      CacheRepo.sync_with_db(
         "map:characters",
         db_read_fun,
-        WandererNotifier.Core.Config.Timings.characters_cache_ttl()
+        Timings.characters_cache_ttl()
       )
     else
       AppLogger.persistence_debug(
@@ -1401,8 +1497,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   """
   def database_enabled? do
     # Use the Config module functions to determine if features are enabled
-    map_charts_enabled = WandererNotifier.Core.Config.map_charts_enabled?()
-    kill_charts_enabled = WandererNotifier.Core.Config.kill_charts_enabled?()
+    map_charts_enabled = Config.map_charts_enabled?()
+    kill_charts_enabled = Config.kill_charts_enabled?()
 
     # Combined result (either feature enables database)
     map_charts_enabled || kill_charts_enabled
@@ -1415,8 +1511,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     if database_enabled?() do
       # Database is enabled, proceed with normal read
       case query do
-        nil -> WandererNotifier.Resources.Api.read(__MODULE__)
-        query -> WandererNotifier.Resources.Api.read(query)
+        nil -> Api.read(__MODULE__)
+        query -> Api.read(query)
       end
     else
       # Database is disabled, return empty list

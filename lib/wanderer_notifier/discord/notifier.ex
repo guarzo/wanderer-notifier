@@ -4,14 +4,16 @@ defmodule WandererNotifier.Discord.Notifier do
   Handles sending notifications to Discord.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Api.ESI.Service, as: ESI
   alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Config.{Application, Notifications}
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Core.License
-  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Config.{Notifications, Application}
+  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Services.KillProcessor
+  alias WandererNotifier.Services.NotificationDeterminer
 
   @behaviour WandererNotifier.NotifierBehaviour
 
@@ -64,17 +66,20 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- HELPER FUNCTIONS --
 
-  # Format ISK values for display - moved from removed code
-  defp format_isk_value(value) when is_float(value) or is_integer(value) do
-    cond do
-      value < 1000 -> "<1k ISK"
-      value < 1_000_000 -> "#{round(value / 1000)}k ISK"
-      value < 1_000_000_000 -> "#{round(value / 1_000_000)}M ISK"
-      true -> "#{Float.round(value / 1_000_000_000, 2)}B ISK"
-    end
-  end
-
-  defp format_isk_value(_), do: "0 ISK"
+  # Helper to determine type of value for logging
+  defp typeof(term) when is_binary(term), do: "string"
+  defp typeof(term) when is_boolean(term), do: "boolean"
+  defp typeof(term) when is_integer(term), do: "integer"
+  defp typeof(term) when is_float(term), do: "float"
+  defp typeof(term) when is_map(term), do: "map"
+  defp typeof(term) when is_list(term), do: "list"
+  defp typeof(term) when is_atom(term), do: "atom"
+  defp typeof(term) when is_tuple(term), do: "tuple"
+  defp typeof(term) when is_function(term), do: "function"
+  defp typeof(term) when is_pid(term), do: "pid"
+  defp typeof(term) when is_reference(term), do: "reference"
+  defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
+  defp typeof(_), do: "unknown"
 
   # -- MESSAGE SENDING --
 
@@ -98,7 +103,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_kill_notification(message) do
-    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
+    recent_kills = KillProcessor.get_recent_kills() || []
     process_kills_for_notification(recent_kills, message)
   end
 
@@ -162,7 +167,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_embed(title, description, url, color) do
-    recent_kills = WandererNotifier.Services.KillProcessor.get_recent_kills() || []
+    recent_kills = KillProcessor.get_recent_kills() || []
 
     if recent_kills == [] do
       build_embed_payload(title, description, url, color)
@@ -272,7 +277,7 @@ defmodule WandererNotifier.Discord.Notifier do
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
-    case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+    case ESI.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
       {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil
@@ -308,7 +313,7 @@ defmodule WandererNotifier.Discord.Notifier do
       character_id = character.character_id
 
       # Check if this is a duplicate notification
-      case WandererNotifier.Services.NotificationDeterminer.check_deduplication(
+      case NotificationDeterminer.check_deduplication(
              :character,
              character_id
            ) do
@@ -356,28 +361,59 @@ defmodule WandererNotifier.Discord.Notifier do
   # -- NEW SYSTEM NOTIFICATION --
 
   @impl WandererNotifier.NotifierBehaviour
-  def send_new_system_notification(system)
-      when is_struct(system, WandererNotifier.Data.MapSystem) do
+  def send_new_system_notification(system) do
+    # Log system details before processing to diagnose cache issues
+    AppLogger.processor_info(
+      "[NEW_SYSTEM_NOTIFICATION] Processing system notification request",
+      system_type: typeof(system),
+      system_preview: inspect(system, limit: 200)
+    )
+
     if env() == :test do
-      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system.solar_system_id}")
+      # Get system ID safely regardless of structure
+      system_id = extract_system_id(system)
+      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     else
-      # Extract system ID for deduplication check
-      system_id = system.solar_system_id
+      # Extract system data safely with fallbacks
+      system_id = extract_system_id(system)
+      system_name = extract_system_name(system)
+
+      # Log extracted details for debugging
+      AppLogger.processor_info(
+        "[NEW_SYSTEM_NOTIFICATION] Extracted system details",
+        system_id: system_id,
+        system_name: system_name
+      )
 
       # Check if this is a duplicate notification
-      case WandererNotifier.Services.NotificationDeterminer.check_deduplication(
-             :system,
-             system_id
-           ) do
+      case NotificationDeterminer.check_deduplication(:system, system_id) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
-          handle_new_system_notification(system, system_id)
+          AppLogger.processor_info("Processing new system notification",
+            system_id: system_id,
+            system_name: system_name
+          )
+
+          # Convert to MapSystem struct if needed for formatter
+          map_system = ensure_map_system(system)
+
+          # Create notification with StructuredFormatter - JUST LIKE CHARACTER NOTIFICATIONS
+          AppLogger.processor_info("Using StructuredFormatter for system notification")
+          generic_notification = StructuredFormatter.format_system_notification(map_system)
+
+          # Send using the standard send_to_discord helper
+          send_to_discord(generic_notification, :system_tracking)
+
+          # Record stats
+          Stats.increment(:systems)
+
+          :ok
 
         {:ok, :skip} ->
           # This is a duplicate, skip notification
           AppLogger.processor_info("Skipping duplicate system notification",
             system_id: system_id,
-            system_name: system.name
+            system_name: system_name
           )
 
           :ok
@@ -386,14 +422,14 @@ defmodule WandererNotifier.Discord.Notifier do
           # Error during deduplication check, log it
           AppLogger.processor_error("Error checking system deduplication",
             system_id: system_id,
-            system_name: system.name,
+            system_name: system_name,
             error: inspect(reason)
           )
 
           # Default to sending notification in case of error
           AppLogger.processor_info("Proceeding with notification despite deduplication error",
             system_id: system_id,
-            system_name: system.name
+            system_name: system_name
           )
 
           # Recursively call self with same system data
@@ -402,123 +438,72 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Handle sending a new system notification after deduplication check
-  defp handle_new_system_notification(system, system_id) do
-    AppLogger.processor_info("Processing new system notification",
-      system_id: system_id,
-      system_name: system.name
-    )
-
-    try do
-      Stats.increment(:systems)
-    rescue
-      _ -> :ok
-    end
-
-    # Check if this is the first system notification since startup
-    is_first_notification = Stats.is_first_notification?(:system)
-
-    # Mark that we've sent the first notification if this is it
-    if is_first_notification do
-      Stats.mark_notification_sent(:system)
-      AppLogger.processor_info("Sending first system notification in enriched format")
-    end
-
-    # For first notification or with valid license, use enriched format
-    if is_first_notification || License.status().valid do
-      send_enriched_system_notification(system)
+  # Helper to convert to MapSystem struct if needed
+  defp ensure_map_system(system) do
+    if is_struct(system, MapSystem) do
+      # Already a MapSystem, just return it
+      system
     else
-      send_plain_system_notification(system)
+      # Try to create MapSystem from a map or other structure
+      try do
+        # Check if we need to convert it
+        if is_map(system) do
+          MapSystem.new(system)
+        else
+          # Log error and return original
+          AppLogger.processor_error(
+            "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
+          )
+
+          system
+        end
+      rescue
+        e ->
+          # Log error and return original on conversion failure
+          AppLogger.processor_error(
+            "[Discord.Notifier] Failed to convert to MapSystem: #{Exception.message(e)}"
+          )
+
+          system
+      end
     end
   end
 
-  # Send an enriched system notification with full formatting
-  defp send_enriched_system_notification(system) do
-    # Create notification with StructuredFormatter
-    generic_notification = StructuredFormatter.format_system_notification(system)
-    discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+  # Safely extract system ID
+  defp extract_system_id(system) do
+    # Check solar_system_id first (most common field)
+    system_id = extract_id_field(system, [:solar_system_id, "solar_system_id"])
 
-    # Add recent kills to the embed if available and system is a wormhole
-    if WandererNotifier.Data.MapSystem.wormhole?(system) do
-      maybe_add_recent_kills_to_embed(discord_embed, system.solar_system_id)
-    else
-      # Not a wormhole system, send the embed as is
-      NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
-    end
+    # If not found, try more generic id fields
+    if system_id, do: system_id, else: extract_id_field(system, [:id, "id"]) || "unknown"
   end
 
-  # Check for recent kills in the system and add them to the embed if found
-  defp maybe_add_recent_kills_to_embed(discord_embed, solar_system_id) do
-    recent_kills =
-      WandererNotifier.Services.KillProcessor.get_recent_kills()
-      |> Enum.filter(fn kill ->
-        kill_system_id = get_in(kill, ["esi_data", "solar_system_id"])
-        kill_system_id == solar_system_id
-      end)
-
-    # Update the embed with recent kills if available
-    if recent_kills && recent_kills != [] do
-      # We found recent kills in this system, add them to the embed
-      recent_kills_field = %{
-        "name" => "Recent Kills",
-        "value" => format_recent_kills_list(recent_kills),
-        "inline" => false
-      }
-
-      # Add the field to the existing embed
-      updated_embed =
-        Map.update(discord_embed, "fields", [recent_kills_field], fn fields ->
-          fields ++ [recent_kills_field]
-        end)
-
-      # Send the updated embed
-      NotifierFactory.notify(:send_discord_embed, [updated_embed, :general])
-    else
-      # No recent kills, send the embed as is
-      NotifierFactory.notify(:send_discord_embed, [discord_embed, :general])
-    end
-  end
-
-  # Send a plain text system notification for non-licensed users
-  defp send_plain_system_notification(system) do
-    AppLogger.processor_info("License not valid, sending plain text system notification",
-      system_id: system.solar_system_id,
-      system_name: system.name
-    )
-
-    # Create plain text message using struct fields directly
-    display_name = WandererNotifier.Data.MapSystem.format_display_name(system)
-    type_desc = WandererNotifier.Data.MapSystem.get_type_description(system)
-
-    message = "New System Discovered: #{display_name} - #{type_desc}"
-
-    # Add statics for wormhole systems
-    if WandererNotifier.Data.MapSystem.wormhole?(system) && length(system.statics) > 0 do
-      statics_text = format_statics_list(system.statics)
-      updated_message = "#{message} - Statics: #{statics_text}"
-      send_message(updated_message, :system_tracking)
-    else
-      send_message(message, :system_tracking)
-    end
-  end
-
-  # Helper to format a list of statics in a plain text format
-  defp format_statics_list(statics) when is_list(statics) do
-    Enum.map_join(statics, ", ", fn static ->
+  # Helper to extract ID from various field names
+  defp extract_id_field(system, field_names) do
+    Enum.find_value(field_names, fn field ->
       cond do
-        is_map(static) && (Map.has_key?(static, "name") || Map.has_key?(static, :name)) ->
-          Map.get(static, "name") || Map.get(static, :name)
-
-        is_binary(static) ->
-          static
-
-        true ->
-          "Unknown"
+        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        true -> nil
       end
     end)
   end
 
-  defp format_statics_list(_), do: "None"
+  # Safely extract system name
+  defp extract_system_name(system) do
+    extract_field_value(system, [:name, "name"], "Unknown System")
+  end
+
+  # Helper to extract a field with a default value
+  defp extract_field_value(system, field_names, default) do
+    Enum.find_value(field_names, default, fn field ->
+      cond do
+        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
+        true -> nil
+      end
+    end)
+  end
 
   # -- HELPER FOR SENDING PAYLOAD --
 
@@ -683,33 +668,36 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Format recent kills list for notification
-  defp format_recent_kills_list(kills) when is_list(kills) do
-    Enum.map_join(kills, "\n", fn kill ->
-      kill_id = Map.get(kill, "killmail_id")
-      zkb = Map.get(kill, "zkb") || %{}
-      esi_data = Map.get(kill, "esi_data") || %{}
-
-      victim = Map.get(esi_data, "victim") || %{}
-      _ship_type_id = Map.get(victim, "ship_type_id")
-      ship_name = Map.get(victim, "ship_type_name", "Unknown Ship")
-      character_id = Map.get(victim, "character_id")
-      character_name = Map.get(victim, "character_name", "Unknown Pilot")
-
-      kill_value = Map.get(zkb, "totalValue")
-
-      formatted_value =
-        if kill_value,
-          do: " - #{format_isk_value(kill_value)}",
-          else: ""
-
-      if character_id && character_name != "Unknown Pilot" do
-        "[#{character_name}](https://zkillboard.com/kill/#{kill_id}/) - #{ship_name}#{formatted_value}"
-      else
-        "#{ship_name}#{formatted_value}"
-      end
-    end)
+  @doc """
+  Routes different types of notifications to the appropriate function.
+  This is a helper function used by the NotifierFactory.
+  """
+  def send_notification(:send_message, [message]) when is_binary(message) do
+    send_message(message)
   end
 
-  defp format_recent_kills_list(_), do: "No recent kills found"
+  def send_notification(:send_embed, [title, description, url, color]) do
+    send_embed(title, description, url, color)
+  end
+
+  def send_notification(:send_embed, [title, description]) do
+    send_embed(title, description)
+  end
+
+  def send_notification(:send_embed, [title, description, url]) do
+    send_embed(title, description, url)
+  end
+
+  def send_notification(type, data) do
+    AppLogger.processor_error("Unknown notification type", type: type, data: inspect(data))
+    {:error, :unknown_notification_type}
+  end
+
+  @doc """
+  Sends a kill notification embed to Discord.
+  """
+  @impl true
+  def send_kill_embed(kill, killmail_id) do
+    send_enriched_kill_embed(kill, killmail_id)
+  end
 end

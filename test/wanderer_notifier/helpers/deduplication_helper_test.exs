@@ -1,53 +1,61 @@
 defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   alias WandererNotifier.Helpers.DeduplicationHelper
 
   setup do
-    # Start with a different registered name to avoid conflicts
-    Process.flag(:trap_exit, true)
-
-    # Only try to start if it's not already started
-    if Process.whereis(DeduplicationHelper) == nil do
-      {:ok, _pid} = DeduplicationHelper.start_link([])
+    # First clear any existing data to ensure tests start with a clean state
+    try do
+      DeduplicationHelper.clear_all()
+    rescue
+      _ -> :ok
     end
 
-    # Clear all deduplication entries before each test
-    DeduplicationHelper.clear_all()
+    # Only start the process if it's not already running
+    if !Process.whereis(DeduplicationHelper) do
+      start_supervised!(DeduplicationHelper)
+    end
+
     :ok
   end
 
-  describe "check_and_mark/1" do
-    test "returns new for first call with a key" do
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:key1")
-    end
+  test "check_and_mark/1 marks entries as seen" do
+    test_key = "test:key"
 
-    test "returns duplicate for second call with the same key" do
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:key2")
-      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark("test:key2")
-    end
+    # First check should return {:ok, :new} (not seen)
+    assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
 
-    test "different keys are tracked separately" do
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:key3")
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark("test:key4")
-      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark("test:key3")
-    end
+    # Second check should return {:ok, :duplicate} (already seen)
+    assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(test_key)
+  end
 
-    @tag :ttl_test
-    test "entries expire after TTL" do
-      # Mock a short TTL for the test by sending a manual expiration message
-      test_key = "test:ttl_expire"
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
-      assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(test_key)
+  test "check_and_mark/1 entries expire after TTL" do
+    test_key = "test:ttl_expire"
 
-      # Manually trigger expiration
-      send(DeduplicationHelper, {:clear_dedup_key, test_key})
+    # First check should return {:ok, :new} (not seen)
+    assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
 
-      # Small delay to allow processing
-      Process.sleep(100)
+    # Clear the key directly (simulating TTL expiry)
+    :ok = DeduplicationHelper.handle_clear_key(test_key)
 
-      # Should be treated as new again after expiration
-      assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
-    end
+    # After clearing, should return {:ok, :new} again
+    assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+  end
+
+  test "check_and_mark/1 handles different keys independently" do
+    key1 = "test:key1"
+    key2 = "test:key2"
+
+    # First key should not be seen
+    assert {:ok, :new} = DeduplicationHelper.check_and_mark(key1)
+
+    # Second key should also not be seen
+    assert {:ok, :new} = DeduplicationHelper.check_and_mark(key2)
+
+    # First key should now be seen
+    assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(key1)
+
+    # Second key should also be seen
+    assert {:ok, :duplicate} = DeduplicationHelper.check_and_mark(key2)
   end
 
   describe "check_and_mark_system/1" do

@@ -10,8 +10,8 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
       use WandererNotifier.Schedulers.BaseScheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
-      alias WandererNotifier.Logger, as: AppLogger
       alias WandererNotifier.Config.Timing
+      alias WandererNotifier.Logger, as: AppLogger
 
       # Default schedule time (hour and minute) if not specified
       @default_hour unquote(Keyword.get(opts, :default_hour, 12))

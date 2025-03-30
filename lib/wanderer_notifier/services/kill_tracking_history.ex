@@ -5,19 +5,23 @@ defmodule WandererNotifier.Services.KillTrackingHistory do
   """
 
   require Logger
-  alias WandererNotifier.Resources.KillTrackingHistory
   alias WandererNotifier.Resources.Api
+  alias WandererNotifier.Resources.KillTrackingHistory
 
   @doc """
   Records a new comparison result in the history.
   """
   def record_comparison(character_id, comparison_result, time_range_type) do
+    our_kills = Map.get(comparison_result, :our_kills, 0)
+    zkill_kills = Map.get(comparison_result, :zkill_kills, 0)
+    missing_kills = Map.get(comparison_result, :missing_kills, [])
+
     Api.create(KillTrackingHistory, %{
       character_id: character_id,
       timestamp: DateTime.utc_now(),
-      our_kills_count: comparison_result.our_kills,
-      zkill_kills_count: comparison_result.zkill_kills,
-      missing_kills: comparison_result.missing_kills,
+      our_kills_count: our_kills,
+      zkill_kills_count: zkill_kills,
+      missing_kills: missing_kills,
       analysis_results: get_analysis_results(comparison_result),
       api_metrics: get_api_metrics(),
       time_range_type: time_range_type
