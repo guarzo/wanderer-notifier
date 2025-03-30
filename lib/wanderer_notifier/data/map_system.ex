@@ -479,4 +479,57 @@ defmodule WandererNotifier.Data.MapSystem do
       get_in(map_response, ["staticInfo", "isShattered"]) ||
       false
   end
+
+  @doc """
+  Safely gets the statics list for a system, ensuring it's never nil.
+  Important for notification formatting.
+
+  ## Parameters
+    - system: A MapSystem struct
+
+  ## Returns
+    - List of statics, or empty list if none
+  """
+  def get_statics(system) do
+    cond do
+      is_list(system.static_details) and length(system.static_details) > 0 ->
+        system.static_details
+      is_list(system.statics) and length(system.statics) > 0 ->
+        system.statics
+      system.system_type == :wormhole ->
+        # For wormholes with no statics info, provide basic info based on class
+        add_default_statics_by_class(system)
+      true ->
+        []
+    end
+  end
+
+  # Add default statics based on wormhole class
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 1", "C1"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 2", "C2"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 3", "C3"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 4", "C4"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 5", "C5"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(%{class_title: class_title}) when class_title in ["Class 6", "C6"] do
+    ["K162"]
+  end
+
+  defp add_default_statics_by_class(_system) do
+    []
+  end
 end

@@ -5,7 +5,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Helpers.NotificationHelpers
+  alias WandererNotifier.Data.Character
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.TrackedCharacter
@@ -371,7 +371,14 @@ defmodule WandererNotifier.Api.Map.Characters do
   # Build a map of character_id -> character from a list
   defp build_character_map_from_list(characters) do
     Enum.reduce(characters, %{}, fn char, acc ->
-      char_id = Map.get(char, "character_id")
+      # Handle both struct and map character types
+      char_id =
+        if is_struct(char, Character) do
+          char.character_id
+        else
+          Map.get(char, "character_id") || Map.get(char, :character_id)
+        end
+
       if char_id, do: Map.put(acc, char_id, char), else: acc
     end)
   end
@@ -379,7 +386,14 @@ defmodule WandererNotifier.Api.Map.Characters do
   # Add new characters to an existing map
   defp add_new_characters_to_map(map, characters) do
     Enum.reduce(characters || [], map, fn char, acc ->
-      char_id = Map.get(char, "character_id")
+      # Handle both struct and map character types
+      char_id =
+        if is_struct(char, Character) do
+          char.character_id
+        else
+          Map.get(char, "character_id") || Map.get(char, :character_id)
+        end
+
       if char_id, do: Map.put(acc, char_id, char), else: acc
     end)
   end
@@ -444,11 +458,6 @@ defmodule WandererNotifier.Api.Map.Characters do
     notifier.send_new_tracked_character_notification(character_info)
   end
 
-  defp remove_nil_values(map) do
-    map
-    |> Enum.reject(fn {_, v} -> is_nil(v) end)
-    |> Map.new()
-  end
 
   defp find_new_characters(_new_chars, []) do
     # If there are no cached characters, this might be the first run
@@ -461,13 +470,28 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp new_character?(char, cached_chars) do
-    char_id = Map.get(char, "character_id")
+    # Get character_id from either struct or map
+    char_id =
+      if is_struct(char, Character) do
+        char.character_id
+      else
+        Map.get(char, "character_id") || Map.get(char, :character_id)
+      end
+
     not character_exists_in_cache?(char_id, cached_chars)
   end
 
   defp character_exists_in_cache?(char_id, cached_chars) do
     Enum.any?(cached_chars, fn c ->
-      Map.get(c, "character_id") == char_id
+      # Get the character_id from either a struct or map
+      c_id =
+        if is_struct(c, Character) do
+          c.character_id
+        else
+          Map.get(c, "character_id") || Map.get(c, :character_id)
+        end
+
+      c_id == char_id
     end)
   end
 
@@ -487,58 +511,23 @@ defmodule WandererNotifier.Api.Map.Characters do
 
     if is_nil(eve_id) do
       # This is a critical warning - we can't process characters without a valid eve_id
-      AppLogger.api_warn("Character data missing eve_id", data: inspect(character_data))
-    end
+      AppLogger.api_warn(
+        "[Characters] Character data missing eve_id - cannot process correctly",
+        character_data: inspect(character_data, limit: 200)
+      )
 
-    # Validate the eve_id
-    validated_eve_id = validate_eve_id(eve_id)
-
-    # Build the character map
-    character_map = build_character_map(character_data, validated_eve_id)
-
-    # Remove nil values
-    remove_nil_values(character_map)
-  end
-
-  # Validate and convert eve_id to appropriate format
-  defp validate_eve_id(id) when is_integer(id), do: id
-
-  defp validate_eve_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {int_id, ""} ->
-        int_id
-
-      _ ->
-        AppLogger.api_warn("Invalid eve_id format, not an integer string", eve_id: id)
-        id
-    end
-  end
-
-  defp validate_eve_id(other) do
-    AppLogger.api_warn("Unexpected eve_id format", eve_id: other)
-    other
-  end
-
-  # Build a standardized character map from the raw data
-  defp build_character_map(data, validated_eve_id) do
-    base_map = %{
-      # CRITICAL: Set character_id from eve_id for consistent field naming in the app
-      "character_id" => validated_eve_id,
-      "character_name" => Map.get(data, "name") || Map.get(data, "character_name"),
-      "corporation_id" => Map.get(data, "corporation_id"),
-      "corporation_name" =>
-        Map.get(data, "corporation_name") ||
-          Map.get(data, "corporation_ticker"),
-      "alliance_id" => Map.get(data, "alliance_id"),
-      "alliance_name" => Map.get(data, "alliance_name") || Map.get(data, "alliance_ticker")
-    }
-
-    # Add tracking flag with default value if not present
-    if Map.has_key?(data, "tracked") do
-      Map.put(base_map, "tracked", Map.get(data, "tracked"))
+      nil
     else
-      # Default to tracked=true if not specified
-      Map.put(base_map, "tracked", true)
+      # Create a Character struct directly with the required fields
+      %Character{
+        character_id: eve_id,
+        name: Map.get(character_data, "name"),
+        corporation_id: character_data["corporation_id"],
+        corporation_ticker: character_data["corporation_ticker"],
+        alliance_id: character_data["alliance_id"],
+        alliance_ticker: character_data["alliance_ticker"],
+        tracked: Map.get(character_data, "tracked", true)
+      }
     end
   end
 
@@ -550,7 +539,7 @@ defmodule WandererNotifier.Api.Map.Characters do
 
   defp try_send_character_notification(char) do
     # Extract the character ID
-    character_id = NotificationHelpers.extract_character_id(char)
+    character_id = Map.get(char, :character_id)
     notify_character_if_needed(character_id, char)
   rescue
     e ->
@@ -574,8 +563,8 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Create the character notification data structure
     character_info = %{
       "character_id" => character_id,
-      "character_name" => NotificationHelpers.extract_character_name(char),
-      "corporation_name" => NotificationHelpers.extract_corporation_name(char)
+      "character_name" => char.name,
+      "corporation_name" => char.corporation_ticker || char.corporation_name || "Unknown"
     }
 
     send_character_notification(character_info)
@@ -594,23 +583,42 @@ defmodule WandererNotifier.Api.Map.Characters do
     # Log what we're working with for debugging
     AppLogger.api_debug("Processing nested character data",
       has_nested_character: Map.has_key?(char, "character"),
-      nested_keys: Map.keys(character_data),
-      has_eve_id: Map.has_key?(character_data, "eve_id"),
-      eve_id: Map.get(character_data, "eve_id")
+      nested_keys: Map.keys(character_data || %{}),
+      has_eve_id: Map.has_key?(character_data || %{}, "eve_id"),
+      eve_id: Map.get(character_data || %{}, "eve_id")
     )
 
-    # CRITICAL: We should ONLY use eve_id from the nested character, nothing else
-    # The API always returns data in this format
-    eve_id = Map.get(character_data, "eve_id")
-
-    if is_nil(eve_id) do
+    if is_nil(character_data) do
       AppLogger.api_error(
-        "Missing eve_id in character data - this is critical. API format may have changed.",
-        character_data: inspect(character_data, limit: 200)
+        "Missing character data in nested structure - this is critical. API format may have changed.",
+        char: inspect(char, limit: 200)
       )
-    end
 
-    # Transform the data to use consistent field names, prioritizing eve_id
-    transform_character_data(character_data)
+      nil
+    else
+      # Extract the critical eve_id from nested data
+      eve_id = Map.get(character_data, "eve_id")
+
+      if is_nil(eve_id) do
+        AppLogger.api_error(
+          "Missing eve_id in character data - this is critical. API format may have changed.",
+          character_data: inspect(character_data, limit: 200)
+        )
+
+        nil
+      else
+        # Create a Character struct directly with the fields from the nested structure
+        # Also incorporate top-level fields like "tracked" if present
+        %Character{
+          character_id: eve_id,
+          name: Map.get(character_data, "name"),
+          corporation_id: character_data["corporation_id"],
+          corporation_ticker: character_data["corporation_ticker"],
+          alliance_id: character_data["alliance_id"],
+          alliance_ticker: character_data["alliance_ticker"],
+          tracked: Map.get(char, "tracked", true)
+        }
+      end
+    end
   end
 end

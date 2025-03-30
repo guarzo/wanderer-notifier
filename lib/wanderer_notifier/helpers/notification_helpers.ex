@@ -126,35 +126,32 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @spec send_test_system_notification() ::
           {:ok, String.t(), String.t()} | {:error, :no_tracked_systems}
   def send_test_system_notification do
-    # SystemsClient stores systems at map:systems - check only there
-    case CacheRepo.get("map:systems") do
-      nil ->
-        AppLogger.processor_warn("No systems found - map:systems cache is nil")
-        {:error, :no_tracked_systems}
+    alias WandererNotifier.Api.Map.SystemsClient
 
-      [] ->
-        AppLogger.processor_warn("No systems found - map:systems cache is empty")
-        {:error, :no_tracked_systems}
-
-      systems when is_list(systems) ->
-        # We found systems, proceed with notification
-        selected_system = Enum.random(systems)
-
+    # Use the new helper method that mimics the character approach
+    case SystemsClient.get_system_for_notification() do
+      {:ok, system} ->
+        # Log clear details about the selected system
         AppLogger.processor_info("Selected system for test notification",
-          system_id: selected_system.solar_system_id,
-          name: selected_system.name
+          system_id: system.solar_system_id,
+          name: system.name,
+          type: system.system_type
         )
 
+        # Send the notification
         notifier = NotifierFactory.get_notifier()
-        notifier.send_new_system_notification(selected_system)
-        {:ok, selected_system.solar_system_id, selected_system.name}
+        result = notifier.send_new_system_notification(system)
 
-      invalid ->
-        # This shouldn't happen but log it just in case
-        AppLogger.processor_warn("Invalid content in map:systems cache",
-          content_type: typeof(invalid)
+        # Log the result and return
+        AppLogger.processor_info("System notification sent",
+          result: inspect(result)
         )
 
+        {:ok, system.solar_system_id, system.name}
+
+      {:error, _reason} ->
+        # No systems available
+        AppLogger.processor_warn("No systems found for notification")
         {:error, :no_tracked_systems}
     end
   end

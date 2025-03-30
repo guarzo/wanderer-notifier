@@ -8,6 +8,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Cache.CacheHelpers
   alias WandererNotifier.Core.{Config, Features, License, Stats}
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
@@ -808,44 +809,127 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   get "/test-system-notification" do
     AppLogger.api_info("Test system notification endpoint called")
 
-    # Simply use CacheRepo consistently
-    case CacheRepo.get("map:systems") do
-      systems when is_list(systems) and length(systems) > 0 ->
-        # Use a system from map:systems
-        selected_system = Enum.random(systems)
-        AppLogger.api_info("Found system in map:systems", %{name: selected_system.name})
+    # Use a simplified approach and get systems directly from cache
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 
-        # Get the notifier and send the notification
-        notifier = NotifierFactory.get_notifier()
-        notifier.send_new_system_notification(selected_system)
+    # Try to get systems from cache
+    cached_systems = CacheRepo.get("map:systems")
 
-        # Return success
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          200,
-          Jason.encode!(%{
-            success: true,
-            message: "Test system notification sent",
-            details:
-              "Sent notification for system #{selected_system.name} (#{selected_system.solar_system_id})"
-          })
-        )
+    if is_list(cached_systems) and length(cached_systems) > 0 do
+      # Log cache retrieval success
+      AppLogger.api_info("Using #{length(cached_systems)} systems from cache")
 
-      _ ->
-        # No systems found
-        AppLogger.api_warn("No systems found in map:systems cache for test notification")
+      # Select a random system for notification
+      system = Enum.random(cached_systems)
+      system_name = system.name
+      system_id = system.solar_system_id
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(
-          404,
-          Jason.encode!(%{
-            success: false,
-            message: "No systems found in map:systems cache",
-            details: "No system notification could be sent"
-          })
-        )
+      AppLogger.api_info("Using system for notification: #{system_name} (#{system_id})")
+
+      # Get notifier and send notification
+      notifier = NotifierFactory.get_notifier()
+      notification_result = notifier.send_new_system_notification(system)
+
+      # Return success
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        200,
+        Jason.encode!(%{
+          success: true,
+          message: "System notification sent",
+          details: "Notification for system #{system_name}",
+          system_id: system_id
+        })
+      )
+    else
+      # Try to update systems before giving up
+      AppLogger.api_warn("No systems found in cache, trying to update systems")
+
+      alias WandererNotifier.Api.Map.SystemsClient
+
+      case SystemsClient.update_systems() do
+        {:ok, systems} when is_list(systems) and length(systems) > 0 ->
+          # Now we have systems, select one
+          system = Enum.random(systems)
+          system_name = system.name
+          system_id = system.solar_system_id
+
+          AppLogger.api_info(
+            "Using system for notification after update: #{system_name} (#{system_id})"
+          )
+
+          # Get notifier and send notification
+          notifier = NotifierFactory.get_notifier()
+          notification_result = notifier.send_new_system_notification(system)
+
+          # Return success
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              success: true,
+              message: "System notification sent",
+              details: "Notification for system #{system_name} after update",
+              system_id: system_id
+            })
+          )
+
+        _ ->
+          # No systems found even after update
+          AppLogger.api_error("No systems found even after trying to update")
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            404,
+            Jason.encode!(%{
+              success: false,
+              message: "No systems found",
+              details: "Could not send system notification"
+            })
+          )
+      end
+    end
+  end
+
+  # Helper function to get systems for notification
+
+  # Ensure we have a proper MapSystem for notifications
+  defp ensure_map_system(system) do
+    if is_struct(system, MapSystem) do
+      system
+    else
+      # Try to create one from the map
+      try do
+        MapSystem.new(system)
+      rescue
+        # Fall back to the original if conversion fails
+        _ -> system
+      end
+    end
+  end
+
+  # Extract system name safely
+  defp extract_system_name(system) do
+    cond do
+      is_struct(system, MapSystem) -> system.name
+      is_map(system) && Map.has_key?(system, "name") -> system["name"]
+      is_map(system) && Map.has_key?(system, :name) -> system[:name]
+      true -> "Unknown System"
+    end
+  end
+
+  # Extract system ID safely
+  defp extract_system_id(system) do
+    cond do
+      is_struct(system, MapSystem) -> system.solar_system_id
+      is_map(system) && Map.has_key?(system, "solar_system_id") -> system["solar_system_id"]
+      is_map(system) && Map.has_key?(system, :solar_system_id) -> system[:solar_system_id]
+      is_map(system) && Map.has_key?(system, "id") -> system["id"]
+      is_map(system) && Map.has_key?(system, :id) -> system[:id]
+      true -> "Unknown ID"
     end
   end
 

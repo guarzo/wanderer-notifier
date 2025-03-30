@@ -14,6 +14,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
 
   @doc """
   Fetches static information for a specific solar system.
+  Uses a more robust approach with proper validation and timeouts.
 
   ## Parameters
     - solar_system_id: The EVE Online ID of the solar system
@@ -23,40 +24,65 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
-    with {:ok, url} <- build_system_static_info_url(solar_system_id),
-         {:ok, response} <- make_api_request(url, solar_system_id),
-         {:ok, parsed_response} <- process_api_response(response),
-         {:ok, data} <- validate_static_info(parsed_response) do
-      AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
-      {:ok, data}
-    end
-  end
+    # Add detailed logging for debugging
+    AppLogger.api_info("[SystemStaticInfo] Fetching static info for system #{solar_system_id}")
 
-  defp build_system_static_info_url(solar_system_id) do
-    case extract_base_domain() do
-      {:ok, base_domain} ->
-        url = "#{base_domain}/api/common/system-static-info?id=#{solar_system_id}"
-        {:ok, url}
+    # Create a task for the API request to add timeout handling
+    task = Task.async(fn ->
+      # Build the system static info URL using UrlBuilder
+      case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
+        {:ok, url} ->
+          # Log URL for debugging
+          AppLogger.api_debug("[SystemStaticInfo] Requesting static info from URL: #{url}")
 
-      {:error, reason} = error ->
-        AppLogger.api_error("[SystemStaticInfo] Failed to construct URL: #{inspect(reason)}")
-        error
-    end
-  end
+          # Get auth headers
+          headers = UrlBuilder.get_auth_headers()
 
-  defp make_api_request(url, solar_system_id) do
-    headers = UrlBuilder.get_auth_headers()
-    # Log request details for debugging
-    AppLogger.api_debug("[SystemStaticInfo] Requesting static info for system #{solar_system_id}")
-    AppLogger.api_debug("[SystemStaticInfo] URL: #{url}")
+          # Make API request
+          case Client.get(url, headers) do
+            {:ok, response} ->
+              # Process the response with proper validation
+              case process_api_response(response) do
+                {:ok, parsed_response} ->
+                  # Validate the static info format
+                  case validate_static_info(parsed_response) do
+                    {:ok, data} ->
+                      # Successfully validated
+                      AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
+                      {:ok, data}
 
-    case Client.get(url, headers) do
-      {:ok, _response} = success ->
-        success
+                    error -> error
+                  end
 
-      {:error, reason} = error ->
-        AppLogger.api_error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
-        error
+                error -> error
+              end
+
+            {:error, reason} ->
+              AppLogger.api_error("[SystemStaticInfo] Request failed: #{inspect(reason)}")
+              {:error, reason}
+          end
+
+        {:error, reason} ->
+          AppLogger.api_error("[SystemStaticInfo] Failed to build URL: #{inspect(reason)}")
+          {:error, reason}
+      end
+    end)
+
+    # Wait for the task with a timeout (3 seconds)
+    case Task.yield(task, 3_000) do
+      {:ok, result} ->
+        # Log result and return
+        case result do
+          {:ok, _} -> AppLogger.api_info("[SystemStaticInfo] Successfully got static info")
+          {:error, reason} -> AppLogger.api_warn("[SystemStaticInfo] Static info failed: #{inspect(reason)}")
+        end
+        result
+
+      nil ->
+        # Task took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.api_error("[SystemStaticInfo] Static info request timed out")
+        {:error, :timeout}
     end
   end
 
@@ -89,38 +115,56 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - system: A WandererNotifier.Data.MapSystem struct
 
   ## Returns
-    - {:ok, enhanced_system} on success
-    - {:error, reason} on failure
+    - {:ok, enhanced_system} on success with enriched data
+    - {:ok, system} on failure but returns the original system
   """
   def enrich_system(system) do
     alias WandererNotifier.Data.MapSystem
 
-    case get_system_static_info(system.solar_system_id) do
-      {:ok, static_info} ->
-        # Update the map system with static information
-        enhanced_system = MapSystem.update_with_static_info(system, static_info)
-        {:ok, enhanced_system}
+    # Log the start of enrichment
+    AppLogger.api_info("[SystemStaticInfo] Starting enrichment for system #{system.name} (ID: #{system.solar_system_id})")
 
-      {:error, reason} ->
-        Logger.warning(
-          "[SystemStaticInfo] Could not enrich system #{system.name}: #{inspect(reason)}"
-        )
+    # Only try to enrich if the system has a valid ID
+    if system.solar_system_id && system.solar_system_id > 0 do
+      # Try to get static info with proper error handling
+      case get_system_static_info(system.solar_system_id) do
+        {:ok, static_info} ->
+          # Log success with info about what we got
+          AppLogger.api_info(
+            "[SystemStaticInfo] Successfully got static info for #{system.name}",
+            keys: Map.keys(static_info)
+          )
 
-        {:error, reason}
-    end
-  end
+          # Update the map system with static information
+          enhanced_system = MapSystem.update_with_static_info(system, static_info)
 
-  # Private helper functions
+          # Log what was added
+          AppLogger.api_debug(
+            "[SystemStaticInfo] System enriched successfully",
+            statics: enhanced_system.statics,
+            type_description: enhanced_system.type_description,
+            class_title: enhanced_system.class_title
+          )
 
-  defp extract_base_domain do
-    base_url = Config.map_url()
+          {:ok, enhanced_system}
 
-    if is_nil(base_url) or base_url == "" do
-      {:error, "MAP_URL is not configured"}
+        {:error, reason} ->
+          # Log error but continue with original system
+          AppLogger.api_warn(
+            "[SystemStaticInfo] Could not enrich system #{system.name}: #{inspect(reason)}. Using basic system."
+          )
+
+          # Return original system - IMPORTANT: Don't error out!
+          {:ok, system}
+      end
     else
-      # Extract base domain - just the domain without the slug path
-      base_domain = base_url |> String.split("/") |> Enum.take(3) |> Enum.join("/")
-      {:ok, base_domain}
+      # Invalid system ID - log and return original
+      AppLogger.api_warn(
+        "[SystemStaticInfo] Cannot enrich system with invalid ID: #{inspect(system.solar_system_id)}"
+      )
+
+      # Still return original system
+      {:ok, system}
     end
   end
 end

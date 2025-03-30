@@ -66,6 +66,21 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- HELPER FUNCTIONS --
 
+  # Helper to determine type of value for logging
+  defp typeof(term) when is_binary(term), do: "string"
+  defp typeof(term) when is_boolean(term), do: "boolean"
+  defp typeof(term) when is_integer(term), do: "integer"
+  defp typeof(term) when is_float(term), do: "float"
+  defp typeof(term) when is_map(term), do: "map"
+  defp typeof(term) when is_list(term), do: "list"
+  defp typeof(term) when is_atom(term), do: "atom"
+  defp typeof(term) when is_tuple(term), do: "tuple"
+  defp typeof(term) when is_function(term), do: "function"
+  defp typeof(term) when is_pid(term), do: "pid"
+  defp typeof(term) when is_reference(term), do: "reference"
+  defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
+  defp typeof(_), do: "unknown"
+
   # -- MESSAGE SENDING --
 
   @doc """
@@ -346,28 +361,59 @@ defmodule WandererNotifier.Discord.Notifier do
   # -- NEW SYSTEM NOTIFICATION --
 
   @impl WandererNotifier.NotifierBehaviour
-  def send_new_system_notification(system)
-      when is_struct(system, MapSystem) do
+  def send_new_system_notification(system) do
+    # Log system details before processing to diagnose cache issues
+    AppLogger.processor_info(
+      "[NEW_SYSTEM_NOTIFICATION] Processing system notification request",
+      system_type: typeof(system),
+      system_preview: inspect(system, limit: 200)
+    )
+
     if env() == :test do
-      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system.solar_system_id}")
+      # Get system ID safely regardless of structure
+      system_id = extract_system_id(system)
+      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
     else
-      # Extract system ID for deduplication check
-      system_id = system.solar_system_id
+      # Extract system data safely with fallbacks
+      system_id = extract_system_id(system)
+      system_name = extract_system_name(system)
+
+      # Log extracted details for debugging
+      AppLogger.processor_info(
+        "[NEW_SYSTEM_NOTIFICATION] Extracted system details",
+        system_id: system_id,
+        system_name: system_name
+      )
 
       # Check if this is a duplicate notification
-      case NotificationDeterminer.check_deduplication(
-             :system,
-             system_id
-           ) do
+      case NotificationDeterminer.check_deduplication(:system, system_id) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
-          handle_new_system_notification(system, system_id)
+          AppLogger.processor_info("Processing new system notification",
+            system_id: system_id,
+            system_name: system_name
+          )
+
+          # Convert to MapSystem struct if needed for formatter
+          map_system = ensure_map_system(system)
+
+          # Create notification with StructuredFormatter - JUST LIKE CHARACTER NOTIFICATIONS
+          AppLogger.processor_info("Using StructuredFormatter for system notification")
+          generic_notification = StructuredFormatter.format_system_notification(map_system)
+
+          # Send using the standard send_to_discord helper
+          send_to_discord(generic_notification, :system_tracking)
+
+          # Record stats
+          Stats.increment(:systems)
+
+          :ok
 
         {:ok, :skip} ->
           # This is a duplicate, skip notification
           AppLogger.processor_info("Skipping duplicate system notification",
             system_id: system_id,
-            system_name: system.name
+            system_name: system_name
           )
 
           :ok
@@ -376,14 +422,14 @@ defmodule WandererNotifier.Discord.Notifier do
           # Error during deduplication check, log it
           AppLogger.processor_error("Error checking system deduplication",
             system_id: system_id,
-            system_name: system.name,
+            system_name: system_name,
             error: inspect(reason)
           )
 
           # Default to sending notification in case of error
           AppLogger.processor_info("Proceeding with notification despite deduplication error",
             system_id: system_id,
-            system_name: system.name
+            system_name: system_name
           )
 
           # Recursively call self with same system data
@@ -392,16 +438,113 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  # Handle sending a new system notification after deduplication check
-  defp handle_new_system_notification(system, system_id) do
-    AppLogger.processor_info("Processing new system notification",
-      system_id: system_id,
-      system_name: system.name
-    )
+  # Helper to convert to MapSystem struct if needed
+  defp ensure_map_system(system) do
+    if is_struct(system, MapSystem) do
+      # Already a MapSystem, just return it
+      system
+    else
+      # Try to create MapSystem from a map or other structure
+      try do
+        # Check if we need to convert it
+        cond do
+          is_map(system) ->
+            MapSystem.new(system)
 
-    Stats.increment(:systems)
-  rescue
-    _ -> :ok
+          true ->
+            # Log error and return original
+            AppLogger.processor_error(
+              "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
+            )
+
+            system
+        end
+      rescue
+        e ->
+          # Log error and return original on conversion failure
+          AppLogger.processor_error(
+            "[Discord.Notifier] Failed to convert to MapSystem: #{Exception.message(e)}"
+          )
+
+          system
+      end
+    end
+  end
+
+  # Helper functions for safe data extraction
+
+  # Safely extract system ID
+  defp extract_system_id(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
+      is_map(system) && Map.has_key?(system, :solar_system_id) -> system.solar_system_id
+      is_map(system) && Map.has_key?(system, "solar_system_id") -> system["solar_system_id"]
+      is_map(system) && Map.has_key?(system, :id) -> system.id
+      is_map(system) && Map.has_key?(system, "id") -> system["id"]
+      true -> "unknown"
+    end
+  end
+
+  # Safely extract system name
+  defp extract_system_name(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :name) -> system.name
+      is_map(system) && Map.has_key?(system, :name) -> system.name
+      is_map(system) && Map.has_key?(system, "name") -> system["name"]
+      true -> "Unknown System"
+    end
+  end
+
+  # Extract statics from system
+  defp extract_statics(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :statics) -> system.statics
+      is_map(system) && Map.has_key?(system, :statics) -> system.statics
+      is_map(system) && Map.has_key?(system, "statics") -> system["statics"]
+      true -> nil
+    end
+  end
+
+  # Extract type description from system
+  defp extract_type_description(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :type_description) -> system.type_description
+      is_map(system) && Map.has_key?(system, :type_description) -> system.type_description
+      is_map(system) && Map.has_key?(system, "type_description") -> system["type_description"]
+      true -> nil
+    end
+  end
+
+  # Extract class title from system
+  defp extract_class_title(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :class_title) -> system.class_title
+      is_map(system) && Map.has_key?(system, :class_title) -> system.class_title
+      is_map(system) && Map.has_key?(system, "class_title") -> system["class_title"]
+      true -> nil
+    end
+  end
+
+  # Extract effect from system
+  defp extract_effect(system) do
+    cond do
+      is_struct(system) && Map.has_key?(system, :effect) -> system.effect
+      is_map(system) && Map.has_key?(system, :effect) -> system.effect
+      is_map(system) && Map.has_key?(system, "effect") -> system["effect"]
+      true -> nil
+    end
+  end
+
+  # Add image URL for wormhole systems
+  defp add_system_image_url(embed, system_name) do
+    # Add image URL if system_name is a wormhole name (J-code)
+    if Regex.match?(~r/^J\d{6}$/, system_name) do
+      Map.put(embed, "image", %{
+        "url" => "https://images.evetech.net/systems/#{system_name}/render"
+      })
+    else
+      embed
+    end
   end
 
   # -- HELPER FOR SENDING PAYLOAD --

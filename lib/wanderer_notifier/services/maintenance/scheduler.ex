@@ -10,6 +10,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Api.Map.SystemsClient
 
   @doc """
   Performs periodic maintenance tasks.
@@ -75,8 +76,8 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
     should_load_tracking = Features.should_load_tracking_data?()
     map_charts = Features.map_charts_enabled?()
 
-    AppLogger.api_error(
-      "[CRITICAL] update_systems called in Maintenance.Scheduler - feature flags: " <>
+    AppLogger.api_info(
+      "Updating systems with feature flags: " <>
         "tracked_systems_notifications=#{system_notifications}, " <>
         "should_load_tracking=#{should_load_tracking}, " <>
         "map_charts=#{map_charts}"
@@ -84,153 +85,46 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
     # Only update systems if system tracking feature is enabled
     if should_load_tracking do
-      AppLogger.api_error("[CRITICAL] System tracking is ENABLED, proceeding with update")
-
-      # CRITICAL FIX: Use "map:systems" cache key instead of CacheHelpers.get_tracked_systems
-      # CacheHelpers.get_tracked_systems() looks for "tracked:systems" while SystemsClient.cache_systems_data
-      # stores to "map:systems"
-      cached_systems = if force, do: nil, else: CacheRepo.get("map:systems")
-
-      # Log cache details
-      sys_count = if is_list(cached_systems), do: length(cached_systems), else: 0
-      AppLogger.api_error("[CRITICAL] Found #{sys_count} cached systems before update")
+      AppLogger.api_info("System tracking is enabled, proceeding with update")
 
       # Use Task with timeout to prevent hanging
       task =
         Task.async(fn ->
           try do
-            MapClient.update_systems_with_cache(cached_systems)
+            # Simply call SystemsClient.update_systems which handles caching
+            SystemsClient.update_systems()
           rescue
             e ->
-              AppLogger.api_error(
-                "[CRITICAL] Exception in systems update: #{Exception.message(e)}"
-              )
+              AppLogger.api_error("Exception in systems update: #{Exception.message(e)}")
 
               {:error, :exception}
           end
         end)
 
-      # Wait for the task with a timeout (10 seconds should be plenty)
-      case Task.yield(task, 10_000) do
+      # Wait for the task with a timeout (30 seconds)
+      case Task.yield(task, 30_000) do
         {:ok, {:ok, systems}} ->
-          AppLogger.maintenance_info("Systems updated", count: length(systems))
-
-          AppLogger.api_error(
-            "[CRITICAL] Systems update SUCCESSFUL, got #{length(systems)} systems"
-          )
-
-          # Verify the systems cache was updated (with timeout protection)
-          safe_verify_systems_cache(systems)
-
+          AppLogger.api_info("Systems updated successfully", count: length(systems))
           %{state | last_systems_update: now, systems_count: length(systems)}
 
         {:ok, {:error, reason}} ->
-          AppLogger.maintenance_error("Failed to update systems", error: inspect(reason))
-          AppLogger.api_error("[CRITICAL] Systems update FAILED: #{inspect(reason)}")
+          AppLogger.api_error("Failed to update systems", error: inspect(reason))
           # Return original state with updated timestamp to prevent rapid retries
           %{state | last_systems_update: now}
 
         nil ->
           # Task took too long, kill it and return
           Task.shutdown(task, :brutal_kill)
-          AppLogger.api_error("[CRITICAL] Systems update TIMED OUT after 10 seconds")
+          AppLogger.api_error("Systems update timed out after 30 seconds")
           %{state | last_systems_update: now}
 
         {:exit, reason} ->
-          AppLogger.api_error("[CRITICAL] Systems update CRASHED: #{inspect(reason)}")
+          AppLogger.api_error("Systems update crashed: #{inspect(reason)}")
           %{state | last_systems_update: now}
       end
     else
-      AppLogger.maintenance_debug("System tracking is disabled, skipping update")
-      AppLogger.api_error("[CRITICAL] Systems update SKIPPED because tracking is disabled")
+      AppLogger.api_info("System tracking is disabled, skipping update")
       %{state | last_systems_update: now}
-    end
-  end
-
-  # Safe verify function with timeout
-  defp safe_verify_systems_cache(systems) do
-    # Use a task with timeout
-    task = Task.async(fn -> verify_systems_cache_updated(systems) end)
-
-    # Wait max 5 seconds for verification
-    case Task.yield(task, 5_000) do
-      {:ok, _} ->
-        :ok
-
-      nil ->
-        # Verification took too long, kill it
-        Task.shutdown(task, :brutal_kill)
-        AppLogger.api_error("[CRITICAL] Systems cache verification TIMED OUT")
-    end
-  end
-
-  # New function to verify systems cache was updated correctly
-  defp verify_systems_cache_updated(systems) do
-    # Small delay to ensure cache is updated
-    Process.sleep(50)
-
-    # Safely get cached systems with error handling
-    cached_systems =
-      try do
-        CacheRepo.get("map:systems") || []
-      rescue
-        e ->
-          AppLogger.api_error(
-            "[CRITICAL] Error reading systems cache during verification: #{Exception.message(e)}"
-          )
-
-          []
-      end
-
-    cached_count = length(cached_systems)
-    expected_count = length(systems)
-
-    AppLogger.api_error(
-      "[CRITICAL] Systems cache verification - expected: #{expected_count}, actual: #{cached_count}"
-    )
-
-    # If cache doesn't match expected count, force update
-    if cached_count != expected_count do
-      AppLogger.api_error("[CRITICAL] Systems cache count mismatch! Forcing cache update.")
-      # Force update with a long TTL (24 hours)
-      long_ttl = 86_400
-
-      # Safely set cache with error handling
-      cache_result =
-        try do
-          CacheRepo.set("map:systems", systems, long_ttl)
-        rescue
-          e ->
-            AppLogger.api_error(
-              "[CRITICAL] Failed to force update systems cache: #{Exception.message(e)}"
-            )
-
-            {:error, :exception}
-        end
-
-      # Only verify again if the cache was successfully updated
-      case cache_result do
-        :ok ->
-          # Re-verify
-          Process.sleep(50)
-
-          # Safely get the updated count
-          new_cached_count =
-            try do
-              length(CacheRepo.get("map:systems") || [])
-            rescue
-              _ -> 0
-            end
-
-          AppLogger.api_error(
-            "[CRITICAL] After forced update - systems cache count: #{new_cached_count}"
-          )
-
-        _ ->
-          AppLogger.api_error(
-            "[CRITICAL] Skipping cache verification after failed update attempt"
-          )
-      end
     end
   end
 
