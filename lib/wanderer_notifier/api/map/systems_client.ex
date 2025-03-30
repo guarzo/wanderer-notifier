@@ -199,33 +199,31 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Helper function to safely set cache values with retries
   defp safe_cache_set(key, value, ttl, retries \\ 3) do
-    try do
-      result = CacheRepo.set(key, value, ttl)
+    result = CacheRepo.set(key, value, ttl)
 
-      case result do
-        :ok ->
-          :ok
+    case result do
+      :ok ->
+        :ok
 
-        {:error, :no_cache} when retries > 0 ->
-          # If cache is unavailable but we have retries left, try again after a delay
-          AppLogger.api_warn(
-            "[SystemsClient] Cache unavailable, retrying (#{retries} attempts left)"
-          )
-
-          Process.sleep(100 * (4 - retries))
-          safe_cache_set(key, value, ttl, retries - 1)
-
-        error ->
-          error
-      end
-    rescue
-      e ->
-        AppLogger.api_error(
-          "[SystemsClient] Exception in cache set operation: #{Exception.message(e)}"
+      {:error, :no_cache} when retries > 0 ->
+        # If cache is unavailable but we have retries left, try again after a delay
+        AppLogger.api_warn(
+          "[SystemsClient] Cache unavailable, retrying (#{retries} attempts left)"
         )
 
-        {:error, :exception}
+        Process.sleep(100 * (4 - retries))
+        safe_cache_set(key, value, ttl, retries - 1)
+
+      error ->
+        error
     end
+  rescue
+    e ->
+      AppLogger.api_error(
+        "[SystemsClient] Exception in cache set operation: #{Exception.message(e)}"
+      )
+
+      {:error, :exception}
   end
 
   @doc """

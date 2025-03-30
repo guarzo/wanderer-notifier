@@ -1,5 +1,6 @@
 ## Scheduler Modules & Registration
 
+- [ ] Consider splitting large supervisors into domain-specific supervisors for improved modularity.
 - [ ] Refine the `BaseScheduler` module to encapsulate common scheduling logic.
   - [ ] Include standardized error handling, logging, and a generic retry mechanism.
 - [ ] Define a common behaviour for schedulers to enforce a uniform callback interface.
@@ -71,7 +72,6 @@
   - [ ] Implement uniform logging during startup to record the initialization status of key components.
   - [ ] Verify that child specifications are properly defined with consistent restart strategies.
   - [ ] Add startup health checks and environment validation (e.g., ensuring all required environment variables are set) to fail fast if necessary.
-  - [ ] Consider splitting large supervisors into domain-specific supervisors for improved modularity.
 - [ ] Improve application shutdown and release handling:
   - [ ] Ensure that all processes terminate gracefully on shutdown.
   - [ ] Implement any necessary cleanup tasks during application shutdown.
