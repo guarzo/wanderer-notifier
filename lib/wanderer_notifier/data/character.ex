@@ -13,10 +13,35 @@ defmodule WandererNotifier.Data.Character do
   - Explicit Error Handling: Validation errors are raised explicitly
 
   Implements the Access behaviour to allow map-like access with ["key"] syntax.
+
+  ## Map API Response Structure
+  ```json
+  "data": [
+    {
+      "id": "4712b7b0-37a0-42a6-91ba-1a5bf747d1a0",
+      "character": {
+        "name": "Nimby Karen",
+        "alliance_id": null,
+        "alliance_ticker": null,
+        "corporation_id": 1000167,
+        "corporation_ticker": "SWA",
+        "eve_id": "2123019188"
+      },
+      "inserted_at": "2025-01-01T03:32:51.041452Z",
+      "updated_at": "2025-01-01T03:32:51.044408Z",
+      "tracked": true,
+      "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+      "character_id": "90ff63d4-28f3-4071-8717-da1d0d39990e"
+    }
+  ]
+  ```
+
+  IMPORTANT: Note that the character data is nested under the "character" key, and
+  eve_id is specifically inside this nested structure. The map_response["character_id"]
+  at the top level is a UUID and not the EVE Online ID.
   """
   @behaviour Access
   require Logger
-  alias WandererNotifier.Config.Application
   alias WandererNotifier.Logger, as: AppLogger
 
   @typedoc "Type representing a tracked character"
@@ -127,49 +152,29 @@ defmodule WandererNotifier.Data.Character do
     raise "pop not implemented for immutable Character struct"
   end
 
-  # Extract character name from various field formats
-  defp extract_character_name(character_data, map_response) do
-    character_data["name"] ||
-      map_response["name"] ||
-      map_response["character_name"]
+  # Extract character name from character data (nested structure)
+  defp extract_character_name(character_data, _map_response) do
+    character_data["name"]
   end
 
-  # Extract corporation ID from various field formats
-  defp extract_corporation_id(character_data, map_response) do
-    corp_id_raw =
-      character_data["corporation_id"] ||
-        map_response["corporation_id"] ||
-        character_data["corporationID"] ||
-        map_response["corporationID"]
-
-    parse_integer(corp_id_raw)
+  # Extract corporation ID from character data (nested structure)
+  defp extract_corporation_id(character_data, _map_response) do
+    parse_integer(character_data["corporation_id"])
   end
 
-  # Extract corporation ticker from various field formats
-  defp extract_corporation_ticker(character_data, map_response) do
-    character_data["corporation_ticker"] ||
-      map_response["corporation_ticker"] ||
-      map_response["corporation_name"] ||
-      character_data["corporation_name"]
+  # Extract corporation ticker from character data (nested structure)
+  defp extract_corporation_ticker(character_data, _map_response) do
+    character_data["corporation_ticker"]
   end
 
-  # Extract alliance ID from various field formats
-  defp extract_alliance_id(character_data, map_response) do
-    alliance_id_raw =
-      character_data["alliance_id"] ||
-        map_response["alliance_id"] ||
-        character_data["allianceID"] ||
-        map_response["allianceID"]
-
-    parse_integer(alliance_id_raw)
+  # Extract alliance ID from character data (nested structure)
+  defp extract_alliance_id(character_data, _map_response) do
+    parse_integer(character_data["alliance_id"])
   end
 
-  # Extract alliance ticker from various field formats
-  defp extract_alliance_ticker(character_data, map_response) do
-    character_data["alliance_ticker"] ||
-      map_response["alliance_ticker"] ||
-      map_response["alliance_name"] ||
-      character_data["alliance_name"]
+  # Extract alliance ticker from character data (nested structure)
+  defp extract_alliance_ticker(character_data, _map_response) do
+    character_data["alliance_ticker"]
   end
 
   # Validate required fields are present
@@ -221,59 +226,21 @@ defmodule WandererNotifier.Data.Character do
     raise ArgumentError, "Expected map for Character.new, got: #{inspect(invalid_input)}"
   end
 
-  # Extract eve_id with test environment fallback
-  defp extract_eve_id(character_data, map_response) do
-    # Try to extract eve_id from all possible locations
-    eve_id =
-      character_data["eve_id"] ||
-        map_response["eve_id"] ||
-        character_data["eveId"] ||
-        map_response["eveId"]
+  # Extract eve_id from character data (nested structure)
+  defp extract_eve_id(character_data, _map_response) do
+    # Extract eve_id directly from character data - no fallbacks
+    eve_id = character_data["eve_id"]
 
-    # For test environment - fall back to character_id when eve_id is not available
-    eve_id = get_test_fallback_id(eve_id, character_data, map_response)
-
-    # Validate that we have a valid eve_id
-    validate_eve_id(eve_id, character_data, map_response)
-
-    eve_id
-  end
-
-  # Get a fallback ID for test environment
-  defp get_test_fallback_id(eve_id, character_data, map_response) do
-    is_test = Application.get_env() == :test
-
-    if is_nil(eve_id) && is_test do
-      # In test environment, use character_id as fallback
-      character_data["character_id"] ||
-        map_response["character_id"] ||
-        character_data["id"] ||
-        map_response["id"]
-    else
-      eve_id
-    end
-  end
-
-  # Validate that eve_id is present
-  defp validate_eve_id(eve_id, character_data, map_response) do
+    # Validate eve_id exists
     if is_nil(eve_id) do
-      available_keys =
-        [
-          "Top level keys: #{inspect(Map.keys(map_response))}",
-          "Character keys: #{inspect(Map.keys(character_data))}"
-        ]
-
-      # Log detailed information about the missing field
-      AppLogger.processor_error(
-        "Missing required eve_id field in character data",
-        available_keys: available_keys,
-        character_data: inspect(character_data, limit: 200),
-        map_response: inspect(map_response, limit: 200)
+      AppLogger.processor_error("Missing required eve_id field in character data",
+        character_data: inspect(character_data, limit: 200)
       )
 
-      raise ArgumentError,
-            "Missing required eve_id field in character data. UUID character_id cannot be used."
+      raise ArgumentError, "Missing required eve_id field in character data"
     end
+
+    eve_id
   end
 
   # Create the Character struct with all extracted fields

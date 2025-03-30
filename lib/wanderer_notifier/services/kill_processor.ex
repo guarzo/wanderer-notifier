@@ -20,8 +20,8 @@ defmodule WandererNotifier.Services.KillProcessor do
   alias WandererNotifier.Logger.BatchLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.KillmailPersistence
-  alias WandererNotifier.Services.Service
   alias WandererNotifier.Services.NotificationDeterminer
+  alias WandererNotifier.Services.Service
 
   # Cache keys for recent kills
   @recent_kills_cache_key "zkill:recent_kills"

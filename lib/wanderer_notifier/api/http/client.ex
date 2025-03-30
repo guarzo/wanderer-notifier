@@ -45,6 +45,8 @@ defmodule WandererNotifier.Api.Http.Client do
   """
   @impl WandererNotifier.Api.Http.ClientBehaviour
   def get(url, headers \\ [], opts \\ []) do
+    AppLogger.api_debug("[DEBUG HTTP] Starting GET request to: #{url}")
+
     url_with_query =
       case Keyword.get(opts, :query) do
         nil ->
@@ -64,7 +66,17 @@ defmodule WandererNotifier.Api.Http.Client do
           url
       end
 
-    request("GET", url_with_query, headers, "", opts)
+    # Log the final URL that will be used
+    AppLogger.api_debug("[DEBUG HTTP] Final URL after query params: #{url_with_query}")
+
+    AppLogger.api_debug("[DEBUG HTTP] Calling request() with URL: #{url_with_query}")
+    result = request("GET", url_with_query, headers, "", opts)
+
+    AppLogger.api_debug(
+      "[DEBUG HTTP] GET request completed with result: #{inspect(result, limit: 200)}"
+    )
+
+    result
   end
 
   @doc """
@@ -207,10 +219,16 @@ defmodule WandererNotifier.Api.Http.Client do
 
     method_str = to_string(method) |> String.upcase()
 
+    AppLogger.api_debug(
+      "[DEBUG HTTP] About to call HTTPoison.request: #{method_str} #{url}, retry #{retry_count}"
+    )
+
     case HTTPoison.request(method, url, body, headers, options) do
       {:ok, response = %{status_code: status_code}} ->
         # Only log at debug level for successful responses
-        AppLogger.api_debug("HTTP #{method_str} [#{config.label}] => status #{status_code}")
+        AppLogger.api_debug(
+          "[DEBUG HTTP] HTTPoison request successful: #{method_str} [#{config.label}] => status #{status_code}"
+        )
 
         # Return a consistent response format
         {:ok,
@@ -221,6 +239,10 @@ defmodule WandererNotifier.Api.Http.Client do
          }}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
+        AppLogger.api_debug(
+          "[DEBUG HTTP] HTTPoison request error: #{method_str} [#{config.label}] => #{inspect(reason)}"
+        )
+
         handle_request_error(
           method_str,
           url,

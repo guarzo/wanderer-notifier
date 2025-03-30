@@ -56,19 +56,16 @@ defmodule WandererNotifier.Web.Router do
   # Forward all other API requests to the API controller
   forward("/api", to: ApiController)
 
-  # Only add activity chart routes if map tools are enabled
-  if Features.map_tools_enabled?() do
-    forward("/activity", to: ChartController)
-  end
+  forward("/activity", to: ChartController)
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
 
   # Map tools routes
-  get "/map-tools" do
-    if Features.map_tools_enabled?() do
+  get "/map-charts" do
+    if Features.map_charts_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/map-tools/index.html")
+      |> send_file(200, "priv/static/map-charts/index.html")
     else
       conn
       |> put_resp_content_type("text/plain")
@@ -77,11 +74,11 @@ defmodule WandererNotifier.Web.Router do
   end
 
   # Handle client-side routing for the React app - Map Tools
-  get "/map-tools/*path" do
-    if Features.map_tools_enabled?() do
+  get "/map-charts/*path" do
+    if Features.map_charts_enabled?() do
       conn
       |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/map-tools/index.html")
+      |> send_file(200, "priv/static/map-charts/index.html")
     else
       conn
       |> put_resp_content_type("text/plain")
@@ -133,27 +130,6 @@ defmodule WandererNotifier.Web.Router do
   # API ROUTES (JSON)
   #
 
-  # This endpoint has been moved to ApiController
-  # get "/api/test-notification" do
-
-  # This endpoint has been moved to ApiController
-  # get "/api/test-character-notification" do
-
-  # This endpoint has been moved to ApiController
-  # get "/api/test-system-notification" do
-
-  # This endpoint has been moved to ApiController
-  # get "/api/check-characters-endpoint" do
-
-  # This endpoint has been moved to ApiController
-  # get "/api/revalidate-license" do
-
-  # This endpoint has been moved to ApiController
-  # get "/api/recent-kills" do
-
-  # This endpoint has been moved to ApiController
-  # post "/api/test-kill" do
-
   #
   # Catch-all: serve the React index.html from priv/static/app
   #
@@ -183,5 +159,4 @@ defmodule WandererNotifier.Web.Router do
   #   forward("/map", to: MapController)
   # end
 
-  # Note: Helper functions were moved to the ApiController module
 end

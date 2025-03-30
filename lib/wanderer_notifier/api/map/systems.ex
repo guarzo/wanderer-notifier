@@ -56,7 +56,7 @@ defmodule WandererNotifier.Api.Map.Systems do
         {:ok, body}
 
       {:ok, %{status_code: status_code, body: body}} ->
-        Logger.error(
+        AppLogger.api_error(
           "[fetch_get_body] API returned non-200 status: #{status_code}. Body: #{body}"
         )
 

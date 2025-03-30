@@ -7,6 +7,7 @@ defmodule WandererNotifier.Services.Service do
   require Logger
   use GenServer
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Core.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
@@ -75,21 +76,19 @@ defmodule WandererNotifier.Services.Service do
     # Schedule stats logging now that we're initialized
     KillProcessor.schedule_stats_logging()
 
+    # Schedule a direct call to the maintenance scheduler after 10 seconds to handle both systems and characters
+    Process.send_after(self(), :update_tracked_data, 10_000)
+
     {:ok, state}
   rescue
     e ->
-      Logger.error("Error in Service.init: #{Exception.message(e)}")
-      Logger.error("#{Exception.format_stacktrace(__STACKTRACE__)}")
+      AppLogger.startup_error("Error in Service initialization",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
       # Return a basic valid state to avoid crashing
       {:ok, %State{service_start_time: :os.system_time(:second)}}
-  end
-
-  @impl true
-  def handle_info(:send_startup_notification, state) do
-    # Send delayed startup notification to Discord
-    AppLogger.startup_info("Sending delayed startup notification to Discord")
-    DiscordNotifier.send_message("WandererNotifier Service started. Listening for notifications.")
-    {:noreply, state}
   end
 
   def mark_as_processed(kill_id) do
@@ -191,6 +190,49 @@ defmodule WandererNotifier.Services.Service do
     e ->
       AppLogger.kill_error("Error logging kill stats", error: Exception.message(e))
       {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:update_tracked_data, state) do
+    AppLogger.startup_info("Running scheduled initial data update")
+
+    try do
+      # First run the maintenance scheduler for systems
+      updated_state = MaintenanceScheduler.do_initial_checks(state)
+
+      # Now directly call MapClient.update_tracked_characters() without relying on the scheduler
+      AppLogger.startup_info("Making direct call to MapClient.update_tracked_characters()")
+
+      # Access the alias directly
+      alias WandererNotifier.Api.Map.Client, as: MapClient
+
+      # Make the call and log the result
+      case MapClient.update_tracked_characters() do
+        {:ok, characters} ->
+          AppLogger.startup_info("Successfully updated tracked characters directly",
+            count: length(characters || [])
+          )
+
+        {:error, reason} ->
+          AppLogger.startup_error("Failed to update characters directly",
+            error: inspect(reason)
+          )
+      end
+
+      AppLogger.startup_info("Initial tracked data update complete")
+
+      {:noreply, updated_state}
+    rescue
+      e ->
+        AppLogger.startup_error("Error in tracked data update",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        # Try again in 5 seconds if there was an error
+        Process.send_after(self(), :update_tracked_data, 5000)
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -339,6 +381,14 @@ defmodule WandererNotifier.Services.Service do
   def handle_info({:clear_dedup_key, key}, state) do
     # Handle deduplication key expiration
     DeduplicationHelper.handle_clear_key(key)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:send_startup_notification, state) do
+    # Send delayed startup notification to Discord
+    AppLogger.startup_info("Sending delayed startup notification to Discord")
+    DiscordNotifier.send_message("WandererNotifier Service started. Listening for notifications.")
     {:noreply, state}
   end
 

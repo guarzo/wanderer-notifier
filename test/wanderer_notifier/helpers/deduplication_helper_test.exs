@@ -3,8 +3,18 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
   alias WandererNotifier.Helpers.DeduplicationHelper
 
   setup do
-    # Start the DeduplicationHelper process
-    start_supervised!(DeduplicationHelper)
+    # First clear any existing data to ensure tests start with a clean state
+    try do
+      DeduplicationHelper.clear_all()
+    rescue
+      _ -> :ok
+    end
+
+    # Only start the process if it's not already running
+    unless Process.whereis(DeduplicationHelper) do
+      start_supervised!(DeduplicationHelper)
+    end
+
     :ok
   end
 

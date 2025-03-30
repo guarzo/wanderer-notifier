@@ -109,9 +109,6 @@ defmodule WandererNotifier.Config.Features do
     %{
       kill_charts: kill_charts_enabled?(),
       map_charts: map_charts_enabled?(),
-      tps_charts: tps_charts_enabled?(),
-      map_tools: map_tools_enabled?(),
-      corp_tools: corp_tools_enabled?()
     }
   end
 
@@ -122,24 +119,4 @@ defmodule WandererNotifier.Config.Features do
     get_config(:kill_charts, true)
   end
 
-  @doc """
-  Check if TPS charts feature is enabled.
-  """
-  def tps_charts_enabled? do
-    get_config(:tps_charts, true)
-  end
-
-  @doc """
-  Check if map tools feature is enabled.
-  """
-  def map_tools_enabled? do
-    get_config(:map_tools, true)
-  end
-
-  @doc """
-  Check if corporation tools feature is enabled.
-  """
-  def corp_tools_enabled? do
-    get_config(:corp_tools, true)
-  end
 end

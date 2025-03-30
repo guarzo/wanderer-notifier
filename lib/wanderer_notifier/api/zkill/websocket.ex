@@ -75,29 +75,29 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   # Helper to update status at startup
   defp update_startup_status do
-    try do
-      Stats.update_websocket(%{
-        connected: false,
-        connecting: true,
-        startup_time: DateTime.utc_now(),
-        last_message: nil
-      })
-    rescue
-      # Stats service may not be ready yet
-      e ->
-        AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-          error: inspect(e)
-        )
+    Stats.update_websocket(%{
+      connected: false,
+      connecting: true,
+      startup_time: DateTime.utc_now(),
+      last_message: nil
+    })
 
-        :ok
-    catch
-      kind, error ->
-        AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-          error: {kind, error}
-        )
+    :ok
+  rescue
+    # Stats service may not be ready yet
+    e ->
+      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
+        error: inspect(e)
+      )
 
-        :ok
-    end
+      :ok
+  catch
+    kind, error ->
+      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
+        error: {kind, error}
+      )
+
+      :ok
   end
 
   @impl true
@@ -106,31 +106,34 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     new_state = Map.put(state, :connected, true)
 
     # Update websocket status
-    try do
-      Stats.update_websocket(%{
-        connected: true,
-        connecting: false,
-        last_message: DateTime.utc_now(),
-        reconnects: Map.get(state, :reconnects, 0),
-        url: state.url
-      })
-    rescue
-      e ->
-        AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-          error: inspect(e)
-        )
-    catch
-      kind, error ->
-        AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-          error: {kind, error}
-        )
-    end
+    update_connect_status(state)
 
     # Schedule subscription message to avoid calling self
     Process.send_after(self(), :subscribe, 100)
 
     # Return OK immediately
     {:ok, new_state}
+  end
+
+  # Helper to update status on connection
+  defp update_connect_status(state) do
+    Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now(),
+      reconnects: Map.get(state, :reconnects, 0),
+      url: state.url
+    })
+  rescue
+    e ->
+      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
+        error: inspect(e)
+      )
+  catch
+    kind, error ->
+      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
+        error: {kind, error}
+      )
   end
 
   # Handle subscribe message
@@ -239,16 +242,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   defp process_text_frame(raw_msg, state) do
     # Update timestamp of last received message for monitoring
     now = DateTime.utc_now()
-
-    try do
-      Stats.update_websocket(%{
-        connected: true,
-        last_message: now,
-        reconnects: Map.get(state, :reconnects, 0)
-      })
-    rescue
-      e -> AppLogger.websocket_error("Failed to update websocket status", error: inspect(e))
-    end
+    update_message_timestamp(state, now)
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
@@ -274,6 +268,17 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
         {:ok, state}
     end
+  end
+
+  # Update the timestamp of the last message
+  defp update_message_timestamp(state, now) do
+    Stats.update_websocket(%{
+      connected: true,
+      last_message: now,
+      reconnects: Map.get(state, :reconnects, 0)
+    })
+  rescue
+    e -> AppLogger.websocket_error("Failed to update websocket status", error: inspect(e))
   end
 
   # Classify message type for logging

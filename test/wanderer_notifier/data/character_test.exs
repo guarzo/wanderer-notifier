@@ -5,13 +5,15 @@ defmodule WandererNotifier.Data.CharacterTest do
   describe "new/1" do
     test "creates a character from map with standard fields" do
       map = %{
-        "character_id" => "12345",
-        "eve_id" => "12345",
-        "name" => "Test Character",
-        "corporation_id" => "67_890",
-        "corporation_ticker" => "CORP",
-        "alliance_id" => "54_321",
-        "alliance_ticker" => "ALLY"
+        "character" => %{
+          "character_id" => "12345",
+          "eve_id" => "12345",
+          "name" => "Test Character",
+          "corporation_id" => "67_890",
+          "corporation_ticker" => "CORP",
+          "alliance_id" => "54_321",
+          "alliance_ticker" => "ALLY"
+        }
       }
 
       character = Character.new(map)
@@ -49,13 +51,15 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "handles alternative field names" do
       map = %{
-        "id" => "12345",
-        "eve_id" => "12345",
-        "character_name" => "Alt Field Character",
-        "corporationID" => "67_890",
-        "corporation_name" => "CORP",
-        "allianceID" => "54_321",
-        "alliance_name" => "ALLY"
+        "character" => %{
+          "id" => "12345",
+          "eve_id" => "12345",
+          "name" => "Alt Field Character",
+          "corporation_id" => "67_890",
+          "corporation_ticker" => "CORP",
+          "alliance_id" => "54_321",
+          "alliance_ticker" => "ALLY"
+        }
       }
 
       character = Character.new(map)
@@ -71,9 +75,11 @@ defmodule WandererNotifier.Data.CharacterTest do
 
     test "handles tracked field" do
       map = %{
-        "character_id" => "12345",
-        "eve_id" => "12345",
-        "name" => "Untracked Character",
+        "character" => %{
+          "character_id" => "12345",
+          "eve_id" => "12345",
+          "name" => "Untracked Character"
+        },
         "tracked" => false
       }
 
@@ -84,12 +90,16 @@ defmodule WandererNotifier.Data.CharacterTest do
     end
 
     test "raises error for missing required fields" do
-      assert_raise ArgumentError, fn ->
-        Character.new(%{"name" => "Missing ID"})
+      assert_raise ArgumentError, ~r/Missing required eve_id field/, fn ->
+        Character.new(%{"character" => %{"name" => "Missing ID"}})
       end
 
-      assert_raise ArgumentError, fn ->
-        Character.new(%{"character_id" => "12345"})
+      assert_raise ArgumentError, ~r/Missing required eve_id field/, fn ->
+        Character.new(%{"character" => %{"character_id" => "12345", "name" => "Missing EVE ID"}})
+      end
+
+      assert_raise ArgumentError, ~r/Missing required fields for Character/, fn ->
+        Character.new(%{"character" => %{"character_id" => "12345", "eve_id" => "12345"}})
       end
     end
 

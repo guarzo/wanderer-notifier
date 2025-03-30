@@ -4,10 +4,10 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Handles periodic updates for systems and characters.
   """
   alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Config
   alias WandererNotifier.Core.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
 
@@ -53,39 +53,205 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   def do_initial_checks(state) do
     # Perform full update of all systems and characters
     now = :os.system_time(:second)
-    state = update_systems(state, now, true)
+
+    # Log all feature flag configs related to character tracking
+    _features_config = Application.get_env(:wanderer_notifier, :features, %{})
+
+    # Check character tracking specifically
+    _character_tracking = Features.character_tracking_enabled?()
+    _characters_notifications = Features.tracked_characters_notifications_enabled?()
+    _kill_notifications = Features.should_load_tracking_data?()
+
     state = update_characters(state, now, true)
+    state = update_systems(state, now, true)
+
     state
   end
 
   # Update systems from the map
   defp update_systems(state, now, force \\ false) do
-    if Features.tracked_systems_notifications_enabled?() || Features.should_load_tracking_data?() do
-      AppLogger.maintenance_info("Updating systems", force: force)
+    # Log all feature flags related to system updates
+    system_notifications = Features.tracked_systems_notifications_enabled?()
+    should_load_tracking = Features.should_load_tracking_data?()
+    map_charts = Features.map_charts_enabled?()
 
-      cached_systems = if force, do: nil, else: CacheHelpers.get_tracked_systems()
+    AppLogger.api_error(
+      "[CRITICAL] update_systems called in Maintenance.Scheduler - feature flags: " <>
+        "tracked_systems_notifications=#{system_notifications}, " <>
+        "should_load_tracking=#{should_load_tracking}, " <>
+        "map_charts=#{map_charts}"
+    )
 
-      case MapClient.update_systems_with_cache(cached_systems) do
-        {:ok, systems} ->
+    # Only update systems if system tracking feature is enabled
+    if should_load_tracking do
+      AppLogger.api_error("[CRITICAL] System tracking is ENABLED, proceeding with update")
+
+      # CRITICAL FIX: Use "map:systems" cache key instead of CacheHelpers.get_tracked_systems
+      # CacheHelpers.get_tracked_systems() looks for "tracked:systems" while SystemsClient.cache_systems_data
+      # stores to "map:systems"
+      cached_systems = if force, do: nil, else: CacheRepo.get("map:systems")
+
+      # Log cache details
+      sys_count = if is_list(cached_systems), do: length(cached_systems), else: 0
+      AppLogger.api_error("[CRITICAL] Found #{sys_count} cached systems before update")
+
+      # Use Task with timeout to prevent hanging
+      task =
+        Task.async(fn ->
+          try do
+            MapClient.update_systems_with_cache(cached_systems)
+          rescue
+            e ->
+              AppLogger.api_error(
+                "[CRITICAL] Exception in systems update: #{Exception.message(e)}"
+              )
+
+              {:error, :exception}
+          end
+        end)
+
+      # Wait for the task with a timeout (10 seconds should be plenty)
+      case Task.yield(task, 10_000) do
+        {:ok, {:ok, systems}} ->
           AppLogger.maintenance_info("Systems updated", count: length(systems))
+
+          AppLogger.api_error(
+            "[CRITICAL] Systems update SUCCESSFUL, got #{length(systems)} systems"
+          )
+
+          # Verify the systems cache was updated (with timeout protection)
+          safe_verify_systems_cache(systems)
+
           %{state | last_systems_update: now, systems_count: length(systems)}
 
-        {:error, reason} ->
+        {:ok, {:error, reason}} ->
           AppLogger.maintenance_error("Failed to update systems", error: inspect(reason))
+          AppLogger.api_error("[CRITICAL] Systems update FAILED: #{inspect(reason)}")
           # Return original state with updated timestamp to prevent rapid retries
+          %{state | last_systems_update: now}
+
+        nil ->
+          # Task took too long, kill it and return
+          Task.shutdown(task, :brutal_kill)
+          AppLogger.api_error("[CRITICAL] Systems update TIMED OUT after 10 seconds")
+          %{state | last_systems_update: now}
+
+        {:exit, reason} ->
+          AppLogger.api_error("[CRITICAL] Systems update CRASHED: #{inspect(reason)}")
           %{state | last_systems_update: now}
       end
     else
       AppLogger.maintenance_debug("System tracking is disabled, skipping update")
+      AppLogger.api_error("[CRITICAL] Systems update SKIPPED because tracking is disabled")
       %{state | last_systems_update: now}
+    end
+  end
+
+  # Safe verify function with timeout
+  defp safe_verify_systems_cache(systems) do
+    # Use a task with timeout
+    task = Task.async(fn -> verify_systems_cache_updated(systems) end)
+
+    # Wait max 5 seconds for verification
+    case Task.yield(task, 5_000) do
+      {:ok, _} ->
+        :ok
+
+      nil ->
+        # Verification took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.api_error("[CRITICAL] Systems cache verification TIMED OUT")
+    end
+  end
+
+  # New function to verify systems cache was updated correctly
+  defp verify_systems_cache_updated(systems) do
+    # Small delay to ensure cache is updated
+    Process.sleep(50)
+
+    # Safely get cached systems with error handling
+    cached_systems =
+      try do
+        CacheRepo.get("map:systems") || []
+      rescue
+        e ->
+          AppLogger.api_error(
+            "[CRITICAL] Error reading systems cache during verification: #{Exception.message(e)}"
+          )
+
+          []
+      end
+
+    cached_count = length(cached_systems)
+    expected_count = length(systems)
+
+    AppLogger.api_error(
+      "[CRITICAL] Systems cache verification - expected: #{expected_count}, actual: #{cached_count}"
+    )
+
+    # If cache doesn't match expected count, force update
+    if cached_count != expected_count do
+      AppLogger.api_error("[CRITICAL] Systems cache count mismatch! Forcing cache update.")
+      # Force update with a long TTL (24 hours)
+      long_ttl = 86_400
+
+      # Safely set cache with error handling
+      cache_result =
+        try do
+          CacheRepo.set("map:systems", systems, long_ttl)
+        rescue
+          e ->
+            AppLogger.api_error(
+              "[CRITICAL] Failed to force update systems cache: #{Exception.message(e)}"
+            )
+
+            {:error, :exception}
+        end
+
+      # Only verify again if the cache was successfully updated
+      case cache_result do
+        :ok ->
+          # Re-verify
+          Process.sleep(50)
+
+          # Safely get the updated count
+          new_cached_count =
+            try do
+              length(CacheRepo.get("map:systems") || [])
+            rescue
+              _ -> 0
+            end
+
+          AppLogger.api_error(
+            "[CRITICAL] After forced update - systems cache count: #{new_cached_count}"
+          )
+
+        _ ->
+          AppLogger.api_error(
+            "[CRITICAL] Skipping cache verification after failed update attempt"
+          )
+      end
     end
   end
 
   # Update characters from the map
   defp update_characters(state, now, force \\ false) do
     # Check if character tracking is enabled or tracking data is needed for kill notifications
-    if Features.tracked_characters_notifications_enabled?() ||
-         Features.should_load_tracking_data?() do
+    AppLogger.maintenance_info("Checking if character tracking is enabled")
+
+    # First check if character tracking is enabled directly
+    character_tracking = Features.character_tracking_enabled?()
+    characters_notifications = Features.tracked_characters_notifications_enabled?()
+    kill_notifications = Features.should_load_tracking_data?()
+
+    AppLogger.maintenance_info("Character tracking status check",
+      character_tracking: character_tracking,
+      characters_notifications: characters_notifications,
+      kill_notifications: kill_notifications
+    )
+
+    if character_tracking || characters_notifications || kill_notifications do
+      AppLogger.maintenance_info("Updating characters", force: force)
       update_tracked_characters(state, now, force)
     else
       AppLogger.maintenance_debug("Character tracking is disabled, skipping update")
@@ -95,34 +261,71 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Process tracked characters update
   defp update_tracked_characters(state, now, force) do
-    AppLogger.maintenance_info("Updating characters", force: force)
+    AppLogger.maintenance_info("Starting character tracking update", force: force)
 
     # Get cached characters and ensure they're in the right format
     cached_characters = if force, do: nil, else: CacheRepo.get("map:characters")
     cached_characters_safe = normalize_cached_characters(cached_characters)
 
     AppLogger.maintenance_debug("Retrieved cached characters before update",
-      characters: inspect(cached_characters_safe)
+      count: length(cached_characters_safe)
     )
 
-    # Update characters through the MapClient with exception handling
-    case MapClient.update_tracked_characters(cached_characters_safe) do
-      {:ok, characters} ->
+    # Use Task with timeout to prevent hanging
+    task =
+      Task.async(fn ->
+        try do
+          # Update characters through the MapClient with exception handling
+          MapClient.update_tracked_characters(cached_characters_safe)
+        rescue
+          e ->
+            AppLogger.maintenance_error("Exception in character update task",
+              error: Exception.message(e),
+              stacktrace: inspect(Process.info(self(), :current_stacktrace))
+            )
+
+            {:error, :exception}
+        end
+      end)
+
+    # Wait for the task with a timeout (10 seconds should be plenty)
+    case Task.yield(task, 10_000) do
+      {:ok, {:ok, characters}} ->
+        AppLogger.maintenance_info("Character update successful",
+          count: length(ensure_list(characters))
+        )
+
         handle_successful_character_update(state, now, characters)
 
-      {:error, :feature_disabled} ->
+      {:ok, {:error, :feature_disabled}} ->
         # Handle feature_disabled case differently - log as info instead of error
         AppLogger.maintenance_info("Character tracking feature is disabled, skipping update")
         return_state_with_updated_timestamp(state, now)
 
-      {:error, reason} ->
-        AppLogger.maintenance_error("Failed to update characters", error: inspect(reason))
+      {:ok, {:error, reason}} ->
+        AppLogger.maintenance_error("Failed to update characters",
+          error: inspect(reason)
+        )
+
+        return_state_with_updated_timestamp(state, now)
+
+      nil ->
+        # Task took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.maintenance_error("Character update timed out after 10 seconds")
+        return_state_with_updated_timestamp(state, now)
+
+      {:exit, reason} ->
+        AppLogger.maintenance_error("Character update task crashed",
+          reason: inspect(reason)
+        )
+
         return_state_with_updated_timestamp(state, now)
     end
   rescue
     e ->
-      # Catch any exception, log it, and return the state with updated timestamp
-      AppLogger.maintenance_error("Exception while updating characters",
+      # Catch any exception outside the task, log it, and return the state with updated timestamp
+      AppLogger.maintenance_error("Exception while setting up character update",
         error: Exception.message(e),
         stacktrace: inspect(Process.info(self(), :current_stacktrace))
       )
@@ -164,6 +367,33 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
 
   # Verify characters are stored in cache and force update if needed
   defp verify_and_update_characters_cache(characters) do
+    # Use a task with timeout to prevent hanging
+    task =
+      Task.async(fn ->
+        try do
+          _perform_character_cache_verification(characters)
+        rescue
+          e ->
+            AppLogger.maintenance_error("Exception in character cache verification",
+              error: Exception.message(e)
+            )
+        end
+      end)
+
+    # Wait max 5 seconds for verification
+    case Task.yield(task, 5_000) do
+      {:ok, _} ->
+        :ok
+
+      nil ->
+        # Verification took too long, kill it
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.maintenance_error("Character cache verification TIMED OUT after 5 seconds")
+    end
+  end
+
+  # Internal function to perform the actual verification
+  defp _perform_character_cache_verification(characters) do
     # Ensure we're working with a list
     characters_list = ensure_list(characters)
 

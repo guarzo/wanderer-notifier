@@ -19,6 +19,15 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         slug: slug
       )
 
+      # Log URL components for debugging
+      AppLogger.api_debug("URL Components breakdown",
+        scheme: URI.parse(url).scheme,
+        host: URI.parse(url).host,
+        port: URI.parse(url).port,
+        path: URI.parse(url).path,
+        query: URI.parse(url).query
+      )
+
       {:ok, url}
     end
   end

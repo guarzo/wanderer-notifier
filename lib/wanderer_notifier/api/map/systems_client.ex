@@ -3,7 +3,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   Client for retrieving and processing system data from the map API.
   Uses structured data types and consistent parsing to simplify the logic.
   """
-  require Logger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Api.Map.UrlBuilder
@@ -28,10 +27,15 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     - {:error, reason} on failure
   """
   def update_systems(cached_systems \\ nil) do
+    AppLogger.api_error(
+      "[CRITICAL] SystemsClient.update_systems called, stacktrace: #{inspect(Process.info(self(), :current_stacktrace), limit: 1000)}"
+    )
+
     AppLogger.api_debug("[SystemsClient] Starting systems update")
 
     case UrlBuilder.build_url("map/systems") do
       {:ok, url} ->
+        AppLogger.api_error("[CRITICAL] Systems URL successfully built: #{url}")
         headers = UrlBuilder.get_auth_headers()
         process_systems_request(url, headers, cached_systems)
 
@@ -134,12 +138,94 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp cache_systems_data(wormhole_systems) do
-    # Cache the systems in a way that maintains the MapSystem structs
-    CacheRepo.set("map:systems", wormhole_systems, Timings.systems_cache_ttl())
+    # Log the count of systems being cached
+    system_count = length(wormhole_systems)
+    AppLogger.api_info("[SystemsClient] Caching #{system_count} systems to 'map:systems' cache")
 
-    # Cache just the system IDs for faster lookups
+    # Cache the systems in a way that maintains the MapSystem structs - with error handling
+    cache_ttl = Timings.systems_cache_ttl()
+    cache_result = safe_cache_set("map:systems", wormhole_systems, cache_ttl)
+
+    # Log result of caching operation
+    case cache_result do
+      :ok ->
+        AppLogger.api_info("[SystemsClient] Successfully stored systems in cache")
+
+      {:error, reason} ->
+        AppLogger.api_error(
+          "[SystemsClient] Failed to store systems in main cache: #{inspect(reason)}"
+        )
+    end
+
+    # Cache just the system IDs for faster lookups - with error handling
     system_ids = Enum.map(wormhole_systems, & &1.solar_system_id)
-    CacheRepo.set("map:system_ids", system_ids, Timings.systems_cache_ttl())
+    id_cache_result = safe_cache_set("map:system_ids", system_ids, cache_ttl)
+
+    # Log result of ID caching operation
+    case id_cache_result do
+      :ok ->
+        AppLogger.api_info("[SystemsClient] Successfully stored system IDs in cache")
+
+      {:error, reason} ->
+        AppLogger.api_error(
+          "[SystemsClient] Failed to store system IDs in cache: #{inspect(reason)}"
+        )
+    end
+
+    # Even if caching failed, we can still return the systems
+    # This ensures the application continues to work even if the cache is down
+
+    # Verify the cache update if possible
+    Process.sleep(50)
+
+    cached_systems =
+      try do
+        CacheRepo.get("map:systems") || []
+      rescue
+        _ -> []
+      end
+
+    cached_count = length(cached_systems)
+
+    if cached_count != system_count do
+      AppLogger.api_error(
+        "[CRITICAL] System cache update verification failed! " <>
+          "Expected #{system_count} systems, got #{cached_count} in cache"
+      )
+    else
+      AppLogger.api_info("[SystemsClient] Successfully cached #{cached_count} systems")
+    end
+  end
+
+  # Helper function to safely set cache values with retries
+  defp safe_cache_set(key, value, ttl, retries \\ 3) do
+    try do
+      result = CacheRepo.set(key, value, ttl)
+
+      case result do
+        :ok ->
+          :ok
+
+        {:error, :no_cache} when retries > 0 ->
+          # If cache is unavailable but we have retries left, try again after a delay
+          AppLogger.api_warn(
+            "[SystemsClient] Cache unavailable, retrying (#{retries} attempts left)"
+          )
+
+          Process.sleep(100 * (4 - retries))
+          safe_cache_set(key, value, ttl, retries - 1)
+
+        error ->
+          error
+      end
+    rescue
+      e ->
+        AppLogger.api_error(
+          "[SystemsClient] Exception in cache set operation: #{Exception.message(e)}"
+        )
+
+        {:error, :exception}
+    end
   end
 
   @doc """
@@ -179,7 +265,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp find_new_systems(_fresh, []) do
     # If there's no cached systems, this is probably the first run
     # Don't notify about all systems to avoid spamming
-    Logger.info(
+    AppLogger.api_info(
       "[SystemsClient] No cached systems found; skipping new system notifications on startup"
     )
 
@@ -222,7 +308,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         send_notification(map_system)
       rescue
         e ->
-          Logger.error(
+          AppLogger.api_error(
             "[SystemsClient] Error sending system notification: #{inspect(e)}\n#{Exception.format_stacktrace()}"
           )
       end
@@ -246,7 +332,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     type_description = map_system.type_description || "Unknown"
     class_title = map_system.class_title
 
-    Logger.info(
+    AppLogger.info(
       "[SystemsClient] Processing wormhole system notification - " <>
         "ID: #{map_system.solar_system_id}, " <>
         "Name: #{map_system.name}, " <>
@@ -257,7 +343,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp log_non_wormhole_system_details(map_system) do
-    Logger.info(
+    AppLogger.info(
       "[SystemsClient] Processing non-wormhole system notification - " <>
         "ID: #{map_system.solar_system_id}, " <>
         "Name: #{map_system.name}, " <>

@@ -16,6 +16,7 @@ defmodule WandererNotifier.Application do
 
   use Application
   require Logger
+  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Starts the application.
@@ -34,7 +35,7 @@ defmodule WandererNotifier.Application do
   Reloads modules.
   """
   def reload(modules) do
-    Logger.info("Reloading modules: #{inspect(modules)}")
+    AppLogger.config_info("Reloading modules", modules: inspect(modules))
     Code.compiler_options(ignore_module_conflict: true)
 
     Enum.each(modules, fn module ->
@@ -43,11 +44,11 @@ defmodule WandererNotifier.Application do
       :code.load_file(module)
     end)
 
-    Logger.info("Module reloaded")
+    AppLogger.config_info("Module reload complete")
     {:ok, modules}
   rescue
     error ->
-      Logger.error("Error reloading modules: #{inspect(error)}")
+      AppLogger.config_error("Error reloading modules", error: inspect(error))
       {:error, error}
   end
 
@@ -66,21 +67,19 @@ defmodule WandererNotifier.Application do
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
-    Logger.info(
-      "Starting WandererNotifier.Supervisor with #{length(children)} top-level children"
-    )
+    AppLogger.startup_info("Starting supervisor", child_count: length(children))
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
-        Logger.info("Application started successfully")
+        AppLogger.startup_info("Application started successfully")
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        Logger.warn("Supervisor already started with pid: #{inspect(pid)}")
+        AppLogger.startup_warn("Supervisor already started", pid: inspect(pid))
         {:ok, pid}
 
       {:error, reason} = error ->
-        Logger.error("Failed to start application: #{inspect(reason)}")
+        AppLogger.startup_error("Failed to start application", error: inspect(reason))
         error
     end
   end
@@ -91,12 +90,12 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.NoopConsumer, []},
       {WandererNotifier.Core.License, []},
       {WandererNotifier.Core.Stats, []},
+      {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Services.Service, []},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Repo, []},
       {WandererNotifier.Web.Server, []},
       {WandererNotifier.Schedulers.ActivityChartScheduler, []},
-      {WandererNotifier.Schedulers.SystemUpdateScheduler, []},
       {WandererNotifier.Services.Maintenance, []}
     ]
   end

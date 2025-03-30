@@ -486,33 +486,106 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # Helper functions for extracting character information
     defp extract_character_id_from_data(char_data) do
-      extract_from_struct(char_data) ||
-        extract_from_map(char_data) ||
-        extract_from_primitive(char_data)
+      AppLogger.persistence_debug("Extracting character ID",
+        data_type: typeof(char_data),
+        has_struct: is_struct(char_data),
+        has_map: is_map(char_data),
+        keys: if(is_map(char_data), do: Map.keys(char_data), else: "not a map")
+      )
+
+      # Try extracting in order of preference
+      character_id =
+        extract_from_struct(char_data) ||
+          extract_from_map(char_data) ||
+          extract_from_primitive(char_data)
+
+      # Log the extracted ID for debugging
+      AppLogger.persistence_debug("Extracted character ID result: #{inspect(character_id)}")
+
+      character_id
     end
 
     # Extract character ID from struct
     defp extract_from_struct(char_data) do
       if is_struct(char_data) && Map.has_key?(char_data, :character_id) do
-        to_string(char_data.character_id)
+        id = char_data.character_id
+        # Only return valid numeric IDs
+        if is_integer(id) || (is_binary(id) && numeric_string?(id)) do
+          to_string(id)
+        else
+          AppLogger.persistence_warn("Invalid character_id in struct", id: id)
+          nil
+        end
       end
     end
 
     # Extract character ID from map
+    defp extract_from_map(char_data) when not is_map(char_data), do: nil
+
     defp extract_from_map(char_data) do
-      if is_map(char_data) &&
-           (Map.has_key?(char_data, "character_id") || Map.has_key?(char_data, :character_id)) do
-        char_id = char_data["character_id"] || char_data[:character_id]
-        if char_id, do: to_string(char_id), else: nil
+      # Try multiple possible key formats for character_id, with consistent type handling
+      char_id = char_data["character_id"] || char_data[:character_id]
+
+      # Log what we're extracting
+      AppLogger.persistence_debug("Extracting from map",
+        found_id: char_id,
+        id_type: typeof(char_id)
+      )
+
+      # Early return for nil values
+      if is_nil(char_id) do
+        nil
+      else
+        # Process character ID based on type
+        process_character_id_from_map(char_id)
       end
     end
 
-    # Extract character ID from primitive value
-    defp extract_from_primitive(char_data) do
-      if is_integer(char_data) || is_binary(char_data) do
-        to_string(char_data)
+    # Process character ID from map based on its type
+    defp process_character_id_from_map(id) when is_integer(id), do: to_string(id)
+
+    defp process_character_id_from_map(id) when is_binary(id) do
+      # Validate that it's a numeric string before accepting it
+      if numeric_string?(id) do
+        # Valid integer string
+        id
+      else
+        # Log invalid ID format - this might be a UUID we want to reject
+        AppLogger.persistence_warn("Invalid character ID format (non-numeric)",
+          id: id
+        )
+
+        nil
       end
     end
+
+    defp process_character_id_from_map(_), do: nil
+
+    # Helper to check if a string is numeric (contains only digits)
+    defp numeric_string?(str) when is_binary(str) do
+      case Integer.parse(str) do
+        {_, ""} -> true
+        _ -> false
+      end
+    end
+
+    defp numeric_string?(_), do: false
+
+    # Helper to get a string representation of a data type for debugging
+    defp typeof(nil), do: "nil"
+    defp typeof(value) when is_binary(value), do: "string"
+    defp typeof(value) when is_integer(value), do: "integer"
+    defp typeof(value) when is_float(value), do: "float"
+    defp typeof(value) when is_boolean(value), do: "boolean"
+    defp typeof(value) when is_map(value) and not is_struct(value), do: "map"
+    defp typeof(value) when is_list(value), do: "list"
+    defp typeof(value) when is_atom(value), do: "atom"
+    defp typeof(value) when is_function(value), do: "function"
+    defp typeof(value) when is_pid(value), do: "pid"
+    defp typeof(value) when is_reference(value), do: "reference"
+    defp typeof(value) when is_tuple(value), do: "tuple"
+    defp typeof(value) when is_struct(value), do: "struct:#{inspect(value.__struct__)}"
+    defp typeof(_), do: "unknown"
 
     defp extract_character_name(char_data) when is_map(char_data) do
       char_data["name"] ||
@@ -548,6 +621,23 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     end
 
     defp extract_alliance_name(_), do: nil
+
+    # Extract character ID from primitive value
+    defp extract_from_primitive(char_data) when is_integer(char_data), do: to_string(char_data)
+
+    defp extract_from_primitive(char_data) when is_binary(char_data) do
+      # Validate that it's a numeric string
+      if numeric_string?(char_data) do
+        # Valid integer string
+        char_data
+      else
+        AppLogger.persistence_debug("Non-numeric string ID rejected", id: char_data)
+        # Not a valid integer string
+        nil
+      end
+    end
+
+    defp extract_from_primitive(_), do: nil
   end
 
   code_interface do

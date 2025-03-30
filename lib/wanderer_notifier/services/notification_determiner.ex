@@ -472,22 +472,11 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   def check_deduplication(notification_type, identifier) do
     # Use the DeduplicationHelper to check if this is a duplicate
     case DeduplicationHelper.duplicate?(notification_type, identifier) do
-      {:ok, false} ->
-        # Not a duplicate, mark as processed and allow sending
-        DeduplicationHelper.mark_as_processed(notification_type, identifier)
+      {:ok, :new} ->
+        # Not a duplicate, allow sending
         {:ok, :send}
 
-      {:ok, true} ->
-        # Duplicate, skip notification
-        {:ok, :skip}
-
-      # Handle the direct boolean value returned from duplicate? function
-      false ->
-        # Not a duplicate, mark as processed and allow sending
-        DeduplicationHelper.mark_as_processed(notification_type, identifier)
-        {:ok, :send}
-
-      true ->
+      {:ok, :duplicate} ->
         # Duplicate, skip notification
         {:ok, :skip}
 

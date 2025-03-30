@@ -52,16 +52,16 @@ defmodule Schedulers.Supervisor do
   # Define the core schedulers
   defp define_core_schedulers do
     schedulers = [
-      {Schedulers.ActivityChartScheduler, []},
-      {Schedulers.CharacterUpdateScheduler, []},
-      {Schedulers.SystemUpdateScheduler, []}
+      {Schedulers.ActivityChartScheduler, []}
     ]
 
     # Track core schedulers
-    if Process.get(:startup_tracker) do
+    try do
       StartupTracker.record_event(:scheduler_setup, %{
         core_schedulers: length(schedulers)
       })
+    rescue
+      _ -> :ok
     end
 
     schedulers

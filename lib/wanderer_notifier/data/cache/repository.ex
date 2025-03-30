@@ -16,15 +16,56 @@ defmodule WandererNotifier.Data.Cache.Repository do
   def start_link(_args \\ []) do
     AppLogger.cache_info("Starting cache repository")
 
-    # Ensure cache directory exists
-    # Use a path that works in both dev container and production
+    # Setup cache directory
+    {cache_dir, memory_only} = setup_cache_directory()
+
+    # Configure and start Cachex
+    cachex_result = start_cachex(cache_dir, memory_only)
+
+    # Start the GenServer monitor if Cachex started successfully
+    start_monitor_process(cachex_result, cache_dir, memory_only)
+  end
+
+  # Set up the cache directory and determine if we should use memory-only mode
+  defp setup_cache_directory do
+    # Determine the cache directory path
     cache_dir = determine_cache_dir()
 
-    # Ensure the directory exists with more robust error handling
-    cache_dir = ensure_cache_directory(cache_dir)
+    # Ensure the directory exists with error handling
+    cache_dir_result = ensure_cache_directory(cache_dir)
 
-    # Configure Cachex with optimized settings
-    cachex_options = [
+    # Check if we're in memory-only mode
+    memory_only = cache_dir_result == :memory_only
+
+    # Return the directory and memory-only flag
+    {if(memory_only, do: nil, else: cache_dir_result), memory_only}
+  end
+
+  # Configure and start Cachex with the appropriate options
+  defp start_cachex(cache_dir, memory_only) do
+    # Build Cachex options
+    cachex_options = build_cachex_options(cache_dir, memory_only)
+
+    # Start Cachex with explicit name
+    case Cachex.start_link(@cache_name, cachex_options) do
+      {:ok, pid} = result ->
+        AppLogger.cache_info("Cache storage started successfully", pid: inspect(pid))
+        result
+
+      {:error, {:already_started, pid}} ->
+        AppLogger.cache_warn("Cache already started", pid: inspect(pid))
+        {:ok, pid}
+
+      error ->
+        AppLogger.cache_error("Failed to start cache", error: inspect(error))
+        error
+    end
+  end
+
+  # Build Cachex configuration options
+  defp build_cachex_options(cache_dir, memory_only) do
+    # Base configuration
+    base_options = [
       # Set a higher limit for maximum entries (default is often too low)
       limit: 10_000,
 
@@ -42,43 +83,36 @@ defmodule WandererNotifier.Data.Cache.Repository do
     ]
 
     # Add disk persistence only if we have a valid cache directory
-    cachex_options =
-      if cache_dir do
-        disk_options = [
-          disk: [
-            path: cache_dir,
-            # 1 minute
-            sync_interval: 60_000,
-            sync_on_terminate: true
-          ]
+    if cache_dir && !memory_only do
+      # Log disk persistence configuration
+      AppLogger.cache_debug("Configuring disk persistence", path: cache_dir)
+
+      disk_options = [
+        disk: [
+          path: cache_dir,
+          # 1 minute
+          sync_interval: 60_000,
+          sync_on_terminate: true
         ]
+      ]
 
-        Keyword.merge(cachex_options, disk_options)
-      else
-        cachex_options
+      Keyword.merge(base_options, disk_options)
+    else
+      # Log that we're in memory-only mode
+      if memory_only do
+        AppLogger.cache_warn("Running in memory-only mode without disk persistence")
       end
 
-    # Start Cachex with explicit name to ensure it can be referenced by the GenServer
-    cachex_result =
-      case Cachex.start_link(@cache_name, cachex_options) do
-        {:ok, pid} = result ->
-          AppLogger.cache_info("Cache storage started successfully", pid: inspect(pid))
-          result
+      base_options
+    end
+  end
 
-        {:error, {:already_started, pid}} ->
-          AppLogger.cache_warn("Cache already started", pid: inspect(pid))
-          {:ok, pid}
-
-        error ->
-          AppLogger.cache_error("Failed to start cache", error: inspect(error))
-          error
-      end
-
-    # Only start the GenServer monitor if Cachex started successfully
+  # Start the monitor process based on Cachex start result
+  defp start_monitor_process(cachex_result, cache_dir, memory_only) do
     case cachex_result do
       {:ok, _cachex_pid} ->
         # Start the cache monitoring process
-        GenServer.start_link(__MODULE__, [cache_dir], name: __MODULE__)
+        GenServer.start_link(__MODULE__, [cache_dir, memory_only], name: __MODULE__)
 
       error ->
         # Return the error so supervision can handle it properly
@@ -93,13 +127,23 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Make sure parent directories exist
     parent_dir = Path.dirname(cache_dir)
 
-    _parent_result =
+    parent_result =
       if parent_dir != cache_dir do
         AppLogger.cache_debug("Creating parent directory structure", path: parent_dir)
         File.mkdir_p(parent_dir)
       else
         :ok
       end
+
+    # If parent directory creation failed, go to memory-only mode
+    if parent_result != :ok do
+      AppLogger.cache_warn("Failed to create parent directory structure, using memory-only mode",
+        path: parent_dir,
+        result: inspect(parent_result)
+      )
+
+      :memory_only
+    end
 
     # Now try to create the actual cache directory
     case make_directory(cache_dir) do
@@ -115,11 +159,19 @@ defmodule WandererNotifier.Data.Cache.Repository do
           reason: inspect(reason)
         )
 
-        # Fall back to temporary directory as a last resort
+        # Try creating a temporary directory as fallback
         tmp_dir = Path.join(System.tmp_dir!(), "wanderer_notifier_cache")
-        make_directory(tmp_dir)
-        AppLogger.cache_info("Using fallback cache directory", path: tmp_dir)
-        tmp_dir
+
+        case make_directory(tmp_dir) do
+          :ok ->
+            AppLogger.cache_info("Using fallback cache directory", path: tmp_dir)
+            tmp_dir
+
+          {:error, _reason} ->
+            # If even temporary directory fails, use memory-only mode
+            AppLogger.cache_warn("Fallback cache directory also failed, using memory-only mode")
+            :memory_only
+        end
 
       error ->
         # Unexpected error
@@ -128,7 +180,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
           error: inspect(error)
         )
 
-        nil
+        :memory_only
     end
   end
 
@@ -145,14 +197,18 @@ defmodule WandererNotifier.Data.Cache.Repository do
   # GENSERVER CALLBACKS
 
   @impl true
-  def init(_args) do
-    # Initialize state
+  def init(args) do
+    # Initialize state with memory_only flag
+    [cache_dir, memory_only] = args
+
     initial_state = %{
       last_check_time: 0,
       last_systems_count: 0,
       last_characters_count: 0,
       last_error: nil,
-      last_error_time: 0
+      last_error_time: 0,
+      memory_only: memory_only,
+      cache_dir: cache_dir
     }
 
     # Schedule first cache check
@@ -285,8 +341,15 @@ defmodule WandererNotifier.Data.Cache.Repository do
       # Log the get operation if sampled
       log_get_operation(key, should_log)
 
-      # Get the value from cache
-      result = Cachex.get(@cache_name, key)
+      # Get the value from cache, handling the case where cache isn't available
+      result =
+        try do
+          Cachex.get(@cache_name, key)
+        rescue
+          e ->
+            AppLogger.cache_error("Error accessing cache", error: Exception.message(e), key: key)
+            {:error, :no_cache}
+        end
 
       # Log detailed cache info if sampled
       log_cache_details(key, result, should_log)
@@ -704,24 +767,37 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   @doc """
   Sets a value in the cache with an optional TTL in seconds.
+  If the cache is unavailable, logs an error but doesn't block program execution.
   """
   def set(key, value, ttl_seconds \\ nil) do
     # Trace logging in development for debugging
     AppLogger.cache_debug("Setting cache value", key: key, ttl: ttl_seconds)
 
     # Use the proper process to interact with Cachex
-    case Cachex.put(@cache_name, key, value, ttl: ttl_option(ttl_seconds)) do
-      {:ok, true} ->
-        AppLogger.cache_debug("Cache value set successfully", key: key)
-        :ok
+    try do
+      case Cachex.put(@cache_name, key, value, ttl: ttl_option(ttl_seconds)) do
+        {:ok, true} ->
+          AppLogger.cache_debug("Cache value set successfully", key: key)
+          :ok
 
-      {:ok, false} ->
-        AppLogger.cache_warn("Failed to set cache value", key: key)
-        {:error, :set_failed}
+        {:ok, false} ->
+          AppLogger.cache_warn("Failed to set cache value", key: key)
+          {:error, :set_failed}
 
-      {:error, reason} ->
-        AppLogger.cache_error("Error setting cache value", key: key, error: inspect(reason))
-        {:error, reason}
+        {:error, reason} ->
+          AppLogger.cache_error("Error setting cache value", key: key, error: inspect(reason))
+          {:error, reason}
+      end
+    rescue
+      e ->
+        # Handle situations where cache is completely unavailable
+        AppLogger.cache_error("Cache unavailable during set operation",
+          key: key,
+          error: Exception.message(e)
+        )
+
+        # Return error but don't crash or block program execution
+        {:error, :no_cache}
     end
   end
 
