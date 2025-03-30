@@ -10,8 +10,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   alias WandererNotifier.ChartService
   alias WandererNotifier.ChartService.ChartConfig
   alias WandererNotifier.ChartService.ChartTypes
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Core.Features
   alias WandererNotifier.Logger, as: AppLogger
 
   @doc """

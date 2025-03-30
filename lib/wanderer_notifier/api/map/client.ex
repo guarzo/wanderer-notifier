@@ -7,7 +7,7 @@ defmodule WandererNotifier.Api.Map.Client do
   """
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger, as: AppLogger
 

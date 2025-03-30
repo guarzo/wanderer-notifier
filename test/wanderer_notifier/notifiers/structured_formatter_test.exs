@@ -103,10 +103,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       assert result.author.icon_url =~ "12345"
 
       # Check fields
-      assert length(result.fields) == 4
+      assert length(result.fields) == 5
       assert Enum.any?(result.fields, fn field -> field.name == "Value" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Attackers" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Final Blow" end)
+      assert Enum.any?(result.fields, fn field -> field.name == "Security" end)
       assert Enum.any?(result.fields, fn field -> field.name == "Alliance" end)
 
       # Check final blow field details

@@ -14,7 +14,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
@@ -477,6 +477,4 @@ defmodule WandererNotifier.Api.Map.Systems do
       {:ok, []}
     end
   end
-
-  # URL generation is now handled in the systems_client.ex module
 end

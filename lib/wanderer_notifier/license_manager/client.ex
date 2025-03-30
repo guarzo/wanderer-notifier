@@ -5,7 +5,7 @@ defmodule WandererNotifier.LicenseManager.Client do
   """
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger, as: AppLogger
 
   # Define the behaviour callbacks

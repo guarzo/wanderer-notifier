@@ -6,8 +6,8 @@ defmodule WandererNotifier.Debug do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
@@ -105,7 +105,7 @@ defmodule WandererNotifier.Debug do
   def direct_test_characters_api do
     alias WandererNotifier.Api.Http.Client
     alias WandererNotifier.Api.Map.UrlBuilder
-    alias WandererNotifier.Core.Config
+    alias WandererNotifier.Config
 
     # Get URL directly
     url_result = UrlBuilder.build_url("map/characters")

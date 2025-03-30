@@ -3,7 +3,8 @@ defmodule WandererNotifier.Notifiers.Factory do
   Factory module for creating and managing notifiers.
   """
 
-  alias WandererNotifier.Core.Features
+  require Logger
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
 

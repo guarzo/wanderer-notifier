@@ -4,10 +4,9 @@ defmodule WandererNotifier.Core.License do
   Handles license validation and feature access control.
   """
   use GenServer
-  require Logger
+  alias WandererNotifier.Config
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Config.Timing
-  alias WandererNotifier.Core.Config
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
   alias WandererNotifier.Logger, as: AppLogger
 
@@ -116,17 +115,17 @@ defmodule WandererNotifier.Core.License do
     token = Config.notifier_api_token()
 
     # Add detailed debug logging
-    Logger.info(
+    AppLogger.config_info(
       "License validation - token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}"
     )
 
-    Logger.info("License validation - environment: #{Application.get_env()}")
+    AppLogger.config_info("License validation - environment: #{Application.get_env()}")
 
     # Basic validation - ensure token exists and is a non-empty string
     is_valid = is_binary(token) && String.trim(token) != ""
 
     if !is_valid do
-      Logger.warning("License validation warning: Invalid notifier API token")
+      AppLogger.config_warn("License validation warning: Invalid notifier API token")
     end
 
     is_valid
@@ -215,7 +214,7 @@ defmodule WandererNotifier.Core.License do
     {:noreply, new_state}
   rescue
     e ->
-      Logger.error(
+      AppLogger.config_error(
         "License validation failed, continuing with invalid license state: #{inspect(e)}"
       )
 

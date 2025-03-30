@@ -7,7 +7,7 @@ defmodule WandererNotifier.Web.Controllers.ActivityChartController do
 
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger, as: AppLogger
 
   plug(:match)

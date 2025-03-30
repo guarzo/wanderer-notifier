@@ -6,7 +6,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Ash.TrackedCharacter
   alias WandererNotifier.Cache.CacheHelpers
-  alias WandererNotifier.Core.{Config, Features, License, Stats}
+  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.{License, Stats}
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
   alias WandererNotifier.Logger, as: AppLogger

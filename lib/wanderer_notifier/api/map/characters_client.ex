@@ -1,7 +1,7 @@
 alias WandererNotifier.Api.Http.Client
 alias WandererNotifier.Api.Map.UrlBuilder
 alias WandererNotifier.Config.{Application, Cache}
-alias WandererNotifier.Core.Config
+alias WandererNotifier.Config
 alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 alias WandererNotifier.Data.Character
 alias WandererNotifier.Logger, as: AppLogger

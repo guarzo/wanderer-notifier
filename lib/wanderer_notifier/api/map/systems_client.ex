@@ -6,8 +6,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Api.Map.UrlBuilder
+  alias WandererNotifier.Config
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Config
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger, as: AppLogger
@@ -128,11 +128,33 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Filter systems based on configuration
   defp filter_systems_for_tracking(systems) do
+    # Add detailed debugging for track_kspace_systems
+    track_kspace_features = Application.get_env(:wanderer_notifier, :features, %{})
+    track_kspace_config = track_kspace_features[:track_kspace_systems]
+
+    # Get direct env vars for comparison
+    legacy_env = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+    new_env = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
+
+    # Get the result from the Features module
+    features_module_result = Features.track_kspace_systems?()
+
+    AppLogger.api_info(
+      "[SystemsClient] TRACK KSPACE DEBUG CONFIG:",
+      %{
+        track_kspace_config: track_kspace_config,
+        legacy_env: legacy_env,
+        new_env: new_env,
+        features_module_result: features_module_result
+      }
+    )
+
     track_all_systems = Features.track_kspace_systems?()
     AppLogger.api_info("[SystemsClient] K-space tracking enabled: #{track_all_systems}")
 
     tracked_systems =
       if track_all_systems do
+        AppLogger.api_info("[SystemsClient] Including ALL systems (K-space and wormholes)")
         systems
       else
         # Only track wormhole systems if K-Space tracking is disabled
@@ -142,9 +164,10 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     # Log counts
     wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
+    kspace_count = length(systems) - wormhole_count
 
     AppLogger.api_info(
-      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes) " <>
+      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes, #{kspace_count} K-Space) " <>
         "out of #{length(systems)} total systems"
     )
 
@@ -265,7 +288,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     end
   end
 
-  # Similar to character's update_cache function, but simplified for systems
+  # Update the systems cache with the latest data
   defp update_systems_cache(systems) do
     # Use a hard-coded long TTL (24 hours) for persistence, just like characters.ex
     # 24 hours in seconds
@@ -289,6 +312,24 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       # Also update system_ids list for fast lookups
       system_ids = Enum.map(systems, & &1.solar_system_id)
       CacheRepo.set("map:system_ids", system_ids, long_ttl)
+
+      # Also cache individual systems by ID for better lookups
+      # This is important for tracked_via_track_all? to work properly
+      AppLogger.api_info("[SystemsClient] Caching individual systems by ID...")
+
+      Enum.each(systems, fn system ->
+        system_id = system.solar_system_id
+
+        if system_id do
+          system_cache_key = "map:system:#{system_id}"
+
+          AppLogger.api_debug(
+            "[SystemsClient] Caching system ID #{system_id} at key #{system_cache_key}"
+          )
+
+          CacheRepo.set(system_cache_key, system, long_ttl)
+        end
+      end)
 
       # Verify the update with brief delay - copied from characters.ex approach
       # Increasing to 100ms for more reliable verification

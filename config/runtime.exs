@@ -152,24 +152,43 @@ config :wanderer_notifier,
 config :wanderer_notifier, api_token: api_token_value
 
 # Feature flag configuration
-config :wanderer_notifier,
-  features: %{
-    notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
-    character_notifications_enabled:
-      get_env.("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", "true") == "true",
-    system_notifications_enabled:
-      get_env.("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", "true") == "true",
-    kill_notifications_enabled: get_env.("WANDERER_KILL_NOTIFICATIONS_ENABLED", "true") == "true",
-    character_tracking_enabled: get_env.("WANDERER_CHARACTER_TRACKING_ENABLED", "true") == "true",
-    system_tracking_enabled: get_env.("WANDERER_SYSTEM_TRACKING_ENABLED", "true") == "true",
-    tracked_systems_notifications_enabled:
-      get_env.("WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED", "true") == "true",
-    tracked_characters_notifications_enabled:
-      get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
-    activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
-    kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "true") == "true",
-    map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "true") == "true"
-  }
+
+# Handle ENABLE_TRACK_KSPACE_SYSTEMS first
+enable_track_kspace_systems = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+# Handle WANDERER_FEATURE_TRACK_KSPACE as fallback
+wanderer_feature_track_kspace = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
+
+# Determine the final value - prioritize direct environment variables
+track_kspace_enabled =
+  cond do
+    enable_track_kspace_systems == "true" -> true
+    enable_track_kspace_systems == "false" -> false
+    wanderer_feature_track_kspace == "true" -> true
+    wanderer_feature_track_kspace == "false" -> false
+    # Default to true if neither is explicitly set
+    true -> true
+  end
+
+features_map = %{
+  notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
+  character_notifications_enabled:
+    get_env.("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", "true") == "true",
+  system_notifications_enabled:
+    get_env.("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", "true") == "true",
+  kill_notifications_enabled: get_env.("WANDERER_KILL_NOTIFICATIONS_ENABLED", "true") == "true",
+  character_tracking_enabled: get_env.("WANDERER_CHARACTER_TRACKING_ENABLED", "true") == "true",
+  system_tracking_enabled: get_env.("WANDERER_SYSTEM_TRACKING_ENABLED", "true") == "true",
+  tracked_systems_notifications_enabled:
+    get_env.("WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED", "true") == "true",
+  tracked_characters_notifications_enabled:
+    get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
+  activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
+  kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "true") == "true",
+  map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "true") == "true",
+  track_kspace_systems: track_kspace_enabled
+}
+
+config :wanderer_notifier, features: features_map
 
 # Websocket Configuration
 config :wanderer_notifier, :websocket,

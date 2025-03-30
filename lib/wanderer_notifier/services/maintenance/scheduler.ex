@@ -5,9 +5,9 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   """
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.Map.SystemsClient
+  alias WandererNotifier.Config
   alias WandererNotifier.Config.Application
-  alias WandererNotifier.Core.Config
-  alias WandererNotifier.Core.Features
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger

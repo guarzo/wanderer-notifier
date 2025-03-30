@@ -8,7 +8,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.ChartService.KillmailChartAdapter
-  alias WandererNotifier.Core.Config
+  alias WandererNotifier.Config
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation

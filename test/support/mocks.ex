@@ -138,7 +138,7 @@ defmodule WandererNotifier.MockConfig do
   Mock implementation of the config for testing.
   """
 
-  @behaviour WandererNotifier.Core.ConfigBehaviour
+  @behaviour WandererNotifier.Config.Behaviour
 
   def start_link do
     Agent.start_link(

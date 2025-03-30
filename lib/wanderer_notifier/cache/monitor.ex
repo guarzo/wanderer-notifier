@@ -6,7 +6,7 @@ defmodule WandererNotifier.Cache.Monitor do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.TrackedCharacter

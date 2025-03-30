@@ -9,7 +9,7 @@ defmodule WandererNotifier.Services.Service do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
-  alias WandererNotifier.Core.Config.Timings
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.CacheHelpers
@@ -17,6 +17,7 @@ defmodule WandererNotifier.Services.Service do
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Services.KillProcessor
   alias WandererNotifier.Services.Maintenance.Scheduler, as: MaintenanceScheduler
+  alias WandererNotifier.Services.NotificationDeterminer
 
   @default_interval :timer.minutes(5)
 
@@ -57,6 +58,9 @@ defmodule WandererNotifier.Services.Service do
 
     # Initialize kill stats for tracking
     KillProcessor.init_stats()
+
+    # Debug system tracking status
+    NotificationDeterminer.print_system_tracking_status()
 
     state = %State{
       service_start_time: now,
