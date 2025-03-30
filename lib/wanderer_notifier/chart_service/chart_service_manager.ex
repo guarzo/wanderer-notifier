@@ -103,7 +103,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   # Handle data messages from the port
   @impl true
-  def handle_info({port_in, {:data, _data}}, %{process: port_proc} = state) when port_in == port_proc do
+  def handle_info({port_in, {:data, _data}}, %{process: port_proc} = state)
+      when port_in == port_proc do
     # Just ignore data messages from the port
     {:noreply, state}
   end

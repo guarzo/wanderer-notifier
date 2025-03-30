@@ -108,7 +108,7 @@ defmodule WandererNotifier.Config.Features do
   def get_feature_status do
     %{
       kill_charts: kill_charts_enabled?(),
-      map_charts: map_charts_enabled?(),
+      map_charts: map_charts_enabled?()
     }
   end
 
@@ -118,5 +118,4 @@ defmodule WandererNotifier.Config.Features do
   def kill_charts_enabled? do
     get_config(:kill_charts, true)
   end
-
 end

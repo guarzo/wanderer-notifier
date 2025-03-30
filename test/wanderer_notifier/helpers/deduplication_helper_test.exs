@@ -11,7 +11,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
     end
 
     # Only start the process if it's not already running
-    unless Process.whereis(DeduplicationHelper) do
+    if !Process.whereis(DeduplicationHelper) do
       start_supervised!(DeduplicationHelper)
     end
 

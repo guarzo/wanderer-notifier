@@ -9,6 +9,7 @@ defmodule WandererNotifier.Web.Router do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Services.Service
+
   alias WandererNotifier.Web.Controllers.{
     ApiController,
     ChartController,
@@ -158,5 +159,4 @@ defmodule WandererNotifier.Web.Router do
   # if Config.map_charts_enabled?() do
   #   forward("/map", to: MapController)
   # end
-
 end
