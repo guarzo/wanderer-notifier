@@ -25,34 +25,35 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
     - false otherwise
   """
   def should_send_kill_notification?(killmail) do
-    # Only continue if kill notifications are enabled
-    if !Features.kill_notifications_enabled?() do
+    # Check if kill notifications are enabled
+    if Features.kill_notifications_enabled?() do
+      # Extract basic information about the killmail
+      kill_details = extract_kill_notification_details(killmail)
+
+      # Log kill tracking status
+      log_kill_tracking_status(kill_details)
+
+      # Check if kill meets tracking criteria (system or character tracked)
+      meets_tracking_criteria =
+        kill_details.is_tracked_system || kill_details.has_tracked_character
+
+      if meets_tracking_criteria do
+        # Kill meets tracking criteria, check deduplication
+        should_send = check_deduplication_and_decide(kill_details.kill_id)
+
+        # Log final decision
+        log_kill_notification_decision(kill_details, should_send)
+
+        should_send
+      else
+        # Kill does not meet tracking criteria
+        log_kill_not_qualifying(kill_details)
+        false
+      end
+    else
       # Skip notification if kill notifications are disabled
-      return(false)
+      false
     end
-
-    # Extract basic information about the killmail
-    kill_details = extract_kill_notification_details(killmail)
-
-    # Log kill tracking status
-    log_kill_tracking_status(kill_details)
-
-    # Check if kill meets tracking criteria (system or character tracked)
-    meets_tracking_criteria = kill_details.is_tracked_system || kill_details.has_tracked_character
-
-    if !meets_tracking_criteria do
-      # Kill does not meet tracking criteria
-      log_kill_not_qualifying(kill_details)
-      return(false)
-    end
-
-    # Kill meets tracking criteria, check deduplication
-    should_send = check_deduplication_and_decide(kill_details.kill_id)
-
-    # Log final decision
-    log_kill_notification_decision(kill_details, should_send)
-
-    should_send
   end
 
   # Extract all details needed for kill notification determination
