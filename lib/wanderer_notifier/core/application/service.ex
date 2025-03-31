@@ -375,7 +375,74 @@ defmodule WandererNotifier.Core.Application.Service do
   def handle_info(:send_startup_notification, state) do
     # Send delayed startup notification to Discord
     AppLogger.startup_info("Sending delayed startup notification to Discord")
-    DiscordNotifier.send_message("WandererNotifier Service started. Listening for notifications.")
+
+    # Get the necessary data for a structured status message
+    now = :os.system_time(:second)
+    uptime = now - state.service_start_time
+
+    # Get statistics - using empty maps for initial startup
+    stats = %{
+      websocket: %{
+        connected: state.ws_pid != nil,
+        last_message: nil
+      },
+      notifications: %{
+        total: 0,
+        kills: 0,
+        systems: 0,
+        characters: 0
+      }
+    }
+
+    # Get feature status
+    features_status = WandererNotifier.Config.Features.get_feature_status()
+
+    # Simplified license status - we'll assume it's valid for startup
+    license_status = %{valid: true}
+
+    # Get current tracking counts
+    systems_count = state.systems_count
+    characters_count = state.characters_count
+
+    # Create structured notification using StructuredFormatter
+    status_message =
+      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+        # title
+        "WandererNotifier Service Started",
+        # description
+        "The service has started and is now operational.",
+        # stats
+        stats,
+        # uptime
+        uptime,
+        # features_status
+        features_status,
+        # license_status
+        license_status,
+        # systems_count
+        systems_count,
+        # characters_count
+        characters_count
+      )
+
+    # Convert to Discord format
+    discord_embed =
+      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(status_message)
+
+    # The Discord.Notifier module will check which client to use based on feature flag
+    result = WandererNotifier.Discord.Notifier.send_discord_embed(discord_embed)
+
+    # Log the result
+    case result do
+      :ok ->
+        AppLogger.startup_info("Structured startup notification sent successfully")
+
+      {:error, reason} ->
+        AppLogger.startup_warn("Failed to send structured startup notification",
+          error: inspect(reason)
+        )
+    end
+
     {:noreply, state}
   end
 

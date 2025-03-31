@@ -1,27 +1,34 @@
-### Phase 1: Audit Discord API Usage
-- [ ] Identify all deprecated API calls
-  - [ ] Review `discord/notifier.ex`
-  - [ ] Document current API version usage
-  - [ ] List all affected functions
-- [ ] Map dependencies on deprecated calls
-  - [ ] Identify affected features
-  - [ ] Document data structure changes needed
+### Phase 1: Audit Discord API Usage ✅
 
-### Phase 2: Implement New API Patterns
-- [ ] Update core Discord functionality
-  - [ ] Implement new message creation endpoints
-  - [ ] Update embed handling
-  - [ ] Update file attachment handling
-- [ ] Update notification formatters
-  - [ ] Move to new Discord message components
-  - [ ] Update rich embed formatting
-  - [ ] Implement new permission handling
+- [x] Identify all deprecated API calls
+  - [x] Review `discord/notifier.ex`
+  - [x] Document current API version usage
+  - [x] List all affected functions
+- [x] Map dependencies on deprecated calls
+  - [x] Identify affected features
+  - [x] Document data structure changes needed
+
+### Phase 2: Implement New API Patterns ⏳
+
+- [x] Update core Discord functionality
+  - [x] Implement new message creation endpoints
+  - [x] Update embed handling
+  - [x] Update file attachment handling
+- [x] Update notification formatters
+  - [x] Move to new Discord message components
+  - [x] Update rich embed formatting
+  - [x] Implement new permission handling
+- [x] Integrate Nostrum library more extensively
+  - [x] Create NeoClient module with Nostrum API
+  - [x] Add feature flag for Nostrum vs HTTP
+  - [ ] Implement interaction handling
 
 ### Phase 3: Migration and Testing
-- [ ] Create parallel implementations
-  - [ ] Add new API methods alongside old ones
-  - [ ] Add feature flags for new implementations
-  - [ ] Create migration helpers
+
+- [x] Create parallel implementations
+  - [x] Add new API methods alongside old ones
+  - [x] Add feature flags for new implementations
+  - [x] Create migration helpers
 - [ ] Update all Discord calls
   - [ ] Migrate message sending
   - [ ] Migrate embed creation
@@ -30,3 +37,4 @@
   - [ ] Test all notification types
   - [ ] Test error handling
   - [ ] Test rate limiting
+  - [ ] Test interaction handling

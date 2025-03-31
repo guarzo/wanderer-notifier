@@ -1280,15 +1280,19 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   end
 
   @doc """
-  Converts a generic notification structure to Discord format.
+  Converts a generic notification structure to Discord's specific format.
+  This is the interface between our internal notification format and Discord's requirements.
 
   ## Parameters
     - notification: The generic notification structure
 
   ## Returns
-    - A Discord-specific embed structure
+    - A map in Discord's expected format
   """
   def to_discord_format(notification) do
+    # Extract components if available
+    components = Map.get(notification, :components, [])
+
     # Convert to Discord embed format
     %{
       "title" => notification.title,
@@ -1298,6 +1302,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "timestamp" => Map.get(notification, :timestamp),
       "footer" => Map.get(notification, :footer),
       "thumbnail" => Map.get(notification, :thumbnail),
+      "image" => Map.get(notification, :image),
       "author" => Map.get(notification, :author),
       "fields" =>
         Enum.map(notification.fields || [], fn field ->
@@ -1308,5 +1313,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
           }
         end)
     }
+    |> add_components_if_present(components)
   end
+
+  # Helper to add components if present
+  defp add_components_if_present(embed, []), do: embed
+  defp add_components_if_present(embed, components), do: Map.put(embed, "components", components)
 end

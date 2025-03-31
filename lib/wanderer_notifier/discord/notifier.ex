@@ -10,10 +10,13 @@ defmodule WandererNotifier.Discord.Notifier do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Discord.ComponentBuilder
+  alias WandererNotifier.Discord.Constants
+  alias WandererNotifier.Discord.FeatureFlags
+  alias WandererNotifier.Discord.NeoClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
@@ -27,8 +30,6 @@ defmodule WandererNotifier.Discord.Notifier do
   # @lowsec_color 0xE28A0D
   # # Red for nullsec
   # @nullsec_color 0xD9534F
-
-  @base_url "https://discord.com/api/channels"
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -55,7 +56,7 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
-  defp build_url, do: "#{@base_url}/#{channel_id()}/messages"
+  defp build_url, do: Constants.messages_url(channel_id())
 
   defp headers do
     [
@@ -83,64 +84,33 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- MESSAGE SENDING --
 
-  @doc """
-  Sends a plain text message to Discord.
-  """
   @impl WandererNotifier.Notifiers.Behaviour
-  def send_message(message, feature \\ nil) when is_binary(message) do
+  def send_message(message, feature \\ nil) do
+    AppLogger.processor_info("Discord message requested")
+
     if env() == :test do
-      handle_test_mode("DISCORD MOCK: #{message}")
+      handle_test_mode("DISCORD MOCK MESSAGE: #{message}")
     else
-      payload =
-        if String.contains?(message, "test kill notification") do
-          process_test_kill_notification(message)
-        else
-          %{"content" => message, "embeds" => []}
-        end
+      # Use feature flag to determine client (now defaults to Nostrum)
+      use_nostrum = FeatureFlags.use_nostrum?()
 
-      send_payload(payload, feature)
+      AppLogger.processor_info("Sending Discord message",
+        client: if(use_nostrum, do: "Nostrum", else: "HTTP"),
+        message_length: String.length(message)
+      )
+
+      if use_nostrum do
+        # Use Nostrum client
+        NeoClient.send_message(message)
+      else
+        # Use legacy HTTP approach
+        payload = %{"content" => message}
+        send_payload(payload, feature)
+      end
     end
   end
 
-  defp process_test_kill_notification(message) do
-    recent_kills = KillmailProcessor.get_recent_kills() || []
-    process_kills_for_notification(recent_kills, message)
-  end
-
-  # Process kills list for test notification
-  defp process_kills_for_notification([], message) do
-    # No recent kills available
-    %{"content" => message, "embeds" => []}
-  end
-
-  defp process_kills_for_notification(recent_kills, message) do
-    recent_kill = List.first(recent_kills)
-    kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
-
-    if kill_id do
-      process_kill_with_id(recent_kill, kill_id)
-    else
-      %{"content" => message, "embeds" => []}
-    end
-  end
-
-  # Process a kill that has a valid ID
-  defp process_kill_with_id(recent_kill, kill_id) do
-    # Convert to Killmail struct if needed
-    killmail = convert_to_killmail(recent_kill, kill_id)
-    send_enriched_kill_embed(killmail, kill_id)
-  end
-
-  # Convert kill data to a Killmail struct
-  defp convert_to_killmail(kill_data, kill_id) do
-    if is_struct(kill_data, Killmail) do
-      kill_data
-    else
-      Killmail.new(kill_id, Map.get(kill_data, "zkb", %{}))
-    end
-  end
-
-  @spec send_embed(any(), any()) :: :ok | {:error, any()}
+  @spec send_embed(any(), any(), any(), any(), any()) :: :ok | {:error, any()}
   @doc """
   Sends a basic embed message to Discord.
   """
@@ -154,66 +124,41 @@ defmodule WandererNotifier.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK EMBED: #{title} - #{description}")
     else
-      payload =
-        if title == "Test Kill" do
-          process_test_embed(title, description, url, color)
-        else
-          build_embed_payload(title, description, url, color)
-        end
+      # Use feature flag to determine client (now defaults to Nostrum)
+      use_nostrum = FeatureFlags.use_nostrum?()
 
-      AppLogger.processor_info("Discord embed payload built, sending to Discord API")
-      send_payload(payload, feature)
-    end
-  end
+      # Build embed payload
+      embed = build_embed_payload(title, description, url, color)
 
-  defp process_test_embed(title, description, url, color) do
-    recent_kills = KillmailProcessor.get_recent_kills() || []
-
-    if recent_kills == [] do
-      build_embed_payload(title, description, url, color)
-    else
-      process_embed_with_kill(title, description, url, color, recent_kills)
-    end
-  end
-
-  # Helper function to process an embed with kill data
-  defp process_embed_with_kill(title, description, url, color, recent_kills) do
-    recent_kill = List.first(recent_kills)
-    kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
-
-    if kill_id do
-      # Convert to Killmail struct if needed
-      killmail = convert_to_killmail_struct(recent_kill)
-      send_enriched_kill_embed(killmail, kill_id)
-    else
-      build_embed_payload(title, description, url, color)
-    end
-  end
-
-  # Helper function to convert a kill to a Killmail struct if needed
-  defp convert_to_killmail_struct(recent_kill) do
-    if is_struct(recent_kill, Killmail) do
-      recent_kill
-    else
-      Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
+      if use_nostrum do
+        # For Nostrum, we just need the embed object from the payload
+        discord_embed = embed["embeds"] |> List.first()
+        NeoClient.send_embed(discord_embed)
+      else
+        # Use legacy HTTP approach
+        send_payload(embed, feature)
+      end
     end
   end
 
   defp build_embed_payload(title, description, url, color) do
-    embed =
-      %{
-        "title" => title,
-        "description" => description,
-        "color" => color
-      }
-      |> maybe_put("url", url)
+    embed = %{
+      "title" => title,
+      "description" => description,
+      "color" => color
+    }
 
+    # Add URL if provided
+    embed =
+      if url do
+        Map.put(embed, "url", url)
+      else
+        embed
+      end
+
+    # Return final payload with embed
     %{"embeds" => [embed]}
   end
-
-  # Inserts a key only if the value is not nil.
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   Sends a Discord embed using the Discord API.
@@ -222,23 +167,20 @@ defmodule WandererNotifier.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK EMBED (JSON): #{inspect(embed)}")
     else
-      payload = %{"embeds" => [embed]}
-      send_payload(payload)
+      # Use feature flag to determine client (now defaults to Nostrum)
+      use_nostrum = FeatureFlags.use_nostrum?()
+
+      if use_nostrum do
+        # For Nostrum, send directly through the NeoClient
+        AppLogger.processor_info("Using Nostrum client for structured embed")
+        NeoClient.send_embed(embed)
+      else
+        # Legacy HTTP approach
+        AppLogger.processor_info("Using HTTP client for structured embed")
+        payload = %{"embeds" => [embed]}
+        send_payload(payload)
+      end
     end
-  end
-
-  @doc """
-  Send an enriched kill embed to Discord.
-  """
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
-    AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
-
-    # Ensure the killmail has a system name if system_id is present
-    enriched_killmail = enrich_with_system_name(killmail)
-
-    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
-    send_to_discord(formatted_embed, "kill")
   end
 
   # Ensure the killmail has a system name if missing
@@ -293,9 +235,23 @@ defmodule WandererNotifier.Discord.Notifier do
       # Convert to Discord format
       discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
 
-      # Build and send a standardized payload
-      discord_payload = %{"embeds" => [discord_embed]}
-      send_payload(discord_payload, feature)
+      # Check if components are enabled and available
+      components = Map.get(formatted_notification, :components, [])
+      use_components = FeatureFlags.components_enabled?() and components != []
+
+      if use_components do
+        # If components are enabled, use enhanced format
+        AppLogger.processor_info("Using Discord components for #{feature} notification")
+        send_embed_with_components(discord_embed, components, feature)
+      else
+        # Otherwise use standard embed
+        AppLogger.processor_info("Using standard embeds for #{feature} notification",
+          components_enabled: FeatureFlags.components_enabled?()
+        )
+
+        payload = %{"embeds" => [discord_embed]}
+        send_payload(payload, feature)
+      end
     end
   end
 
@@ -505,13 +461,25 @@ defmodule WandererNotifier.Discord.Notifier do
     end)
   end
 
-  # -- HELPER FOR SENDING PAYLOAD --
+  # -- PAYLOAD SENDING --
 
   defp send_payload(payload, feature \\ nil) do
+    # Use feature flag to determine client (now defaults to Nostrum)
+    use_nostrum = FeatureFlags.use_nostrum?()
+
+    if use_nostrum do
+      send_via_nostrum(payload, feature)
+    else
+      send_via_http(payload, feature)
+    end
+  end
+
+  # Send via direct HTTP request (legacy approach)
+  defp send_via_http(payload, feature) do
     url = build_url()
     json_payload = Jason.encode!(payload)
 
-    AppLogger.processor_info("Sending Discord API request",
+    AppLogger.processor_info("Sending Discord API request via HTTP",
       url: url,
       feature: feature
     )
@@ -528,6 +496,21 @@ defmodule WandererNotifier.Discord.Notifier do
         )
 
         :ok
+
+      {:ok, %{status_code: 429, body: body}} ->
+        # Parse retry_after from response for rate limiting
+        retry_after =
+          case Jason.decode(body) do
+            {:ok, decoded} -> Map.get(decoded, "retry_after", 5) * 1000
+            _ -> 5000
+          end
+
+        AppLogger.processor_error("Discord API rate limit hit",
+          retry_after: retry_after,
+          feature: feature
+        )
+
+        {:error, {:rate_limited, retry_after}}
 
       {:ok, %{status_code: status, body: body}} ->
         AppLogger.processor_error("Discord API request failed",
@@ -548,6 +531,86 @@ defmodule WandererNotifier.Discord.Notifier do
     end
   end
 
+  # Send via Nostrum (new approach)
+  defp send_via_nostrum(payload, feature) do
+    AppLogger.processor_info("Sending Discord API request via Nostrum",
+      feature: feature
+    )
+
+    # Delegate to appropriate handler based on payload structure
+    cond do
+      text_message_payload?(payload) ->
+        handle_text_message_payload(payload)
+
+      embed_with_components_payload?(payload) ->
+        handle_embed_with_components_payload(payload)
+
+      embed_only_payload?(payload) ->
+        handle_embed_only_payload(payload)
+
+      true ->
+        handle_unknown_payload(payload)
+    end
+  end
+
+  # Helper to check if payload is a simple text message
+  defp text_message_payload?(payload) do
+    Map.has_key?(payload, "content") and
+      (not Map.has_key?(payload, "embeds") or Enum.empty?(Map.get(payload, "embeds", [])))
+  end
+
+  # Helper to handle text message payloads
+  defp handle_text_message_payload(payload) do
+    message = Map.get(payload, "content")
+    NeoClient.send_message(message)
+  end
+
+  # Helper to check if payload has embeds and components
+  defp embed_with_components_payload?(payload) do
+    Map.has_key?(payload, "embeds") and Map.has_key?(payload, "components")
+  end
+
+  # Helper to handle embeds with components payloads
+  defp handle_embed_with_components_payload(payload) do
+    embeds = Map.get(payload, "embeds", [])
+    components = Map.get(payload, "components", [])
+
+    if Enum.empty?(embeds) do
+      AppLogger.processor_warn("Empty embeds in payload, skipping Nostrum API call")
+      :ok
+    else
+      embed = List.first(embeds)
+      NeoClient.send_message_with_components(embed, components)
+    end
+  end
+
+  # Helper to check if payload has only embeds (no components)
+  defp embed_only_payload?(payload) do
+    Map.has_key?(payload, "embeds")
+  end
+
+  # Helper to handle embeds-only payloads
+  defp handle_embed_only_payload(payload) do
+    embeds = Map.get(payload, "embeds", [])
+
+    if Enum.empty?(embeds) do
+      AppLogger.processor_warn("Empty embeds in payload, skipping Nostrum API call")
+      :ok
+    else
+      embed = List.first(embeds)
+      NeoClient.send_embed(embed)
+    end
+  end
+
+  # Helper to handle unknown payload structures
+  defp handle_unknown_payload(payload) do
+    AppLogger.processor_error("Unknown payload structure for Nostrum",
+      payload: inspect(payload, limit: 200)
+    )
+
+    {:error, :unknown_payload_structure}
+  end
+
   # -- FILE SENDING --
 
   @doc """
@@ -563,12 +626,20 @@ defmodule WandererNotifier.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
     else
-      url = build_url()
+      # Use feature flag to determine client (now defaults to Nostrum)
+      use_nostrum = FeatureFlags.use_nostrum?()
 
-      {_boundary, body, file_headers} =
-        prepare_file_upload(filename, file_data, title, description)
+      if use_nostrum do
+        NeoClient.send_file(filename, file_data, title, description)
+      else
+        # Use legacy HTTP approach
+        url = build_url()
 
-      send_multipart_request(url, file_headers, body)
+        {_boundary, body, file_headers} =
+          prepare_file_upload(filename, file_data, title, description)
+
+        send_multipart_request(url, file_headers, body)
+      end
     end
   end
 
@@ -715,5 +786,79 @@ defmodule WandererNotifier.Discord.Notifier do
     # Delegate to the existing method that handles formatting and sending
     kill_id_str = if is_integer(kill_id), do: Integer.to_string(kill_id), else: kill_id
     send_kill_embed(kill_data, kill_id_str)
+  end
+
+  # -- EMBEDS WITH COMPONENTS --
+
+  @doc """
+  Sends an embed with interactive components to Discord.
+  """
+  def send_embed_with_components(embed, components, feature \\ nil) do
+    AppLogger.processor_info("Discord embed with components requested",
+      component_count: length(components)
+    )
+
+    if env() == :test do
+      handle_test_mode("DISCORD MOCK EMBED WITH COMPONENTS: #{inspect(embed)}")
+    else
+      # Use feature flag to determine client (now defaults to Nostrum)
+      use_nostrum = FeatureFlags.use_nostrum?()
+
+      if use_nostrum do
+        NeoClient.send_message_with_components(embed, components)
+      else
+        # Use legacy HTTP approach
+        payload = %{
+          "embeds" => [embed],
+          "components" => components
+        }
+
+        AppLogger.processor_info(
+          "Discord embed with components payload built, sending to Discord API"
+        )
+
+        send_payload(payload, feature)
+      end
+    end
+  end
+
+  # -- ENRICHED KILL NOTIFICATION --
+
+  @doc """
+  Send an enriched kill embed to Discord with interactive components.
+  """
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
+    AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
+
+    # Ensure the killmail has a system name if system_id is present
+    enriched_killmail = enrich_with_system_name(killmail)
+
+    # Format the kill notification
+    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
+
+    # Only add components if the feature flag is enabled
+    enhanced_notification =
+      if FeatureFlags.components_enabled?() do
+        # Add interactive components based on the killmail
+        components = [ComponentBuilder.kill_action_row(kill_id)]
+
+        AppLogger.processor_debug("Adding interactive components to kill notification",
+          kill_id: kill_id
+        )
+
+        # Add components to the notification
+        Map.put(formatted_embed, :components, components)
+      else
+        # Use standard format without components
+        AppLogger.processor_debug(
+          "Using standard embed format for kill notification (components disabled)",
+          kill_id: kill_id
+        )
+
+        formatted_embed
+      end
+
+    send_to_discord(enhanced_notification, "kill")
   end
 end

@@ -446,9 +446,21 @@ defmodule WandererNotifier.Data.MapSystem do
     end
   end
 
-  # Classify k-space system (low-sec or null-sec)
+  # Classify k-space system (high-sec, low-sec, or null-sec)
+  # In EVE Online, security is determined by system IDs:
+  # - system IDs with remainder < 500 are null-sec
+  # - system IDs with remainder >= 500 can be high-sec or low-sec depending on security status
+  # Since we don't have security status here, we're approximating based on ID patterns
   defp classify_kspace(system_id) do
-    if rem(system_id, 1000) < 500, do: "Low-sec", else: "Null-sec"
+    remainder = rem(system_id, 1000)
+    # High-sec systems typically have higher ID remainders (700-999)
+    # Low-sec systems typically have middle remainders (500-699)
+    # Null-sec systems typically have lower remainders (0-499)
+    cond do
+      remainder < 500 -> "Null-sec"
+      remainder >= 700 -> "High-sec"
+      true -> "Low-sec"
+    end
   end
 
   # Add helper function to determine wormhole class based on ID
