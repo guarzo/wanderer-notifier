@@ -7,7 +7,6 @@ defmodule WandererNotifier.Schedulers.Registry do
   """
 
   use GenServer
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.StartupTracker
   # Client API

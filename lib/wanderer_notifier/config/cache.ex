@@ -51,6 +51,14 @@ defmodule WandererNotifier.Config.Cache do
   end
 
   @doc """
+  Gets the TTL for system cache entries.
+  """
+  def systems_cache_ttl do
+    Application.get_env(:wanderer_notifier, :cache, %{})
+    |> Map.get(:systems_cache_ttl, 3600)
+  end
+
+  @doc """
   Gets the TTL for static info cache entries.
   """
   def static_info_cache_ttl do

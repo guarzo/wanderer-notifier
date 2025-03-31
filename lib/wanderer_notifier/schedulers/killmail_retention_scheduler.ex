@@ -12,7 +12,6 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   ```
   """
 
-  require Logger
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -35,19 +34,19 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
 
       # Log the results
       if error_count > 0 do
-        Logger.warning(
+        AppLogger.scheduler_warn(
           "#{inspect(@scheduler_name)}: Cleanup completed with errors. Deleted: #{deleted_count}, Errors: #{error_count}",
           []
         )
       else
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Cleanup completed successfully. Deleted: #{deleted_count} old killmails"
         )
       end
 
       {:ok, {deleted_count, error_count}, state}
     else
-      Logger.info(
+      AppLogger.scheduler_info(
         "#{inspect(@scheduler_name)}: Skipping killmail retention (persistence disabled)"
       )
 
@@ -55,7 +54,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during killmail retention: #{Exception.message(e)}"
       )
 

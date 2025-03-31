@@ -9,19 +9,22 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
   - Application uptime
   """
 
-  require Logger
-  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Core.Application.Service, as: AppService
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Process dictionary key for kill stats
   @kill_stats_key :kill_processor_stats
+  # Process dictionary key for timer reference
+  @log_timer_key :kill_stats_log_timer
 
   @doc """
   Initialize statistics tracking.
   Sets up the initial counters in process dictionary.
   """
   def init do
+    # Cancel any existing timer to prevent duplicates
+    cancel_existing_timer()
+
     Process.put(@kill_stats_key, %{
       total_kills_received: 0,
       total_notifications_sent: 0,
@@ -30,20 +33,44 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
     })
 
     AppLogger.kill_info("Kill statistics tracking initialized")
+
+    # Start the logging schedule
+    schedule_logging()
   end
 
   @doc """
   Schedule periodic logging of kill statistics.
+  Ensures only one timer is active at a time.
   """
   def schedule_logging do
+    # Cancel any existing timer first
+    cancel_existing_timer()
+
     # Send the message to the main Service module since that's where GenServer is implemented
-    Process.send_after(
-      AppService,
-      :log_kill_stats,
-      Timings.cache_check_interval()
-    )
+    timer_ref =
+      Process.send_after(
+        AppService,
+        :log_kill_stats,
+        # Changed from Timings.cache_check_interval() (5 seconds) to 60 seconds
+        60_000
+      )
+
+    # Store the timer reference in process dictionary
+    Process.put(@log_timer_key, timer_ref)
 
     AppLogger.kill_debug("Kill statistics logging scheduled")
+  end
+
+  # Helper to cancel any existing timer
+  defp cancel_existing_timer do
+    case Process.get(@log_timer_key) do
+      nil ->
+        :ok
+
+      timer_ref ->
+        Process.cancel_timer(timer_ref)
+        Process.put(@log_timer_key, nil)
+    end
   end
 
   @doc """
@@ -80,11 +107,11 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
         "none received"
       end
 
-    Logger.info(
+    AppLogger.kill_info(
       "📊 KILL STATS: Processed #{stats.total_kills_received} kills, sent #{stats.total_notifications_sent} notifications. Last kill: #{last_kill_ago}. Uptime: #{hours}h #{minutes}m #{seconds}s"
     )
 
-    # Reschedule stats logging
+    # Reschedule stats logging - make sure we only have one active timer
     schedule_logging()
   end
 

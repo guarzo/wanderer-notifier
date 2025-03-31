@@ -1,12 +1,10 @@
-defmodule Schedulers.Supervisor do
+defmodule WandererNotifier.Schedulers.Supervisor do
   @moduledoc """
-  Supervisor for all schedulers in the application.
-
-  This module supervises the scheduler registry and all scheduler processes.
+  Supervisor for scheduler modules.
+  Manages the lifecycle of all scheduler processes.
   """
 
   use Supervisor
-  require Logger
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Data.Repo
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -53,7 +51,10 @@ defmodule Schedulers.Supervisor do
   # Define the core schedulers
   defp define_core_schedulers do
     schedulers = [
-      {Schedulers.ActivityChartScheduler, []}
+      {Schedulers.ActivityChartScheduler, []},
+      {Schedulers.SystemUpdateScheduler, []},
+      {Schedulers.CharacterUpdateScheduler, []},
+      {Schedulers.ServiceStatusScheduler, []}
     ]
 
     # Track core schedulers

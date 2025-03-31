@@ -36,7 +36,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
           schedule_next_run(hour, minute)
         end
 
-        # Return initial state
+        # Return initial state - only return :ok tuple since errors are unreachable
         {:ok, %{hour: hour, minute: minute, last_run: last_run}}
       end
 

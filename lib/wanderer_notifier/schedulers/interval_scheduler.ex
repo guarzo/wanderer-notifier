@@ -40,7 +40,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
           schedule_next(interval)
         end
 
-        # Return initial state
+        # Return initial state - only return :ok tuple (removing the error case that will never match)
         {:ok, %{interval: interval, last_run: last_run}}
       end
 

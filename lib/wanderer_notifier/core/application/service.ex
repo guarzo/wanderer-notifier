@@ -7,11 +7,11 @@ defmodule WandererNotifier.Core.Application.Service do
   require Logger
   use GenServer
   alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Core.Maintenance.Scheduler, as: MaintenanceScheduler
+  alias WandererNotifier.Schedulers.SystemUpdateScheduler
+  alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.{CacheHelpers, DeduplicationHelper}
@@ -179,11 +179,12 @@ defmodule WandererNotifier.Core.Application.Service do
       "Received force_refresh_cache message. Refreshing critical data after cache recovery"
     )
 
-    # Run maintenance tasks to repopulate the cache using the aliased module
-    new_state = MaintenanceScheduler.do_initial_checks(state)
+    # Execute the system and character update schedulers directly
+    SystemUpdateScheduler.execute_now()
+    CharacterUpdateScheduler.execute_now()
 
     AppLogger.cache_info("Cache refresh completed after recovery")
-    {:noreply, new_state}
+    {:noreply, state}
   end
 
   @impl true
@@ -201,28 +202,13 @@ defmodule WandererNotifier.Core.Application.Service do
     AppLogger.startup_info("Running scheduled initial data update")
 
     try do
-      # First run the maintenance scheduler for systems
-      updated_state = MaintenanceScheduler.do_initial_checks(state)
-
-      # Now directly call MapClient.update_tracked_characters() without relying on the scheduler
-      AppLogger.startup_info("Making direct call to MapClient.update_tracked_characters()")
-
-      # Make the call and log the result
-      case MapClient.update_tracked_characters() do
-        {:ok, characters} ->
-          AppLogger.startup_info("Successfully updated tracked characters directly",
-            count: length(characters || [])
-          )
-
-        {:error, reason} ->
-          AppLogger.startup_error("Failed to update characters directly",
-            error: inspect(reason)
-          )
-      end
+      # Execute the system and character update schedulers directly
+      SystemUpdateScheduler.execute_now()
+      CharacterUpdateScheduler.execute_now()
 
       AppLogger.startup_info("Initial tracked data update complete")
 
-      {:noreply, updated_state}
+      {:noreply, state}
     rescue
       e ->
         AppLogger.startup_error("Error in tracked data update",

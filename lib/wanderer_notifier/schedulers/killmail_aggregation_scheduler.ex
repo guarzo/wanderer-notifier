@@ -11,10 +11,10 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   ```
   """
 
-  require Logger
-  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Default to midnight (hour = 0, minute = 0)
@@ -70,7 +70,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
          monthly: monthly_result
        }, state}
     else
-      Logger.info(
+      AppLogger.scheduler_info(
         "#{inspect(@scheduler_name)}: Skipping killmail aggregation (persistence disabled)"
       )
 
@@ -78,7 +78,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during killmail aggregation: #{Exception.message(e)}"
       )
 
@@ -136,7 +136,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation: #{Exception.message(e)}"
       )
 
@@ -155,17 +155,17 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   defp log_period_result(result, period_label, skip_reason \\ "") do
     case result do
       {:ok, _} ->
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation completed successfully"
         )
 
       {:error, _, reason} ->
-        Logger.error(
+        AppLogger.scheduler_error(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation failed: #{inspect(reason)}"
         )
 
       :skipped ->
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation skipped #{skip_reason}"
         )
     end

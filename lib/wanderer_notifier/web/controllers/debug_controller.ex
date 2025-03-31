@@ -11,6 +11,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.License.Service, as: License
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Schedulers.Registry, as: SchedulerRegistry
 
   # This controller handles debug endpoints
 
@@ -45,6 +46,397 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     conn
     |> put_resp_header("location", "/debug")
     |> send_resp(302, "Redirecting...")
+  end
+
+  # GET /scheduler-stats - Get detailed scheduler statistics for the dashboard
+  get "/scheduler-stats" do
+    # Step 1: Get all schedulers from registry
+    scheduler_list =
+      try do
+        AppLogger.api_debug("Getting schedulers from registry")
+        schedulers = SchedulerRegistry.get_all_schedulers()
+        AppLogger.api_debug("Got #{length(schedulers)} schedulers")
+        schedulers
+      rescue
+        e ->
+          AppLogger.api_error("Error getting schedulers from registry",
+            error: inspect(e),
+            stacktrace: inspect(Process.info(self(), :current_stacktrace))
+          )
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{error: "Failed to get schedulers from registry: #{inspect(e)}"})
+          )
+
+          nil
+      end
+
+    # Only continue if we got schedulers
+    if scheduler_list != nil do
+      # Step 2: Process each scheduler
+      scheduler_info =
+        try do
+          AppLogger.api_debug("Processing #{length(scheduler_list)} schedulers")
+
+          processed_schedulers =
+            Enum.reduce_while(scheduler_list, [], fn scheduler_data, acc ->
+              try do
+                module = scheduler_data.module
+                config = scheduler_data.config
+                enabled = scheduler_data.enabled
+
+                AppLogger.api_debug("Processing scheduler: #{inspect(module)}")
+
+                # Get health info from the scheduler if available
+                health_info =
+                  if function_exported?(module, :health_check, 0) do
+                    try do
+                      # Get health info and sanitize it for JSON encoding
+                      health_info = module.health_check()
+                      sanitize_map_for_json(health_info)
+                    rescue
+                      e ->
+                        AppLogger.api_error("Error getting health info for #{inspect(module)}",
+                          error: inspect(e),
+                          stacktrace: inspect(Process.info(self(), :current_stacktrace))
+                        )
+
+                        %{}
+                    end
+                  else
+                    %{}
+                  end
+
+                # Extract scheduler type from config
+                scheduler_type = get_scheduler_type(config)
+
+                # Generate consistent ID for frontend
+                id = module |> to_string() |> String.replace("Elixir.", "")
+
+                # Extract name from module
+                name = get_scheduler_name(module)
+
+                # Process health info into format needed by dashboard
+                processed = %{
+                  id: id,
+                  name: name,
+                  module: inspect(module),
+                  type: scheduler_type,
+                  enabled: enabled,
+                  interval: config[:interval_ms] || config[:interval],
+                  hour: config[:hour],
+                  minute: config[:minute],
+                  last_run: get_formatted_timestamp(health_info[:last_execution]),
+                  next_run: calculate_next_run(health_info, scheduler_type, config),
+                  stats: %{
+                    # Will need to implement tracking for this
+                    success_count: 0,
+                    # Will need to implement tracking for this
+                    error_count: 0,
+                    last_duration_ms: 0,
+                    last_result: health_info[:last_result],
+                    last_error: health_info[:last_error],
+                    retry_count: health_info[:retry_count] || 0
+                  },
+                  config: sanitize_config(config)
+                }
+
+                {:cont, [processed | acc]}
+              rescue
+                e ->
+                  AppLogger.api_error(
+                    "Error processing scheduler #{inspect(scheduler_data.module)}",
+                    error: inspect(e),
+                    stacktrace: inspect(Process.info(self(), :current_stacktrace))
+                  )
+
+                  # Continue with other schedulers instead of failing completely
+                  {:cont, acc}
+              end
+            end)
+
+          # Reverse the list to maintain original order
+          Enum.reverse(processed_schedulers)
+        rescue
+          e ->
+            stacktrace = Process.info(self(), :current_stacktrace)
+
+            AppLogger.api_error("Error processing schedulers",
+              error: inspect(e),
+              stacktrace: inspect(stacktrace)
+            )
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                error: "Failed to process schedulers: #{inspect(e)}",
+                details: inspect(e),
+                stacktrace: inspect(stacktrace)
+              })
+            )
+
+            nil
+        end
+
+      # Only continue if scheduler processing succeeded
+      if scheduler_info != nil do
+        # Step 3: Calculate summary and prepare response
+        try do
+          AppLogger.api_debug("Calculating summary statistics")
+
+          # Calculate summary statistics
+          enabled_count = Enum.count(scheduler_info, & &1.enabled)
+          interval_count = Enum.count(scheduler_info, &(&1.type == "interval"))
+          time_count = Enum.count(scheduler_info, &(&1.type == "time"))
+
+          summary = %{
+            total: length(scheduler_info),
+            enabled: enabled_count,
+            disabled: length(scheduler_info) - enabled_count,
+            by_type: %{
+              interval: interval_count,
+              time: time_count
+            }
+          }
+
+          # Return JSON response with scheduler info and summary
+          response_data = %{
+            schedulers: scheduler_info,
+            summary: summary
+          }
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(200, Jason.encode!(response_data))
+        rescue
+          e ->
+            stacktrace = Process.info(self(), :current_stacktrace)
+
+            AppLogger.api_error("Error generating response data",
+              error: inspect(e),
+              stacktrace: inspect(stacktrace)
+            )
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(
+              500,
+              Jason.encode!(%{
+                error: "Failed to generate response data: #{inspect(e)}",
+                details: inspect(e),
+                stacktrace: inspect(stacktrace)
+              })
+            )
+        end
+      end
+    end
+  end
+
+  # GET /schedulers - Get raw scheduler data (simpler format)
+  get "/schedulers" do
+    try do
+      # Get all schedulers from registry
+      scheduler_list = SchedulerRegistry.get_all_schedulers()
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(scheduler_list))
+    rescue
+      e ->
+        AppLogger.api_error("Error fetching raw scheduler data", error: inspect(e))
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{error: "Failed to get schedulers: #{inspect(e)}"}))
+    end
+  end
+
+  # POST /schedulers/execute - Execute all schedulers
+  post "/schedulers/execute" do
+    try do
+      # Trigger execution of all schedulers
+      :ok = GenServer.cast(SchedulerRegistry, :execute_all)
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{success: true, message: "All schedulers executed"}))
+    rescue
+      e ->
+        AppLogger.api_error("Error executing schedulers", error: inspect(e))
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{error: "Failed to execute schedulers: #{inspect(e)}"}))
+    end
+  end
+
+  # POST /scheduler/:id/execute - Execute a specific scheduler
+  post "/scheduler/:id/execute" do
+    scheduler_name = conn.params["id"]
+
+    if scheduler_name do
+      # Try to find the scheduler module
+      module_name = "Elixir.WandererNotifier.Schedulers.#{scheduler_name}"
+
+      try do
+        # Convert string to module atom
+        module = String.to_existing_atom(module_name)
+
+        # Check if the module exists and has execute_now function
+        if Code.ensure_loaded?(module) && function_exported?(module, :execute_now, 0) do
+          module.execute_now()
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(200, Jason.encode!(%{success: true, message: "Scheduler executed"}))
+        else
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(404, Jason.encode!(%{error: "Scheduler not found or cannot be executed"}))
+        end
+      rescue
+        _ ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(404, Jason.encode!(%{error: "Scheduler not found"}))
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(400, Jason.encode!(%{error: "Scheduler ID is required"}))
+    end
+  end
+
+  # GET /scheduler/:id/health - Get health info for a specific scheduler
+  get "/scheduler/:id/health" do
+    scheduler_name = conn.params["id"]
+
+    if scheduler_name do
+      # Try to find the scheduler module
+      module_name = "Elixir.WandererNotifier.Schedulers.#{scheduler_name}"
+
+      try do
+        # Convert string to module atom
+        module = String.to_existing_atom(module_name)
+
+        # Just return all available info about the module to help debug
+        functions_map =
+          module.__info__(:functions)
+          |> Enum.map(fn {k, v} -> "#{k}/#{v}" end)
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            module: inspect(module),
+            exists: Code.ensure_loaded?(module),
+            has_health_check: function_exported?(module, :health_check, 0),
+            functions: functions_map,
+            config:
+              if(function_exported?(module, :get_config, 0), do: module.get_config(), else: nil),
+            enabled:
+              if(function_exported?(module, :enabled?, 0), do: module.enabled?(), else: nil)
+          })
+        )
+      rescue
+        e ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              error: "Error getting scheduler info",
+              details: inspect(e),
+              stacktrace: inspect(Process.info(self(), :current_stacktrace))
+            })
+          )
+      end
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(400, Jason.encode!(%{error: "Scheduler ID is required"}))
+    end
+  end
+
+  # GET /debug-scheduler/:name - Debug a specific scheduler
+  get "/debug-scheduler/:name" do
+    name = conn.params["name"]
+    full_module_name = "Elixir.WandererNotifier.Schedulers.#{name}Scheduler"
+
+    try do
+      module = String.to_existing_atom(full_module_name)
+
+      # Check if various functions exist
+      debug_info =
+        if function_exported?(module, :__debug_info__, 0) do
+          module.__debug_info__()
+        else
+          functions_map =
+            module.__info__(:functions)
+            |> Enum.map(fn {k, v} -> "#{k}/#{v}" end)
+
+          %{
+            functions: functions_map,
+            exports_health_check: function_exported?(module, :health_check, 0),
+            exports_get_config: function_exported?(module, :get_config, 0),
+            exports_enabled: function_exported?(module, :enabled?, 0)
+          }
+        end
+
+      # Try to get config if possible
+      config =
+        if function_exported?(module, :get_config, 0) do
+          try do
+            module.get_config()
+          rescue
+            e -> %{error: inspect(e)}
+          end
+        else
+          nil
+        end
+
+      # Try to call health_check if available
+      health =
+        if function_exported?(module, :health_check, 0) do
+          try do
+            module.health_check()
+          rescue
+            e -> %{error: inspect(e)}
+          end
+        else
+          nil
+        end
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        200,
+        Jason.encode!(%{
+          module: inspect(module),
+          debug_info: debug_info,
+          config: config,
+          health: health
+        })
+      )
+    rescue
+      e ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{
+            error: "Error debugging scheduler",
+            details: inspect(e),
+            stacktrace: inspect(Process.info(self(), :current_stacktrace))
+          })
+        )
+    end
   end
 
   # Helper to generate debug page HTML
@@ -106,6 +498,153 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     }
   end
 
+  # Helper functions for scheduler stats
+
+  # Determine scheduler type based on config
+  defp get_scheduler_type(config) do
+    cond do
+      Map.has_key?(config, :interval_ms) || Map.has_key?(config, :interval) -> "interval"
+      Map.has_key?(config, :hour) && Map.has_key?(config, :minute) -> "time"
+      true -> "unknown"
+    end
+  end
+
+  # Extract name from module
+  defp get_scheduler_name(module) do
+    module
+    |> to_string()
+    |> String.replace("Elixir.WandererNotifier.Schedulers.", "")
+    |> String.replace("Scheduler", "")
+    |> then(fn name ->
+      name
+      |> String.split(~r/(?=[A-Z])/)
+      |> Enum.join(" ")
+      |> String.trim()
+    end)
+  end
+
+  # Format timestamp for last run
+  defp get_formatted_timestamp(nil), do: nil
+
+  defp get_formatted_timestamp(timestamp) do
+    # Convert epoch milliseconds to datetime
+    {:ok, datetime} = DateTime.from_unix(div(timestamp, 1000), :second)
+    formatted = DateTime.to_iso8601(datetime)
+
+    # Calculate relative time string
+    now = DateTime.utc_now()
+    diff_seconds = DateTime.diff(now, datetime, :second)
+
+    relative =
+      cond do
+        diff_seconds < 60 -> "Just now"
+        diff_seconds < 3600 -> "#{div(diff_seconds, 60)} minutes ago"
+        diff_seconds < 86400 -> "#{div(diff_seconds, 3600)} hours ago"
+        true -> "#{div(diff_seconds, 86400)} days ago"
+      end
+
+    %{
+      timestamp: formatted,
+      relative: relative
+    }
+  end
+
+  # Calculate next run time based on scheduler type
+  defp calculate_next_run(_health_info, "interval", config) do
+    # For interval schedulers, next run is roughly now + interval
+    interval_ms = config[:interval_ms] || config[:interval]
+
+    if interval_ms do
+      now = DateTime.utc_now()
+      # Add interval (approximate since we don't know exact last execution time)
+      next_run_time = DateTime.add(now, div(interval_ms, 1000), :second)
+
+      formatted = DateTime.to_iso8601(next_run_time)
+      diff_seconds = DateTime.diff(next_run_time, now, :second)
+
+      relative =
+        cond do
+          diff_seconds < 60 -> "In a few seconds"
+          diff_seconds < 3600 -> "In #{div(diff_seconds, 60)} minutes"
+          diff_seconds < 86400 -> "In #{div(diff_seconds, 3600)} hours"
+          true -> "In #{div(diff_seconds, 86400)} days"
+        end
+
+      %{
+        timestamp: formatted,
+        relative: relative
+      }
+    else
+      nil
+    end
+  end
+
+  defp calculate_next_run(_health_info, "time", config) do
+    # For time schedulers, calculate next occurrence based on hour and minute
+    hour = config[:hour]
+    minute = config[:minute]
+
+    if hour && minute do
+      now = DateTime.utc_now()
+      current_hour = now.hour
+      current_minute = now.minute
+
+      # Calculate next run datetime
+      {next_day, next_hour, next_minute} =
+        cond do
+          # If current time is before scheduled time today
+          current_hour < hour || (current_hour == hour && current_minute < minute) ->
+            {now.day, hour, minute}
+
+          # If current time is after scheduled time, next is tomorrow
+          true ->
+            {now.day + 1, hour, minute}
+        end
+
+      # Create next run datetime
+      next_run_time = %DateTime{
+        year: now.year,
+        month: now.month,
+        day: next_day,
+        hour: next_hour,
+        minute: next_minute,
+        second: 0,
+        microsecond: {0, 0},
+        time_zone: "Etc/UTC",
+        zone_abbr: "UTC",
+        utc_offset: 0,
+        std_offset: 0
+      }
+
+      # Handle month rollover
+      next_run_time =
+        if next_day > Date.days_in_month(now) do
+          %{next_run_time | day: 1, month: rem(now.month, 12) + 1}
+        else
+          next_run_time
+        end
+
+      formatted = DateTime.to_iso8601(next_run_time)
+      diff_seconds = DateTime.diff(next_run_time, now, :second)
+
+      relative =
+        cond do
+          diff_seconds < 3600 -> "In #{div(diff_seconds, 60)} minutes"
+          diff_seconds < 86400 -> "In #{div(diff_seconds, 3600)} hours"
+          true -> "In #{div(diff_seconds, 86400)} days"
+        end
+
+      %{
+        timestamp: formatted,
+        relative: relative
+      }
+    else
+      nil
+    end
+  end
+
+  defp calculate_next_run(_health_info, _type, _config), do: nil
+
   # Match all other routes
   match _ do
     send_resp(conn, 404, "Not found")
@@ -125,4 +664,30 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
       })
     )
   end
+
+  # Helper function to sanitize config for JSON encoding
+  defp sanitize_config(config) do
+    sanitize_map_for_json(config)
+  end
+
+  # Helper function to sanitize map for JSON encoding
+  defp sanitize_map_for_json(map) when is_map(map) do
+    # Filter out any potentially unencodable values
+    map
+    |> Enum.map(fn {k, v} ->
+      {k, sanitize_value(v)}
+    end)
+    |> Map.new()
+  end
+
+  defp sanitize_map_for_json(value), do: sanitize_value(value)
+
+  # Function to sanitize individual values
+  defp sanitize_value(v) when is_map(v), do: sanitize_map_for_json(v)
+  defp sanitize_value(v) when is_list(v), do: Enum.map(v, &sanitize_value/1)
+  defp sanitize_value(v) when is_atom(v), do: Atom.to_string(v)
+  defp sanitize_value(v) when is_pid(v), do: inspect(v)
+  defp sanitize_value(v) when is_function(v), do: "#Function<...>"
+  defp sanitize_value(v) when is_binary(v) or is_number(v) or is_boolean(v) or is_nil(v), do: v
+  defp sanitize_value(_), do: "#Unencodable<...>"
 end

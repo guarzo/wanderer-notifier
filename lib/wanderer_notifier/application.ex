@@ -188,8 +188,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},
-      {WandererNotifier.Schedulers.ActivityChartScheduler, []},
-      {WandererNotifier.Core.Maintenance.Service, []}
+      {WandererNotifier.Schedulers.Supervisor, []}
     ]
   end
 end

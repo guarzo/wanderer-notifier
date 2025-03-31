@@ -246,8 +246,9 @@ defmodule WandererNotifier.Data.Cache.Repository do
     systems_count = length(systems)
     characters_count = length(characters)
 
-    # Log changes in counts with descriptive messages
-    if systems_count != state.last_systems_count do
+    # Log changes in counts only if significant or first time
+    # For systems, log if change is more than 20% or it's the first time
+    if should_log_count_change?(systems_count, state.last_systems_count) do
       AppLogger.cache_info(
         "Systems count changed: #{state.last_systems_count} → #{systems_count}",
         %{
@@ -257,7 +258,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
       )
     end
 
-    if characters_count != state.last_characters_count do
+    # For characters, log if change is more than 20% or it's the first time
+    if should_log_count_change?(characters_count, state.last_characters_count) do
       AppLogger.cache_info(
         "Characters count changed: #{state.last_characters_count} → #{characters_count}",
         %{
@@ -322,6 +324,28 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Log unhandled messages at warning level
     AppLogger.cache_warn("Received unexpected message", message: inspect(msg))
     {:noreply, state}
+  end
+
+  # Determines if a count change should be logged
+  defp should_log_count_change?(new_count, old_count) do
+    cond do
+      # If old count was zero and now it's not, log it (initial data load)
+      old_count == 0 && new_count > 0 ->
+        true
+
+      # If new count is zero and old count wasn't, log it (data clearing)
+      new_count == 0 && old_count > 0 ->
+        true
+
+      # For non-zero counts, log if change is significant (more than 20%)
+      old_count > 0 ->
+        percent_change = abs(new_count - old_count) / old_count * 100
+        percent_change > 20
+
+      # Default case (shouldn't happen, but to be safe)
+      true ->
+        false
+    end
   end
 
   defp schedule_cache_check do
@@ -723,14 +747,59 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Purge expired entries from the cache
   defp purge_expired_entries do
+    # First, check entries set to expire soon
+    about_to_expire = check_entries_expiring_soon()
+
+    # Now perform the actual purge
     case Cachex.clear(@cache_name, expired: true) do
       {:ok, count} ->
-        AppLogger.cache_info("Purged expired entries", count: count)
+        # Only log as info if actual entries were purged
+        if count > 0 do
+          AppLogger.cache_info("Purged #{count} expired cache entries",
+            count: count,
+            about_to_expire: about_to_expire
+          )
+        else
+          AppLogger.cache_debug("No expired entries to purge")
+        end
+
         {:ok, count}
 
       other ->
         AppLogger.cache_warn("Failed to purge expired entries", result: inspect(other))
         other
+    end
+  end
+
+  # Check for entries about to expire (for debugging purposes)
+  defp check_entries_expiring_soon do
+    # Try to identify critical keys that might expire soon
+    important_keys = ["map:systems", "map:characters"]
+
+    # Check TTL on important keys
+    important_ttls =
+      important_keys
+      |> Enum.map(fn key -> {key, Cachex.ttl(@cache_name, key)} end)
+      |> Enum.filter(fn
+        {_, {:ok, ttl}} ->
+          # Only include keys that exist and have a TTL set
+          # Less than 1 hour remaining
+          is_integer(ttl) && ttl > 0 && ttl < 3_600_000
+
+        _ ->
+          false
+      end)
+      |> Enum.map(fn {key, {:ok, ttl}} ->
+        # Convert to minutes for readability
+        {key, div(ttl, 60000)}
+      end)
+
+    # Return list of keys about to expire
+    if Enum.empty?(important_ttls) do
+      []
+    else
+      AppLogger.cache_warn("Critical cache keys expiring soon", entries: inspect(important_ttls))
+      important_ttls
     end
   end
 
@@ -866,12 +935,37 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Handle empty array initialization for specific keys
   defp handle_empty_array_initialization(key, should_log) do
-    if should_log do
-      AppLogger.cache_debug("Initializing with empty array (sampled)", key: key)
-    end
+    # First check if the key exists with a non-empty value
+    existing_value =
+      case Cachex.get(@cache_name, key) do
+        {:ok, value} when is_list(value) and length(value) > 0 ->
+          # If we have a non-empty list, keep it rather than reinitializing
+          if should_log do
+            AppLogger.cache_debug("Keeping existing array (#{length(value)} items)", key: key)
+          end
 
-    Cachex.put(@cache_name, key, [])
-    []
+          value
+
+        _ ->
+          # No existing value or empty list, initialize with empty array
+          if should_log do
+            AppLogger.cache_debug("Initializing with empty array (sampled)", key: key)
+          end
+
+          # Get TTL for these important keys from proper config
+          ttl_seconds =
+            if key == "map:systems" do
+              WandererNotifier.Config.Cache.systems_cache_ttl()
+            else
+              WandererNotifier.Config.Cache.characters_cache_ttl()
+            end
+
+          # Set with proper TTL
+          Cachex.put(@cache_name, key, [], ttl: ttl_option(ttl_seconds))
+          []
+      end
+
+    existing_value
   end
 
   # Handle regular nil result cases

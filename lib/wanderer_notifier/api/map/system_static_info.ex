@@ -23,6 +23,9 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
+    # Add detailed logging for debugging
+    AppLogger.api_info("[SystemStaticInfo] Fetching static info for system #{solar_system_id}")
+
     # Create a task for the API request to add timeout handling
     task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
 
@@ -31,6 +34,9 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
       {:ok, result} ->
         # Log result and return
         case result do
+          {:ok, _} ->
+            AppLogger.api_debug("[SystemStaticInfo] Successfully got static info")
+
           {:error, reason} ->
             AppLogger.api_warn("[SystemStaticInfo] Static info failed: #{inspect(reason)}")
         end
@@ -115,6 +121,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   """
   def enrich_system(system) do
     alias WandererNotifier.Data.MapSystem
+
 
     # Only try to enrich if the system has a valid ID
     if system.solar_system_id && system.solar_system_id > 0 do

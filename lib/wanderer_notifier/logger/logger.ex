@@ -450,6 +450,17 @@ defmodule WandererNotifier.Logger.Logger do
   def scheduler_error(message, metadata \\ []),
     do: log(@level_error, @category_scheduler, message, metadata)
 
+  @doc """
+  Logs a scheduler message at the specified level.
+  This allows for dynamic log level selection.
+  """
+  def scheduler_log(level, message, metadata \\ [])
+      when level in [:debug, :info, :warning, :warn, :error] do
+    # Normalize :warning to :warn for consistency
+    normalized_level = if level == :warning, do: :warn, else: level
+    log(normalized_level, @category_scheduler, message, metadata)
+  end
+
   # Kill processing category
   # Use kill_warn consistently instead of kill_warning
   def kill_warning(message, metadata \\ []),
