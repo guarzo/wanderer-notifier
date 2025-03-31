@@ -23,9 +23,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
-    # Add detailed logging for debugging
-    AppLogger.api_info("[SystemStaticInfo] Fetching static info for system #{solar_system_id}")
-
     # Create a task for the API request to add timeout handling
     task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
 

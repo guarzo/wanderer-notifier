@@ -13,8 +13,10 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   require Logger
 
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Processing.Killmail.{Cache, Enrichment, Notification, Stats}
   alias WandererNotifier.Resources.KillmailPersistence
 
@@ -122,7 +124,21 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   defp handle_killmail(killmail, state) do
     # Extract the kill ID
     kill_id = get_killmail_id(killmail)
-    AppLogger.kill_debug("Processing killmail", kill_id: kill_id)
+
+    # Extract basic info for logging
+    system_id = get_kill_system_id(killmail)
+
+    AppLogger.kill_info(
+      "📥 WEBSOCKET KILL RECEIVED: Processing killmail #{kill_id} in system #{system_id}",
+      %{
+        kill_id: kill_id,
+        system_id: system_id,
+        message_type: "killmail"
+      }
+    )
+
+    # Debug K-space tracking for common systems
+    debug_kspace_system_tracking(system_id)
 
     # Skip processing if no kill ID or already processed
     cond do
@@ -147,12 +163,48 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
         # Create a Killmail struct to standardize the data structure
         killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
 
+        # Print the tracking status for this kill to check if K-space tracking is working
+        Determiner.print_system_tracking_status()
+
         # Process the standardized data
         process_new_kill(killmail_struct, kill_id, state)
     end
   end
 
+  # Debug K-space tracking for common systems
+  defp debug_kspace_system_tracking(system_id) do
+    # Check if this is a K-space system (IDs from 30000000 to 31000000)
+    case Integer.parse(to_string(system_id)) do
+      {id, _} when id >= 30_000_000 and id < 31_000_000 ->
+        AppLogger.kill_info("🔬 Testing K-space tracking for system #{system_id}")
+
+        # Check this specific system
+        Determiner.debug_kspace_tracking(system_id)
+
+        # Also check some common K-space systems for comparison
+        # Jita, Amarr, Perimeter
+        common_systems = ["30000142", "30002187", "30000144"]
+
+        for test_id <- common_systems, test_id != to_string(system_id) do
+          Determiner.debug_kspace_tracking(test_id)
+        end
+
+      _ ->
+        # Not a K-space system ID or invalid
+        :ok
+    end
+  end
+
   defp process_new_kill(%Killmail{} = killmail, kill_id, state) do
+    AppLogger.kill_info(
+      "⚙️ PROCESSING KILL #{kill_id}: Starting full kill processing flow",
+      %{
+        kill_id: kill_id,
+        system_id: get_in(killmail.esi_data || %{}, ["solar_system_id"]),
+        notification_decision_pending: true
+      }
+    )
+
     # Store the kill in the cache
     Cache.update_recent_kills(killmail)
 
@@ -232,21 +284,41 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   # Helper function to process killmail notification
   defp process_killmail_notification(killmail, kill_id, state) do
+    AppLogger.kill_info(
+      "🔔 NOTIFICATION PROCESS: Determining if kill #{kill_id} should be notified",
+      %{
+        kill_id: kill_id,
+        system_id: get_in(killmail.esi_data || %{}, ["solar_system_id"]),
+        system_name: get_in(killmail.esi_data || %{}, ["solar_system_name"]),
+        character_tracking_enabled:
+          Features.character_tracking_enabled?(),
+        system_tracking_enabled: Features.system_tracking_enabled?(),
+        track_kspace_enabled: Features.track_kspace_systems?()
+      }
+    )
+
     # Process the kill for notification
     notification_result = Enrichment.process_and_notify(killmail)
 
     # Properly handle all possible return types
     case notification_result do
       :ok ->
+        AppLogger.kill_info(
+          "✅ NOTIFICATION DECISION COMPLETE: Kill #{kill_id} was processed successfully",
+          %{
+            kill_id: kill_id,
+            result: :ok,
+            processing_completed: true
+          }
+        )
+
         # Mark kill as processed in state
         Map.update(state, :processed_kill_ids, %{kill_id => :os.system_time(:second)}, fn ids ->
           Map.put(ids, kill_id, :os.system_time(:second))
         end)
 
-      {:error, reason} ->
-        AppLogger.kill_error("Error processing kill #{kill_id}: #{reason}")
-        state
-
+      # The :error case is not actually possible since process_and_notify always returns :ok
+      # but we keep it for future-proofing in case the implementation changes
       other ->
         # Handle any other unexpected return type
         AppLogger.kill_warn(
@@ -266,4 +338,16 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   end
 
   defp get_killmail_id(_), do: nil
+
+  # Helper to get system ID from killmail
+  defp get_kill_system_id(killmail) when is_map(killmail) do
+    system_id =
+      Map.get(killmail, "solar_system_id") ||
+        (killmail["zkb"] && killmail["zkb"]["system_id"]) ||
+        "unknown"
+
+    to_string(system_id)
+  end
+
+  defp get_kill_system_id(_), do: "unknown"
 end

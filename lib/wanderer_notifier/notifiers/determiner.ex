@@ -175,7 +175,11 @@ defmodule WandererNotifier.Notifiers.Determiner do
 
     AppLogger.kill_info(
       "🔎 NOTIFICATION CHECK: Starting kill notification check, kill_notifications_enabled=#{kill_notifications_enabled}",
-      %{kill_notifications_enabled: kill_notifications_enabled}
+      %{
+        kill_notifications_enabled: kill_notifications_enabled,
+        provided_system_id: system_id,
+        kill_id: extract_kill_id(killmail)
+      }
     )
 
     if kill_notifications_enabled do
@@ -186,7 +190,22 @@ defmodule WandererNotifier.Notifiers.Determiner do
       log_notification_criteria(kill_details)
 
       # Check if this kill should be considered for notification
-      if kill_meets_tracking_criteria?(kill_details) do
+      meets_criteria = kill_meets_tracking_criteria?(kill_details)
+
+      AppLogger.kill_info(
+        "🔍 TRACKING CRITERIA EVALUATION: Kill #{kill_details.kill_id} meets criteria=#{meets_criteria}",
+        %{
+          kill_id: kill_details.kill_id,
+          system_id: kill_details.system_id,
+          system_name: kill_details.system_name,
+          is_tracked_system: kill_details.is_tracked_system,
+          has_tracked_character: kill_details.has_tracked_character,
+          meets_criteria: meets_criteria,
+          system_id_format: "#{inspect(kill_details.system_id)}"
+        }
+      )
+
+      if meets_criteria do
         dedup_result = check_deduplication_and_decide(kill_details.kill_id)
 
         AppLogger.kill_info(
@@ -332,10 +351,30 @@ defmodule WandererNotifier.Notifiers.Determiner do
     # Convert system_id to string for consistent comparison
     system_id_str = to_string(system_id)
 
+    # Log the initial check for debugging
+    AppLogger.kill_info(
+      "🔎 SYSTEM TRACKING CHECK: Checking if system #{system_id_str} is tracked",
+      %{
+        system_id: system_id_str,
+        system_id_type: if(is_integer(system_id), do: "integer", else: "binary")
+      }
+    )
+
     # Check if system is tracked through direct tracking or track_all policy
     direct_tracked = directly_tracked?(system_id_str)
     via_track_all = tracked_via_track_all?(system_id_str)
     tracked = direct_tracked || via_track_all
+
+    # Log the tracking decision components
+    AppLogger.kill_info(
+      "📊 SYSTEM TRACKING DECISION for system #{system_id_str}: direct=#{direct_tracked}, via_track_all=#{via_track_all}, tracked=#{tracked}",
+      %{
+        system_id: system_id_str,
+        direct_tracked: direct_tracked,
+        via_track_all: via_track_all,
+        final_decision: tracked
+      }
+    )
 
     # Use batch logger for system tracking checks
     BatchLogger.count_event(:system_tracked, %{
@@ -361,6 +400,19 @@ defmodule WandererNotifier.Notifiers.Determiner do
     system_in_cache = CacheRepository.get(system_cache_key)
     exists_in_cache = system_in_cache != nil
     track_kspace_enabled = Features.track_kspace_systems?()
+
+    # Add detailed logging about the tracking decision
+    AppLogger.kill_info(
+      "🔍 KSPACE TRACKING CHECK for system #{system_id_str}",
+      %{
+        system_id: system_id_str,
+        system_cache_key: system_cache_key,
+        exists_in_cache: exists_in_cache,
+        track_kspace_enabled: track_kspace_enabled,
+        tracking_result: track_kspace_enabled && exists_in_cache,
+        feature_status: Features.get_feature_status()
+      }
+    )
 
     track_kspace_enabled && exists_in_cache
   end
@@ -664,14 +716,79 @@ defmodule WandererNotifier.Notifiers.Determiner do
   def print_system_tracking_status do
     # Use Features module for configuration
     track_kspace_systems = Features.track_kspace_systems?()
+    kill_notifications = Features.kill_notifications_enabled?()
+    system_tracking = Features.system_tracking_enabled?()
+    character_tracking = Features.character_tracking_enabled?()
 
-    # Log the result
+    # Get the full feature status map
+    feature_status = Features.get_feature_status()
+
+    # Log the result with comprehensive feature status
     AppLogger.kill_info(
-      "[NotificationDeterminer] TRACK KSPACE CONFIG:",
+      "🔍 TRACKING CONFIG STATUS: " <>
+        "track_kspace=#{track_kspace_systems}, " <>
+        "kill_notif=#{kill_notifications}, " <>
+        "sys_track=#{system_tracking}, " <>
+        "char_track=#{character_tracking}",
       %{
-        feature_module_result: track_kspace_systems,
-        config_from_features: Features.get_feature_status()
+        track_kspace_systems: track_kspace_systems,
+        kill_notifications_enabled: kill_notifications,
+        system_tracking_enabled: system_tracking,
+        character_tracking_enabled: character_tracking,
+        all_features: feature_status,
+        env_vars: %{
+          enable_track_kspace: System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS"),
+          wanderer_track_kspace: System.get_env("WANDERER_FEATURE_TRACK_KSPACE"),
+          kill_notifications: System.get_env("ENABLE_KILL_NOTIFICATIONS")
+        }
       }
     )
+  end
+
+  @doc """
+  Debug function to check if a specific system is tracked.
+  This can be used to verify if K-space systems are properly tracked.
+
+  ## Parameters
+    - system_id: The ID of the system to check (K-space system IDs are in the 30xxxxxx range)
+  """
+  def debug_kspace_tracking(system_id) do
+    # Convert system_id to string for consistent lookup
+    system_id_str = to_string(system_id)
+
+    # Get cache keys and values
+    system_cache_key = "map:system:#{system_id_str}"
+    system_in_cache = CacheRepository.get(system_cache_key)
+    exists_in_cache = system_in_cache != nil
+
+    direct_cache_key = "tracked:system:#{system_id_str}"
+    direct_cached = CacheRepository.get(direct_cache_key)
+    directly_tracked = direct_cached != nil
+
+    # Check feature flag
+    track_kspace_enabled = Features.track_kspace_systems?()
+
+    # Determine if tracked via any method
+    via_track_all = track_kspace_enabled && exists_in_cache
+    tracked = directly_tracked || via_track_all
+
+    # Log comprehensive debug information
+    AppLogger.kill_info(
+      "🔬 K-SPACE TRACKING DEBUG for System #{system_id_str}: tracked=#{tracked}",
+      %{
+        system_id: system_id_str,
+        system_cache_key: system_cache_key,
+        system_in_cache: exists_in_cache,
+        system_cache_value: inspect(system_in_cache),
+        direct_cache_key: direct_cache_key,
+        directly_tracked: directly_tracked,
+        track_kspace_enabled: track_kspace_enabled,
+        via_track_all: via_track_all,
+        final_tracking_result: tracked
+      }
+    )
+
+    # Return the tracking result
+    tracked
   end
 end

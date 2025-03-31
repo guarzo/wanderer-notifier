@@ -10,38 +10,56 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner, as: Notification
+  alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification
 
   @doc """
-  Process a killmail for notification by enriching it and
-  delegating to the notification system.
+  Process a killmail and send notification if required.
 
   ## Parameters
-  - killmail: The killmail struct to process
+  - killmail: The Killmail struct to process
 
   ## Returns
-  - :ok if processing and notification was successful
-  - {:error, reason} if an error occurred
+  - :ok on successful processing
+  - {:error, reason} on error
   """
-  def process_and_notify(%Killmail{} = killmail) do
-    # Extract basic kill information
-    kill_info = extract_kill_info(killmail)
+  def process_and_notify(killmail) do
+    # First check if this killmail should be notified
+    should_notify = Notification.should_notify_kill?(killmail)
 
-    # Extract and log victim/attacker information
-    _victim_info = extract_victim_info(killmail, kill_info.kill_id)
-    _attacker_info = extract_attacker_info(killmail, kill_info.kill_id)
+    AppLogger.kill_info(
+      if should_notify do
+        "👍 ENRICHMENT DECISION: Kill #{killmail.killmail_id} meets criteria for notification"
+      else
+        "👎 ENRICHMENT DECISION: Kill #{killmail.killmail_id} does not meet criteria for notification"
+      end,
+      %{
+        kill_id: killmail.killmail_id,
+        should_notify: should_notify,
+        system_id: get_in(killmail.esi_data || %{}, ["solar_system_id"]),
+        system_name: get_in(killmail.esi_data || %{}, ["solar_system_name"])
+      }
+    )
 
-    # Get tracking information
-    _tracking_info = get_tracking_info()
+    if should_notify do
+      # Enrich the killmail with additional data
+      enriched_kill = enrich_killmail_data(killmail)
 
-    # Log tracking status
-    log_tracking_status()
+      # Send the notification
+      AppLogger.kill_info(
+        "🔄 SENDING NOTIFICATION: Kill #{killmail.killmail_id} is being sent for notification",
+        %{kill_id: killmail.killmail_id}
+      )
 
-    # Determine if notification should be sent and handle it
-    handle_notification_decision()
-  rescue
-    e ->
-      AppLogger.kill_error("⚠️ EXCEPTION: Error during kill enrichment: #{Exception.message(e)}")
-      {:error, "Failed to enrich kill: #{Exception.message(e)}"}
+      KillNotification.send_kill_notification(enriched_kill, killmail.killmail_id)
+    else
+      AppLogger.kill_info(
+        "⏭️ SKIPPING NOTIFICATION: Kill #{killmail.killmail_id} - does not meet criteria",
+        %{kill_id: killmail.killmail_id}
+      )
+    end
+
+    :ok
   end
 
   @doc """
@@ -88,112 +106,6 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   # Private functions
-
-  # Extract basic kill information (id, system)
-  defp extract_kill_info(killmail) do
-    kill_id = killmail.killmail_id
-    system_id = get_system_id_from_killmail(killmail)
-    system_name = get_system_name(system_id)
-    system_info = if system_name, do: "#{system_id} (#{system_name})", else: system_id
-
-    %{
-      kill_id: kill_id,
-      system_id: system_id,
-      system_name: system_name,
-      system_info: system_info
-    }
-  end
-
-  # Extract system ID from killmail
-  defp get_system_id_from_killmail(%Killmail{} = killmail) do
-    # Use the Killmail module's helper
-    system_id = Killmail.get_system_id(killmail)
-    system_id
-  end
-
-  defp get_system_id_from_killmail(_), do: nil
-
-  # Extract victim information from killmail
-  defp extract_victim_info(killmail, _kill_id) do
-    victim_map = killmail.esi_data || %{}
-
-    # Extract the victim's character ID if available
-    victim_id = Map.get(victim_map, "character_id") || Map.get(victim_map, :character_id)
-
-    if victim_id do
-      AppLogger.kill_debug(
-        "VICTIM ID EXTRACT: Using character_id #{victim_id} from killmail, will match against character IDs in tracked characters"
-      )
-    else
-      AppLogger.kill_debug("VICTIM ID EXTRACT: No character_id found in killmail victim")
-    end
-
-    victim_ship_id = get_in(victim_map, ["ship_type_id"])
-
-    %{
-      victim_id: victim_id,
-      victim_id_str: if(victim_id, do: to_string(victim_id), else: nil),
-      victim_ship_id: victim_ship_id
-    }
-  end
-
-  # Extract attacker information from killmail
-  defp extract_attacker_info(killmail, kill_id) do
-    attackers = get_in(killmail.esi_data || %{}, ["attackers"]) || []
-
-    attacker_ids =
-      attackers
-      |> Enum.map(& &1["character_id"])
-      |> Enum.reject(&is_nil/1)
-
-    attacker_ids_str = Enum.map(attacker_ids, &to_string/1)
-
-    # Log attacker information for debugging
-    log_attacker_debug(attacker_ids, kill_id)
-
-    %{
-      attackers: attackers,
-      attacker_ids: attacker_ids,
-      attacker_ids_str: attacker_ids_str
-    }
-  end
-
-  defp log_attacker_debug(attacker_ids, kill_id) do
-    if length(attacker_ids) > 0 do
-      AppLogger.kill_debug(
-        "ATTACKER DEBUG: Kill #{kill_id} has #{length(attacker_ids)} attackers with character IDs"
-      )
-
-      Enum.each(attacker_ids, fn attacker_id ->
-        AppLogger.kill_debug("ATTACKER DEBUG: Attacker ID: #{attacker_id} in kill #{kill_id}")
-      end)
-    end
-  end
-
-  # Get tracking information (systems and characters)
-  defp get_tracking_info do
-    # Mock implementation - would reference tracked systems and characters
-    # to determine if this kill should be tracked
-    %{
-      is_system_tracked: false,
-      is_character_tracked: false,
-      victim_tracked: false,
-      tracked_attackers: []
-    }
-  end
-
-  # Log tracking status information
-  defp log_tracking_status do
-    # Mock implementation - would log tracking status
-    :ok
-  end
-
-  # Handle notification decision logic
-  defp handle_notification_decision do
-    # Mock implementation - would determine if notification should be sent
-    # and handle sending it
-    :ok
-  end
 
   # Enrich entity (victim or attacker) with additional information
   defp enrich_entity(entity) when is_map(entity) do
