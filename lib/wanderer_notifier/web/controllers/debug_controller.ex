@@ -9,7 +9,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
   alias WandererNotifier.Config.Debug
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.{License, Stats}
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   # This controller handles debug endpoints
 

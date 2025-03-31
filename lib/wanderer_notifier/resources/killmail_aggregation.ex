@@ -10,7 +10,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
 
   alias Ash.Query
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.KillmailStatistic

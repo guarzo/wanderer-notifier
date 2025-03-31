@@ -11,11 +11,11 @@ defmodule WandererNotifier.Services.Service do
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Services.KillProcessor
   alias WandererNotifier.Services.Maintenance.Scheduler, as: MaintenanceScheduler
   alias WandererNotifier.Services.NotificationDeterminer

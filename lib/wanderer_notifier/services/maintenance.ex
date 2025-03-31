@@ -6,7 +6,7 @@ defmodule WandererNotifier.Services.Maintenance do
   use GenServer
   require Logger
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Services.Maintenance.Scheduler
 
   def start_link(opts) do

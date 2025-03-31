@@ -6,12 +6,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Ash.TrackedCharacter
   alias WandererNotifier.Cache.CacheHelpers
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.{License, Stats}
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.{KillmailPersistence, TrackedCharacter}
 
@@ -321,7 +322,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       # Get database health status (or fake it)
       db_health =
         try do
-          case WandererNotifier.Repo.health_check() do
+          case Repo.health_check() do
             {:ok, ping_time} -> %{status: "connected", ping_ms: ping_time}
             {:error, reason} -> %{status: "error", reason: inspect(reason)}
           end
@@ -591,15 +592,15 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
         try do
           # Get total statistics count
           query = "SELECT COUNT(*) FROM killmail_statistics"
-          {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[total_stats]]}} = Repo.query(query)
 
           # Get count of characters with aggregated stats
           query = "SELECT COUNT(DISTINCT character_id) FROM killmail_statistics"
-          {:ok, %{rows: [[aggregated_characters]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[aggregated_characters]]}} = Repo.query(query)
 
           # Get the most recent aggregation date
           query = "SELECT MAX(inserted_at) FROM killmail_statistics"
-          {:ok, %{rows: [[last_aggregation]]}} = WandererNotifier.Repo.query(query)
+          {:ok, %{rows: [[last_aggregation]]}} = Repo.query(query)
 
           # Format the date nicely if it exists
           formatted_date =

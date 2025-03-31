@@ -1,8 +1,11 @@
 defmodule WandererNotifier.Config.Application do
   @moduledoc """
-  Configuration module for application-level settings.
-  Handles environment, startup mode, and other application-wide configurations.
+  Configuration module for WandererNotifier.
+  Provides functions to access application configuration.
   """
+  @behaviour WandererNotifier.Config.Behaviour
+
+  alias WandererNotifier.Config.Features
 
   @type env :: :dev | :test | :prod
   @type startup_mode :: :minimal | :full
@@ -73,7 +76,7 @@ defmodule WandererNotifier.Config.Application do
   Get the repository configuration.
   """
   def get_repo_config do
-    {:ok, get_env(WandererNotifier.Repo, %{})}
+    {:ok, get_env(WandererNotifier.Data.Repo, %{})}
   end
 
   @doc """
@@ -88,6 +91,11 @@ defmodule WandererNotifier.Config.Application do
   """
   def get_env(app, key, default \\ nil) do
     Application.get_env(app, key, default)
+  end
+
+  # Private helper for getting wanderer_notifier app config
+  defp get_env(key) do
+    get_env(:wanderer_notifier, key)
   end
 
   @doc """
@@ -106,6 +114,132 @@ defmodule WandererNotifier.Config.Application do
   def validate do
     # Application configuration doesn't require extensive validation
     :ok
+  end
+
+  @doc """
+  Get the map URL.
+  """
+  def map_url do
+    get_env(:map_url)
+  end
+
+  @doc """
+  Get the map token.
+  """
+  def map_token do
+    get_env(:map_token)
+  end
+
+  @doc """
+  Get the map CSRF token.
+  """
+  def map_csrf_token do
+    get_env(:map_csrf_token)
+  end
+
+  @doc """
+  Get the map name.
+  """
+  def map_name do
+    get_env(:map_name)
+  end
+
+  @doc """
+  Get the notifier API token.
+  """
+  def notifier_api_token do
+    get_env(:notifier_api_token)
+  end
+
+  @doc """
+  Get the license key.
+  """
+  def license_key do
+    get_env(:license_key)
+  end
+
+  @doc """
+  Get the license manager API URL.
+  """
+  def license_manager_api_url do
+    get_env(:license_manager_api_url)
+  end
+
+  @doc """
+  Get the license manager API key.
+  """
+  def license_manager_api_key do
+    get_env(:license_manager_api_key)
+  end
+
+  @doc """
+  Get the Discord channel ID for a feature.
+  """
+  def discord_channel_id_for(feature) do
+    get_env(:"discord_channel_#{feature}")
+  end
+
+  @doc """
+  Get the Discord channel ID for activity charts.
+  """
+  def discord_channel_id_for_activity_charts do
+    discord_channel_id_for(:activity_charts)
+  end
+
+  @doc """
+  Check if kill charts are enabled.
+  """
+  def kill_charts_enabled? do
+    Features.kill_charts_enabled?()
+  end
+
+  @doc """
+  Check if map charts are enabled.
+  """
+  def map_charts_enabled? do
+    Features.map_charts_enabled?()
+  end
+
+  @doc """
+  Check if character tracking is enabled.
+  """
+  def character_tracking_enabled? do
+    Features.character_tracking_enabled?()
+  end
+
+  @doc """
+  Check if character notifications are enabled.
+  """
+  def character_notifications_enabled? do
+    Features.character_notifications_enabled?()
+  end
+
+  @doc """
+  Check if system notifications are enabled.
+  """
+  def system_notifications_enabled? do
+    Features.system_notifications_enabled?()
+  end
+
+  @doc """
+  Check if K-space systems should be tracked.
+  """
+  def track_kspace_systems? do
+    Features.track_kspace_systems?()
+  end
+
+  @doc """
+  Gets the map configuration.
+  """
+  def get_map_config do
+    get_env(:map_config, %{})
+  end
+
+  @doc """
+  Gets the static info cache TTL.
+  """
+  def static_info_cache_ttl do
+    get_env(:static_info_cache_ttl, 3600)
   end
 
   # Private Helpers

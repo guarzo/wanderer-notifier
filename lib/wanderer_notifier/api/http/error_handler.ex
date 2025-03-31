@@ -45,7 +45,7 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   - `:conflict` - Resource conflict (409)
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @type error_type ::
           :connection_error

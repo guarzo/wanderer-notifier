@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @doc """
   Fetches static information for a specific solar system.

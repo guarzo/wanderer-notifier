@@ -8,8 +8,8 @@ defmodule WandererNotifier.Workers.CharacterSyncWorker do
   """
   use GenServer
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.TrackedCharacter
 
   # Change from 15 minutes to 1 hour for validation checks

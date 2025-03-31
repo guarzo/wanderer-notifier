@@ -14,7 +14,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   require Logger
 
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Services.CharacterKillsService
 

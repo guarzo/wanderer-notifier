@@ -1,11 +1,11 @@
-defmodule WandererNotifier.Repo do
+defmodule WandererNotifier.Data.Repo do
   use Ecto.Repo,
     otp_app: :wanderer_notifier,
     adapter: Ecto.Adapters.Postgres
 
   alias Ecto.Adapters.SQL
   alias WandererNotifier.Config.Database
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @doc """
   Custom init function to dynamically configure the repo using

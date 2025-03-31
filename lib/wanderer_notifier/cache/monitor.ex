@@ -5,10 +5,9 @@ defmodule WandererNotifier.Cache.Monitor do
   fixing inconsistencies when detected.
   """
   use GenServer
-  require Logger
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.TrackedCharacter
 
   # Check interval - 15 minutes by default
@@ -86,7 +85,7 @@ defmodule WandererNotifier.Cache.Monitor do
   defp log_health_check_results(results) do
     if results.character_count_inconsistency || length(results.missing_characters) > 0 ||
          length(results.different_characters) > 0 do
-      Logger.warning("""
+      AppLogger.cache_warn("""
       [CacheMonitor] Cache inconsistencies detected:
         - Character count inconsistency: #{results.character_count_inconsistency}
         - Missing characters: #{length(results.missing_characters)}
@@ -135,7 +134,7 @@ defmodule WandererNotifier.Cache.Monitor do
     count_inconsistent = length(cached_characters) != length(db_characters)
 
     if count_inconsistent do
-      Logger.warning("""
+      AppLogger.cache_warn("""
         [CacheMonitor] Character count mismatch:
         - Cache: #{length(cached_characters)}
         - Database: #{length(db_characters)}

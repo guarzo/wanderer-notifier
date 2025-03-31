@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Repository do
+defmodule WandererNotifier.Data.Repository do
   @moduledoc """
   Repository for data operations. Acts as the single source of truth for data access,
   coordinating between cache and external data sources.

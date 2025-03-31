@@ -11,7 +11,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       alias WandererNotifier.Config.Timings
-      alias WandererNotifier.Logger, as: AppLogger
+      alias WandererNotifier.Core.Logger, as: AppLogger
 
       # Default schedule time (hour and minute) if not specified
       @default_hour unquote(Keyword.get(opts, :default_hour, 12))

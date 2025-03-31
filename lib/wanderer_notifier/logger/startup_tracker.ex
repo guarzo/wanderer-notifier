@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Logger.StartupTracker do
+defmodule WandererNotifier.Core.Logger.StartupTracker do
   @moduledoc """
   Tracks application startup phases and provides consolidated logging.
 
@@ -10,7 +10,7 @@ defmodule WandererNotifier.Logger.StartupTracker do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   # Startup phases
   @phases [

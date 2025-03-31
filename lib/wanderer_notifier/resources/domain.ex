@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Domain do
+defmodule WandererNotifier.Resources.Domain do
   @moduledoc """
-  Domain module for WandererNotifier.
+  Domain module for WandererNotifier resources.
   """
 
   use Ash.Domain

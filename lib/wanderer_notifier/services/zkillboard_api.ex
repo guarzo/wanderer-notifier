@@ -4,7 +4,7 @@ defmodule WandererNotifier.Services.ZKillboardApi do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @base_url "https://zkillboard.com/api"
 

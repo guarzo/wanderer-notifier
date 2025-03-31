@@ -5,8 +5,8 @@ defmodule WandererNotifier.LicenseManager.Client do
   """
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}

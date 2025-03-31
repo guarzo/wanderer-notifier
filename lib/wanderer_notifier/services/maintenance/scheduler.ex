@@ -3,14 +3,14 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
   Schedules and executes maintenance tasks.
   Handles periodic updates for systems and characters.
   """
-  alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.Api.Map.Client
   alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Application
+  alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.Logger, as: AppLogger
 
   @doc """
   Performs periodic maintenance tasks.
@@ -170,7 +170,7 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
       Task.async(fn ->
         try do
           # Update characters through the MapClient with exception handling
-          MapClient.update_tracked_characters(cached_characters_safe)
+          Client.update_tracked_characters(cached_characters_safe)
         rescue
           e ->
             AppLogger.maintenance_error("Exception in character update task",
@@ -307,10 +307,13 @@ defmodule WandererNotifier.Services.Maintenance.Scheduler do
         action: "forcing_manual_cache_update"
       )
 
+      # Get cache TTL from the proper module
+      cache_ttl = CacheConfig.characters_cache_ttl()
+
       CacheRepo.set(
         "map:characters",
         characters_list,
-        Config.Timings.characters_cache_ttl()
+        cache_ttl
       )
 
       # Double-check the cache again

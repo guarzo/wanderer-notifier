@@ -276,7 +276,7 @@ config :wanderer_notifier, :database,
 
 # Configure Repo with the values from our standardized database configuration
 # This maintains backward compatibility while we transition to the new approach
-config :wanderer_notifier, WandererNotifier.Repo,
+config :wanderer_notifier, WandererNotifier.Data.Repo,
   username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
   password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
   hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),

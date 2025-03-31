@@ -2,8 +2,8 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
   @moduledoc """
   Builds URLs for the map API endpoints.
   """
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @doc """
   Builds a URL for a map API endpoint with query parameters and a custom slug.

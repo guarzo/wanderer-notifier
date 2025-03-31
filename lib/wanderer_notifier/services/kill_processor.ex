@@ -12,12 +12,12 @@ defmodule WandererNotifier.Services.KillProcessor do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger.BatchLogger
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Logger.BatchLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.KillmailPersistence
   alias WandererNotifier.Services.NotificationDeterminer

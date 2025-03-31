@@ -6,7 +6,7 @@ defmodule WandererNotifier.Api.ESI.Client do
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"

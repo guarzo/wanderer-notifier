@@ -8,9 +8,10 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.ChartService.KillmailChartAdapter
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Web.Controllers.ActivityChartController
@@ -511,23 +512,23 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
         if TrackedCharacter.database_enabled?() do
           # Check total killmail records
           killmail_query = "SELECT COUNT(*) FROM killmails"
-          {:ok, %{rows: [[total_killmails]]}} = WandererNotifier.Repo.query(killmail_query)
+          {:ok, %{rows: [[total_killmails]]}} = Repo.query(killmail_query)
 
           # Check total statistics records
           stats_query = "SELECT COUNT(*) FROM killmail_statistics"
-          {:ok, %{rows: [[total_stats]]}} = WandererNotifier.Repo.query(stats_query)
+          {:ok, %{rows: [[total_stats]]}} = Repo.query(stats_query)
 
           # Check stats by period
           period_query =
             "SELECT period_type, COUNT(*) FROM killmail_statistics GROUP BY period_type"
 
-          {:ok, period_results} = WandererNotifier.Repo.query(period_query)
+          {:ok, period_results} = Repo.query(period_query)
 
           # Check recent killmails
           recent_query =
             "SELECT killmail_id, related_character_name, character_role, kill_time, solar_system_name FROM killmails ORDER BY kill_time DESC LIMIT 5"
 
-          {:ok, recent_results} = WandererNotifier.Repo.query(recent_query)
+          {:ok, recent_results} = Repo.query(recent_query)
 
           # Format the period results
           period_counts =
@@ -552,7 +553,7 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
 
           # Count tracked characters in database
           char_query = "SELECT COUNT(*) FROM tracked_characters"
-          {:ok, %{rows: [[total_chars]]}} = WandererNotifier.Repo.query(char_query)
+          {:ok, %{rows: [[total_chars]]}} = Repo.query(char_query)
 
           # Count characters in cache
           cached_characters = CacheRepo.get("map:characters") || []

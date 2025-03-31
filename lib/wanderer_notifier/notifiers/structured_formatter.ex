@@ -10,10 +10,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Service, as: ZKillService
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Logger, as: AppLogger
 
   # Color constants for Discord notifications
   # Default blue

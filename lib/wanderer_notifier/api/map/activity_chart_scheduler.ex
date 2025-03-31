@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Config.SystemTracking
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
   # Default interval is 24 hours (in milliseconds)
   @default_interval 24 * 60 * 60 * 1000
 

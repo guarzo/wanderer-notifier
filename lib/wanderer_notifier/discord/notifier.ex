@@ -7,15 +7,15 @@ defmodule WandererNotifier.Discord.Notifier do
   alias WandererNotifier.Api.ESI.Service, as: ESI
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Config.{Application, Notifications}
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Services.KillProcessor
   alias WandererNotifier.Services.NotificationDeterminer
 
-  @behaviour WandererNotifier.NotifierBehaviour
+  @behaviour WandererNotifier.Notifiers.Behaviour
 
   # Default embed colors
   @default_embed_color 0x3498DB
@@ -86,7 +86,7 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Sends a plain text message to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_message(message, feature \\ nil) when is_binary(message) do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{message}")
@@ -144,8 +144,8 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Sends a basic embed message to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_embed(title, description, url \\ nil, color \\ @default_embed_color, feature \\ nil) do
     AppLogger.processor_info("Discord embed requested",
       title: title,
       url: url || "nil"
@@ -162,7 +162,7 @@ defmodule WandererNotifier.Discord.Notifier do
         end
 
       AppLogger.processor_info("Discord embed payload built, sending to Discord API")
-      send_payload(payload)
+      send_payload(payload, feature)
     end
   end
 
@@ -230,7 +230,7 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Send an enriched kill embed to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
     AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
 
@@ -301,7 +301,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- NEW TRACKED CHARACTER NOTIFICATION --
 
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Data.Character) do
     if env() == :test do
@@ -360,7 +360,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- NEW SYSTEM NOTIFICATION --
 
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) do
     # Log system details before processing to diagnose cache issues
     AppLogger.processor_info(
@@ -553,8 +553,8 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Sends a file to Discord with an optional title and description.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_file(filename, file_data, title \\ nil, description \\ nil) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
     AppLogger.processor_info("Sending file to Discord",
       filename: filename,
       title: title
@@ -640,8 +640,14 @@ defmodule WandererNotifier.Discord.Notifier do
   @doc """
   Sends an embed with an image to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_image_embed(title, description, image_url, color \\ @default_embed_color) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_image_embed(
+        title,
+        description,
+        image_url,
+        color \\ @default_embed_color,
+        feature \\ nil
+      ) do
     AppLogger.processor_info("Sending image embed to Discord",
       title: title,
       image_url: image_url || "nil"
@@ -664,7 +670,7 @@ defmodule WandererNotifier.Discord.Notifier do
       payload = %{"embeds" => [embed]}
 
       AppLogger.processor_info("Discord image embed payload built, sending to Discord API")
-      send_payload(payload)
+      send_payload(payload, feature)
     end
   end
 
@@ -694,10 +700,20 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   @doc """
-  Sends a kill notification embed to Discord.
+  Sends a kill embed.
   """
-  @impl true
   def send_kill_embed(kill, killmail_id) do
     send_enriched_kill_embed(kill, killmail_id)
+  end
+
+  # Additional required method from the behavior
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_kill_notification(kill_data) do
+    # Extract kill ID for logging
+    kill_id = Map.get(kill_data, "killmail_id") || Map.get(kill_data, :killmail_id) || "unknown"
+
+    # Delegate to the existing method that handles formatting and sending
+    kill_id_str = if is_integer(kill_id), do: Integer.to_string(kill_id), else: kill_id
+    send_kill_embed(kill_data, kill_id_str)
   end
 end

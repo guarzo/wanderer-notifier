@@ -4,11 +4,11 @@ defmodule WandererNotifier.Core.License do
   Handles license validation and feature access control.
   """
   use GenServer
-  alias WandererNotifier.Config
   alias WandererNotifier.Config.Application
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
-  alias WandererNotifier.Logger, as: AppLogger
 
   # Remove hardcoded interval
   # @refresh_interval :timer.hours(24)

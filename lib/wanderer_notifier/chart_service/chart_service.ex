@@ -15,8 +15,8 @@ defmodule WandererNotifier.ChartService do
   alias WandererNotifier.ChartService.ChartConfigHandler
   alias WandererNotifier.ChartService.ChartTypes
   alias WandererNotifier.ChartService.NodeChartAdapter
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Discord.Client, as: DiscordClient
-  alias WandererNotifier.Logger, as: AppLogger
 
   # Chart service configuration
   @quickchart_url "https://quickchart.io/chart"

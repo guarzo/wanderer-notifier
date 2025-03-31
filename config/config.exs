@@ -49,15 +49,24 @@ config :logger, :console,
 # This allows fine-grained control over logging
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
-  "WandererNotifier.Maintenance.Scheduler" => :info,
-  "WandererNotifier.Config" => :info,
+  "WandererNotifier.Services.Maintenance.Scheduler" => :info,
+  "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
+  "WandererNotifier.Api.ESI.Client" => :warn,
   "WandererNotifier.Api.Map.Client" => :info,
   "WandererNotifier.Api.Map.Systems" => :info,
   "WandererNotifier.Api.Map.Characters" => :info,
   "WandererNotifier.Notifiers.Discord" => :info,
   "WandererNotifier.Api.ZKill.Websocket" => :info,
-  "WandererNotifier.KillProcessor" => :info
+  "WandererNotifier.Application" => :info,
+  "WandererNotifier.Core.License" => :info,
+  "WandererNotifier.Core.Stats" => :info,
+  "WandererNotifier.Data.Cache.Repository" => :info,
+  "WandererNotifier.Services.Service" => :info,
+  "WandererNotifier.Services.KillProcessor" => :debug,
+  "WandererNotifier.Services.NotificationDeterminer" => :debug,
+  "WandererNotifier.Supervisors.Basic" => :info,
+  "WandererNotifier" => :info
 }
 
 # Nostrum compile-time configuration
@@ -79,7 +88,7 @@ config :nostrum, :gateway,
   ]
 
 # Configure Ecto timestamps
-config :wanderer_notifier, WandererNotifier.Repo, migration_timestamps: [type: :utc_datetime_usec]
+config :wanderer_notifier, WandererNotifier.Data.Repo, migration_timestamps: [type: :utc_datetime_usec]
 
 # Configure persistence feature defaults
 config :wanderer_notifier, :persistence,
@@ -97,7 +106,7 @@ config :wanderer_notifier, :ash_apis, [
 config :wanderer_notifier,
   ash_domains: [
     WandererNotifier.Resources.Api,
-    WandererNotifier.Domain
+    WandererNotifier.Resources.Domain
   ]
 
 # Configure compatible foreign key types for Ash relationships
@@ -107,7 +116,7 @@ config :ash, :compatible_foreign_key_types, [
 ]
 
 # Configure Ecto repositories
-config :wanderer_notifier, ecto_repos: [WandererNotifier.Repo]
+config :wanderer_notifier, ecto_repos: [WandererNotifier.Data.Repo]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

@@ -7,18 +7,12 @@ defmodule WandererNotifier.Api.ESI.Service do
 
   require Logger
   alias WandererNotifier.Api.ESI.Client, as: ESIClient
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash) do
     AppLogger.api_debug("Fetching killmail from ESI", kill_id: kill_id, hash: killmail_hash)
     ESIClient.get_killmail(kill_id, killmail_hash)
-  end
-
-  # Legacy/backwards compatibility
-  def get_esi_kill_mail(kill_id, killmail_hash, _opts \\ []) do
-    AppLogger.api_debug("Using legacy killmail fetch method", kill_id: kill_id)
-    get_killmail(kill_id, killmail_hash)
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour

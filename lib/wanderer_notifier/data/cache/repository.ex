@@ -6,7 +6,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
   use GenServer
   require Logger
   alias WandererNotifier.Config.Cache
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger.BatchLogger
 
   @cache_name :wanderer_notifier_cache
 
@@ -387,7 +388,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Don't log individual cache hits, but count them for batch logging
     key_pattern = extract_key_pattern(key)
 
-    AppLogger.BatchLogger.count_event(:cache_hit, %{
+    BatchLogger.count_event(:cache_hit, %{
       key_pattern: key_pattern
     })
 
@@ -408,7 +409,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Count cache misses for batch logging
     key_pattern = extract_key_pattern(key)
 
-    AppLogger.BatchLogger.count_event(:cache_miss, %{
+    BatchLogger.count_event(:cache_miss, %{
       key_pattern: key_pattern
     })
 

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Logger do
+defmodule WandererNotifier.Core.Logger do
   @moduledoc """
   Enhanced logging utility for WandererNotifier.
 
@@ -8,7 +8,7 @@ defmodule WandererNotifier.Logger do
   require Logger
   alias WandererNotifier.Config.Debug
 
-  @behaviour WandererNotifier.LoggerBehaviour
+  @behaviour WandererNotifier.Core.LoggerBehaviour
 
   # Log categories as module attributes for consistency
   @category_api "API"
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Logger do
 
   ## Examples
 
-      iex> WandererNotifier.Logger.log(:info, "KILL", "Processed killmail", kill_id: "12345")
+      iex> WandererNotifier.Core.Logger.log(:info, "KILL", "Processed killmail", kill_id: "12345")
       :ok
   """
   def log(level, category, message, metadata \\ []) do
@@ -308,7 +308,7 @@ defmodule WandererNotifier.Logger do
       stacktrace
       |> Enum.drop_while(fn {mod, _fun, _args, _loc} ->
         String.contains?(inspect(mod), "Logger") ||
-          String.contains?(inspect(mod), "WandererNotifier.Logger")
+          String.contains?(inspect(mod), "WandererNotifier.Core.Logger")
       end)
       # Take first 3 relevant frames
       |> Enum.take(3)
@@ -496,7 +496,13 @@ defmodule WandererNotifier.Logger do
 
       if Logger.enabled?(unquote(level)) do
         message = unquote(message_func).()
-        WandererNotifier.Logger.log(unquote(level), unquote(category), message, unquote(metadata))
+
+        Logger.log(
+          unquote(level),
+          unquote(category),
+          message,
+          unquote(metadata)
+        )
       end
     end
   end
@@ -528,7 +534,7 @@ defmodule WandererNotifier.Logger do
 
   ## Examples
 
-      iex> WandererNotifier.Logger.enable_debug_logging(true)
+      iex> WandererNotifier.Core.Logger.enable_debug_logging(true)
       :ok
   """
   def enable_debug_logging(enable) when is_boolean(enable) do

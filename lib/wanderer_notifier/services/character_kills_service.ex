@@ -8,7 +8,7 @@ defmodule WandererNotifier.Services.CharacterKillsService do
   # Default implementations
   @default_deps %{
     logger: WandererNotifier.Logger,
-    repository: WandererNotifier.Repository,
+    repository: WandererNotifier.Data.Repository,
     esi_service: WandererNotifier.Api.ESI.Service,
     persistence: WandererNotifier.Resources.KillmailPersistence,
     zkill_client: WandererNotifier.Api.ZKill.Client,

@@ -3,10 +3,10 @@ defmodule WandererNotifier.Api.Map.Characters do
   Tracked characters API calls.
   """
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Services.NotificationDeterminer

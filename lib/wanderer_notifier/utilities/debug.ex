@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Debug do
+defmodule WandererNotifier.Utilities.Debug do
   @moduledoc """
   Debug utilities for WandererNotifier. Only for development use.
   """
@@ -6,10 +6,11 @@ defmodule WandererNotifier.Debug do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Config
+  # Updated to new path
+  alias WandererNotifier.Config.Config, as: AppConfig
   alias WandererNotifier.Config.Debug, as: DebugConfig
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @doc """
   Manually trigger character tracking update.
@@ -45,9 +46,9 @@ defmodule WandererNotifier.Debug do
     token = Application.get_env(:wanderer_notifier, :map_token)
 
     # Check Config module access
-    core_url = Config.map_url()
-    core_name = Config.map_name()
-    core_token = Config.map_token()
+    core_url = AppConfig.map_url()
+    core_name = AppConfig.map_name()
+    core_token = AppConfig.map_token()
 
     # Get map settings from Debug config module
     debug_settings = DebugConfig.map_debug_settings()
@@ -104,7 +105,8 @@ defmodule WandererNotifier.Debug do
   def direct_test_characters_api do
     alias WandererNotifier.Api.Http.Client
     alias WandererNotifier.Api.Map.UrlBuilder
-    alias WandererNotifier.Config
+    # Updated to new path
+    alias WandererNotifier.Config.Config, as: AppConfig
 
     # Get URL directly
     url_result = UrlBuilder.build_url("map/characters")
@@ -134,9 +136,9 @@ defmodule WandererNotifier.Debug do
       headers: headers,
       response: response,
       config: %{
-        map_url: Config.map_url(),
-        map_name: Config.map_name(),
-        map_token: Config.map_token(),
+        map_url: AppConfig.map_url(),
+        map_name: AppConfig.map_name(),
+        map_token: AppConfig.map_token(),
         debug_settings: debug_settings
       }
     }

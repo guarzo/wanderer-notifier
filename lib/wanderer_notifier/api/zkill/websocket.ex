@@ -7,9 +7,8 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   - Returns {:reconnect, state} on disconnect to leverage built-in auto-reconnect
   """
   use WebSockex
-  require Logger
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Logger, as: AppLogger
 
   # Get config at runtime instead of compile time
   def get_config do

@@ -7,8 +7,8 @@ defmodule WandererNotifier.Api.ZKill.Service do
   require Logger
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Logger, as: AppLogger
   @type kill_id :: String.t() | integer()
   @type system_id :: String.t() | integer()
 
@@ -30,7 +30,7 @@ defmodule WandererNotifier.Api.ZKill.Service do
          %{"killmail_id" => kid, "zkb" => zkb_map} <- partial,
          true <- is_binary(zkb_map["hash"]),
          hash = zkb_map["hash"],
-         {:ok, esi_data} <- ESIService.get_esi_kill_mail(kid, hash) do
+         {:ok, esi_data} <- ESIService.get_killmail(kid, hash) do
       enriched = %Killmail{killmail_id: kid, zkb: zkb_map, esi_data: esi_data}
       {:ok, enriched}
     else

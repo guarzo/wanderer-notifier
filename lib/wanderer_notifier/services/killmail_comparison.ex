@@ -4,13 +4,13 @@ defmodule WandererNotifier.Services.KillmailComparison do
   Helps identify discrepancies in kill tracking.
   """
 
-  require Logger
+  import Ash.Query
+
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.{Api, Killmail, TrackedCharacter}
   alias WandererNotifier.Services.{KillTrackingHistory, ZKillboardApi}
-  import Ash.Query
 
   # Note: ZKillboard API no longer supports direct date filtering via startTime/endTime parameters.
   # Instead, we fetch all recent kills for a character and filter them in memory.

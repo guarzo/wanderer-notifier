@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   require Logger
 
   alias WandererNotifier.Adapters.KillmailChartAdapter
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
 
   @config Application.compile_env(:wanderer_notifier, :config_module, Config)
   @adapter Application.compile_env(

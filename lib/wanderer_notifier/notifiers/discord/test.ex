@@ -5,7 +5,7 @@ defmodule WandererNotifier.Notifiers.Discord.Test do
   It implements the same interface as the real Discord notifier but logs messages instead.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 

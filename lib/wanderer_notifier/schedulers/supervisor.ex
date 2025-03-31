@@ -7,9 +7,10 @@ defmodule Schedulers.Supervisor do
 
   use Supervisor
   require Logger
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Logger.StartupTracker
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Core.Logger.StartupTracker
+  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Schedulers
   alias WandererNotifier.Schedulers.Registry
@@ -104,7 +105,7 @@ defmodule Schedulers.Supervisor do
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 
-      case WandererNotifier.Repo.health_check() do
+      case Repo.health_check() do
         {:ok, ping_time} ->
           record_database_status("verified", ping_time)
           true

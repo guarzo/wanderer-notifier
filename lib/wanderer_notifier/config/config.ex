@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Config do
+defmodule WandererNotifier.Config.Config do
   @moduledoc """
   Configuration module for WandererNotifier.
   Provides functions to access application configuration.

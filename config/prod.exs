@@ -21,13 +21,15 @@ config :logger, :console,
 # Module-specific log levels for production
 # More restrictive to reduce log spam
 config :logger, :module_levels, %{
-  "WandererNotifier.Service.KillProcessor" => :warning,
-  "WandererNotifier.Maintenance.Scheduler" => :warning,
-  "WandererNotifier.Api.Map.Client" => :warning,
-  "WandererNotifier.Api.Map.Systems" => :warning,
-  "WandererNotifier.Api.Map.Characters" => :warning,
-  "WandererNotifier.Web.Router" => :warning,
-  "WandererNotifier.KillProcessor" => :warning
+  "WandererNotifier.Services.KillProcessor" => :warning,
+  "WandererNotifier.Services.Maintenance.Scheduler" => :warning,
+  "WandererNotifier.Config.Config" => :info,
+  "WandererNotifier.Config.Timings" => :info,
+  "WandererNotifier.Api.Map.Client" => :warn,
+  "WandererNotifier.Api.Map.Systems" => :warn,
+  "WandererNotifier.Api.Map.Characters" => :warn,
+  "WandererNotifier.Notifiers.Discord" => :warn,
+  "WandererNotifier.Api.ZKill.Websocket" => :warning
 }
 
 # Runtime configuration should be in runtime.exs

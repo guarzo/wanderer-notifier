@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Resources.KillmailPersistence do
   use Ash.Resource,
-    domain: WandererNotifier.Domain,
+    domain: WandererNotifier.Resources.Domain,
     data_layer: AshPostgres.DataLayer,
     extensions: [AshJsonApi.Resource]
 
@@ -10,12 +10,11 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
 
-  require Logger
   require Ash.Query
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
-  alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
 
@@ -24,7 +23,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   postgres do
     table("killmails")
-    repo(WandererNotifier.Repo)
+    repo(WandererNotifier.Data.Repo)
   end
 
   attributes do

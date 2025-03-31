@@ -1,4 +1,4 @@
-defmodule WandererNotifier.LoggerBehaviour do
+defmodule WandererNotifier.Core.LoggerBehaviour do
   @moduledoc """
   Behaviour for logging operations.
   """
