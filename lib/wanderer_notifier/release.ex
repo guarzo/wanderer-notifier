@@ -100,12 +100,12 @@ defmodule WandererNotifier.Release do
 
       :error ->
         Logger.warning("Could not find ecto_repos configuration, using default")
-        [WandererNotifier.Repo]
+        [WandererNotifier.Data.Repo]
     end
   rescue
     e ->
       Logger.error("Error loading application config: #{inspect(e)}")
       # Default to known repo
-      [WandererNotifier.Repo]
+      [WandererNotifier.Data.Repo]
   end
 end

@@ -1,14 +1,13 @@
-defmodule Schedulers.Supervisor do
+defmodule WandererNotifier.Schedulers.Supervisor do
   @moduledoc """
-  Supervisor for all schedulers in the application.
-
-  This module supervises the scheduler registry and all scheduler processes.
+  Supervisor for scheduler modules.
+  Manages the lifecycle of all scheduler processes.
   """
 
   use Supervisor
-  require Logger
-  alias WandererNotifier.Config
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Data.Repo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.StartupTracker
   alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Schedulers
@@ -52,7 +51,10 @@ defmodule Schedulers.Supervisor do
   # Define the core schedulers
   defp define_core_schedulers do
     schedulers = [
-      {Schedulers.ActivityChartScheduler, []}
+      {Schedulers.ActivityChartScheduler, []},
+      {Schedulers.SystemUpdateScheduler, []},
+      {Schedulers.CharacterUpdateScheduler, []},
+      {Schedulers.ServiceStatusScheduler, []}
     ]
 
     # Track core schedulers
@@ -104,7 +106,7 @@ defmodule Schedulers.Supervisor do
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 
-      case WandererNotifier.Repo.health_check() do
+      case Repo.health_check() do
         {:ok, ping_time} ->
           record_database_status("verified", ping_time)
           true

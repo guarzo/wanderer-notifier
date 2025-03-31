@@ -7,13 +7,16 @@ defmodule WandererNotifier.Web.Router do
   require Logger
 
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Services.Service
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  alias WandererNotifier.Web.Controllers.{
-    ApiController,
+  alias WandererNotifier.Api.Controllers.{
+    ActivityChartController,
+    CharacterController,
     ChartController,
-    DebugController
+    DebugController,
+    HealthController,
+    KillController,
+    NotificationController
   }
 
   plug(Plug.Logger)
@@ -48,16 +51,14 @@ defmodule WandererNotifier.Web.Router do
   plug(:match)
   plug(:dispatch)
 
-  # Forward chart requests to the ChartController
-  forward("/charts", to: ChartController)
-
-  # Forward debug API requests to the DebugController
+  # API Routes
+  forward("/api/health", to: HealthController)
+  forward("/api/characters", to: CharacterController)
+  forward("/api/kills", to: KillController)
+  forward("/api/notifications", to: NotificationController)
   forward("/api/debug", to: DebugController)
-
-  # Forward all other API requests to the API controller
-  forward("/api", to: ApiController)
-
-  forward("/activity", to: ChartController)
+  forward("/api/charts", to: ChartController)
+  forward("/api/activity-charts", to: ActivityChartController)
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
 
@@ -87,50 +88,6 @@ defmodule WandererNotifier.Web.Router do
     end
   end
 
-  # Legacy routes are removed
-
-  #
-  # HEALTH CHECK ENDPOINT
-  #
-
-  get "/health" do
-    # Check if critical services are running
-    cache_available =
-      case Cachex.stats(:wanderer_notifier_cache) do
-        {:ok, _stats} -> true
-        _ -> false
-      end
-
-    # Check if the service GenServer is alive
-    service_alive =
-      case Process.whereis(Service) do
-        pid when is_pid(pid) -> Process.alive?(pid)
-        _ -> false
-      end
-
-    # If critical services are running, return 200 OK
-    if cache_available and service_alive do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        200,
-        Jason.encode!(%{status: "ok", cache: cache_available, service: service_alive})
-      )
-    else
-      # If any critical service is down, return 503 Service Unavailable
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        503,
-        Jason.encode!(%{status: "error", cache: cache_available, service: service_alive})
-      )
-    end
-  end
-
-  #
-  # API ROUTES (JSON)
-  #
-
   #
   # Catch-all: serve the React index.html from priv/static/app
   #
@@ -153,10 +110,4 @@ defmodule WandererNotifier.Web.Router do
       |> send_resp(404, "Not found: #{conn.request_path}")
     end
   end
-
-  # Only add map routes if map tools are enabled
-  # MapController was removed as part of the feature consolidation
-  # if Config.map_charts_enabled?() do
-  #   forward("/map", to: MapController)
-  # end
 end

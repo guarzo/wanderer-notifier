@@ -5,30 +5,21 @@ defmodule WandererNotifier.Discord.Notifier do
   """
   require Logger
   alias WandererNotifier.Api.ESI.Service, as: ESI
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Config.{Application, Notifications}
+  alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Discord.ComponentBuilder
+  alias WandererNotifier.Discord.FeatureFlags
+  alias WandererNotifier.Discord.NeoClient
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Services.KillProcessor
-  alias WandererNotifier.Services.NotificationDeterminer
 
-  @behaviour WandererNotifier.NotifierBehaviour
+  @behaviour WandererNotifier.Notifiers.Behaviour
 
   # Default embed colors
   @default_embed_color 0x3498DB
-  # Blue for Pulsar
-  # @wormhole_color 0x428BCA
-  # # Green for highsec
-  # @highsec_color 0x5CB85C
-  # # Yellow/orange for lowsec
-  # @lowsec_color 0xE28A0D
-  # # Red for nullsec
-  # @nullsec_color 0xD9534F
-
-  @base_url "https://discord.com/api/channels"
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
@@ -39,29 +30,6 @@ defmodule WandererNotifier.Discord.Notifier do
     # Always log in test mode for test assertions
     Logger.info(log_message)
     :ok
-  end
-
-  defp channel_id do
-    case env() do
-      :test -> "test_channel_id"
-      _ -> Notifications.get_discord_channel_id_for(:general)
-    end
-  end
-
-  defp bot_token do
-    case env() do
-      :test -> "test_bot_token"
-      _ -> Notifications.get_discord_bot_token()
-    end
-  end
-
-  defp build_url, do: "#{@base_url}/#{channel_id()}/messages"
-
-  defp headers do
-    [
-      {"Content-Type", "application/json"},
-      {"Authorization", "Bot #{bot_token()}"}
-    ]
   end
 
   # -- HELPER FUNCTIONS --
@@ -83,163 +51,77 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- MESSAGE SENDING --
 
-  @doc """
-  Sends a plain text message to Discord.
-  """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_message(message, feature \\ nil) when is_binary(message) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_message(message, _feature \\ nil) do
+    AppLogger.processor_info("Discord message requested")
+
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{message}")
     else
-      payload =
-        if String.contains?(message, "test kill notification") do
-          process_test_kill_notification(message)
-        else
-          %{"content" => message, "embeds" => []}
-        end
+      AppLogger.processor_info("Sending Discord message",
+        client: "Nostrum",
+        message_length: String.length(message)
+      )
 
-      send_payload(payload, feature)
+      NeoClient.send_message(message)
     end
   end
 
-  defp process_test_kill_notification(message) do
-    recent_kills = KillProcessor.get_recent_kills() || []
-    process_kills_for_notification(recent_kills, message)
-  end
-
-  # Process kills list for test notification
-  defp process_kills_for_notification([], message) do
-    # No recent kills available
-    %{"content" => message, "embeds" => []}
-  end
-
-  defp process_kills_for_notification(recent_kills, message) do
-    recent_kill = List.first(recent_kills)
-    kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
-
-    if kill_id do
-      process_kill_with_id(recent_kill, kill_id)
-    else
-      %{"content" => message, "embeds" => []}
-    end
-  end
-
-  # Process a kill that has a valid ID
-  defp process_kill_with_id(recent_kill, kill_id) do
-    # Convert to Killmail struct if needed
-    killmail = convert_to_killmail(recent_kill, kill_id)
-    send_enriched_kill_embed(killmail, kill_id)
-  end
-
-  # Convert kill data to a Killmail struct
-  defp convert_to_killmail(kill_data, kill_id) do
-    if is_struct(kill_data, Killmail) do
-      kill_data
-    else
-      Killmail.new(kill_id, Map.get(kill_data, "zkb", %{}))
-    end
-  end
-
-  @spec send_embed(any(), any()) :: :ok | {:error, any()}
+  @spec send_embed(any(), any(), any(), any(), any()) :: :ok | {:error, any()}
   @doc """
   Sends a basic embed message to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_embed(title, description, url \\ nil, color \\ @default_embed_color) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_embed(title, description, url \\ nil, color \\ @default_embed_color, _feature \\ nil) do
     AppLogger.processor_info("Discord embed requested",
       title: title,
       url: url || "nil"
     )
 
     if env() == :test do
-      handle_test_mode("DISCORD MOCK EMBED: #{title} - #{description}")
+      handle_test_mode("DISCORD MOCK: #{title} - #{description}")
     else
-      payload =
-        if title == "Test Kill" do
-          process_test_embed(title, description, url, color)
-        else
-          build_embed_payload(title, description, url, color)
-        end
+      # Build embed payload
+      embed = build_embed_payload(title, description, url, color)
 
-      AppLogger.processor_info("Discord embed payload built, sending to Discord API")
-      send_payload(payload)
-    end
-  end
-
-  defp process_test_embed(title, description, url, color) do
-    recent_kills = KillProcessor.get_recent_kills() || []
-
-    if recent_kills == [] do
-      build_embed_payload(title, description, url, color)
-    else
-      process_embed_with_kill(title, description, url, color, recent_kills)
-    end
-  end
-
-  # Helper function to process an embed with kill data
-  defp process_embed_with_kill(title, description, url, color, recent_kills) do
-    recent_kill = List.first(recent_kills)
-    kill_id = Map.get(recent_kill, "killmail_id") || Map.get(recent_kill, :killmail_id)
-
-    if kill_id do
-      # Convert to Killmail struct if needed
-      killmail = convert_to_killmail_struct(recent_kill)
-      send_enriched_kill_embed(killmail, kill_id)
-    else
-      build_embed_payload(title, description, url, color)
-    end
-  end
-
-  # Helper function to convert a kill to a Killmail struct if needed
-  defp convert_to_killmail_struct(recent_kill) do
-    if is_struct(recent_kill, Killmail) do
-      recent_kill
-    else
-      Killmail.new(recent_kill["killmail_id"], recent_kill["zkb"])
+      # For Nostrum, we just need the embed object from the payload
+      discord_embed = embed["embeds"] |> List.first()
+      NeoClient.send_embed(discord_embed)
     end
   end
 
   defp build_embed_payload(title, description, url, color) do
-    embed =
-      %{
-        "title" => title,
-        "description" => description,
-        "color" => color
-      }
-      |> maybe_put("url", url)
+    embed = %{
+      "title" => title,
+      "description" => description,
+      "color" => color
+    }
 
+    # Add URL if provided
+    embed =
+      if url do
+        Map.put(embed, "url", url)
+      else
+        embed
+      end
+
+    # Return final payload with embed
     %{"embeds" => [embed]}
   end
-
-  # Inserts a key only if the value is not nil.
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   Sends a Discord embed using the Discord API.
   """
   def send_discord_embed(embed, _feature \\ nil) do
     if env() == :test do
-      handle_test_mode("DISCORD MOCK EMBED (JSON): #{inspect(embed)}")
+      handle_test_mode("DISCORD MOCK: #{inspect(embed)}")
     else
-      payload = %{"embeds" => [embed]}
-      send_payload(payload)
+      AppLogger.processor_info("Using Nostrum client for structured embed")
+      NeoClient.send_embed(embed)
     end
   end
 
-  @doc """
-  Send an enriched kill embed to Discord.
-  """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
-    AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
-
-    # Ensure the killmail has a system name if system_id is present
-    enriched_killmail = enrich_with_system_name(killmail)
-
-    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
-    send_to_discord(formatted_embed, "kill")
-  end
+  # -- HELPER FUNCTIONS FOR ENRICHING KILLMAILS --
 
   # Ensure the killmail has a system name if missing
   defp enrich_with_system_name(%Killmail{} = killmail) do
@@ -288,32 +170,40 @@ defmodule WandererNotifier.Discord.Notifier do
   defp send_to_discord(formatted_notification, feature) do
     # Skip actual sending in test mode
     if env() == :test do
-      handle_test_mode("DISCORD TEST NOTIFICATION: #{inspect(feature)}")
+      handle_test_mode("DISCORD MOCK: #{inspect(feature)}")
     else
       # Convert to Discord format
       discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
 
-      # Build and send a standardized payload
-      discord_payload = %{"embeds" => [discord_embed]}
-      send_payload(discord_payload, feature)
+      # Check if components are available
+      components = Map.get(formatted_notification, :components, [])
+      use_components = components != [] && FeatureFlags.components_enabled?()
+
+      if use_components do
+        # If components are enabled, use enhanced format
+        AppLogger.processor_info("Using Discord components for #{feature} notification")
+        NeoClient.send_message_with_components(discord_embed, components)
+      else
+        # Otherwise use standard embed
+        AppLogger.processor_info("Using standard embeds for #{feature} notification")
+        NeoClient.send_embed(discord_embed)
+      end
     end
   end
 
   # -- NEW TRACKED CHARACTER NOTIFICATION --
 
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Data.Character) do
     if env() == :test do
-      handle_test_mode(
-        "DISCORD TEST CHARACTER NOTIFICATION: Character ID #{character.character_id}"
-      )
+      handle_test_mode("DISCORD MOCK: Character ID #{character.character_id}")
     else
       # Extract character ID for deduplication check
       character_id = character.character_id
 
       # Check if this is a duplicate notification
-      case NotificationDeterminer.check_deduplication(
+      case Determiner.check_deduplication(
              :character,
              character_id
            ) do
@@ -360,7 +250,7 @@ defmodule WandererNotifier.Discord.Notifier do
 
   # -- NEW SYSTEM NOTIFICATION --
 
-  @impl WandererNotifier.NotifierBehaviour
+  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) do
     # Log system details before processing to diagnose cache issues
     AppLogger.processor_info(
@@ -372,7 +262,7 @@ defmodule WandererNotifier.Discord.Notifier do
     if env() == :test do
       # Get system ID safely regardless of structure
       system_id = extract_system_id(system)
-      handle_test_mode("DISCORD TEST SYSTEM NOTIFICATION: System ID #{system_id}")
+      handle_test_mode("DISCORD MOCK: System ID #{system_id}")
     else
       # Extract system data safely with fallbacks
       system_id = extract_system_id(system)
@@ -386,7 +276,7 @@ defmodule WandererNotifier.Discord.Notifier do
       )
 
       # Check if this is a duplicate notification
-      case NotificationDeterminer.check_deduplication(:system, system_id) do
+      case Determiner.check_deduplication(:system, system_id) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
           AppLogger.processor_info("Processing new system notification",
@@ -505,152 +395,43 @@ defmodule WandererNotifier.Discord.Notifier do
     end)
   end
 
-  # -- HELPER FOR SENDING PAYLOAD --
-
-  defp send_payload(payload, feature \\ nil) do
-    url = build_url()
-    json_payload = Jason.encode!(payload)
-
-    AppLogger.processor_info("Sending Discord API request",
-      url: url,
-      feature: feature
-    )
-
-    AppLogger.processor_debug("Discord API payload details",
-      payload_size: byte_size(json_payload)
-    )
-
-    case HttpClient.request("POST", url, headers(), json_payload) do
-      {:ok, %{status_code: status}} when status in 200..299 ->
-        AppLogger.processor_info("Discord API request successful",
-          status: status,
-          feature: feature
-        )
-
-        :ok
-
-      {:ok, %{status_code: status, body: body}} ->
-        AppLogger.processor_error("Discord API request failed",
-          status: status,
-          response: body,
-          feature: feature
-        )
-
-        {:error, body}
-
-      {:error, err} ->
-        AppLogger.processor_error("Discord API request error",
-          error: inspect(err),
-          feature: feature
-        )
-
-        {:error, err}
-    end
-  end
-
   # -- FILE SENDING --
 
   @doc """
   Sends a file to Discord with an optional title and description.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_file(filename, file_data, title \\ nil, description \\ nil) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
     AppLogger.processor_info("Sending file to Discord",
       filename: filename,
       title: title
     )
 
     if env() == :test do
-      handle_test_mode("DISCORD MOCK FILE: #{filename} - #{title || "No title"}")
+      handle_test_mode("DISCORD MOCK: #{filename} - #{title || "No title"}")
     else
-      url = build_url()
-
-      {_boundary, body, file_headers} =
-        prepare_file_upload(filename, file_data, title, description)
-
-      send_multipart_request(url, file_headers, body)
-    end
-  end
-
-  # Prepare the multipart data for file upload
-  defp prepare_file_upload(filename, file_data, title, description) do
-    # Create form data with file and JSON payload
-    boundary = "----------------------------#{:rand.uniform(999_999_999)}"
-
-    # Prepare JSON payload
-    json_payload = create_file_json_payload(filename, title, description)
-
-    # Build multipart request body
-    body = [
-      "--#{boundary}\r\n",
-      "Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n",
-      json_payload,
-      "\r\n--#{boundary}\r\n",
-      "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n",
-      "Content-Type: application/octet-stream\r\n\r\n",
-      file_data,
-      "\r\n--#{boundary}--\r\n"
-    ]
-
-    # Custom headers for multipart request
-    file_headers = [
-      {"Content-Type", "multipart/form-data; boundary=#{boundary}"},
-      {"Authorization", "Bot #{bot_token()}"}
-    ]
-
-    {boundary, body, file_headers}
-  end
-
-  # Create the JSON payload for file upload
-  defp create_file_json_payload(filename, title, description) do
-    if title || description do
-      embed = %{
-        "title" => title || filename,
-        "description" => description || "",
-        "color" => @default_embed_color
-      }
-
-      Jason.encode!(%{"embeds" => [embed]})
-    else
-      "{}"
-    end
-  end
-
-  # Send a multipart request
-  defp send_multipart_request(url, headers, body) do
-    case HttpClient.request("POST", url, headers, body) do
-      {:ok, %{status_code: status}} when status in 200..299 ->
-        AppLogger.processor_info("Successfully sent file to Discord", status: status)
-        :ok
-
-      {:ok, %{status_code: status, body: response_body}} ->
-        AppLogger.processor_error("Failed to send file to Discord",
-          status: status,
-          response: inspect(response_body)
-        )
-
-        {:error, "Discord API error: #{status}"}
-
-      {:error, reason} ->
-        AppLogger.processor_error("Error sending file to Discord", error: inspect(reason))
-        {:error, reason}
+      NeoClient.send_file(filename, file_data, title, description)
     end
   end
 
   @doc """
   Sends an embed with an image to Discord.
   """
-  @impl WandererNotifier.NotifierBehaviour
-  def send_image_embed(title, description, image_url, color \\ @default_embed_color) do
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_image_embed(
+        title,
+        description,
+        image_url,
+        color \\ @default_embed_color,
+        _feature \\ nil
+      ) do
     AppLogger.processor_info("Sending image embed to Discord",
       title: title,
       image_url: image_url || "nil"
     )
 
     if env() == :test do
-      handle_test_mode(
-        "DISCORD MOCK IMAGE EMBED: #{title} - #{description} with image: #{image_url}"
-      )
+      handle_test_mode("DISCORD MOCK: #{title} - #{description} with image: #{image_url}")
     else
       embed = %{
         "title" => title,
@@ -661,43 +442,150 @@ defmodule WandererNotifier.Discord.Notifier do
         }
       }
 
-      payload = %{"embeds" => [embed]}
-
       AppLogger.processor_info("Discord image embed payload built, sending to Discord API")
-      send_payload(payload)
+      NeoClient.send_embed(embed)
     end
+  end
+
+  @doc """
+  Implementation of required callback for kill notifications.
+  """
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_kill_notification(kill_data) do
+    # Log the received kill data for debugging
+    AppLogger.processor_debug("Kill notification received",
+      data_type: typeof(kill_data)
+    )
+
+    # Ensure we have a Killmail struct
+    killmail =
+      if is_struct(kill_data, Killmail),
+        do: kill_data,
+        else: struct(Killmail, Map.from_struct(kill_data))
+
+    # Delegate to the enriched killmail notification function
+    send_killmail_notification(killmail)
+  end
+
+  @doc """
+  Sends an enriched kill embed to Discord with interactive components.
+  Required by the Notifiers.Behaviour.
+  """
+  @impl WandererNotifier.Notifiers.Behaviour
+  def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
+    AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
+
+    # Ensure the killmail has a system name if system_id is present
+    enriched_killmail = enrich_with_system_name(killmail)
+
+    # Format the kill notification
+    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
+
+    # Only add components if the feature flag is enabled
+    enhanced_notification =
+      if FeatureFlags.components_enabled?() do
+        # Add interactive components based on the killmail
+        components = [ComponentBuilder.kill_action_row(kill_id)]
+
+        AppLogger.processor_debug("Adding interactive components to kill notification",
+          kill_id: kill_id
+        )
+
+        # Add components to the notification
+        Map.put(formatted_embed, :components, components)
+      else
+        # Use standard format without components
+        AppLogger.processor_debug(
+          "Using standard embed format for kill notification (components disabled)",
+          kill_id: kill_id
+        )
+
+        formatted_embed
+      end
+
+    send_to_discord(enhanced_notification, "kill")
+  end
+
+  # Send killmail notification
+  defp send_killmail_notification(killmail) do
+    if env() == :test do
+      handle_test_mode("DISCORD MOCK: Killmail ID #{killmail.killmail_id}")
+    else
+      # Create notification with StructuredFormatter
+      AppLogger.processor_info("Formatting killmail notification")
+      notification = StructuredFormatter.format_kill_notification(killmail)
+
+      # Send notification
+      send_to_discord(notification, :killmail)
+    end
+  end
+
+  # Send generic notification (used for direct message configurations)
+  defp send_generic_notification(data) when is_map(data) do
+    AppLogger.processor_info("Processing generic notification")
+
+    # Check what format the generic notification is using
+    cond do
+      # Simple format with title and message
+      Map.has_key?(data, :title) and Map.has_key?(data, :message) ->
+        title = Map.get(data, :title)
+        message = Map.get(data, :message)
+        url = Map.get(data, :url)
+        color = Map.get(data, :color, @default_embed_color)
+
+        send_embed(title, message, url, color, :generic)
+
+      # Already structured format
+      Map.has_key?(data, :embed) ->
+        embed = Map.get(data, :embed)
+        send_discord_embed(embed, :generic)
+
+      # Just a simple text message
+      Map.has_key?(data, :text) ->
+        text = Map.get(data, :text)
+        send_message(text, :generic)
+
+      # Structured notification format
+      Map.has_key?(data, :type) and Map.has_key?(data, :title) ->
+        AppLogger.processor_info("Using structured notification format")
+        send_to_discord(data, :generic)
+
+      # Unrecognized format
+      true ->
+        AppLogger.processor_warn("Unrecognized generic notification format: #{inspect(data)}")
+        {:error, :invalid_generic_format}
+    end
+  end
+
+  # For other data types, convert to a simple message
+  defp send_generic_notification(data) do
+    AppLogger.processor_info("Converting non-map data to simple message")
+    send_message("#{inspect(data)}", :generic)
   end
 
   @doc """
   Routes different types of notifications to the appropriate function.
   This is a helper function used by the NotifierFactory.
   """
-  def send_notification(:send_message, [message]) when is_binary(message) do
-    send_message(message)
-  end
+  def route_notification(notification_type, data, _opts \\ []) do
+    case notification_type do
+      :character ->
+        send_new_tracked_character_notification(data)
 
-  def send_notification(:send_embed, [title, description, url, color]) do
-    send_embed(title, description, url, color)
-  end
+      :system ->
+        send_new_system_notification(data)
 
-  def send_notification(:send_embed, [title, description]) do
-    send_embed(title, description)
-  end
+      :killmail ->
+        # Ensure the killmail has a system name
+        enriched_killmail = enrich_with_system_name(data)
+        send_killmail_notification(enriched_killmail)
 
-  def send_notification(:send_embed, [title, description, url]) do
-    send_embed(title, description, url)
-  end
+      :generic ->
+        send_generic_notification(data)
 
-  def send_notification(type, data) do
-    AppLogger.processor_error("Unknown notification type", type: type, data: inspect(data))
-    {:error, :unknown_notification_type}
-  end
-
-  @doc """
-  Sends a kill notification embed to Discord.
-  """
-  @impl true
-  def send_kill_embed(kill, killmail_id) do
-    send_enriched_kill_embed(kill, killmail_id)
+      other ->
+        AppLogger.processor_error("Unknown notification type: #{inspect(other)}")
+        {:error, :unknown_notification_type}
+    end
   end
 end

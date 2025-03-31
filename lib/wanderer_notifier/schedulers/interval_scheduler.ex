@@ -11,8 +11,8 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Add the aliases
-      alias WandererNotifier.Config.Timing
-      alias WandererNotifier.Logger, as: AppLogger
+      alias WandererNotifier.Config.Timings
+      alias WandererNotifier.Logger.Logger, as: AppLogger
 
       # Default interval is 1 hour (in milliseconds) if not specified
       @default_interval unquote(Keyword.get(opts, :default_interval, 60 * 60 * 1000))
@@ -40,7 +40,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
           schedule_next(interval)
         end
 
-        # Return initial state
+        # Return initial state - only return :ok tuple (removing the error case that will never match)
         {:ok, %{interval: interval, last_run: last_run}}
       end
 
@@ -116,31 +116,29 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       # Get the configured interval based on scheduler name
       defp get_configured_interval do
-        case @scheduler_name do
-          WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-            Timing.get_character_update_scheduler_interval()
+        get_interval_for_scheduler(@scheduler_name)
+      end
 
-          WandererNotifier.Schedulers.SystemUpdateScheduler ->
-            Timing.get_system_update_scheduler_interval()
+      # Map scheduler module to the appropriate timing function
+      defp get_interval_for_scheduler(scheduler_module) do
+        scheduler_interval_map = %{
+          WandererNotifier.Schedulers.CharacterUpdateScheduler =>
+            Timings.character_update_scheduler_interval(),
+          WandererNotifier.Schedulers.SystemUpdateScheduler =>
+            Timings.system_update_scheduler_interval(),
+          WandererNotifier.Schedulers.ServiceStatusScheduler => Timings.service_status_interval(),
+          WandererNotifier.Schedulers.KillmailRetentionScheduler =>
+            Timings.killmail_retention_interval(),
+          WandererNotifier.Schedulers.CacheCheckScheduler => Timings.cache_check_interval(),
+          WandererNotifier.Schedulers.CacheSyncScheduler => Timings.cache_sync_interval(),
+          WandererNotifier.Schedulers.CacheCleanupScheduler => Timings.cache_cleanup_interval(),
+          WandererNotifier.Schedulers.LicenseRefreshScheduler =>
+            Timings.license_refresh_interval(),
+          WandererNotifier.Schedulers.ActivityChartScheduler => Timings.activity_chart_interval()
+        }
 
-          WandererNotifier.Schedulers.MaintenanceScheduler ->
-            Timing.get_maintenance_interval()
-
-          WandererNotifier.Schedulers.CacheCheckScheduler ->
-            Timing.get_cache_check_interval()
-
-          WandererNotifier.Schedulers.CacheSyncScheduler ->
-            Timing.get_cache_sync_interval()
-
-          WandererNotifier.Schedulers.CacheCleanupScheduler ->
-            Timing.get_cache_cleanup_interval()
-
-          WandererNotifier.Schedulers.LicenseRefreshScheduler ->
-            Timing.get_license_refresh_interval()
-
-          _ ->
-            nil
-        end
+        # Look up the scheduler in the map, or return nil if not found
+        Map.get(scheduler_interval_map, scheduler_module)
       end
 
       @impl true

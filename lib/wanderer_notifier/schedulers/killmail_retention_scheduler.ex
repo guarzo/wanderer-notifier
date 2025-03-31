@@ -12,14 +12,14 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   ```
   """
 
-  require Logger
-  alias WandererNotifier.Config.{Features, Timing}
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Use the interval scheduler as our base
   use WandererNotifier.Schedulers.IntervalScheduler,
-    default_interval: 24 * 60 * 60 * 1000
+    name: __MODULE__
 
   @impl true
   def execute(state) do
@@ -27,26 +27,26 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
       AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
 
       # Get the configured retention period
-      retention_days = Timing.get_persistence_config() |> Keyword.get(:retention_period_days, 180)
+      retention_days = Timings.persistence_config() |> Keyword.get(:retention_period_days, 180)
 
       # Run the cleanup operation
       {deleted_count, error_count} = KillmailAggregation.cleanup_old_killmails(retention_days)
 
       # Log the results
       if error_count > 0 do
-        Logger.warning(
+        AppLogger.scheduler_warn(
           "#{inspect(@scheduler_name)}: Cleanup completed with errors. Deleted: #{deleted_count}, Errors: #{error_count}",
           []
         )
       else
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Cleanup completed successfully. Deleted: #{deleted_count} old killmails"
         )
       end
 
       {:ok, {deleted_count, error_count}, state}
     else
-      Logger.info(
+      AppLogger.scheduler_info(
         "#{inspect(@scheduler_name)}: Skipping killmail retention (persistence disabled)"
       )
 
@@ -54,7 +54,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during killmail retention: #{Exception.message(e)}"
       )
 
@@ -66,7 +66,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   def get_config do
     %{
       type: :interval,
-      interval: Timing.get_activity_chart_interval(),
+      interval: Timings.killmail_retention_interval(),
       description: "Cleanup old killmail data based on retention policy"
     }
   end

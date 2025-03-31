@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Update user agent to a more proper and identifiable value for ZKill
   @user_agent "WandererNotifier/1.0 (github.com/your-username/wanderer-notifier)"
@@ -129,11 +129,6 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)
-
-            Logger.info(
-              "[ZKill] Successfully parsed #{length(result)} kills for system #{system_id}"
-            )
-
             {:ok, result}
 
           {:ok, []} ->

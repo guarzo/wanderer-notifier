@@ -41,7 +41,7 @@ defmodule WandererNotifier.Discord.NotifierTest do
                           "Test Description",
                           "https://example.com"
                         )
-             end) =~ "DISCORD MOCK EMBED: Test Title - Test Description"
+             end) =~ "DISCORD MOCK: Test Title - Test Description"
     end
   end
 

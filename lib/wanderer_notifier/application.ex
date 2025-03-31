@@ -15,8 +15,17 @@ defmodule WandererNotifier.Application do
   """
 
   use Application
-  require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+
+  alias WandererNotifier.Config.API
+  alias WandererNotifier.Config.Database
+  alias WandererNotifier.Config.Debug
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Notifications
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Config.Version
+  alias WandererNotifier.Config.Web
+  alias WandererNotifier.Config.Websocket
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Starts the application.
@@ -27,6 +36,8 @@ defmodule WandererNotifier.Application do
     if minimal_test do
       start_minimal_application()
     else
+      # Validate configuration before starting the application
+      validate_configuration()
       start_main_application()
     end
   end
@@ -53,6 +64,88 @@ defmodule WandererNotifier.Application do
   end
 
   # Private functions
+
+  defp validate_configuration do
+    # Log application version on startup
+    AppLogger.config_info("Starting application",
+      version: Version.version(),
+      environment: Application.get_env(:wanderer_notifier, :env, :dev)
+    )
+
+    # Define all configuration modules to validate with their display names and extra info
+    config_modules = [
+      {Database, "Database", []},
+      {Web, "Web", [port: Web.port(), host: Web.host()]},
+      {Websocket, "Websocket", [url: Websocket.url(), enabled: Websocket.enabled()]},
+      {API, "API", []},
+      {Features, "Features",
+       fn ->
+         status = Features.get_feature_status()
+
+         [
+           kill_notifications: status.kill_notifications_enabled,
+           character_tracking: status.character_tracking_enabled,
+           system_tracking: status.system_tracking_enabled
+         ]
+       end},
+      {Notifications, "Notifications",
+       fn ->
+         channels = Notifications.config().channels
+
+         [
+           main_channel: channels.main.enabled,
+           kill_channel: channels.kill.enabled,
+           system_channel: channels.system.enabled
+         ]
+       end},
+      {Timings, "Timings", []},
+      {Debug, "Debug", [logging_enabled: Debug.debug_logging_enabled?()]}
+    ]
+
+    # Validate each module in parallel with Task.async_stream
+    Task.async_stream(
+      config_modules,
+      fn module_info ->
+        {module, name, info_fn} = module_info
+
+        # Get extra info if it's a function
+        info = if is_function(info_fn), do: info_fn.(), else: info_fn
+
+        # Call the validate function on the module
+        validate_module(module, name, info)
+      end,
+      timeout: :infinity
+    )
+    |> Stream.run()
+  end
+
+  defp process_validation_result(_module, name, info, result) do
+    case result do
+      :ok ->
+        # Log success with any extra info
+        AppLogger.config_info("#{name} configuration validated successfully", info)
+        :ok
+
+      {:error, reason} when is_binary(reason) ->
+        # Single error string
+        AppLogger.config_error("Invalid #{name} configuration", error: reason)
+        {:error, name, reason}
+
+      {:error, errors} when is_list(errors) ->
+        # List of error strings
+        Enum.each(errors, fn error ->
+          AppLogger.config_error("#{name} configuration validation error", error: error)
+        end)
+
+        {:error, name, errors}
+    end
+  end
+
+  defp validate_module(module, name, info) do
+    # Call the validate function on the module directly instead of using apply
+    result = module.validate()
+    process_validation_result(module, name, info, result)
+  end
 
   defp start_minimal_application do
     children = [
@@ -88,15 +181,14 @@ defmodule WandererNotifier.Application do
     [
       # Core services
       {WandererNotifier.NoopConsumer, []},
-      {WandererNotifier.Core.License, []},
+      {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.Helpers.DeduplicationHelper, []},
-      {WandererNotifier.Services.Service, []},
+      {WandererNotifier.Core.Application.Service, []},
       {WandererNotifier.Data.Cache.Repository, []},
-      {WandererNotifier.Repo, []},
+      {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},
-      {WandererNotifier.Schedulers.ActivityChartScheduler, []},
-      {WandererNotifier.Services.Maintenance, []}
+      {WandererNotifier.Schedulers.Supervisor, []}
     ]
   end
 end

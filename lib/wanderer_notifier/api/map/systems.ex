@@ -16,9 +16,9 @@ defmodule WandererNotifier.Api.Map.Systems do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.api_debug("[update_systems] Starting systems update")
@@ -131,14 +131,14 @@ defmodule WandererNotifier.Api.Map.Systems do
       end)
 
     # Filter systems based on configuration
-    track_all_systems = Features.track_kspace_systems?()
+    track_kspace_systems = Features.track_kspace_systems?()
 
     processed_systems =
       systems_with_static_info
       |> Enum.filter(fn system ->
         # If K-Space tracking is enabled, include all systems
         # Otherwise only include wormhole systems
-        track_all_systems || wormhole_system?(system)
+        track_kspace_systems || wormhole_system?(system)
       end)
       |> Enum.map(&extract_system_data/1)
 
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
     Logger.info(
       "[process_system_list] Tracking #{length(processed_systems)} systems (#{wormhole_count} wormholes) " <>
-        "out of #{length(systems)} total systems (tracking K-Space=#{track_all_systems})"
+        "out of #{length(systems)} total systems (tracking K-Space=#{track_kspace_systems})"
     )
 
     {:ok, processed_systems}
@@ -212,9 +212,18 @@ defmodule WandererNotifier.Api.Map.Systems do
     end
   end
 
-  # Classify k-space system (low-sec or null-sec)
+  # Classify k-space system (high-sec, low-sec, or null-sec)
+  # Current implementation uses system ID remainder to approximate security status
   defp classify_kspace(id) do
-    if rem(id, 1000) < 500, do: "Low-sec", else: "Null-sec"
+    remainder = rem(id, 1000)
+    # High-sec systems typically have higher ID remainders (700-999)
+    # Low-sec systems typically have middle remainders (500-699)
+    # Null-sec systems typically have lower remainders (0-499)
+    cond do
+      remainder < 500 -> "Null-sec"
+      remainder >= 700 -> "High-sec"
+      true -> "Low-sec"
+    end
   end
 
   defp wormhole_system?(system) do
@@ -317,45 +326,78 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   # Add static info to system data
   defp add_static_info(system, system_id) do
-    case SystemStaticInfo.get_system_static_info(system_id) do
-      {:ok, static_info} ->
-        AppLogger.api_info(
-          "[notify_new_systems] Successfully got static info for system #{system_id}"
-        )
+    # Special handling for known trade hub systems that should always be High-sec
+    known_trade_hubs = %{
+      # Main Caldari trade hub
+      30_000_142 => "Jita",
+      # Main Amarr trade hub
+      30_002_187 => "Amarr",
+      # Main Minmatar trade hub
+      30_002_510 => "Rens",
+      # Main Gallente trade hub
+      30_002_659 => "Dodixie",
+      # Secondary trade hub
+      30_002_053 => "Hek"
+      # Add more known hubs as needed
+    }
 
-        # Extract the full static info data if available
-        static_info_data = Map.get(static_info, "data") || %{}
+    # If the system is a known trade hub, explicitly set it to High-sec
+    if Map.has_key?(known_trade_hubs, system_id) do
+      system_name = Map.get(known_trade_hubs, system_id)
 
-        # Add the rich static info fields directly to the system
-        system
-        |> Map.put("statics", Map.get(static_info_data, "statics") || [])
-        |> Map.put(
-          "type_description",
-          Map.get(static_info_data, "type_description")
-        )
-        |> Map.put("class_title", Map.get(static_info_data, "class_title"))
-        |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
-        |> Map.put(
-          "is_shattered",
-          Map.get(static_info_data, "is_shattered")
-        )
-        |> Map.put("region_name", Map.get(static_info_data, "region_name"))
-        |> Map.put("staticInfo", %{
-          "typeDescription" =>
-            Map.get(static_info_data, "type_description") ||
-              Map.get(static_info_data, "class_title") ||
-              classify_system_by_id(system_id),
-          "statics" => Map.get(static_info_data, "statics") || [],
-          "effectName" => Map.get(static_info_data, "effect_name"),
-          "isShattered" => Map.get(static_info_data, "is_shattered")
-        })
+      AppLogger.api_info(
+        "[notify_new_systems] Known trade hub detected: #{system_name} (#{system_id})"
+      )
 
-      {:error, reason} ->
-        Logger.warning(
-          "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
-        )
+      # Return system with explicit High-sec designation
+      system
+      |> Map.put("type_description", "High-sec")
+      |> Map.put("staticInfo", %{
+        "typeDescription" => "High-sec",
+        "statics" => []
+      })
+    else
+      # Regular handling for other systems
+      case SystemStaticInfo.get_system_static_info(system_id) do
+        {:ok, static_info} ->
+          AppLogger.api_info(
+            "[notify_new_systems] Successfully got static info for system #{system_id}"
+          )
 
-        add_fallback_static_info(system, system_id)
+          # Extract the full static info data if available
+          static_info_data = Map.get(static_info, "data") || %{}
+
+          # Add the rich static info fields directly to the system
+          system
+          |> Map.put("statics", Map.get(static_info_data, "statics") || [])
+          |> Map.put(
+            "type_description",
+            Map.get(static_info_data, "type_description")
+          )
+          |> Map.put("class_title", Map.get(static_info_data, "class_title"))
+          |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
+          |> Map.put(
+            "is_shattered",
+            Map.get(static_info_data, "is_shattered")
+          )
+          |> Map.put("region_name", Map.get(static_info_data, "region_name"))
+          |> Map.put("staticInfo", %{
+            "typeDescription" =>
+              Map.get(static_info_data, "type_description") ||
+                Map.get(static_info_data, "class_title") ||
+                classify_system_by_id(system_id),
+            "statics" => Map.get(static_info_data, "statics") || [],
+            "effectName" => Map.get(static_info_data, "effect_name"),
+            "isShattered" => Map.get(static_info_data, "is_shattered")
+          })
+
+        {:error, reason} ->
+          Logger.warning(
+            "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
+          )
+
+          add_fallback_static_info(system, system_id)
+      end
     end
   end
 
@@ -422,12 +464,12 @@ defmodule WandererNotifier.Api.Map.Systems do
   end
 
   # Process notification for a single system
-  defp process_system_notification(system, track_all_systems) do
+  defp process_system_notification(system, track_kspace_systems) do
     system_name = get_system_name(system)
     system_id = Map.get(system, "systemId")
 
     # Check if this specific system should trigger a notification
-    if NotificationDeterminer.should_notify_system?(system_id) do
+    if Determiner.should_notify_system?(system_id) do
       # Prepare system data with static info
       system_data = prepare_system_data(system, system_name, system_id)
 
@@ -435,7 +477,7 @@ defmodule WandererNotifier.Api.Map.Systems do
       notifier = NotifierFactory.get_notifier()
       notifier.send_new_system_notification(system_data)
 
-      if track_all_systems do
+      if track_kspace_systems do
         Logger.info(
           "[notify_new_systems] System #{system_name} added and tracked (tracking K-Space=true)"
         )
@@ -454,7 +496,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   defp notify_new_systems(fresh_systems, cached_systems) do
     # Use the centralized notification determiner to check if system notifications are enabled
-    if NotificationDeterminer.should_notify_system?(nil) do
+    if Determiner.should_notify_system?(nil) do
       # Ensure we have both fresh and cached systems as lists
       fresh = fresh_systems || []
       cached = cached_systems || []
@@ -463,11 +505,11 @@ defmodule WandererNotifier.Api.Map.Systems do
       added_systems = find_added_systems(fresh, cached)
 
       # Send notifications for added systems
-      track_all_systems = Features.track_kspace_systems?()
+      track_kspace_systems = Features.track_kspace_systems?()
 
       for system <- added_systems do
         Task.start(fn ->
-          process_system_notification(system, track_all_systems)
+          process_system_notification(system, track_kspace_systems)
         end)
       end
 

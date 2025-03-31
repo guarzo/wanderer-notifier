@@ -6,38 +6,37 @@ defmodule WandererNotifier.Discord.Client do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Discord.Constants
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  defp env, do: Notifications.get_env()
+  defp env do
+    Application.get_env(:wanderer_notifier, :env, :prod)
+  end
 
   @doc """
   Gets the configured Discord channel ID.
   """
   def channel_id do
-    case Notifications.get_discord_config() do
-      {:ok, %{channel_id: channel_id}} -> channel_id
-      _ -> nil
-    end
+    config = Notifications.get_discord_config()
+    config.main_channel
   end
 
   @doc """
   Gets the configured Discord bot token.
   """
   def bot_token do
-    case Notifications.get_discord_config() do
-      {:ok, %{bot_token: token}} -> token
-      _ -> nil
-    end
+    config = Notifications.get_discord_config()
+    config.token
   end
 
   defp build_url do
-    "https://discord.com/api/channels/#{channel_id()}/messages"
+    Constants.messages_url(channel_id())
   end
 
   defp build_url(override_channel_id) when not is_nil(override_channel_id) do
-    "https://discord.com/api/channels/#{override_channel_id}/messages"
+    Constants.messages_url(override_channel_id)
   end
 
   defp headers do
@@ -72,6 +71,46 @@ defmodule WandererNotifier.Discord.Client do
         {:ok, json} ->
           HttpClient.request("POST", url, headers(), json)
           |> handle_discord_response("send_embed")
+
+        {:error, reason} ->
+          AppLogger.api_error("Failed to encode Discord payload", error: inspect(reason))
+          {:error, :json_error}
+      end
+    end
+  end
+
+  @doc """
+  Sends a message with components to Discord.
+
+  ## Parameters
+    - embed: A map containing the embed data
+    - components: A list of component rows (buttons, select menus, etc.)
+    - override_channel_id: Optional channel ID to override the default
+
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
+  """
+  def send_message_with_components(embed, components, override_channel_id \\ nil) do
+    if env() == :test do
+      AppLogger.api_info("TEST MODE: Would send message with components to Discord",
+        embed: inspect(embed),
+        components: inspect(components)
+      )
+
+      :ok
+    else
+      url = if is_nil(override_channel_id), do: build_url(), else: build_url(override_channel_id)
+
+      payload = %{
+        "embeds" => [embed],
+        "components" => components
+      }
+
+      case Jason.encode(payload) do
+        {:ok, json} ->
+          HttpClient.request("POST", url, headers(), json)
+          |> handle_discord_response("send_message_with_components")
 
         {:error, reason} ->
           AppLogger.api_error("Failed to encode Discord payload", error: inspect(reason))
@@ -193,6 +232,22 @@ defmodule WandererNotifier.Discord.Client do
       {:ok, _} ->
         AppLogger.api_info("Successfully executed Discord operation", operation: operation)
         :ok
+
+      {:error, %{status_code: 429, body: body}} ->
+        # Parse retry_after from response for rate limiting
+        retry_after =
+          case Jason.decode(body) do
+            {:ok, decoded} -> Map.get(decoded, "retry_after", 5) * 1000
+            # Default retry after time
+            _ -> 5000
+          end
+
+        AppLogger.api_warn("Discord rate limit hit",
+          operation: operation,
+          retry_after: retry_after
+        )
+
+        {:error, {:rate_limited, retry_after}}
 
       {:error, error} ->
         # Log the specific error details for debugging

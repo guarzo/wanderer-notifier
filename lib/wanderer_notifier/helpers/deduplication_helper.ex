@@ -5,7 +5,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # TTL for deduplication entries - 12 hours by default for better protection against restarts
   @dedup_ttl 12 * 60 * 60 * 1000

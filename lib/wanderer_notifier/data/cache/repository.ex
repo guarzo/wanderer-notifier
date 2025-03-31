@@ -5,8 +5,10 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Config.Cache
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Config.Cache, as: CacheConfig
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger.BatchLogger
 
   @cache_name :wanderer_notifier_cache
 
@@ -191,7 +193,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Helper function to determine the appropriate cache directory
   defp determine_cache_dir do
-    Cache.get_cache_dir()
+    CacheConfig.get_cache_dir()
   end
 
   # GENSERVER CALLBACKS
@@ -245,8 +247,9 @@ defmodule WandererNotifier.Data.Cache.Repository do
     systems_count = length(systems)
     characters_count = length(characters)
 
-    # Log changes in counts with descriptive messages
-    if systems_count != state.last_systems_count do
+    # Log changes in counts only if significant or first time
+    # For systems, log if change is more than 20% or it's the first time
+    if should_log_count_change?(systems_count, state.last_systems_count) do
       AppLogger.cache_info(
         "Systems count changed: #{state.last_systems_count} → #{systems_count}",
         %{
@@ -256,7 +259,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
       )
     end
 
-    if characters_count != state.last_characters_count do
+    # For characters, log if change is more than 20% or it's the first time
+    if should_log_count_change?(characters_count, state.last_characters_count) do
       AppLogger.cache_info(
         "Characters count changed: #{state.last_characters_count} → #{characters_count}",
         %{
@@ -323,6 +327,28 @@ defmodule WandererNotifier.Data.Cache.Repository do
     {:noreply, state}
   end
 
+  # Determines if a count change should be logged
+  defp should_log_count_change?(new_count, old_count) do
+    cond do
+      # If old count was zero and now it's not, log it (initial data load)
+      old_count == 0 && new_count > 0 ->
+        true
+
+      # If new count is zero and old count wasn't, log it (data clearing)
+      new_count == 0 && old_count > 0 ->
+        true
+
+      # For non-zero counts, log if change is significant (more than 20%)
+      old_count > 0 ->
+        percent_change = abs(new_count - old_count) / old_count * 100
+        percent_change > 20
+
+      # Default case (shouldn't happen, but to be safe)
+      true ->
+        false
+    end
+  end
+
   defp schedule_cache_check do
     Process.send_after(self(), :check_cache, 60_000)
   end
@@ -387,7 +413,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Don't log individual cache hits, but count them for batch logging
     key_pattern = extract_key_pattern(key)
 
-    AppLogger.BatchLogger.count_event(:cache_hit, %{
+    BatchLogger.count_event(:cache_hit, %{
       key_pattern: key_pattern
     })
 
@@ -408,7 +434,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Count cache misses for batch logging
     key_pattern = extract_key_pattern(key)
 
-    AppLogger.BatchLogger.count_event(:cache_miss, %{
+    BatchLogger.count_event(:cache_miss, %{
       key_pattern: key_pattern
     })
 
@@ -519,28 +545,22 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Determine if a key is critical - meaning a miss should be logged as an error
   defp critical_key?(key) do
-    String.starts_with?(key, "critical:") || key in ["license_status", "core_config"]
+    CacheKeys.is_critical_key?(key)
   end
 
   # Determine if a key is application state that might be unset
   defp state_key?(key) do
-    String.starts_with?(key, "state:") ||
-      String.starts_with?(key, "app:") ||
-      String.starts_with?(key, "config:")
+    CacheKeys.is_state_key?(key)
   end
 
   # Determine if a key stores map data
   defp map_key?(key) do
-    String.starts_with?(key, "map:") ||
-      String.starts_with?(key, "data:") ||
-      String.starts_with?(key, "config:")
+    CacheKeys.is_map_key?(key)
   end
 
   # Determine if a key stores array data
   defp array_key?(key) do
-    String.starts_with?(key, "array:") ||
-      String.starts_with?(key, "list:") ||
-      String.starts_with?(key, "recent:")
+    CacheKeys.is_array_key?(key)
   end
 
   # Define guard-compatible macros
@@ -722,14 +742,59 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Purge expired entries from the cache
   defp purge_expired_entries do
+    # First, check entries set to expire soon
+    about_to_expire = check_entries_expiring_soon()
+
+    # Now perform the actual purge
     case Cachex.clear(@cache_name, expired: true) do
       {:ok, count} ->
-        AppLogger.cache_info("Purged expired entries", count: count)
+        # Only log as info if actual entries were purged
+        if count > 0 do
+          AppLogger.cache_info("Purged #{count} expired cache entries",
+            count: count,
+            about_to_expire: about_to_expire
+          )
+        else
+          AppLogger.cache_debug("No expired entries to purge")
+        end
+
         {:ok, count}
 
       other ->
         AppLogger.cache_warn("Failed to purge expired entries", result: inspect(other))
         other
+    end
+  end
+
+  # Check for entries about to expire (for debugging purposes)
+  defp check_entries_expiring_soon do
+    # Try to identify critical keys that might expire soon
+    important_keys = ["map:systems", "map:characters"]
+
+    # Check TTL on important keys
+    important_ttls =
+      important_keys
+      |> Enum.map(fn key -> {key, Cachex.ttl(@cache_name, key)} end)
+      |> Enum.filter(fn
+        {_, {:ok, ttl}} ->
+          # Only include keys that exist and have a TTL set
+          # Less than 1 hour remaining
+          is_integer(ttl) && ttl > 0 && ttl < 3_600_000
+
+        _ ->
+          false
+      end)
+      |> Enum.map(fn {key, {:ok, ttl}} ->
+        # Convert to minutes for readability
+        {key, div(ttl, 60_000)}
+      end)
+
+    # Return list of keys about to expire
+    if Enum.empty?(important_ttls) do
+      []
+    else
+      AppLogger.cache_warn("Critical cache keys expiring soon", entries: inspect(important_ttls))
+      important_ttls
     end
   end
 
@@ -865,12 +930,37 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Handle empty array initialization for specific keys
   defp handle_empty_array_initialization(key, should_log) do
-    if should_log do
-      AppLogger.cache_debug("Initializing with empty array (sampled)", key: key)
-    end
+    # First check if the key exists with a non-empty value
+    existing_value =
+      case Cachex.get(@cache_name, key) do
+        {:ok, value} when is_list(value) and length(value) > 0 ->
+          # If we have a non-empty list, keep it rather than reinitializing
+          if should_log do
+            AppLogger.cache_debug("Keeping existing array (#{length(value)} items)", key: key)
+          end
 
-    Cachex.put(@cache_name, key, [])
-    []
+          value
+
+        _ ->
+          # No existing value or empty list, initialize with empty array
+          if should_log do
+            AppLogger.cache_debug("Initializing with empty array (sampled)", key: key)
+          end
+
+          # Get TTL for these important keys from proper config
+          ttl_seconds =
+            if key == "map:systems" do
+              CacheConfig.systems_cache_ttl()
+            else
+              CacheConfig.characters_cache_ttl()
+            end
+
+          # Set with proper TTL
+          Cachex.put(@cache_name, key, [], ttl: ttl_option(ttl_seconds))
+          []
+      end
+
+    existing_value
   end
 
   # Handle regular nil result cases
@@ -894,26 +984,16 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Extract a key pattern for grouping similar cache keys
   defp extract_key_pattern(key) when is_binary(key) do
-    cond do
-      # For keys with IDs embedded, extract the pattern part
-      String.match?(key, ~r/^[\w\-]+:\w+:\d+$/) ->
-        # Pattern for keys like "map:system:12345" -> "map:system"
-        key |> String.split(":") |> Enum.take(2) |> Enum.join(":")
-
-      # For other known key formats
-      String.match?(key, ~r/^[\w\-]+:[\w\-]+$/) ->
-        # Keys like "map:systems" -> return as is
-        key
-
-      # Match most prefixes
-      true ->
-        # Try to get the prefix part
-        case String.split(key, ":", parts: 2) do
-          [prefix, _] -> "#{prefix}:*"
-          _ -> key
-        end
-    end
+    CacheKeys.extract_pattern(key)
   end
 
   defp extract_key_pattern(key), do: inspect(key)
+
+  @doc """
+  Gets the list of recent kills from the cache.
+  This is a convenience function that centralizes the cache key used for recent kills.
+  """
+  def get_recent_kills do
+    get("recent_kills") || []
+  end
 end

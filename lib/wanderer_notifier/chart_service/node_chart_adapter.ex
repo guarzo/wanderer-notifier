@@ -10,7 +10,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.ChartService.ChartConfigHandler
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Configuration
   @tmp_chart_dir "/tmp/wanderer_notifier_charts"

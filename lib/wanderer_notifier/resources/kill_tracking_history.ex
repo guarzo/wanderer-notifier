@@ -12,7 +12,7 @@ defmodule WandererNotifier.Resources.KillTrackingHistory do
 
   postgres do
     table("kill_tracking_history")
-    repo(WandererNotifier.Repo)
+    repo(WandererNotifier.Data.Repo)
   end
 
   attributes do

@@ -8,7 +8,7 @@ defmodule WandererNotifier.Cache.Repository do
   require Logger
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Use the cache name from configuration
   @cache_name CacheConfig.get_cache_name()

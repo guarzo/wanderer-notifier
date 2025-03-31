@@ -2,10 +2,9 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @moduledoc """
   Helper functions for notification formatting and data extraction.
   """
-  require Logger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """
@@ -175,7 +174,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
         # Use most recent kill
         kill = List.first(kills)
         notifier = NotifierFactory.get_notifier()
-        notifier.send_enriched_kill_embed(kill, kill.killmail_id)
+        notifier.send_kill_notification(kill)
         {:ok, kill.killmail_id}
     end
   end

@@ -15,7 +15,7 @@ defmodule WandererNotifier.Resources.KillmailStatistic do
 
   postgres do
     table("killmail_statistics")
-    repo(WandererNotifier.Repo)
+    repo(WandererNotifier.Data.Repo)
   end
 
   attributes do

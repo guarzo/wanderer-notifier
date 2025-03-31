@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Resources.KillmailPersistence do
   use Ash.Resource,
-    domain: WandererNotifier.Domain,
+    domain: WandererNotifier.Resources.Domain,
     data_layer: AshPostgres.DataLayer,
     extensions: [AshJsonApi.Resource]
 
@@ -10,21 +10,23 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
 
-  require Logger
   require Ash.Query
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
+  # TTL for zkillboard data - 1 hour
+  @zkillboard_cache_ttl_seconds 3600
 
   postgres do
     table("killmails")
-    repo(WandererNotifier.Repo)
+    repo(WandererNotifier.Data.Repo)
   end
 
   attributes do
@@ -233,24 +235,27 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     - true if the killmail exists
     - false if it doesn't exist
   """
-  def killmail_exists_for_character?(killmail_id, character_id, role) do
-    # First check in-memory cache
-    cache_key = "exists:killmail:#{killmail_id}:#{character_id}:#{role}"
+  def exists?(killmail_id, character_id, role) when is_integer(killmail_id) and is_binary(role) do
+    # First check the cache to avoid database queries if possible
+    cache_key = CacheKeys.killmail_exists(killmail_id, character_id, role)
 
     case CacheRepo.get(cache_key) do
-      true ->
-        # Found in cache - already exists
-        true
-
-      _ ->
-        # Not in cache, check database
-        exists = check_killmail_exists_in_database(killmail_id, character_id, role)
-
-        # Cache the result
+      nil ->
+        # Not in cache, check the database
+        exists = do_exists?(killmail_id, character_id, role)
+        # Cache the result to avoid future database lookups
         CacheRepo.set(cache_key, exists, @processed_kills_ttl_seconds)
+        exists
 
+      exists ->
+        # Return the cached result
         exists
     end
+  end
+
+  # Helper function to check if a killmail exists in the database
+  defp do_exists?(killmail_id, character_id, role) do
+    check_killmail_exists_in_database(killmail_id, character_id, role)
   end
 
   @doc """
@@ -609,6 +614,76 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       end
     else
       []
+    end
+  end
+
+  @doc """
+  Gets recent kills for a character.
+  """
+  def get_recent_kills_for_character(character_id) when is_integer(character_id) do
+    # Use a cache key based on character ID
+    cache_key = CacheKeys.character_recent_kills(character_id)
+
+    # Function to read from the database if not in cache
+    db_read_fun = fn ->
+      # Use direct Ash query instead of KillmailQueries
+      import Ash.Query
+
+      query =
+        Killmail
+        |> filter(character_id == ^character_id)
+        |> sort(desc: :kill_time)
+        |> limit(10)
+
+      case Api.read(query) do
+        {:ok, kills} -> kills
+        _ -> []
+      end
+    end
+
+    # Sync with the database and update cache
+    CacheRepo.sync_with_db(cache_key, db_read_fun, 1800)
+  end
+
+  @doc """
+  Gets recent kills from zKillboard.
+  """
+  def get_recent_zkillboard_kills do
+    # Use a standard cache key for zkillboard recent kills
+    cache_key = CacheKeys.zkill_recent_kills()
+
+    # Function to read from the database if not in cache
+    db_read_fun = fn ->
+      # Stub implementation until ZKillboardAdapter is available
+      # Returns empty list as a safe default
+      AppLogger.processor_info("ZKillboard adapter not available, returning empty list")
+      []
+    end
+
+    # Sync with the database and update cache
+    CacheRepo.sync_with_db(
+      cache_key,
+      db_read_fun,
+      @zkillboard_cache_ttl_seconds
+    )
+
+    # Store individual killmails separately for quicker access
+    cache_individual_killmails(cache_key)
+  end
+
+  # Store individual killmails in cache separately
+  defp cache_individual_killmails(cache_key) do
+    case CacheRepo.get(cache_key) do
+      kills when is_list(kills) ->
+        for killmail <- kills do
+          individual_key = "#{cache_key}:#{killmail.killmail_id}"
+          CacheRepo.set(individual_key, killmail, @zkillboard_cache_ttl_seconds)
+        end
+
+        :ok
+
+      _ ->
+        :error
     end
   end
 end

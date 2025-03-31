@@ -6,7 +6,7 @@ defmodule WandererNotifier.Web.Server do
   require Logger
 
   alias WandererNotifier.Config.Web, as: WebConfig
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
   # Client API
 

@@ -6,8 +6,7 @@ defmodule WandererNotifier.Schedulers.Factory do
   implementation based on the specified configuration.
   """
 
-  require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Creates a scheduler module with the appropriate implementation.

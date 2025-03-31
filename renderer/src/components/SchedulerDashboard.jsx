@@ -162,27 +162,6 @@ const SchedulerDashboard = () => {
               <FaPlayCircle className="mr-2" />
               <span>Run All</span>
             </button>
-            
-            {/* Debug button */}
-            <button
-              className="flex items-center px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors ml-2"
-              onClick={() => {
-                // Check database readiness
-                fetch('/api/debug/status')
-                  .then(response => response.json())
-                  .then(data => {
-                    console.log('Debug status:', data);
-                    alert('Debug status checked. See console for details.');
-                  })
-                  .catch(err => {
-                    console.error('Error fetching debug status:', err);
-                    alert('Error checking debug status. See console for details.');
-                  });
-              }}
-            >
-              <FaExclamationTriangle className="mr-2" />
-              <span>Debug</span>
-            </button>
           </div>
         </div>
 
