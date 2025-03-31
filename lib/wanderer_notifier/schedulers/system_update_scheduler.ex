@@ -3,12 +3,13 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   Scheduler responsible for periodic system updates from the map.
   """
   use WandererNotifier.Schedulers.IntervalScheduler,
-    name: __MODULE__,
-    # 5 minutes in milliseconds
-    interval: 300_000
+    name: __MODULE__
+
+  # Interval is now configured via the Timings module
 
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl true
@@ -77,7 +78,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @impl true
   def get_config do
     %{
-      interval_ms: 300_000,
+      interval_ms: Timings.system_update_scheduler_interval(),
       enabled: enabled?(),
       feature_flags: %{
         system_notifications: Features.tracked_systems_notifications_enabled?(),

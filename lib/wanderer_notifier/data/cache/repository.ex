@@ -5,7 +5,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Config.Cache
+  alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.Logger.BatchLogger
 
@@ -192,7 +192,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Helper function to determine the appropriate cache directory
   defp determine_cache_dir do
-    Cache.get_cache_dir()
+    CacheConfig.get_cache_dir()
   end
 
   # GENSERVER CALLBACKS
@@ -791,7 +791,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
       end)
       |> Enum.map(fn {key, {:ok, ttl}} ->
         # Convert to minutes for readability
-        {key, div(ttl, 60000)}
+        {key, div(ttl, 60_000)}
       end)
 
     # Return list of keys about to expire
@@ -955,9 +955,9 @@ defmodule WandererNotifier.Data.Cache.Repository do
           # Get TTL for these important keys from proper config
           ttl_seconds =
             if key == "map:systems" do
-              WandererNotifier.Config.Cache.systems_cache_ttl()
+              CacheConfig.systems_cache_ttl()
             else
-              WandererNotifier.Config.Cache.characters_cache_ttl()
+              CacheConfig.characters_cache_ttl()
             end
 
           # Set with proper TTL

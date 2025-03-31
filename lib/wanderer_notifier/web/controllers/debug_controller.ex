@@ -56,6 +56,12 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
         AppLogger.api_debug("Getting schedulers from registry")
         schedulers = SchedulerRegistry.get_all_schedulers()
         AppLogger.api_debug("Got #{length(schedulers)} schedulers")
+
+        # Log each scheduler for debugging
+        Enum.each(schedulers, fn s ->
+          AppLogger.api_debug("Found scheduler: #{inspect(s.module)}, enabled: #{s.enabled}")
+        end)
+
         schedulers
       rescue
         e ->
@@ -83,11 +89,20 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
           processed_schedulers =
             Enum.reduce_while(scheduler_list, [], fn scheduler_data, acc ->
-              try do
-                module = scheduler_data.module
-                config = scheduler_data.config
-                enabled = scheduler_data.enabled
+              # Always create a basic info map with minimal information that's guaranteed to work
+              module = scheduler_data.module
 
+              basic_info = %{
+                id: module |> to_string() |> String.replace("Elixir.", ""),
+                module: inspect(module),
+                name: get_scheduler_name(module),
+                enabled: scheduler_data.enabled,
+                config: sanitize_config(scheduler_data.config),
+                type: get_scheduler_type(scheduler_data.config)
+              }
+
+              # Now try to enhance it with detailed information
+              try do
                 AppLogger.api_debug("Processing scheduler: #{inspect(module)}")
 
                 # Get health info from the scheduler if available
@@ -99,62 +114,87 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
                       sanitize_map_for_json(health_info)
                     rescue
                       e ->
+                        # Log more detailed error to help diagnose the issue
+                        stack = Process.info(self(), :current_stacktrace)
+
                         AppLogger.api_error("Error getting health info for #{inspect(module)}",
                           error: inspect(e),
-                          stacktrace: inspect(Process.info(self(), :current_stacktrace))
+                          error_type: e.__struct__,
+                          stacktrace: inspect(stack)
                         )
 
-                        %{}
+                        # Return minimal health info instead of empty map
+                        %{
+                          name: inspect(module),
+                          enabled:
+                            if(function_exported?(module, :enabled?, 0),
+                              do: module.enabled?(),
+                              else: false
+                            ),
+                          error: "Failed to get health info: #{inspect(e)}"
+                        }
                     end
                   else
-                    %{}
+                    # If no health_check function, create basic info from available data
+                    %{
+                      name: inspect(module),
+                      enabled:
+                        if(function_exported?(module, :enabled?, 0),
+                          do: module.enabled?(),
+                          else: false
+                        )
+                    }
                   end
 
                 # Extract scheduler type from config
-                scheduler_type = get_scheduler_type(config)
+                scheduler_type = basic_info.type
 
-                # Generate consistent ID for frontend
-                id = module |> to_string() |> String.replace("Elixir.", "")
-
-                # Extract name from module
-                name = get_scheduler_name(module)
+                # Extract interval, hour, minute from config safely
+                interval = basic_info.config[:interval_ms] || basic_info.config[:interval]
+                hour = basic_info.config[:hour]
+                minute = basic_info.config[:minute]
 
                 # Process health info into format needed by dashboard
-                processed = %{
-                  id: id,
-                  name: name,
-                  module: inspect(module),
-                  type: scheduler_type,
-                  enabled: enabled,
-                  interval: config[:interval_ms] || config[:interval],
-                  hour: config[:hour],
-                  minute: config[:minute],
-                  last_run: get_formatted_timestamp(health_info[:last_execution]),
-                  next_run: calculate_next_run(health_info, scheduler_type, config),
-                  stats: %{
-                    # Will need to implement tracking for this
-                    success_count: 0,
-                    # Will need to implement tracking for this
-                    error_count: 0,
-                    last_duration_ms: 0,
-                    last_result: health_info[:last_result],
-                    last_error: health_info[:last_error],
-                    retry_count: health_info[:retry_count] || 0
-                  },
-                  config: sanitize_config(config)
-                }
+                processed =
+                  Map.merge(basic_info, %{
+                    interval: interval,
+                    hour: hour,
+                    minute: minute,
+                    last_run: get_formatted_timestamp(health_info[:last_execution]),
+                    next_run: calculate_next_run(health_info, scheduler_type, basic_info.config),
+                    stats: %{
+                      # Will need to implement tracking for this
+                      success_count: 0,
+                      # Will need to implement tracking for this
+                      error_count: 0,
+                      last_duration_ms: 0,
+                      last_result: health_info[:last_result],
+                      last_error: health_info[:last_error],
+                      retry_count: health_info[:retry_count] || 0
+                    }
+                  })
 
                 {:cont, [processed | acc]}
               rescue
                 e ->
                   AppLogger.api_error(
-                    "Error processing scheduler #{inspect(scheduler_data.module)}",
+                    "Error processing detailed info for scheduler #{inspect(module)}",
                     error: inspect(e),
                     stacktrace: inspect(Process.info(self(), :current_stacktrace))
                   )
 
-                  # Continue with other schedulers instead of failing completely
-                  {:cont, acc}
+                  # Still add the basic information so we at least show the scheduler
+                  basic_processed =
+                    Map.merge(basic_info, %{
+                      error: "Failed to process detailed info: #{inspect(e)}",
+                      stats: %{
+                        success_count: 0,
+                        error_count: 0,
+                        last_duration_ms: 0
+                      }
+                    })
+
+                  {:cont, [basic_processed | acc]}
               end
             end)
 
@@ -525,8 +565,9 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
   # Format timestamp for last run
   defp get_formatted_timestamp(nil), do: nil
+  defp get_formatted_timestamp(timestamp) when not is_integer(timestamp), do: nil
 
-  defp get_formatted_timestamp(timestamp) do
+  defp get_formatted_timestamp(timestamp) when is_integer(timestamp) do
     # Convert epoch milliseconds to datetime
     {:ok, datetime} = DateTime.from_unix(div(timestamp, 1000), :second)
     formatted = DateTime.to_iso8601(datetime)
@@ -539,14 +580,16 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
       cond do
         diff_seconds < 60 -> "Just now"
         diff_seconds < 3600 -> "#{div(diff_seconds, 60)} minutes ago"
-        diff_seconds < 86400 -> "#{div(diff_seconds, 3600)} hours ago"
-        true -> "#{div(diff_seconds, 86400)} days ago"
+        diff_seconds < 86_400 -> "#{div(diff_seconds, 3600)} hours ago"
+        true -> "#{div(diff_seconds, 86_400)} days ago"
       end
 
     %{
       timestamp: formatted,
       relative: relative
     }
+  rescue
+    _ -> nil
   end
 
   # Calculate next run time based on scheduler type
@@ -554,29 +597,17 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     # For interval schedulers, next run is roughly now + interval
     interval_ms = config[:interval_ms] || config[:interval]
 
-    if interval_ms do
+    if interval_ms && is_integer(interval_ms) do
       now = DateTime.utc_now()
       # Add interval (approximate since we don't know exact last execution time)
       next_run_time = DateTime.add(now, div(interval_ms, 1000), :second)
 
-      formatted = DateTime.to_iso8601(next_run_time)
-      diff_seconds = DateTime.diff(next_run_time, now, :second)
-
-      relative =
-        cond do
-          diff_seconds < 60 -> "In a few seconds"
-          diff_seconds < 3600 -> "In #{div(diff_seconds, 60)} minutes"
-          diff_seconds < 86400 -> "In #{div(diff_seconds, 3600)} hours"
-          true -> "In #{div(diff_seconds, 86400)} days"
-        end
-
-      %{
-        timestamp: formatted,
-        relative: relative
-      }
+      format_relative_time(next_run_time, now)
     else
       nil
     end
+  rescue
+    _ -> nil
   end
 
   defp calculate_next_run(_health_info, "time", config) do
@@ -584,66 +615,78 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
     hour = config[:hour]
     minute = config[:minute]
 
-    if hour && minute do
+    if hour && minute && is_integer(hour) && is_integer(minute) do
       now = DateTime.utc_now()
-      current_hour = now.hour
-      current_minute = now.minute
 
-      # Calculate next run datetime
-      {next_day, next_hour, next_minute} =
-        cond do
-          # If current time is before scheduled time today
-          current_hour < hour || (current_hour == hour && current_minute < minute) ->
-            {now.day, hour, minute}
+      # Calculate next run time
+      next_run_time = calculate_next_time_scheduler_run(now, hour, minute)
 
-          # If current time is after scheduled time, next is tomorrow
-          true ->
-            {now.day + 1, hour, minute}
-        end
-
-      # Create next run datetime
-      next_run_time = %DateTime{
-        year: now.year,
-        month: now.month,
-        day: next_day,
-        hour: next_hour,
-        minute: next_minute,
-        second: 0,
-        microsecond: {0, 0},
-        time_zone: "Etc/UTC",
-        zone_abbr: "UTC",
-        utc_offset: 0,
-        std_offset: 0
-      }
-
-      # Handle month rollover
-      next_run_time =
-        if next_day > Date.days_in_month(now) do
-          %{next_run_time | day: 1, month: rem(now.month, 12) + 1}
-        else
-          next_run_time
-        end
-
-      formatted = DateTime.to_iso8601(next_run_time)
-      diff_seconds = DateTime.diff(next_run_time, now, :second)
-
-      relative =
-        cond do
-          diff_seconds < 3600 -> "In #{div(diff_seconds, 60)} minutes"
-          diff_seconds < 86400 -> "In #{div(diff_seconds, 3600)} hours"
-          true -> "In #{div(diff_seconds, 86400)} days"
-        end
-
-      %{
-        timestamp: formatted,
-        relative: relative
-      }
+      format_relative_time(next_run_time, now)
     else
       nil
     end
+  rescue
+    _ -> nil
   end
 
   defp calculate_next_run(_health_info, _type, _config), do: nil
+
+  # Helper function to calculate the next run time for time schedulers
+  defp calculate_next_time_scheduler_run(now, hour, minute) do
+    current_hour = now.hour
+    current_minute = now.minute
+
+    # Determine if next run is today or tomorrow
+    {next_day, next_hour, next_minute} =
+      if current_hour < hour || (current_hour == hour && current_minute < minute) do
+        # If current time is before scheduled time today
+        {now.day, hour, minute}
+      else
+        # If current time is after scheduled time, next is tomorrow
+        {now.day + 1, hour, minute}
+      end
+
+    # Create next run datetime
+    next_run_time = %DateTime{
+      year: now.year,
+      month: now.month,
+      day: next_day,
+      hour: next_hour,
+      minute: next_minute,
+      second: 0,
+      microsecond: {0, 0},
+      time_zone: "Etc/UTC",
+      zone_abbr: "UTC",
+      utc_offset: 0,
+      std_offset: 0
+    }
+
+    # Handle month rollover
+    if next_day > Date.days_in_month(now) do
+      %{next_run_time | day: 1, month: rem(now.month, 12) + 1}
+    else
+      next_run_time
+    end
+  end
+
+  # Helper function to format the relative time for display
+  defp format_relative_time(datetime, now) do
+    formatted = DateTime.to_iso8601(datetime)
+    diff_seconds = DateTime.diff(datetime, now, :second)
+
+    relative =
+      cond do
+        diff_seconds < 60 -> "In a few seconds"
+        diff_seconds < 3600 -> "In #{div(diff_seconds, 60)} minutes"
+        diff_seconds < 86_400 -> "In #{div(diff_seconds, 3600)} hours"
+        true -> "In #{div(diff_seconds, 86_400)} days"
+      end
+
+    %{
+      timestamp: formatted,
+      relative: relative
+    }
+  end
 
   # Match all other routes
   match _ do
@@ -688,6 +731,19 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
   defp sanitize_value(v) when is_atom(v), do: Atom.to_string(v)
   defp sanitize_value(v) when is_pid(v), do: inspect(v)
   defp sanitize_value(v) when is_function(v), do: "#Function<...>"
+  defp sanitize_value(v) when is_tuple(v), do: sanitize_tuple(v)
   defp sanitize_value(v) when is_binary(v) or is_number(v) or is_boolean(v) or is_nil(v), do: v
+  defp sanitize_value(v) when is_reference(v), do: inspect(v)
   defp sanitize_value(_), do: "#Unencodable<...>"
+
+  # Handle tuples by converting them to lists and sanitizing each element
+  defp sanitize_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> Enum.map(&sanitize_value/1)
+    |> List.to_tuple()
+  rescue
+    # If there's any error sanitizing the tuple, convert to string
+    _ -> inspect(tuple)
+  end
 end

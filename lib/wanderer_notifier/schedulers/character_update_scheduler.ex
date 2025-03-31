@@ -3,14 +3,15 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   Scheduler responsible for periodic character updates from the map.
   """
   use WandererNotifier.Schedulers.IntervalScheduler,
-    name: __MODULE__,
-    # 10 minutes in milliseconds
-    interval: 600_000
+    name: __MODULE__
+
+  # Interval is now configured via the Timings module
 
   alias WandererNotifier.Api.Map.Client
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl true
@@ -48,7 +49,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   @impl true
   def get_config do
     %{
-      interval_ms: 600_000,
+      interval_ms: Timings.character_update_scheduler_interval(),
       enabled: enabled?(),
       feature_flags: %{
         character_tracking: Features.character_tracking_enabled?(),

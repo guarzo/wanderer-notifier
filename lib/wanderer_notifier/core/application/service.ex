@@ -10,14 +10,14 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Schedulers.SystemUpdateScheduler
-  alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.{CacheHelpers, DeduplicationHelper}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
+  alias WandererNotifier.Schedulers.CharacterUpdateScheduler
+  alias WandererNotifier.Schedulers.SystemUpdateScheduler
 
   @default_interval :timer.minutes(5)
 

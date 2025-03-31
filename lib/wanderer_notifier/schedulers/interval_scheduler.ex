@@ -116,31 +116,29 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       # Get the configured interval based on scheduler name
       defp get_configured_interval do
-        case @scheduler_name do
-          WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-            Timings.character_update_scheduler_interval()
+        get_interval_for_scheduler(@scheduler_name)
+      end
 
-          WandererNotifier.Schedulers.SystemUpdateScheduler ->
-            Timings.system_update_scheduler_interval()
+      # Map scheduler module to the appropriate timing function
+      defp get_interval_for_scheduler(scheduler_module) do
+        scheduler_interval_map = %{
+          WandererNotifier.Schedulers.CharacterUpdateScheduler =>
+            Timings.character_update_scheduler_interval(),
+          WandererNotifier.Schedulers.SystemUpdateScheduler =>
+            Timings.system_update_scheduler_interval(),
+          WandererNotifier.Schedulers.ServiceStatusScheduler => Timings.service_status_interval(),
+          WandererNotifier.Schedulers.KillmailRetentionScheduler =>
+            Timings.killmail_retention_interval(),
+          WandererNotifier.Schedulers.CacheCheckScheduler => Timings.cache_check_interval(),
+          WandererNotifier.Schedulers.CacheSyncScheduler => Timings.cache_sync_interval(),
+          WandererNotifier.Schedulers.CacheCleanupScheduler => Timings.cache_cleanup_interval(),
+          WandererNotifier.Schedulers.LicenseRefreshScheduler =>
+            Timings.license_refresh_interval(),
+          WandererNotifier.Schedulers.ActivityChartScheduler => Timings.activity_chart_interval()
+        }
 
-          WandererNotifier.Schedulers.MaintenanceScheduler ->
-            Timings.maintenance_interval()
-
-          WandererNotifier.Schedulers.CacheCheckScheduler ->
-            Timings.cache_check_interval()
-
-          WandererNotifier.Schedulers.CacheSyncScheduler ->
-            Timings.cache_sync_interval()
-
-          WandererNotifier.Schedulers.CacheCleanupScheduler ->
-            Timings.cache_cleanup_interval()
-
-          WandererNotifier.Schedulers.LicenseRefreshScheduler ->
-            Timings.license_refresh_interval()
-
-          _ ->
-            nil
-        end
+        # Look up the scheduler in the map, or return nil if not found
+        Map.get(scheduler_interval_map, scheduler_module)
       end
 
       @impl true

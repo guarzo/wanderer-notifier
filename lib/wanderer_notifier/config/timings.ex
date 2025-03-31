@@ -104,30 +104,30 @@ defmodule WandererNotifier.Config.Timings do
   end
 
   @doc """
-  Returns the character update interval in milliseconds.
-  Default: 30 seconds (30,000 ms)
+  Returns the character update interval in seconds.
+  Default: 10 minutes (600 seconds)
   """
   @spec character_update_interval() :: integer()
   def character_update_interval do
-    get_env(:character_update_interval, 30_000)
+    get_env(:character_update_interval, 600)
   end
 
   @doc """
   Returns the maintenance interval in milliseconds.
-  Default: 5 minutes (300,000 ms)
+  Default: 60 seconds (60,000 ms)
   """
   @spec maintenance_interval() :: integer()
   def maintenance_interval do
-    get_env(:maintenance_interval, 300_000)
+    get_env(:maintenance_interval, 60_000)
   end
 
   @doc """
   Returns the cache check interval in milliseconds.
-  Default: 5 seconds (5,000 ms)
+  Default: 30 minutes (1,800,000 ms)
   """
   @spec cache_check_interval() :: integer()
   def cache_check_interval do
-    get_env(:cache_check_interval, 5_000)
+    get_env(:cache_check_interval, 30 * 60 * 1000)
   end
 
   @doc """
@@ -216,6 +216,24 @@ defmodule WandererNotifier.Config.Timings do
   end
 
   @doc """
+  Returns the service status scheduler interval in milliseconds.
+  Default: 24 hours (86,400,000 ms)
+  """
+  @spec service_status_interval() :: integer()
+  def service_status_interval do
+    get_env(:service_status_interval, 24 * 60 * 60 * 1000)
+  end
+
+  @doc """
+  Returns the killmail retention scheduler interval in milliseconds.
+  Default: 24 hours (86,400,000 ms)
+  """
+  @spec killmail_retention_interval() :: integer()
+  def killmail_retention_interval do
+    get_env(:killmail_retention_interval, 24 * 60 * 60 * 1000)
+  end
+
+  @doc """
   Returns the hour (UTC) for scheduled chart generation.
   Default: 12 (noon UTC)
   """
@@ -231,6 +249,24 @@ defmodule WandererNotifier.Config.Timings do
   @spec chart_minute() :: integer()
   def chart_minute do
     get_env(:chart_service_minute, 0)
+  end
+
+  @doc """
+  Returns the hour for killmail aggregation (in UTC).
+  Default: 0 (midnight UTC)
+  """
+  @spec killmail_aggregation_hour() :: integer()
+  def killmail_aggregation_hour do
+    get_env(:killmail_aggregation_hour, 0)
+  end
+
+  @doc """
+  Returns the minute for killmail aggregation.
+  Default: 0 (on the hour)
+  """
+  @spec killmail_aggregation_minute() :: integer()
+  def killmail_aggregation_minute do
+    get_env(:killmail_aggregation_minute, 0)
   end
 
   @doc """

@@ -122,7 +122,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   def enrich_system(system) do
     alias WandererNotifier.Data.MapSystem
 
-
     # Only try to enrich if the system has a valid ID
     if system.solar_system_id && system.solar_system_id > 0 do
       # Try to get static info with proper error handling

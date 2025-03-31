@@ -19,7 +19,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
 
   # Use the interval scheduler as our base
   use WandererNotifier.Schedulers.IntervalScheduler,
-    default_interval: 24 * 60 * 60 * 1000
+    name: __MODULE__
 
   @impl true
   def execute(state) do
@@ -66,7 +66,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   def get_config do
     %{
       type: :interval,
-      interval: Timings.activity_chart_interval(),
+      interval: Timings.killmail_retention_interval(),
       description: "Cleanup old killmail data based on retention policy"
     }
   end

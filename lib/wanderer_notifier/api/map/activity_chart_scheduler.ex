@@ -9,9 +9,8 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Config.SystemTracking
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  # Default interval is 24 hours (in milliseconds)
-  @default_interval 24 * 60 * 60 * 1000
 
   # Chart types and their configurations
   @chart_configs [
@@ -51,8 +50,8 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
 
   @impl true
   def init(opts) do
-    # Get interval from options or use default
-    interval = Keyword.get(opts, :interval, @default_interval)
+    # Get interval from options or use Timings module
+    interval = Keyword.get(opts, :interval, Timings.activity_chart_interval())
 
     AppLogger.api_info("Initializing Activity Chart Scheduler...")
 
@@ -125,8 +124,12 @@ defmodule WandererNotifier.Api.Map.ActivityChartScheduler do
     # Only schedule if map charts are enabled
     if Features.map_charts_enabled?() do
       channel_id = get_channel_id()
-      # Schedule next run using the interval from state
-      Process.send_after(self(), {:generate_charts, %{channel_id: channel_id}}, @default_interval)
+
+      # Use Timings module for interval
+      interval = Timings.activity_chart_interval()
+
+      # Schedule next run using the interval
+      Process.send_after(self(), {:generate_charts, %{channel_id: channel_id}}, interval)
       AppLogger.api_debug("Scheduled next activity chart run for channel: #{channel_id}")
     else
       AppLogger.api_info("Not scheduling Activity Charts (Map Charts disabled)")

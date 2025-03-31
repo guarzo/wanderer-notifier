@@ -10,11 +10,10 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     aggregation_schedule: "0 0 * * *" # Daily at midnight
   ```
   """
-
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Resources.KillmailAggregation
 
   # Default to midnight (hour = 0, minute = 0)
@@ -23,10 +22,9 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
   # Use the time scheduler as our base for running at a specific time each day
   use WandererNotifier.Schedulers.TimeScheduler,
-    default_hour: @default_hour,
-    default_minute: @default_minute,
-    hour_env_var: :aggregation_schedule_hour,
-    minute_env_var: :aggregation_schedule_minute
+    name: __MODULE__
+
+  # Hour and minute are now configured via the Timings module
 
   @impl true
   def execute(state) do
@@ -179,8 +177,8 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   def get_config do
     %{
       type: :time,
-      hour: @default_hour,
-      minute: @default_minute,
+      hour: Timings.killmail_aggregation_hour(),
+      minute: Timings.killmail_aggregation_minute(),
       description: "Aggregate killmail data into statistics"
     }
   end
