@@ -12,12 +12,12 @@ defmodule WandererNotifier.Services.Service do
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Core.Maintenance.Scheduler, as: MaintenanceScheduler
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Services.KillProcessor
-  alias WandererNotifier.Services.Maintenance.Scheduler, as: MaintenanceScheduler
   alias WandererNotifier.Services.NotificationDeterminer
 
   @default_interval :timer.minutes(5)
