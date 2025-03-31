@@ -17,10 +17,12 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Resources.{KillmailPersistence, TrackedCharacter}
 
   alias WandererNotifier.Services.{
-    CharacterKillsService,
     KillmailComparison,
     KillProcessor
   }
+
+  alias WandererNotifier.Api.Character.KillsService
+
   alias WandererNotifier.Core.Application.Service, as: AppService
 
   # Module attributes
@@ -452,7 +454,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           page: page
         )
 
-        case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, page) do
+        case KillsService.fetch_and_persist_all_tracked_character_kills(limit, page) do
           {:ok, stats} ->
             conn
             |> put_resp_content_type("application/json")
@@ -517,7 +519,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
           AppLogger.api_info("Fetching kills for character ID #{character_id_int}")
 
-          case CharacterKillsService.fetch_and_persist_character_kills(
+          case KillsService.fetch_and_persist_character_kills(
                  character_id_int,
                  limit,
                  page

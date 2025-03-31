@@ -49,7 +49,7 @@ config :logger, :console,
 # This allows fine-grained control over logging
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
-  "WandererNotifier.Services.Maintenance.Scheduler" => :info,
+  "WandererNotifier.Core.Maintenance.Scheduler" => :info,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
   "WandererNotifier.Api.ESI.Client" => :warn,

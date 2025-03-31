@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Services.CharacterKillsServiceTest do
+defmodule WandererNotifier.Api.Character.KillsServiceTest do
   use ExUnit.Case, async: true
 
   import Mox
@@ -9,7 +9,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
   alias WandererNotifier.MockLogger
   alias WandererNotifier.MockRepository
   alias WandererNotifier.MockZKillClient
-  alias WandererNotifier.Services.CharacterKillsService
+  alias WandererNotifier.Api.Character.KillsService
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -77,7 +77,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
         {:ok, :persisted}
       end)
 
-      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
+      result = KillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
 
       assert {:ok, %{persisted: 1, processed: 1}} = result
     end
@@ -95,7 +95,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
         {:error, :api_error}
       end)
 
-      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
+      result = KillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
 
       assert {:error, :api_error} = result
     end
@@ -133,7 +133,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
         {:ok, :persisted}
       end)
 
-      result = CharacterKillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
+      result = KillsService.fetch_and_persist_character_kills(character_id, 25, 1, deps)
 
       assert {:ok, %{persisted: 1, processed: 1}} = result
     end
@@ -183,7 +183,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
         {:ok, :persisted}
       end)
 
-      result = CharacterKillsService.fetch_and_persist_all_tracked_character_kills(25, 1, deps)
+      result = KillsService.fetch_and_persist_all_tracked_character_kills(25, 1, deps)
 
       assert {:ok, %{characters: 1, persisted: 1, processed: 1}} = result
     end
@@ -226,7 +226,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
       end)
 
       result =
-        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+        KillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
 
       assert {:ok,
               [%{id: 1, time: ^kill_time, victim_name: "Test Victim", ship_name: "Test Ship"}]} =
@@ -249,7 +249,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
       end)
 
       result =
-        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+        KillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
 
       assert {:error, :api_error} = result
     end
@@ -286,7 +286,7 @@ defmodule WandererNotifier.Services.CharacterKillsServiceTest do
       end)
 
       result =
-        CharacterKillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
+        KillsService.get_kills_for_character(character_id, [from: from, to: to], deps)
 
       assert {:error, :api_error} = result
     end

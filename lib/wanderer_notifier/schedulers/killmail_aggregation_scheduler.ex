@@ -16,7 +16,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
-  alias WandererNotifier.Services.CharacterKillsService
+  alias WandererNotifier.Api.Character.KillsService
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0
@@ -97,7 +97,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     # Fetch up to 50 recent kills per character
     limit = 50
 
-    case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
+    case KillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
       {:ok, stats} ->
         AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",

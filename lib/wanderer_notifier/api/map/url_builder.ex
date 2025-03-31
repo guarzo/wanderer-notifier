@@ -106,6 +106,7 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         nil -> []
         token -> [{"Authorization", "Bearer " <> token}]
       end
+
     headers
   end
 

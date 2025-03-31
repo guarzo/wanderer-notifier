@@ -55,12 +55,8 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   defp fetch_system_static_info(solar_system_id) do
     case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
       {:ok, url} ->
-        # Log URL for debugging
-        AppLogger.api_debug("[SystemStaticInfo] Requesting static info from URL: #{url}")
-
         # Get auth headers
         headers = UrlBuilder.get_auth_headers()
-
         # Make API request and process
         make_static_info_request(url, headers)
 
@@ -105,7 +101,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     case ResponseValidator.validate_system_static_info_response(parsed_response) do
       {:ok, _data} = success ->
         # Successfully validated
-        AppLogger.api_debug("[SystemStaticInfo] Successfully validated static info")
         success
 
       {:error, reason} = error ->
@@ -127,10 +122,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   def enrich_system(system) do
     alias WandererNotifier.Data.MapSystem
 
-    # Log the start of enrichment
-    AppLogger.api_info(
-      "[SystemStaticInfo] Starting enrichment for system #{system.name} (ID: #{system.solar_system_id})"
-    )
 
     # Only try to enrich if the system has a valid ID
     if system.solar_system_id && system.solar_system_id > 0 do

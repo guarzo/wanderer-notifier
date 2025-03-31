@@ -7,11 +7,11 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   import Ash.Query
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Resources.{Api, Killmail, TrackedCharacter}
-  alias WandererNotifier.Services.KillTrackingHistory
-  alias WandererNotifier.Services.ZKillboardApi
+  alias WandererNotifier.Resources.KillHistoryService
 
   # Note: ZKillboard API no longer supports direct date filtering via startTime/endTime parameters.
   # Instead, we fetch all recent kills for a character and filter them in memory.
@@ -99,7 +99,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
   # Analyze a single kill to determine why it might be missing
   defp analyze_single_kill(character_id, kill_id) do
-    case ZKillboardApi.get_killmail(kill_id) do
+    case fetch_kill_from_zkill(kill_id) do
       {:ok, kill_data} ->
         log_zkb_data(kill_id, kill_data)
         process_kill_data(character_id, kill_id, kill_data)
@@ -185,7 +185,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   """
   def compare_recent_killmails(character_id) when is_integer(character_id) do
     # Get kills from zKillboard - it already returns recent kills
-    case ZKillboardApi.get_character_kills(character_id) do
+    case ZKillClient.get_character_kills(character_id) do
       {:ok, zkill_kills} ->
         log_zkill_response(character_id, zkill_kills)
         process_kill_comparison(character_id, zkill_kills)
@@ -449,12 +449,12 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
   # Check if we need fresh data or can use historical
   defp needs_fresh_data?(character_id, cache_type) do
-    KillTrackingHistory.needs_refresh?(character_id, cache_type)
+    KillHistoryService.needs_refresh?(character_id, cache_type)
   end
 
   # Use historical data when available
   defp use_historical_data(character_id, character_name, cache_type) do
-    case KillTrackingHistory.get_latest_comparison(
+    case KillHistoryService.get_latest_comparison(
            character_id,
            cache_type
          ) do
@@ -511,7 +511,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
           missing_kills: comp.missing_kills
         }
 
-        KillTrackingHistory.record_comparison(
+        KillHistoryService.record_comparison(
           comp.character_id,
           comparison_data,
           cache_type
@@ -663,7 +663,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   end
 
   defp fetch_zkill_kills(character_id, start_date, end_date) do
-    case ZKillboardApi.get_character_kills(character_id) do
+    case ZKillClient.get_character_kills(character_id) do
       {:ok, kills} ->
         AppLogger.processor_info("ZKill data received", %{
           kill_count: length(kills)
@@ -1166,7 +1166,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
     case get_character_comparison(character_id, character_name, start_datetime, end_datetime) do
       {:ok, comparison_data} = result ->
         # Store in historical tracking
-        KillTrackingHistory.record_comparison(
+        KillHistoryService.record_comparison(
           character_id,
           comparison_data,
           cache_type
@@ -1246,6 +1246,26 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
         percentage_match: Float.round(percentage_match, 2),
         analysis: analysis
       }
+    end
+  end
+
+  # Fetch killmail details from ZKillboard
+  defp fetch_kill_from_zkill(kill_id) do
+    # Log the attempt
+    AppLogger.processor_debug("Fetching kill from ZKillboard", kill_id: kill_id)
+
+    # Try to get the kill from zKill
+    case ZKillClient.get_single_killmail(kill_id) do
+      {:ok, kill_data} ->
+        {:ok, kill_data}
+
+      error ->
+        AppLogger.processor_error("Error fetching kill from ZKillboard", %{
+          kill_id: kill_id,
+          error: inspect(error)
+        })
+
+        error
     end
   end
 end

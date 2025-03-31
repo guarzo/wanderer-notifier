@@ -21,8 +21,8 @@ config :logger, :console,
 # Module-specific log levels for production
 # More restrictive to reduce log spam
 config :logger, :module_levels, %{
-  "WandererNotifier.Services.KillProcessor" => :warning,
-  "WandererNotifier.Services.Maintenance.Scheduler" => :warning,
+  "WandererNotifier.Service.KillProcessor" => :warning,
+  "WandererNotifier.Core.Maintenance.Scheduler" => :warning,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
   "WandererNotifier.Api.Map.Client" => :warn,
