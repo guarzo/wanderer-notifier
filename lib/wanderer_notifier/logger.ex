@@ -6,6 +6,7 @@ defmodule WandererNotifier.Logger do
   to improve log quality and reduce noise.
   """
   require Logger
+  alias WandererNotifier.Config.Debug
 
   @behaviour WandererNotifier.LoggerBehaviour
 
@@ -150,7 +151,7 @@ defmodule WandererNotifier.Logger do
       if important_fields != "", do: "#{message} #{important_fields}", else: message
 
     # If debug mode is enabled, add full detailed metadata
-    if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
+    if should_log_debug?() do
       # Include both keys and values in debug mode
       metadata_summary = extract_metadata_for_debug(metadata)
       "#{message_with_data} [META:#{metadata_summary}]"
@@ -418,7 +419,7 @@ defmodule WandererNotifier.Logger do
   Only outputs if WANDERER_DEBUG_LOGGING=true.
   """
   def config_debug(message, metadata \\ []) do
-    if System.get_env("WANDERER_DEBUG_LOGGING") == "true" do
+    if should_log_debug?() do
       log(:debug, "CONFIG", message, metadata)
     end
   end
@@ -541,5 +542,9 @@ defmodule WandererNotifier.Logger do
     end
 
     :ok
+  end
+
+  defp should_log_debug? do
+    Debug.debug_logging_enabled?()
   end
 end

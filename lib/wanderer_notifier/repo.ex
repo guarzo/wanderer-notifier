@@ -4,7 +4,33 @@ defmodule WandererNotifier.Repo do
     adapter: Ecto.Adapters.Postgres
 
   alias Ecto.Adapters.SQL
+  alias WandererNotifier.Config.Database
   alias WandererNotifier.Logger, as: AppLogger
+
+  @doc """
+  Custom init function to dynamically configure the repo using
+  our standardized Database configuration module.
+  """
+  def init(_type, config) do
+    # Get the configuration from our Database module
+    # This approach allows us to standardize database connection settings
+    # and move away from direct environment variable access
+    db_config = Database.config()
+
+    # Merge the standard configuration with any extras from the application config
+    config =
+      config
+      |> Keyword.merge(
+        username: db_config.username,
+        password: db_config.password,
+        hostname: db_config.hostname,
+        database: db_config.database,
+        port: db_config.port,
+        pool_size: db_config.pool_size
+      )
+
+    {:ok, config}
+  end
 
   @doc """
   Returns a list of PostgreSQL extensions that have already been installed.

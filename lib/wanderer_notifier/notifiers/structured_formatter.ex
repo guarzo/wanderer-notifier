@@ -1081,12 +1081,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp custom_round(float) when is_float(float), do: trunc(float + 0.5)
   defp custom_round(int) when is_integer(int), do: int
 
-  # Get application version - first check env var, then Application.spec, fallback to "dev"
+  # Get application version from Version module
   defp get_app_version do
-    System.get_env("WANDERER_APP_VERSION") ||
-      System.get_env("APP_VERSION") ||
-      Application.spec(:wanderer_notifier, :vsn) ||
-      "dev"
+    # Use our new Version module which reads the version from mix.exs at compile time
+    # This eliminates the need for environment variables for versioning
+    WandererNotifier.Config.Version.version()
   end
 
   @doc """

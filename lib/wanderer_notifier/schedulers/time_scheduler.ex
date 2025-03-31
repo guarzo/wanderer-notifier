@@ -10,7 +10,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
       use WandererNotifier.Schedulers.BaseScheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
-      alias WandererNotifier.Config.Timing
+      alias WandererNotifier.Config.Timings
       alias WandererNotifier.Logger, as: AppLogger
 
       # Default schedule time (hour and minute) if not specified
@@ -120,7 +120,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
       # Get the configured hour from environment or use default
       defp get_configured_hour do
         if @hour_env_var do
-          case Timing.get_chart_service_hour() do
+          case Timings.chart_hour() do
             hour when is_integer(hour) and hour >= 0 and hour < 24 -> hour
             _ -> @default_hour
           end
@@ -132,7 +132,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
       # Get the configured minute from environment or use default
       defp get_configured_minute do
         if @minute_env_var do
-          case Timing.get_chart_service_minute() do
+          case Timings.chart_minute() do
             minute when is_integer(minute) and minute >= 0 and minute < 60 -> minute
             _ -> @default_minute
           end

@@ -128,50 +128,30 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Filter systems based on configuration
   defp filter_systems_for_tracking(systems) do
-    # Add detailed debugging for track_kspace_systems
-    track_kspace_features = Application.get_env(:wanderer_notifier, :features, %{})
-    track_kspace_config = track_kspace_features[:track_kspace_systems]
+    # Use the Features module for configuration
+    track_kspace_systems = Features.track_kspace_systems?()
 
-    # Get direct env vars for comparison
-    legacy_env = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
-    new_env = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
-
-    # Get the result from the Features module
-    features_module_result = Features.track_kspace_systems?()
-
+    # Log configuration information for debugging
     AppLogger.api_info(
-      "[SystemsClient] TRACK KSPACE DEBUG CONFIG:",
+      "[SystemsClient] TRACK KSPACE CONFIG:",
       %{
-        track_kspace_config: track_kspace_config,
-        legacy_env: legacy_env,
-        new_env: new_env,
-        features_module_result: features_module_result
+        features_module_result: track_kspace_systems,
+        feature_status: Features.get_feature_status()
       }
     )
 
-    track_all_systems = Features.track_kspace_systems?()
-    AppLogger.api_info("[SystemsClient] K-space tracking enabled: #{track_all_systems}")
-
-    tracked_systems =
-      if track_all_systems do
-        AppLogger.api_info("[SystemsClient] Including ALL systems (K-space and wormholes)")
-        systems
-      else
-        # Only track wormhole systems if K-Space tracking is disabled
-        AppLogger.api_info("[SystemsClient] Filtering to wormhole systems only")
-        Enum.filter(systems, &MapSystem.wormhole?/1)
-      end
-
-    # Log counts
-    wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
-    kspace_count = length(systems) - wormhole_count
-
-    AppLogger.api_info(
-      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes, #{kspace_count} K-Space) " <>
-        "out of #{length(systems)} total systems"
-    )
-
-    tracked_systems
+    # Filter the systems based on the configuration
+    if track_kspace_systems do
+      # If tracking K-space systems is enabled, return all systems
+      systems
+    else
+      # If tracking K-space systems is disabled, filter out K-space systems
+      systems
+      |> Enum.filter(fn system ->
+        # Keep only wormhole systems (class 1-6)
+        system.security_class in ["C1", "C2", "C3", "C4", "C5", "C6"]
+      end)
+    end
   end
 
   # Enrich tracked systems with static data

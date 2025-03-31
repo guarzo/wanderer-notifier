@@ -13,7 +13,8 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   """
 
   require Logger
-  alias WandererNotifier.Config.{Features, Timing}
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
 
@@ -27,7 +28,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
       AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running killmail retention cleanup")
 
       # Get the configured retention period
-      retention_days = Timing.get_persistence_config() |> Keyword.get(:retention_period_days, 180)
+      retention_days = Timings.persistence_config() |> Keyword.get(:retention_period_days, 180)
 
       # Run the cleanup operation
       {deleted_count, error_count} = KillmailAggregation.cleanup_old_killmails(retention_days)
@@ -66,7 +67,7 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
   def get_config do
     %{
       type: :interval,
-      interval: Timing.get_activity_chart_interval(),
+      interval: Timings.activity_chart_interval(),
       description: "Cleanup old killmail data based on retention policy"
     }
   end

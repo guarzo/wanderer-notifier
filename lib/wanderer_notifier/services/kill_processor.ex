@@ -11,7 +11,7 @@ defmodule WandererNotifier.Services.KillProcessor do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
@@ -54,7 +54,7 @@ defmodule WandererNotifier.Services.KillProcessor do
     Process.send_after(
       Service,
       :log_kill_stats,
-      Timing.get_cache_check_interval()
+      Timings.cache_check_interval()
     )
   end
 

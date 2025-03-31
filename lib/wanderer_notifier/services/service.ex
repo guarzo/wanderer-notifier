@@ -10,6 +10,7 @@ defmodule WandererNotifier.Services.Service do
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.CacheHelpers
@@ -160,7 +161,7 @@ defmodule WandererNotifier.Services.Service do
   @impl true
   def handle_info(:reconnect_ws, state) do
     # Check if the websocket is enabled in config
-    if websocket_enabled?() do
+    if Websocket.enabled() do
       AppLogger.websocket_info("Attempting to reconnect zKill websocket")
       new_state = reconnect_zkill_ws(state)
       {:noreply, new_state}
@@ -420,29 +421,11 @@ defmodule WandererNotifier.Services.Service do
     :ok
   end
 
-  defp websocket_enabled? do
-    websocket_config = Application.get_env(:wanderer_notifier, :websocket, [])
-
-    enabled =
-      case websocket_config do
-        config when is_list(config) -> Keyword.get(config, :enabled, true)
-        config when is_map(config) -> Map.get(config, :enabled, true)
-        # Default to enabled if no config
-        nil -> true
-        # Default to enabled for unexpected format
-        _ -> true
-      end
-
-    # Check direct env var as a fallback
-    raw_ws_env = System.get_env("WANDERER_WEBSOCKET_ENABLED")
-    if is_nil(raw_ws_env), do: enabled, else: raw_ws_env == "true"
-  end
-
   defp start_zkill_ws(state) do
     AppLogger.startup_info("Service attempting to start ZKill websocket")
 
     # Check if the websocket is enabled in config
-    if websocket_enabled?() do
+    if Websocket.enabled() do
       case ZKillWebsocket.start_link(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("ZKill websocket started", pid: inspect(pid))
@@ -465,7 +448,7 @@ defmodule WandererNotifier.Services.Service do
 
   defp reconnect_zkill_ws(state) do
     # Check if the websocket is enabled in config
-    if websocket_enabled?() do
+    if Websocket.enabled() do
       case ZKillWebsocket.start_link(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("Reconnected to zKill websocket", pid: inspect(pid))
@@ -647,5 +630,16 @@ defmodule WandererNotifier.Services.Service do
   """
   def send_test_kill_notification do
     KillProcessor.send_test_kill_notification()
+  end
+
+  def start_websocket do
+    if Websocket.enabled() do
+      AppLogger.api_info("Starting WebSocket")
+
+      # Continue with the rest of the implementation...
+    else
+      AppLogger.api_info("WebSocket is disabled via configuration")
+      :ok
+    end
   end
 end

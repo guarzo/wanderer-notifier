@@ -9,6 +9,25 @@ defmodule WandererNotifier.Config.Application do
 
   require Logger
 
+  # Map of environment variable names to standardized keys
+  @env_var_mapping %{
+    db_username: ["WANDERER_DB_USER", "POSTGRES_USER"],
+    db_password: ["WANDERER_DB_PASSWORD", "POSTGRES_PASSWORD"],
+    db_hostname: ["WANDERER_DB_HOST", "POSTGRES_HOST"],
+    db_name: ["WANDERER_DB_NAME", "POSTGRES_DB"],
+    db_port: ["WANDERER_DB_PORT", "POSTGRES_PORT"],
+    db_pool_size: ["WANDERER_DB_POOL_SIZE", "POSTGRES_POOL_SIZE"]
+  }
+
+  # Default values for configuration
+  @defaults %{
+    db_username: "postgres",
+    db_password: "postgres",
+    db_hostname: "postgres",
+    db_port: "5432",
+    db_pool_size: "10"
+  }
+
   @doc """
   Gets the application environment.
   Checks environment variables and application config, defaulting to :prod.
@@ -33,9 +52,9 @@ defmodule WandererNotifier.Config.Application do
   @spec get_database_config() :: Keyword.t()
   def get_database_config do
     [
-      username: get_env_with_fallback("WANDERER_DB_USER", "POSTGRES_USER", "postgres"),
-      password: get_env_with_fallback("WANDERER_DB_PASSWORD", "POSTGRES_PASSWORD", "postgres"),
-      hostname: get_env_with_fallback("WANDERER_DB_HOST", "POSTGRES_HOST", "postgres"),
+      username: get_config_value(:db_username),
+      password: get_config_value(:db_password),
+      hostname: get_config_value(:db_hostname),
       database: get_database_name(),
       port: get_database_port(),
       pool_size: get_database_pool_size()
@@ -78,27 +97,54 @@ defmodule WandererNotifier.Config.Application do
     Application.put_env(app, key, value)
   end
 
+  @doc """
+  Validates that all application configuration values are valid.
+
+  Returns :ok if the configuration is valid, or {:error, reason} if not.
+  """
+  @spec validate() :: :ok | {:error, String.t()}
+  def validate do
+    # Application configuration doesn't require extensive validation
+    :ok
+  end
+
   # Private Helpers
 
   defp get_database_name do
-    get_env_with_fallback(
-      "WANDERER_DB_NAME",
-      "POSTGRES_DB",
+    # Special case for database name that includes environment
+    db_name = get_config_value(:db_name)
+
+    if db_name == @defaults[:db_name] do
       "wanderer_notifier_#{get_env()}"
-    )
+    else
+      db_name
+    end
   end
 
   defp get_database_port do
-    get_env_with_fallback("WANDERER_DB_PORT", "POSTGRES_PORT", "5432")
-    |> String.to_integer()
+    get_config_value(:db_port) |> String.to_integer()
   end
 
   defp get_database_pool_size do
-    get_env_with_fallback("WANDERER_DB_POOL_SIZE", "POSTGRES_POOL_SIZE", "10")
-    |> String.to_integer()
+    get_config_value(:db_pool_size) |> String.to_integer()
   end
 
-  defp get_env_with_fallback(primary, fallback, default) do
-    System.get_env(primary) || System.get_env(fallback) || default
+  # Get a configuration value with standardized access pattern
+  defp get_config_value(key) do
+    # First check Application config
+    app_value = Application.get_env(:wanderer_notifier, key)
+
+    if is_nil(app_value) do
+      # If not in application config, try environment variables
+      env_vars = Map.get(@env_var_mapping, key, [])
+
+      # Try each environment variable in order
+      env_value = Enum.find_value(env_vars, fn var -> System.get_env(var) end)
+
+      # Return env value or default
+      env_value || Map.get(@defaults, key)
+    else
+      app_value
+    end
   end
 end

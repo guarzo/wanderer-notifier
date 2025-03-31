@@ -7,6 +7,7 @@ defmodule WandererNotifier.Debug do
   alias WandererNotifier.Api.Map.Client, as: MapClient
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config
+  alias WandererNotifier.Config.Debug, as: DebugConfig
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Logger, as: AppLogger
 
@@ -48,6 +49,9 @@ defmodule WandererNotifier.Debug do
     core_name = Config.map_name()
     core_token = Config.map_token()
 
+    # Get map settings from Debug config module
+    debug_settings = DebugConfig.map_debug_settings()
+
     %{
       env: %{
         map_url_with_name: url_with_name,
@@ -60,12 +64,7 @@ defmodule WandererNotifier.Debug do
         map_name: core_name,
         map_token: core_token
       },
-      vars: %{
-        map_url_with_name: System.get_env("MAP_URL_WITH_NAME"),
-        map_url: System.get_env("MAP_URL"),
-        map_name: System.get_env("MAP_NAME"),
-        map_token: System.get_env("MAP_TOKEN")
-      }
+      debug_config: debug_settings
     }
   end
 
@@ -126,6 +125,9 @@ defmodule WandererNotifier.Debug do
           {:error, reason}
       end
 
+    # Get map settings from Debug config
+    debug_settings = DebugConfig.map_debug_settings()
+
     # Return complete debug info
     %{
       url_result: url_result,
@@ -135,11 +137,7 @@ defmodule WandererNotifier.Debug do
         map_url: Config.map_url(),
         map_name: Config.map_name(),
         map_token: Config.map_token(),
-        env_vars: %{
-          MAP_URL: System.get_env("MAP_URL"),
-          MAP_NAME: System.get_env("MAP_NAME"),
-          MAP_TOKEN: System.get_env("MAP_TOKEN")
-        }
+        debug_settings: debug_settings
       }
     }
   end

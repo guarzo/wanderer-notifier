@@ -9,7 +9,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   require Logger
 
   alias Ash.Query
-  alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
@@ -563,7 +563,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
 
   # Get the retention period from config
   defp get_retention_period do
-    Timing.get_persistence_config()
+    Timings.persistence_config()
     |> Keyword.get(:retention_period_days, 180)
   end
 end

@@ -9,7 +9,6 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepository
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Helpers.CacheHelpers
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger, as: AppLogger
   alias WandererNotifier.Logger.BatchLogger
@@ -663,37 +662,15 @@ defmodule WandererNotifier.Services.NotificationDeterminer do
   Prints the system tracking status for debugging purposes.
   """
   def print_system_tracking_status do
-    # Check environment variables
-    enable_track_kspace = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
-    wanderer_feature_track_kspace = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
+    # Use Features module for configuration
+    track_kspace_systems = Features.track_kspace_systems?()
 
-    # Get feature via direct config
-    features_map = Application.get_env(:wanderer_notifier, :features, %{})
-    direct_config = Map.get(features_map, :track_kspace_systems)
-
-    # Get feature via Features module
-    features_result = Features.track_kspace_systems?()
-
-    # Log all results
+    # Log the result
     AppLogger.kill_info(
-      "📊 SYSTEM TRACKING STATUS SUMMARY",
+      "[NotificationDeterminer] TRACK KSPACE CONFIG:",
       %{
-        enable_track_kspace: enable_track_kspace,
-        wanderer_feature_track_kspace: wanderer_feature_track_kspace,
-        direct_config_value: direct_config,
-        features_module_result: features_result
-      }
-    )
-
-    # Also check cached systems
-    systems = CacheHelpers.get_tracked_systems()
-    system_count = length(systems)
-
-    AppLogger.kill_info(
-      "📊 TRACKED SYSTEMS STATUS",
-      %{
-        tracked_system_count: system_count,
-        first_few: Enum.take(systems, 3)
+        feature_module_result: track_kspace_systems,
+        config_from_features: Features.get_feature_status()
       }
     )
   end

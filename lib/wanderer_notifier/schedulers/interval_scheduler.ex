@@ -11,7 +11,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Add the aliases
-      alias WandererNotifier.Config.Timing
+      alias WandererNotifier.Config.Timings
       alias WandererNotifier.Logger, as: AppLogger
 
       # Default interval is 1 hour (in milliseconds) if not specified
@@ -118,25 +118,25 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
       defp get_configured_interval do
         case @scheduler_name do
           WandererNotifier.Schedulers.CharacterUpdateScheduler ->
-            Timing.get_character_update_scheduler_interval()
+            Timings.character_update_scheduler_interval()
 
           WandererNotifier.Schedulers.SystemUpdateScheduler ->
-            Timing.get_system_update_scheduler_interval()
+            Timings.system_update_scheduler_interval()
 
           WandererNotifier.Schedulers.MaintenanceScheduler ->
-            Timing.get_maintenance_interval()
+            Timings.maintenance_interval()
 
           WandererNotifier.Schedulers.CacheCheckScheduler ->
-            Timing.get_cache_check_interval()
+            Timings.cache_check_interval()
 
           WandererNotifier.Schedulers.CacheSyncScheduler ->
-            Timing.get_cache_sync_interval()
+            Timings.cache_sync_interval()
 
           WandererNotifier.Schedulers.CacheCleanupScheduler ->
-            Timing.get_cache_cleanup_interval()
+            Timings.cache_cleanup_interval()
 
           WandererNotifier.Schedulers.LicenseRefreshScheduler ->
-            Timing.get_license_refresh_interval()
+            Timings.license_refresh_interval()
 
           _ ->
             nil

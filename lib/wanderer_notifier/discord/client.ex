@@ -10,26 +10,24 @@ defmodule WandererNotifier.Discord.Client do
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  defp env, do: Notifications.get_env()
+  defp env do
+    Application.get_env(:wanderer_notifier, :env, :prod)
+  end
 
   @doc """
   Gets the configured Discord channel ID.
   """
   def channel_id do
-    case Notifications.get_discord_config() do
-      {:ok, %{channel_id: channel_id}} -> channel_id
-      _ -> nil
-    end
+    config = Notifications.get_discord_config()
+    config.main_channel
   end
 
   @doc """
   Gets the configured Discord bot token.
   """
   def bot_token do
-    case Notifications.get_discord_config() do
-      {:ok, %{bot_token: token}} -> token
-      _ -> nil
-    end
+    config = Notifications.get_discord_config()
+    config.token
   end
 
   defp build_url do

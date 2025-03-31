@@ -6,6 +6,7 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
   use Plug.Router
   import Plug.Conn
+  alias WandererNotifier.Config.Debug
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.{License, Stats}
   alias WandererNotifier.Logger, as: AppLogger
@@ -19,8 +20,8 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
   # GET /debug
   get "/" do
     # Get current debugging state
-    current_state = System.get_env("WANDERER_DEBUG_LOGGING")
-    debug_enabled = current_state == "true"
+    current_state = Debug.config().logging_enabled
+    debug_enabled = current_state == true
 
     conn
     |> put_resp_content_type("text/html")
@@ -29,18 +30,17 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
 
   # POST /debug/toggle - Toggle debug logging
   post "/toggle" do
-    # Get current debugging state
-    current_state = System.get_env("WANDERER_DEBUG_LOGGING")
-    currently_enabled = current_state == "true"
+    # Get current state and toggle it
+    current_state = Debug.debug_logging_enabled?()
+    new_state = !current_state
 
-    # Toggle debug logging
-    new_state = if currently_enabled, do: "false", else: "true"
-    System.put_env("WANDERER_DEBUG_LOGGING", new_state)
+    # Apply the new state
+    Debug.set_debug_logging(new_state)
 
     # Log the change
-    AppLogger.api_info("Debug logging #{if new_state == "true", do: "enabled", else: "disabled"}")
+    AppLogger.api_info("Debug logging #{if new_state, do: "enabled", else: "disabled"}")
 
-    # Redirect back to debug page
+    # Redirect back to debug page using conn manipulation directly
     conn
     |> put_resp_header("location", "/debug")
     |> send_resp(302, "Redirecting...")
@@ -101,12 +101,27 @@ defmodule WandererNotifier.Web.Controllers.DebugController do
       features: Features.get_feature_status(),
       license: License.status(),
       stats: Stats.get_stats(),
-      debug_enabled: System.get_env("WANDERER_DEBUG_LOGGING") == "true"
+      debug_enabled: Debug.config().logging_enabled
     }
   end
 
   # Match all other routes
   match _ do
     send_resp(conn, 404, "Not found")
+  end
+
+  def status(conn, _params) do
+    debug_config = Debug.config()
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      200,
+      Jason.encode!(%{
+        success: true,
+        debug_enabled: debug_config.logging_enabled,
+        map_debug: debug_config.map_settings
+      })
+    )
   end
 end

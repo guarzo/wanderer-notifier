@@ -6,7 +6,7 @@ defmodule WandererNotifier.Core.License do
   use GenServer
   alias WandererNotifier.Config
   alias WandererNotifier.Config.Application
-  alias WandererNotifier.Config.Timing
+  alias WandererNotifier.Config.Timings
   alias WandererNotifier.LicenseManager.Client, as: LicenseClient
   alias WandererNotifier.Logger, as: AppLogger
 
@@ -391,7 +391,7 @@ defmodule WandererNotifier.Core.License do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :refresh, Timing.get_license_refresh_interval())
+    Process.send_after(self(), :refresh, Timings.license_refresh_interval())
   end
 
   defp do_validate do
