@@ -36,13 +36,6 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
       # Build the final URL
       url = "#{base}?#{query}"
 
-      AppLogger.api_info("Building URL with params: #{url}",
-        base_url: base_url,
-        endpoint: endpoint,
-        params: inspect(params),
-        slug: final_slug
-      )
-
       {:ok, url}
     end
   end
@@ -75,12 +68,6 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         # Build the final URL
         url = "#{base}?#{query_params}"
 
-        AppLogger.api_info("Building URL with params (no slug): #{url}",
-          base_url: base_url,
-          endpoint: endpoint,
-          params: inspect(params)
-        )
-
         {:ok, url}
       end
     else
@@ -96,12 +83,6 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
     with {:ok, base_url} <- get_base_url(),
          {:ok, slug} <- get_slug() do
       url = "#{base_url}/api/#{endpoint}?slug=#{URI.encode_www_form(slug)}"
-
-      AppLogger.api_info("Building URL: #{url}",
-        base_url: base_url,
-        endpoint: endpoint,
-        slug: slug
-      )
 
       # Log URL components for debugging
       AppLogger.api_debug("URL Components breakdown",
@@ -125,11 +106,6 @@ defmodule WandererNotifier.Api.Map.UrlBuilder do
         nil -> []
         token -> [{"Authorization", "Bearer " <> token}]
       end
-
-    AppLogger.api_info("Auth headers configured",
-      has_token: Config.map_token() != nil
-    )
-
     headers
   end
 
