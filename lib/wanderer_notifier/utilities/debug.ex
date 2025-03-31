@@ -10,7 +10,7 @@ defmodule WandererNotifier.Utilities.Debug do
   alias WandererNotifier.Config.Config, as: AppConfig
   alias WandererNotifier.Config.Debug, as: DebugConfig
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Manually trigger character tracking update.

@@ -12,7 +12,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   alias WandererNotifier.ChartService.ChartTypes
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Generates a chart URL for character activity summary.

@@ -8,17 +8,18 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Cache.CacheHelpers
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.{License, Stats}
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Repo
   alias WandererNotifier.Helpers.{CacheHelpers, NotificationHelpers}
+  alias WandererNotifier.License.Service, as: License
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.{KillmailPersistence, TrackedCharacter}
 
-  alias WandererNotifier.Services.{
-    KillmailComparison,
-    KillProcessor
+  alias WandererNotifier.Processing.Killmail.{
+    Comparison,
+    Processor
   }
 
   alias WandererNotifier.Api.Character.KillsService
@@ -967,7 +968,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           has_api_token: notifier_api_token != nil
         )
 
-        alias WandererNotifier.LicenseManager.Client, as: LicenseClient
+        alias WandererNotifier.License.Client, as: LicenseClient
         # Call the license manager client directly
         case LicenseClient.validate_bot(notifier_api_token, license_key) do
           {:ok, response} ->
@@ -1037,10 +1038,8 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Get recent kills
   get "/recent-kills" do
-    AppLogger.api_info("Recent kills endpoint called")
-
-    # Use KillProcessor instead of Service to get recent kills
-    recent_kills = KillProcessor.get_recent_kills()
+    # Use KillmailProcessor to get recent kills
+    recent_kills = Processor.get_recent_kills()
 
     response = %{
       success: true,
@@ -1356,7 +1355,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           end_datetime: end_datetime
         })
 
-        case KillmailComparison.compare_killmails(
+        case Comparison.compare_killmails(
                character_id_int,
                start_datetime,
                end_datetime
@@ -1492,7 +1491,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
           kill_ids_count: length(kill_ids)
         })
 
-        case KillmailComparison.analyze_missing_kills(
+        case Comparison.analyze_missing_kills(
                character_id,
                kill_ids
              ) do
@@ -1587,7 +1586,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
               {:ok, characters} ->
                 # Generate comparison data for each character using the KillmailComparison service
                 character_comparisons =
-                  KillmailComparison.generate_character_breakdowns(
+                  Comparison.generate_character_breakdowns(
                     characters,
                     start_datetime,
                     end_datetime
@@ -1708,7 +1707,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
       case CacheRepo.get(cache_key) do
         nil ->
           # Not in cache - generate and store it using the KillmailComparison service
-          case KillmailComparison.generate_and_cache_comparison_data(
+          case Comparison.generate_and_cache_comparison_data(
                  cache_type,
                  start_datetime,
                  end_datetime
@@ -1796,7 +1795,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
 
   # Helper function to delegate to the KillmailComparison service
   defp generate_character_breakdowns(characters, start_datetime, end_datetime) do
-    KillmailComparison.generate_character_breakdowns(
+    Comparison.generate_character_breakdowns(
       characters,
       start_datetime,
       end_datetime

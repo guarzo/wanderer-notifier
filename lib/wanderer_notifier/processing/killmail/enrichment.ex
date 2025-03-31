@@ -8,8 +8,8 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Process a killmail for notification by enriching it and

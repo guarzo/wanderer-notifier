@@ -5,7 +5,7 @@ defmodule WandererNotifier.Data.Repo do
 
   alias Ecto.Adapters.SQL
   alias WandererNotifier.Config.Database
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Custom init function to dynamically configure the repo using

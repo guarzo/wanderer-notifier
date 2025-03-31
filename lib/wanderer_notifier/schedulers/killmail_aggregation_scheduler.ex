@@ -12,11 +12,10 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   """
 
   require Logger
-
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Api.Character.KillsService
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Resources.KillmailAggregation
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0

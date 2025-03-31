@@ -4,12 +4,12 @@ defmodule WandererNotifier.Api.Map.Characters do
   """
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Config.Config
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.TrackedCharacter
-  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_tracked_characters(cached_characters \\ nil) do
     AppLogger.api_info(
@@ -434,7 +434,7 @@ defmodule WandererNotifier.Api.Map.Characters do
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do
     # Use the centralized notification determiner to check if character notifications are enabled globally
-    if NotificationDeterminer.should_notify_character?(nil) do
+    if Determiner.should_notify_character?(nil) do
       # Check if we have both new and cached characters
       new_chars = new_characters || []
       cached_chars = cached_characters || []
@@ -549,9 +549,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp notify_character_if_needed(character_id, char) do
-    determiner = NotificationDeterminer
-
-    if determiner.should_notify_character?(character_id) do
+    if Determiner.should_notify_character?(character_id) do
       send_notification_for_character(character_id, char)
     else
       AppLogger.api_debug("Character is not marked for notification", character_id: character_id)

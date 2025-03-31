@@ -25,7 +25,7 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Config.Version
   alias WandererNotifier.Config.Web
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Starts the application.
@@ -181,7 +181,7 @@ defmodule WandererNotifier.Application do
     [
       # Core services
       {WandererNotifier.NoopConsumer, []},
-      {WandererNotifier.Core.License, []},
+      {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},

@@ -1,17 +1,15 @@
 defmodule WandererNotifier.Processing.Killmail.Notification do
   @moduledoc """
-  Handles killmail notifications.
-
-  - Determines if a kill should trigger a notification
-  - Formats the notification content
-  - Sends notifications to various channels
+  Specialized module for processing kill notifications.
+  Encapsulates all the notification handling logic for kills.
   """
 
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Processing.Killmail.{Cache, Enrichment, Stats}
-  alias WandererNotifier.Services.NotificationDeterminer
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
+  alias WandererNotifier.Processing.Killmail.Enrichment
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -25,9 +23,8 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   - false if notification was skipped
   """
   def should_notify_kill?(killmail, system_id \\ nil) do
-    # Delegate to the NotificationDeterminer for now
-    # In a complete implementation, this logic could be moved here
-    NotificationDeterminer.should_notify_kill?(killmail, system_id)
+    # Delegate to the Determiner module for notification logic
+    Determiner.should_notify_kill?(killmail, system_id)
   end
 
   @doc """
@@ -68,7 +65,7 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
       :ok
     else
       # Use the centralized deduplication check for normal notifications
-      case NotificationDeterminer.check_deduplication(:kill, kill_id) do
+      case Determiner.check_deduplication(:kill, kill_id) do
         {:ok, :send} ->
           # This is not a duplicate, send the notification
           AppLogger.kill_info("✅ NEW KILL: Sending notification for killmail #{kill_id}")
@@ -113,7 +110,7 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     AppLogger.kill_info("Sending test kill notification...")
 
     # Get recent kills
-    recent_kills = Cache.get_recent_kills()
+    recent_kills = CacheRepo.get_recent_kills()
     AppLogger.kill_debug("Found #{length(recent_kills)} recent kills in shared cache repository")
 
     if recent_kills == [] do
@@ -127,16 +124,21 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
 
       {:error, error_message}
     else
-      # Get the first kill - should already be a Killmail struct
-      %Killmail{} = recent_kill = List.first(recent_kills)
-      kill_id = recent_kill.killmail_id
+      # Get the first kill
+      recent_kill = List.first(recent_kills)
+
+      # Extract kill_id regardless of struct type
+      kill_id = extract_kill_id(recent_kill)
 
       # Log what we're using for testing
       AppLogger.kill_debug("Using kill data for test notification with kill_id: #{kill_id}")
 
+      # Create a Data.Killmail struct if needed
+      killmail = ensure_data_killmail(recent_kill)
+
       # Make sure to enrich the killmail data before sending notification
       # This will try to get real data from APIs first
-      enriched_kill = Enrichment.enrich_killmail_data(recent_kill)
+      enriched_kill = Enrichment.enrich_killmail_data(killmail)
 
       # Validate essential data is present - fail if not
       case validate_killmail_data(enriched_kill) do
@@ -162,19 +164,68 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     end
   end
 
-  # Private functions
+  # Helper to extract kill_id regardless of struct type
+  defp extract_kill_id(kill) do
+    cond do
+      is_struct(kill, WandererNotifier.Data.Killmail) -> kill.killmail_id
+      is_struct(kill, WandererNotifier.Resources.Killmail) -> kill.killmail_id
+      is_map(kill) -> Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
+      true -> nil
+    end
+  end
+
+  # Helper to ensure we have a Data.Killmail struct
+  defp ensure_data_killmail(kill) do
+    cond do
+      is_struct(kill, WandererNotifier.Data.Killmail) ->
+        # Already the right type
+        kill
+
+      is_struct(kill, WandererNotifier.Resources.Killmail) ->
+        # Convert from Resources.Killmail to Data.Killmail
+        WandererNotifier.Data.Killmail.new(
+          kill.killmail_id,
+          Map.get(kill, :zkb_data) || %{}
+        )
+
+      is_map(kill) ->
+        # Convert from map to Data.Killmail
+        WandererNotifier.Data.Killmail.new(
+          Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id),
+          Map.get(kill, "zkb") || Map.get(kill, :zkb) || %{}
+        )
+
+      true ->
+        # Default empty killmail as fallback
+        WandererNotifier.Data.Killmail.new(nil, %{})
+    end
+  end
 
   # Validate killmail has all required data for notification
-  defp validate_killmail_data(%Killmail{} = killmail) do
-    # Check victim data
-    victim = Killmail.get_victim(killmail)
+  defp validate_killmail_data(killmail) do
+    # For Data.Killmail struct
+    if is_struct(killmail, WandererNotifier.Data.Killmail) do
+      # Check victim data
+      victim = Map.get(killmail, :victim) || %{}
 
-    # Check system name
-    esi_data = killmail.esi_data || %{}
-    system_name = Map.get(esi_data, "solar_system_name")
+      # Check system name
+      esi_data = Map.get(killmail, :esi_data) || %{}
+      system_name = Map.get(esi_data, "solar_system_name")
 
+      validate_fields(victim, system_name)
+    else
+      # Fall back to treating it as a generic map
+      victim = Map.get(killmail, :victim_data) || %{}
+      system_name = Map.get(killmail, :solar_system_name)
+
+      validate_fields(victim, system_name)
+    end
+  end
+
+  # Validate the required fields
+  defp validate_fields(victim, system_name) do
     cond do
-      victim == nil ->
+      victim == nil || victim == %{} ->
         {:error, "Killmail is missing victim data"}
 
       Map.get(victim, "character_name") == nil ->

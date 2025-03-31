@@ -7,13 +7,13 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
   """
 
   require Logger
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   defmacro __using__(opts) do
     quote do
       use GenServer
       require Logger
-      alias WandererNotifier.Core.Logger, as: AppLogger
+      alias WandererNotifier.Logger.Logger, as: AppLogger
       @behaviour WandererNotifier.Schedulers.Behaviour
 
       # The scheduler name, to be used for registration and logging

@@ -7,11 +7,11 @@ defmodule WandererNotifier.Notifiers.Determiner do
   require Logger
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Core.Logger.BatchLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepository
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger.BatchLogger
 
   @doc """
   Determines if a notification should be sent for a kill.

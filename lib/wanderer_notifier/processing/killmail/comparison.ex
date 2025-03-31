@@ -8,8 +8,8 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.{Api, Killmail, TrackedCharacter}
   alias WandererNotifier.Resources.KillHistoryService
 

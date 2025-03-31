@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Core.License do
+defmodule WandererNotifier.License.Service do
   @moduledoc """
   License management for WandererNotifier.
   Handles license validation and feature access control.
@@ -7,11 +7,8 @@ defmodule WandererNotifier.Core.License do
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.LicenseManager.Client, as: LicenseClient
-
-  # Remove hardcoded interval
-  # @refresh_interval :timer.hours(24)
+  alias WandererNotifier.License.Client, as: LicenseClient
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Define the behaviour callbacks
   @callback validate() :: boolean()
@@ -325,8 +322,6 @@ defmodule WandererNotifier.Core.License do
     safe_state = ensure_complete_state(state)
     {:reply, safe_state, safe_state}
   end
-
-  # Move this helper function to after all handle_call implementations
 
   @impl true
   def handle_call({:feature_enabled, feature}, _from, state) do

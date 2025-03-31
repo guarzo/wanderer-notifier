@@ -7,7 +7,7 @@ defmodule WandererNotifier.Api.Http.Client do
 
   require Logger
   alias WandererNotifier.Api.Http.ResponseHandler
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @default_max_retries 3
   # milliseconds

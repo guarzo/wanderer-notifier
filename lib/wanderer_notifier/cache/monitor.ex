@@ -6,8 +6,8 @@ defmodule WandererNotifier.Cache.Monitor do
   """
   use GenServer
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.TrackedCharacter
 
   # Check interval - 15 minutes by default

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.LicenseManager.Client do
+defmodule WandererNotifier.License.Client do
   @moduledoc """
   Client for interacting with the License Manager API.
   Provides functions for validating licenses and bots.
@@ -6,7 +6,7 @@ defmodule WandererNotifier.LicenseManager.Client do
   require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Config.Config
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Define the behaviour callbacks
   @callback validate_bot(String.t(), String.t()) :: {:ok, map()} | {:error, atom()}

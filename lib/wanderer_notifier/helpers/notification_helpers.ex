@@ -2,9 +2,9 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
   @moduledoc """
   Helper functions for notification formatting and data extraction.
   """
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """

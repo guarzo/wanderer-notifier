@@ -6,8 +6,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
   use GenServer
   require Logger
   alias WandererNotifier.Config.Cache
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Core.Logger.BatchLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger.BatchLogger
 
   @cache_name :wanderer_notifier_cache
 
@@ -917,4 +917,12 @@ defmodule WandererNotifier.Data.Cache.Repository do
   end
 
   defp extract_key_pattern(key), do: inspect(key)
+
+  @doc """
+  Gets the list of recent kills from the cache.
+  This is a convenience function that centralizes the cache key used for recent kills.
+  """
+  def get_recent_kills do
+    get("recent_kills") || []
+  end
 end

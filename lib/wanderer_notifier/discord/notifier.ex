@@ -7,13 +7,13 @@ defmodule WandererNotifier.Discord.Notifier do
   alias WandererNotifier.Api.ESI.Service, as: ESI
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Config.{Application, Notifications}
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Services.KillProcessor
-  alias WandererNotifier.Services.NotificationDeterminer
+  alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_kill_notification(message) do
-    recent_kills = KillProcessor.get_recent_kills() || []
+    recent_kills = KillmailProcessor.get_recent_kills() || []
     process_kills_for_notification(recent_kills, message)
   end
 
@@ -167,7 +167,7 @@ defmodule WandererNotifier.Discord.Notifier do
   end
 
   defp process_test_embed(title, description, url, color) do
-    recent_kills = KillProcessor.get_recent_kills() || []
+    recent_kills = KillmailProcessor.get_recent_kills() || []
 
     if recent_kills == [] do
       build_embed_payload(title, description, url, color)
@@ -313,7 +313,7 @@ defmodule WandererNotifier.Discord.Notifier do
       character_id = character.character_id
 
       # Check if this is a duplicate notification
-      case NotificationDeterminer.check_deduplication(
+      case Determiner.check_deduplication(
              :character,
              character_id
            ) do
@@ -386,7 +386,7 @@ defmodule WandererNotifier.Discord.Notifier do
       )
 
       # Check if this is a duplicate notification
-      case NotificationDeterminer.check_deduplication(:system, system_id) do
+      case Determiner.check_deduplication(:system, system_id) do
         {:ok, :send} ->
           # This is not a duplicate, proceed with notification
           AppLogger.processor_info("Processing new system notification",

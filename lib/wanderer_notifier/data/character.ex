@@ -42,7 +42,7 @@ defmodule WandererNotifier.Data.Character do
   """
   @behaviour Access
   require Logger
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{

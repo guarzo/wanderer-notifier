@@ -22,8 +22,9 @@ Application.put_env(
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
-Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Core.LoggerBehaviour)
-Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HTTP.Behaviour)
+Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
+Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
+Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.Behaviour)
 
 Mox.defmock(WandererNotifier.MockCacheHelpers,

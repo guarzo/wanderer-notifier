@@ -59,7 +59,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Notifiers.Discord" => :info,
   "WandererNotifier.Api.ZKill.Websocket" => :info,
   "WandererNotifier.Application" => :info,
-  "WandererNotifier.Core.License" => :info,
+  "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
   "WandererNotifier.Data.Cache.Repository" => :info,
   "WandererNotifier.Core.Application.Service" => :info,

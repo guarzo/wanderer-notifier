@@ -8,9 +8,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """

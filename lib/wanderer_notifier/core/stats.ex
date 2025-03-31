@@ -6,7 +6,7 @@ defmodule WandererNotifier.Core.Stats do
   """
   use GenServer
   require Logger
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Client API
 
@@ -23,6 +23,14 @@ defmodule WandererNotifier.Core.Stats do
   """
   def increment(type) do
     GenServer.cast(__MODULE__, {:increment, type})
+  end
+
+  @doc """
+  Alias for increment/1, provided for backward compatibility.
+  Will be deprecated in the future.
+  """
+  def update(type) do
+    increment(type)
   end
 
   @doc """

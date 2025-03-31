@@ -1,4 +1,4 @@
-defmodule WandererNotifier.WebSocket.Behaviour do
+defmodule WandererNotifier.Api.ZKill.WebSocketBehaviour do
   @moduledoc """
   Defines the behaviour for WebSocket operations to enable mocking in tests.
   """

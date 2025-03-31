@@ -3,7 +3,7 @@ defmodule WandererNotifier.Discord.TestNotifier do
   Test-specific implementation of the Discord notifier.
   This module is used in test environment to avoid making actual Discord API calls.
   """
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Implement the NotifierBehaviour
   @behaviour WandererNotifier.Notifiers.Behaviour

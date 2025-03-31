@@ -9,8 +9,8 @@ defmodule WandererNotifier.Core.Maintenance.Scheduler do
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Performs periodic maintenance tasks.

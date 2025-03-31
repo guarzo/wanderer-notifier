@@ -12,9 +12,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   require Ash.Query
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
 

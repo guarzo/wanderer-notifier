@@ -11,8 +11,8 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
 
   require Logger
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Application.Service, as: AppService
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Process dictionary key for kill stats
   @kill_stats_key :kill_processor_stats

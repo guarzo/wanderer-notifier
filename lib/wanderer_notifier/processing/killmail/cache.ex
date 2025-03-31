@@ -8,8 +8,8 @@ defmodule WandererNotifier.Processing.Killmail.Cache do
   """
 
   alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Cache keys and configuration
   @recent_kills_cache_key "zkill:recent_kills"

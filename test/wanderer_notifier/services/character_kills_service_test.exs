@@ -2,15 +2,13 @@ defmodule WandererNotifier.Api.Character.KillsServiceTest do
   use ExUnit.Case, async: true
 
   import Mox
-
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.MockCacheHelpers
   alias WandererNotifier.MockESI
   alias WandererNotifier.MockKillmailPersistence
   alias WandererNotifier.MockLogger
   alias WandererNotifier.MockRepository
   alias WandererNotifier.MockZKillClient
-  alias WandererNotifier.Api.Character.KillsService
-
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 

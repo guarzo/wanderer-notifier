@@ -15,10 +15,10 @@ defmodule WandererNotifier.Api.Map.Systems do
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_systems(cached_systems \\ nil) do
     AppLogger.api_debug("[update_systems] Starting systems update")
@@ -427,7 +427,7 @@ defmodule WandererNotifier.Api.Map.Systems do
     system_id = Map.get(system, "systemId")
 
     # Check if this specific system should trigger a notification
-    if NotificationDeterminer.should_notify_system?(system_id) do
+    if Determiner.should_notify_system?(system_id) do
       # Prepare system data with static info
       system_data = prepare_system_data(system, system_name, system_id)
 
@@ -454,7 +454,7 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   defp notify_new_systems(fresh_systems, cached_systems) do
     # Use the centralized notification determiner to check if system notifications are enabled
-    if NotificationDeterminer.should_notify_system?(nil) do
+    if Determiner.should_notify_system?(nil) do
       # Ensure we have both fresh and cached systems as lists
       fresh = fresh_systems || []
       cached = cached_systems || []

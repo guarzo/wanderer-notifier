@@ -11,14 +11,13 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Maintenance.Scheduler, as: MaintenanceScheduler
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
-  alias WandererNotifier.Helpers.CacheHelpers
-  alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.Services.KillProcessor
-  alias WandererNotifier.Services.NotificationDeterminer
+  alias WandererNotifier.Helpers.{CacheHelpers, DeduplicationHelper}
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Determiner
+  alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
 
   @default_interval :timer.minutes(5)
 
@@ -58,10 +57,10 @@ defmodule WandererNotifier.Core.Application.Service do
     now = :os.system_time(:second)
 
     # Initialize kill stats for tracking
-    KillProcessor.init_stats()
+    KillmailProcessor.init()
 
     # Debug system tracking status
-    NotificationDeterminer.print_system_tracking_status()
+    Determiner.print_system_tracking_status()
 
     state = %State{
       service_start_time: now,
@@ -79,7 +78,7 @@ defmodule WandererNotifier.Core.Application.Service do
     schedule_next_run(@default_interval)
 
     # Schedule stats logging now that we're initialized
-    KillProcessor.schedule_stats_logging()
+    KillmailProcessor.schedule_tasks()
 
     # Schedule a direct call to the maintenance scheduler after 10 seconds to handle both systems and characters
     Process.send_after(self(), :update_tracked_data, 10_000)
@@ -143,8 +142,8 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info({:zkill_message, message}, state) do
-    # Process the message with the KillProcessor
-    new_state = KillProcessor.process_zkill_message(message, state)
+    # Process the message with the KillmailProcessor
+    new_state = KillmailProcessor.process_zkill_message(message, state)
     {:noreply, new_state}
   end
 
@@ -189,7 +188,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:log_kill_stats, state) do
-    KillProcessor.log_kill_stats()
+    KillmailProcessor.log_stats()
     {:noreply, state}
   rescue
     e ->
@@ -618,7 +617,7 @@ defmodule WandererNotifier.Core.Application.Service do
   """
   def get_recent_kills do
     # Forward to the kill processor
-    KillProcessor.get_recent_kills()
+    KillmailProcessor.get_recent_kills()
   end
 
   @doc """
@@ -626,7 +625,7 @@ defmodule WandererNotifier.Core.Application.Service do
   Used for testing kill notifications through the API.
   """
   def send_test_kill_notification do
-    KillProcessor.send_test_kill_notification()
+    KillmailProcessor.send_test_kill_notification()
   end
 
   def start_websocket do

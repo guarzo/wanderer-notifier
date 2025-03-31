@@ -7,8 +7,8 @@ defmodule WandererNotifier.Api.ZKill.Service do
   require Logger
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   @type kill_id :: String.t() | integer()
   @type system_id :: String.t() | integer()
 

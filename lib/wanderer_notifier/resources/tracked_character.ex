@@ -8,10 +8,10 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   alias Ecto.Adapters.SQL
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Repo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
 

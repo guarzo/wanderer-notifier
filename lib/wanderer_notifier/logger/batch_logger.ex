@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Core.Logger.BatchLogger do
+defmodule WandererNotifier.Logger.Logger.BatchLogger do
   @moduledoc """
   Provides batched logging functionality with counters for repetitive log messages.
 
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Core.Logger.BatchLogger do
   """
 
   require Logger
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Flush logs every 5 seconds
   @flush_interval 5_000

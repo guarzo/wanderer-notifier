@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Fetches static information for a specific solar system.
@@ -23,9 +23,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
-    # Add detailed logging for debugging
-    AppLogger.api_info("[SystemStaticInfo] Fetching static info for system #{solar_system_id}")
-
     # Create a task for the API request to add timeout handling
     task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
 
@@ -34,9 +31,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
       {:ok, result} ->
         # Log result and return
         case result do
-          {:ok, _} ->
-            AppLogger.api_info("[SystemStaticInfo] Successfully got static info")
-
           {:error, reason} ->
             AppLogger.api_warn("[SystemStaticInfo] Static info failed: #{inspect(reason)}")
         end
@@ -122,28 +116,13 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   def enrich_system(system) do
     alias WandererNotifier.Data.MapSystem
 
-
     # Only try to enrich if the system has a valid ID
     if system.solar_system_id && system.solar_system_id > 0 do
       # Try to get static info with proper error handling
       case get_system_static_info(system.solar_system_id) do
         {:ok, static_info} ->
-          # Log success with info about what we got
-          AppLogger.api_info(
-            "[SystemStaticInfo] Successfully got static info for #{system.name}",
-            keys: Map.keys(static_info)
-          )
-
           # Update the map system with static information
           enhanced_system = MapSystem.update_with_static_info(system, static_info)
-
-          # Log what was added
-          AppLogger.api_debug(
-            "[SystemStaticInfo] System enriched successfully",
-            statics: enhanced_system.statics,
-            type_description: enhanced_system.type_description,
-            class_title: enhanced_system.class_title
-          )
 
           {:ok, enhanced_system}
 

@@ -5,7 +5,7 @@ alias WandererNotifier.Config.Config
 alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 alias WandererNotifier.Data.Character
 alias WandererNotifier.Data.Repo
-alias WandererNotifier.Core.Logger, as: AppLogger
+alias WandererNotifier.Logger.Logger, as: AppLogger
 alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 alias WandererNotifier.Notifiers.StructuredFormatter
 alias WandererNotifier.Resources.TrackedCharacter

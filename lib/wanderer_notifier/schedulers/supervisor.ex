@@ -8,9 +8,9 @@ defmodule Schedulers.Supervisor do
   use Supervisor
   require Logger
   alias WandererNotifier.Config.Config
-  alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Core.Logger.StartupTracker
   alias WandererNotifier.Data.Repo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Logger.StartupTracker
   alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Schedulers
   alias WandererNotifier.Schedulers.Registry

@@ -6,7 +6,7 @@ defmodule WandererNotifier.Discord.Client do
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 

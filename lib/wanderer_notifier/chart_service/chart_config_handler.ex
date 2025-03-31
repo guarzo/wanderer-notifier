@@ -9,7 +9,7 @@ defmodule WandererNotifier.ChartService.ChartConfigHandler do
 
   alias WandererNotifier.ChartService.ChartConfig
   require Logger
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Default chart settings
   @default_width 800

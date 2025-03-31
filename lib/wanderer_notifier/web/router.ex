@@ -7,8 +7,8 @@ defmodule WandererNotifier.Web.Router do
   require Logger
 
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Core.Application.Service, as: AppService
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   alias WandererNotifier.Web.Controllers.{
     ApiController,

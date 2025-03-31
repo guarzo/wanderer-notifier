@@ -13,8 +13,8 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   require Logger
 
-  alias WandererNotifier.Core.Logger, as: AppLogger
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Enrichment, Notification, Stats}
   alias WandererNotifier.Resources.KillmailPersistence
 

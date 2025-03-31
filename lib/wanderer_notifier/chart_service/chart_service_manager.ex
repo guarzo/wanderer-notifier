@@ -9,7 +9,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   use GenServer
   require Logger
   alias WandererNotifier.Config.Web
-  alias WandererNotifier.Core.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Client API
 
