@@ -19,9 +19,9 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   alias WandererNotifier.Services.{
     CharacterKillsService,
     KillmailComparison,
-    KillProcessor,
-    Service
+    KillProcessor
   }
+  alias WandererNotifier.Core.Application.Service, as: AppService
 
   # Module attributes
   @api_version "1.0.0"
@@ -2023,7 +2023,7 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     # Try loading recent kills directly
     recent_kills_from_service =
       try do
-        Service.get_recent_kills()
+        AppService.get_recent_kills()
       rescue
         e ->
           AppLogger.api_error("Error getting recent kills from service: #{inspect(e)}")

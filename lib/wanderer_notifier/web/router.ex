@@ -8,7 +8,7 @@ defmodule WandererNotifier.Web.Router do
 
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Services.Service
+  alias WandererNotifier.Core.Application.Service, as: AppService
 
   alias WandererNotifier.Web.Controllers.{
     ApiController,
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Web.Router do
 
     # Check if the service GenServer is alive
     service_alive =
-      case Process.whereis(Service) do
+      case Process.whereis(AppService) do
         pid when is_pid(pid) -> Process.alive?(pid)
         _ -> false
       end

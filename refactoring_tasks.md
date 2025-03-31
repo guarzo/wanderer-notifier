@@ -82,11 +82,11 @@ Reorganize files from the `services` module to more appropriate locations within
 
 ### 6. Review Main Service
 
-- [ ] **Service Module**
-  - Review `lib/wanderer_notifier/services/service.ex`
-  - Consider renaming to `ApplicationService` or similar for clarity
-  - Consider moving to core
-  - Update any necessary references
+- [x] **Service Module**
+  - Move `lib/wanderer_notifier/services/service.ex` to `lib/wanderer_notifier/core/application/service.ex`
+  - Rename module to `WandererNotifier.Core.Application.Service`
+  - Update all references
+  - **COMPLETED**: Created new module in the Core.Application namespace and created a wrapper module in the original location for backward compatibility with deprecation warnings.
 
 ## Implementation Strategy
 

@@ -184,7 +184,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.License, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.Helpers.DeduplicationHelper, []},
-      {WandererNotifier.Services.Service, []},
+      {WandererNotifier.Core.Application.Service, []},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},

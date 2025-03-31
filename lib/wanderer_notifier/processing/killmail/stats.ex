@@ -12,7 +12,7 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
   require Logger
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Core.Logger, as: AppLogger
-  alias WandererNotifier.Services.Service
+  alias WandererNotifier.Core.Application.Service, as: AppService
 
   # Process dictionary key for kill stats
   @kill_stats_key :kill_processor_stats
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
   def schedule_logging do
     # Send the message to the main Service module since that's where GenServer is implemented
     Process.send_after(
-      Service,
+      AppService,
       :log_kill_stats,
       Timings.cache_check_interval()
     )

@@ -62,7 +62,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Core.License" => :info,
   "WandererNotifier.Core.Stats" => :info,
   "WandererNotifier.Data.Cache.Repository" => :info,
-  "WandererNotifier.Services.Service" => :info,
+  "WandererNotifier.Core.Application.Service" => :info,
   "WandererNotifier.Services.KillProcessor" => :debug,
   "WandererNotifier.Services.NotificationDeterminer" => :debug,
   "WandererNotifier.Supervisors.Basic" => :info,
@@ -88,7 +88,8 @@ config :nostrum, :gateway,
   ]
 
 # Configure Ecto timestamps
-config :wanderer_notifier, WandererNotifier.Data.Repo, migration_timestamps: [type: :utc_datetime_usec]
+config :wanderer_notifier, WandererNotifier.Data.Repo,
+  migration_timestamps: [type: :utc_datetime_usec]
 
 # Configure persistence feature defaults
 config :wanderer_notifier, :persistence,
