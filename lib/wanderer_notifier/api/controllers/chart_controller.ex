@@ -1,10 +1,11 @@
-defmodule WandererNotifier.Web.Controllers.ChartController do
+defmodule WandererNotifier.Api.Controllers.ChartController do
   @moduledoc """
   Controller for chart-related actions.
   """
   use Plug.Router
   require Logger
 
+  alias WandererNotifier.Api.Controllers.ActivityChartController
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService.ActivityChartAdapter
   alias WandererNotifier.ChartService.KillmailChartAdapter
@@ -14,7 +15,6 @@ defmodule WandererNotifier.Web.Controllers.ChartController do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
   alias WandererNotifier.Resources.TrackedCharacter
-  alias WandererNotifier.Web.Controllers.ActivityChartController
 
   plug(:match)
   plug(:dispatch)

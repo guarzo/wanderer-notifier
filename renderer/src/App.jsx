@@ -103,12 +103,6 @@ function App() {
                 path="/schedulers" 
                 element={<SchedulerDashboard />} 
               />
-              
-              {/* Legacy routes for backward compatibility */}
-              <Route path="/corp-tools" element={<Navigate to="/" replace />} />
-              <Route path="/map-tools" element={<Navigate to="/" replace />} />
-              <Route path="/charts-dashboard" element={<Navigate to="/charts" replace />} />
-              <Route path="/debug" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
         </Router>

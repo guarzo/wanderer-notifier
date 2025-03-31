@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Web.Controllers.ActivityChartController do
+defmodule WandererNotifier.Api.Controllers.ActivityChartController do
   @moduledoc """
   Controller for activity chart related actions.
   """
