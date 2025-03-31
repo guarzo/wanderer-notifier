@@ -447,10 +447,7 @@ defmodule WandererNotifier.Data.MapSystem do
   end
 
   # Classify k-space system (high-sec, low-sec, or null-sec)
-  # In EVE Online, security is determined by system IDs:
-  # - system IDs with remainder < 500 are null-sec
-  # - system IDs with remainder >= 500 can be high-sec or low-sec depending on security status
-  # Since we don't have security status here, we're approximating based on ID patterns
+  # Current implementation uses system ID remainder to approximate security status
   defp classify_kspace(system_id) do
     remainder = rem(system_id, 1000)
     # High-sec systems typically have higher ID remainders (700-999)
@@ -473,15 +470,70 @@ defmodule WandererNotifier.Data.MapSystem do
 
   # Helper function to extract type description with consistent field names
   defp extract_type_description(map_response) do
-    map_response["type_description"] ||
-      map_response["typeDescription"] ||
-      get_in(map_response, ["staticInfo", "type_description"]) ||
-      get_in(map_response, ["staticInfo", "typeDescription"]) ||
-      get_in(map_response, ["staticInfo", "class_title"]) ||
-      if Map.get(map_response, "solar_system_id"),
-        do: determine_system_type_description(Map.get(map_response, "solar_system_id")),
-        else: "Unknown"
+    # First check if we can determine type from security value
+    case extract_type_from_security(map_response) do
+      nil -> extract_type_from_fields(map_response)
+      type_desc -> type_desc
+    end
   end
+
+  # Try to determine system type from security value
+  defp extract_type_from_security(map_response) do
+    security = extract_security_value(map_response)
+
+    if is_nil(security),
+      do: nil,
+      else: security_to_type_description(parse_security_value(security))
+  end
+
+  # Try to extract type from various possible field names
+  defp extract_type_from_fields(map_response) do
+    # Check various field paths in order of preference
+    type_fields = [
+      map_response["type_description"],
+      map_response["typeDescription"],
+      get_in(map_response, ["staticInfo", "type_description"]),
+      get_in(map_response, ["staticInfo", "typeDescription"]),
+      get_in(map_response, ["staticInfo", "class_title"]),
+      get_in(map_response, ["data", "type_description"])
+    ]
+
+    # Find first non-nil value or fall back to ID-based classification
+    Enum.find(type_fields, &(not is_nil(&1))) ||
+      extract_type_from_id(map_response)
+  end
+
+  # Fall back to determining type from system ID
+  defp extract_type_from_id(map_response) do
+    case Map.get(map_response, "solar_system_id") do
+      nil -> "Unknown"
+      id -> determine_system_type_description(id)
+    end
+  end
+
+  # Helper to extract security value from map response
+  defp extract_security_value(map_response) do
+    map_response["security"] ||
+      get_in(map_response, ["staticInfo", "security"]) ||
+      get_in(map_response, ["data", "security"])
+  end
+
+  # Helper to parse security value to float
+  defp parse_security_value(security) when is_binary(security) do
+    case Float.parse(security) do
+      {value, _} -> value
+      :error -> nil
+    end
+  end
+
+  defp parse_security_value(security) when is_number(security), do: security
+  defp parse_security_value(_), do: nil
+
+  # Convert security value to type description
+  defp security_to_type_description(nil), do: nil
+  defp security_to_type_description(security) when security >= 0.5, do: "High-sec"
+  defp security_to_type_description(security) when security > 0.0, do: "Low-sec"
+  defp security_to_type_description(_security), do: "Null-sec"
 
   # Helper function to extract is_shattered status with consistent field names
   defp extract_is_shattered(map_response) do

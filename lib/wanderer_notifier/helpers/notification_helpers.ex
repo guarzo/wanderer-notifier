@@ -174,7 +174,7 @@ defmodule WandererNotifier.Helpers.NotificationHelpers do
         # Use most recent kill
         kill = List.first(kills)
         notifier = NotifierFactory.get_notifier()
-        notifier.send_enriched_kill_embed(kill, kill.killmail_id)
+        notifier.send_kill_notification(kill)
         {:ok, kill.killmail_id}
     end
   end

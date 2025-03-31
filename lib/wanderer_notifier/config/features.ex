@@ -12,9 +12,6 @@ defmodule WandererNotifier.Config.Features do
   - Resource limits
   """
 
-  require Logger
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
   # Cache the feature status for improved performance
   # This is refreshed when the application starts or when explicitly asked to
   @feature_cache_key :features_cache
@@ -198,20 +195,7 @@ defmodule WandererNotifier.Config.Features do
   """
   @spec track_kspace_systems?() :: boolean()
   def track_kspace_systems? do
-    result = get_feature(:track_kspace_systems, true)
-
-    # Add debugging for the feature flag
-    AppLogger.kill_info(
-      "🔧 TRACK_KSPACE CONFIG: Feature flag check returning #{result}",
-      %{
-        track_kspace_enabled: result,
-        env_var: System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS"),
-        wanderer_var: System.get_env("WANDERER_FEATURE_TRACK_KSPACE"),
-        features_map: get_env(:features, %{})
-      }
-    )
-
-    result
+    get_feature(:track_kspace_systems, true)
   end
 
   #

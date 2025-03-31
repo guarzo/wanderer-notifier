@@ -8,13 +8,14 @@ defmodule WandererNotifier.Core.Application.Service do
   use GenServer
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Helpers.{CacheHelpers, DeduplicationHelper}
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Determiner
+  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
@@ -60,8 +61,6 @@ defmodule WandererNotifier.Core.Application.Service do
     KillmailProcessor.init()
 
     # Debug system tracking status
-    Determiner.print_system_tracking_status()
-
     state = %State{
       service_start_time: now,
       last_status_time: now,
@@ -395,7 +394,7 @@ defmodule WandererNotifier.Core.Application.Service do
     }
 
     # Get feature status
-    features_status = WandererNotifier.Config.Features.get_feature_status()
+    features_status = Features.get_feature_status()
 
     # Simplified license status - we'll assume it's valid for startup
     license_status = %{valid: true}
@@ -406,7 +405,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
     # Create structured notification using StructuredFormatter
     status_message =
-      WandererNotifier.Notifiers.StructuredFormatter.format_system_status_message(
+      StructuredFormatter.format_system_status_message(
         # title
         "WandererNotifier Service Started",
         # description
@@ -427,10 +426,10 @@ defmodule WandererNotifier.Core.Application.Service do
 
     # Convert to Discord format
     discord_embed =
-      WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(status_message)
+      StructuredFormatter.to_discord_format(status_message)
 
     # The Discord.Notifier module will check which client to use based on feature flag
-    result = WandererNotifier.Discord.Notifier.send_discord_embed(discord_embed)
+    result = DiscordNotifier.send_discord_embed(discord_embed)
 
     # Log the result
     case result do

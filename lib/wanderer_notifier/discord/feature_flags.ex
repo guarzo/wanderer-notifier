@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Discord.FeatureFlags do
   @moduledoc """
   Manages feature flags for Discord API functionality.
-  Allows for gradual rollout of new Discord features and fallback to legacy implementations.
+  Allows for gradual rollout of new Discord features.
   """
 
   alias WandererNotifier.Config.Features
@@ -16,7 +16,7 @@ defmodule WandererNotifier.Discord.FeatureFlags do
     - false otherwise
   """
   def components_enabled? do
-    get_feature_flag(:discord_components_enabled, false)
+    get_feature_flag(:discord_components_enabled, true)
   end
 
   @doc """
@@ -28,34 +28,6 @@ defmodule WandererNotifier.Discord.FeatureFlags do
   """
   def versioned_api_enabled? do
     get_feature_flag(:discord_versioned_api_enabled, true)
-  end
-
-  @doc """
-  Checks if Nostrum client should be used instead of Discord HTTP client.
-
-  ## Returns
-    - true if Nostrum client should be used (default)
-    - false if HTTP client should be used
-  """
-  def use_nostrum? do
-    # First check environment variable directly (highest priority)
-    env_value = System.get_env("DISCORD_USE_NOSTRUM")
-
-    case env_value do
-      "false" ->
-        AppLogger.config_info("Using HTTP client (explicitly set via ENV var)")
-        false
-
-      # For any other value (including nil), check feature flag system with true as default
-      _ ->
-        feature_value = Features.get_feature(:discord_use_nostrum, true)
-
-        AppLogger.config_info(
-          "Using #{if(feature_value, do: "Nostrum", else: "HTTP")} client (default: Nostrum)"
-        )
-
-        feature_value
-    end
   end
 
   @doc """

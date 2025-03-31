@@ -129,11 +129,6 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:ok, parsed} when is_list(parsed) ->
             # Take only the requested number of kills
             result = Enum.take(parsed, limit)
-
-            Logger.info(
-              "[ZKill] Successfully parsed #{length(result)} kills for system #{system_id}"
-            )
-
             {:ok, result}
 
           {:ok, []} ->

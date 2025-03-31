@@ -27,36 +27,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     # First check if this killmail should be notified
     should_notify = Notification.should_notify_kill?(killmail)
 
-    AppLogger.kill_info(
-      if should_notify do
-        "👍 ENRICHMENT DECISION: Kill #{killmail.killmail_id} meets criteria for notification"
-      else
-        "👎 ENRICHMENT DECISION: Kill #{killmail.killmail_id} does not meet criteria for notification"
-      end,
-      %{
-        kill_id: killmail.killmail_id,
-        should_notify: should_notify,
-        system_id: get_in(killmail.esi_data || %{}, ["solar_system_id"]),
-        system_name: get_in(killmail.esi_data || %{}, ["solar_system_name"])
-      }
-    )
-
     if should_notify do
       # Enrich the killmail with additional data
       enriched_kill = enrich_killmail_data(killmail)
-
-      # Send the notification
-      AppLogger.kill_info(
-        "🔄 SENDING NOTIFICATION: Kill #{killmail.killmail_id} is being sent for notification",
-        %{kill_id: killmail.killmail_id}
-      )
-
       KillNotification.send_kill_notification(enriched_kill, killmail.killmail_id)
-    else
-      AppLogger.kill_info(
-        "⏭️ SKIPPING NOTIFICATION: Kill #{killmail.killmail_id} - does not meet criteria",
-        %{kill_id: killmail.killmail_id}
-      )
     end
 
     :ok

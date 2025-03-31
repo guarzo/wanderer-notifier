@@ -213,10 +213,7 @@ defmodule WandererNotifier.Api.Map.Systems do
   end
 
   # Classify k-space system (high-sec, low-sec, or null-sec)
-  # In EVE Online, security is determined by system IDs:
-  # - system IDs with remainder < 500 are null-sec
-  # - system IDs with remainder >= 500 can be high-sec or low-sec depending on security status
-  # Since we don't have security status here, we're approximating based on ID patterns
+  # Current implementation uses system ID remainder to approximate security status
   defp classify_kspace(id) do
     remainder = rem(id, 1000)
     # High-sec systems typically have higher ID remainders (700-999)
@@ -329,45 +326,78 @@ defmodule WandererNotifier.Api.Map.Systems do
 
   # Add static info to system data
   defp add_static_info(system, system_id) do
-    case SystemStaticInfo.get_system_static_info(system_id) do
-      {:ok, static_info} ->
-        AppLogger.api_info(
-          "[notify_new_systems] Successfully got static info for system #{system_id}"
-        )
+    # Special handling for known trade hub systems that should always be High-sec
+    known_trade_hubs = %{
+      # Main Caldari trade hub
+      30_000_142 => "Jita",
+      # Main Amarr trade hub
+      30_002_187 => "Amarr",
+      # Main Minmatar trade hub
+      30_002_510 => "Rens",
+      # Main Gallente trade hub
+      30_002_659 => "Dodixie",
+      # Secondary trade hub
+      30_002_053 => "Hek"
+      # Add more known hubs as needed
+    }
 
-        # Extract the full static info data if available
-        static_info_data = Map.get(static_info, "data") || %{}
+    # If the system is a known trade hub, explicitly set it to High-sec
+    if Map.has_key?(known_trade_hubs, system_id) do
+      system_name = Map.get(known_trade_hubs, system_id)
 
-        # Add the rich static info fields directly to the system
-        system
-        |> Map.put("statics", Map.get(static_info_data, "statics") || [])
-        |> Map.put(
-          "type_description",
-          Map.get(static_info_data, "type_description")
-        )
-        |> Map.put("class_title", Map.get(static_info_data, "class_title"))
-        |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
-        |> Map.put(
-          "is_shattered",
-          Map.get(static_info_data, "is_shattered")
-        )
-        |> Map.put("region_name", Map.get(static_info_data, "region_name"))
-        |> Map.put("staticInfo", %{
-          "typeDescription" =>
-            Map.get(static_info_data, "type_description") ||
-              Map.get(static_info_data, "class_title") ||
-              classify_system_by_id(system_id),
-          "statics" => Map.get(static_info_data, "statics") || [],
-          "effectName" => Map.get(static_info_data, "effect_name"),
-          "isShattered" => Map.get(static_info_data, "is_shattered")
-        })
+      AppLogger.api_info(
+        "[notify_new_systems] Known trade hub detected: #{system_name} (#{system_id})"
+      )
 
-      {:error, reason} ->
-        Logger.warning(
-          "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
-        )
+      # Return system with explicit High-sec designation
+      system
+      |> Map.put("type_description", "High-sec")
+      |> Map.put("staticInfo", %{
+        "typeDescription" => "High-sec",
+        "statics" => []
+      })
+    else
+      # Regular handling for other systems
+      case SystemStaticInfo.get_system_static_info(system_id) do
+        {:ok, static_info} ->
+          AppLogger.api_info(
+            "[notify_new_systems] Successfully got static info for system #{system_id}"
+          )
 
-        add_fallback_static_info(system, system_id)
+          # Extract the full static info data if available
+          static_info_data = Map.get(static_info, "data") || %{}
+
+          # Add the rich static info fields directly to the system
+          system
+          |> Map.put("statics", Map.get(static_info_data, "statics") || [])
+          |> Map.put(
+            "type_description",
+            Map.get(static_info_data, "type_description")
+          )
+          |> Map.put("class_title", Map.get(static_info_data, "class_title"))
+          |> Map.put("effect_name", Map.get(static_info_data, "effect_name"))
+          |> Map.put(
+            "is_shattered",
+            Map.get(static_info_data, "is_shattered")
+          )
+          |> Map.put("region_name", Map.get(static_info_data, "region_name"))
+          |> Map.put("staticInfo", %{
+            "typeDescription" =>
+              Map.get(static_info_data, "type_description") ||
+                Map.get(static_info_data, "class_title") ||
+                classify_system_by_id(system_id),
+            "statics" => Map.get(static_info_data, "statics") || [],
+            "effectName" => Map.get(static_info_data, "effect_name"),
+            "isShattered" => Map.get(static_info_data, "is_shattered")
+          })
+
+        {:error, reason} ->
+          Logger.warning(
+            "[notify_new_systems] Failed to get static info for system #{system_id}: #{inspect(reason)}"
+          )
+
+          add_fallback_static_info(system, system_id)
+      end
     end
   end
 

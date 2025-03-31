@@ -17,11 +17,12 @@ defmodule WandererNotifier.Discord.NeoClient do
   end
 
   @doc """
-  Gets the configured Discord channel ID.
+  Gets the configured Discord channel ID as an integer.
   """
   def channel_id do
     config = Notifications.get_discord_config()
-    config.main_channel
+    # Convert the channel id from string to integer
+    config.main_channel |> String.to_integer()
   end
 
   # -- MESSAGING API --
@@ -45,22 +46,20 @@ defmodule WandererNotifier.Discord.NeoClient do
 
       :ok
     else
-      target_channel = if is_nil(override_channel_id), do: channel_id(), else: override_channel_id
+      target_channel =
+        if is_nil(override_channel_id) do
+          channel_id()
+        else
+          override_channel_id
+        end
 
       # Convert to Nostrum.Struct.Embed
       discord_embed = convert_to_nostrum_embed(embed)
 
-      # Send using Nostrum's API
-      AppLogger.api_debug("Calling Nostrum.Api.Message.create with embed",
-        channel_id: target_channel,
-        embed_type: typeof(discord_embed)
-      )
-
-      # Use explicit keyword list with square brackets - SUPER IMPORTANT
-      # Nostrum expects `[embeds: [...]]` not `%{embeds: [...]}`
-      case Message.create(target_channel, [embeds: [discord_embed]]) do
+      # Use Nostrum.Api.Message.create with embeds (plural) as an array
+      # This is what Discord API expects
+      case Message.create(target_channel, embeds: [discord_embed]) do
         {:ok, _message} ->
-          AppLogger.api_info("Successfully sent embed via Nostrum")
           :ok
 
         {:error, %{status_code: 429, response: response}} ->
@@ -96,24 +95,28 @@ defmodule WandererNotifier.Discord.NeoClient do
 
       :ok
     else
-      target_channel = if is_nil(override_channel_id), do: channel_id(), else: override_channel_id
+      target_channel =
+        if is_nil(override_channel_id) do
+          channel_id()
+        else
+          override_channel_id
+        end
 
       # Convert to Nostrum structs
       discord_embed = convert_to_nostrum_embed(embed)
       discord_components = components
 
-      # Send using Nostrum's API
-      AppLogger.api_debug("Calling Nostrum.Api.Message.create with embed and components",
-        channel_id: target_channel
+      # Log detailed info about what we're sending
+      AppLogger.api_debug("Sending message with components via Nostrum",
+        channel_id: target_channel,
+        embed_type: typeof(discord_embed)
       )
 
-      # Use explicit keyword list with square brackets
       case Message.create(target_channel,
-             [embeds: [discord_embed],
+             embeds: [discord_embed],
              components: discord_components
-           ]) do
+           ) do
         {:ok, _message} ->
-          AppLogger.api_info("Successfully sent message with components via Nostrum")
           :ok
 
         {:error, %{status_code: 429, response: response}} ->
@@ -147,19 +150,20 @@ defmodule WandererNotifier.Discord.NeoClient do
       AppLogger.api_info("TEST MODE: Would send message via Nostrum", message: message)
       :ok
     else
-      target_channel = if is_nil(override_channel_id), do: channel_id(), else: override_channel_id
+      target_channel =
+        if is_nil(override_channel_id) do
+          channel_id()
+        else
+          override_channel_id
+        end
 
-      # IMPORTANT: Use a proper keyword list with content key
-      # Nostrum 0.10.4 expects [content: message], not a string
-      AppLogger.api_debug("Calling Nostrum.Api.Message.create",
+      AppLogger.api_debug("Sending text message via Nostrum",
         channel_id: target_channel,
-        message: message
+        message_length: String.length(message)
       )
 
-      # Use explicit keyword list with square brackets
-      case Message.create(target_channel, [content: message]) do
+      case Message.create(target_channel, content: message) do
         {:ok, _message} ->
-          AppLogger.api_info("Successfully sent message via Nostrum")
           :ok
 
         {:error, %{status_code: 429, response: response}} ->
@@ -200,7 +204,6 @@ defmodule WandererNotifier.Discord.NeoClient do
     end
   end
 
-  # Log a test file send operation (no actual API call)
   defp log_test_file_send(filename, title) do
     AppLogger.api_info("TEST MODE: Would send file to Discord via Nostrum",
       filename: filename,
@@ -210,27 +213,25 @@ defmodule WandererNotifier.Discord.NeoClient do
     :ok
   end
 
-  # Send a real file to Discord
   defp send_real_file(filename, file_data, title, description, override_channel_id) do
-    target_channel = if is_nil(override_channel_id), do: channel_id(), else: override_channel_id
+    target_channel =
+      if is_nil(override_channel_id) do
+        channel_id()
+      else
+        override_channel_id
+      end
 
-    # Create embed options if title/description provided
     embed_opts = create_file_embed_opts(title, description, filename)
-
-    # Prepare file
     file = %{name: filename, body: file_data}
 
-    # Send the file
     do_send_file(target_channel, file, embed_opts)
   end
 
-  # Create embed options for file uploads
   defp create_file_embed_opts(title, description, filename) do
     if title || description do
       discord_embed = %Embed{
         title: title || filename,
         description: description || "",
-        # Discord blue
         color: 3_447_003,
         timestamp: DateTime.utc_now(),
         footer: %Embed.Footer{
@@ -238,31 +239,36 @@ defmodule WandererNotifier.Discord.NeoClient do
         }
       }
 
-      [embed: discord_embed]
+      # Use embeds (plural) not embed (singular) for Discord API
+      [embeds: [discord_embed]]
     else
       []
     end
   end
 
-  # Actually send the file to Discord
   defp do_send_file(target_channel, file, embed_opts) do
-    # Prepare options as a keyword list with square brackets
-    file_opts = [files: [file]]
-
-    # If embed options are provided, add them to the keyword list
     options =
-      if Enum.empty?(embed_opts), do: file_opts, else: Keyword.merge(file_opts, embed_opts)
+      if Enum.empty?(embed_opts) do
+        [file: file]
+      else
+        # For direct file uploads with embed, ensure we're using the proper format
+        if Keyword.has_key?(embed_opts, :embed) do
+          # Convert embed to embeds format
+          embed = Keyword.get(embed_opts, :embed)
+          [file: file, embeds: [embed]]
+        else
+          # Keep as is if already using embeds format
+          [file: file] ++ embed_opts
+        end
+      end
 
-    # Log the operation
-    AppLogger.api_debug("Calling Nostrum.Api.Message.create with file",
+    AppLogger.api_debug("Sending file via Nostrum",
       channel_id: target_channel,
       options: inspect(options)
     )
 
-    # Use explicit keyword list
     case Message.create(target_channel, options) do
       {:ok, _message} ->
-        AppLogger.api_info("Successfully sent file via Nostrum")
         :ok
 
       {:error, %{status_code: 429, response: response}} ->
@@ -290,12 +296,9 @@ defmodule WandererNotifier.Discord.NeoClient do
       channel_id: interaction.channel_id
     )
 
-    # Log the interaction but don't handle it yet
-    # Future implementation would process button clicks, etc.
     :noop
   end
 
-  # Ignore other event types for now
   @impl true
   def handle_event(_event) do
     :noop
@@ -303,7 +306,6 @@ defmodule WandererNotifier.Discord.NeoClient do
 
   # -- HELPERS --
 
-  # Helper function to determine the type of a term (for debugging)
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
   defp typeof(term) when is_integer(term), do: "integer"
@@ -318,86 +320,190 @@ defmodule WandererNotifier.Discord.NeoClient do
   defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
   defp typeof(_), do: "unknown"
 
-  # Convert a raw embed map to Nostrum.Struct.Embed
   defp convert_to_nostrum_embed(embed) when is_map(embed) do
-    fields =
-      Map.get(embed, "fields", [])
-      |> Enum.map(fn field ->
-        %Embed.Field{
-          name: Map.get(field, "name", ""),
-          value: Map.get(field, "value", ""),
-          inline: Map.get(field, "inline", false)
-        }
-      end)
-
-    footer =
-      case Map.get(embed, "footer") do
-        nil ->
-          nil
-
-        footer_map ->
-          %Embed.Footer{
-            text: Map.get(footer_map, "text", ""),
-            icon_url: Map.get(footer_map, "icon_url")
-          }
-      end
-
-    thumbnail =
-      case Map.get(embed, "thumbnail") do
-        nil -> nil
-        thumb_map -> %Embed.Thumbnail{url: Map.get(thumb_map, "url", "")}
-      end
-
-    image =
-      case Map.get(embed, "image") do
-        nil -> nil
-        image_map -> %Embed.Image{url: Map.get(image_map, "url", "")}
-      end
-
-    author =
-      case Map.get(embed, "author") do
-        nil ->
-          nil
-
-        author_map ->
-          %Embed.Author{
-            name: Map.get(author_map, "name", ""),
-            url: Map.get(author_map, "url"),
-            icon_url: Map.get(author_map, "icon_url")
-          }
-      end
-
     %Embed{
       title: Map.get(embed, "title"),
       description: Map.get(embed, "description"),
       url: Map.get(embed, "url"),
       timestamp: Map.get(embed, "timestamp"),
       color: Map.get(embed, "color"),
-      footer: footer,
-      image: image,
-      thumbnail: thumbnail,
-      author: author,
-      fields: fields
+      footer: extract_footer(embed),
+      image: extract_image(embed),
+      thumbnail: get_thumbnail_with_fallback(embed),
+      author: extract_author(embed),
+      fields: extract_fields(embed)
     }
   end
 
-  # Extract retry_after from rate limit response
+  # Extract fields from the embed
+  defp extract_fields(embed) do
+    Map.get(embed, "fields", [])
+    |> Enum.map(fn field ->
+      %Embed.Field{
+        name: Map.get(field, "name", ""),
+        value: Map.get(field, "value", ""),
+        inline: Map.get(field, "inline", false)
+      }
+    end)
+  end
+
+  # Extract footer from the embed
+  defp extract_footer(embed) do
+    case Map.get(embed, "footer") do
+      nil -> nil
+      footer_map when is_map(footer_map) -> build_footer(footer_map)
+    end
+  end
+
+  # Build a footer struct from a map
+  defp build_footer(footer_map) do
+    %Embed.Footer{
+      text: get_field_with_fallback(footer_map, :text, "text", ""),
+      icon_url: get_field_with_fallback(footer_map, :icon_url, "icon_url")
+    }
+  end
+
+  # Extract author from the embed
+  defp extract_author(embed) do
+    case Map.get(embed, "author") do
+      nil -> nil
+      author_map when is_map(author_map) -> build_author(author_map)
+    end
+  end
+
+  # Build an author struct from a map
+  defp build_author(author_map) do
+    %Embed.Author{
+      name: get_field_with_fallback(author_map, :name, "name", ""),
+      url: get_field_with_fallback(author_map, :url, "url"),
+      icon_url: get_field_with_fallback(author_map, :icon_url, "icon_url")
+    }
+  end
+
+  # Get a field with fallback from atom or string keys
+  defp get_field_with_fallback(map, atom_key, string_key, default \\ nil) do
+    cond do
+      Map.has_key?(map, atom_key) -> Map.get(map, atom_key)
+      Map.has_key?(map, string_key) -> Map.get(map, string_key)
+      true -> default
+    end
+  end
+
+  # Apply system notification thumbnail fallback if needed
+  defp get_thumbnail_with_fallback(embed) do
+    thumbnail = extract_thumbnail(embed)
+
+    # If this is a sun type notification with no thumbnail, use a hardcoded URL
+    if is_nil(thumbnail) && Map.get(embed, "title", "") =~ "System Notification" do
+      %Embed.Thumbnail{url: "https://images.evetech.net/types/45041/icon?size=64"}
+    else
+      thumbnail
+    end
+  end
+
+  # Extract thumbnail from the embed
+  defp extract_thumbnail(embed) do
+    thumbnail = Map.get(embed, "thumbnail")
+
+    # Try different formats in order of likelihood
+    cond do
+      valid_thumbnail = extract_thumbnail_from_map(thumbnail) ->
+        valid_thumbnail
+
+      valid_url = extract_valid_url(thumbnail) ->
+        %Embed.Thumbnail{url: valid_url}
+
+      valid_url = extract_valid_url(Map.get(embed, "thumbnail_url")) ->
+        %Embed.Thumbnail{url: valid_url}
+
+      valid_url = extract_valid_url(Map.get(embed, "icon_url")) ->
+        %Embed.Thumbnail{url: valid_url}
+
+      true ->
+        extract_thumbnail_from_icon_field(embed)
+    end
+  end
+
+  # Extract thumbnail from a map with url key
+  defp extract_thumbnail_from_map(thumbnail) when is_map(thumbnail) do
+    cond do
+      valid_url = extract_valid_url(Map.get(thumbnail, :url)) ->
+        %Embed.Thumbnail{url: valid_url}
+
+      valid_url = extract_valid_url(Map.get(thumbnail, "url")) ->
+        %Embed.Thumbnail{url: valid_url}
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_thumbnail_from_map(_), do: nil
+
+  # Check for icon field and extract thumbnail
+  defp extract_thumbnail_from_icon_field(embed) do
+    if Map.has_key?(embed, "icon") do
+      icon = Map.get(embed, "icon")
+
+      if is_map(icon) && Map.has_key?(icon, "url") do
+        %Embed.Thumbnail{url: icon["url"]}
+      else
+        nil
+      end
+    else
+      nil
+    end
+  end
+
+  # Validate URL is not empty
+  defp extract_valid_url(url) when is_binary(url) do
+    trimmed = String.trim(url)
+    if trimmed != "", do: trimmed, else: nil
+  end
+
+  defp extract_valid_url(_), do: nil
+
+  # Extract image from embed
+  defp extract_image(embed) do
+    image = Map.get(embed, "image")
+
+    # Try different formats in order of likelihood
+    cond do
+      valid_image = extract_image_from_map(image) -> valid_image
+      valid_url = extract_valid_url(image) -> %Embed.Image{url: valid_url}
+      valid_url = extract_valid_url(Map.get(embed, "image_url")) -> %Embed.Image{url: valid_url}
+      true -> nil
+    end
+  end
+
+  # Extract image from a map with url key
+  defp extract_image_from_map(image) when is_map(image) do
+    cond do
+      valid_url = extract_valid_url(Map.get(image, :url)) ->
+        %Embed.Image{url: valid_url}
+
+      valid_url = extract_valid_url(Map.get(image, "url")) ->
+        %Embed.Image{url: valid_url}
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_image_from_map(_), do: nil
+
   defp get_retry_after(%{"retry_after" => retry_after}) when is_number(retry_after) do
-    # Convert to milliseconds
     round(retry_after * 1000)
   end
 
   defp get_retry_after(%{"retry_after" => retry_after}) when is_binary(retry_after) do
-    # Convert string to float then to milliseconds
     case Float.parse(retry_after) do
       {value, _} -> round(value * 1000)
-      # Default if parsing fails
       :error -> 5000
     end
   end
 
   defp get_retry_after(_) do
-    # Default retry time
     5000
   end
 end

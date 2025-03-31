@@ -27,8 +27,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     - {:error, reason} on failure
   """
   def update_systems(cached_systems \\ nil) do
-    AppLogger.api_info("[SystemsClient] Starting systems update")
-
     # Log cache status before update
     pre_cache = CacheRepo.get("map:systems")
     pre_cache_size = if is_list(pre_cache), do: length(pre_cache), else: 0
@@ -36,13 +34,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     case UrlBuilder.build_url("map/systems") do
       {:ok, url} ->
-        AppLogger.api_info("[SystemsClient] Systems URL built: #{url}")
         headers = UrlBuilder.get_auth_headers()
-
-        # Get current systems from cache for logging/comparison
-        current_systems = cached_systems || CacheRepo.get("map:systems") || []
-        current_count = length(current_systems)
-        AppLogger.api_info("[SystemsClient] Current systems in cache: #{current_count}")
 
         # Process the systems request
         case Client.get(url, headers) do
@@ -87,7 +79,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     tracked_systems = filter_systems_for_tracking(systems)
 
     # Enrich all systems before caching any of them
-    AppLogger.api_info("[SystemsClient] Enriching all systems before caching...")
     enriched_systems = enrich_tracked_systems(tracked_systems)
 
     # Cache the ENRICHED systems
@@ -131,16 +122,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp filter_systems_for_tracking(systems) do
     # Use the Features module for configuration
     track_kspace_systems = Features.track_kspace_systems?()
-
-    # Log configuration information for debugging
-    AppLogger.api_info(
-      "[SystemsClient] TRACK KSPACE CONFIG:",
-      %{
-        features_module_result: track_kspace_systems,
-        feature_status: Features.get_feature_status()
-      }
-    )
-
     # Filter the systems based on the configuration
     if track_kspace_systems do
       # If tracking K-space systems is enabled, return all systems
@@ -163,20 +144,11 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         Map.put(acc, sys.solar_system_id, sys)
       end)
 
-    # Enrich wormhole systems
-    wormhole_systems = Enum.filter(tracked_systems, &MapSystem.wormhole?/1)
-
-    AppLogger.api_info(
-      "[SystemsClient] Found #{length(wormhole_systems)} wormhole systems to enrich"
-    )
-
     # Process each system
     enriched_map = process_systems_for_enrichment(tracked_systems, system_map)
 
     # Convert the map back to a list
     enriched_systems = Map.values(enriched_map)
-
-    AppLogger.api_info("[SystemsClient] System enrichment complete")
 
     enriched_systems
   end
@@ -212,7 +184,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     # Wait for enrichment with a 2 second timeout per system
     case Task.yield(task, 2_000) do
       {:ok, {:ok, enriched_system}} ->
-        AppLogger.api_debug("[SystemsClient] Successfully enriched system #{system.name}")
         # Update the map with the enriched system
         Map.put(acc, system.solar_system_id, enriched_system)
 

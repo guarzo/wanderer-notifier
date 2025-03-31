@@ -30,24 +30,14 @@ defmodule WandererNotifier.Notifiers.Determiner do
       # Extract basic information about the killmail
       kill_details = extract_kill_notification_details(killmail)
 
-      # Log kill tracking status
-      log_kill_tracking_status(kill_details)
-
       # Check if kill meets tracking criteria (system or character tracked)
       meets_tracking_criteria =
         kill_details.is_tracked_system || kill_details.has_tracked_character
 
       if meets_tracking_criteria do
         # Kill meets tracking criteria, check deduplication
-        should_send = check_deduplication_and_decide(kill_details.kill_id)
-
-        # Log final decision
-        log_kill_notification_decision(kill_details, should_send)
-
-        should_send
+        check_deduplication_and_decide(kill_details.kill_id)
       else
-        # Kill does not meet tracking criteria
-        log_kill_not_qualifying(kill_details)
         false
       end
     else
@@ -71,58 +61,6 @@ defmodule WandererNotifier.Notifiers.Determiner do
       is_tracked_system: is_tracked_system,
       has_tracked_character: has_tracked_character
     }
-  end
-
-  # Log kill tracking status to give context for notification decision
-  defp log_kill_tracking_status(kill_details) do
-    AppLogger.kill_info(
-      "🔍 KILL TRACKING STATUS: Kill #{kill_details.kill_id} in system #{kill_details.system_id} (#{kill_details.system_name}): system_tracked=#{kill_details.is_tracked_system}, character_tracked=#{kill_details.has_tracked_character}",
-      %{
-        kill_id: kill_details.kill_id,
-        system_id: kill_details.system_id,
-        system_name: kill_details.system_name,
-        system_tracked: kill_details.is_tracked_system,
-        character_tracked: kill_details.has_tracked_character
-      }
-    )
-  end
-
-  # Log when a kill does not qualify for notifications
-  defp log_kill_not_qualifying(kill_details) do
-    AppLogger.kill_info(
-      "❌ NOTIFICATION DECISION: Kill #{kill_details.kill_id} in system #{kill_details.system_id} (#{kill_details.system_name}) - not sending notification",
-      %{
-        kill_id: kill_details.kill_id,
-        system_id: kill_details.system_id,
-        system_name: kill_details.system_name,
-        reason: "Does not meet tracking criteria"
-      }
-    )
-  end
-
-  # Log final notification decision
-  defp log_kill_notification_decision(kill_details, should_send) do
-    if should_send do
-      AppLogger.kill_info(
-        "✅ NOTIFICATION DECISION: Kill #{kill_details.kill_id} in system #{kill_details.system_id} (#{kill_details.system_name}) - sending notification",
-        %{
-          kill_id: kill_details.kill_id,
-          system_id: kill_details.system_id,
-          system_name: kill_details.system_name,
-          reason: "Tracked system or character"
-        }
-      )
-    else
-      AppLogger.kill_info(
-        "❌ NOTIFICATION DECISION: Kill #{kill_details.kill_id} in system #{kill_details.system_id} (#{kill_details.system_name}) - not sending notification",
-        %{
-          kill_id: kill_details.kill_id,
-          system_id: kill_details.system_id,
-          system_name: kill_details.system_name,
-          reason: "Duplicate notification"
-        }
-      )
-    end
   end
 
   # Get kill ID from killmail
@@ -174,15 +112,6 @@ defmodule WandererNotifier.Notifiers.Determiner do
     # Check if kill notifications are enabled globally
     kill_notifications_enabled = Features.kill_notifications_enabled?()
 
-    AppLogger.kill_info(
-      "🔎 NOTIFICATION CHECK: Starting kill notification check, kill_notifications_enabled=#{kill_notifications_enabled}",
-      %{
-        kill_notifications_enabled: kill_notifications_enabled,
-        provided_system_id: system_id,
-        kill_id: extract_kill_id(killmail)
-      }
-    )
-
     if kill_notifications_enabled do
       # Extract kill details for decision making
       kill_details = extract_kill_details(killmail, system_id)
@@ -192,19 +121,6 @@ defmodule WandererNotifier.Notifiers.Determiner do
 
       # Check if this kill should be considered for notification
       meets_criteria = kill_meets_tracking_criteria?(kill_details)
-
-      AppLogger.kill_info(
-        "🔍 TRACKING CRITERIA EVALUATION: Kill #{kill_details.kill_id} meets criteria=#{meets_criteria}",
-        %{
-          kill_id: kill_details.kill_id,
-          system_id: kill_details.system_id,
-          system_name: kill_details.system_name,
-          is_tracked_system: kill_details.is_tracked_system,
-          has_tracked_character: kill_details.has_tracked_character,
-          meets_criteria: meets_criteria,
-          system_id_format: "#{inspect(kill_details.system_id)}"
-        }
-      )
 
       if meets_criteria do
         dedup_result = check_deduplication_and_decide(kill_details.kill_id)
@@ -744,22 +660,6 @@ defmodule WandererNotifier.Notifiers.Determiner do
     # Determine if tracked via any method
     via_track_all = track_kspace_enabled && exists_in_cache
     tracked = directly_tracked || via_track_all
-
-    # Log comprehensive debug information
-    AppLogger.kill_info(
-      "🔬 K-SPACE TRACKING DEBUG for System #{system_id_str}: tracked=#{tracked}",
-      %{
-        system_id: system_id_str,
-        system_cache_key: system_cache_key,
-        system_in_cache: exists_in_cache,
-        system_cache_value: inspect(system_in_cache),
-        direct_cache_key: direct_cache_key,
-        directly_tracked: directly_tracked,
-        track_kspace_enabled: track_kspace_enabled,
-        via_track_all: via_track_all,
-        final_tracking_result: tracked
-      }
-    )
 
     # Return the tracking result
     tracked
