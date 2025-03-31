@@ -19,7 +19,7 @@ Reorganize files from the `services` module to more appropriate locations within
   - Move `lib/wanderer_notifier/services/character_kills_service.ex` to `lib/wanderer_notifier/api/character/kills_service.ex`
   - Rename module to `WandererNotifier.Api.Character.KillsService`
   - Update all references
-  - **COMPLETED**: Moved implementation to new file and created a wrapper module in the original location for backward compatibility with deprecation warnings.
+  - **COMPLETED**: Created a new module in the Api namespace that implements the same functionality, and made the original module a thin wrapper with deprecation warnings.
 
 ### 2. Create Processing namespace for data processing
 
@@ -69,24 +69,24 @@ Reorganize files from the `services` module to more appropriate locations within
 
 - [x] **Maintenance Service**
 
-  - Move `lib/wanderer_notifier/services/maintenance.ex` to `lib/wanderer_notifier/core/maintenance/service.ex`
-  - Rename module to `WandererNotifier.Core.Maintenance.Service`
-  - Update all references
-  - **COMPLETED**: Created new module in the Core namespace and created a wrapper module in the original location for backward compatibility with deprecation warnings.
+  - ~Move `lib/wanderer_notifier/services/maintenance.ex` to `lib/wanderer_notifier/core/maintenance/service.ex`~
+  - ~Rename module to `WandererNotifier.Core.Maintenance.Service`~
+  - ~Update all references~
+  - **COMPLETED**: Created a new module in the Core namespace that implements the same functionality, and made the original module a thin wrapper with deprecation warnings.
 
 - [x] **Maintenance Scheduler**
-  - Move `lib/wanderer_notifier/services/maintenance/scheduler.ex` to `lib/wanderer_notifier/core/maintenance/scheduler.ex`
-  - Rename module to `WandererNotifier.Core.Maintenance.Scheduler`
-  - Update all references
-  - **COMPLETED**: Created new module in the Core namespace and created a wrapper module in the original location for backward compatibility with deprecation warnings.
+  - ~Move `lib/wanderer_notifier/services/maintenance/scheduler.ex` to `lib/wanderer_notifier/core/maintenance/scheduler.ex`~
+  - ~Rename module to `WandererNotifier.Core.Maintenance.Scheduler`~
+  - ~Update all references~
+  - **COMPLETED**: Created a new module in the Core namespace that implements the same functionality, and made the original module a thin wrapper with deprecation warnings.
 
 ### 6. Review Main Service
 
 - [x] **Service Module**
-  - Move `lib/wanderer_notifier/services/service.ex` to `lib/wanderer_notifier/core/application/service.ex`
-  - Rename module to `WandererNotifier.Core.Application.Service`
-  - Update all references
-  - **COMPLETED**: Created new module in the Core.Application namespace and created a wrapper module in the original location for backward compatibility with deprecation warnings.
+  - ~Move `lib/wanderer_notifier/services/service.ex` to `lib/wanderer_notifier/core/application/service.ex`~
+  - ~Rename module to `WandererNotifier.Core.Application.Service`~
+  - ~Update all references~
+  - **COMPLETED**: Created a new module in the Core namespace with the same functionality, and fully removed the backward compatible wrapper. Updated all references throughout the codebase to directly use the new module.
 
 ## Implementation Strategy
 
