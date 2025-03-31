@@ -3,11 +3,13 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
   API controller for the web interface.
   """
   use Plug.Router
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Ash.TrackedCharacter
   alias WandererNotifier.Cache.CacheHelpers
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Core.Application.Service, as: AppService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Repo
@@ -21,10 +23,6 @@ defmodule WandererNotifier.Web.Controllers.ApiController do
     Comparison,
     Processor
   }
-
-  alias WandererNotifier.Api.Character.KillsService
-
-  alias WandererNotifier.Core.Application.Service, as: AppService
 
   # Module attributes
   @api_version "1.0.0"

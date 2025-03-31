@@ -69,7 +69,7 @@ defmodule WandererNotifier.Resources.KillmailService do
   Checks if a killmail exists for a character with a specific role.
   """
   def killmail_exists_for_character?(killmail_id, character_id, role) do
-    KillmailPersistence.killmail_exists_for_character?(killmail_id, character_id, role)
+    KillmailPersistence.exists?(killmail_id, character_id, role)
   end
 
   @doc """

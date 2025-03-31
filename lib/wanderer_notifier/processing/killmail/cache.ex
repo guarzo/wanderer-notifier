@@ -1,90 +1,93 @@
 defmodule WandererNotifier.Processing.Killmail.Cache do
   @moduledoc """
-  Manages caching of killmail data.
+  Manages caching for killmail data.
 
   - Stores recent kills in the cache repository
   - Provides retrieval methods for cached kills
   - Maintains a list of kill IDs for quick access
   """
-
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  # Cache keys and configuration
-  @recent_kills_cache_key "zkill:recent_kills"
-  @max_recent_kills 10
-  # 1 hour TTL for cached kills
+  # Cache TTL values (in seconds)
+  # 1 hour
   @kill_ttl 3600
+
+  # System name cache - process dictionary for performance
   @system_names_cache_key :system_names_cache
 
   @doc """
-  Initialize the cache.
-  Sets up the system names cache in process dictionary.
+  Initializes the killmail cache system.
   """
   def init do
-    # Initialize system names cache
+    # Initialize the system names cache in the process dictionary
     Process.put(@system_names_cache_key, %{})
     AppLogger.kill_debug("Kill cache initialized")
-  end
-
-  @doc """
-  Updates the cache with a new kill.
-
-  ## Parameters
-  - killmail: The killmail struct to cache
-  """
-  def update_recent_kills(%Killmail{} = killmail) do
-    # Add enhanced logging to trace cache updates
-    AppLogger.kill_debug("Storing Killmail struct in shared cache repository")
-
-    kill_id = killmail.killmail_id
-
-    # Store the individual kill by ID
-    individual_key = "#{@recent_kills_cache_key}:#{kill_id}"
-
-    # Store the Killmail struct directly - no need to convert again
-    CacheRepo.set(individual_key, killmail, @kill_ttl)
-
-    # Now update the list of recent kill IDs
-    update_recent_kill_ids(kill_id)
-
-    AppLogger.kill_debug("Stored kill #{kill_id} in shared cache repository")
     :ok
   end
 
   @doc """
-  Gets a list of recent kills from the cache.
+  Caches a killmail for quick access.
+  """
+  def cache_kill(killmail_id, killmail) when is_binary(killmail_id) or is_integer(killmail_id) do
+    kill_id = to_string(killmail_id)
+
+    # Cache individual kill
+    individual_key = "#{CacheKeys.zkill_recent_kills()}:#{kill_id}"
+
+    AppLogger.cache_debug("Caching individual kill", key: individual_key)
+    CacheRepo.set(individual_key, killmail, @kill_ttl)
+
+    # Update the recent kills list
+    update_recent_kills_list(kill_id)
+
+    :ok
+  end
+
+  @doc """
+  Gets a cached killmail by ID.
+  """
+  def get_kill(kill_id) when is_binary(kill_id) or is_integer(kill_id) do
+    id = to_string(kill_id)
+
+    # Get the list of cached kill IDs
+    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+
+    # Check if this kill is in our tracked list
+    if id in kill_ids do
+      # Get the individual kill data
+      key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+      kill_data = CacheRepo.get(key)
+
+      if kill_data do
+        {:ok, kill_data}
+      else
+        {:error, :not_found}
+      end
+    else
+      {:error, :not_cached}
+    end
+  end
+
+  @doc """
+  Gets all recent cached kills.
   """
   def get_recent_kills do
-    AppLogger.kill_debug("Retrieving recent kills from shared cache repository")
+    # Get the list of cached kill IDs
+    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
 
-    # First get the list of recent kill IDs
-    kill_ids = CacheRepo.get(@recent_kills_cache_key) || []
-    AppLogger.kill_debug("Found #{length(kill_ids)} recent kill IDs in cache")
-
-    # Then fetch each kill by its ID
-    recent_kills =
-      Enum.map(kill_ids, fn id ->
-        key = "#{@recent_kills_cache_key}:#{id}"
-        kill_data = CacheRepo.get(key)
-
-        if kill_data do
-          # Log successful retrieval
-          AppLogger.kill_debug("Successfully retrieved kill #{id} from cache")
-          kill_data
-        else
-          # Log cache miss
-          AppLogger.kill_warning("Failed to retrieve kill #{id} from cache (expired or missing)")
-          nil
-        end
+    # Map through and get each kill
+    kills =
+      kill_ids
+      |> Enum.map(fn id ->
+        key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+        {id, CacheRepo.get(key)}
       end)
-      # Remove any nils from the list
-      |> Enum.filter(&(&1 != nil))
+      |> Enum.filter(fn {_id, kill} -> kill != nil end)
+      |> Enum.into(%{})
 
-    AppLogger.kill_debug("Retrieved #{length(recent_kills)} cached kills from shared repository")
-
-    recent_kills
+    {:ok, kills}
   end
 
   @doc """
@@ -105,22 +108,21 @@ defmodule WandererNotifier.Processing.Killmail.Cache do
 
   # Private functions
 
-  # Update the list of recent kill IDs in the cache
-  defp update_recent_kill_ids(new_kill_id) do
-    # Get current list of kill IDs from the cache
-    kill_ids = CacheRepo.get(@recent_kills_cache_key) || []
+  # Helper to update the recent kills list with a new kill ID
+  defp update_recent_kills_list(kill_id) do
+    # Get current list of kill IDs
+    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
 
-    # Add the new ID to the front
+    # Add the new kill ID to the list (if not already present)
     updated_ids =
-      [new_kill_id | kill_ids]
-      # Remove duplicates
-      |> Enum.uniq()
-      # Keep only the most recent ones
-      |> Enum.take(@max_recent_kills)
+      if kill_id in kill_ids do
+        kill_ids
+      else
+        # Keep only the most recent 100
+        [kill_id | kill_ids] |> Enum.take(100)
+      end
 
     # Update the cache
-    CacheRepo.set(@recent_kills_cache_key, updated_ids, @kill_ttl)
-
-    AppLogger.kill_debug("Updated recent kill IDs in cache - now has #{length(updated_ids)} IDs")
+    CacheRepo.set(CacheKeys.zkill_recent_kills(), updated_ids, @kill_ttl)
   end
 end

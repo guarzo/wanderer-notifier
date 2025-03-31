@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifiers.Determiner do
   """
   require Logger
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepository
   alias WandererNotifier.Data.Killmail
@@ -347,75 +348,47 @@ defmodule WandererNotifier.Notifiers.Determiner do
     - true if the system is tracked
     - false otherwise
   """
-  def tracked_system?(system_id) when is_integer(system_id) or is_binary(system_id) do
-    # Convert system_id to string for consistent comparison
-    system_id_str = to_string(system_id)
+  def tracked_system?(system_id) when is_integer(system_id) do
+    system_id_str = Integer.to_string(system_id)
+    tracked_system?(system_id_str)
+  end
 
-    # Log the initial check for debugging
-    AppLogger.kill_info(
-      "🔎 SYSTEM TRACKING CHECK: Checking if system #{system_id_str} is tracked",
-      %{
-        system_id: system_id_str,
-        system_id_type: if(is_integer(system_id), do: "integer", else: "binary")
-      }
-    )
+  def tracked_system?(system_id_str) when is_binary(system_id_str) do
+    AppLogger.processor_debug("[Determiner] Checking if system #{system_id_str} is tracked")
 
-    # Check if system is tracked through direct tracking or track_all policy
-    direct_tracked = directly_tracked?(system_id_str)
-    via_track_all = tracked_via_track_all?(system_id_str)
-    tracked = direct_tracked || via_track_all
+    # First check if we have a direct tracking entry for the system
+    cache_key = CacheKeys.tracked_system(system_id_str)
+    cache_value = CacheRepository.get(cache_key)
 
-    # Log the tracking decision components
-    AppLogger.kill_info(
-      "📊 SYSTEM TRACKING DECISION for system #{system_id_str}: direct=#{direct_tracked}, via_track_all=#{via_track_all}, tracked=#{tracked}",
-      %{
-        system_id: system_id_str,
-        direct_tracked: direct_tracked,
-        via_track_all: via_track_all,
-        final_decision: tracked
-      }
-    )
-
-    # Use batch logger for system tracking checks
-    BatchLogger.count_event(:system_tracked, %{
+    # Log the cache check
+    AppLogger.processor_debug("[Determiner] Tracked system cache check",
       system_id: system_id_str,
-      tracked: tracked
-    })
+      value: inspect(cache_value)
+    )
+
+    # Get the system details from cache too
+    system_cache_key = CacheKeys.system(system_id_str)
+    system_in_cache = CacheRepository.get(system_cache_key)
+
+    AppLogger.processor_debug("[Determiner] System cache check",
+      system_id: system_id_str,
+      system: inspect(system_in_cache)
+    )
+
+    # Return tracking status with detailed logging
+    tracked = cache_value != nil
+
+    AppLogger.processor_debug("[Determiner] System tracking check result",
+      system_id: system_id_str,
+      tracked: tracked,
+      system_cache_key: system_cache_key,
+      system_in_cache: system_in_cache != nil
+    )
 
     tracked
   end
 
   def tracked_system?(_), do: false
-
-  # Helper functions for tracked_system?
-  defp directly_tracked?(system_id_str) do
-    cache_key = "tracked:system:#{system_id_str}"
-    cache_value = CacheRepository.get(cache_key)
-    cache_value != nil
-  end
-
-  defp tracked_via_track_all?(system_id_str) do
-    # Check if system exists in main cache and K-Space tracking is enabled
-    system_cache_key = "map:system:#{system_id_str}"
-    system_in_cache = CacheRepository.get(system_cache_key)
-    exists_in_cache = system_in_cache != nil
-    track_kspace_enabled = Features.track_kspace_systems?()
-
-    # Add detailed logging about the tracking decision
-    AppLogger.kill_info(
-      "🔍 KSPACE TRACKING CHECK for system #{system_id_str}",
-      %{
-        system_id: system_id_str,
-        system_cache_key: system_cache_key,
-        exists_in_cache: exists_in_cache,
-        track_kspace_enabled: track_kspace_enabled,
-        tracking_result: track_kspace_enabled && exists_in_cache,
-        feature_status: Features.get_feature_status()
-      }
-    )
-
-    track_kspace_enabled && exists_in_cache
-  end
 
   @doc """
   Checks if a killmail involves a tracked character (as victim or attacker).
@@ -497,7 +470,7 @@ defmodule WandererNotifier.Notifiers.Determiner do
 
   # Check if victim is tracked through direct cache lookup
   defp check_direct_victim_tracking(victim_id_str) do
-    direct_cache_key = "tracked:character:#{victim_id_str}"
+    direct_cache_key = CacheKeys.tracked_character(victim_id_str)
     CacheRepository.get(direct_cache_key) != nil
   end
 

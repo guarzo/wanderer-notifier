@@ -8,6 +8,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   # Interval is now configured via the Timings module
 
   alias WandererNotifier.Api.Map.Client
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
@@ -198,7 +199,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
     AppLogger.maintenance_debug(
       "Post-update cache verification",
-      cache_key: "map:characters",
+      cache_key: CacheKeys.character_list(),
       character_count: length(cache_list)
     )
 
@@ -223,7 +224,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
       AppLogger.maintenance_debug(
         "After manual cache update",
-        cache_key: "map:characters",
+        cache_key: CacheKeys.character_list(),
         character_count: length(final_cache_list)
       )
     end

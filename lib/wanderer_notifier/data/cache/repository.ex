@@ -5,6 +5,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
   use GenServer
   require Logger
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.Logger.BatchLogger
@@ -544,28 +545,22 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Determine if a key is critical - meaning a miss should be logged as an error
   defp critical_key?(key) do
-    String.starts_with?(key, "critical:") || key in ["license_status", "core_config"]
+    CacheKeys.is_critical_key?(key)
   end
 
   # Determine if a key is application state that might be unset
   defp state_key?(key) do
-    String.starts_with?(key, "state:") ||
-      String.starts_with?(key, "app:") ||
-      String.starts_with?(key, "config:")
+    CacheKeys.is_state_key?(key)
   end
 
   # Determine if a key stores map data
   defp map_key?(key) do
-    String.starts_with?(key, "map:") ||
-      String.starts_with?(key, "data:") ||
-      String.starts_with?(key, "config:")
+    CacheKeys.is_map_key?(key)
   end
 
   # Determine if a key stores array data
   defp array_key?(key) do
-    String.starts_with?(key, "array:") ||
-      String.starts_with?(key, "list:") ||
-      String.starts_with?(key, "recent:")
+    CacheKeys.is_array_key?(key)
   end
 
   # Define guard-compatible macros
@@ -989,25 +984,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   # Extract a key pattern for grouping similar cache keys
   defp extract_key_pattern(key) when is_binary(key) do
-    cond do
-      # For keys with IDs embedded, extract the pattern part
-      String.match?(key, ~r/^[\w\-]+:\w+:\d+$/) ->
-        # Pattern for keys like "map:system:12345" -> "map:system"
-        key |> String.split(":") |> Enum.take(2) |> Enum.join(":")
-
-      # For other known key formats
-      String.match?(key, ~r/^[\w\-]+:[\w\-]+$/) ->
-        # Keys like "map:systems" -> return as is
-        key
-
-      # Match most prefixes
-      true ->
-        # Try to get the prefix part
-        case String.split(key, ":", parts: 2) do
-          [prefix, _] -> "#{prefix}:*"
-          _ -> key
-        end
-    end
+    CacheKeys.extract_pattern(key)
   end
 
   defp extract_key_pattern(key), do: inspect(key)

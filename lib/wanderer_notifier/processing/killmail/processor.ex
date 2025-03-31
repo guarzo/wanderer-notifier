@@ -206,7 +206,7 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     )
 
     # Store the kill in the cache
-    Cache.update_recent_kills(killmail)
+    Cache.cache_kill(killmail.killmail_id, killmail)
 
     # Persist killmail if the feature is enabled and related to tracked character
     persist_result = persist_killmail_synchronously(killmail)
@@ -290,8 +290,7 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
         kill_id: kill_id,
         system_id: get_in(killmail.esi_data || %{}, ["solar_system_id"]),
         system_name: get_in(killmail.esi_data || %{}, ["solar_system_name"]),
-        character_tracking_enabled:
-          Features.character_tracking_enabled?(),
+        character_tracking_enabled: Features.character_tracking_enabled?(),
         system_tracking_enabled: Features.system_tracking_enabled?(),
         track_kspace_enabled: Features.track_kspace_systems?()
       }

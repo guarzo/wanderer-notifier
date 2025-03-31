@@ -8,6 +8,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.{Api, Killmail, TrackedCharacter}
@@ -704,7 +705,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   # Process a single kill, checking if it's in the date range
   defp process_single_kill(kill, start_date, end_date) do
     # First check if we have this kill cached
-    cache_key = "esi:killmail:#{kill["killmail_id"]}"
+    cache_key = CacheKeys.esi_killmail(kill["killmail_id"])
 
     case CacheRepo.get(cache_key) do
       nil -> fetch_and_check_kill(kill, cache_key, start_date, end_date)
@@ -714,38 +715,33 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
   # Fetch a kill from ESI and check if it's in the date range
   defp fetch_and_check_kill(kill, cache_key, start_date, end_date) do
-    # Not in cache, fetch from ESI
+    # Fetch from ESI if not in cache
     case ESIService.get_killmail(
            kill["killmail_id"],
            get_in(kill, ["zkb", "hash"])
          ) do
       {:ok, esi_data} ->
-        # Cache the ESI data for 24 hours
+        # Store in cache for future reference with 24h TTL
         CacheRepo.set(cache_key, esi_data, 86_400)
-        check_kill_in_date_range(kill, esi_data, start_date, end_date)
+        check_kill_relevance(esi_data, start_date, end_date)
 
-      {:error, reason} ->
-        AppLogger.processor_error("Failed to get ESI data", %{
-          kill_id: kill["killmail_id"],
-          error: inspect(reason)
-        })
-
-        :skip
+      _ ->
+        false
     end
   end
 
   # Check if a kill from cache is in the date range
-  defp check_cached_kill(kill, esi_data, start_date, end_date) do
-    check_kill_in_date_range(kill, esi_data, start_date, end_date)
+  defp check_cached_kill(_kill, esi_data, start_date, end_date) do
+    check_kill_relevance(esi_data, start_date, end_date)
   end
 
   # Check if a kill is in the requested date range
-  defp check_kill_in_date_range(kill, esi_data, start_date, end_date) do
-    case DateTime.from_iso8601(esi_data["killmail_time"]) do
+  defp check_kill_relevance(kill, start_date, end_date) do
+    case DateTime.from_iso8601(kill["killmail_time"]) do
       {:ok, kill_date, _} ->
         if DateTime.compare(kill_date, start_date) in [:gt, :eq] and
              DateTime.compare(kill_date, end_date) in [:lt, :eq] do
-          {:ok, Map.merge(kill, esi_data)}
+          {:ok, Map.merge(kill, %{killmail_time: DateTime.to_iso8601(kill_date)})}
         else
           :skip
         end

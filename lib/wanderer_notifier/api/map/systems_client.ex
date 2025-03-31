@@ -6,6 +6,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Api.Map.UrlBuilder
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
@@ -301,7 +302,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         system_id = system.solar_system_id
 
         if system_id do
-          system_cache_key = "map:system:#{system_id}"
+          system_cache_key = CacheKeys.system(system_id)
 
           AppLogger.api_debug(
             "[SystemsClient] Caching system ID #{system_id} at key #{system_cache_key}"
