@@ -1,7 +1,48 @@
 defmodule WandererNotifier.Api.ZKill.Client do
   @moduledoc """
-  Client for interacting with the zKillboard API.
-  Handles making HTTP requests to the zKillboard API endpoints.
+  Client for interacting with the ZKillboard API.
+  """
+
+  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+
+  require Logger
+
+  @doc """
+  Gets a single killmail by its ID.
+  """
+  def get_single_killmail(kill_id) do
+    client_module().get_single_killmail(kill_id)
+  end
+
+  @doc """
+  Gets recent kills with an optional limit.
+  """
+  def get_recent_kills(limit \\ 10) do
+    client_module().get_recent_kills(limit)
+  end
+
+  @doc """
+  Gets kills for a specific system with an optional limit.
+  """
+  def get_system_kills(system_id, limit \\ 5) do
+    client_module().get_system_kills(system_id, limit)
+  end
+
+  @doc """
+  Gets kills for a specific character with optional limit and page.
+  """
+  def get_character_kills(character_id, limit \\ 25, page \\ 1) do
+    client_module().get_character_kills(character_id, limit, page)
+  end
+
+  defp client_module do
+    Application.get_env(:wanderer_notifier, :zkill_client, __MODULE__.HTTP)
+  end
+end
+
+defmodule WandererNotifier.Api.ZKill.Client.HTTP do
+  @moduledoc """
+  HTTP implementation of the ZKill client.
   """
 
   @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
@@ -22,18 +63,10 @@ defmodule WandererNotifier.Api.ZKill.Client do
   @max_retries 3
   @retry_backoff_ms 2000
 
-  @impl true
-  @doc """
-  Retrieves a single killmail from zKillboard by ID.
+  @base_url "https://zkillboard.com/api"
 
-  ## Parameters
-  - `kill_id`: The ID of the killmail to retrieve
-
-  ## Returns
-  - `{:ok, killmail}`: The killmail data
-  - `{:error, reason}`: If an error occurred
-  """
   def get_single_killmail(kill_id) do
+    Logger.info("ZKill single_killmail HTTP request for kill_id: #{kill_id}")
     url = "https://zkillboard.com/api/killID/#{kill_id}/"
     label = "ZKill.killmail-#{kill_id}"
 
@@ -58,18 +91,8 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
-  @impl true
-  @doc """
-  Retrieves recent kills from zKillboard.
-
-  ## Parameters
-  - `limit`: The maximum number of kills to retrieve (default: 10)
-
-  ## Returns
-  - `{:ok, kills}`: A list of recent kills
-  - `{:error, reason}`: If an error occurred
-  """
-  def get_recent_kills(limit \\ 10) do
+  def get_recent_kills(limit) do
+    Logger.info("ZKill recent_kills HTTP request with limit: #{limit}")
     url = "https://zkillboard.com/api/kills/"
     label = "ZKill.recent_kills"
 
@@ -101,19 +124,8 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
-  @impl true
-  @doc """
-  Retrieves kills for a specific system from zKillboard.
-
-  ## Parameters
-  - `system_id`: The ID of the system to get kills for
-  - `limit`: The maximum number of kills to retrieve (default: 5)
-
-  ## Returns
-  - `{:ok, kills}`: A list of kills for the system
-  - `{:error, reason}`: If an error occurred
-  """
-  def get_system_kills(system_id, limit \\ 5) do
+  def get_system_kills(system_id, limit) do
+    Logger.info("ZKill system_kills HTTP request for system_id: #{system_id}, limit: #{limit}")
     # According to zKillboard API docs, the correct format is:
     # https://zkillboard.com/api/systemID/ID/
     url = "https://zkillboard.com/api/systemID/#{system_id}/"
@@ -156,24 +168,11 @@ defmodule WandererNotifier.Api.ZKill.Client do
     end
   end
 
-  @impl true
-  @doc """
-  Gets recent kill information for a specific character from zKillboard.
+  def get_character_kills(character_id, limit, page) do
+    Logger.info(
+      "ZKill character_kills HTTP request for character_id: #{character_id}, limit: #{limit}, page: #{page}"
+    )
 
-  ## Parameters
-  - `character_id`: The character ID to find kills for
-  - `limit`: Maximum number of kills to retrieve (defaults to 25)
-  - `page`: Page number for pagination (defaults to 1)
-
-  ## Returns
-  - `{:ok, kills}`: List of kills for the character
-  - `{:error, reason}`: If an error occurred
-
-  ## Example
-      iex> WandererNotifier.Api.ZKill.Client.get_character_kills(12345)
-      {:ok, [%{...}, %{...}]}
-  """
-  def get_character_kills(character_id, limit \\ 25, page \\ 1) do
     # Validate character_id is a valid integer
     character_id_str = to_string(character_id)
 

@@ -24,89 +24,85 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - false otherwise
   """
   def should_notify?(killmail) do
-    # Extract basic information about the killmail for logging
+    system_id = get_kill_system_id(killmail)
+    system_name = get_kill_system_name(killmail)
     kill_id = get_kill_id(killmail)
 
-    # Log the start of notification determination
-    AppLogger.processor_info("[Determiner] Starting kill notification determination",
+    AppLogger.processor_info("[Determiner] Checking notification conditions",
       kill_id: kill_id,
-      notifications_enabled: Features.kill_notifications_enabled?()
+      system_id: system_id,
+      system_name: system_name
     )
 
-    # Check if kill notifications are enabled
-    if Features.kill_notifications_enabled?() do
-      # Extract basic information about the killmail
-      kill_details = extract_kill_notification_details(killmail)
-
-      # Log extracted details
-      AppLogger.processor_debug("[Determiner] Extracted kill details",
-        kill_id: kill_details.kill_id,
-        system_id: kill_details.system_id,
-        system_name: kill_details.system_name,
-        is_tracked_system: kill_details.is_tracked_system,
-        has_tracked_character: kill_details.has_tracked_character
-      )
-
-      # Check if kill meets tracking criteria (system or character tracked)
-      meets_tracking_criteria =
-        kill_details.is_tracked_system || kill_details.has_tracked_character
-
-      if meets_tracking_criteria do
-        # Kill meets tracking criteria, check deduplication
-        AppLogger.processor_info("[Determiner] Kill meets tracking criteria",
-          kill_id: kill_details.kill_id,
-          tracked_system: kill_details.is_tracked_system,
-          tracked_character: kill_details.has_tracked_character
-        )
-
-        result = check_deduplication_and_decide(kill_details.kill_id)
-
-        # Log the final decision
-        AppLogger.processor_info("[Determiner] Kill notification decision",
-          kill_id: kill_details.kill_id,
-          should_notify: result,
-          reason: "Passed tracking and deduplication checks"
-        )
-
-        result
-      else
-        # Log why we're skipping this kill
-        AppLogger.processor_info("[Determiner] Skipping kill notification",
-          kill_id: kill_details.kill_id,
-          reason: "Does not meet tracking criteria",
-          tracked_system: kill_details.is_tracked_system,
-          tracked_character: kill_details.has_tracked_character
-        )
-
-        false
-      end
+    with true <- check_notifications_enabled(kill_id),
+         true <- tracked_system?(system_id),
+         true <- check_deduplication_and_decide(kill_id) do
+      true
     else
-      # Log that notifications are disabled
-      AppLogger.processor_info("[Determiner] Skipping kill notification",
-        kill_id: kill_id,
-        reason: "Kill notifications are disabled"
-      )
-
-      false
+      false -> false
+      _ -> false
     end
   end
 
-  # Extract all details needed for kill notification determination
-  defp extract_kill_notification_details(killmail) do
-    kill_id = get_kill_id(killmail)
-    system_id = get_kill_system_id(killmail)
-    system_name = get_kill_system_name(killmail)
-    is_tracked_system = tracked_system?(system_id)
-    has_tracked_character = has_tracked_character?(killmail)
+  defp check_notifications_enabled(kill_id) do
+    notifications_enabled = Features.notifications_enabled?()
+    system_notifications_enabled = Features.system_notifications_enabled?()
+    enabled = notifications_enabled && system_notifications_enabled
 
-    %{
+    AppLogger.processor_info("[Determiner] Kill notifications enabled check",
       kill_id: kill_id,
-      system_id: system_id,
-      system_name: system_name,
-      is_tracked_system: is_tracked_system,
-      has_tracked_character: has_tracked_character
-    }
+      notifications_enabled: notifications_enabled,
+      system_notifications_enabled: system_notifications_enabled,
+      enabled: enabled
+    )
+
+    enabled
   end
+
+  defp check_deduplication_and_decide(kill_id) do
+    case DeduplicationHelper.duplicate?(:kill, kill_id) do
+      {:ok, :new} ->
+        AppLogger.processor_info("[Determiner] Deduplication check - kill is new",
+          kill_id: kill_id,
+          is_new: true
+        )
+
+        true
+
+      {:ok, :duplicate} ->
+        AppLogger.processor_info("[Determiner] Deduplication check - kill is duplicate",
+          kill_id: kill_id,
+          is_new: false
+        )
+
+        false
+
+      {:error, reason} ->
+        AppLogger.processor_warn("[Determiner] Deduplication check failed, allowing by default",
+          kill_id: kill_id,
+          error: inspect(reason)
+        )
+
+        true
+    end
+  end
+
+  # # Extract all details needed for kill notification determination
+  # defp extract_kill_notification_details(killmail) do
+  #   kill_id = get_kill_id(killmail)
+  #   system_id = get_kill_system_id(killmail)
+  #   system_name = get_kill_system_name(killmail)
+  #   is_tracked_system = tracked_system?(system_id)
+  #   has_tracked_character = has_tracked_character?(killmail)
+
+  #   %{
+  #     kill_id: kill_id,
+  #     system_id: system_id,
+  #     system_name: system_name,
+  #     is_tracked_system: is_tracked_system,
+  #     has_tracked_character: has_tracked_character
+  #   }
+  # end
 
   # Get kill ID from killmail
   defp get_kill_id(killmail) do
@@ -118,17 +114,71 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  # Get system ID from killmail
-  defp get_kill_system_id(killmail) do
-    case killmail do
-      %Killmail{esi_data: %{"solar_system_id" => id}} when not is_nil(id) -> id
-      %{esi_data: %{"solar_system_id" => id}} when not is_nil(id) -> id
-      %{"esi_data" => %{"solar_system_id" => id}} when not is_nil(id) -> id
-      %{solar_system_id: id} when not is_nil(id) -> id
-      %{"solar_system_id" => id} when not is_nil(id) -> id
-      _ -> "unknown"
+  @doc """
+  Gets the system ID from a kill.
+  """
+  def get_kill_system_id(kill) do
+    with {:ok, system_id} <- extract_system_id_from_kill(kill),
+         {:ok, parsed_id} <- parse_system_id(system_id) do
+      {:ok, parsed_id}
+    else
+      {:error, reason} ->
+        AppLogger.processor_error("Failed to get system ID from kill", error: reason)
+        {:error, reason}
     end
   end
+
+  # Extract system ID from various kill data structures
+  defp extract_system_id_from_kill(kill) when is_map(kill) do
+    extract_system_id_from_map(kill)
+  end
+
+  defp extract_system_id_from_kill(_), do: {:error, :invalid_kill_data}
+
+  # Extract system ID from a map, trying different known locations
+  defp extract_system_id_from_map(kill_map) do
+    cond do
+      has_direct_system_id?(kill_map) -> extract_direct_system_id(kill_map)
+      has_solar_system?(kill_map) -> extract_from_solar_system(kill_map)
+      has_system?(kill_map) -> extract_from_system(kill_map)
+      true -> {:error, :missing_system_id}
+    end
+  end
+
+  defp has_direct_system_id?(kill_map), do: Map.has_key?(kill_map, "system_id")
+  defp has_solar_system?(kill_map), do: Map.has_key?(kill_map, "solar_system")
+  defp has_system?(kill_map), do: Map.has_key?(kill_map, "system")
+
+  defp extract_direct_system_id(kill_map), do: {:ok, kill_map["system_id"]}
+
+  defp extract_from_solar_system(%{"solar_system" => system}) do
+    extract_id_from_system_map(system)
+  end
+
+  defp extract_from_system(%{"system" => system}) do
+    extract_id_from_system_map(system)
+  end
+
+  defp extract_id_from_system_map(system) when is_map(system) do
+    cond do
+      Map.has_key?(system, "id") -> {:ok, system["id"]}
+      Map.has_key?(system, "system_id") -> {:ok, system["system_id"]}
+      true -> {:error, :missing_system_id}
+    end
+  end
+
+  defp extract_id_from_system_map(_), do: {:error, :invalid_system_data}
+
+  # Parse system ID into integer
+  defp parse_system_id(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, _} -> {:ok, id}
+      :error -> {:error, :invalid_system_id}
+    end
+  end
+
+  defp parse_system_id(system_id) when is_integer(system_id), do: {:ok, system_id}
+  defp parse_system_id(_), do: {:error, :invalid_system_id}
 
   # Get system name from killmail
   defp get_kill_system_name(killmail) do
@@ -158,35 +208,45 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    AppLogger.processor_debug("[Determiner] Checking if system #{system_id_str} is tracked")
+    AppLogger.processor_info("[Determiner] Checking if system #{system_id_str} is tracked",
+      system_id: system_id_str,
+      system_id_type: typeof(system_id_str)
+    )
 
     # First check if we have a direct tracking entry for the system
     cache_key = CacheKeys.tracked_system(system_id_str)
     cache_value = CacheRepo.get(cache_key)
 
-    # Log the cache check
-    AppLogger.processor_debug("[Determiner] Tracked system cache check",
+    # Log the cache check with actual value
+    AppLogger.processor_info("[Determiner] Tracked system cache check",
       system_id: system_id_str,
-      value: inspect(cache_value)
+      cache_key: cache_key,
+      cache_value: cache_value,
+      cache_value_type: typeof(cache_value)
     )
 
     # Get the system details from cache too
     system_cache_key = CacheKeys.system(system_id_str)
     system_in_cache = CacheRepo.get(system_cache_key)
 
-    AppLogger.processor_debug("[Determiner] System cache check",
+    AppLogger.processor_info("[Determiner] System cache check",
       system_id: system_id_str,
-      system: inspect(system_in_cache)
+      system_cache_key: system_cache_key,
+      system_in_cache: inspect(system_in_cache),
+      system_in_cache_type: typeof(system_in_cache)
     )
 
     # Return tracking status with detailed logging
     tracked = cache_value != nil
 
-    AppLogger.processor_debug("[Determiner] System tracking check result",
+    AppLogger.processor_info("[Determiner] System tracking check result",
       system_id: system_id_str,
       tracked: tracked,
-      system_cache_key: system_cache_key,
-      system_in_cache: system_in_cache != nil
+      reason:
+        if(tracked,
+          do: "Found in tracked systems cache",
+          else: "Not found in tracked systems cache"
+        )
     )
 
     tracked
@@ -258,7 +318,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Get all tracked character IDs
   defp get_all_tracked_character_ids do
-    all_characters = CacheRepo.get("map:characters") || []
+    all_characters = CacheRepo.get(CacheKeys.character_list()) || []
+
+    AppLogger.processor_debug("[Determiner] Getting tracked characters",
+      characters_count: length(all_characters)
+    )
 
     Enum.map(all_characters, fn char ->
       # Use character_id for consistency
@@ -338,41 +402,24 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.any?(&check_direct_victim_tracking/1)
   end
 
-  # Apply deduplication check and decide whether to send notification
-  defp check_deduplication_and_decide(kill_id) do
-    AppLogger.processor_debug("[Determiner] Checking deduplication for kill",
-      kill_id: kill_id
-    )
-
-    case DeduplicationHelper.duplicate?(:kill, kill_id) do
-      {:ok, :new} ->
-        # Not a duplicate, allow sending
-        AppLogger.processor_info("[Determiner] Kill is not a duplicate",
-          kill_id: kill_id,
-          decision: :allow
-        )
-
-        true
-
-      {:ok, :duplicate} ->
-        # Duplicate, skip notification
-        AppLogger.processor_info("[Determiner] Kill is a duplicate",
-          kill_id: kill_id,
-          decision: :skip
-        )
-
-        false
-
-      {:error, reason} ->
-        # Error during deduplication check - default to allowing
-        AppLogger.processor_warn(
-          "[Determiner] Deduplication check failed, allowing notification by default",
-          kill_id: kill_id,
-          error: inspect(reason),
-          decision: :allow_with_error
-        )
-
-        true
-    end
+  @doc """
+  Determines the type of a term.
+  """
+  def typeof(term) do
+    type_from_term(term)
   end
+
+  # Break down type checking into smaller functions for better maintainability
+  defp type_from_term(term) when is_binary(term), do: :string
+  defp type_from_term(term) when is_boolean(term), do: :boolean
+  defp type_from_term(term) when is_integer(term), do: :integer
+  defp type_from_term(term) when is_float(term), do: :float
+  defp type_from_term(term) when is_list(term), do: :list
+  defp type_from_term(term) when is_map(term), do: :map
+  defp type_from_term(term) when is_atom(term), do: :atom
+  defp type_from_term(term) when is_tuple(term), do: :tuple
+  defp type_from_term(term) when is_function(term), do: :function
+  defp type_from_term(term) when is_pid(term), do: :pid
+  defp type_from_term(term) when is_reference(term), do: :reference
+  defp type_from_term(_), do: :unknown
 end

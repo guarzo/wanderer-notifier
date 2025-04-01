@@ -8,6 +8,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
@@ -28,7 +29,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   """
   def update_systems(cached_systems \\ nil) do
     # Log cache status before update
-    pre_cache = CacheRepo.get("map:systems")
+    pre_cache = CacheRepo.get(CacheKeys.map_systems())
     pre_cache_size = if is_list(pre_cache), do: length(pre_cache), else: 0
     AppLogger.api_info("[SystemsClient] Pre-update cache status: #{pre_cache_size} systems")
 
@@ -104,7 +105,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       )
 
       # Return any successfully cached systems if possible
-      cached = cached_systems || CacheRepo.get("map:systems") || []
+      cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
       {:ok, cached}
   end
 
@@ -131,7 +132,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       systems
       |> Enum.filter(fn system ->
         # Keep only wormhole systems (class 1-6)
-        system.security_class in ["C1", "C2", "C3", "C4", "C5", "C6"]
+        system.security_class in ["C1", "C2", "C3", "C4", "C5", "C6", "C13"]
       end)
     end
   end
@@ -222,7 +223,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     Process.sleep(100)
 
     # Check the cache
-    cached_systems = CacheRepo.get("map:systems")
+    cached_systems = CacheRepo.get(CacheKeys.map_systems())
     cached_count = if is_list(cached_systems), do: length(cached_systems), else: 0
     expected_count = length(systems)
 
@@ -250,23 +251,24 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     )
 
     # Log the current cache content for verification
-    current_systems = CacheRepo.get("map:systems") || []
+    current_systems = CacheRepo.get(CacheKeys.map_systems()) || []
     current_count = length(current_systems)
     AppLogger.api_info("[SystemsClient] Current systems in cache before update: #{current_count}")
 
     # Try-rescue to catch any errors
     try do
       # Update the cache with direct set - using direct set just like characters.ex
-      result = CacheRepo.set("map:systems", systems, long_ttl)
+      result = CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
       AppLogger.api_info("[SystemsClient] Cache set result: #{inspect(result)}")
 
       # Also update system_ids list for fast lookups
       system_ids = Enum.map(systems, & &1.solar_system_id)
-      CacheRepo.set("map:system_ids", system_ids, long_ttl)
+      CacheRepo.set(CacheKeys.map_system_ids(), system_ids, long_ttl)
 
-      # Also cache individual systems by ID for better lookups
-      # This is important for tracked_via_track_all? to work properly
-      AppLogger.api_info("[SystemsClient] Caching individual systems by ID...")
+      # Also cache individual systems by ID for better lookups and mark them as tracked
+      AppLogger.api_info(
+        "[SystemsClient] Caching individual systems by ID and marking as tracked..."
+      )
 
       Enum.each(systems, fn system ->
         system_id = system.solar_system_id
@@ -279,13 +281,16 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
           )
 
           CacheRepo.set(system_cache_key, system, long_ttl)
+
+          # Mark the system as tracked
+          CacheHelpers.add_system_to_tracked(system_id, system)
         end
       end)
 
       # Verify the update with brief delay - copied from characters.ex approach
       # Increasing to 100ms for more reliable verification
       Process.sleep(100)
-      post_update_count = length(CacheRepo.get("map:systems") || [])
+      post_update_count = length(CacheRepo.get(CacheKeys.map_systems()) || [])
 
       AppLogger.api_info(
         "[SystemsClient] Systems cache updated - stored: #{post_update_count}, expected: #{length(systems)}"
@@ -314,7 +319,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   """
   def get_systems do
     # Try to get systems from cache first
-    case CacheRepo.get("map:systems") do
+    case CacheRepo.get(CacheKeys.map_systems()) do
       systems when is_list(systems) and length(systems) > 0 ->
         AppLogger.api_info("[SystemsClient] Retrieved #{length(systems)} systems from cache")
         systems

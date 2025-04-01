@@ -13,6 +13,7 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   require Logger
 
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Enrichment, Notification, Stats}
@@ -126,11 +127,19 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     # Extract basic info for logging
     system_id = get_kill_system_id(killmail)
 
+    # Get system name for enhanced logging
+    system_name =
+      case ESIService.get_system_info(system_id) do
+        {:ok, system_info} -> Map.get(system_info, "name", "Unknown")
+        _ -> "Unknown"
+      end
+
     AppLogger.kill_info(
-      "📥 WEBSOCKET KILL RECEIVED: Processing killmail #{kill_id} in system #{system_id}",
+      "📥 WEBSOCKET KILL RECEIVED: Processing killmail #{kill_id} in system #{system_name} (#{system_id})",
       %{
         kill_id: kill_id,
         system_id: system_id,
+        system_name: system_name,
         message_type: "killmail"
       }
     )

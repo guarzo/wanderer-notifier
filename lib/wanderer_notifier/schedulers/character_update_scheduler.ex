@@ -65,7 +65,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     AppLogger.maintenance_info("Starting character tracking update")
 
     # Get cached characters and ensure they're in the right format
-    cached_characters = CacheRepo.get("map:characters")
+    cached_characters = CacheRepo.get(CacheKeys.character_list())
     cached_characters_safe = normalize_cached_characters(cached_characters)
 
     AppLogger.maintenance_debug("Retrieved cached characters before update",
@@ -193,7 +193,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     # Ensure we're working with a list
     characters_list = ensure_list(characters)
 
-    updated_cache = CacheRepo.get("map:characters")
+    updated_cache = CacheRepo.get(CacheKeys.character_list())
     # Ensure the cache result is a list
     cache_list = ensure_list(updated_cache)
 
@@ -213,13 +213,13 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
       cache_ttl = CacheConfig.characters_cache_ttl()
 
       CacheRepo.set(
-        "map:characters",
+        CacheKeys.character_list(),
         characters_list,
         cache_ttl
       )
 
       # Double-check the cache again
-      final_cache = CacheRepo.get("map:characters")
+      final_cache = CacheRepo.get(CacheKeys.character_list())
       final_cache_list = ensure_list(final_cache)
 
       AppLogger.maintenance_debug(
