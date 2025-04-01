@@ -304,11 +304,12 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Separate function to handle character persistence with isolated error handling
   defp handle_character_persistence(tracked_characters) do
-    # Check if database is enabled using the TrackedCharacter module function
-    database_enabled = TrackedCharacter.database_enabled?()
+    persistence_config = Application.get_env(:wanderer_notifier, :persistence, [])
+    kill_charts_enabled = Keyword.get(persistence_config, :enabled)
+    map_charts_enabled = Application.get_env(:wanderer_notifier, :wanderer_feature_map_charts)
 
-    # Only continue if database is enabled
-    if database_enabled do
+    # Only continue if either kill charts or map charts are enabled
+    if kill_charts_enabled || map_charts_enabled do
       AppLogger.api_info(
         "[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database"
       )
@@ -317,7 +318,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       ensure_database_available_and_persist(tracked_characters)
     else
       AppLogger.api_debug(
-        "[CharactersClient] Database operations disabled, skipping character persistence"
+        "[CharactersClient] Database features disabled, skipping character persistence"
       )
 
       # Return empty result

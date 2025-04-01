@@ -1,12 +1,13 @@
-defmodule WandererNotifier.Helpers.CacheHelpersTest do
+defmodule WandererNotifier.Data.Cache.HelpersTest do
   use ExUnit.Case, async: false
   require Logger
 
   import Mox
   # Setup mocks before tests
   setup :verify_on_exit!
+
+  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.RepositoryMock
-  alias WandererNotifier.Helpers.CacheHelpers
 
   setup do
     # Set the mock as the implementation for Repository

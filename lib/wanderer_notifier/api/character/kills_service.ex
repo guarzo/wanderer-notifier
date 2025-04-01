@@ -12,7 +12,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     esi_service: WandererNotifier.Api.ESI.Service,
     persistence: WandererNotifier.Resources.KillmailPersistence,
     zkill_client: WandererNotifier.Api.ZKill.Client,
-    cache_helpers: WandererNotifier.Helpers.CacheHelpers
+    cache_helpers: WandererNotifier.Data.Cache.Helpers
   }
 
   @doc """

@@ -4,7 +4,7 @@ defmodule WandererNotifier.Data.Repository do
   coordinating between cache and external data sources.
   """
 
-  alias WandererNotifier.Helpers.CacheHelpers
+  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
 
   @doc """
   Gets tracked characters from the data store.

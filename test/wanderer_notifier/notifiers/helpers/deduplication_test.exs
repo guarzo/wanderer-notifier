@@ -1,22 +1,12 @@
-defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
+defmodule WandererNotifier.Notifiers.Helpers.DeduplicationTest do
   use ExUnit.Case, async: false
   require Logger
 
   alias WandererNotifier.Notifiers.Helpers.Deduplication, as: DeduplicationHelper
 
   setup do
-    # First clear any existing data to ensure tests start with a clean state
-    try do
-      DeduplicationHelper.clear_all()
-    rescue
-      _ -> :ok
-    end
-
-    # Only start the process if it's not already running
-    if !Process.whereis(DeduplicationHelper) do
-      start_supervised!(DeduplicationHelper)
-    end
-
+    # Clear all deduplication entries before each test
+    DeduplicationHelper.clear_all()
     :ok
   end
 

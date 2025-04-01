@@ -250,4 +250,47 @@ defmodule WandererNotifier.Config.Notifications do
       max_notifications_per_minute: max_notifications_per_minute()
     }
   end
+
+  @doc """
+  Returns the Discord configuration map for backward compatibility.
+  """
+  @spec get_discord_config() :: map()
+  def get_discord_config do
+    %{
+      token: discord_token(),
+      main_channel: channel_id(:main),
+      kill_channel: channel_id(:kill),
+      system_channel: channel_id(:system),
+      character_channel: channel_id(:character),
+      charts_channel: channel_id(:charts)
+    }
+  end
+
+  @doc """
+  Returns the environment configuration.
+  For backward compatibility with older modules.
+  """
+  @spec get_env() :: map()
+  def get_env do
+    %{
+      discord: get_discord_config(),
+      min_kill_value: min_kill_value(),
+      max_notifications_per_minute: max_notifications_per_minute()
+    }
+  end
+
+  @doc """
+  Returns whether kill charts are enabled.
+  """
+  @spec kill_charts_enabled?() :: boolean()
+  def kill_charts_enabled? do
+    Features.kill_charts_enabled?()
+  end
+
+  @doc """
+  Returns the Discord channel ID for a specific feature.
+  """
+  @spec discord_channel_id_for(atom()) :: String.t() | nil
+  def discord_channel_id_for(:kill_charts), do: channel_id(:charts)
+  def discord_channel_id_for(_), do: nil
 end

@@ -14,6 +14,7 @@ config :wanderer_notifier,
   repository: WandererNotifier.MockRepository,
   killmail_persistence: WandererNotifier.MockKillmailPersistence,
   logger: WandererNotifier.MockLogger,
+  notifier_factory: WandererNotifier.MockNotifierFactory,
 
   # Faster timeouts for tests
   api_timeout: 100,
@@ -25,12 +26,17 @@ config :wanderer_notifier,
     # Disable for tests
     "generate_tps_charts" => false
   },
-  config_module: WandererNotifier.MockConfig
+  config_module: WandererNotifier.MockConfig,
+  killmail_chart_adapter: WandererNotifier.MockKillmailChartAdapter,
+  discord_notifier: WandererNotifier.MockDiscordNotifier,
+  structured_formatter: WandererNotifier.MockStructuredFormatter,
+  date_module: WandererNotifier.MockDate
 
 # Prevent Nostrum from starting during tests
 config :nostrum,
   token: "fake_token_for_testing",
-  gateway_intents: []
+  gateway_intents: [],
+  start_nostrum: false
 
 # Prevent application from starting external connections
 config :wanderer_notifier, :start_external_connections, false

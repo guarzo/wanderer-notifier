@@ -277,7 +277,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     base_fields = [
       %{name: "Value", value: kill_context.formatted_value, inline: true},
       %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
-      %{name: "Final Blow", value: final_blow_details.text, inline: true}
+      %{name: "Final Blow", value: final_blow_details.text, inline: true},
+      %{name: "Security", value: kill_context.security_formatted || "Unknown", inline: true}
     ]
 
     # Add security field (always present, for test compatibility)
@@ -291,7 +292,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     # Add alliance field if available (this makes exactly 5 fields)
     if victim_info.alliance do
-      fields_with_security ++ [%{name: "Alliance", value: victim_info.alliance, inline: true}]
+      base_fields ++ [%{name: "Alliance", value: victim_info.alliance, inline: true}]
     else
       # If no alliance, add location to keep the field count at 5
       system_with_link =
@@ -636,6 +637,14 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
       {:ok, zkill_kills} when is_list(zkill_kills) ->
         process_kill_data(fields, zkill_kills)
+
+      {:error, {:domain_error, :zkill, {:api_error, error_msg}}} ->
+        AppLogger.processor_warn("[StructuredFormatter] ZKill API error: #{error_msg}")
+        fields
+
+      {:error, reason} ->
+        log_zkill_error(system_id_int, :error, reason)
+        fields
 
       {code, error} ->
         log_zkill_error(system_id_int, code, error)

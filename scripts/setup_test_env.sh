@@ -18,7 +18,7 @@ ExUnit.start()
 
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HTTP.Behaviour)
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.Behaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.Behaviour)
 Mox.defmock(WandererNotifier.MockDiscord, for: WandererNotifier.Discord.Behaviour)
 Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.WebSocket.Behaviour)
 

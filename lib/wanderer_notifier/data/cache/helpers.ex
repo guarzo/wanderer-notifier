@@ -1,9 +1,10 @@
-defmodule WandererNotifier.Helpers.CacheHelpers do
+defmodule WandererNotifier.Data.Cache.Helpers do
   @moduledoc """
-  Helper functions for working with cache.
+  Centralized cache helper functions.
+  Implements the CacheBehaviour and provides all caching functionality.
   """
 
-  @behaviour WandererNotifier.Helpers.CacheHelpersBehaviour
+  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
 
   # Get the configured cache repository module
   defp repo_module do
@@ -43,9 +44,9 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   @impl true
   def get_ship_name(ship_type_id) do
     case repo_module().get("ship:#{ship_type_id}") do
-      nil -> nil
-      name when is_binary(name) -> name
-      _ -> nil
+      nil -> {:error, :not_found}
+      name when is_binary(name) -> {:ok, name}
+      _ -> {:error, :invalid_data}
     end
   end
 
@@ -55,9 +56,9 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   @impl true
   def get_character_name(character_id) do
     case repo_module().get("character:#{character_id}") do
-      nil -> nil
-      name when is_binary(name) -> name
-      _ -> nil
+      nil -> {:error, :not_found}
+      name when is_binary(name) -> {:ok, name}
+      _ -> {:error, :invalid_data}
     end
   end
 
@@ -67,9 +68,9 @@ defmodule WandererNotifier.Helpers.CacheHelpers do
   @impl true
   def get_cached_kills(system_id) do
     case repo_module().get("kills:#{system_id}") do
-      nil -> []
-      kills when is_list(kills) -> kills
-      _ -> []
+      nil -> {:ok, []}
+      kills when is_list(kills) -> {:ok, kills}
+      _ -> {:error, :invalid_data}
     end
   end
 

@@ -9,7 +9,6 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   alias WandererNotifier.Data.Repo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.StartupTracker
-  alias WandererNotifier.Resources.TrackedCharacter
   alias WandererNotifier.Schedulers
   alias WandererNotifier.Schedulers.Registry
 
@@ -71,28 +70,46 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   # Add kill charts schedulers if feature is enabled and database is available
   defp maybe_add_kill_chart_schedulers(core_schedulers) do
-    if Config.kill_charts_enabled?() && database_ready?() do
-      kill_chart_schedulers = [
-        {Schedulers.KillmailRetentionScheduler, []},
-        {Schedulers.KillmailAggregationScheduler, []}
-      ]
+    persistence_config = Application.get_env(:wanderer_notifier, :persistence, [])
+    kill_charts_enabled = Keyword.get(persistence_config, :enabled)
 
-      # Track kill chart schedulers
-      if Process.get(:startup_tracker) do
-        StartupTracker.record_event(:scheduler_setup, %{
-          kill_chart_schedulers: length(kill_chart_schedulers)
-        })
-      end
+    if kill_charts_enabled do
+      add_kill_chart_schedulers_if_db_ready(core_schedulers)
+    else
+      AppLogger.scheduler_info("Kill charts feature disabled, skipping kill chart schedulers")
+      core_schedulers
+    end
+  end
 
+  # Add kill chart schedulers if database is ready
+  defp add_kill_chart_schedulers_if_db_ready(core_schedulers) do
+    if database_ready?() do
+      kill_chart_schedulers = create_kill_chart_schedulers()
+      track_kill_chart_schedulers(kill_chart_schedulers)
       core_schedulers ++ kill_chart_schedulers
     else
-      if Config.kill_charts_enabled?() do
-        AppLogger.scheduler_warn(
-          "Kill charts enabled but database not ready, skipping kill chart schedulers"
-        )
-      end
+      AppLogger.scheduler_warn(
+        "Kill charts enabled but database not ready, skipping kill chart schedulers"
+      )
 
       core_schedulers
+    end
+  end
+
+  # Create the list of kill chart schedulers
+  defp create_kill_chart_schedulers do
+    [
+      {Schedulers.KillmailRetentionScheduler, []},
+      {Schedulers.KillmailAggregationScheduler, []}
+    ]
+  end
+
+  # Track kill chart schedulers in startup tracker
+  defp track_kill_chart_schedulers(kill_chart_schedulers) do
+    if Process.get(:startup_tracker) do
+      StartupTracker.record_event(:scheduler_setup, %{
+        kill_chart_schedulers: length(kill_chart_schedulers)
+      })
     end
   end
 
@@ -102,7 +119,14 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   Returns true if the database is not required or if the connection is established.
   """
   def database_ready? do
-    if TrackedCharacter.database_enabled?() do
+    persistence_config = Application.get_env(:wanderer_notifier, :persistence, [])
+    kill_charts_enabled = Keyword.get(persistence_config, :enabled)
+    map_charts_enabled = Application.get_env(:wanderer_notifier, :wanderer_feature_map_charts)
+
+    if kill_charts_enabled == false && map_charts_enabled == false do
+      AppLogger.scheduler_info("Database features disabled, skipping database check")
+      true
+    else
       # Add a brief delay to ensure the Repo is fully started
       Process.sleep(500)
 
@@ -119,8 +143,6 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
           false
       end
-    else
-      true
     end
   end
 

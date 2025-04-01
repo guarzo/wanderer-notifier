@@ -169,6 +169,51 @@ track_kspace_enabled =
     true -> true
   end
 
+# Configure kill charts feature
+kill_charts_enabled =
+  case get_env.("WANDERER_FEATURE_KILL_CHARTS", get_env.("ENABLE_KILL_CHARTS", "false")) do
+    "true" -> true
+    _ -> false
+  end
+
+# Configure map charts feature
+map_charts_enabled =
+  case get_env.("WANDERER_FEATURE_MAP_CHARTS", get_env.("ENABLE_MAP_CHARTS", "false")) do
+    "true" -> true
+    _ -> false
+  end
+
+# Log the feature configuration for debugging
+IO.puts("Feature Configuration:")
+IO.puts("  Kill Charts: #{kill_charts_enabled}")
+IO.puts("  Map Charts: #{map_charts_enabled}")
+
+config :wanderer_notifier, :wanderer_feature_map_charts, map_charts_enabled
+
+# Parse retention days with safer handling
+retention_days =
+  case Integer.parse(
+         get_env.(
+           "WANDERER_PERSISTENCE_RETENTION_DAYS",
+           get_env.("PERSISTENCE_RETENTION_DAYS", "180")
+         )
+       ) do
+    {days, _} -> days
+    :error -> 180
+  end
+
+# Configure persistence settings
+config :wanderer_notifier, :persistence,
+  enabled: kill_charts_enabled,
+  retention_period_days: retention_days,
+  # Daily at midnight
+  aggregation_schedule:
+    get_env.(
+      "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
+      get_env.("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
+    )
+
+# Update the features map to be consistent with individual settings
 features_map = %{
   notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
   character_notifications_enabled:
@@ -183,8 +228,10 @@ features_map = %{
   tracked_characters_notifications_enabled:
     get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
   activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
-  kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "true") == "true",
-  map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "true") == "true",
+  # Use the same value we configured above
+  kill_charts: kill_charts_enabled,
+  # Use the same value we configured above
+  map_charts: map_charts_enabled,
   track_kspace_systems: track_kspace_enabled
 }
 
@@ -234,12 +281,16 @@ config :wanderer_notifier, :port, port_value
 
 config :wanderer_notifier, :scheme, get_env.("WANDERER_SCHEME", get_env.("SCHEME", "http"))
 
-# Configure kill charts feature
-kill_charts_enabled =
-  case get_env.("WANDERER_FEATURE_KILL_CHARTS", get_env.("ENABLE_KILL_CHARTS", "false")) do
-    "true" -> true
-    _ -> false
-  end
+# Configure database settings
+# Store database configuration in the standardized format for WandererNotifier.Config.Database
+config :wanderer_notifier, :database,
+  username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
+  password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
+  hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),
+  database:
+    get_env.("WANDERER_DB_NAME", get_env.("POSTGRES_DB", "wanderer_notifier_#{config_env()}")),
+  port: get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432")),
+  pool_size: get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10"))
 
 # Parse retention days with safer handling
 retention_days =

@@ -454,8 +454,8 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp send_character_notification(character_info) do
-    notifier = NotifierFactory.get_notifier()
-    notifier.send_new_tracked_character_notification(character_info)
+    AppLogger.api_info("Sending notification for new character: #{character_info.name}")
+    NotifierFactory.notify(:send_new_tracked_character_notification, [character_info])
   end
 
   defp find_new_characters(_new_chars, []) do

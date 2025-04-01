@@ -22,17 +22,15 @@ function App() {
 
   useEffect(() => {
     // Fetch configuration when component mounts
-    fetch('/charts/config')
+    fetch('/api/charts/config')
       .then(response => response.json())
       .then(data => {
-        setCorpToolsEnabled(data.corp_tools_enabled);
-        setMapChartsEnabled(data.map_tools_enabled);
+        setMapChartsEnabled(data.map_charts_enabled);
         setKillChartsEnabled(data.kill_charts_enabled);
         setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching chart config:', error);
-        setCorpToolsEnabled(false);
         setMapChartsEnabled(false);
         setKillChartsEnabled(false);
         setLoading(false);

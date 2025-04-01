@@ -470,26 +470,28 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   defp start_zkill_ws(state) do
-    AppLogger.startup_info("Service attempting to start ZKill websocket")
+    # Check if websocket is enabled in config
+    if Websocket.enabled() do
+      AppLogger.websocket_info("Starting zKill websocket")
 
     # Check if the websocket is enabled in config
     if Websocket.enabled() do
       case ZKillWebsocket.start_link(self()) do
         {:ok, pid} ->
-          AppLogger.websocket_info("ZKill websocket started", pid: inspect(pid))
-          # Monitor the websocket process
-          Process.monitor(pid)
+          AppLogger.websocket_info("zKill websocket started successfully")
           %{state | ws_pid: pid}
 
         {:error, reason} ->
           AppLogger.websocket_error("Failed to start websocket", error: inspect(reason))
-          DiscordNotifier.send_message("Failed to start websocket: #{inspect(reason)}")
-          # Schedule a retry
-          Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
+
+          # Notify about the failure
+          NotifierFactory.notify(:send_message, ["Failed to start websocket: #{inspect(reason)}"])
+
+          # Return state without websocket
           state
       end
     else
-      AppLogger.websocket_info("ZKill websocket disabled by configuration")
+      AppLogger.websocket_info("zKill websocket disabled by configuration")
       state
     end
   end

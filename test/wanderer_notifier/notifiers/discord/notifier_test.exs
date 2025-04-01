@@ -1,11 +1,11 @@
-defmodule WandererNotifier.Discord.NotifierTest do
+defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
   require Logger
 
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Discord.Notifier
+  alias WandererNotifier.Notifiers.Discord.Notifier
 
   setup do
     previous_env = Application.get_env(:wanderer_notifier, :env)

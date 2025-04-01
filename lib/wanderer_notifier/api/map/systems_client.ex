@@ -9,6 +9,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -203,9 +204,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Process a non-wormhole system (no enrichment needed)
   defp process_non_wormhole_system(system, acc) do
-    # Non-wormhole systems don't need enrichment, but ensure statics is never nil
-    updated_system = ensure_statics_not_nil(system)
-    Map.put(acc, system.solar_system_id, updated_system)
+    # Update the map with the original system
+    Map.put(acc, system.solar_system_id, system)
   end
 
   # Ensure statics field is never nil
@@ -535,82 +535,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     )
   end
 
-  defp send_system_notification(system) do
-    map_system = ensure_map_system(system)
-    log_system_details(map_system)
-
-    # Get notifier and send notification directly - simplified approach
-    AppLogger.api_info("[SystemsClient] Sending system notification via NotifierFactory")
-    notifier = NotifierFactory.get_notifier()
-    notifier.send_new_system_notification(map_system)
-
-    # Return success
-    {:ok, map_system.id}
-  rescue
-    e ->
-      AppLogger.api_error(
-        "[SystemsClient] Error sending system notification: #{Exception.message(e)}"
-      )
-
-      {:error, e}
-  end
-
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      # Already a MapSystem, just return it
-      system
-    else
-      # Try to create MapSystem from a map or other structure
-      try do
-        # Check if we need to convert it
-        if is_map(system) do
-          MapSystem.new(system)
-        else
-          # Log error and return original
-          AppLogger.api_error("[SystemsClient] Cannot convert to MapSystem: #{inspect(system)}")
-          system
-        end
-      rescue
-        e ->
-          # Log error and return original on conversion failure
-          AppLogger.api_error(
-            "[SystemsClient] Failed to convert to MapSystem: #{Exception.message(e)}"
-          )
-
-          system
-      end
-    end
-  end
-
-  defp log_system_details(map_system) do
-    if MapSystem.wormhole?(map_system) do
-      log_wormhole_system_details(map_system)
-    else
-      log_non_wormhole_system_details(map_system)
-    end
-  end
-
-  defp log_wormhole_system_details(map_system) do
-    statics_list = map_system.statics || []
-    type_description = map_system.type_description || "Unknown"
-    class_title = map_system.class_title
-
-    AppLogger.api_info(
-      "[SystemsClient] Processing wormhole system notification - " <>
-        "ID: #{map_system.solar_system_id}, " <>
-        "Name: #{map_system.name}, " <>
-        "Type: #{type_description}, " <>
-        "Class: #{class_title}, " <>
-        "Statics: #{Enum.join(statics_list, ", ")}"
-    )
-  end
-
-  defp log_non_wormhole_system_details(map_system) do
-    AppLogger.api_info(
-      "[SystemsClient] Processing non-wormhole system notification - " <>
-        "ID: #{map_system.solar_system_id}, " <>
-        "Name: #{map_system.name}, " <>
-        "Type: #{map_system.type_description}"
-    )
+  defp send_system_notification(map_system) do
+    AppLogger.api_info("Sending notification for new system: #{map_system.name}")
+    NotifierFactory.notify(:send_new_system_notification, [map_system])
   end
 end

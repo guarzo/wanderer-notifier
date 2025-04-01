@@ -1,11 +1,12 @@
 defmodule WandererNotifier.Notifiers.TestNotifier do
   @moduledoc """
   Test notifier for use in test environment.
+  This module is the single source of truth for test notifications.
   """
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl WandererNotifier.Notifiers.Behaviour
   def send_message(message, _feature \\ nil) do
@@ -33,7 +34,11 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
 
   @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(killmail, kill_id) do
-    Logger.info("TEST NOTIFIER KILL: #{inspect(killmail)} - #{kill_id}")
+    AppLogger.processor_debug("[TEST] Enriched kill",
+      kill_id: kill_id,
+      killmail: inspect(killmail, limit: 50)
+    )
+
     :ok
   end
 
@@ -47,13 +52,27 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
 
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) do
-    Logger.info("TEST NOTIFIER SYSTEM: #{inspect(system)}")
+    system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
+    system_name = Map.get(system, "name") || Map.get(system, :name)
+
+    AppLogger.processor_debug("[TEST] New system",
+      system_id: system_id,
+      system_name: system_name
+    )
+
     :ok
   end
 
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character) do
-    Logger.info("TEST NOTIFIER CHARACTER: #{inspect(character)}")
+    char_id = Map.get(character, "character_id") || Map.get(character, :character_id)
+    char_name = Map.get(character, "name") || Map.get(character, :name)
+
+    AppLogger.processor_debug("[TEST] New character",
+      character_id: char_id,
+      character_name: char_name
+    )
+
     :ok
   end
 
@@ -68,10 +87,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   Sends a test notification for an activity chart.
   """
   def send_activity_chart_notification(chart_info) do
-    Logger.info(
-      "TEST NOTIFIER: Would send notification for activity chart: #{inspect(chart_info)}"
-    )
-
+    AppLogger.processor_debug("[TEST] Activity chart", chart_info: inspect(chart_info))
     :ok
   end
 end

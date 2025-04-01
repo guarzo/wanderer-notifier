@@ -1,6 +1,7 @@
-defmodule WandererNotifier.Cache.Behaviour do
+defmodule WandererNotifier.Data.Cache.Behaviour do
   @moduledoc """
-  Defines the behaviour for cache operations to enable mocking in tests.
+  Behaviour definition for cache implementations.
+  Defines the contract that any cache implementation must fulfill.
   """
 
   @callback get(key :: term()) :: {:ok, term() | nil} | {:error, term()}

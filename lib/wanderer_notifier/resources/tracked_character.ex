@@ -9,6 +9,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Repo

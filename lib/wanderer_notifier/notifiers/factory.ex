@@ -5,7 +5,7 @@ defmodule WandererNotifier.Notifiers.Factory do
 
   require Logger
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
 
   @doc """

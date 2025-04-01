@@ -58,7 +58,7 @@ defmodule WandererNotifier.MockCacheHelpers do
   Mock implementation of the cache helpers for testing.
   """
 
-  @behaviour WandererNotifier.Helpers.CacheHelpersBehaviour
+  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
 
   @impl true
   def get_cached_kills(_character_id), do: {:ok, []}

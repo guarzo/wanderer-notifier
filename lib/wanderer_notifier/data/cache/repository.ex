@@ -1,8 +1,9 @@
 defmodule WandererNotifier.Data.Cache.Repository do
   @moduledoc """
-  Cachex repository for WandererNotifier.
-  Provides a simple interface for caching data with optional TTL.
+  GenServer implementation for the cache repository.
+  Provides a centralized interface for cache operations.
   """
+
   use GenServer
   require Logger
   alias WandererNotifier.Cache.Keys, as: CacheKeys
@@ -10,116 +11,35 @@ defmodule WandererNotifier.Data.Cache.Repository do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Logger.Logger.BatchLogger
 
-  @cache_name :wanderer_notifier_cache
+  # Use the cache name from configuration
+  @cache_name CacheConfig.get_cache_name()
 
-  # Default number of retries for cache operations
-  @default_retries 3
+  # -- STARTUP AND INITIALIZATION --
 
-  def start_link(_args \\ []) do
-    AppLogger.cache_info("Starting cache repository")
-
-    # Setup cache directory
-    {cache_dir, memory_only} = setup_cache_directory()
-
-    # Configure and start Cachex
-    cachex_result = start_cachex(cache_dir, memory_only)
-
-    # Start the GenServer monitor if Cachex started successfully
-    start_monitor_process(cachex_result, cache_dir, memory_only)
-  end
-
-  # Set up the cache directory and determine if we should use memory-only mode
-  defp setup_cache_directory do
-    # Determine the cache directory path
-    cache_dir = determine_cache_dir()
-
-    # Ensure the directory exists with error handling
-    cache_dir_result = ensure_cache_directory(cache_dir)
-
-    # Check if we're in memory-only mode
-    memory_only = cache_dir_result == :memory_only
-
-    # Return the directory and memory-only flag
-    {if(memory_only, do: nil, else: cache_dir_result), memory_only}
-  end
-
-  # Configure and start Cachex with the appropriate options
-  defp start_cachex(cache_dir, memory_only) do
-    # Build Cachex options
-    cachex_options = build_cachex_options(cache_dir, memory_only)
-
-    # Start Cachex with explicit name
-    case Cachex.start_link(@cache_name, cachex_options) do
-      {:ok, pid} = result ->
-        AppLogger.cache_info("Cache storage started successfully", pid: inspect(pid))
-        result
-
-      {:error, {:already_started, pid}} ->
-        AppLogger.cache_warn("Cache already started", pid: inspect(pid))
-        {:ok, pid}
-
-      error ->
-        AppLogger.cache_error("Failed to start cache", error: inspect(error))
-        error
-    end
-  end
-
-  # Build Cachex configuration options
-  defp build_cachex_options(cache_dir, memory_only) do
-    # Base configuration
-    base_options = [
-      # Set a higher limit for maximum entries (default is often too low)
-      limit: 10_000,
-
-      # Configure memory limits (in bytes) - 256MB
-      max_size: 256 * 1024 * 1024,
-
-      # Policy for when the cache hits the limit
-      policy: Cachex.Policy.LRW,
-
-      # Enable statistics for better monitoring
-      stats: true,
-
-      # Set fallback function for cache misses
-      fallback: &handle_cache_miss/1
+  def start_link(_args) do
+    # Initialize the cache with default options
+    cachex_options = [
+      stats: true
     ]
 
-    # Add disk persistence only if we have a valid cache directory
-    if cache_dir && !memory_only do
-      # Log disk persistence configuration
-      AppLogger.cache_debug("Configuring disk persistence", path: cache_dir)
-
-      disk_options = [
-        disk: [
-          path: cache_dir,
-          # 1 minute
-          sync_interval: 60_000,
-          sync_on_terminate: true
-        ]
-      ]
-
-      Keyword.merge(base_options, disk_options)
-    else
-      # Log that we're in memory-only mode
-      if memory_only do
-        AppLogger.cache_warn("Running in memory-only mode without disk persistence")
-      end
-
-      base_options
+    # Start Cachex with the configured name and options
+    case Cachex.start_link(@cache_name, cachex_options) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      error -> error
     end
   end
 
-  # Start the monitor process based on Cachex start result
-  defp start_monitor_process(cachex_result, cache_dir, memory_only) do
-    case cachex_result do
-      {:ok, _cachex_pid} ->
-        # Start the cache monitoring process
-        GenServer.start_link(__MODULE__, [cache_dir, memory_only], name: __MODULE__)
+  # -- PRIVATE HELPERS --
 
-      error ->
-        # Return the error so supervision can handle it properly
-        error
-    end
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 500
+    }
   end
 
   # Helper to ensure the cache directory exists with robust error handling
@@ -199,46 +119,34 @@ defmodule WandererNotifier.Data.Cache.Repository do
   # GENSERVER CALLBACKS
 
   @impl true
-  def init(args) do
-    # Initialize state with memory_only flag
-    [cache_dir, memory_only] = args
-
-    initial_state = %{
-      last_check_time: 0,
-      last_systems_count: 0,
-      last_characters_count: 0,
-      last_error: nil,
-      last_error_time: 0,
-      memory_only: memory_only,
-      cache_dir: cache_dir
-    }
-
-    # Schedule first cache check
+  def init([cache_dir]) do
+    # Schedule the first cache check
     schedule_cache_check()
 
-    # Schedule initial cache purge
-    schedule_cache_purge()
+    {:ok,
+     %{
+       last_systems_count: 0,
+       last_characters_count: 0,
+       consecutive_failures: 0,
+       cache_dir: cache_dir
+     }}
+  end
 
-    {:ok, initial_state}
+  # Fallback for when no cache_dir is passed (for backward compatibility)
+  @impl true
+  def init(_) do
+    schedule_cache_check()
+
+    {:ok,
+     %{last_systems_count: 0, last_characters_count: 0, consecutive_failures: 0, cache_dir: nil}}
   end
 
   # Handle cache check message
   @impl true
   def handle_info(:check_cache, state) do
     # Get cache stats
-    stats_result = Cachex.stats(@cache_name)
-
-    # Handle stats result, which could be {:ok, stats} or {:error, :stats_disabled}
-    case stats_result do
-      {:ok, stats} ->
-        AppLogger.cache_debug("Cache stats", stats: inspect(stats))
-
-      {:error, :stats_disabled} ->
-        AppLogger.cache_debug("Cache stats are disabled")
-
-      other_error ->
-        AppLogger.cache_warn("Failed to get cache stats", error: inspect(other_error))
-    end
+    {:ok, stats} = Cachex.stats(@cache_name)
+    AppLogger.cache_debug("[CacheRepo] Cache stats: #{inspect(stats)}")
 
     # Check systems and characters counts
     systems = get("map:systems") || []
@@ -273,58 +181,8 @@ defmodule WandererNotifier.Data.Cache.Repository do
     # Schedule the next check
     schedule_cache_check()
 
-    # Return updated state
     {:noreply,
-     %{
-       state
-       | last_check_time: System.os_time(:second),
-         last_systems_count: systems_count,
-         last_characters_count: characters_count
-     }}
-  end
-
-  @impl true
-  def handle_info(:purge_cache, state) do
-    # Schedule next purge
-    schedule_cache_purge()
-
-    # Perform the purge operation
-    # Get cache stats for monitoring
-    case get_cachex_stats() do
-      {:ok, stats} ->
-        AppLogger.cache_debug("Cache statistics", stats: inspect(stats))
-
-      {:error, :stats_disabled} ->
-        AppLogger.cache_debug("Cache statistics are disabled")
-
-      other_error ->
-        AppLogger.cache_warn("Failed to get cache statistics", error: inspect(other_error))
-    end
-
-    # Log purge operation at info level
-    AppLogger.cache_info("Performing hourly cache purge")
-
-    # Perform the actual purge
-    purge_expired_entries()
-  rescue
-    e ->
-      # Update state with error
-      updated_state = %{
-        state
-        | last_error: Exception.message(e),
-          last_error_time: System.os_time(:second)
-      }
-
-      {:noreply, updated_state}
-
-      {:noreply, state}
-  end
-
-  @impl true
-  def handle_info(msg, state) do
-    # Log unhandled messages at warning level
-    AppLogger.cache_warn("Received unexpected message", message: inspect(msg))
-    {:noreply, state}
+     %{state | last_systems_count: systems_count, last_characters_count: characters_count}}
   end
 
   # Determines if a count change should be logged
@@ -350,32 +208,26 @@ defmodule WandererNotifier.Data.Cache.Repository do
   end
 
   defp schedule_cache_check do
-    Process.send_after(self(), :check_cache, 60_000)
+    Process.send_after(self(), :check_cache, Timings.cache_check_interval())
   end
 
   @doc """
   Gets a value from the cache by key.
   Returns nil if the key doesn't exist.
-
-  Important: This function always unwraps {:ok, value} tuples to return just the value.
   """
   def get(key) do
     retry_with_backoff(fn ->
-      # Use a sampling approach to reduce debug logs (only log ~1% of gets)
-      should_log = :rand.uniform(100) <= 1
+      AppLogger.cache_debug("[CacheRepo] Getting value for key: #{key}")
+      result = Cachex.get(@cache_name, key)
+      AppLogger.cache_debug("[CacheRepo] Raw result from Cachex: #{inspect(result)}")
 
-      # Log the get operation if sampled
-      log_get_operation(key, should_log)
+      # Check if the key exists in the cache
+      exists_result = Cachex.exists?(@cache_name, key)
+      AppLogger.cache_debug("[CacheRepo] Key exists check: #{inspect(exists_result)}")
 
-      # Get the value from cache, handling the case where cache isn't available
-      result =
-        try do
-          Cachex.get(@cache_name, key)
-        rescue
-          e ->
-            AppLogger.cache_error("Error accessing cache", error: Exception.message(e), key: key)
-            {:error, :no_cache}
-        end
+      # Check TTL for the key
+      ttl_result = Cachex.ttl(@cache_name, key)
+      AppLogger.cache_debug("[CacheRepo] TTL for key: #{inspect(ttl_result)}")
 
       # Log detailed cache info if sampled
       log_cache_details(key, result, should_log)
@@ -617,107 +469,63 @@ defmodule WandererNotifier.Data.Cache.Repository do
             hits: stats[:hits] || 0,
             misses: stats[:misses] || 0
           )
-        end
 
-      _ ->
-        AppLogger.cache_info("Cache statistics not available")
+          value
+
+        {:ok, nil} ->
+          handle_nil_result(key, exists_result)
+
+        {:error, error} ->
+          AppLogger.cache_error(
+            "[CacheRepo] Cache error for key: #{key}, error: #{inspect(error)}"
+          )
+
+          nil
+
+        _ ->
+          AppLogger.cache_debug("[CacheRepo] Cache miss for key: #{key}")
+          nil
+      end
+    end)
+  end
+
+  # Handle nil results from cache to reduce nesting in get/1
+  defp handle_nil_result(key, exists_result) do
+    # Special handling for map:systems and map:characters keys
+    if key in ["map:systems", "map:characters"] and exists_result == {:ok, true} do
+      # For these keys, initialize with empty array without warning
+      AppLogger.cache_debug("[CacheRepo] Initializing #{key} with empty array")
+      Cachex.put(@cache_name, key, [])
+      []
+    else
+      log_cache_miss(key)
+      nil
+    end
+  end
+
+  # Log cache misses appropriately based on key type
+  defp log_cache_miss(key) do
+    if String.starts_with?(key, "static_info:") do
+      AppLogger.cache_debug("[CacheRepo] Cache miss for static info key: #{key}")
+    else
+      AppLogger.cache_debug("[CacheRepo] Cache hit for key: #{key}, but value is nil")
     end
   end
 
   @doc """
-  Safely gets a value from the cache, logging hits/misses appropriately.
-
-  ## Parameters
-    - key: The key to retrieve
-
-  ## Returns
-    - The value if found
-    - nil if not found or on error
+  Sets a value in the cache with a TTL (time to live).
   """
-  def safe_get(key) do
-    # This method should redirect to get now that we've improved that method
-    # with sampling to reduce log volume
-    get(key)
-  end
-
-  @doc """
-  Gets a value or initializes it if it's missing.
-
-  ## Parameters
-    - key: The key to retrieve
-    - default: The default value to set if the key doesn't exist
-    - ttl_seconds: Optional TTL in seconds
-  """
-  def get_or_set(key, default, ttl_seconds \\ nil) do
-    case get(key) do
-      {:ok, nil} when is_array_key(key) ->
-        AppLogger.cache_debug("Initializing with empty array", key: key)
-        set(key, [], ttl_seconds)
-        []
-
-      {:ok, nil} when is_map_key(key) and is_static_info_key(key) ->
-        AppLogger.cache_debug("Cache miss for static info", key: key)
-        set(key, default, ttl_seconds)
-        default
-
-      {:ok, nil} ->
-        AppLogger.cache_debug("Cache hit but value is nil", key: key)
-        set(key, default, ttl_seconds)
-        default
-
-      {:ok, value} ->
-        value
-
-      _ ->
-        # For any error or not found, set the default
-        AppLogger.cache_debug("Setting default value",
-          key: key,
-          ttl_seconds: ttl_seconds
-        )
-
-        set(key, default, ttl_seconds)
-        default
-    end
-  end
-
-  # Schedule cache purge after 1 hour
-  defp schedule_cache_purge do
-    Process.send_after(self(), :purge_cache, 3_600_000)
-  end
-
-  # Get stats from Cachex
-  defp get_cachex_stats do
-    Cachex.stats(@cache_name)
-  end
-
-  @doc """
-  Synchronizes the cache with the database.
-  Takes a key, a function to read from the database, and a TTL (time-to-live) in seconds.
-  The db_read_fun is a function that fetches the data from the database.
-  """
-  def sync_with_db(key, db_read_fun, ttl) do
-    # Don't use a transaction here to avoid holding locks during DB access
-    # Fetch fresh data from the database
-    db_result = db_read_fun.()
-
-    # Store the result in cache with TTL
-    cache_db_result(key, db_result, ttl)
-  rescue
-    e ->
-      AppLogger.cache_error("Error syncing cache with DB",
-        key: key,
-        error: Exception.message(e)
+  def set(key, value, ttl) do
+    retry_with_backoff(fn ->
+      Logger.debug(
+        "[CacheRepo] Setting value for key: #{key} with TTL: #{ttl}, storing #{length_of(value)} items"
       )
 
-      {:error, :sync_failed}
-  end
+      # Convert TTL from seconds to milliseconds for Cachex
+      ttl_ms = ttl * 1000
+      AppLogger.cache_debug("[CacheRepo] TTL in milliseconds: #{ttl_ms}")
 
-  # Helper to cache database query results with appropriate handling
-  defp cache_db_result(key, {:ok, data}, ttl) do
-    # Cache successful DB read with TTL
-    Cachex.put(@cache_name, key, data, ttl: :timer.seconds(ttl))
-    {:ok, data}
-  end
+      result = Cachex.put(@cache_name, key, value, ttl: ttl_ms)
 
   defp cache_db_result(_key, {:error, _} = error, _ttl) do
     # Don't cache errors, but return them
@@ -842,91 +650,137 @@ defmodule WandererNotifier.Data.Cache.Repository do
     try do
       case Cachex.put(@cache_name, key, value, ttl: ttl_option(ttl_seconds)) do
         {:ok, true} ->
-          AppLogger.cache_debug("Cache value set successfully", key: key)
-          :ok
+          # Verify the TTL was set correctly
+          ttl_result = Cachex.ttl(@cache_name, key)
+          AppLogger.cache_debug("[CacheRepo] Verified TTL after set: #{inspect(ttl_result)}")
 
-        {:ok, false} ->
-          AppLogger.cache_warn("Failed to set cache value", key: key)
-          {:error, :set_failed}
+          AppLogger.cache_debug("[CacheRepo] Successfully set cache for key: #{key}")
+          {:ok, true}
 
-        {:error, reason} ->
-          AppLogger.cache_error("Error setting cache value", key: key, error: inspect(reason))
-          {:error, reason}
+        _ ->
+          Logger.error(
+            "[CacheRepo] Failed to set cache for key: #{key}, result: #{inspect(result)}"
+          )
+
+          {:error, result}
       end
-    rescue
-      e ->
-        # Handle situations where cache is completely unavailable
-        AppLogger.cache_error("Cache unavailable during set operation",
-          key: key,
-          error: Exception.message(e)
-        )
-
-        # Return error but don't crash or block program execution
-        {:error, :no_cache}
-    end
+    end)
   end
 
   @doc """
-  An alias for set/3 to maintain compatibility with code using put/3.
+  Puts a value in the cache without a TTL.
   """
-  def put(key, value, ttl_seconds \\ nil) do
-    set(key, value, ttl_seconds)
+  def put(key, value) do
+    retry_with_backoff(fn ->
+      Logger.debug(
+        "[CacheRepo] Putting value for key: #{key} without TTL, storing #{length_of(value)} items"
+      )
+
+      result = Cachex.put(@cache_name, key, value)
+
+      case result do
+        {:ok, true} ->
+          AppLogger.cache_debug("[CacheRepo] Successfully put cache for key: #{key}")
+          {:ok, true}
+
+        _ ->
+          Logger.error(
+            "[CacheRepo] Failed to put cache for key: #{key}, result: #{inspect(result)}"
+          )
+
+          {:error, result}
+      end
+    end)
+  end
+
+  @doc """
+  Deletes a value from the cache by key.
+  """
+  def delete(key) do
+    retry_with_backoff(fn ->
+      AppLogger.cache_info("[CacheRepo] Deleting key: #{key} from cache")
+      Cachex.del(@cache_name, key)
+    end)
+  end
+
+  @doc """
+  Clears all values from the cache.
+  """
+  def clear do
+    retry_with_backoff(fn ->
+      AppLogger.cache_warn("[CacheRepo] Clearing entire cache")
+      Cachex.clear(@cache_name)
+    end)
   end
 
   @doc """
   Checks if a key exists in the cache.
   """
   def exists?(key) do
-    case Cachex.exists?(@cache_name, key) do
-      {:ok, exists} ->
-        exists
-
-      {:error, reason} ->
-        AppLogger.cache_error("Error checking cache key existence",
-          key: key,
-          error: inspect(reason)
-        )
-
-        false
-    end
+    retry_with_backoff(fn ->
+      case Cachex.exists?(@cache_name, key) do
+        {:ok, exists} -> exists
+        _ -> false
+      end
+    end)
   end
 
   @doc """
-  Deletes a value from the cache.
+  Gets the TTL (time to live) for a key.
+  Returns nil if the key doesn't exist or has no TTL.
   """
-  def delete(key) do
-    AppLogger.cache_debug("Deleting cache value", key: key)
+  def ttl(key) do
+    retry_with_backoff(fn ->
+      case Cachex.ttl(@cache_name, key) do
+        {:ok, ttl} -> ttl
+        _ -> nil
+      end
+    end)
+  end
 
-    case Cachex.del(@cache_name, key) do
-      {:ok, _} ->
-        :ok
+  # Retry a function with exponential backoff
+  defp retry_with_backoff(fun, retries \\ Timings.max_retries()) do
+    fun.()
+  rescue
+    e ->
+      AppLogger.cache_error("[CacheRepo] Error in cache operation: #{inspect(e)}")
 
-      {:error, reason} ->
-        AppLogger.cache_error("Error deleting cache value",
-          key: key,
-          error: inspect(reason)
-        )
+      if retries <= 0 do
+        AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
+        {:error, e}
+      else
+        AppLogger.cache_warn("[CacheRepo] Retrying after error (#{retries} retries left)")
+        Process.sleep(Timings.retry_delay())
+        retry_with_backoff(fun, retries - 1)
+      end
+  catch
+    :exit, reason ->
+      AppLogger.cache_error("[CacheRepo] Exit in cache operation: #{inspect(reason)}")
 
+      if retries <= 0 do
+        AppLogger.cache_error("[CacheRepo] Max retries reached, giving up")
         {:error, reason}
-    end
+      else
+        AppLogger.cache_warn("[CacheRepo] Retrying after exit (#{retries} retries left)")
+        Process.sleep(Timings.retry_delay())
+        retry_with_backoff(fun, retries - 1)
+      end
+
+    result ->
+      result
   end
 
-  # Helper to format TTL option for Cachex
-  defp ttl_option(nil), do: nil
-  defp ttl_option(seconds) when is_integer(seconds) and seconds > 0, do: seconds * 1000
-  defp ttl_option(_), do: nil
+  # Helper function to safely get the length of a value
+  defp length_of(value) when is_list(value), do: length(value)
+  defp length_of(value) when is_map(value), do: map_size(value)
+  defp length_of(value) when is_binary(value), do: byte_size(value)
+  defp length_of({:ok, value}) when is_list(value), do: length(value)
+  defp length_of({:ok, _value}), do: 1
+  defp length_of(_), do: 0
 
-  # Handle nil results from cache - now takes a should_log parameter
-  defp handle_nil_result(key, should_log) do
-    # Special handling for map:systems and map:characters keys
-    if key in ["map:systems", "map:characters"] do
-      # For these keys, initialize with empty array without warning
-      handle_empty_array_initialization(key, should_log)
-    else
-      # Handle regular nil results
-      handle_regular_nil_result(key, should_log)
-    end
-  end
+  @doc """
+  Updates cache after a successful database write to ensure consistency.
+  This should be called after any database operation that might affect cached data.
 
   # Handle empty array initialization for specific keys
   defp handle_empty_array_initialization(key, should_log) do

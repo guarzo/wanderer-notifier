@@ -135,6 +135,10 @@ defmodule WandererNotifier.Api.ZKill.Client do
             AppLogger.api_info("[ZKill] No kills found for system #{system_id}")
             {:ok, []}
 
+          {:ok, %{"error" => error_msg}} ->
+            AppLogger.api_warn("[ZKill] API returned error for system #{system_id}: #{error_msg}")
+            {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
+
           {:ok, other} ->
             Logger.warning(
               "[ZKill] Unexpected response format from zKill for system #{system_id} kills"

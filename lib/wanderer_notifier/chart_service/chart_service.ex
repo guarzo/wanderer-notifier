@@ -218,7 +218,7 @@ defmodule WandererNotifier.ChartService do
         timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
-      DiscordClient.send_embed(embed, channel_id)
+      NeoClient.send_embed(embed, channel_id)
     else
       # It's binary image data, we need to upload it somewhere first
       AppLogger.api_debug("Binary image data detected - converting to URL for embed",
@@ -243,7 +243,7 @@ defmodule WandererNotifier.ChartService do
             timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
           }
 
-          DiscordClient.send_embed(embed, channel_id)
+          NeoClient.send_embed(embed, channel_id)
 
         {:error, _url_error} ->
           # Last resort - send as file if we can't get a URL
@@ -252,7 +252,7 @@ defmodule WandererNotifier.ChartService do
           # Generate a unique filename
           filename = "chart_#{:os.system_time(:millisecond)}.png"
           # Send the file to Discord
-          DiscordClient.send_file(filename, image_binary, title, description, channel_id)
+          NeoClient.send_file(filename, image_binary, title, description, channel_id)
       end
     end
   end
@@ -277,7 +277,7 @@ defmodule WandererNotifier.ChartService do
           timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
         }
 
-        DiscordClient.send_embed(embed, channel_id)
+        NeoClient.send_embed(embed, channel_id)
 
       {:error, reason} ->
         AppLogger.api_error("Failed to generate chart URL", error: inspect(reason))

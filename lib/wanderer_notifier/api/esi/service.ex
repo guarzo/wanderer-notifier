@@ -30,8 +30,33 @@ defmodule WandererNotifier.Api.ESI.Service do
     ESIClient.get_alliance_info(alliance_id)
   end
 
+  @doc """
+  Fetches ship type name from ESI.
+  Returns {:ok, %{"name" => name}} if successful.
+  """
   def get_ship_type_name(ship_type_id, _opts \\ []) do
-    ESIClient.get_universe_type(ship_type_id)
+    AppLogger.api_debug("[ESI] Fetching ship type name for ID #{ship_type_id}")
+
+    case ESIClient.get_universe_type(ship_type_id) do
+      {:ok, type_info} ->
+        name = Map.get(type_info, "name")
+
+        if name do
+          AppLogger.api_debug("[ESI] Found ship type name: #{name}")
+          {:ok, %{"name" => name}}
+        else
+          AppLogger.api_warn("[ESI] No name found in type info for ship ID #{ship_type_id}")
+          {:error, :name_not_found}
+        end
+
+      {:error, :not_found} ->
+        AppLogger.api_warn("[ESI] Ship type ID #{ship_type_id} not found")
+        {:error, :not_found}
+
+      error ->
+        AppLogger.api_error("[ESI] Failed to fetch ship type: #{inspect(error)}")
+        error
+    end
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour

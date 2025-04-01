@@ -39,15 +39,34 @@ Mox.defmock(WandererNotifier.MockKillmailPersistence,
 
 # Set Mox global mode for tests
 Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
-  for: WandererNotifier.Data.Cache.RepositoryBehaviour
+  for: WandererNotifier.Data.Cache.CacheBehaviour
 )
 
 Application.put_env(:mox, :verify_on_exit, true)
 
 # Define mocks for our new behaviors
-Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
-  for: WandererNotifier.Adapters.KillmailChartAdapterBehaviour
-)
+defmodule WandererNotifier.Config.Behaviour do
+  @callback map_url() :: String.t() | nil
+  @callback map_token() :: String.t() | nil
+  @callback map_csrf_token() :: String.t() | nil
+  @callback map_name() :: String.t() | nil
+  @callback notifier_api_token() :: String.t() | nil
+  @callback license_key() :: String.t() | nil
+  @callback license_manager_api_url() :: String.t() | nil
+  @callback license_manager_api_key() :: String.t() | nil
+  @callback discord_channel_id_for(atom()) :: String.t() | nil
+  @callback discord_channel_id_for_activity_charts() :: String.t() | nil
+  @callback kill_charts_enabled?() :: boolean()
+  @callback map_charts_enabled?() :: boolean()
+  @callback character_tracking_enabled?() :: boolean()
+  @callback character_notifications_enabled?() :: boolean()
+  @callback system_notifications_enabled?() :: boolean()
+  @callback track_kspace_systems?() :: boolean()
+  @callback get_map_config() :: map()
+  @callback static_info_cache_ttl() :: integer()
+  @callback get_env(atom(), any()) :: any()
+  @callback get_feature_status() :: map()
+end
 
 Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.Behaviour)
 
@@ -67,11 +86,41 @@ Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
 
 # Set up application environment for testing
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
+Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
+Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
+Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
 
 Application.put_env(
   :wanderer_notifier,
-  :killmail_chart_adapter_module,
+  :killmail_chart_adapter,
   WandererNotifier.MockKillmailChartAdapter
 )
 
-Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
+# Define the KillmailChartAdapter behaviour
+defmodule WandererNotifier.ChartService.KillmailChartAdapterBehaviour do
+  @callback generate_weekly_kills_chart() :: {:ok, String.t()} | {:error, any()}
+end
+
+Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
+  for: WandererNotifier.ChartService.KillmailChartAdapterBehaviour
+)
+
+# Define the Date behaviour for mocking Date functions
+defmodule WandererNotifier.DateBehaviour do
+  @callback utc_today() :: Date.t()
+  @callback day_of_week(Date.t()) :: non_neg_integer()
+end
+
+Mox.defmock(WandererNotifier.MockDate, for: WandererNotifier.DateBehaviour)
+
+# Define the NotifierFactory behaviour
+defmodule WandererNotifier.Notifiers.FactoryBehaviour do
+  @callback notify(atom(), list()) :: {:ok, map()} | {:error, any()}
+end
+
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifiers.FactoryBehaviour
+)
+
+# Set up application environment for testing
+Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)

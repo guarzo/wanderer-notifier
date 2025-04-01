@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Discord.Behaviour do
+defmodule WandererNotifier.Notifiers.Discord.Behaviour do
   @moduledoc """
   Defines the behaviour for Discord operations to enable mocking in tests.
   """

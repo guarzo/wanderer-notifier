@@ -1,8 +1,7 @@
-defmodule WandererNotifier.Cache.Monitor do
+defmodule WandererNotifier.Data.Cache.Monitor do
   @moduledoc """
-  GenServer that monitors cache health and consistency with the database.
-  This module periodically checks that the cache and database are in sync,
-  fixing inconsistencies when detected.
+  GenServer implementation for monitoring cache health and status.
+  Provides functionality for tracking cache operations and health metrics.
   """
   use GenServer
   alias WandererNotifier.Config.Timings

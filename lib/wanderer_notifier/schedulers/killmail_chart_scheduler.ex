@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   @moduledoc """
-  Scheduler for generating and sending weekly killmail charts.
+  Scheduler for sending weekly killmail charts to Discord.
   """
 
   use WandererNotifier.Schedulers.TimeScheduler,
@@ -13,11 +13,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @config Application.compile_env(:wanderer_notifier, :config_module, Config)
+  @behaviour WandererNotifier.Schedulers.Behaviour
+
+  # For dependency injection in tests
   @adapter Application.compile_env(
              :wanderer_notifier,
-             :killmail_chart_adapter_module,
-             KillmailChartAdapter
+             :killmail_chart_adapter,
+             ChartAdapter
            )
 
   @impl true
