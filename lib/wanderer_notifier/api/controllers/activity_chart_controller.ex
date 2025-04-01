@@ -33,87 +33,85 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
 
     AppLogger.api_info("Generating activity chart", chart_type: chart_type)
 
-    cond do
-      chart_type == "invalid" ->
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
+    if chart_type == "invalid" do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(400, Jason.encode!(%{status: "error", message: "Invalid chart type"}))
+    else
+      # Get activity data using new CharactersClient
+      activity_data =
+        case CharactersClient.get_character_activity(nil, 7) do
+          {:ok, data} ->
+            AppLogger.api_info("Retrieved activity data for chart generation")
+            data
 
-      true ->
-        # Get activity data using new CharactersClient
-        activity_data =
-          case CharactersClient.get_character_activity(nil, 7) do
-            {:ok, data} ->
-              AppLogger.api_info("Retrieved activity data for chart generation")
-              data
-
-            _ ->
-              AppLogger.api_warn("Failed to retrieve activity data", fallback: "using nil")
-              nil
-          end
-
-        # Generate chart based on type
-        chart_result =
-          case chart_type do
-            "activity_summary" ->
-              ActivityChartAdapter.generate_activity_summary_chart(activity_data)
-
-            "activity_timeline" ->
-              # This chart type has been removed
-              {:error, "Activity Timeline chart has been removed"}
-
-            "activity_distribution" ->
-              # This chart type has been removed
-              {:error, "Activity Distribution chart has been removed"}
-
-            _ ->
-              {:error, "Unknown chart type"}
-          end
-
-        case chart_result do
-          {:ok, chart_url, title} ->
-            AppLogger.api_info("Generated chart", title: title)
-
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              200,
-              Jason.encode!(%{
-                status: "ok",
-                chart_url: chart_url,
-                title: title
-              })
-            )
-
-          {:ok, chart_url} ->
-            # Handle new return format from ChartService
-            title = "Character Activity Chart"
-            AppLogger.api_info("Generated chart", format: "new", title: title)
-
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              200,
-              Jason.encode!(%{
-                status: "ok",
-                chart_url: chart_url,
-                title: title
-              })
-            )
-
-          {:error, reason} ->
-            AppLogger.api_error("Failed to generate chart",
-              chart_type: chart_type,
-              error: inspect(reason)
-            )
-
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(
-              500,
-              Jason.encode!(%{status: "error", message: "Failed to generate chart: #{reason}"})
-            )
+          _ ->
+            AppLogger.api_warn("Failed to retrieve activity data", fallback: "using nil")
+            nil
         end
+
+      # Generate chart based on type
+      chart_result =
+        case chart_type do
+          "activity_summary" ->
+            ActivityChartAdapter.generate_activity_summary_chart(activity_data)
+
+          "activity_timeline" ->
+            # This chart type has been removed
+            {:error, "Activity Timeline chart has been removed"}
+
+          "activity_distribution" ->
+            # This chart type has been removed
+            {:error, "Activity Distribution chart has been removed"}
+
+          _ ->
+            {:error, "Unknown chart type"}
+        end
+
+      case chart_result do
+        {:ok, chart_url, title} ->
+          AppLogger.api_info("Generated chart", title: title)
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              chart_url: chart_url,
+              title: title
+            })
+          )
+
+        {:ok, chart_url} ->
+          # Handle new return format from ChartService
+          title = "Character Activity Chart"
+          AppLogger.api_info("Generated chart", format: "new", title: title)
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            Jason.encode!(%{
+              status: "ok",
+              chart_url: chart_url,
+              title: title
+            })
+          )
+
+        {:error, reason} ->
+          AppLogger.api_error("Failed to generate chart",
+            chart_type: chart_type,
+            error: inspect(reason)
+          )
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{status: "error", message: "Failed to generate chart: #{reason}"})
+          )
+      end
     end
   end
 

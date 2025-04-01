@@ -152,7 +152,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
             {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
 
           {:ok, other} ->
-            Logger.warning(
+            AppLogger.api_warn(
               "[ZKill] Unexpected response format from zKill for system #{system_id} kills"
             )
 

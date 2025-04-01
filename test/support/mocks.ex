@@ -319,3 +319,43 @@ defmodule WandererNotifier.MockCacheHelpers do
     {:ok, "Test Character"}
   end
 end
+
+defmodule WandererNotifier.TestHelpers.Mocks do
+  @moduledoc """
+  Defines mock behaviors for external services used in tests.
+  """
+
+  # Define mock behaviors for ZKill service
+  defmodule ZKillBehavior do
+    @moduledoc """
+    Behaviour module for ZKill service mocks in tests.
+    Defines the contract that ZKill service mocks must implement.
+    """
+
+    @callback get_killmail(String.t(), String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_kills(String.t(), integer()) :: {:ok, list()} | {:error, any()}
+  end
+
+  # Define mock behaviors for ESI service
+  defmodule ESIBehavior do
+    @moduledoc """
+    Behaviour module for ESI service mocks in tests.
+    Defines the contract that ESI service mocks must implement.
+    """
+
+    @callback get_character_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_type_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_ship_type_name(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_kills(String.t(), integer()) :: {:ok, list()} | {:error, any()}
+    @callback get_killmail(String.t(), String.t()) :: {:ok, map()} | {:error, any()}
+  end
+end
+
+# Define the mocks
+Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
+  for: WandererNotifier.TestHelpers.Mocks.ZKillBehavior
+)
+
+Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
+  for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
+)

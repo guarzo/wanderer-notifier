@@ -67,7 +67,7 @@ defmodule WandererNotifier.Application do
 
   defp validate_configuration do
     # Log application version on startup
-    AppLogger.config_info("Starting application",
+    AppLogger.startup_debug("Starting application",
       version: Version.version(),
       environment: Application.get_env(:wanderer_notifier, :env, :dev)
     )
@@ -122,8 +122,8 @@ defmodule WandererNotifier.Application do
   defp process_validation_result(_module, name, info, result) do
     case result do
       :ok ->
-        # Log success with any extra info
-        AppLogger.config_info("#{name} configuration validated successfully", info)
+        # Log success with any extra info at debug level
+        AppLogger.config_debug("#{name} configuration validated successfully", info)
         :ok
 
       {:error, reason} when is_binary(reason) ->
@@ -160,19 +160,19 @@ defmodule WandererNotifier.Application do
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
-    AppLogger.startup_info("Starting supervisor", child_count: length(children))
+    AppLogger.startup_info("🚀 Starting WandererNotifier", child_count: length(children))
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
-        AppLogger.startup_info("Application started successfully")
+        AppLogger.startup_info("✨ WandererNotifier started successfully")
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        AppLogger.startup_warn("Supervisor already started", pid: inspect(pid))
+        AppLogger.startup_warn("⚠️ Supervisor already started", pid: inspect(pid))
         {:ok, pid}
 
       {:error, reason} = error ->
-        AppLogger.startup_error("Failed to start application", error: inspect(reason))
+        AppLogger.startup_error("❌ Failed to start application", error: inspect(reason))
         error
     end
   end
@@ -186,7 +186,6 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},
       {Cachex, name: :wanderer_cache},
-      {WandererNotifier.Data.Cache.Monitor, []},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},

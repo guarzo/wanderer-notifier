@@ -4,13 +4,14 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   Encapsulates all the notification handling logic for kills.
   """
 
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Processing.Killmail.Stats
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -42,10 +43,12 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
       :ok ->
         AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        Stats.update(:notification_sent)
         {:ok, kill_id}
 
       {:ok, _} ->
         AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        Stats.update(:notification_sent)
         {:ok, kill_id}
 
       {:error, reason} ->

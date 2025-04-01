@@ -20,7 +20,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     # Begin the scheduler phase in the startup tracker
     start_scheduler_phase()
 
-    AppLogger.scheduler_info("Starting Scheduler Supervisor...")
+    AppLogger.scheduler_debug("Starting Scheduler Supervisor...")
 
     # Define the scheduler registry
     registry = {Registry, []}
@@ -33,7 +33,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
     children = [registry | schedulers]
 
     # Single consolidated log message for all schedulers
-    log_scheduler_summary(schedulers)
+    AppLogger.startup_info("⏰ Scheduler system ready (#{length(schedulers)} schedulers)")
 
     # Start all children with a one_for_one strategy
     Supervisor.init(children, strategy: :one_for_one)
@@ -164,18 +164,6 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       )
     else
       AppLogger.scheduler_error("Database connection check failed: #{inspect(reason)}")
-    end
-  end
-
-  # Log a summary of all schedulers being started
-  defp log_scheduler_summary(schedulers) do
-    if Process.get(:startup_tracker) do
-      StartupTracker.log_state_change(
-        :scheduler_summary,
-        "#{length(schedulers)} schedulers initialized"
-      )
-    else
-      AppLogger.scheduler_info("Starting #{length(schedulers)} schedulers")
     end
   end
 

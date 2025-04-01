@@ -26,7 +26,8 @@ defmodule WandererNotifier.Config.Timings do
         cache_check: cache_check_interval(),
         cache_sync: cache_sync_interval(),
         cache_cleanup: cache_cleanup_interval(),
-        reconnect_delay: reconnect_delay()
+        reconnect_delay: reconnect_delay(),
+        system_update: system_update_scheduler_interval()
       },
       schedulers: scheduler_configs()
     }
@@ -154,6 +155,15 @@ defmodule WandererNotifier.Config.Timings do
   @spec character_update_scheduler_interval() :: integer()
   def character_update_scheduler_interval do
     get_env(:character_update_scheduler_interval, 30_000)
+  end
+
+  @doc """
+  Returns the cache monitor check interval in milliseconds.
+  Default: 30 seconds (30,000 ms)
+  """
+  @spec cache_monitor_interval() :: integer()
+  def cache_monitor_interval do
+    get_env(:cache_monitor_interval, 30_000)
   end
 
   @doc """

@@ -7,7 +7,7 @@ config :wanderer_notifier,
 
   # Cache configuration
   cache_name: :test_cache,
-  cache_repository: WandererNotifier.MockCache,
+  cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
 
   # Mock clients
   http_client: WandererNotifier.MockHTTP,

@@ -283,30 +283,34 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   defp get_killmail_id(_), do: nil
 
+  # Helper to try different paths for system ID
+  defp try_system_id_paths(killmail) do
+    [
+      # Direct solar_system_id field
+      Map.get(killmail, "solar_system_id"),
+      # ESI data path
+      get_in(killmail, ["esi_data", "solar_system_id"]),
+      # ZKB data path
+      get_in(killmail, ["zkb", "system_id"]),
+      # System object path
+      get_in(killmail, ["system", "id"]),
+      # Solar system object path
+      get_in(killmail, ["solar_system", "id"])
+    ]
+    |> Enum.find(& &1)
+  end
+
+  # Helper to format system ID
+  defp format_system_id(nil), do: "unknown"
+  defp format_system_id(id) when is_integer(id), do: to_string(id)
+  defp format_system_id(id) when is_binary(id), do: id
+  defp format_system_id(_), do: "unknown"
+
   # Helper to get system ID from killmail
   defp get_kill_system_id(killmail) when is_map(killmail) do
-    # Try to get system ID from various possible locations
-    system_id =
-      cond do
-        # Direct solar_system_id field
-        id = Map.get(killmail, "solar_system_id") -> id
-        # ESI data path
-        id = get_in(killmail, ["esi_data", "solar_system_id"]) -> id
-        # ZKB data path
-        id = get_in(killmail, ["zkb", "system_id"]) -> id
-        # System object path
-        id = get_in(killmail, ["system", "id"]) -> id
-        # Solar system object path
-        id = get_in(killmail, ["solar_system", "id"]) -> id
-        true -> nil
-      end
-
-    case system_id do
-      nil -> "unknown"
-      id when is_integer(id) -> to_string(id)
-      id when is_binary(id) -> id
-      _ -> "unknown"
-    end
+    killmail
+    |> try_system_id_paths()
+    |> format_system_id()
   end
 
   defp get_kill_system_id(_), do: "unknown"

@@ -22,7 +22,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   def start_link(parent, url \\ nil) do
     # Enhanced logging for WebSocket connection attempt
     url = url || default_url()
-    AppLogger.websocket_info("Starting zKillboard WebSocket connection", url: url)
+    AppLogger.websocket_debug("Starting zKillboard WebSocket connection", url: url)
 
     # Start the WebSocket connection
     case WebSockex.start_link(
@@ -41,14 +41,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
            retry_initial_connection: true
          ) do
       {:ok, pid} ->
-        AppLogger.websocket_info("Successfully initialized zKillboard WebSocket",
-          pid: inspect(pid)
-        )
-
+        AppLogger.websocket_info("🔌 zKillboard WebSocket connected")
         {:ok, pid}
 
       {:error, reason} ->
-        AppLogger.websocket_error("Failed to start websocket", error: inspect(reason))
+        AppLogger.websocket_error("❌ Failed to start websocket", error: inspect(reason))
         {:error, reason}
     end
   end

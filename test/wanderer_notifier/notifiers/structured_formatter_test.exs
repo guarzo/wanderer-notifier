@@ -2,8 +2,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   use ExUnit.Case
   import Mox
 
-  alias WandererNotifier.Api.ESI.ServiceMock
-  alias WandererNotifier.Api.ZKill.ServiceMock
+  alias WandererNotifier.Api.ESI.ServiceMock, as: ESIServiceMock
+  alias WandererNotifier.Api.ZKill.ServiceMock, as: ZKillServiceMock
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
@@ -15,8 +15,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   setup do
     # Configure application to use mocks
-    Application.put_env(:wanderer_notifier, :zkill_service, ServiceMock)
-    Application.put_env(:wanderer_notifier, :esi_service, ServiceMock)
+    Application.put_env(:wanderer_notifier, :zkill_service, ZKillServiceMock)
+    Application.put_env(:wanderer_notifier, :esi_service, ESIServiceMock)
     Application.put_env(:wanderer_notifier, :zkill_client, MockZKillClient)
 
     # Set up expectations for the ZKill client mock
@@ -35,7 +35,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     end)
 
     # Set up expectations for the ESI service mock
-    stub(ServiceMock, :get_killmail, fn _kill_id, _hash ->
+    stub(ESIServiceMock, :get_killmail, fn _kill_id, _hash ->
       {:ok,
        %{
          "killmail_id" => 12_345,
@@ -53,19 +53,27 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
        }}
     end)
 
-    stub(ServiceMock, :get_character_info, fn _character_id ->
-      {:ok, %{"name" => "Test Character"}}
+    # Set up expectations for the ZKill service mock
+    stub(ZKillServiceMock, :get_single_killmail, fn _kill_id ->
+      {:ok,
+       %{
+         "killmail_id" => 12_345,
+         "solar_system_id" => 30_000_142,
+         "victim" => %{
+           "character_id" => 93_265_357,
+           "ship_type_id" => 587
+         },
+         "attackers" => [
+           %{
+             "character_id" => 93_898_784,
+             "ship_type_id" => 11_567
+           }
+         ]
+       }}
     end)
 
-    stub(ServiceMock, :get_type_info, fn _type_id ->
-      {:ok, %{"name" => "Test Ship"}}
-    end)
-
-    stub(ServiceMock, :get_ship_type_name, fn _ship_type_id ->
-      {:ok, %{"name" => "Test Ship"}}
-    end)
-
-    stub(ServiceMock, :get_system_kills, fn _system_id, _limit ->
+    # Add stub for ZKill service get_system_kills
+    stub(ZKillServiceMock, :get_system_kills, fn _system_id, _limit ->
       {:ok,
        [
          %{
@@ -77,6 +85,19 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
            }
          }
        ]}
+    end)
+
+    # Set up expectations for the ESI service mock
+    stub(ESIServiceMock, :get_character_info, fn _character_id ->
+      {:ok, %{"name" => "Test Character"}}
+    end)
+
+    stub(ESIServiceMock, :get_type_info, fn _type_id ->
+      {:ok, %{"name" => "Test Ship"}}
+    end)
+
+    stub(ESIServiceMock, :get_ship_type_name, fn _ship_type_id ->
+      {:ok, %{"name" => "Test Ship"}}
     end)
 
     # Return an empty context

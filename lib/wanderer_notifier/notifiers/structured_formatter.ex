@@ -459,53 +459,51 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_system_notification(%MapSystem{} = system) do
-    try do
-      # Validate required fields
-      validate_system_fields(system)
+    # Validate required fields
+    validate_system_fields(system)
 
-      # Generate basic notification elements
-      is_wormhole = MapSystem.wormhole?(system)
-      display_name = MapSystem.format_display_name(system)
+    # Generate basic notification elements
+    is_wormhole = MapSystem.wormhole?(system)
+    display_name = MapSystem.format_display_name(system)
 
-      # Generate notification elements
-      {title, description, color, icon_url} = generate_notification_elements(system, is_wormhole)
+    # Generate notification elements
+    {title, description, color, icon_url} = generate_notification_elements(system, is_wormhole)
 
-      # Format statics list and system link
-      formatted_statics = format_statics_list(system.static_details || system.statics)
-      system_name_with_link = create_system_name_link(system, display_name)
+    # Format statics list and system link
+    formatted_statics = format_statics_list(system.static_details || system.statics)
+    system_name_with_link = create_system_name_link(system, display_name)
 
-      # Build notification fields
-      fields =
-        build_system_notification_fields(
-          system,
-          is_wormhole,
-          formatted_statics,
-          system_name_with_link
-        )
+    # Build notification fields
+    fields =
+      build_system_notification_fields(
+        system,
+        is_wormhole,
+        formatted_statics,
+        system_name_with_link
+      )
 
-      # Create the generic notification structure
-      %{
-        type: :system_notification,
-        title: title,
-        description: description,
-        color: color,
-        timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-        thumbnail: %{url: icon_url},
-        fields: fields,
-        footer: %{
-          text: "System ID: #{system.solar_system_id}"
-        }
+    # Create the generic notification structure
+    %{
+      type: :system_notification,
+      title: title,
+      description: description,
+      color: color,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      thumbnail: %{url: icon_url},
+      fields: fields,
+      footer: %{
+        text: "System ID: #{system.solar_system_id}"
       }
-    rescue
-      e ->
-        AppLogger.processor_error("[StructuredFormatter] Error formatting system notification",
-          system: system.name,
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
+    }
+  rescue
+    e ->
+      AppLogger.processor_error("[StructuredFormatter] Error formatting system notification",
+        system: system.name,
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
 
-        reraise e, __STACKTRACE__
-    end
+      reraise e, __STACKTRACE__
   end
 
   # Helper function to validate required system fields

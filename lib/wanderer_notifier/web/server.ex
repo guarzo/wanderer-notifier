@@ -24,22 +24,22 @@ defmodule WandererNotifier.Web.Server do
     # Get port from configuration
     port = WebConfig.get_web_port()
 
-    AppLogger.startup_info("Starting web server", port: port)
+    AppLogger.startup_debug("Starting web server", port: port)
 
     case start_server(port) do
       {:ok, pid} ->
-        AppLogger.startup_info("Web server started successfully", port: port)
+        AppLogger.startup_info("🌐 Web server ready on port #{port}")
         {:ok, %{server_pid: pid, port: port}}
 
       {:error, reason} ->
-        AppLogger.startup_error("Failed to start web server", error: inspect(reason))
+        AppLogger.startup_error("❌ Failed to start web server", error: inspect(reason))
         {:stop, reason}
     end
   end
 
   @impl true
   def terminate(_reason, %{server_pid: pid}) do
-    AppLogger.startup_info("Stopping web server")
+    AppLogger.startup_debug("Stopping web server")
 
     if Process.alive?(pid) do
       Process.exit(pid, :normal)

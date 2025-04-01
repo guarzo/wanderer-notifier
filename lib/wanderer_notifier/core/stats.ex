@@ -14,7 +14,7 @@ defmodule WandererNotifier.Core.Stats do
   Starts the Stats GenServer.
   """
   def start_link(opts \\ []) do
-    AppLogger.config_info("Starting Stats tracking service...")
+    AppLogger.startup_debug("Starting Stats tracking service...")
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -73,31 +73,25 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def init(_opts) do
-    AppLogger.config_info("Initializing stats tracking service...")
-
-    initial_state = %{
-      startup_time: DateTime.utc_now(),
-      notifications: %{
-        kills: 0,
-        errors: 0,
-        systems: 0,
-        characters: 0,
-        total: 0
-      },
-      websocket: %{
-        connected: false,
-        last_message: nil,
-        reconnects: 0
-      },
-      # Track first notifications with the GenServer state instead of Process dictionary
-      first_notifications: %{
-        kill: true,
-        character: true,
-        system: true
-      }
-    }
-
-    {:ok, initial_state}
+    AppLogger.startup_debug("Initializing stats tracking service...")
+    # Initialize the state with default values
+    {:ok,
+     %{
+       websocket: %{
+         connected: false,
+         connecting: false,
+         last_message: nil,
+         startup_time: nil,
+         reconnects: 0,
+         url: nil
+       },
+       notifications: %{
+         total: 0,
+         kills: 0,
+         systems: 0,
+         characters: 0
+       }
+     }}
   end
 
   @impl true

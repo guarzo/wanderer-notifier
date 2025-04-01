@@ -200,16 +200,12 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
         character_id: "12345"
       }
 
-      character_id = 12_345
-
       RepositoryMock
       |> expect(:get, fn "map:character:12345" -> nil end)
       |> expect(:put, fn "map:character:12345", ^character_data -> :ok end)
       |> expect(:put, fn "tracked:character:12345", true -> :ok end)
-      |> expect(:get, fn "tracked:characters" -> [] end)
-      |> expect(:put, fn "tracked:characters", [%{"character_id" => "12345"}] -> :ok end)
 
-      result = CacheHelpers.add_character_to_tracked(character_id, character_data)
+      result = CacheHelpers.add_character_to_tracked(12_345, character_data)
       assert result == :ok
     end
 
@@ -220,16 +216,12 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
         character_id: "12345"
       }
 
-      character_id = "12345"
-
       RepositoryMock
       |> expect(:get, fn "map:character:12345" -> nil end)
       |> expect(:put, fn "map:character:12345", ^character_data -> :ok end)
       |> expect(:put, fn "tracked:character:12345", true -> :ok end)
-      |> expect(:get, fn "tracked:characters" -> [] end)
-      |> expect(:put, fn "tracked:characters", [%{"character_id" => "12345"}] -> :ok end)
 
-      result = CacheHelpers.add_character_to_tracked(character_id, character_data)
+      result = CacheHelpers.add_character_to_tracked("12345", character_data)
       assert result == :ok
     end
 
@@ -240,16 +232,11 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
         character_id: "12345"
       }
 
-      character_id = 12_345
-      existing_characters = [%{"character_id" => "12345"}]
-
       RepositoryMock
       |> expect(:get, fn "map:character:12345" -> %{"character_id" => "12345"} end)
       |> expect(:put, fn "tracked:character:12345", true -> :ok end)
-      |> expect(:get, fn "tracked:characters" -> existing_characters end)
-      |> expect(:put, fn "tracked:characters", ^existing_characters -> :ok end)
 
-      result = CacheHelpers.add_character_to_tracked(character_id, character_data)
+      result = CacheHelpers.add_character_to_tracked(12_345, character_data)
       assert result == :ok
     end
   end

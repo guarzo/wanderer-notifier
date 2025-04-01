@@ -507,58 +507,63 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   """
   def notify_new_systems(fresh_systems, cached_systems) do
     if Config.system_notifications_enabled?() do
-      process_system_notifications(fresh_systems, cached_systems)
+      # Find new systems by comparing fresh and cached
+      added_systems = find_new_systems(fresh_systems, cached_systems)
+
+      if Enum.empty?(added_systems) do
+        {:ok, []}
+      else
+        AppLogger.api_info("[SystemsClient] Found #{length(added_systems)} new systems")
+        process_system_notifications(added_systems)
+      end
     else
       {:ok, []}
     end
   end
 
-  defp process_system_notifications(fresh_systems, cached_systems) do
-    fresh = fresh_systems || []
-    cached = cached_systems || []
+  # Process notification results and log failures
+  defp handle_notification_results(notification_results, added_systems) do
+    {successes, failures} =
+      Enum.split_with(notification_results, fn
+        {:ok, _} -> true
+        {:error, _} -> false
+      end)
 
-    # Find new systems and send notifications
-    added_systems = find_new_systems(fresh, cached)
+    # Log any failures
+    log_notification_failures(failures)
 
-    if Enum.empty?(added_systems) do
-      {:ok, []}
+    if Enum.empty?(successes) do
+      {:error, :all_notifications_failed}
     else
-      AppLogger.api_info("[SystemsClient] Found #{length(added_systems)} new systems")
-
-      # Send notifications for each new system
-      notification_results =
-        Enum.map(added_systems, fn system ->
-          case send_system_notification(system) do
-            :ok -> {:ok, system}
-            {:error, reason} -> {:error, {system, reason}}
-          end
-        end)
-
-      # Split results into successes and failures
-      {successes, failures} =
-        Enum.split_with(notification_results, fn
-          {:ok, _} -> true
-          {:error, _} -> false
-        end)
-
-      # Log any failures
-      unless Enum.empty?(failures) do
-        failure_details =
-          Enum.map(failures, fn {:error, {system, reason}} ->
-            "#{system.name}: #{inspect(reason)}"
-          end)
-
-        AppLogger.api_error("[SystemsClient] Failed to send some system notifications",
-          failures: failure_details
-        )
-      end
-
-      if Enum.empty?(successes) do
-        {:error, :all_notifications_failed}
-      else
-        {:ok, added_systems}
-      end
+      {:ok, added_systems}
     end
+  end
+
+  # Log notification failures if any exist
+  defp log_notification_failures([]), do: :ok
+
+  defp log_notification_failures(failures) do
+    failure_details =
+      Enum.map(failures, fn {:error, {system, reason}} ->
+        "#{system.name}: #{inspect(reason)}"
+      end)
+
+    AppLogger.api_error("[SystemsClient] Failed to send some system notifications",
+      failures: failure_details
+    )
+  end
+
+  # Send notifications for new systems
+  defp process_system_notifications(added_systems) do
+    notification_results =
+      Enum.map(added_systems, fn system ->
+        case send_system_notification(system) do
+          :ok -> {:ok, system}
+          {:error, reason} -> {:error, {system, reason}}
+        end
+      end)
+
+    handle_notification_results(notification_results, added_systems)
   end
 
   defp find_new_systems(_fresh, nil), do: []
