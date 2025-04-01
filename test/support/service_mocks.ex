@@ -45,6 +45,7 @@ defmodule WandererNotifier.Api.ZKill.ServiceMock do
   """
 
   @behaviour WandererNotifier.Api.ZKill.ServiceBehaviour
+  @behaviour WandererNotifier.Api.ZKill.Behaviour
 
   @impl true
   def get_single_killmail(_kill_id), do: {:ok, %{}}
@@ -53,8 +54,39 @@ defmodule WandererNotifier.Api.ZKill.ServiceMock do
   def get_recent_kills(_limit \\ 10), do: {:ok, []}
 
   @impl true
-  def get_system_kills(_system_id, _limit \\ 5), do: {:ok, []}
+  def get_system_kills(_system_id, _limit \\ 5) do
+    {:ok,
+     [
+       %{
+         "killmail_id" => 12_345,
+         "zkb" => %{
+           "totalValue" => 1_000_000.0,
+           "points" => 1,
+           "hash" => "abc123"
+         }
+       }
+     ]}
+  end
 
   @impl true
   def get_character_kills(_character_id, _limit \\ 25, _page \\ 1), do: {:ok, []}
+
+  @impl true
+  def get_killmail(_kill_id, _hash) do
+    {:ok,
+     %{
+       "killmail_id" => 12_345,
+       "solar_system_id" => 30_000_142,
+       "victim" => %{
+         "character_id" => 93_265_357,
+         "ship_type_id" => 587
+       },
+       "attackers" => [
+         %{
+           "character_id" => 93_898_784,
+           "ship_type_id" => 11_567
+         }
+       ]
+     }}
+  end
 end
