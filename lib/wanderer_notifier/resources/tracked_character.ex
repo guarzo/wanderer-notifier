@@ -6,12 +6,13 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   require Logger
 
   alias Ecto.Adapters.SQL
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Repo
+  alias WandererNotifier.Data.Repo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
 
@@ -1387,7 +1388,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   # Update the cache for a specific character
   defp update_character_cache(character) do
     character_id = to_string(character.character_id)
-    cache_key = "map:character:#{character_id}"
+    cache_key = CacheKeys.character(character_id)
 
     # Convert to format expected by the cache
     cache_character = %{

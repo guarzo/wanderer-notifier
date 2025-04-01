@@ -118,35 +118,78 @@ If you prefer to run without Docker:
 
 All configuration is managed through environment variables in the `.env` file. A template is provided as `.env.example`.
 
+### Configuration Validation
+
+On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them.
+
+### Standardized Environment Variables
+
+All environment variables now use a standardized `WANDERER_` prefix. Legacy variable names are still supported with deprecation warnings, but will be removed in a future release.
+
 ### Key Configuration Options
 
-1. **Required Core Configuration**
+1. **Discord Configuration**
 
-   - `DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
-   - `DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `LICENSE_KEY`: Your license key for accessing premium features
+   - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
+   - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
+   - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
+   - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
+   - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+   - `WANDERER_DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
 
-2. **Map Configuration**
+2. **License Configuration**
 
-   - `MAP_URL`: URL of the map service
-   - `MAP_NAME`: Map identifier for system tracking
-   - `MAP_TOKEN`: Authentication token for map API
+   - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
+   - `WANDERER_LICENSE_MANAGER_URL`: URL for the license manager service (defaults to production service)
 
-3. **Feature Enablement**
+3. **Map API Configuration**
 
-   - `ENABLE_NOTIFICATIONS`: Master switch for all notifications (default: `true`)
-   - `ENABLE_KILL_NOTIFICATIONS`: Enable kill notifications (default: `true`)
-   - `ENABLE_SYSTEM_NOTIFICATIONS`: Enable system tracking (default: `true`)
-   - `ENABLE_CHARACTER_NOTIFICATIONS`: Enable character tracking (default: `true`)
-   - `ENABLE_MAP_CHARTS`: Enable map/activity charts (default: `false`)
-   - `ENABLE_CHARTS`: General charts functionality (default: `false`)
-   - `ENABLE_TRACK_KSPACE_SYSTEMS`: Track K-Space systems in addition to wormholes (default: `false`)
+   - `WANDERER_MAP_URL`: URL of the map service
+   - `WANDERER_MAP_TOKEN`: Authentication token for map API
 
-4. **Feature-specific Discord Channels**
-   - `DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
-   - `DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
-   - `DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
+4. **Database Configuration**
+
+   - `WANDERER_DB_USERNAME`: Database username (default: postgres)
+   - `WANDERER_DB_PASSWORD`: Database password (default: postgres)
+   - `WANDERER_DB_HOSTNAME`: Database hostname (default: postgres)
+   - `WANDERER_DB_NAME`: Database name (default: wanderer*notifier*[environment])
+   - `WANDERER_DB_PORT`: Database port (default: 5432)
+   - `WANDERER_DB_POOL_SIZE`: Connection pool size (default: 10)
+
+5. **Web Server Configuration**
+
+   - `WANDERER_WEB_PORT`: Port for the web server (default: 4000)
+   - `WANDERER_WEB_HOST`: Host for the web server (default: localhost)
+   - `WANDERER_PUBLIC_URL`: Public URL for the web interface
+
+6. **WebSocket Configuration**
+
+   - `WANDERER_WEBSOCKET_ENABLED`: Enable/disable websocket connection (default: true)
+   - `WANDERER_WEBSOCKET_RECONNECT_DELAY`: Delay between reconnection attempts in ms (default: 5000)
+
+7. **Feature Flags**
+
+   - `WANDERER_FEATURE_KILL_NOTIFICATIONS`: Enable kill notifications (default: true)
+   - `WANDERER_FEATURE_SYSTEM_NOTIFICATIONS`: Enable system notifications (default: true)
+   - `WANDERER_FEATURE_CHARACTER_NOTIFICATIONS`: Enable character notifications (default: true)
+   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: false)
+   - `WANDERER_FEATURE_KILL_CHARTS`: Enable kill charts (default: false)
+   - `WANDERER_FEATURE_MAP_CHARTS`: Enable map charts (default: false)
+   - `WANDERER_FEATURE_ACTIVITY_CHARTS`: Enable activity charts (default: false)
+
+8. **Debug Settings**
+   - `WANDERER_DEBUG_LOGGING`: Enable debug logging (default: false)
+
+### Legacy Variables Support
+
+For backward compatibility, the following legacy variable names are still supported but will show deprecation warnings:
+
+- `DISCORD_BOT_TOKEN` → use `WANDERER_DISCORD_BOT_TOKEN` instead
+- `DISCORD_CHANNEL_ID` → use `WANDERER_DISCORD_CHANNEL_ID` instead
+- `MAP_URL_WITH_NAME` → use `WANDERER_MAP_URL` instead
+- `MAP_TOKEN` → use `WANDERER_MAP_TOKEN` instead
+- `LICENSE_KEY` → use `WANDERER_LICENSE_KEY` instead
+- `ENABLE_TRACK_KSPACE_SYSTEMS` → use `WANDERER_FEATURE_TRACK_KSPACE` instead
 
 For a complete list of all available environment variables, see the [Environment Variables Documentation](docs/configuration/environment-variables.md).
 

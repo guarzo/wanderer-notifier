@@ -1,10 +1,11 @@
 alias WandererNotifier.Api.Http.Client
 alias WandererNotifier.Api.Map.UrlBuilder
 alias WandererNotifier.Config.{Application, Cache}
-alias WandererNotifier.Config
+alias WandererNotifier.Config.Config
 alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 alias WandererNotifier.Data.Character
-alias WandererNotifier.Logger, as: AppLogger
+alias WandererNotifier.Data.Repo
+alias WandererNotifier.Logger.Logger, as: AppLogger
 alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 alias WandererNotifier.Notifiers.StructuredFormatter
 alias WandererNotifier.Resources.TrackedCharacter
@@ -303,11 +304,12 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Separate function to handle character persistence with isolated error handling
   defp handle_character_persistence(tracked_characters) do
-    # Check if database is enabled using the TrackedCharacter module function
-    database_enabled = TrackedCharacter.database_enabled?()
+    persistence_config = Application.get_env(:wanderer_notifier, :persistence, [])
+    kill_charts_enabled = Keyword.get(persistence_config, :enabled)
+    map_charts_enabled = Application.get_env(:wanderer_notifier, :wanderer_feature_map_charts)
 
-    # Only continue if database is enabled
-    if database_enabled do
+    # Only continue if either kill charts or map charts are enabled
+    if kill_charts_enabled || map_charts_enabled do
       AppLogger.api_info(
         "[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database"
       )
@@ -316,7 +318,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       ensure_database_available_and_persist(tracked_characters)
     else
       AppLogger.api_debug(
-        "[CharactersClient] Database operations disabled, skipping character persistence"
+        "[CharactersClient] Database features disabled, skipping character persistence"
       )
 
       # Return empty result
@@ -431,7 +433,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   # Helper function to check if the repo is started and provide diagnostics
   defp repo_started? do
     # Check if the repo process exists
-    pid = Process.whereis(WandererNotifier.Repo)
+    pid = Process.whereis(Repo)
 
     cond do
       is_pid(pid) && Process.alive?(pid) ->
@@ -464,7 +466,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Check if database is actually connectable
   defp check_database_connectivity(_pid) do
-    case WandererNotifier.Repo.health_check() do
+    case Repo.health_check() do
       {:ok, ping_time} ->
         AppLogger.api_debug(
           "[CharactersClient] Database connection is healthy (ping: #{ping_time}ms)"
@@ -484,7 +486,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   # Log detailed diagnostics when the repo is missing
   defp log_repo_missing_diagnostics do
     # Check if repo module is defined
-    if Code.ensure_loaded?(WandererNotifier.Repo) do
+    if Code.ensure_loaded?(Repo) do
       AppLogger.api_warn(
         "[CharactersClient] Database repo module exists but process not started. " <>
           "This often indicates the repo failed to connect during startup."

@@ -1,6 +1,8 @@
 defmodule WandererNotifier.Helpers.DeduplicationHelperTest do
-  use ExUnit.Case, async: true
-  alias WandererNotifier.Helpers.DeduplicationHelper
+  use ExUnit.Case, async: false
+  require Logger
+
+  alias WandererNotifier.Notifiers.Helpers.Deduplication, as: DeduplicationHelper
 
   setup do
     # First clear any existing data to ensure tests start with a clean state

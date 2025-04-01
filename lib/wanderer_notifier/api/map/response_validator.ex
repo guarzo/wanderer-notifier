@@ -6,7 +6,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   processing, to prevent errors from unexpected data formats.
   """
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Validates a systems response.

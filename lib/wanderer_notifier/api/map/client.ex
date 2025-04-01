@@ -9,7 +9,7 @@ defmodule WandererNotifier.Api.Map.Client do
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Updates system information from the map API.

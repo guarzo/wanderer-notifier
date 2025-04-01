@@ -10,13 +10,11 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     aggregation_schedule: "0 0 * * *" # Daily at midnight
   ```
   """
-
-  require Logger
-
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailAggregation
-  alias WandererNotifier.Services.CharacterKillsService
 
   # Default to midnight (hour = 0, minute = 0)
   @default_hour 0
@@ -24,10 +22,9 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
 
   # Use the time scheduler as our base for running at a specific time each day
   use WandererNotifier.Schedulers.TimeScheduler,
-    default_hour: @default_hour,
-    default_minute: @default_minute,
-    hour_env_var: :aggregation_schedule_hour,
-    minute_env_var: :aggregation_schedule_minute
+    name: __MODULE__
+
+  # Hour and minute are now configured via the Timings module
 
   @impl true
   def execute(state) do
@@ -71,7 +68,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
          monthly: monthly_result
        }, state}
     else
-      Logger.info(
+      AppLogger.scheduler_info(
         "#{inspect(@scheduler_name)}: Skipping killmail aggregation (persistence disabled)"
       )
 
@@ -79,7 +76,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during killmail aggregation: #{Exception.message(e)}"
       )
 
@@ -97,7 +94,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     # Fetch up to 50 recent kills per character
     limit = 50
 
-    case CharacterKillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
+    case KillsService.fetch_and_persist_all_tracked_character_kills(limit, 1) do
       {:ok, stats} ->
         AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",
@@ -137,7 +134,7 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
     end
   rescue
     e ->
-      Logger.error(
+      AppLogger.scheduler_error(
         "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation: #{Exception.message(e)}"
       )
 
@@ -156,17 +153,17 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   defp log_period_result(result, period_label, skip_reason \\ "") do
     case result do
       {:ok, _} ->
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation completed successfully"
         )
 
       {:error, _, reason} ->
-        Logger.error(
+        AppLogger.scheduler_error(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation failed: #{inspect(reason)}"
         )
 
       :skipped ->
-        Logger.info(
+        AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: #{period_label} aggregation skipped #{skip_reason}"
         )
     end
@@ -180,8 +177,8 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
   def get_config do
     %{
       type: :time,
-      hour: @default_hour,
-      minute: @default_minute,
+      hour: Timings.killmail_aggregation_hour(),
+      minute: Timings.killmail_aggregation_minute(),
       description: "Aggregate killmail data into statistics"
     }
   end

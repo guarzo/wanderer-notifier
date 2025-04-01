@@ -169,6 +169,51 @@ track_kspace_enabled =
     true -> true
   end
 
+# Configure kill charts feature
+kill_charts_enabled =
+  case get_env.("WANDERER_FEATURE_KILL_CHARTS", get_env.("ENABLE_KILL_CHARTS", "false")) do
+    "true" -> true
+    _ -> false
+  end
+
+# Configure map charts feature
+map_charts_enabled =
+  case get_env.("WANDERER_FEATURE_MAP_CHARTS", get_env.("ENABLE_MAP_CHARTS", "false")) do
+    "true" -> true
+    _ -> false
+  end
+
+# Log the feature configuration for debugging
+IO.puts("Feature Configuration:")
+IO.puts("  Kill Charts: #{kill_charts_enabled}")
+IO.puts("  Map Charts: #{map_charts_enabled}")
+
+config :wanderer_notifier, :wanderer_feature_map_charts, map_charts_enabled
+
+# Parse retention days with safer handling
+retention_days =
+  case Integer.parse(
+         get_env.(
+           "WANDERER_PERSISTENCE_RETENTION_DAYS",
+           get_env.("PERSISTENCE_RETENTION_DAYS", "180")
+         )
+       ) do
+    {days, _} -> days
+    :error -> 180
+  end
+
+# Configure persistence settings
+config :wanderer_notifier, :persistence,
+  enabled: kill_charts_enabled,
+  retention_period_days: retention_days,
+  # Daily at midnight
+  aggregation_schedule:
+    get_env.(
+      "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
+      get_env.("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
+    )
+
+# Update the features map to be consistent with individual settings
 features_map = %{
   notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
   character_notifications_enabled:
@@ -183,17 +228,19 @@ features_map = %{
   tracked_characters_notifications_enabled:
     get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
   activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
-  kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "true") == "true",
-  map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "true") == "true",
+  # Use the same value we configured above
+  kill_charts: kill_charts_enabled,
+  # Use the same value we configured above
+  map_charts: map_charts_enabled,
   track_kspace_systems: track_kspace_enabled
 }
 
 config :wanderer_notifier, features: features_map
 
-# Websocket Configuration
+# Websocket Configuration - URL is fixed and not configurable via environment
 config :wanderer_notifier, :websocket,
   enabled: get_env.("WANDERER_WEBSOCKET_ENABLED", "true") == "true",
-  url: get_env.("WANDERER_WEBSOCKET_URL", "wss://zkillboard.com/websocket/"),
+  # The URL is fixed in WandererNotifier.Config.Websocket and not configurable here
   reconnect_delay: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_DELAY", "5000")),
   max_reconnects: String.to_integer(get_env.("WANDERER_WEBSOCKET_MAX_RECONNECTS", "20")),
   reconnect_window: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_WINDOW", "3600"))
@@ -234,37 +281,20 @@ config :wanderer_notifier, :port, port_value
 
 config :wanderer_notifier, :scheme, get_env.("WANDERER_SCHEME", get_env.("SCHEME", "http"))
 
-# Configure kill charts feature
-kill_charts_enabled =
-  case get_env.("WANDERER_FEATURE_KILL_CHARTS", get_env.("ENABLE_KILL_CHARTS", "false")) do
-    "true" -> true
-    _ -> false
-  end
+# Configure database settings
+# Store database configuration in the standardized format for WandererNotifier.Config.Database
+config :wanderer_notifier, :database,
+  username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
+  password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
+  hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),
+  database:
+    get_env.("WANDERER_DB_NAME", get_env.("POSTGRES_DB", "wanderer_notifier_#{config_env()}")),
+  port: get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432")),
+  pool_size: get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10"))
 
-# Parse retention days with safer handling
-retention_days =
-  case Integer.parse(
-         get_env.(
-           "WANDERER_PERSISTENCE_RETENTION_DAYS",
-           get_env.("PERSISTENCE_RETENTION_DAYS", "180")
-         )
-       ) do
-    {days, _} -> days
-    :error -> 180
-  end
-
-config :wanderer_notifier, :persistence,
-  enabled: kill_charts_enabled,
-  retention_period_days: retention_days,
-  # Daily at midnight
-  aggregation_schedule:
-    get_env.(
-      "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
-      get_env.("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
-    )
-
-# Always configure database connection regardless of kill charts setting
-config :wanderer_notifier, WandererNotifier.Repo,
+# Configure Repo with the values from our standardized database configuration
+# This maintains backward compatibility while we transition to the new approach
+config :wanderer_notifier, WandererNotifier.Data.Repo,
   username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
   password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
   hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),
@@ -273,3 +303,64 @@ config :wanderer_notifier, WandererNotifier.Repo,
   port: String.to_integer(get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432"))),
   pool_size:
     String.to_integer(get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10")))
+
+# Add a helper function to log deprecation warnings
+defmodule EnvironmentHelper do
+  def log_deprecation(old_var, new_var, value) when not is_nil(value) do
+    IO.puts(
+      IO.ANSI.yellow() <>
+        IO.ANSI.bright() <>
+        "[DEPRECATION WARNING] " <>
+        IO.ANSI.reset() <>
+        "Environment variable #{old_var} is deprecated and will be removed in a future release. " <>
+        "Please use #{new_var} instead."
+    )
+  end
+
+  def log_deprecation(_old_var, _new_var, _value), do: :ok
+
+  def check_env_vars do
+    # Log deprecation warnings for legacy variables
+    log_deprecation(
+      "APP_VERSION",
+      "compile-time version from mix.exs",
+      System.get_env("APP_VERSION")
+    )
+
+    log_deprecation(
+      "ENABLE_TRACK_KSPACE_SYSTEMS",
+      "WANDERER_FEATURE_TRACK_KSPACE",
+      System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+    )
+
+    log_deprecation(
+      "LICENSE_MANAGER_API_URL",
+      "WANDERER_LICENSE_MANAGER_URL",
+      System.get_env("LICENSE_MANAGER_API_URL")
+    )
+
+    log_deprecation(
+      "NOTIFIER_API_TOKEN",
+      "WANDERER_NOTIFIER_API_TOKEN",
+      System.get_env("NOTIFIER_API_TOKEN")
+    )
+
+    log_deprecation("MAP_URL", "WANDERER_MAP_URL", System.get_env("MAP_URL"))
+    log_deprecation("MAP_TOKEN", "WANDERER_MAP_TOKEN", System.get_env("MAP_TOKEN"))
+
+    # Log complete removal for websocket URL
+    if System.get_env("WANDERER_WEBSOCKET_URL") do
+      IO.puts([
+        :yellow,
+        :bright,
+        "[CONFIGURATION NOTICE] ",
+        :reset,
+        "Environment variable WANDERER_WEBSOCKET_URL is no longer used. ",
+        "The websocket URL is now fixed to wss://zkillboard.com/websocket/."
+      ])
+    end
+  end
+end
+
+# Add call to check environment variables at the end of the file
+EnvironmentHelper.check_env_vars()

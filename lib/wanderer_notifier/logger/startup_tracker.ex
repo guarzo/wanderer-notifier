@@ -10,7 +10,7 @@ defmodule WandererNotifier.Logger.StartupTracker do
   """
 
   require Logger
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Startup phases
   @phases [

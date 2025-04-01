@@ -13,8 +13,8 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   alias Ash.Query
 
   alias WandererNotifier.ChartService
-  alias WandererNotifier.Discord.Client, as: DiscordClient
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter

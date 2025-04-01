@@ -1,96 +1,157 @@
 defmodule WandererNotifier.Api.ZKill.Service do
   @moduledoc """
-  Service for accessing zKillboard data.
-  Provides higher-level functions for retrieving and processing kill data.
+  Service module for interacting with the ZKillboard API.
+  Provides functions to fetch killmail data and handle caching.
   """
 
-  require Logger
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Logger, as: AppLogger
-  @type kill_id :: String.t() | integer()
-  @type system_id :: String.t() | integer()
+  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.Config.Cache
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
-  Retrieves an enriched killmail by merging data from zKill and ESI.
+  Fetches recent kills from ZKillboard API.
 
   ## Parameters
-
-  - `kill_id`: The ID of the kill to retrieve (string or integer)
+    - limit: The number of recent kills to fetch (default: 10)
 
   ## Returns
-
-  - `{:ok, Killmail.t()}`: A successfully enriched killmail
-  - `{:error, reason}`: If an error occurred
+    - {:ok, kills} on success where kills is a list of killmail data
+    - {:error, reason} on failure
   """
-  @spec get_enriched_killmail(kill_id()) :: {:ok, Killmail.t()} | {:error, any()}
-  def get_enriched_killmail(kill_id) do
-    with {:ok, [partial | _]} <- ZKillClient.get_single_killmail(kill_id),
-         %{"killmail_id" => kid, "zkb" => zkb_map} <- partial,
-         true <- is_binary(zkb_map["hash"]),
-         hash = zkb_map["hash"],
-         {:ok, esi_data} <- ESIService.get_esi_kill_mail(kid, hash) do
-      enriched = %Killmail{killmail_id: kid, zkb: zkb_map, esi_data: esi_data}
-      {:ok, enriched}
-    else
+  def get_recent_kills(limit \\ 10) do
+    AppLogger.api_debug("Fetching recent kills from ZKill", limit: limit)
+
+    case HttpClient.get("https://zkillboard.com/api/kills/limit/#{limit}/") do
+      {:ok, response} ->
+        case Jason.decode(response.body) do
+          {:ok, kills} when is_list(kills) ->
+            AppLogger.api_debug("Successfully fetched recent kills from ZKill",
+              count: length(kills)
+            )
+
+            {:ok, kills}
+
+          {:error, reason} ->
+            AppLogger.api_error("Failed to parse ZKill recent kills response",
+              error: inspect(reason)
+            )
+
+            {:error, :invalid_json}
+        end
+
       {:error, reason} ->
-        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{inspect(reason)}")
-        {:error, reason}
-
-      false ->
-        reason = "Missing or invalid hash in zKill data"
-        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{reason}")
-        {:error, reason}
-
-      %{} = incomplete_data ->
-        reason = "Incomplete kill data, missing required fields"
-
-        Logger.error(
-          "Failed to get enriched killmail for #{kill_id}: #{reason}, data: #{inspect(incomplete_data)}"
-        )
-
-        {:error, reason}
-
-      error ->
-        reason = "Unexpected error: #{inspect(error)}"
-        AppLogger.api_error("Failed to get enriched killmail for #{kill_id}: #{reason}")
+        AppLogger.api_error("Failed to fetch recent kills from ZKill", error: inspect(reason))
         {:error, reason}
     end
   end
 
   @doc """
-  Retrieves recent kills from zKillboard.
+  Fetches kills for a specific system from ZKillboard API.
 
   ## Parameters
-
-  - `limit`: The maximum number of kills to retrieve (default: 10)
+    - system_id: The ID of the system to fetch kills for
+    - limit: The number of kills to fetch (default: 10)
 
   ## Returns
-
-  - `{:ok, kills}`: A list of recent kills
-  - `{:error, reason}`: If an error occurred
+    - {:ok, kills} on success where kills is a list of killmail data
+    - {:error, reason} on failure
   """
-  @spec get_recent_kills(integer()) :: {:ok, list(map())} | {:error, any()}
-  def get_recent_kills(limit \\ 10) do
-    ZKillClient.get_recent_kills(limit)
+  def get_system_kills(system_id, limit \\ 10) do
+    AppLogger.api_debug("Fetching system kills from ZKill", system_id: system_id, limit: limit)
+
+    case WandererNotifier.Api.ZKill.Client.get_system_kills(system_id, limit) do
+      {:ok, kills} when is_list(kills) ->
+        AppLogger.api_debug("Successfully fetched system kills from ZKill",
+          system_id: system_id,
+          count: length(kills)
+        )
+
+        {:ok, kills}
+
+      {:error, {:domain_error, :zkill, {:api_error, error_msg}}} = error ->
+        AppLogger.api_warn("ZKill API error: #{error_msg}",
+          system_id: system_id,
+          error: error_msg
+        )
+
+        error
+
+      {:error, reason} = error ->
+        AppLogger.api_error("Failed to fetch system kills from ZKill",
+          system_id: system_id,
+          error: inspect(reason)
+        )
+
+        error
+    end
   end
 
   @doc """
-  Retrieves kills for a specific system from zKillboard.
+  Fetches a killmail by its ID, first checking the cache and then falling back to ZKillboard API.
 
   ## Parameters
-
-  - `system_id`: The ID of the system to get kills for (string or integer)
-  - `limit`: The maximum number of kills to retrieve (default: 5)
+    - killmail_id: The ID of the killmail to fetch
 
   ## Returns
-
-  - `{:ok, kills}`: A list of kills for the system
-  - `{:error, reason}`: If an error occurred
+    - {:ok, killmail} on success
+    - {:error, reason} on failure
   """
-  @spec get_system_kills(system_id(), integer()) :: {:ok, list(map())} | {:error, any()}
-  def get_system_kills(system_id, limit \\ 5) do
-    ZKillClient.get_system_kills(system_id, limit)
+  def get_killmail(killmail_id) do
+    AppLogger.api_debug("Fetching killmail", killmail_id: killmail_id)
+
+    case CacheRepo.get(killmail_id) do
+      {:ok, killmail} ->
+        AppLogger.api_debug("Found killmail in cache", killmail_id: killmail_id)
+        {:ok, killmail}
+
+      {:error, :not_found} ->
+        fetch_killmail_from_zkill(killmail_id)
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to get killmail from cache",
+          killmail_id: killmail_id,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp fetch_killmail_from_zkill(killmail_id) do
+    case HttpClient.get("https://zkillboard.com/api/killID/#{killmail_id}/") do
+      {:ok, response} ->
+        process_zkill_response(response, killmail_id)
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to get killmail from ZKill",
+          killmail_id: killmail_id,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp process_zkill_response(response, killmail_id) do
+    case Jason.decode(response.body) do
+      {:ok, json_data} ->
+        killmail = %{id: killmail_id, data: json_data}
+        CacheRepo.set(killmail_id, killmail, Cache.static_info_cache_ttl())
+
+        AppLogger.api_debug("Successfully fetched and cached killmail from ZKill",
+          killmail_id: killmail_id
+        )
+
+        {:ok, killmail}
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to parse ZKill response",
+          killmail_id: killmail_id,
+          error: inspect(reason)
+        )
+
+        {:error, :invalid_json}
+    end
   end
 end

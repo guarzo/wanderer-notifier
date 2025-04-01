@@ -6,14 +6,14 @@ defmodule WandererNotifier.Web.Router do
   import Plug.Conn
   require Logger
 
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger, as: AppLogger
-  alias WandererNotifier.Services.Service
-
-  alias WandererNotifier.Web.Controllers.{
-    ApiController,
+  alias WandererNotifier.Api.Controllers.{
+    ActivityChartController,
+    CharacterController,
     ChartController,
-    DebugController
+    DebugController,
+    HealthController,
+    KillController,
+    NotificationController
   }
 
   plug(Plug.Logger)
@@ -48,115 +48,36 @@ defmodule WandererNotifier.Web.Router do
   plug(:match)
   plug(:dispatch)
 
-  # Forward chart requests to the ChartController
-  forward("/charts", to: ChartController)
-
-  # Forward debug API requests to the DebugController
+  # API Routes
+  forward("/api/health", to: HealthController)
+  forward("/api/characters", to: CharacterController)
+  forward("/api/kills", to: KillController)
+  forward("/api/notifications", to: NotificationController)
   forward("/api/debug", to: DebugController)
-
-  # Forward all other API requests to the API controller
-  forward("/api", to: ApiController)
-
-  forward("/activity", to: ChartController)
+  forward("/api/charts", to: ChartController)
+  forward("/api/activity-charts", to: ActivityChartController)
 
   # React app routes - these need to be before other routes to ensure proper SPA routing
 
   # Map tools routes
-  get "/map-charts" do
-    if Features.map_charts_enabled?() do
-      conn
-      |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/map-charts/index.html")
-    else
-      conn
-      |> put_resp_content_type("text/plain")
-      |> send_resp(404, "Map tools are disabled")
-    end
+  get "/schedulers" do
+    send_file(conn, 200, "priv/static/app/index.html")
   end
 
-  # Handle client-side routing for the React app - Map Tools
-  get "/map-charts/*path" do
-    if Features.map_charts_enabled?() do
-      conn
-      |> put_resp_header("content-type", "text/html; charset=utf-8")
-      |> send_file(200, "priv/static/map-charts/index.html")
-    else
-      conn
-      |> put_resp_content_type("text/plain")
-      |> send_resp(404, "Map tools are disabled")
-    end
+  get "/charts" do
+    send_file(conn, 200, "priv/static/app/index.html")
   end
 
-  # Legacy routes are removed
-
-  #
-  # HEALTH CHECK ENDPOINT
-  #
-
-  get "/health" do
-    # Check if critical services are running
-    cache_available =
-      case Cachex.stats(:wanderer_notifier_cache) do
-        {:ok, _stats} -> true
-        _ -> false
-      end
-
-    # Check if the service GenServer is alive
-    service_alive =
-      case Process.whereis(Service) do
-        pid when is_pid(pid) -> Process.alive?(pid)
-        _ -> false
-      end
-
-    # If critical services are running, return 200 OK
-    if cache_available and service_alive do
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        200,
-        Jason.encode!(%{status: "ok", cache: cache_available, service: service_alive})
-      )
-    else
-      # If any critical service is down, return 503 Service Unavailable
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(
-        503,
-        Jason.encode!(%{status: "error", cache: cache_available, service: service_alive})
-      )
-    end
+  get "/kill-comparison" do
+    send_file(conn, 200, "priv/static/app/index.html")
   end
 
-  #
-  # API ROUTES (JSON)
-  #
+  # Catch-all route for SPA - must be after all other specific routes
+  get "/*path" do
+    send_file(conn, 200, "priv/static/app/index.html")
+  end
 
-  #
-  # Catch-all: serve the React index.html from priv/static/app
-  #
   match _ do
-    AppLogger.api_info("Serving React app", path: conn.request_path)
-
-    index_path = Path.join(:code.priv_dir(:wanderer_notifier), "static/app/index.html")
-    AppLogger.api_debug("Serving index.html", path: index_path)
-
-    if File.exists?(index_path) do
-      conn
-      |> put_resp_header("cache-control", "no-cache")
-      |> put_resp_content_type("text/html")
-      |> Plug.Conn.send_file(200, index_path)
-    else
-      AppLogger.api_error("Index file not found", path: index_path)
-
-      conn
-      |> put_resp_content_type("text/plain")
-      |> send_resp(404, "Not found: #{conn.request_path}")
-    end
+    send_resp(conn, 404, "Not found")
   end
-
-  # Only add map routes if map tools are enabled
-  # MapController was removed as part of the feature consolidation
-  # if Config.map_charts_enabled?() do
-  #   forward("/map", to: MapController)
-  # end
 end

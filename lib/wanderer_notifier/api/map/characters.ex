@@ -3,13 +3,13 @@ defmodule WandererNotifier.Api.Map.Characters do
   Tracked characters API calls.
   """
   alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.TrackedCharacter
-  alias WandererNotifier.Services.NotificationDeterminer
 
   def update_tracked_characters(cached_characters \\ nil) do
     AppLogger.api_info(
@@ -433,8 +433,8 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do
-    # Use the centralized notification determiner to check if character notifications are enabled globally
-    if NotificationDeterminer.should_notify_character?(nil) do
+    # Use the CharacterDeterminer to check if character notifications are enabled globally
+    if CharacterDeterminer.should_notify?(nil, %{}) do
       # Check if we have both new and cached characters
       new_chars = new_characters || []
       cached_chars = cached_characters || []
@@ -454,8 +454,8 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp send_character_notification(character_info) do
-    notifier = NotifierFactory.get_notifier()
-    notifier.send_new_tracked_character_notification(character_info)
+    AppLogger.api_info("Sending notification for new character: #{character_info.name}")
+    NotifierFactory.notify(:send_new_tracked_character_notification, [character_info])
   end
 
   defp find_new_characters(_new_chars, []) do
@@ -549,9 +549,7 @@ defmodule WandererNotifier.Api.Map.Characters do
   end
 
   defp notify_character_if_needed(character_id, char) do
-    determiner = NotificationDeterminer
-
-    if determiner.should_notify_character?(character_id) do
+    if CharacterDeterminer.should_notify?(character_id, %{}) do
       send_notification_for_character(character_id, char)
     else
       AppLogger.api_debug("Character is not marked for notification", character_id: character_id)

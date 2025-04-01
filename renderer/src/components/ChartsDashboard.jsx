@@ -7,6 +7,7 @@ import CharacterKillsCard from './CharacterKillsCard';
 export default function ChartsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mapChartsEnabled, setMapChartsEnabled] = useState(false);
   const [features, setFeatures] = useState({
     mapChartsEnabled: false,
     killChartsEnabled: false

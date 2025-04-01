@@ -6,11 +6,12 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Config
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Logger, as: AppLogger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 
   @doc """
@@ -26,8 +27,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     - {:error, reason} on failure
   """
   def update_systems(cached_systems \\ nil) do
-    AppLogger.api_info("[SystemsClient] Starting systems update")
-
     # Log cache status before update
     pre_cache = CacheRepo.get("map:systems")
     pre_cache_size = if is_list(pre_cache), do: length(pre_cache), else: 0
@@ -35,13 +34,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     case UrlBuilder.build_url("map/systems") do
       {:ok, url} ->
-        AppLogger.api_info("[SystemsClient] Systems URL built: #{url}")
         headers = UrlBuilder.get_auth_headers()
-
-        # Get current systems from cache for logging/comparison
-        current_systems = cached_systems || CacheRepo.get("map:systems") || []
-        current_count = length(current_systems)
-        AppLogger.api_info("[SystemsClient] Current systems in cache: #{current_count}")
 
         # Process the systems request
         case Client.get(url, headers) do
@@ -86,7 +79,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     tracked_systems = filter_systems_for_tracking(systems)
 
     # Enrich all systems before caching any of them
-    AppLogger.api_info("[SystemsClient] Enriching all systems before caching...")
     enriched_systems = enrich_tracked_systems(tracked_systems)
 
     # Cache the ENRICHED systems
@@ -128,50 +120,20 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Filter systems based on configuration
   defp filter_systems_for_tracking(systems) do
-    # Add detailed debugging for track_kspace_systems
-    track_kspace_features = Application.get_env(:wanderer_notifier, :features, %{})
-    track_kspace_config = track_kspace_features[:track_kspace_systems]
-
-    # Get direct env vars for comparison
-    legacy_env = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
-    new_env = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
-
-    # Get the result from the Features module
-    features_module_result = Features.track_kspace_systems?()
-
-    AppLogger.api_info(
-      "[SystemsClient] TRACK KSPACE DEBUG CONFIG:",
-      %{
-        track_kspace_config: track_kspace_config,
-        legacy_env: legacy_env,
-        new_env: new_env,
-        features_module_result: features_module_result
-      }
-    )
-
-    track_all_systems = Features.track_kspace_systems?()
-    AppLogger.api_info("[SystemsClient] K-space tracking enabled: #{track_all_systems}")
-
-    tracked_systems =
-      if track_all_systems do
-        AppLogger.api_info("[SystemsClient] Including ALL systems (K-space and wormholes)")
-        systems
-      else
-        # Only track wormhole systems if K-Space tracking is disabled
-        AppLogger.api_info("[SystemsClient] Filtering to wormhole systems only")
-        Enum.filter(systems, &MapSystem.wormhole?/1)
-      end
-
-    # Log counts
-    wormhole_count = Enum.count(systems, &MapSystem.wormhole?/1)
-    kspace_count = length(systems) - wormhole_count
-
-    AppLogger.api_info(
-      "[SystemsClient] Tracking #{length(tracked_systems)} systems (#{wormhole_count} wormholes, #{kspace_count} K-Space) " <>
-        "out of #{length(systems)} total systems"
-    )
-
-    tracked_systems
+    # Use the Features module for configuration
+    track_kspace_systems = Features.track_kspace_systems?()
+    # Filter the systems based on the configuration
+    if track_kspace_systems do
+      # If tracking K-space systems is enabled, return all systems
+      systems
+    else
+      # If tracking K-space systems is disabled, filter out K-space systems
+      systems
+      |> Enum.filter(fn system ->
+        # Keep only wormhole systems (class 1-6)
+        system.security_class in ["C1", "C2", "C3", "C4", "C5", "C6"]
+      end)
+    end
   end
 
   # Enrich tracked systems with static data
@@ -182,20 +144,11 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         Map.put(acc, sys.solar_system_id, sys)
       end)
 
-    # Enrich wormhole systems
-    wormhole_systems = Enum.filter(tracked_systems, &MapSystem.wormhole?/1)
-
-    AppLogger.api_info(
-      "[SystemsClient] Found #{length(wormhole_systems)} wormhole systems to enrich"
-    )
-
     # Process each system
     enriched_map = process_systems_for_enrichment(tracked_systems, system_map)
 
     # Convert the map back to a list
     enriched_systems = Map.values(enriched_map)
-
-    AppLogger.api_info("[SystemsClient] System enrichment complete")
 
     enriched_systems
   end
@@ -231,7 +184,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     # Wait for enrichment with a 2 second timeout per system
     case Task.yield(task, 2_000) do
       {:ok, {:ok, enriched_system}} ->
-        AppLogger.api_debug("[SystemsClient] Successfully enriched system #{system.name}")
         # Update the map with the enriched system
         Map.put(acc, system.solar_system_id, enriched_system)
 
@@ -251,9 +203,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Process a non-wormhole system (no enrichment needed)
   defp process_non_wormhole_system(system, acc) do
-    # Non-wormhole systems don't need enrichment, but ensure statics is never nil
-    updated_system = ensure_statics_not_nil(system)
-    Map.put(acc, system.solar_system_id, updated_system)
+    # Update the map with the original system
+    Map.put(acc, system.solar_system_id, system)
   end
 
   # Ensure statics field is never nil
@@ -321,7 +272,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
         system_id = system.solar_system_id
 
         if system_id do
-          system_cache_key = "map:system:#{system_id}"
+          system_cache_key = CacheKeys.system(system_id)
 
           AppLogger.api_debug(
             "[SystemsClient] Caching system ID #{system_id} at key #{system_cache_key}"
@@ -583,82 +534,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     )
   end
 
-  defp send_system_notification(system) do
-    map_system = ensure_map_system(system)
-    log_system_details(map_system)
-
-    # Get notifier and send notification directly - simplified approach
-    AppLogger.api_info("[SystemsClient] Sending system notification via NotifierFactory")
-    notifier = NotifierFactory.get_notifier()
-    notifier.send_new_system_notification(map_system)
-
-    # Return success
-    {:ok, map_system.id}
-  rescue
-    e ->
-      AppLogger.api_error(
-        "[SystemsClient] Error sending system notification: #{Exception.message(e)}"
-      )
-
-      {:error, e}
-  end
-
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      # Already a MapSystem, just return it
-      system
-    else
-      # Try to create MapSystem from a map or other structure
-      try do
-        # Check if we need to convert it
-        if is_map(system) do
-          MapSystem.new(system)
-        else
-          # Log error and return original
-          AppLogger.api_error("[SystemsClient] Cannot convert to MapSystem: #{inspect(system)}")
-          system
-        end
-      rescue
-        e ->
-          # Log error and return original on conversion failure
-          AppLogger.api_error(
-            "[SystemsClient] Failed to convert to MapSystem: #{Exception.message(e)}"
-          )
-
-          system
-      end
-    end
-  end
-
-  defp log_system_details(map_system) do
-    if MapSystem.wormhole?(map_system) do
-      log_wormhole_system_details(map_system)
-    else
-      log_non_wormhole_system_details(map_system)
-    end
-  end
-
-  defp log_wormhole_system_details(map_system) do
-    statics_list = map_system.statics || []
-    type_description = map_system.type_description || "Unknown"
-    class_title = map_system.class_title
-
-    AppLogger.api_info(
-      "[SystemsClient] Processing wormhole system notification - " <>
-        "ID: #{map_system.solar_system_id}, " <>
-        "Name: #{map_system.name}, " <>
-        "Type: #{type_description}, " <>
-        "Class: #{class_title}, " <>
-        "Statics: #{Enum.join(statics_list, ", ")}"
-    )
-  end
-
-  defp log_non_wormhole_system_details(map_system) do
-    AppLogger.api_info(
-      "[SystemsClient] Processing non-wormhole system notification - " <>
-        "ID: #{map_system.solar_system_id}, " <>
-        "Name: #{map_system.name}, " <>
-        "Type: #{map_system.type_description}"
-    )
+  defp send_system_notification(map_system) do
+    AppLogger.api_info("Sending notification for new system: #{map_system.name}")
+    NotifierFactory.notify(:send_new_system_notification, [map_system])
   end
 end

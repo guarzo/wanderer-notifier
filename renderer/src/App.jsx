@@ -22,17 +22,15 @@ function App() {
 
   useEffect(() => {
     // Fetch configuration when component mounts
-    fetch('/charts/config')
+    fetch('/api/charts/config')
       .then(response => response.json())
       .then(data => {
-        setCorpToolsEnabled(data.corp_tools_enabled);
-        setMapChartsEnabled(data.map_tools_enabled);
+        setMapChartsEnabled(data.map_charts_enabled);
         setKillChartsEnabled(data.kill_charts_enabled);
         setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching chart config:', error);
-        setCorpToolsEnabled(false);
         setMapChartsEnabled(false);
         setKillChartsEnabled(false);
         setLoading(false);
@@ -103,12 +101,6 @@ function App() {
                 path="/schedulers" 
                 element={<SchedulerDashboard />} 
               />
-              
-              {/* Legacy routes for backward compatibility */}
-              <Route path="/corp-tools" element={<Navigate to="/" replace />} />
-              <Route path="/map-tools" element={<Navigate to="/" replace />} />
-              <Route path="/charts-dashboard" element={<Navigate to="/charts" replace />} />
-              <Route path="/debug" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
         </Router>

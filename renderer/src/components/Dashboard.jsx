@@ -31,13 +31,13 @@ export default function Dashboard() {
     try {
       setLoading(true);
       console.log("Fetching status data from API...");
-      const response = await fetch("/api/status");
+      const response = await fetch("/api/debug/status");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
       console.log("Status data received:", data);
-      setStatus(data);
+      setStatus(data.data);
       setError(null);
 
       // Always fetch database stats
@@ -54,14 +54,14 @@ export default function Dashboard() {
   async function fetchDbStats() {
     try {
       console.log("Fetching database statistics...");
-      const response = await fetch("/api/db-stats");
+      const response = await fetch("/api/debug/db-stats");
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
       console.log("Database stats received:", data);
-      if (data.success) {
-        setDbStats(data.stats);
+      if (data.status === "ok") {
+        setDbStats(data.data);
       } else {
         console.warn("Failed to get database stats:", data.message);
       }
@@ -105,9 +105,14 @@ export default function Dashboard() {
   // Test notification actions
   async function testKillNotification() {
     try {
-      // Debug paths
-      console.log("Sending test kill notification request to: /api/test-notification");
-      const response = await fetch("/api/test-notification");
+      console.log("Sending test kill notification request...");
+      const response = await fetch("/api/notifications/test", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'kill' })
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
@@ -122,8 +127,14 @@ export default function Dashboard() {
 
   async function testSystemNotification() {
     try {
-      console.log("Sending test system notification request to: /api/test-system-notification");
-      const response = await fetch("/api/test-system-notification");
+      console.log("Sending test system notification request...");
+      const response = await fetch("/api/notifications/test", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'system' })
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
@@ -138,8 +149,14 @@ export default function Dashboard() {
 
   async function testCharacterNotification() {
     try {
-      console.log("Sending test character notification request to: /api/test-character-notification");
-      const response = await fetch("/api/test-character-notification");
+      console.log("Sending test character notification request...");
+      const response = await fetch("/api/notifications/test", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'character' })
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
@@ -418,12 +435,12 @@ export default function Dashboard() {
               <div className="flex items-center space-x-2">
                 <span
                   className={
-                    status?.features?.enabled?.basic_notifications
+                    status?.features?.kill_notifications_enabled
                       ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
                       : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
                   }
                 >
-                  {status?.features?.enabled?.basic_notifications
+                  {status?.features?.kill_notifications_enabled
                     ? "Enabled"
                     : "Disabled"}
                 </span>
@@ -447,12 +464,12 @@ export default function Dashboard() {
               <div className="flex items-center space-x-2">
                 <span
                   className={
-                    status?.features?.enabled?.tracked_systems_notifications
+                    status?.features?.system_notifications_enabled
                       ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
                       : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
                   }
                 >
-                  {status?.features?.enabled?.tracked_systems_notifications
+                  {status?.features?.system_notifications_enabled
                     ? "Enabled"
                     : "Disabled"}
                 </span>
@@ -474,12 +491,12 @@ export default function Dashboard() {
               <div className="flex items-center space-x-2">
                 <span
                   className={
-                    status?.features?.enabled?.tracked_characters_notifications
+                    status?.features?.character_notifications_enabled
                       ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
                       : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
                   }
                 >
-                  {status?.features?.enabled?.tracked_characters_notifications
+                  {status?.features?.character_notifications_enabled
                     ? "Enabled"
                     : "Disabled"}
                 </span>
@@ -496,7 +513,7 @@ export default function Dashboard() {
             </div>
             
             {/* Activity Charts - Only shown if Map Tools is enabled */}
-            {status?.features?.enabled?.map_charts_enabled && (
+            {status?.features?.map_charts && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
                 <span className="font-medium text-gray-700">Map Charts</span>
                 <div className="flex items-center space-x-2">
@@ -517,7 +534,7 @@ export default function Dashboard() {
             )}
             
             {/* Killmail Charts - Only shown if Kill Charts is enabled */}
-            {status?.features?.enabled?.kill_charts_enabled && (
+            {status?.features?.kill_charts && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
                 <span className="font-medium text-gray-700">Killmail Charts</span>
                 <div className="flex items-center space-x-2">
