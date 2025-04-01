@@ -88,50 +88,25 @@ Create a file named `docker-compose.yml` with the following content:
 
 ```yaml
 services:
-  postgres:
-    image: postgres:14
-    environment:
-      POSTGRES_USER: ${WANDERER_DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${WANDERER_DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${WANDERER_DB_NAME:-wanderer_notifier}
-    volumes:
-      - wanderer_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
+    image: guarzo/wanderer-notifier:v1
+    container_name: wanderer-notifier
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
-      # Discord Configuration
+      # Core application configuration
+      WANDERER_PORT: "4000"
       WANDERER_DISCORD_BOT_TOKEN: ${WANDERER_DISCORD_BOT_TOKEN}
       WANDERER_DISCORD_CHANNEL_ID: ${WANDERER_DISCORD_CHANNEL_ID}
-
-      # Map Configuration
       WANDERER_MAP_URL: ${WANDERER_MAP_URL}
       WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
-
-      # License Configuration
       WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
-
-      # Database Configuration
-      WANDERER_DB_USERNAME: ${WANDERER_DB_USERNAME:-postgres}
-      WANDERER_DB_PASSWORD: ${WANDERER_DB_PASSWORD:-postgres}
-      WANDERER_DB_HOSTNAME: postgres
-      WANDERER_DB_NAME: ${WANDERER_DB_NAME:-wanderer_notifier}
-      WANDERER_DB_PORT: ${WANDERER_DB_PORT:-5432}
-      WANDERER_DB_POOL_SIZE: ${WANDERER_DB_POOL_SIZE:-10}
-
-      # Web Configuration
-      WANDERER_WEB_PORT: ${WANDERER_WEB_PORT:-4000}
     ports:
-      - "${WANDERER_WEB_PORT:-4000}:4000"
+      - "${WANDERER_PORT:-4000}:4000"
+    depends_on:
+      db_init:
+        condition: service_completed_successfully
+    volumes:
+      - wanderer_data:/app/data
     deploy:
       resources:
         limits:
@@ -158,8 +133,45 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Database service
+  postgres:
+    image: postgres:16-alpine
+    container_name: wanderer-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=${WANDERER_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${WANDERER_DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${WANDERER_DB_NAME:-wanderer_notifier}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Database initialization container
+  db_init:
+    image: guarzo/wanderer-notifier:latest
+    profiles: ["database"]
+    environment:
+      # Database configuration
+      WANDERER_DB_HOST: postgres
+      WANDERER_DB_USER: ${WANDERER_DB_USER:-postgres}
+      WANDERER_DB_PASSWORD: ${WANDERER_DB_PASSWORD:-postgres}
+      WANDERER_DB_NAME: ${WANDERER_DB_NAME:-wanderer_notifier}
+      WANDERER_DB_PORT: "5432"
+    command: sh -c '/app/bin/wanderer_notifier eval "WandererNotifier.Release.createdb()" && /app/bin/wanderer_notifier eval "WandererNotifier.Release.migrate()"'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   wanderer_data:
+  postgres_data:
+    name: wanderer_postgres_data
+  db_backups:
+    name: wanderer_db_backups
 ```
 
 #### 4. Run It
