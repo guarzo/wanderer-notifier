@@ -123,7 +123,18 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Private helper functions to extract system ID from different data structures
   defp extract_system_id(kill) when is_struct(kill, Killmail) do
-    get_in(kill, [:esi_data, "solar_system_id"]) || "unknown"
+    case kill.esi_data do
+      nil ->
+        "unknown"
+
+      esi_data ->
+        case Map.get(esi_data, "solar_system_id") do
+          nil -> "unknown"
+          id when is_integer(id) -> to_string(id)
+          id when is_binary(id) -> id
+          _ -> "unknown"
+        end
+    end
   end
 
   defp extract_system_id(kill) when is_map(kill) do

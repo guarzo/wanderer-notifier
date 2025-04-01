@@ -460,46 +460,94 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_system_notification(%MapSystem{} = system) do
+    AppLogger.processor_info(
+      "[StructuredFormatter] Starting system notification formatting - ENTRY POINT",
+      system_id: system.solar_system_id,
+      name: system.name
+    )
+
     # Validate required fields
-    validate_system_fields(system)
+    try do
+      AppLogger.processor_info("[StructuredFormatter] About to validate system fields")
+      validate_system_fields(system)
+      AppLogger.processor_info("[StructuredFormatter] System fields validated successfully")
 
-    # Generate basic notification elements
-    is_wormhole = MapSystem.wormhole?(system)
-    display_name = MapSystem.format_display_name(system)
+      # Generate basic notification elements
+      AppLogger.processor_info("[StructuredFormatter] Checking if system is wormhole")
+      is_wormhole = MapSystem.wormhole?(system)
+      AppLogger.processor_info("[StructuredFormatter] System is_wormhole: #{is_wormhole}")
 
-    # Generate notification elements
-    notification_elements = generate_notification_elements(system, is_wormhole)
+      AppLogger.processor_info("[StructuredFormatter] Formatting display name")
+      display_name = MapSystem.format_display_name(system)
+      AppLogger.processor_info("[StructuredFormatter] Display name formatted: #{display_name}")
 
-    # Format statics list and system link
-    formatted_statics = format_statics_list(system.static_details || system.statics)
-    system_name_with_link = create_system_name_link(system, display_name)
+      # Generate notification elements
+      AppLogger.processor_info("[StructuredFormatter] Generating notification elements")
+      {title, description, color, icon_url} = generate_notification_elements(system, is_wormhole)
 
-    # Build notification fields
-    fields =
-      build_system_notification_fields(
-        system,
-        is_wormhole,
-        formatted_statics,
-        system_name_with_link
+      AppLogger.processor_info(
+        "[StructuredFormatter] Notification elements generated successfully"
       )
 
-    # Create the generic notification structure
-    %{
-      type: :system_notification,
-      title: notification_elements.title,
-      description: notification_elements.description,
-      color: notification_elements.color,
-      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-      thumbnail: %{url: notification_elements.icon_url},
-      fields: fields,
-      footer: %{
-        text: "System ID: #{system.solar_system_id}"
+      # Format statics list and system link
+      AppLogger.processor_info("[StructuredFormatter] Formatting statics list")
+      formatted_statics = format_statics_list(system.static_details || system.statics)
+      AppLogger.processor_info("[StructuredFormatter] Statics formatted")
+
+      AppLogger.processor_info("[StructuredFormatter] Creating system name link")
+      system_name_with_link = create_system_name_link(system, display_name)
+      AppLogger.processor_info("[StructuredFormatter] System name link created")
+
+      # Build notification fields
+      AppLogger.processor_info("[StructuredFormatter] Building notification fields")
+
+      fields =
+        build_system_notification_fields(
+          system,
+          is_wormhole,
+          formatted_statics,
+          system_name_with_link
+        )
+
+      AppLogger.processor_info("[StructuredFormatter] Notification fields built")
+
+      # Create the generic notification structure
+      notification = %{
+        type: :system_notification,
+        title: title,
+        description: description,
+        color: color,
+        timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+        thumbnail: %{url: icon_url},
+        fields: fields,
+        footer: %{
+          text: "System ID: #{system.solar_system_id}"
+        }
       }
-    }
+
+      AppLogger.processor_info(
+        "[StructuredFormatter] Notification structure created successfully"
+      )
+
+      notification
+    rescue
+      e ->
+        AppLogger.processor_error("[StructuredFormatter] Error formatting system notification",
+          system: system.name,
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        reraise e, __STACKTRACE__
+    end
   end
 
   # Helper function to validate required system fields
   defp validate_system_fields(system) do
+    AppLogger.processor_info("[StructuredFormatter] Starting system field validation",
+      system_data: inspect(system, limit: 500)
+    )
+
     if is_nil(system.solar_system_id) do
       AppLogger.processor_error(
         "[StructuredFormatter] Missing solar_system_id in MapSystem struct"
@@ -508,36 +556,68 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
     end
 
+    AppLogger.processor_info(
+      "[StructuredFormatter] solar_system_id validated: #{system.solar_system_id}"
+    )
+
     if is_nil(system.name) do
       AppLogger.processor_error("[StructuredFormatter] Missing name in MapSystem struct")
       raise "Cannot format system notification: name is missing in MapSystem struct"
     end
+
+    AppLogger.processor_info("[StructuredFormatter] name validated: #{system.name}")
+
+    # Log all available fields to help diagnose issues
+    AppLogger.processor_info("[StructuredFormatter] System fields:",
+      solar_system_id: system.solar_system_id,
+      name: system.name,
+      system_type: system.system_type,
+      class_title: system.class_title,
+      type_description: system.type_description,
+      region_name: system.region_name,
+      statics: inspect(system.statics || []),
+      static_details: inspect(system.static_details || []),
+      is_shattered: system.is_shattered,
+      effect_name: system.effect_name,
+      sun_type_id: system.sun_type_id
+    )
   end
 
   # Generate notification elements (title, description, color, icon)
   defp generate_notification_elements(system, is_wormhole) do
+    AppLogger.processor_debug("[StructuredFormatter] Generating notification elements",
+      system_id: system.solar_system_id,
+      name: system.name,
+      is_wormhole: is_wormhole,
+      class_title: system.class_title,
+      type_description: system.type_description
+    )
+
     # Generate title and description
     title = generate_system_title(is_wormhole, system.class_title, system.type_description)
-    AppLogger.processor_debug("Generated title", title: inspect(title))
+    AppLogger.processor_debug("[StructuredFormatter] Generated title", title: inspect(title))
 
     description =
       generate_system_description(is_wormhole, system.class_title, system.type_description)
 
-    AppLogger.processor_debug("Generated description", description: inspect(description))
+    AppLogger.processor_debug("[StructuredFormatter] Generated description",
+      description: inspect(description)
+    )
 
     # Generate color and icon
     system_color = determine_system_color(system.type_description, is_wormhole)
-    AppLogger.processor_debug("Determined system color", color: inspect(system_color))
+
+    AppLogger.processor_debug("[StructuredFormatter] Determined system color",
+      color: inspect(system_color)
+    )
 
     icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
-    AppLogger.processor_debug("Determined icon URL", icon_url: inspect(icon_url))
 
-    %{
-      title: title,
-      description: description,
-      color: system_color,
-      icon_url: icon_url
-    }
+    AppLogger.processor_debug("[StructuredFormatter] Determined icon URL",
+      icon_url: inspect(icon_url)
+    )
+
+    {title, description, system_color, icon_url}
   end
 
   # Create system name with zkillboard link
@@ -845,38 +925,61 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Generate system title based on system properties
   defp generate_system_title(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "New #{class_title} System Mapped"
+    AppLogger.processor_debug("[StructuredFormatter] Generating system title",
+      is_wormhole: is_wormhole,
+      class_title: class_title,
+      type_description: type_description
+    )
 
-      is_wormhole ->
-        "New Wormhole System Mapped"
+    title =
+      cond do
+        is_wormhole && class_title && class_title != "" ->
+          "New #{class_title} System Mapped"
 
-      type_description && type_description != "" ->
-        "New #{type_description} System Mapped"
+        is_wormhole ->
+          "New Wormhole System Mapped"
 
-      true ->
-        # Default title if both class_title and type_description are missing
-        "New System Mapped"
-    end
+        type_description && type_description != "" ->
+          "New #{type_description} System Mapped"
+
+        true ->
+          # Default title if both class_title and type_description are missing
+          "New System Mapped"
+      end
+
+    AppLogger.processor_debug("[StructuredFormatter] Generated system title", title: title)
+    title
   end
 
   # Generate system description based on system properties
   defp generate_system_description(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "A #{class_title} wormhole system has been discovered and added to the map."
+    AppLogger.processor_debug("[StructuredFormatter] Generating system description",
+      is_wormhole: is_wormhole,
+      class_title: class_title,
+      type_description: type_description
+    )
 
-      is_wormhole ->
-        "A wormhole system has been discovered and added to the map."
+    description =
+      cond do
+        is_wormhole && class_title && class_title != "" ->
+          "A #{class_title} wormhole system has been discovered and added to the map."
 
-      type_description && type_description != "" ->
-        "A #{type_description} system has been discovered and added to the map."
+        is_wormhole ->
+          "A wormhole system has been discovered and added to the map."
 
-      true ->
-        # Default description if both class_title and type_description are missing
-        "A new system has been discovered and added to the map."
-    end
+        type_description && type_description != "" ->
+          "A #{type_description} system has been discovered and added to the map."
+
+        true ->
+          # Default description if both class_title and type_description are missing
+          "A new system has been discovered and added to the map."
+      end
+
+    AppLogger.processor_debug("[StructuredFormatter] Generated system description",
+      description: description
+    )
+
+    description
   end
 
   # Format a list of statics for system notification with clear error handling
@@ -1185,14 +1288,19 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - A map in Discord's expected format
   """
   def to_discord_format(notification) do
+    # Log the notification for debugging
+    AppLogger.processor_info("[StructuredFormatter] Converting notification to Discord format",
+      notification: inspect(notification, limit: 500)
+    )
+
     # Extract components if available
     components = Map.get(notification, :components, [])
 
-    # Convert to Discord embed format
-    %{
-      "title" => notification.title,
-      "description" => notification.description,
-      "color" => notification.color,
+    # Convert to Discord embed format with safe field access
+    embed = %{
+      "title" => Map.get(notification, :title, ""),
+      "description" => Map.get(notification, :description, ""),
+      "color" => Map.get(notification, :color, @default_color),
       "url" => Map.get(notification, :url),
       "timestamp" => Map.get(notification, :timestamp),
       "footer" => Map.get(notification, :footer),
@@ -1200,15 +1308,28 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "image" => Map.get(notification, :image),
       "author" => Map.get(notification, :author),
       "fields" =>
-        Enum.map(notification.fields || [], fn field ->
-          %{
-            "name" => field.name,
-            "value" => field.value,
-            "inline" => Map.get(field, :inline, false)
-          }
-        end)
+        case Map.get(notification, :fields) do
+          fields when is_list(fields) ->
+            Enum.map(fields, fn field ->
+              %{
+                "name" => Map.get(field, :name, ""),
+                "value" => Map.get(field, :value, ""),
+                "inline" => Map.get(field, :inline, false)
+              }
+            end)
+
+          _ ->
+            []
+        end
     }
-    |> add_components_if_present(components)
+
+    # Log the result for debugging
+    AppLogger.processor_info("[StructuredFormatter] Converted to Discord format",
+      embed: inspect(embed, limit: 500)
+    )
+
+    # Add components if present
+    add_components_if_present(embed, components)
   end
 
   # Helper to add components if present

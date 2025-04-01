@@ -11,5 +11,17 @@ export default defineConfig({
   base: '/',
   build: {
     assetsDir: 'assets'
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true
+      },
+      '/charts': {
+        target: 'http://localhost:4000',
+        changeOrigin: true
+      }
+    }
   }
 });

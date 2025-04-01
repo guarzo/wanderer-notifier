@@ -111,12 +111,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   end
 
   def add_system_to_tracked(system_id, system_data) when is_integer(system_id) do
-    # Log the operation
-    AppLogger.api_info("[CacheHelpers] Adding system to tracked systems",
-      system_id: system_id,
-      system_name: system_data["name"] || system_data[:name]
-    )
-
     # First, ensure the system data is cached
     system_key = CacheKeys.system(system_id)
     existing_data = repo_module().get(system_key)
@@ -159,7 +153,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
     )
 
     # First, ensure the character data is cached
-    character_key = "map:character:#{character_id}"
+    character_key = CacheKeys.character(character_id)
     existing_data = repo_module().get(character_key)
 
     if is_nil(existing_data) do
@@ -167,15 +161,8 @@ defmodule WandererNotifier.Data.Cache.Helpers do
     end
 
     # Then mark the character as tracked
-    tracked_key = "tracked:character:#{character_id}"
+    tracked_key = CacheKeys.tracked_character(character_id)
     repo_module().put(tracked_key, true)
-
-    # Finally, update the tracked characters list
-    # Use simple get/put operations instead of get_and_update to avoid deadlocks
-    tracked_characters = repo_module().get("tracked:characters") || []
-    character_entry = %{"character_id" => to_string(character_id)}
-    updated_characters = [character_entry | tracked_characters] |> Enum.uniq()
-    repo_module().put("tracked:characters", updated_characters)
 
     :ok
   end

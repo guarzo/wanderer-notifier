@@ -21,17 +21,12 @@ defmodule WandererNotifier.Config.Timings do
     %{
       cache: cache_ttls(),
       intervals: %{
-        systems_update: systems_update_interval(),
-        character_update: character_update_interval(),
-        maintenance: maintenance_interval(),
         activity_chart: activity_chart_interval(),
         license_refresh: license_refresh_interval(),
-        websocket_heartbeat: websocket_heartbeat_interval(),
         cache_check: cache_check_interval(),
         cache_sync: cache_sync_interval(),
         cache_cleanup: cache_cleanup_interval(),
-        reconnect_delay: reconnect_delay(),
-        forced_kill: forced_kill_interval()
+        reconnect_delay: reconnect_delay()
       },
       schedulers: scheduler_configs()
     }
@@ -95,33 +90,6 @@ defmodule WandererNotifier.Config.Timings do
   #
 
   @doc """
-  Returns the systems update interval in milliseconds.
-  Default: 5 minutes (300,000 ms)
-  """
-  @spec systems_update_interval() :: integer()
-  def systems_update_interval do
-    get_env(:systems_update_interval, 300_000)
-  end
-
-  @doc """
-  Returns the character update interval in seconds.
-  Default: 10 minutes (600 seconds)
-  """
-  @spec character_update_interval() :: integer()
-  def character_update_interval do
-    get_env(:character_update_interval, 600)
-  end
-
-  @doc """
-  Returns the maintenance interval in milliseconds.
-  Default: 60 seconds (60,000 ms)
-  """
-  @spec maintenance_interval() :: integer()
-  def maintenance_interval do
-    get_env(:maintenance_interval, 60_000)
-  end
-
-  @doc """
   Returns the cache check interval in milliseconds.
   Default: 30 minutes (1,800,000 ms)
   """
@@ -146,24 +114,6 @@ defmodule WandererNotifier.Config.Timings do
   @spec cache_cleanup_interval() :: integer()
   def cache_cleanup_interval do
     get_env(:cache_cleanup_interval, 60_000)
-  end
-
-  @doc """
-  Returns the interval between forced kill notifications in seconds.
-  Default: 5 minutes (300 seconds)
-  """
-  @spec forced_kill_interval() :: integer()
-  def forced_kill_interval do
-    get_env(:forced_kill_interval, 300)
-  end
-
-  @doc """
-  Returns the WebSocket heartbeat interval in milliseconds.
-  Default: 10 seconds (10,000 ms)
-  """
-  @spec websocket_heartbeat_interval() :: integer()
-  def websocket_heartbeat_interval do
-    get_env(:websocket_heartbeat_interval, 10_000)
   end
 
   @doc """
@@ -199,20 +149,20 @@ defmodule WandererNotifier.Config.Timings do
 
   @doc """
   Returns the character update scheduler interval in milliseconds.
-  Default: 30 minutes (1,800,000 ms)
+  Default: 5 seconds (5,000 ms)
   """
   @spec character_update_scheduler_interval() :: integer()
   def character_update_scheduler_interval do
-    get_env(:character_update_scheduler_interval, 30 * 60 * 1000)
+    get_env(:character_update_scheduler_interval, 60_000)
   end
 
   @doc """
   Returns the system update scheduler interval in milliseconds.
-  Default: 60 minutes (3,600,000 ms)
+  Default: 5 seconds (5,000 ms)
   """
   @spec system_update_scheduler_interval() :: integer()
   def system_update_scheduler_interval do
-    get_env(:system_update_scheduler_interval, 60 * 60 * 1000)
+    get_env(:system_update_scheduler_interval, 30_000)
   end
 
   @doc """
@@ -330,14 +280,9 @@ defmodule WandererNotifier.Config.Timings do
   # Validates that all interval values are positive integers
   defp validate_intervals(errors) do
     intervals = [
-      {:systems_update_interval, systems_update_interval()},
-      {:character_update_interval, character_update_interval()},
-      {:maintenance_interval, maintenance_interval()},
       {:cache_check_interval, cache_check_interval()},
       {:cache_sync_interval, cache_sync_interval()},
       {:cache_cleanup_interval, cache_cleanup_interval()},
-      {:forced_kill_interval, forced_kill_interval()},
-      {:websocket_heartbeat_interval, websocket_heartbeat_interval()},
       {:reconnect_delay, reconnect_delay()},
       {:activity_chart_interval, activity_chart_interval()},
       {:character_update_scheduler_interval, character_update_scheduler_interval()},
@@ -383,24 +328,6 @@ defmodule WandererNotifier.Config.Timings do
       true ->
         errors
     end
-  end
-
-  @doc """
-  Returns the maximum number of retries for operations.
-  Default: 3
-  """
-  @spec max_retries() :: integer()
-  def max_retries do
-    get_env(:max_retries, 3)
-  end
-
-  @doc """
-  Returns the delay between retries in milliseconds.
-  Default: 1 second (1,000 ms)
-  """
-  @spec retry_delay() :: integer()
-  def retry_delay do
-    get_env(:retry_delay, 1_000)
   end
 
   # Private helper to get environment variables

@@ -161,8 +161,12 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
         # Extract zkb data
         zkb_data = Map.get(killmail, "zkb", %{})
 
-        # The rest is treated as ESI data, removing zkb key
-        esi_data = Map.drop(killmail, ["zkb"])
+        # The rest is treated as ESI data, removing zkb key and ensuring system ID is in correct format
+        esi_data =
+          killmail
+          |> Map.drop(["zkb"])
+          |> Map.put("solar_system_id", system_id)
+          |> Map.put("solar_system_name", system_name)
 
         # Create a Killmail struct to standardize the data structure
         killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
@@ -281,12 +285,28 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   # Helper to get system ID from killmail
   defp get_kill_system_id(killmail) when is_map(killmail) do
+    # Try to get system ID from various possible locations
     system_id =
-      Map.get(killmail, "solar_system_id") ||
-        (killmail["zkb"] && killmail["zkb"]["system_id"]) ||
-        "unknown"
+      cond do
+        # Direct solar_system_id field
+        id = Map.get(killmail, "solar_system_id") -> id
+        # ESI data path
+        id = get_in(killmail, ["esi_data", "solar_system_id"]) -> id
+        # ZKB data path
+        id = get_in(killmail, ["zkb", "system_id"]) -> id
+        # System object path
+        id = get_in(killmail, ["system", "id"]) -> id
+        # Solar system object path
+        id = get_in(killmail, ["solar_system", "id"]) -> id
+        true -> nil
+      end
 
-    to_string(system_id)
+    case system_id do
+      nil -> "unknown"
+      id when is_integer(id) -> to_string(id)
+      id when is_binary(id) -> id
+      _ -> "unknown"
+    end
   end
 
   defp get_kill_system_id(_), do: "unknown"

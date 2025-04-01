@@ -2,6 +2,7 @@ alias WandererNotifier.Api.Http.Client
 alias WandererNotifier.Api.Map.UrlBuilder
 alias WandererNotifier.Config.{Application, Cache}
 alias WandererNotifier.Config.Config
+alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
 alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 alias WandererNotifier.Data.Character
 alias WandererNotifier.Data.Repo
@@ -288,18 +289,40 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Process tracked characters - cache, persist and notify
   defp process_tracked_characters(tracked_characters, cached_characters) do
-    # Cache the characters - using consistent struct format
-    CacheRepo.set(
-      "map:characters",
-      tracked_characters,
-      Cache.characters_cache_ttl()
-    )
+    # Cache the characters
+    cache_ttl = Cache.characters_cache_ttl()
 
-    # Handle character persistence separately to isolate errors
-    handle_character_persistence(tracked_characters)
+    try do
+      # Cache the main character list
+      CacheRepo.set(CacheKeys.character_list(), tracked_characters, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Cached main character list")
 
-    # Handle new character notifications separately to isolate errors
-    handle_character_notifications(tracked_characters, cached_characters)
+      # Cache individual characters
+      Enum.each(tracked_characters, fn char ->
+        if character_id = char.character_id do
+          # Cache individual character
+          CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
+          AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
+
+          # Mark as tracked
+          CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
+          AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
+        end
+      end)
+
+      # Handle persistence and notifications
+      handle_character_persistence(tracked_characters)
+      handle_character_notifications(tracked_characters, cached_characters)
+    rescue
+      e ->
+        AppLogger.api_error(
+          "[CharactersClient] Error in process_tracked_characters: #{Exception.message(e)}"
+        )
+
+        AppLogger.api_error("[CharactersClient] #{Exception.format_stacktrace()}")
+        # Let it crash - the supervisor will handle restart if needed
+        reraise e, __STACKTRACE__
+    end
   end
 
   # Separate function to handle character persistence with isolated error handling
@@ -760,17 +783,9 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     AppLogger.api_info("[CharactersClient] Sending notification for new tracked character")
     AppLogger.api_debug("[CharactersClient] Character data: #{inspect(character_data)}")
 
-    # Convert to Character struct if not already
-    character =
-      if is_struct(character_data, Character) do
-        character_data
-      else
-        Character.new(character_data)
-      end
-
     # Create a generic notification that can be converted to various formats
     generic_notification =
-      StructuredFormatter.format_character_notification(character)
+      StructuredFormatter.format_character_notification(character_data)
 
     discord_format =
       StructuredFormatter.to_discord_format(generic_notification)

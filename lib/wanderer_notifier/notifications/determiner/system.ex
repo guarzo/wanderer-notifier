@@ -23,13 +23,55 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     - false otherwise
   """
   def should_notify?(system_id, system_data) when is_map(system_data) do
-    with true <- Features.system_notifications_enabled?(),
-         true <- tracked_system?(system_id),
-         true <- system_changed?(system_id, system_data) do
-      check_deduplication_and_decide(system_id)
+    AppLogger.processor_info("[SystemDeterminer] Starting notification check",
+      system_id: system_id,
+      system_data: inspect(system_data, limit: 500)
+    )
+
+    notifications_enabled = Features.system_notifications_enabled?()
+
+    AppLogger.processor_debug("[SystemDeterminer] System notifications enabled check",
+      enabled: notifications_enabled
+    )
+
+    is_tracked = tracked_system?(system_id)
+
+    AppLogger.processor_debug("[SystemDeterminer] System tracking check",
+      system_id: system_id,
+      tracked: is_tracked
+    )
+
+    has_changed = system_changed?(system_id, system_data)
+
+    AppLogger.processor_debug("[SystemDeterminer] System changed check",
+      system_id: system_id,
+      changed: has_changed
+    )
+
+    with true <- notifications_enabled,
+         true <- is_tracked,
+         true <- has_changed do
+      dedup_result = check_deduplication_and_decide(system_id)
+
+      AppLogger.processor_info("[SystemDeterminer] Final notification decision",
+        system_id: system_id,
+        should_notify: dedup_result
+      )
+
+      dedup_result
     else
-      false -> false
-      _ -> false
+      false ->
+        AppLogger.processor_info("[SystemDeterminer] Notification check failed",
+          system_id: system_id,
+          notifications_enabled: notifications_enabled,
+          is_tracked: is_tracked,
+          has_changed: has_changed
+        )
+
+        false
+
+      _ ->
+        false
     end
   end
 

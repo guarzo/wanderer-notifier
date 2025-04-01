@@ -9,6 +9,8 @@ defmodule WandererNotifier.Data.MapSystem do
   """
   @behaviour Access
 
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
   @typedoc "Type representing a map system"
   @type t :: %__MODULE__{
           # Map system ID
@@ -347,6 +349,12 @@ defmodule WandererNotifier.Data.MapSystem do
     - true if the system is a wormhole, false otherwise
   """
   def wormhole?(system) do
+    AppLogger.processor_debug("[MapSystem] Checking if system is wormhole",
+      system_id: system.solar_system_id,
+      system_type: system.system_type,
+      is_wormhole: system.system_type == :wormhole
+    )
+
     system.system_type == :wormhole
   end
 
@@ -398,10 +406,23 @@ defmodule WandererNotifier.Data.MapSystem do
   # Private helper functions
 
   # Determine system type based on solar_system_id
-  defp determine_system_type(id) when is_integer(id) and id >= 31_000_000 and id < 32_000_000,
-    do: :wormhole
+  defp determine_system_type(id) when is_integer(id) and id >= 31_000_000 and id < 32_000_000 do
+    AppLogger.processor_debug("[MapSystem] System ID in wormhole range",
+      system_id: id,
+      type: :wormhole
+    )
 
-  defp determine_system_type(_), do: :kspace
+    :wormhole
+  end
+
+  defp determine_system_type(id) do
+    AppLogger.processor_debug("[MapSystem] System ID not in wormhole range",
+      system_id: id,
+      type: :kspace
+    )
+
+    :kspace
+  end
 
   # Helper function to determine system type description based on ID
   defp determine_system_type_description(system_id) when is_integer(system_id) do

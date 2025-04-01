@@ -119,10 +119,13 @@ defmodule WandererNotifier.Notifiers.Helpers.Deduplication do
       create_dedup_table()
     end
 
+    AppLogger.cache_debug("[Deduplication] Checking key", key: key)
+
     # Look up the key in the ETS table
     case :ets.lookup(@dedup_table, key) do
       [] ->
         # Not in table, insert and return :new
+        AppLogger.cache_info("[Deduplication] Key not found, marking as new", key: key)
         :ets.insert(@dedup_table, {key, :os.system_time(:millisecond)})
         # Schedule deletion after TTL
         if Process.whereis(__MODULE__) do
@@ -131,14 +134,22 @@ defmodule WandererNotifier.Notifiers.Helpers.Deduplication do
 
         {:ok, :new}
 
-      [{^key, _timestamp}] ->
+      [{^key, timestamp}] ->
         # Already in table, return :duplicate
+        age = :os.system_time(:millisecond) - timestamp
+
+        AppLogger.cache_info("[Deduplication] Key found (duplicate)",
+          key: key,
+          age_ms: age
+        )
+
         {:ok, :duplicate}
     end
   rescue
     e ->
       AppLogger.cache_error("Error in deduplication check",
         error: inspect(e),
+        key: key,
         stacktrace: inspect(Process.info(self(), :current_stacktrace))
       )
 

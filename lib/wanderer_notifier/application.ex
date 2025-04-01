@@ -185,6 +185,8 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},
+      {Cachex, name: :wanderer_cache},
+      {WandererNotifier.Data.Cache.Monitor, []},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},

@@ -22,15 +22,21 @@ defmodule WandererNotifier.Api.ZKill.Service do
   def get_recent_kills(limit \\ 10) do
     AppLogger.api_debug("Fetching recent kills from ZKill", limit: limit)
 
-    case HttpClient.get("https://zkillboard.com/api/kills/limit/#{limit}/") do
+    case HttpClient.get("https://zkillboard.com/api/kills/") do
       {:ok, response} ->
         case Jason.decode(response.body) do
           {:ok, kills} when is_list(kills) ->
+            result = Enum.take(kills, limit)
+
             AppLogger.api_debug("Successfully fetched recent kills from ZKill",
-              count: length(kills)
+              count: length(result)
             )
 
-            {:ok, kills}
+            {:ok, result}
+
+          {:ok, %{"error" => error_msg}} ->
+            AppLogger.api_error("ZKill API error: #{error_msg}")
+            {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
 
           {:error, reason} ->
             AppLogger.api_error("Failed to parse ZKill recent kills response",

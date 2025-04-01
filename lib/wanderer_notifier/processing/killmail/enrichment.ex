@@ -31,8 +31,23 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       # Enrich the killmail data
       enriched_killmail = enrich_killmail_data(killmail)
 
-      # Send notification
-      KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id)
+      # Send notification and convert return value
+      case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
+        {:ok, _kill_id} ->
+          AppLogger.kill_info("Kill notification sent successfully", %{
+            kill_id: killmail.killmail_id
+          })
+
+          :ok
+
+        {:error, reason} ->
+          AppLogger.kill_error("Failed to send kill notification", %{
+            kill_id: killmail.killmail_id,
+            error: inspect(reason)
+          })
+
+          {:error, reason}
+      end
     else
       AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
       {:ok, :skipped}

@@ -13,7 +13,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Notifiers.Factory
+  alias WandererNotifier.Notifiers.StructuredFormatter
 
   @doc """
   Updates the systems in the cache.
@@ -32,6 +33,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     pre_cache = CacheRepo.get(CacheKeys.map_systems())
     pre_cache_size = if is_list(pre_cache), do: length(pre_cache), else: 0
     AppLogger.api_info("[SystemsClient] Pre-update cache status: #{pre_cache_size} systems")
+
+    # Use pre_cache as the cached_systems if none provided
+    cached_systems = cached_systems || pre_cache
 
     case UrlBuilder.build_url("map/systems") do
       {:ok, url} ->
@@ -91,10 +95,20 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     # Check for new systems
     AppLogger.api_info("[SystemsClient] Checking for new systems to notify about")
-    notify_new_systems(enriched_systems, cached_systems)
 
-    # Return the enriched systems
-    {:ok, updated_systems}
+    case notify_new_systems(enriched_systems, cached_systems) do
+      {:ok, _added_systems} ->
+        # Return the enriched systems
+        {:ok, updated_systems}
+
+      {:error, reason} ->
+        AppLogger.api_error("[SystemsClient] Failed to notify about new systems",
+          error: inspect(reason)
+        )
+
+        # Still return success since caching was successful
+        {:ok, updated_systems}
+    end
   rescue
     e ->
       # Log the error with full details
@@ -259,36 +273,71 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       result = CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
       AppLogger.api_info("[SystemsClient] Main cache set result: #{inspect(result)}")
 
+      # Verify main cache was set
+      # Allow cache to persist
+      Process.sleep(100)
+      main_cache = CacheRepo.get(CacheKeys.map_systems())
+      main_cache_count = if is_list(main_cache), do: length(main_cache), else: 0
+
+      if main_cache_count != length(systems) do
+        AppLogger.api_error("[SystemsClient] Main cache verification failed - retrying")
+        # Retry main cache set
+        CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
+        # Allow retry to persist
+        Process.sleep(100)
+      end
+
+      # Update system IDs list
       system_ids = Enum.map(systems, & &1.solar_system_id)
       CacheRepo.set(CacheKeys.map_system_ids(), system_ids, long_ttl)
 
-      # Now handle individual system caching and tracking concurrently
-      # Use Task.async_stream with a reasonable concurrency limit
-      systems
-      |> Task.async_stream(
-        fn system ->
-          system_id = system.solar_system_id
+      # Cache individual systems sequentially to ensure reliability
+      Enum.each(systems, fn system ->
+        system_id = system.solar_system_id
 
-          if system_id do
-            # Cache individual system
-            system_cache_key = CacheKeys.system(system_id)
+        if system_id do
+          # Cache individual system
+          system_cache_key = CacheKeys.system(system_id)
+          CacheRepo.set(system_cache_key, system, long_ttl)
+
+          # Verify individual system cache
+          # Allow cache to persist
+          Process.sleep(50)
+          cached_system = CacheRepo.get(system_cache_key)
+
+          if is_nil(cached_system) do
+            AppLogger.api_warn("[SystemsClient] Retrying cache for system #{system_id}")
             CacheRepo.set(system_cache_key, system, long_ttl)
-            # Mark as tracked
-            CacheHelpers.add_system_to_tracked(system_id, system)
           end
-        end,
-        max_concurrency: 5,
-        timeout: 5000
-      )
-      |> Stream.run()
 
-      # Verify the update with brief delay
-      Process.sleep(100)
+          # Mark as tracked
+          CacheHelpers.add_system_to_tracked(system_id, system)
+
+          # Small delay between operations to prevent overwhelming the cache
+          Process.sleep(10)
+        end
+      end)
+
+      # Final verification with longer delay
+      Process.sleep(500)
       post_update_count = length(CacheRepo.get(CacheKeys.map_systems()) || [])
 
       AppLogger.api_info(
         "[SystemsClient] Systems cache updated - stored: #{post_update_count}, expected: #{length(systems)}"
       )
+
+      # Sample verification of individual systems
+      sample_size = min(5, length(systems))
+      sample_systems = Enum.take_random(systems, sample_size)
+
+      Enum.each(sample_systems, fn system ->
+        system_id = system.solar_system_id
+        cached = CacheRepo.get(CacheKeys.system(system_id))
+
+        AppLogger.api_debug(
+          "[SystemsClient] Sample system cache check - ID: #{system_id}, Cached: #{!is_nil(cached)}"
+        )
+      end)
 
       systems
     rescue
@@ -474,27 +523,74 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     added_systems = find_new_systems(fresh, cached)
     log_added_systems(added_systems)
 
-    # Send notifications for each new system
-    Enum.each(added_systems, &send_system_notification/1)
+    # Send notifications for each new system and collect results
+    notification_results =
+      Enum.map(added_systems, fn system ->
+        case send_system_notification(system) do
+          :ok -> {:ok, system}
+          {:error, reason} -> {:error, {system, reason}}
+        end
+      end)
 
-    {:ok, added_systems}
+    # Split results into successes and failures
+    {successes, failures} =
+      Enum.split_with(notification_results, fn
+        {:ok, _} -> true
+        {:error, _} -> false
+      end)
+
+    # Log any failures
+    unless Enum.empty?(failures) do
+      failure_details =
+        Enum.map(failures, fn {:error, {system, reason}} ->
+          "#{system.name}: #{inspect(reason)}"
+        end)
+
+      AppLogger.api_error("[SystemsClient] Failed to send some system notifications",
+        failures: failure_details
+      )
+    end
+
+    # Return success if any notifications were sent, or if there were no systems to notify about
+    if Enum.empty?(added_systems) or not Enum.empty?(successes) do
+      {:ok, added_systems}
+    else
+      {:error, :all_notifications_failed}
+    end
+  end
+
+  defp find_new_systems(_fresh, nil) do
+    # If cached_systems is nil, this is the first run
+    AppLogger.api_info(
+      "[SystemsClient] No previous cache found; this is the first run - skipping notifications"
+    )
+
+    []
   end
 
   defp find_new_systems(_fresh, []) do
-    # If there's no cached systems, this is probably the first run
-    # Don't notify about all systems to avoid spamming
-    AppLogger.api_info(
-      "[SystemsClient] No cached systems found; skipping new system notifications on startup"
+    # Empty list means cache was cleared but not first run
+    AppLogger.api_warn(
+      "[SystemsClient] Cache was empty but not first run - treating as cache clear event"
     )
 
     []
   end
 
   defp find_new_systems(fresh, cached) do
-    # Handle both struct and map types in cached systems
-    Enum.filter(fresh, fn fresh_sys ->
-      not system_exists_in_cache?(fresh_sys, cached)
-    end)
+    # Normal update case - find truly new systems
+    new_systems =
+      Enum.filter(fresh, fn fresh_sys ->
+        not system_exists_in_cache?(fresh_sys, cached)
+      end)
+
+    if length(new_systems) > 0 do
+      AppLogger.api_info(
+        "[SystemsClient] Found #{length(new_systems)} new systems since last update"
+      )
+    end
+
+    new_systems
   end
 
   defp system_exists_in_cache?(fresh_sys, cached) do
@@ -534,7 +630,115 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp send_system_notification(map_system) do
-    AppLogger.api_info("Sending notification for new system: #{map_system.name}")
-    NotifierFactory.notify(:send_new_system_notification, [map_system])
+    AppLogger.api_info(
+      "[SystemsClient] Starting notification process for system: #{inspect(map_system.name)}"
+    )
+
+    try do
+      # First ensure we have a proper MapSystem struct
+      validated_system =
+        case map_system do
+          %MapSystem{} = sys ->
+            sys
+
+          other when is_map(other) ->
+            AppLogger.api_info("[SystemsClient] Converting map to MapSystem struct")
+            MapSystem.new(other)
+
+          other ->
+            AppLogger.api_error("[SystemsClient] Invalid input type for map_system",
+              got: typeof(other)
+            )
+
+            raise "Invalid input type for map_system: expected map or MapSystem struct"
+        end
+
+      # Log the validated system details
+      AppLogger.api_info("[SystemsClient] Validated system details", %{
+        struct_type: typeof(validated_system),
+        system_id: validated_system.solar_system_id,
+        name: validated_system.name,
+        system_type: validated_system.system_type,
+        is_wormhole: MapSystem.wormhole?(validated_system)
+      })
+
+      # Create a generic notification that can be converted to various formats
+      generic_notification =
+        try do
+          AppLogger.api_info("[SystemsClient] Calling format_system_notification")
+          result = StructuredFormatter.format_system_notification(validated_system)
+          AppLogger.api_info("[SystemsClient] format_system_notification returned successfully")
+          result
+        rescue
+          e ->
+            AppLogger.api_error("[SystemsClient] Error in format_system_notification", %{
+              system: validated_system.name,
+              error: Exception.message(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+              system_data: inspect(validated_system, limit: 500)
+            })
+
+            reraise e, __STACKTRACE__
+        end
+
+      AppLogger.api_info("[SystemsClient] Generic notification created successfully")
+
+      AppLogger.api_info("[SystemsClient] Converting to Discord format")
+
+      discord_format =
+        try do
+          AppLogger.api_info("[SystemsClient] Calling to_discord_format")
+          result = StructuredFormatter.to_discord_format(generic_notification)
+          AppLogger.api_info("[SystemsClient] to_discord_format returned successfully")
+          result
+        rescue
+          e ->
+            AppLogger.api_error("[SystemsClient] Error in to_discord_format", %{
+              system: validated_system.name,
+              error: Exception.message(e),
+              stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+              notification_data: inspect(generic_notification, limit: 500)
+            })
+
+            reraise e, __STACKTRACE__
+        end
+
+      AppLogger.api_info("[SystemsClient] Discord format created successfully")
+
+      AppLogger.api_info("[SystemsClient] Sending notification via NotifierFactory")
+
+      case Factory.notify(:send_discord_embed, [discord_format]) do
+        :ok ->
+          AppLogger.api_info(
+            "[SystemsClient] Successfully sent notification for system: #{validated_system.name}"
+          )
+
+          :ok
+
+        {:ok, _} ->
+          AppLogger.api_info(
+            "[SystemsClient] Successfully sent notification for system: #{validated_system.name}"
+          )
+
+          :ok
+
+        {:error, reason} ->
+          AppLogger.api_error("[SystemsClient] Failed to send notification", %{
+            system: validated_system.name,
+            error: inspect(reason)
+          })
+
+          {:error, reason}
+      end
+    rescue
+      e ->
+        AppLogger.api_error("[SystemsClient] Exception in send_system_notification", %{
+          system: if(is_map(map_system), do: map_system.name, else: inspect(map_system)),
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        {:error, :exception}
+    end
   end
 end

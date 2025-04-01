@@ -26,7 +26,7 @@ function KillmailChartCard({ title, description, chartType }) {
     const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
     console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
     
-    fetch(`/charts/killmail/generate/${chartType}${timestamp}`)
+    fetch(`/api/charts/killmail/generate/${chartType}${timestamp}`)
       .then(response => {
         console.log(`Response status: ${response.status}`);
         if (!response.ok) {
@@ -65,14 +65,16 @@ function KillmailChartCard({ title, description, chartType }) {
 
   useEffect(() => {
     generateChart();
-  }, []);
+  }, [chartType]);
 
   const sendToDiscord = () => {
     setSending(true);
     setSuccess(null);
     setError(null);
     
-    fetch(`/charts/killmail/send-to-discord/${chartType}?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`)
+    console.log('Sending chart to Discord...');
+    
+    fetch(`/api/charts/killmail/send/${chartType}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -81,15 +83,15 @@ function KillmailChartCard({ title, description, chartType }) {
       })
       .then(data => {
         if (data.status === 'ok') {
-          setSuccess('Chart sent to Discord successfully!');
+          setSuccess('Chart sent to Discord!');
           setTimeout(() => setSuccess(null), 5000);
         } else {
           throw new Error(data.message || 'Failed to send chart to Discord');
         }
       })
       .catch(error => {
-        console.error(`Error sending ${chartType} chart to Discord:`, error);
-        setError(error.message);
+        console.error('Error sending chart to Discord:', error);
+        setError(`Failed to send chart: ${error.message}`);
       })
       .finally(() => {
         setSending(false);
@@ -104,7 +106,7 @@ function KillmailChartCard({ title, description, chartType }) {
     
     console.log('Triggering killmail data aggregation...');
     
-    fetch(`/charts/killmail/aggregate?type=weekly`)
+    fetch(`/api/charts/killmail/aggregate?type=weekly`)
       .then(response => {
         console.log(`Aggregation response status: ${response.status}`);
         if (!response.ok) {
@@ -140,7 +142,7 @@ function KillmailChartCard({ title, description, chartType }) {
     setDebugData(null);
     setDebugInfo("Loading debug information...");
     
-    fetch(`/charts/killmail/debug`)
+    fetch(`/api/charts/killmail/debug`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -187,7 +189,7 @@ function KillmailChartCard({ title, description, chartType }) {
     
     console.log('Force syncing characters from cache to database...');
     
-    fetch(`/charts/killmail/force-sync-characters`)
+    fetch(`/api/charts/killmail/force-sync-characters`)
       .then(response => {
         console.log(`Force sync response status: ${response.status}`);
         if (!response.ok) {
