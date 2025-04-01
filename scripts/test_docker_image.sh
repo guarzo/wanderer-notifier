@@ -295,10 +295,31 @@ else
         break
       fi
       
+      # Add more debug info on every attempt
+      if [ $((ATTEMPT % 5)) -eq 0 ]; then
+        echo "Debug: Container status and logs at attempt $ATTEMPT:"
+        docker ps | grep "$CONTAINER_NAME" || echo "Container not found in docker ps"
+        echo "Last 50 lines of container logs:"
+        docker logs --tail 50 "$CONTAINER_NAME"
+
+        # Try to get application status
+        echo "Debug: Checking application status..."
+        docker exec "$CONTAINER_NAME" /app/bin/wanderer_notifier eval "
+          IO.puts(\"Application status:\")
+          IO.puts(\"- System running: \#{:init.get_status()}\")
+          IO.puts(\"- Applications: \#{inspect Application.started_applications()}\")
+          IO.puts(\"- Processes: \#{length Process.list()}\")
+          " 2>/dev/null || echo "Could not get application status"
+      fi
+
       # If we're on the 10th attempt, output some debug info
       if [ $ATTEMPT -eq 10 ]; then
         echo "Debug: Checking available routes..."
-        docker exec "$CONTAINER_NAME" /app/bin/wanderer_notifier eval "IO.puts(\"Available routes: #{inspect Phoenix.Router.__routes__(WandererNotifier.Web.Router) |> Enum.map(& &1.path) |> Enum.join(\", \")}\")" 2>/dev/null || echo "Router introspection not available"
+        docker exec "$CONTAINER_NAME" /app/bin/wanderer_notifier eval "
+          IO.puts(\"Feature Configuration:\")
+          IO.puts(\"  Kill Charts: \#{Application.get_env(:wanderer_notifier, :wanderer_feature_kill_charts, false)}\")
+          IO.puts(\"  Map Charts: \#{Application.get_env(:wanderer_notifier, :wanderer_feature_map_charts, false)}\")
+          " 2>/dev/null
         
         # Check if the application is at least running properly even if web endpoints aren't available
         echo "Debug: Checking application status via eval..."
@@ -310,7 +331,7 @@ else
         fi
       fi
       
-      sleep 1
+      sleep 5
     done
     
     # Cleanup the container

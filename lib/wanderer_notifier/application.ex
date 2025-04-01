@@ -36,9 +36,17 @@ defmodule WandererNotifier.Application do
     if minimal_test do
       start_minimal_application()
     else
-      # Validate configuration before starting the application
-      validate_configuration()
-      start_main_application()
+      # Check if we're in test mode
+      is_test = Application.get_env(:wanderer_notifier, :env) == :test
+
+      if is_test do
+        # Start with minimal validation for tests
+        start_test_application()
+      else
+        # Full validation for production
+        validate_configuration()
+        start_main_application()
+      end
     end
   end
 
@@ -154,6 +162,30 @@ defmodule WandererNotifier.Application do
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp start_test_application do
+    # Minimal validation for test environment
+    AppLogger.startup_debug("Starting application in test mode")
+
+    children = [
+      # Core services needed for testing
+      {WandererNotifier.NoopConsumer, []},
+      {Cachex, name: :wanderer_cache},
+      {WandererNotifier.Web.Server, []}
+    ]
+
+    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        AppLogger.startup_info("✨ Test application started")
+        {:ok, pid}
+
+      {:error, reason} = error ->
+        AppLogger.startup_error("❌ Failed to start test application", error: inspect(reason))
+        error
+    end
   end
 
   defp start_main_application do
