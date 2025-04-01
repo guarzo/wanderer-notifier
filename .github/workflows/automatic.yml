@@ -31,40 +31,22 @@ jobs:
       - name: Generate version information
         id: version
         run: |
-          chmod +x ./scripts/version.sh
-
           # Get short SHA for image tagging
           SHORT_SHA=$(git rev-parse --short HEAD)
 
-          # Get current version (don't bump for automatic builds)
-          CURRENT_VERSION=$(./scripts/version.sh get)
           # Generate dev version with date/git info
-          FULL_VERSION=$(./scripts/version.sh full dev)
+          DEV_VERSION="dev-$(date +'%Y%m%d')-${SHORT_SHA}"
 
           # Store in environment for later steps
-          echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
-          # Generate Docker tags
-          DOCKER_TAGS=$(./scripts/version.sh tags | grep -v latest)
-          DOCKER_TAGS="${DOCKER_TAGS}"$'\n'"dev"
-          DOCKER_TAG_LIST=""
+          # Set up Docker tags (only dev and SHA)
+          DOCKER_TAGS="guarzo/wanderer-notifier:dev,guarzo/wanderer-notifier:sha-${SHORT_SHA}"
+          echo "docker_tags=${DOCKER_TAGS}" >> "$GITHUB_OUTPUT"
 
-          # Convert newline-separated tags to comma-separated list for Docker build action
-          while IFS= read -r tag; do
-            if [ -n "$DOCKER_TAG_LIST" ]; then
-              DOCKER_TAG_LIST="${DOCKER_TAG_LIST},guarzo/wanderer-notifier:${tag}"
-            else
-              DOCKER_TAG_LIST="guarzo/wanderer-notifier:${tag}"
-            fi
-          done <<< "$DOCKER_TAGS"
-
-          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
-
-          echo "Current version: ${CURRENT_VERSION}"
-          echo "Full version: ${FULL_VERSION}"
-          echo "Docker tags: ${DOCKER_TAG_LIST}"
+          echo "Dev version: ${DEV_VERSION}"
+          echo "Docker tags: ${DOCKER_TAGS}"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -99,7 +81,7 @@ jobs:
           load: true
           tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
           build-args: |
-            APP_VERSION=${{ steps.version.outputs.full_version }}
+            APP_VERSION=${{ steps.version.outputs.dev_version }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
 
@@ -119,7 +101,7 @@ jobs:
           push: true
           tags: ${{ steps.version.outputs.docker_tags }}
           build-args: |
-            APP_VERSION=${{ steps.version.outputs.full_version }}
+            APP_VERSION=${{ steps.version.outputs.dev_version }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
           cache-to: type=inline
 
@@ -129,5 +111,5 @@ jobs:
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git tag "dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
-          git push origin "dev-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          git tag "${{ steps.version.outputs.dev_version }}"
+          git push origin "${{ steps.version.outputs.dev_version }}"
