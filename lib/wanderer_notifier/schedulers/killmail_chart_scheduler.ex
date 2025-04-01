@@ -14,29 +14,21 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   @behaviour WandererNotifier.Schedulers.Behaviour
 
   # For dependency injection in tests
-  @adapter Application.compile_env(
-             :wanderer_notifier,
-             :killmail_chart_adapter,
-             ChartAdapter
-           )
+  defp adapter do
+    Application.get_env(:wanderer_notifier, :killmail_chart_adapter, ChartAdapter)
+  end
 
-  @config Application.compile_env(
-            :wanderer_notifier,
-            :config_module,
-            NotificationConfig
-          )
+  defp config do
+    Application.get_env(:wanderer_notifier, :config_module, NotificationConfig)
+  end
 
-  @date_module Application.compile_env(
-                 :wanderer_notifier,
-                 :date_module,
-                 Date
-               )
+  defp date_module do
+    Application.get_env(:wanderer_notifier, :date_module, Date)
+  end
 
-  @notifier_factory Application.compile_env(
-                      :wanderer_notifier,
-                      :notifier_factory,
-                      NotifierFactory
-                    )
+  defp notifier_factory do
+    Application.get_env(:wanderer_notifier, :notifier_factory, NotifierFactory)
+  end
 
   @impl true
   def init(state) do
@@ -46,13 +38,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
   @impl true
   def enabled? do
-    @config.kill_charts_enabled?()
+    config().kill_charts_enabled?()
   end
 
   @impl true
   def execute(date) do
     cond do
-      not @config.kill_charts_enabled?() ->
+      not config().kill_charts_enabled?() ->
         AppLogger.scheduler_info("Kill charts are disabled, skipping execution")
         {:ok, :skipped, %{}}
 
@@ -68,13 +60,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
   @impl true
   def handle_info(:execute, state) do
-    today = @date_module.utc_today()
+    today = date_module().utc_today()
     result = execute(today)
     {:noreply, Map.put(state, :last_result, result)}
   end
 
   defp handle_chart_execution do
-    channel_id = @config.discord_channel_id_for(:kill_charts)
+    channel_id = config().discord_channel_id_for(:kill_charts)
 
     case channel_id do
       nil ->
@@ -83,7 +75,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
 
       _ ->
         try do
-          case @adapter.generate_weekly_kills_chart() do
+          case adapter().generate_weekly_kills_chart() do
             {:ok, chart_url} ->
               # Send chart to Discord
               AppLogger.scheduler_info("Generated weekly kills chart", %{url: chart_url})
@@ -109,13 +101,9 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
       color: 0x00FF00
     }
 
-    case @notifier_factory.notify(:send_discord_embed, [embed]) do
+    case notifier_factory().notify(:send_discord_embed, [embed]) do
       {:ok, result} ->
         {:ok, result, %{chart_url: chart_url}}
-
-      {:error, %Nostrum.Error.ApiError{} = error} ->
-        AppLogger.scheduler_error("Failed to send chart", error: inspect(error))
-        {:error, "Failed to send chart: Failed to send notification", %{chart_url: chart_url}}
 
       {:error, reason} when is_binary(reason) ->
         AppLogger.scheduler_error("Failed to send chart", error: reason)
@@ -128,7 +116,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   end
 
   defp sunday?(date) do
-    @date_module.day_of_week(date) == 7
+    date_module().day_of_week(date) == 7
   end
 
   @impl true
@@ -157,6 +145,6 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
   Returns whether kill charts are enabled in the configuration.
   """
   def kill_charts_enabled? do
-    @config.kill_charts_enabled?()
+    config().kill_charts_enabled?()
   end
 end

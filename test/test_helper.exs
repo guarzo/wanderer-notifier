@@ -1,4 +1,34 @@
+# Start ExUnit first
 ExUnit.start()
+
+# Define mocks for external dependencies
+Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
+  for: WandererNotifier.ChartService.KillmailChartAdapterBehaviour
+)
+
+# Set up application environment for testing
+Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
+Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
+Application.put_env(:wanderer_notifier, :cache_helpers, WandererNotifier.MockCacheHelpers)
+Application.put_env(:wanderer_notifier, :repository, WandererNotifier.MockRepository)
+Application.put_env(:wanderer_notifier, :logger, WandererNotifier.MockLogger)
+
+Application.put_env(
+  :wanderer_notifier,
+  :killmail_chart_adapter,
+  WandererNotifier.MockKillmailChartAdapter
+)
+
+# Define the KillmailChartAdapter behaviour first
+defmodule WandererNotifier.ChartService.KillmailChartAdapterBehaviour do
+  @moduledoc """
+  Behaviour for the killmail chart adapter.
+  """
+
+  @callback generate_weekly_kills_chart() :: {:ok, String.t()} | {:error, term()}
+  @callback send_weekly_kills_chart_to_discord(String.t(), String.t(), String.t()) ::
+              {:ok, String.t()} | {:error, term()}
+end
 
 # Set up application environment for testing
 Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
@@ -137,21 +167,6 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
-
-Application.put_env(
-  :wanderer_notifier,
-  :killmail_chart_adapter,
-  WandererNotifier.MockKillmailChartAdapter
-)
-
-# Define the KillmailChartAdapter behaviour
-defmodule WandererNotifier.ChartService.KillmailChartAdapterBehaviour do
-  @callback generate_weekly_kills_chart() :: {:ok, String.t()} | {:error, any()}
-end
-
-Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
-  for: WandererNotifier.ChartService.KillmailChartAdapterBehaviour
-)
 
 # Define the Date behaviour for mocking Date functions
 defmodule WandererNotifier.DateBehaviour do

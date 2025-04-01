@@ -122,23 +122,8 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
     if Config.kill_charts_enabled?() do
       AppLogger.api_info("Generating weekly kills chart")
 
-      # Parse limit parameter with default of 20
-      limit =
-        case conn.params["limit"] do
-          nil ->
-            20
-
-          val when is_binary(val) ->
-            case Integer.parse(val) do
-              {num, _} -> num
-              :error -> 20
-            end
-
-          _ ->
-            20
-        end
-
-      case KillmailChartAdapter.generate_weekly_kills_chart(limit) do
+      # Note: We're ignoring the limit parameter as it's now handled internally
+      case KillmailChartAdapter.generate_weekly_kills_chart() do
         {:ok, chart_url} ->
           send_success_response(conn, %{
             status: "ok",

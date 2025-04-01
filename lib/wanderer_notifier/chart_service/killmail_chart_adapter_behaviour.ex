@@ -1,24 +1,19 @@
 defmodule WandererNotifier.ChartService.KillmailChartAdapterBehaviour do
   @moduledoc """
-  Behaviour definition for killmail chart adapter.
-  Defines the contract that any implementation must fulfill.
+  Behaviour for the killmail chart adapter.
+  Defines the contract for generating and sending killmail charts.
   """
 
   @doc """
-  Sends a weekly kills chart to Discord for a specified date range.
-
-  ## Parameters
-  - `channel_id`: The Discord channel ID to send the chart to
-  - `date_from`: The start date for the chart data
-  - `date_to`: The end date for the chart data
-
-  ## Returns
-  - `{:ok, map()}`: The response from Discord after sending the chart
-  - `{:error, term()}`: If an error occurred during chart generation or sending
+  Generates a chart showing the top characters by kills for the past week.
+  Returns {:ok, chart_url} if successful, {:error, reason} if chart generation fails.
   """
-  @callback send_weekly_kills_chart_to_discord(
-              channel_id :: String.t(),
-              date_from :: Date.t(),
-              date_to :: Date.t()
-            ) :: {:ok, map()} | {:error, term()}
+  @callback generate_weekly_kills_chart() :: {:ok, String.t()} | {:error, term()}
+
+  @doc """
+  Sends a weekly kills chart to Discord.
+  Returns {:ok, message_id} if successful, {:error, reason} if sending fails.
+  """
+  @callback send_weekly_kills_chart_to_discord(String.t(), String.t(), String.t()) ::
+              {:ok, String.t()} | {:error, term()}
 end
