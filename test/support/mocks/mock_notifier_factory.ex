@@ -6,6 +6,20 @@ defmodule WandererNotifier.MockNotifierFactory do
 
   @impl true
   def notify(:send_discord_embed, [embed]) do
-    {:ok, %{embed: embed}}
+    case embed do
+      nil ->
+        # Simplified error handling
+        {:error, "Invalid embed"}
+
+      %{title: nil} ->
+        {:error, "Missing title"}
+
+      _ ->
+        {:ok, %{embed: embed}}
+    end
+  end
+
+  def notify(type, _args) do
+    {:error, "Unsupported notification type: #{inspect(type)}"}
   end
 end

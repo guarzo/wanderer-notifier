@@ -21,30 +21,27 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   @doc """
   Generates a chart showing the top characters by kills for the past week.
-
-  ## Parameters
-    - options: Map of options including:
-      - limit: Maximum number of characters to include (default: 20)
-      or directly an integer representing the limit
-
-  ## Returns
-    - {:ok, chart_url} if successful
-    - {:error, reason} if chart generation fails
+  Returns {:ok, chart_url} if successful, {:error, reason} if chart generation fails.
   """
-  def generate_weekly_kills_chart(options \\ %{}) do
-    # Extract limit from options
-    limit = extract_limit_from_options(options)
-    AppLogger.kill_info("Generating weekly kills chart", limit: limit)
-
-    # Prepare chart data
-    case prepare_weekly_kills_data(limit) do
+  @impl true
+  def generate_weekly_kills_chart do
+    # Use default limit of 20 for the weekly kills chart
+    case prepare_weekly_kills_data(20) do
       {:ok, chart_data, title, chart_options} ->
         generate_chart_from_data(chart_data, title, chart_options)
 
       {:error, reason} ->
         AppLogger.kill_error("Failed to prepare weekly kills data", error: inspect(reason))
-        generate_empty_chart()
+        {:error, reason}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("Error generating weekly kills chart",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error generating weekly kills chart: #{Exception.message(e)}"}
   end
 
   @doc """
@@ -217,7 +214,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   @impl true
   def send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
     # Generate both kills and ISK charts
-    with {:ok, kills_chart_url} <- generate_weekly_kills_chart(%{limit: 20}),
+    with {:ok, kills_chart_url} <- generate_weekly_kills_chart(),
          {:ok, isk_chart_url} <- generate_weekly_isk_chart(%{limit: 20}) do
       # Send both charts to Discord
       kill_title =
