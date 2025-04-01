@@ -11,7 +11,7 @@
     "dev:sync": "node watch-and-copy.js",
     "sync": "node watch-sync.js",
     "lint": "eslint .",
-    "postbuild": "rm -rf ../priv/static/app && cp -r dist ../priv/static/app",
+    "postbuild": "rm -rf ../priv/static/app && mkdir -p ../priv/static/app && cp -r dist/* ../priv/static/app/",
     "preview": "vite preview",
     "chart-service": "node chart-service/chart-generator.js"
   },

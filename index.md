@@ -59,17 +59,8 @@ WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
 WANDERER_MAP_TOKEN=your_map_api_token
 
-# License Configuration (for enhanced features)
 # Note: Premium features are enabled with your map subscription
 WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
-
-# Database Configuration (required)
-# Default values shown below, customize as needed
-# WANDERER_DB_USERNAME=postgres
-# WANDERER_DB_PASSWORD=postgres
-# WANDERER_DB_HOSTNAME=postgres
-# WANDERER_DB_PORT=5432
-# WANDERER_DB_POOL_SIZE=10
 
 # Feature Flags (all enabled by default)
 # WANDERER_FEATURE_KILL_NOTIFICATIONS=true
@@ -90,23 +81,12 @@ Create a file named `docker-compose.yml` with the following content:
 services:
   wanderer_notifier:
     image: guarzo/wanderer-notifier:v1
-    container_name: wanderer-notifier
+    container_name: wanderer
     restart: unless-stopped
-    environment:
-      # Core application configuration
-      WANDERER_PORT: "4000"
-      WANDERER_DISCORD_BOT_TOKEN: ${WANDERER_DISCORD_BOT_TOKEN}
-      WANDERER_DISCORD_CHANNEL_ID: ${WANDERER_DISCORD_CHANNEL_ID}
-      WANDERER_MAP_URL: ${WANDERER_MAP_URL}
-      WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
-      WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
+    env_file:
+      - .env
     ports:
       - "${WANDERER_PORT:-4000}:4000"
-    depends_on:
-      db_init:
-        condition: service_completed_successfully
-    volumes:
-      - wanderer_data:/app/data
     deploy:
       resources:
         limits:
@@ -114,15 +94,7 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:4000/health",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -132,6 +104,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    volumes:
+      - wanderer_data:/app/data
 
   # Database service
   postgres:
@@ -170,8 +144,7 @@ volumes:
   wanderer_data:
   postgres_data:
     name: wanderer_postgres_data
-  db_backups:
-    name: wanderer_db_backups
+
 ```
 
 #### 4. Run It

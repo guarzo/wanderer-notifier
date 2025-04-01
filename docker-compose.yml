@@ -3,14 +3,8 @@ services:
     image: guarzo/wanderer-notifier:v1
     container_name: wanderer
     restart: unless-stopped
-    environment:
-      # Core application configuration
-      WANDERER_PORT: "4000"
-      WANDERER_DISCORD_BOT_TOKEN: ${WANDERER_DISCORD_BOT_TOKEN}
-      WANDERER_DISCORD_CHANNEL_ID: ${WANDERER_DISCORD_CHANNEL_ID}
-      WANDERER_MAP_URL: ${WANDERER_MAP_URL}
-      WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
-      WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
+    env_file:
+      - .env
     ports:
       - "${WANDERER_PORT:-4000}:4000"
     deploy:
@@ -20,15 +14,7 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:${WANDERER_PORT:-4000}/health",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
       interval: 30s
       timeout: 5s
       retries: 3

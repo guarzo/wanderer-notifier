@@ -75,7 +75,9 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       connected: false,
       connecting: true,
       startup_time: DateTime.utc_now(),
-      last_message: nil
+      last_message: nil,
+      reconnects: 0,
+      url: default_url()
     })
 
     :ok
@@ -99,37 +101,28 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   @impl true
   def handle_connect(_conn, state) do
     AppLogger.websocket_info("Connected to zKill websocket")
-    new_state = Map.put(state, :connected, true)
+    now = DateTime.utc_now()
+    
+    # Set startup time if not already set
+    startup_time = state.startup_time || System.os_time(:second)
+    new_state = %{state | connected: true, startup_time: startup_time}
 
-    # Update websocket status
-    update_connect_status(state)
+    # Update websocket status with complete information
+    Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: now,
+      startup_time: DateTime.from_unix!(startup_time),
+      reconnects: new_state.reconnects,
+      url: new_state.url,
+      last_disconnect: nil
+    })
 
     # Schedule subscription message to avoid calling self
     Process.send_after(self(), :subscribe, 100)
 
     # Return OK immediately
     {:ok, new_state}
-  end
-
-  # Helper to update status on connection
-  defp update_connect_status(state) do
-    Stats.update_websocket(%{
-      connected: true,
-      connecting: false,
-      last_message: DateTime.utc_now(),
-      reconnects: Map.get(state, :reconnects, 0),
-      url: state.url
-    })
-  rescue
-    e ->
-      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-        error: inspect(e)
-      )
-  catch
-    kind, error ->
-      AppLogger.websocket_warn("Stats service not ready yet, skipping status update",
-        error: {kind, error}
-      )
   end
 
   # Handle subscribe message
@@ -238,13 +231,37 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   defp process_text_frame(raw_msg, state) do
     # Update timestamp of last received message for monitoring
     now = DateTime.utc_now()
-    update_message_timestamp(state, now)
+    
+    # Always update status when processing a message
+    try do
+      # Get current stats to preserve existing values
+      current_stats = Stats.get_stats()
+      
+      Stats.update_websocket(%{
+        connected: true,
+        connecting: false,
+        last_message: now,
+        startup_time: current_stats.websocket.startup_time || state.startup_time,
+        reconnects: state.reconnects,
+        url: state.url
+      })
+    rescue
+      e ->
+        AppLogger.websocket_error("Failed to update websocket status", 
+          error: inspect(e),
+          stacktrace: __STACKTRACE__
+        )
+    end
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
         # Log the type of message (debug level to avoid excessive logging)
         message_type = classify_message_type(json_data)
-        AppLogger.websocket_debug("Processed message", type: message_type)
+        AppLogger.websocket_debug("Processed message", 
+          type: message_type,
+          connected: state.connected,
+          reconnects: state.reconnects
+        )
 
         # Forward to parent process for handling
         if is_pid(state.parent) and Process.alive?(state.parent) do
@@ -264,17 +281,6 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
         {:ok, state}
     end
-  end
-
-  # Update the timestamp of the last message
-  defp update_message_timestamp(state, now) do
-    Stats.update_websocket(%{
-      connected: true,
-      last_message: now,
-      reconnects: Map.get(state, :reconnects, 0)
-    })
-  rescue
-    e -> AppLogger.websocket_error("Failed to update websocket status", error: inspect(e))
   end
 
   # Classify message type for logging
@@ -311,6 +317,17 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         reconnect_count: new_state.reconnects
       )
 
+      # Update status to show permanent disconnection
+      Stats.update_websocket(%{
+        connected: false,
+        connecting: false,
+        last_message: state.last_message,
+        startup_time: state.startup_time,
+        reconnects: new_state.reconnects,
+        url: state.url,
+        last_disconnect: DateTime.utc_now()
+      })
+
       {:error, new_state}
     else
       # Circuit is closed, attempt reconnection
@@ -322,10 +339,14 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         delay_ms: delay
       )
 
-      # Update application status to show disconnection
+      # Update application status to show disconnection with reconnect pending
       Stats.update_websocket(%{
         connected: false,
+        connecting: true,
+        last_message: state.last_message,
+        startup_time: state.startup_time,
         reconnects: new_state.reconnects,
+        url: state.url,
         last_disconnect: DateTime.utc_now()
       })
 

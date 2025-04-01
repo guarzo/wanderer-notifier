@@ -83,13 +83,19 @@ defmodule WandererNotifier.Core.Stats do
          last_message: nil,
          startup_time: nil,
          reconnects: 0,
-         url: nil
+         url: nil,
+         last_disconnect: nil
        },
        notifications: %{
          total: 0,
          kills: 0,
          systems: 0,
          characters: 0
+       },
+       first_notifications: %{
+         kill: true,
+         character: true,
+         system: true
        }
      }}
   end
@@ -104,7 +110,18 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_cast({:update_websocket, status}, state) do
-    {:noreply, %{state | websocket: status}}
+    # Merge the new status with existing websocket state to preserve fields
+    # Convert any DateTime fields to ensure proper comparison
+    normalized_status = normalize_datetime_fields(status)
+    updated_websocket = Map.merge(state.websocket, normalized_status)
+    
+    # Log the update for debugging
+    AppLogger.websocket_debug("Updated websocket status", 
+      old_status: state.websocket,
+      new_status: updated_websocket
+    )
+    
+    {:noreply, %{state | websocket: updated_websocket}}
   end
 
   @impl true
@@ -118,15 +135,18 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_call(:get_stats, _from, state) do
-    uptime_seconds = DateTime.diff(DateTime.utc_now(), state.startup_time)
+    uptime_seconds = case state.websocket.startup_time do
+      nil -> 0
+      startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
+    end
 
     stats = %{
       uptime: format_uptime(uptime_seconds),
       uptime_seconds: uptime_seconds,
-      startup_time: state.startup_time,
+      startup_time: state.websocket.startup_time,
       notifications: state.notifications,
       websocket: state.websocket,
-      first_notifications: state.first_notifications
+      first_notifications: Map.get(state, :first_notifications, %{})
     }
 
     {:reply, stats, state}
@@ -156,5 +176,18 @@ defmodule WandererNotifier.Core.Stats do
       minutes > 0 -> "#{minutes}m #{seconds}s"
       true -> "#{seconds}s"
     end
+  end
+
+  # Helper to normalize DateTime fields in the status map
+  defp normalize_datetime_fields(status) do
+    status
+    |> Enum.map(fn
+      {key, %DateTime{} = dt} -> {key, dt}
+      {key, nil} -> {key, nil}
+      {key, val} when is_integer(val) and key in [:startup_time] ->
+        {key, DateTime.from_unix!(val)}
+      {key, val} -> {key, val}
+    end)
+    |> Map.new()
   end
 end

@@ -258,8 +258,12 @@ parse_integer_env_var = fn
 end
 
 # Parse the web port value with safer error handling
-web_port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-web_port_value = parse_integer_env_var.(web_port_str, 4000)
+web_port_value = if runtime_env == :prod do
+  4000  # Fixed port for production
+else
+  web_port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
+  parse_integer_env_var.(web_port_str, 4000)
+end
 config :wanderer_notifier, web_port: web_port_value
 
 # Configure cache directory
@@ -275,8 +279,12 @@ config :wanderer_notifier,
 config :wanderer_notifier, :host, get_env.("WANDERER_HOST", get_env.("HOST", "localhost"))
 
 # Parse port with safer error handling
-port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-port_value = parse_integer_env_var.(port_str, 4000)
+port_value = if runtime_env == :prod do
+  4000  # Fixed port for production
+else
+  port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
+  parse_integer_env_var.(port_str, 4000)
+end
 config :wanderer_notifier, :port, port_value
 
 config :wanderer_notifier, :scheme, get_env.("WANDERER_SCHEME", get_env.("SCHEME", "http"))
