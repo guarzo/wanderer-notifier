@@ -107,6 +107,9 @@ RUN echo "import Config" > /app/etc/wanderer_notifier.exs
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
+# Copy static files from builder
+COPY --from=builder /app/priv/static /app/lib/wanderer_notifier-0.1.0/priv/static
+
 # Copy only necessary runtime scripts
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
 RUN chmod +x /app/bin/start_with_db.sh /app/bin/db_operations.sh
