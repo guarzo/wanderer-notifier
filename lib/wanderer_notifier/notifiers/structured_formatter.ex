@@ -9,9 +9,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   """
 
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Data.{Character, MapSystem}
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Get configured services
@@ -409,7 +408,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - character: The Character struct
 
   ## Returns
-    - A generic structured map that can be converted to platform-specific format
+    - A Discord-formatted embed for the notification
   """
   def format_character_notification(%Character{} = character) do
     # Build notification structure

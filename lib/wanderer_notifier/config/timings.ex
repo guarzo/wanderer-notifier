@@ -153,7 +153,7 @@ defmodule WandererNotifier.Config.Timings do
   """
   @spec character_update_scheduler_interval() :: integer()
   def character_update_scheduler_interval do
-    get_env(:character_update_scheduler_interval, 60_000)
+    get_env(:character_update_scheduler_interval, 30_000)
   end
 
   @doc """

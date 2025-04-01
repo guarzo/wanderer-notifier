@@ -779,18 +779,30 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   @doc """
   Sends a notification for a new tracked character.
   """
-  def send_character_notification(character_data) when is_map(character_data) do
+  def send_character_notification(%Character{} = character_data) do
     AppLogger.api_info("[CharactersClient] Sending notification for new tracked character")
     AppLogger.api_debug("[CharactersClient] Character data: #{inspect(character_data)}")
 
     # Create a generic notification that can be converted to various formats
-    generic_notification =
-      StructuredFormatter.format_character_notification(character_data)
+    generic_notification = StructuredFormatter.format_character_notification(character_data)
+    discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
-    discord_format =
-      StructuredFormatter.to_discord_format(generic_notification)
+    # Send notification via factory using the discord embed type
+    case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
+      :ok ->
+        AppLogger.api_info("[CharactersClient] Successfully sent character notification")
+        :ok
 
-    # Send notification via factory
-    NotifierFactory.notify(:send_discord_embed, [discord_format, :character_tracking])
+      {:ok, _} ->
+        AppLogger.api_info("[CharactersClient] Successfully sent character notification")
+        :ok
+
+      {:error, reason} ->
+        AppLogger.api_error("[CharactersClient] Failed to send character notification", %{
+          error: inspect(reason)
+        })
+
+        {:error, reason}
+    end
   end
 end
