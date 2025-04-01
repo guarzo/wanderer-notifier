@@ -1,6 +1,6 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
+    image: guarzo/wanderer-notifier:v1
     container_name: wanderer
     restart: unless-stopped
     environment:
@@ -11,10 +11,6 @@ services:
       WANDERER_MAP_URL: ${WANDERER_MAP_URL}
       WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
       WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
-
-      # Feature flags
-      WANDERER_FEATURE_KILL_CHARTS: "false"
-      WANDERER_FEATURE_MAP_CHARTS: "false"
     ports:
       - "${WANDERER_PORT:-4000}:4000"
     deploy:
