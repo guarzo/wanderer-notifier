@@ -2,13 +2,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   use ExUnit.Case
   import Mox
 
+  alias WandererNotifier.Api.ESI.ServiceMock
+  alias WandererNotifier.Api.ZKill.ServiceMock
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Api.ZKill.ServiceMock
-  alias WandererNotifier.Api.ESI.ServiceMock
   alias WandererNotifier.MockZKillClient
+  alias WandererNotifier.Notifiers.StructuredFormatter
 
   # Set up mocks for the test
   setup :verify_on_exit!
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       {:ok,
        [
          %{
-           "killmail_id" => 12345,
+           "killmail_id" => 12_345,
            "zkb" => %{
              "totalValue" => 1_000_000.0,
              "points" => 1,
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     stub(ServiceMock, :get_killmail, fn _kill_id, _hash ->
       {:ok,
        %{
-         "killmail_id" => 12345,
+         "killmail_id" => 12_345,
          "solar_system_id" => 30_000_142,
          "victim" => %{
            "character_id" => 93_265_357,
@@ -47,7 +47,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
          "attackers" => [
            %{
              "character_id" => 93_898_784,
-             "ship_type_id" => 11567
+             "ship_type_id" => 11_567
            }
          ]
        }}
@@ -69,7 +69,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       {:ok,
        [
          %{
-           "killmail_id" => 12345,
+           "killmail_id" => 12_345,
            "zkb" => %{
              "totalValue" => 1_000_000.0,
              "points" => 1,
@@ -137,7 +137,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
           "points" => 1
         },
         esi_data: %{
-          "killmail_id" => 12345,
+          "killmail_id" => 12_345,
           "solar_system_id" => 30_000_142,
           "victim" => %{
             "character_id" => 93_265_357,
@@ -146,7 +146,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
           "attackers" => [
             %{
               "character_id" => 93_898_784,
-              "ship_type_id" => 11567
+              "ship_type_id" => 11_567
             }
           ]
         }
@@ -176,7 +176,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
           "points" => 1
         },
         esi_data: %{
-          "killmail_id" => 12345,
+          "killmail_id" => 12_345,
           "solar_system_id" => 30_000_142,
           "victim" => %{},
           "attackers" => []

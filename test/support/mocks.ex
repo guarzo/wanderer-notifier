@@ -149,7 +149,7 @@ defmodule WandererNotifier.MockRepository do
   def set(_key, _value, _ttl), do: :ok
 
   @impl true
-  def clear(), do: :ok
+  def clear, do: :ok
 end
 
 defmodule WandererNotifier.MockKillmailPersistence do

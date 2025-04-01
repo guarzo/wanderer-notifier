@@ -17,7 +17,7 @@ defmodule WandererNotifier.TestCacheStubs do
   def delete(_key), do: :ok
 
   @impl true
-  def clear(), do: :ok
+  def clear, do: :ok
 
   @impl true
   def get_and_update(_key, fun) do

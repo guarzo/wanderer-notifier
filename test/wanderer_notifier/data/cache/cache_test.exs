@@ -8,12 +8,19 @@ defmodule WandererNotifier.Data.CacheTest do
 
   setup_all do
     # Ensure tables exist before any test
-    table_opts = [:named_table, :public, :set, {:write_concurrency, false}, {:read_concurrency, true}]
+    table_opts = [
+      :named_table,
+      :public,
+      :set,
+      {:write_concurrency, false},
+      {:read_concurrency, true}
+    ]
 
     # Create tables if they don't exist
     if :ets.whereis(:cache_table) == :undefined do
       :ets.new(:cache_table, table_opts)
     end
+
     if :ets.whereis(:locks_table) == :undefined do
       :ets.new(:locks_table, table_opts)
     end

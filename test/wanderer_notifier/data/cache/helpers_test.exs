@@ -78,7 +78,7 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
   describe "add_system_to_tracked/2" do
     test "adds system with integer ID" do
       system_data = %{name: "Test System"}
-      system_id = 12345
+      system_id = 12_345
 
       RepositoryMock
       |> expect(:get, fn "map:system:12345" -> nil end)
@@ -108,7 +108,7 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
 
     test "handles adding duplicate system IDs" do
       system_data = %{name: "Test System Updated"}
-      system_id = 12345
+      system_id = 12_345
       existing_systems = [%{"system_id" => "12345"}]
 
       RepositoryMock
@@ -200,7 +200,7 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
         character_id: "12345"
       }
 
-      character_id = 12345
+      character_id = 12_345
 
       RepositoryMock
       |> expect(:get, fn "map:character:12345" -> nil end)
@@ -240,7 +240,7 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
         character_id: "12345"
       }
 
-      character_id = 12345
+      character_id = 12_345
       existing_characters = [%{"character_id" => "12345"}]
 
       RepositoryMock

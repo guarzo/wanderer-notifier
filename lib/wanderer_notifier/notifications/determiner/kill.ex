@@ -118,33 +118,28 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Gets the system ID from a kill.
   """
   def get_kill_system_id(kill) do
+    extract_system_id(kill)
+  end
+
+  # Private helper functions to extract system ID from different data structures
+  defp extract_system_id(kill) when is_struct(kill, Killmail) do
+    get_in(kill, [:esi_data, "solar_system_id"]) || "unknown"
+  end
+
+  defp extract_system_id(kill) when is_map(kill) do
+    extract_system_id_from_map(kill)
+  end
+
+  defp extract_system_id(_), do: "unknown"
+
+  defp extract_system_id_from_map(kill) do
     cond do
-      # Handle Killmail struct
-      is_struct(kill, Killmail) && get_in(kill, [:esi_data, "solar_system_id"]) ->
-        get_in(kill, [:esi_data, "solar_system_id"])
-
-      # Handle map with esi_data
-      is_map(kill) && get_in(kill, ["esi_data", "solar_system_id"]) ->
-        get_in(kill, ["esi_data", "solar_system_id"])
-
-      # Handle direct system_id
-      is_map(kill) && Map.get(kill, "system_id") ->
-        Map.get(kill, "system_id")
-
-      # Handle direct solar_system_id
-      is_map(kill) && Map.get(kill, "solar_system_id") ->
-        Map.get(kill, "solar_system_id")
-
-      # Handle nested system structure
-      is_map(kill) && get_in(kill, ["system", "id"]) ->
-        get_in(kill, ["system", "id"])
-
-      # Handle nested solar_system structure
-      is_map(kill) && get_in(kill, ["solar_system", "id"]) ->
-        get_in(kill, ["solar_system", "id"])
-
-      true ->
-        "unknown"
+      system_id = get_in(kill, ["esi_data", "solar_system_id"]) -> system_id
+      system_id = Map.get(kill, "system_id") -> system_id
+      system_id = Map.get(kill, "solar_system_id") -> system_id
+      system_id = get_in(kill, ["system", "id"]) -> system_id
+      system_id = get_in(kill, ["solar_system", "id"]) -> system_id
+      true -> "unknown"
     end
   end
 
