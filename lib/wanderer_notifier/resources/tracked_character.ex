@@ -389,7 +389,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
           # Early return if characters is nil or empty
           if is_nil(characters) || (is_list(characters) && characters == []) do
-            AppLogger.persistence_info("[TrackedCharacter] No characters to sync to database")
+            AppLogger.persistence_debug("[TrackedCharacter] No characters to sync to database")
             return_empty_stats()
           else
             # Continue with normal sync logic for non-empty characters
@@ -397,7 +397,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
               # Ensure we have a list
               characters_list = ensure_list(characters)
 
-              AppLogger.persistence_info(
+              AppLogger.persistence_debug(
                 "[TrackedCharacter] Syncing characters directly to database",
                 character_count: length(characters_list)
               )
@@ -445,12 +445,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                 end)
 
               {final_stats, errors} = results
-
-              # Log the results
-              AppLogger.persistence_info(
-                "[TrackedCharacter] Sync completed",
-                stats: inspect(final_stats)
-              )
 
               if length(errors) > 0 do
                 AppLogger.persistence_warning(
@@ -799,7 +793,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
            ),
          {:ok, _} <- delete_existing_characters(existing_chars),
          {:ok, stats} <- sync_characters_from_cache() do
-      AppLogger.persistence_info("[TrackedCharacter] Force sync completed: #{inspect(stats)}")
       {:ok, stats}
     else
       {:error, reason} = error ->

@@ -24,22 +24,51 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
   def should_notify?(killmail) do
     system_id = get_kill_system_id(killmail)
-    system_name = get_kill_system_name(killmail)
     kill_id = get_kill_id(killmail)
 
-    AppLogger.processor_info("[Determiner] Checking notification conditions",
+    AppLogger.processor_debug("🔍 Starting kill notification check",
       kill_id: kill_id,
-      system_id: system_id,
-      system_name: system_name
+      system_id: system_id
     )
 
-    with true <- check_notifications_enabled(kill_id),
-         true <- tracked_system?(system_id),
-         true <- check_deduplication_and_decide(kill_id) do
-      true
+    # First check if notifications are enabled at all
+    if check_notifications_enabled(kill_id) do
+      AppLogger.processor_debug("🔍 Notifications enabled, checking tracking",
+        kill_id: kill_id
+      )
+
+      # Check both system and character tracking
+      is_tracked_system = tracked_system?(system_id)
+
+      AppLogger.processor_debug("🔍 System tracking result",
+        kill_id: kill_id,
+        is_tracked_system: is_tracked_system
+      )
+
+      has_tracked_char = has_tracked_character?(killmail)
+
+      AppLogger.processor_debug("🔍 Character tracking result",
+        kill_id: kill_id,
+        has_tracked_char: has_tracked_char
+      )
+
+      if is_tracked_system || has_tracked_char do
+        # Only check deduplication if we have a tracked system or character
+        check_deduplication_and_decide(kill_id)
+      else
+        AppLogger.processor_debug("🔍 Kill not in tracked system or involving tracked character",
+          kill_id: kill_id,
+          system_id: system_id
+        )
+
+        false
+      end
     else
-      false -> false
-      _ -> false
+      AppLogger.processor_debug("🔍 Notifications disabled",
+        kill_id: kill_id
+      )
+
+      false
     end
   end
 
@@ -48,10 +77,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_notifications_enabled = Features.system_notifications_enabled?()
     enabled = notifications_enabled && system_notifications_enabled
 
-    AppLogger.processor_info("[Determiner] Kill notifications enabled check",
+    AppLogger.processor_debug("🔍 Checking kill notification settings",
       kill_id: kill_id,
-      notifications_enabled: notifications_enabled,
-      system_notifications_enabled: system_notifications_enabled,
       enabled: enabled
     )
 
@@ -61,7 +88,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp check_deduplication_and_decide(kill_id) do
     case DeduplicationHelper.duplicate?(:kill, kill_id) do
       {:ok, :new} ->
-        AppLogger.processor_info("[Determiner] Deduplication check - kill is new",
+        AppLogger.processor_debug("[Determiner] Deduplication check - kill is new",
           kill_id: kill_id,
           is_new: true
         )
@@ -69,7 +96,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
         true
 
       {:ok, :duplicate} ->
-        AppLogger.processor_info("[Determiner] Deduplication check - kill is duplicate",
+        AppLogger.processor_debug("[Determiner] Deduplication check - kill is duplicate",
           kill_id: kill_id,
           is_new: false
         )
@@ -153,18 +180,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  # Get system name from killmail
-  defp get_kill_system_name(killmail) do
-    case killmail do
-      %Killmail{esi_data: %{"solar_system_name" => name}} when not is_nil(name) -> name
-      %{esi_data: %{"solar_system_name" => name}} when not is_nil(name) -> name
-      %{"esi_data" => %{"solar_system_name" => name}} when not is_nil(name) -> name
-      %{solar_system_name: name} when not is_nil(name) -> name
-      %{"solar_system_name" => name} when not is_nil(name) -> name
-      _ -> "unknown"
-    end
-  end
-
   @doc """
   Checks if a system is being tracked.
 
@@ -238,30 +253,27 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - false otherwise
   """
   def has_tracked_character?(killmail) do
-    # If character notifications are disabled but kill notifications are enabled,
-    # we still want to check for tracked characters for kill notification purposes
-    if !Features.character_notifications_enabled?() &&
-         !Features.kill_notifications_enabled?() do
-      # Character notifications disabled and kill notifications are also disabled, nothing is tracked
-      false
+    # Handle different killmail formats
+    kill_data = extract_kill_data(killmail)
+    kill_id = extract_kill_id(killmail)
+
+    # Get all tracked character IDs for comparison
+    all_character_ids = get_all_tracked_character_ids()
+
+    AppLogger.processor_debug("🔍 Starting character tracking check",
+      kill_id: kill_id,
+      tracked_characters_count: length(all_character_ids)
+    )
+
+    # Check if victim is tracked
+    victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
+
+    if victim_tracked do
+      # Early return if victim is tracked
+      true
     else
-      # Handle different killmail formats
-      kill_data = extract_kill_data(killmail)
-      kill_id = extract_kill_id(killmail)
-
-      # Get all tracked character IDs for comparison
-      all_character_ids = get_all_tracked_character_ids()
-
-      # Check if victim is tracked
-      victim_tracked = check_victim_tracked(kill_data, kill_id, all_character_ids)
-
-      if victim_tracked do
-        # Early return if victim is tracked
-        true
-      else
-        # Check if any attacker is tracked
-        check_attackers_tracked(kill_data, kill_id, all_character_ids)
-      end
+      # Check if any attacker is tracked
+      check_attackers_tracked(kill_data, kill_id, all_character_ids)
     end
   end
 
@@ -310,7 +322,14 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # Check if victim is tracked through direct cache lookup
   defp check_direct_victim_tracking(victim_id_str) do
     direct_cache_key = CacheKeys.tracked_character(victim_id_str)
-    CacheRepo.get(direct_cache_key) != nil
+    is_tracked = CacheRepo.get(direct_cache_key) != nil
+
+    AppLogger.processor_debug("🔍 Direct character tracking check",
+      character_id: victim_id_str,
+      tracked: is_tracked
+    )
+
+    is_tracked
   end
 
   # Check if the victim in this kill is being tracked
@@ -320,7 +339,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
     AppLogger.processor_debug("🔍 Checking victim tracking",
       kill_id: kill_id,
-      victim_id: victim_id_str
+      victim_id: victim_id_str,
+      tracked_characters: length(all_character_ids)
     )
 
     # Check if victim is tracked against character_id list
@@ -336,6 +356,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
     if is_tracked do
       AppLogger.processor_info("🎯 Character tracking determination: victim is tracked",
+        kill_id: kill_id,
+        victim_id: victim_id_str
+      )
+    else
+      AppLogger.processor_debug("🔍 Victim not tracked, checking attackers next",
         kill_id: kill_id,
         victim_id: victim_id_str
       )
@@ -359,7 +384,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       attackers_count: length(attackers)
     )
 
-    # Check if any attacker is in our tracked list
+    # Check if any attacker is tracked
     is_tracked =
       if attacker_in_tracked_list?(attackers, all_character_ids) do
         true
@@ -381,6 +406,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       AppLogger.processor_info("🎯 Character tracking determination: attacker is tracked",
         kill_id: kill_id,
         attacker_id: extract_attacker_id(tracked_attacker)
+      )
+    else
+      AppLogger.processor_info("🎯 Character tracking determination: no tracked characters",
+        kill_id: kill_id,
+        attackers_count: length(attackers)
       )
     end
 

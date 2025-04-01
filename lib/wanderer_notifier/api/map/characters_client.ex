@@ -42,14 +42,8 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   @spec update_tracked_characters([Character.t()] | nil) ::
           {:ok, [Character.t()]} | {:error, term()}
   def update_tracked_characters(cached_characters \\ nil) do
-    AppLogger.api_debug("[CharactersClient] Starting update of tracked characters")
-
     # Ensure cached_characters is a list using our helper function
     cached_characters_safe = Character.ensure_list(cached_characters)
-
-    AppLogger.api_debug(
-      "[CharactersClient] Normalized cached characters: #{inspect(cached_characters_safe, limit: 2)}"
-    )
 
     with {:ok, _} <- check_characters_endpoint_availability(),
          {:ok, url} <- UrlBuilder.build_url("map/characters"),
@@ -57,19 +51,13 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       handle_character_response(body, cached_characters_safe)
     else
       {:error, {:http_error, _}} = error ->
-        # HTTP errors already logged in fetch_characters_data
         error
 
       {:error, reason} = error ->
         if is_tuple(reason) and tuple_size(reason) == 3 and elem(reason, 0) == :domain_error do
-          # Domain errors (like unavailable endpoint) already logged
           error
         else
-          # Other errors (like URL building)
-          AppLogger.api_error(
-            "[CharactersClient] Failed to update characters: #{inspect(reason)}"
-          )
-
+          AppLogger.api_error("⚠️ Failed to update characters", error: inspect(reason))
           error
         end
     end
@@ -84,11 +72,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         {:ok, body}
 
       {:ok, %{status_code: status_code}} ->
-        AppLogger.api_error("[CharactersClient] API returned non-200 status: #{status_code}")
+        AppLogger.api_error("⚠️ API returned non-200 status: #{status_code}")
         {:error, {:http_error, status_code}}
 
       {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
+        AppLogger.api_error("⚠️ HTTP request failed", error: inspect(reason))
         {:error, {:http_error, reason}}
     end
   end
@@ -110,20 +98,19 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   def handle_character_response(body, cached_characters) when is_binary(body) do
     case Jason.decode(body) do
       {:ok, parsed_json} ->
-        # Extract and process character data
         process_parsed_character_data(parsed_json, cached_characters)
 
       {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
+        AppLogger.api_error("⚠️ Failed to parse JSON", error: inspect(reason))
         {:error, {:json_parse_error, reason}}
     end
   rescue
     e ->
-      AppLogger.api_error(
-        "[CharactersClient] Unexpected error in handle_character_response: #{Exception.message(e)}"
+      AppLogger.api_error("⚠️ Unexpected error in handle_character_response",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace()
       )
 
-      AppLogger.api_error("[CharactersClient] #{Exception.format_stacktrace()}")
       {:error, {:unexpected_error, e}}
   end
 
@@ -131,23 +118,8 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   defp process_parsed_character_data(parsed_json, cached_characters) do
     # Extract characters data with fallbacks for different API formats
     characters_data = extract_characters_data(parsed_json)
-
-    # Log parsing info and sample data
-    AppLogger.api_info(
-      "[CharactersClient] Parsing #{length(characters_data)} characters from API response"
-    )
-
-    # Log some sample data to debug
-    log_sample_character_data(characters_data)
-
-    # Convert raw character data to Character structs
     characters = convert_to_character_structs(characters_data)
-
-    # Filter for tracked characters only
     tracked_characters = Enum.filter(characters, & &1.tracked)
-
-    # Log tracked character count
-    log_tracked_character_count(tracked_characters)
 
     # Cache the characters and handle persistence and notifications
     process_tracked_characters(tracked_characters, cached_characters)
@@ -163,29 +135,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       %{"characters" => chars} when is_list(chars) -> chars
       data when is_list(data) -> data
       _ -> []
-    end
-  end
-
-  # Log sample character data for debugging
-  defp log_sample_character_data(characters_data) do
-    if length(characters_data) > 0 do
-      sample = Enum.at(characters_data, 0)
-
-      AppLogger.api_debug(
-        "[CharactersClient] Sample character data - Keys: #{inspect(Map.keys(sample))}"
-      )
-
-      AppLogger.api_debug(
-        "[CharactersClient] Sample character data - character_id: #{inspect(Map.get(sample, "character_id"))}"
-      )
-
-      AppLogger.api_debug(
-        "[CharactersClient] Sample character data - eve_id: #{inspect(Map.get(sample, "eve_id"))}"
-      )
-
-      AppLogger.api_debug(
-        "[CharactersClient] Sample character data - id: #{inspect(Map.get(sample, "id"))}"
-      )
     end
   end
 
@@ -276,17 +225,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     data
   end
 
-  # Log the number of tracked characters found
-  defp log_tracked_character_count(tracked_characters) do
-    if tracked_characters == [] do
-      AppLogger.api_warn("[CharactersClient] No tracked characters found in map API response")
-    else
-      AppLogger.api_info(
-        "[CharactersClient] Found #{length(tracked_characters)} tracked characters"
-      )
-    end
-  end
-
   # Process tracked characters - cache, persist and notify
   defp process_tracked_characters(tracked_characters, cached_characters) do
     # Cache the characters
@@ -333,10 +271,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
     # Only continue if either kill charts or map charts are enabled
     if kill_charts_enabled || map_charts_enabled do
-      AppLogger.api_info(
-        "[CharactersClient] Persisting #{length(tracked_characters)} tracked characters to database"
-      )
-
       # Check if the repo is started, and if not, try waiting for it
       ensure_database_available_and_persist(tracked_characters)
     else
@@ -379,34 +313,26 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Wait for the database to become available
   defp wait_for_database_connection do
-    AppLogger.api_info(
-      "[CharactersClient] Database repo not ready, waiting briefly for connection..."
-    )
-
     # Wait up to 3 seconds for database to become available
     wait_result =
       Enum.reduce_while(1..3, false, fn attempt, _ ->
         Process.sleep(500)
 
         if repo_started?() do
-          AppLogger.api_info(
-            "[CharactersClient] Database connection established on attempt #{attempt}"
-          )
-
           {:halt, true}
         else
           handle_failed_connection_attempt(attempt)
         end
       end)
 
-    AppLogger.api_debug("[CharactersClient] Wait result: #{inspect(wait_result)}")
+    AppLogger.api_debug("🔄 Database connection wait result: #{inspect(wait_result)}")
   end
 
   # Handle a failed connection attempt
   defp handle_failed_connection_attempt(attempt) do
     if attempt == 3 do
       # Final attempt failed
-      AppLogger.api_warn("[CharactersClient] Database connection not available after waiting")
+      AppLogger.api_warn("⚠️ Database connection not available after waiting")
       {:halt, false}
     else
       # Continue trying
@@ -416,26 +342,12 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
 
   # Persist characters to the database
   defp persist_characters_to_database(tracked_characters) do
-    # Log the first character for debugging
-    sample_char = Enum.at(tracked_characters, 0)
-
-    if sample_char do
-      AppLogger.api_debug(
-        "[CharactersClient] First character for persistence (sample): #{inspect(sample_char)}"
-      )
-    end
-
-    # Call TrackedCharacter.sync_from_characters directly
-    case TrackedCharacter.sync_from_characters(%{
-           characters: tracked_characters
-         }) do
-      {:ok, stats} ->
-        AppLogger.api_info(
-          "[CharactersClient] Successfully persisted characters: #{inspect(stats)}"
-        )
+    case TrackedCharacter.sync_from_characters(%{characters: tracked_characters}) do
+      {:ok, _stats} ->
+        :ok
 
       {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] Failed to persist characters: #{inspect(reason)}")
+        AppLogger.api_error("⚠️ Failed to persist characters", error: inspect(reason))
     end
   end
 
@@ -567,32 +479,22 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   """
   @spec check_characters_endpoint_availability() :: {:ok, boolean()} | {:error, term()}
   def check_characters_endpoint_availability do
-    AppLogger.api_debug("[CharactersClient] Checking characters endpoint availability")
+    case UrlBuilder.build_url("map/characters") do
+      {:ok, url} ->
+        headers = UrlBuilder.get_auth_headers()
 
-    with {:ok, url} <- UrlBuilder.build_url("map/characters"),
-         headers = UrlBuilder.get_auth_headers(),
-         {:ok, response} <- Client.get(url, headers) do
-      # We only need to verify that we get a successful response
-      case response do
-        %{status_code: status} when status >= 200 and status < 300 ->
-          AppLogger.api_info("[CharactersClient] Characters endpoint is available")
-          {:ok, true}
+        case Client.get(url, headers) do
+          {:ok, %{status_code: status}} when status >= 200 and status < 300 ->
+            {:ok, true}
 
-        %{status_code: status, body: body} ->
-          error_reason = "Endpoint returned status #{status}: #{body}"
+          %{status_code: status, body: body} ->
+            error_reason = "Endpoint returned status #{status}: #{body}"
+            AppLogger.api_warn("⚠️ Characters endpoint error", error: error_reason)
+            {:error, error_reason}
+        end
 
-          AppLogger.api_warn(
-            "[CharactersClient] Characters endpoint returned error: #{error_reason}"
-          )
-
-          {:error, error_reason}
-      end
-    else
       {:error, reason} ->
-        AppLogger.api_warn(
-          "[CharactersClient] Characters endpoint is NOT available: #{inspect(reason)}"
-        )
-
+        AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -780,28 +682,19 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   Sends a notification for a new tracked character.
   """
   def send_character_notification(%Character{} = character_data) do
-    AppLogger.api_info("[CharactersClient] Sending notification for new tracked character")
-    AppLogger.api_debug("[CharactersClient] Character data: #{inspect(character_data)}")
-
-    # Create a generic notification that can be converted to various formats
+    # Create and send notification
     generic_notification = StructuredFormatter.format_character_notification(character_data)
     discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
-    # Send notification via factory using the discord embed type
     case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
       :ok ->
-        AppLogger.api_info("[CharactersClient] Successfully sent character notification")
         :ok
 
       {:ok, _} ->
-        AppLogger.api_info("[CharactersClient] Successfully sent character notification")
         :ok
 
       {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] Failed to send character notification", %{
-          error: inspect(reason)
-        })
-
+        AppLogger.api_error("⚠️ Failed to send character notification", error: inspect(reason))
         {:error, reason}
     end
   end

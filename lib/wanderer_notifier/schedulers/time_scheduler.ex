@@ -51,8 +51,6 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
 
       @impl true
       def handle_info(:execute, state) do
-        AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Running scheduled execution")
-
         case execute(state) do
           {:ok, _result, new_state} ->
             # Schedule next execution

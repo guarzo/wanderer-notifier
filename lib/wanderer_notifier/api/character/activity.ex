@@ -11,20 +11,12 @@ defmodule WandererNotifier.Api.Character.Activity do
   Returns {:ok, data} on success or {:error, reason} on failure.
   """
   def fetch_activity_data(days \\ 7) do
-    AppLogger.api_info("Fetching character activity data", days: days)
-
     case CharactersClient.get_character_activity(nil, days) do
       {:ok, data} ->
-        AppLogger.api_info("Retrieved character activity data")
-
-        AppLogger.api_debug("Character activity data structure",
-          data: inspect(data, pretty: true, limit: 2000)
-        )
-
         {:ok, data}
 
       {:error, reason} = error ->
-        AppLogger.api_error("Error fetching character activity data", error: inspect(reason))
+        AppLogger.api_error("⚠️ Error fetching character activity data", error: inspect(reason))
         error
     end
   end
