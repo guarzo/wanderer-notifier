@@ -1,45 +1,48 @@
 import Config
 
 config :wanderer_notifier,
-  # Use test-specific configuration
+  # Environment
+  environment: :test,
+  start_external_connections: false,
+
+  # Cache configuration
+  cache_name: :test_cache,
+  cache_repository: WandererNotifier.MockCache,
+
+  # Mock clients
   http_client: WandererNotifier.MockHTTP,
   discord_client: WandererNotifier.MockDiscord,
   websocket_client: WandererNotifier.MockWebSocket,
-  cache_name: :test_cache,
 
-  # Service dependencies
-  zkill_client: WandererNotifier.Api.ZKill.Client,
-  esi_service: WandererNotifier.Api.ESI.Service,
+  # Service mocks
+  zkill_service: WandererNotifier.Api.ZKill.ServiceMock,
+  esi_service: WandererNotifier.Api.ESI.ServiceMock,
   cache_helpers: WandererNotifier.MockCacheHelpers,
   repository: WandererNotifier.MockRepository,
   killmail_persistence: WandererNotifier.MockKillmailPersistence,
   logger: WandererNotifier.MockLogger,
   notifier_factory: WandererNotifier.MockNotifierFactory,
+  discord_notifier: WandererNotifier.MockDiscordNotifier,
+  structured_formatter: WandererNotifier.MockStructuredFormatter,
+  killmail_chart_adapter: WandererNotifier.MockKillmailChartAdapter,
+  config_module: WandererNotifier.MockConfig,
+  date_module: WandererNotifier.MockDate,
 
-  # Faster timeouts for tests
+  # Test timeouts
   api_timeout: 100,
 
-  # Test-specific feature flags
+  # Feature flags
   features: %{
     "send_discord_notifications" => true,
     "track_character_changes" => true,
-    # Disable for tests
     "generate_tps_charts" => false
-  },
-  config_module: WandererNotifier.MockConfig,
-  killmail_chart_adapter: WandererNotifier.MockKillmailChartAdapter,
-  discord_notifier: WandererNotifier.MockDiscordNotifier,
-  structured_formatter: WandererNotifier.MockStructuredFormatter,
-  date_module: WandererNotifier.MockDate
+  }
 
 # Prevent Nostrum from starting during tests
 config :nostrum,
   token: "fake_token_for_testing",
   gateway_intents: [],
   start_nostrum: false
-
-# Prevent application from starting external connections
-config :wanderer_notifier, :start_external_connections, false
 
 # Configure logger for test environment
 config :logger, level: :warning

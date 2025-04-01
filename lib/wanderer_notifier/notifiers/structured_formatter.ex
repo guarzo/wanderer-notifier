@@ -8,13 +8,15 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   on the structured data provided by these schemas.
   """
 
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Api.ZKill.Service, as: ZKillService
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  # Get configured services
+  defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)
+  defp esi_service, do: Application.get_env(:wanderer_notifier, :esi_service)
 
   # Color constants for Discord notifications
   # Default blue
@@ -622,7 +624,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Helper for fetching and processing kills
   defp fetch_and_process_kills(fields, system_id_int) do
-    case ZKillService.get_system_kills(system_id_int, 3) do
+    case zkill_service().get_system_kills(system_id_int, 3) do
       {:ok, []} ->
         fields
 
@@ -666,26 +668,12 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Fetch complete killmail details using ESI API
   defp fetch_complete_killmail(zkill_data) do
-    # The ZKill API returns data in this format:
-    # %{
-    #   "killmail_id" => 123456789,
-    #   "zkb" => %{
-    #     "locationID" => 30000142,
-    #     "hash" => "hash_string",
-    #     "fittedValue" => 1000000,
-    #     "totalValue" => 1200000,
-    #     "points" => 1,
-    #     "npc" => false,
-    #     ...
-    #   }
-    # }
-
     # Extract the killmail_id and hash
     kill_id = Map.get(zkill_data, "killmail_id")
     hash = get_in(zkill_data, ["zkb", "hash"])
 
     if kill_id && hash do
-      case ESIService.get_killmail(kill_id, hash) do
+      case esi_service().get_killmail(kill_id, hash) do
         {:ok, esi_data} ->
           # Create a complete kill structure with both ESI and ZKill data
           Map.merge(zkill_data, %{"esi_killmail" => esi_data})
@@ -738,7 +726,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Get character name
     victim_name =
       if victim_id do
-        case ESIService.get_character_info(victim_id) do
+        case esi_service().get_character_info(victim_id) do
           {:ok, char_info} -> Map.get(char_info, "name", "Unknown")
           _ -> "Unknown"
         end
@@ -749,7 +737,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Get ship name
     ship_name =
       if ship_type_id do
-        case ESIService.get_ship_type_name(ship_type_id) do
+        case esi_service().get_ship_type_name(ship_type_id) do
           {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
           _ -> "Unknown Ship"
         end

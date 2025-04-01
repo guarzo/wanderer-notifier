@@ -1,5 +1,83 @@
-# Start ExUnit first
-ExUnit.start()
+# Configure test environment before anything else
+Application.put_env(:wanderer_notifier, :environment, :test)
+
+# Disable all external services and background processes in test
+Application.put_env(:wanderer_notifier, :discord_enabled, false)
+Application.put_env(:wanderer_notifier, :scheduler_enabled, false)
+Application.put_env(:wanderer_notifier, :character_tracking_enabled, false)
+Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
+Application.put_env(:wanderer_notifier, :kill_charts_enabled, false)
+Application.put_env(:wanderer_notifier, :map_charts_enabled, false)
+
+# Configure Mox
+Application.ensure_all_started(:mox)
+
+# Define single mock for repository
+Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
+  for: WandererNotifier.Data.Cache.RepositoryBehaviour
+)
+
+# Configure cache implementation
+Application.put_env(:wanderer_notifier, :cache_impl, WandererNotifier.ETSCache)
+
+Application.put_env(
+  :wanderer_notifier,
+  :cache_repository,
+  WandererNotifier.Data.Cache.RepositoryMock
+)
+
+# Start ExUnit with global mode disabled
+ExUnit.start(capture_log: true)
+
+# Initialize ETS tables under supervision
+defmodule WandererNotifier.TestSupervisor do
+  use Supervisor
+
+  def start_link(init_arg) do
+    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_init_arg) do
+    # Initialize ETS tables under supervision
+    table_opts = [
+      :named_table,
+      :public,
+      :set,
+      {:write_concurrency, true},
+      {:read_concurrency, true}
+    ]
+
+    # Create tables if they don't exist
+    if :ets.whereis(:cache_table) == :undefined do
+      :ets.new(:cache_table, table_opts)
+    end
+
+    if :ets.whereis(:locks_table) == :undefined do
+      :ets.new(:locks_table, table_opts)
+    end
+
+    # Return empty children list since tables are created
+    Supervisor.init([], strategy: :one_for_one)
+  end
+end
+
+# Start the test supervisor
+{:ok, _pid} = WandererNotifier.TestSupervisor.start_link([])
+
+# Define mocks for external services
+Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
+  for: WandererNotifier.Api.ZKill.ServiceBehaviour
+)
+
+Mox.defmock(WandererNotifier.Api.ESI.ServiceMock, for: WandererNotifier.Api.ESI.ServiceBehaviour)
+
+# Configure application to use mocks
+Application.put_env(:wanderer_notifier, :zkill_service, WandererNotifier.Api.ZKill.ServiceMock)
+Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
+
+# Cache-related mocks
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
@@ -19,95 +97,30 @@ Application.put_env(
   WandererNotifier.MockKillmailChartAdapter
 )
 
-# Define the KillmailChartAdapter behaviour first
-defmodule WandererNotifier.ChartService.KillmailChartAdapterBehaviour do
-  @moduledoc """
-  Behaviour for the killmail chart adapter.
-  """
-
-  @callback generate_weekly_kills_chart() :: {:ok, String.t()} | {:error, term()}
-  @callback send_weekly_kills_chart_to_discord(String.t(), String.t(), String.t()) ::
-              {:ok, String.t()} | {:error, term()}
-end
-
-# Set up application environment for testing
-Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
-Application.put_env(:wanderer_notifier, :cache_helpers, WandererNotifier.MockCacheHelpers)
-Application.put_env(:wanderer_notifier, :repository, WandererNotifier.MockRepository)
-Application.put_env(:wanderer_notifier, :logger, WandererNotifier.MockLogger)
-
-Application.put_env(
-  :wanderer_notifier,
-  :killmail_persistence,
-  WandererNotifier.MockKillmailPersistence
-)
-
-Application.put_env(
-  :wanderer_notifier,
-  :cache_repo_module,
-  WandererNotifier.Data.Cache.RepositoryMock
-)
-
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
 Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.Behaviour)
 
-# Define the StructuredFormatter behaviour
-defmodule WandererNotifier.Notifiers.StructuredFormatterBehaviour do
-  @callback format_system_status_message(
-              String.t(),
-              String.t(),
-              map(),
-              String.t(),
-              map(),
-              map(),
-              list(),
-              list()
-            ) :: map()
-  @callback format_system_notification(map()) :: map()
-  @callback format_kill_notification(map()) :: map()
-  @callback format_character_notification(map()) :: map()
-  @callback to_discord_format(map()) :: map()
-end
-
+# Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,
   for: WandererNotifier.Notifiers.StructuredFormatterBehaviour
 )
 
-# Define the Discord Notifier behaviour
-defmodule WandererNotifier.Notifiers.Discord.NotifierBehaviour do
-  @callback send_message(String.t(), any()) :: :ok
-  @callback send_embed(String.t(), String.t(), String.t() | nil, integer(), any()) :: :ok
-  @callback send_file(String.t(), any(), String.t() | nil, String.t() | nil, any()) :: :ok
-  @callback send_image_embed(String.t(), String.t(), String.t(), integer(), any()) :: :ok
-  @callback send_enriched_kill_embed(struct(), any()) :: :ok
-  @callback send_kill_notification(any()) :: :ok
-  @callback send_new_tracked_character_notification(struct()) :: :ok
-  @callback send_new_system_notification(any()) :: :ok
-  @callback send_notification(atom(), any()) :: :ok | {:error, atom()}
-  @callback send_discord_embed(map()) :: {:ok, map()} | {:error, any()}
-end
-
 Mox.defmock(WandererNotifier.MockDiscordNotifier,
-  for: WandererNotifier.Notifiers.Discord.NotifierBehaviour
+  for: WandererNotifier.Notifiers.DiscordNotifierBehaviour
 )
 
-# Define the CacheHelpersBehaviour module first
-defmodule WandererNotifier.Helpers.CacheHelpersBehaviour do
-  @callback get_cached_kills(String.t()) :: {:ok, list()} | {:error, term()}
-  @callback get_tracked_characters() :: list()
-  @callback get_character_name(String.t()) :: {:ok, String.t()} | {:error, term()}
-  @callback get_ship_name(String.t()) :: {:ok, String.t()} | {:error, term()}
-end
+# Configure application to use mocks
+Application.put_env(:wanderer_notifier, :discord_notifier, WandererNotifier.MockDiscordNotifier)
 
-Mox.defmock(WandererNotifier.MockCacheHelpers,
-  for: WandererNotifier.Helpers.CacheHelpersBehaviour
-)
+# Set up default stubs for Discord notifier
+Mox.stub_with(WandererNotifier.MockDiscordNotifier, WandererNotifier.Test.Stubs.DiscordNotifier)
+
+# Define mocks for cache helpers
+Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Data.Cache.HelpersBehaviour)
 
 Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Data.Cache.RepositoryBehaviour)
 
@@ -115,51 +128,16 @@ Mox.defmock(WandererNotifier.MockKillmailPersistence,
   for: WandererNotifier.Resources.KillmailPersistenceBehaviour
 )
 
-# Set Mox global mode for tests
-Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
-  for: WandererNotifier.Data.Cache.CacheBehaviour
-)
-
+# Set Mox to verify on exit
 Application.put_env(:mox, :verify_on_exit, true)
 
-# Define mocks for our new behaviors
-defmodule WandererNotifier.Config.Behaviour do
-  @callback map_url() :: String.t() | nil
-  @callback map_token() :: String.t() | nil
-  @callback map_csrf_token() :: String.t() | nil
-  @callback map_name() :: String.t() | nil
-  @callback notifier_api_token() :: String.t() | nil
-  @callback license_key() :: String.t() | nil
-  @callback license_manager_api_url() :: String.t() | nil
-  @callback license_manager_api_key() :: String.t() | nil
-  @callback discord_channel_id_for(atom()) :: String.t() | nil
-  @callback discord_channel_id_for_activity_charts() :: String.t() | nil
-  @callback kill_charts_enabled?() :: boolean()
-  @callback map_charts_enabled?() :: boolean()
-  @callback character_tracking_enabled?() :: boolean()
-  @callback character_notifications_enabled?() :: boolean()
-  @callback system_notifications_enabled?() :: boolean()
-  @callback track_kspace_systems?() :: boolean()
-  @callback get_map_config() :: map()
-  @callback static_info_cache_ttl() :: integer()
-  @callback get_env(atom(), any()) :: any()
-  @callback get_feature_status() :: map()
-end
-
+# Define mocks for config and date
 Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.Behaviour)
+Mox.defmock(WandererNotifier.MockDate, for: WandererNotifier.DateBehaviour)
 
-# Needed for cache_helpers_test.exs
-defmodule WandererNotifier.Data.Cache.RepositoryBehavior do
-  @callback get(String.t()) :: any()
-  @callback put(String.t(), any()) :: :ok
-  @callback delete(String.t()) :: :ok
-  @callback get_and_update(String.t(), (any() -> {any(), any()})) :: any()
-  @callback exists?(String.t()) :: boolean()
-  @callback set(String.t(), any(), non_neg_integer() | nil) :: :ok
-end
-
-Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
-  for: WandererNotifier.Data.Cache.RepositoryBehavior
+# Define mocks for notifier factory
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifiers.FactoryBehaviour
 )
 
 # Set up application environment for testing
@@ -167,23 +145,3 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
-
-# Define the Date behaviour for mocking Date functions
-defmodule WandererNotifier.DateBehaviour do
-  @callback utc_today() :: Date.t()
-  @callback day_of_week(Date.t()) :: non_neg_integer()
-end
-
-Mox.defmock(WandererNotifier.MockDate, for: WandererNotifier.DateBehaviour)
-
-# Define the NotifierFactory behaviour
-defmodule WandererNotifier.Notifiers.FactoryBehaviour do
-  @callback notify(atom(), list()) :: {:ok, map()} | {:error, any()}
-end
-
-Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Notifiers.FactoryBehaviour
-)
-
-# Set up application environment for testing
-Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)

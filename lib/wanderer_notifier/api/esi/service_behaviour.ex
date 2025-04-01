@@ -18,4 +18,7 @@ defmodule WandererNotifier.Api.ESI.ServiceBehaviour do
   @callback get_system(system_id :: integer()) :: response
   @callback get_character(character_id :: integer()) :: {:ok, map()} | {:error, term()}
   @callback get_type(type_id :: integer()) :: {:ok, map()} | {:error, term()}
+  @callback get_ship_type_name(ship_type_id :: integer()) :: {:ok, map()} | {:error, term()}
+  @callback get_system_kills(system_id :: integer(), limit :: integer()) ::
+              {:ok, list(map())} | {:error, term()}
 end

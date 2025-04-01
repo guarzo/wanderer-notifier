@@ -30,10 +30,7 @@ defmodule WandererNotifier.Api.ESI.Service do
     ESIClient.get_alliance_info(alliance_id)
   end
 
-  @doc """
-  Fetches ship type name from ESI.
-  Returns {:ok, %{"name" => name}} if successful.
-  """
+  @impl true
   def get_ship_type_name(ship_type_id, _opts \\ []) do
     AppLogger.api_debug("[ESI] Fetching ship type name for ID #{ship_type_id}")
 
@@ -106,5 +103,11 @@ defmodule WandererNotifier.Api.ESI.Service do
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_type(type_id) do
     get_type_info(type_id)
+  end
+
+  @impl true
+  def get_system_kills(system_id, limit) do
+    AppLogger.api_debug("[ESI] Fetching system kills", system_id: system_id, limit: limit)
+    ESIClient.get_system_kills(system_id, limit)
   end
 end

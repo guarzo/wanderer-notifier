@@ -1,0 +1,42 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+# Build artifacts
+*.bak
+node_modules/
+repomix.*
+/priv/charts/node_modules
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+chart-service/node_modules/
+
+# Crash dumps and archives
+erl_crash.dump
+*.ez
+
+# Compiled files (BEAM bytecode)
+*.beam
+
+# Application config secrets (should not be committed)
+config/*.secret.exs
+
+# Environment and tool files
+.tool-versions
+
+# Editor/IDE directories and swap files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Elixir language server artifacts
+.elixir_ls/
+
+# Cache directory
+/tmp/
+
+# Don't ignore priv directory
+priv/static/app/**/*
+!/priv/
+!/priv/templates/

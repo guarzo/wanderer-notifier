@@ -118,67 +118,35 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Gets the system ID from a kill.
   """
   def get_kill_system_id(kill) do
-    with {:ok, system_id} <- extract_system_id_from_kill(kill),
-         {:ok, parsed_id} <- parse_system_id(system_id) do
-      {:ok, parsed_id}
-    else
-      {:error, reason} ->
-        AppLogger.processor_error("Failed to get system ID from kill", error: reason)
-        {:error, reason}
-    end
-  end
-
-  # Extract system ID from various kill data structures
-  defp extract_system_id_from_kill(kill) when is_map(kill) do
-    extract_system_id_from_map(kill)
-  end
-
-  defp extract_system_id_from_kill(_), do: {:error, :invalid_kill_data}
-
-  # Extract system ID from a map, trying different known locations
-  defp extract_system_id_from_map(kill_map) do
     cond do
-      has_direct_system_id?(kill_map) -> extract_direct_system_id(kill_map)
-      has_solar_system?(kill_map) -> extract_from_solar_system(kill_map)
-      has_system?(kill_map) -> extract_from_system(kill_map)
-      true -> {:error, :missing_system_id}
+      # Handle Killmail struct
+      is_struct(kill, Killmail) && get_in(kill, [:esi_data, "solar_system_id"]) ->
+        get_in(kill, [:esi_data, "solar_system_id"])
+
+      # Handle map with esi_data
+      is_map(kill) && get_in(kill, ["esi_data", "solar_system_id"]) ->
+        get_in(kill, ["esi_data", "solar_system_id"])
+
+      # Handle direct system_id
+      is_map(kill) && Map.get(kill, "system_id") ->
+        Map.get(kill, "system_id")
+
+      # Handle direct solar_system_id
+      is_map(kill) && Map.get(kill, "solar_system_id") ->
+        Map.get(kill, "solar_system_id")
+
+      # Handle nested system structure
+      is_map(kill) && get_in(kill, ["system", "id"]) ->
+        get_in(kill, ["system", "id"])
+
+      # Handle nested solar_system structure
+      is_map(kill) && get_in(kill, ["solar_system", "id"]) ->
+        get_in(kill, ["solar_system", "id"])
+
+      true ->
+        "unknown"
     end
   end
-
-  defp has_direct_system_id?(kill_map), do: Map.has_key?(kill_map, "system_id")
-  defp has_solar_system?(kill_map), do: Map.has_key?(kill_map, "solar_system")
-  defp has_system?(kill_map), do: Map.has_key?(kill_map, "system")
-
-  defp extract_direct_system_id(kill_map), do: {:ok, kill_map["system_id"]}
-
-  defp extract_from_solar_system(%{"solar_system" => system}) do
-    extract_id_from_system_map(system)
-  end
-
-  defp extract_from_system(%{"system" => system}) do
-    extract_id_from_system_map(system)
-  end
-
-  defp extract_id_from_system_map(system) when is_map(system) do
-    cond do
-      Map.has_key?(system, "id") -> {:ok, system["id"]}
-      Map.has_key?(system, "system_id") -> {:ok, system["system_id"]}
-      true -> {:error, :missing_system_id}
-    end
-  end
-
-  defp extract_id_from_system_map(_), do: {:error, :invalid_system_data}
-
-  # Parse system ID into integer
-  defp parse_system_id(system_id) when is_binary(system_id) do
-    case Integer.parse(system_id) do
-      {id, _} -> {:ok, id}
-      :error -> {:error, :invalid_system_id}
-    end
-  end
-
-  defp parse_system_id(system_id) when is_integer(system_id), do: {:ok, system_id}
-  defp parse_system_id(_), do: {:error, :invalid_system_id}
 
   # Get system name from killmail
   defp get_kill_system_name(killmail) do

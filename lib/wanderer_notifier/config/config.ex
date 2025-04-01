@@ -7,135 +7,107 @@ defmodule WandererNotifier.Config.Config do
 
   alias WandererNotifier.Config.Features
 
-  @doc """
-  Get the map URL.
-  """
+  @impl true
   def map_url do
     get_env(:map_url)
   end
 
-  @doc """
-  Get the map token.
-  """
+  @impl true
   def map_token do
     get_env(:map_token)
   end
 
-  @doc """
-  Get the map CSRF token.
-  """
+  @impl true
   def map_csrf_token do
     get_env(:map_csrf_token)
   end
 
-  @doc """
-  Get the map name.
-  """
+  @impl true
   def map_name do
     get_env(:map_name)
   end
 
-  @doc """
-  Get the notifier API token.
-  """
+  @impl true
   def notifier_api_token do
     get_env(:notifier_api_token)
   end
 
-  @doc """
-  Get the license key.
-  """
+  @impl true
   def license_key do
     get_env(:license_key)
   end
 
-  @doc """
-  Get the license manager API URL.
-  """
+  @impl true
   def license_manager_api_url do
     get_env(:license_manager_api_url)
   end
 
-  @doc """
-  Get the license manager API key.
-  """
+  @impl true
   def license_manager_api_key do
     get_env(:license_manager_api_key)
   end
 
-  @doc """
-  Get the Discord channel ID for a feature.
-  """
+  @impl true
   def discord_channel_id_for(feature) do
     get_env(:"discord_channel_#{feature}")
   end
 
-  @doc """
-  Get the Discord channel ID for activity charts.
-  """
+  @impl true
   def discord_channel_id_for_activity_charts do
     discord_channel_id_for(:activity_charts)
   end
 
-  @doc """
-  Check if kill charts are enabled.
-  """
+  @impl true
   def kill_charts_enabled? do
     Features.kill_charts_enabled?()
   end
 
-  @doc """
-  Check if map charts are enabled.
-  """
+  @impl true
   def map_charts_enabled? do
     Features.map_charts_enabled?()
   end
 
-  @doc """
-  Check if character tracking is enabled.
-  """
+  @impl true
   def character_tracking_enabled? do
     Features.character_tracking_enabled?()
   end
 
-  @doc """
-  Check if character notifications are enabled.
-  """
+  @impl true
   def character_notifications_enabled? do
     Features.character_notifications_enabled?()
   end
 
-  @doc """
-  Check if system notifications are enabled.
-  """
+  @impl true
   def system_notifications_enabled? do
     Features.system_notifications_enabled?()
   end
 
-  @doc """
-  Check if K-space systems should be tracked.
-  """
+  @impl true
   def track_kspace_systems? do
     Features.track_kspace_systems?()
   end
 
-  @doc """
-  Gets the map configuration.
-  """
+  @impl true
   def get_map_config do
     get_env(:map_config, %{})
   end
 
-  @doc """
-  Gets the static info cache TTL.
-  """
+  @impl true
   def static_info_cache_ttl do
     get_env(:static_info_cache_ttl, 3600)
   end
 
-  @doc """
-  Gets the configured value for a given key from the application environment.
-  """
+  @impl true
+  def get_feature_status do
+    %{
+      kill_notifications_enabled: kill_charts_enabled?(),
+      system_tracking_enabled: system_notifications_enabled?(),
+      character_tracking_enabled: character_tracking_enabled?(),
+      activity_charts: map_charts_enabled?()
+    }
+  end
+
+  @impl true
   def get_env(key, default \\ nil) do
     Application.get_env(:wanderer_notifier, key, default)
   end

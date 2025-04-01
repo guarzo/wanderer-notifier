@@ -242,8 +242,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Update the systems cache with the latest data
   defp update_systems_cache(systems) do
-    # Use a hard-coded long TTL (24 hours) for persistence, just like characters.ex
-    # 24 hours in seconds
+    # Use a hard-coded long TTL (24 hours) for persistence
     long_ttl = 86_400
 
     AppLogger.api_info(
@@ -255,40 +254,35 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     current_count = length(current_systems)
     AppLogger.api_info("[SystemsClient] Current systems in cache before update: #{current_count}")
 
-    # Try-rescue to catch any errors
     try do
-      # Update the cache with direct set - using direct set just like characters.ex
+      # First update the main caches - these are critical operations
       result = CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
-      AppLogger.api_info("[SystemsClient] Cache set result: #{inspect(result)}")
+      AppLogger.api_info("[SystemsClient] Main cache set result: #{inspect(result)}")
 
-      # Also update system_ids list for fast lookups
       system_ids = Enum.map(systems, & &1.solar_system_id)
       CacheRepo.set(CacheKeys.map_system_ids(), system_ids, long_ttl)
 
-      # Also cache individual systems by ID for better lookups and mark them as tracked
-      AppLogger.api_info(
-        "[SystemsClient] Caching individual systems by ID and marking as tracked..."
+      # Now handle individual system caching and tracking concurrently
+      # Use Task.async_stream with a reasonable concurrency limit
+      systems
+      |> Task.async_stream(
+        fn system ->
+          system_id = system.solar_system_id
+
+          if system_id do
+            # Cache individual system
+            system_cache_key = CacheKeys.system(system_id)
+            CacheRepo.set(system_cache_key, system, long_ttl)
+            # Mark as tracked
+            CacheHelpers.add_system_to_tracked(system_id, system)
+          end
+        end,
+        max_concurrency: 5,
+        timeout: 5000
       )
+      |> Stream.run()
 
-      Enum.each(systems, fn system ->
-        system_id = system.solar_system_id
-
-        if system_id do
-          system_cache_key = CacheKeys.system(system_id)
-
-          AppLogger.api_debug(
-            "[SystemsClient] Caching system ID #{system_id} at key #{system_cache_key}"
-          )
-
-          CacheRepo.set(system_cache_key, system, long_ttl)
-
-          # Mark the system as tracked
-          CacheHelpers.add_system_to_tracked(system_id, system)
-        end
-      end)
-
-      # Verify the update with brief delay - copied from characters.ex approach
-      # Increasing to 100ms for more reliable verification
+      # Verify the update with brief delay
       Process.sleep(100)
       post_update_count = length(CacheRepo.get(CacheKeys.map_systems()) || [])
 

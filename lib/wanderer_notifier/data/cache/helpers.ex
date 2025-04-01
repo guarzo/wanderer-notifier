@@ -7,7 +7,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   @behaviour WandererNotifier.Data.Cache.CacheBehaviour
 
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Get the configured cache repository module
@@ -18,6 +17,24 @@ defmodule WandererNotifier.Data.Cache.Helpers do
       WandererNotifier.Data.Cache.Repository
     )
   end
+
+  @impl true
+  def get(key), do: repo_module().get(key)
+
+  @impl true
+  def set(key, value, ttl), do: repo_module().set(key, value, ttl)
+
+  @impl true
+  def put(key, value), do: repo_module().put(key, value)
+
+  @impl true
+  def delete(key), do: repo_module().delete(key)
+
+  @impl true
+  def clear, do: repo_module().clear()
+
+  @impl true
+  def get_and_update(key, fun), do: repo_module().get_and_update(key, fun)
 
   @doc """
   Gets the list of tracked systems from the cache.
@@ -34,7 +51,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   @doc """
   Gets tracked characters from cache.
   """
-  @impl true
   def get_tracked_characters do
     case repo_module().get("tracked:characters") do
       nil -> []
@@ -46,7 +62,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   @doc """
   Gets cached ship name.
   """
-  @impl true
   def get_ship_name(ship_type_id) do
     case repo_module().get("ship:#{ship_type_id}") do
       nil -> {:error, :not_found}
@@ -58,7 +73,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   @doc """
   Gets cached character name.
   """
-  @impl true
   def get_character_name(character_id) do
     case repo_module().get("character:#{character_id}") do
       nil -> {:error, :not_found}
@@ -70,7 +84,6 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   @doc """
   Gets cached kills.
   """
-  @impl true
   def get_cached_kills(system_id) do
     case repo_module().get("kills:#{system_id}") do
       nil -> {:ok, []}
@@ -104,24 +117,24 @@ defmodule WandererNotifier.Data.Cache.Helpers do
       system_name: system_data["name"] || system_data[:name]
     )
 
-    # Update tracked systems list
-    repo_module().get_and_update(CacheKeys.tracked_systems_list(), fn current_systems ->
-      current_systems = current_systems || []
-      updated_systems = Enum.uniq([%{"system_id" => to_string(system_id)} | current_systems])
-      {current_systems, updated_systems}
-    end)
-
-    # Mark system as tracked
-    tracked_key = CacheKeys.tracked_system(system_id)
-    repo_module().put(tracked_key, true)
-
-    # Store system data if not already stored
+    # First, ensure the system data is cached
     system_key = CacheKeys.system(system_id)
     existing_data = repo_module().get(system_key)
 
     if is_nil(existing_data) do
       repo_module().put(system_key, system_data)
     end
+
+    # Then mark the system as tracked
+    tracked_key = CacheKeys.tracked_system(system_id)
+    repo_module().put(tracked_key, true)
+
+    # Finally, update the tracked systems list
+    # Use a simple put operation instead of get_and_update to avoid deadlocks
+    tracked_systems = repo_module().get(CacheKeys.tracked_systems_list()) || []
+    system_entry = %{"system_id" => to_string(system_id)}
+    updated_systems = [system_entry | tracked_systems] |> Enum.uniq()
+    repo_module().put(CacheKeys.tracked_systems_list(), updated_systems)
 
     :ok
   end
@@ -139,24 +152,30 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   end
 
   def add_character_to_tracked(character_id, character_data) when is_integer(character_id) do
-    # Update tracked characters list
-    repo_module().get_and_update("tracked:characters", fn current_characters ->
-      current_characters = current_characters || []
+    # Log the operation
+    AppLogger.api_info("[CacheHelpers] Adding character to tracked characters",
+      character_id: character_id,
+      character_name: character_data["name"] || character_data[:name]
+    )
 
-      updated_characters =
-        Enum.uniq([%{"character_id" => to_string(character_id)} | current_characters])
+    # First, ensure the character data is cached
+    character_key = "map:character:#{character_id}"
+    existing_data = repo_module().get(character_key)
 
-      {current_characters, updated_characters}
-    end)
-
-    # Mark character as tracked
-    repo_module().put("tracked:character:#{character_id}", true)
-
-    # Store character data if not already stored
-    case repo_module().get("map:character:#{character_id}") do
-      nil -> repo_module().put("map:character:#{character_id}", character_data)
-      _ -> :ok
+    if is_nil(existing_data) do
+      repo_module().put(character_key, character_data)
     end
+
+    # Then mark the character as tracked
+    tracked_key = "tracked:character:#{character_id}"
+    repo_module().put(tracked_key, true)
+
+    # Finally, update the tracked characters list
+    # Use simple get/put operations instead of get_and_update to avoid deadlocks
+    tracked_characters = repo_module().get("tracked:characters") || []
+    character_entry = %{"character_id" => to_string(character_id)}
+    updated_characters = [character_entry | tracked_characters] |> Enum.uniq()
+    repo_module().put("tracked:characters", updated_characters)
 
     :ok
   end

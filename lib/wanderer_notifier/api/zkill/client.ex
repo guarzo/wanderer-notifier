@@ -67,7 +67,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
 
   def get_single_killmail(kill_id) do
     Logger.info("ZKill single_killmail HTTP request for kill_id: #{kill_id}")
-    url = "https://zkillboard.com/api/killID/#{kill_id}/"
+    url = "#{@base_url}/killID/#{kill_id}/"
     label = "ZKill.killmail-#{kill_id}"
 
     headers = [{"User-Agent", @user_agent}]
@@ -93,7 +93,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
 
   def get_recent_kills(limit) do
     Logger.info("ZKill recent_kills HTTP request with limit: #{limit}")
-    url = "https://zkillboard.com/api/kills/"
+    url = "#{@base_url}/kills/"
     label = "ZKill.recent_kills"
 
     headers = [{"User-Agent", @user_agent}]
@@ -128,7 +128,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
     Logger.info("ZKill system_kills HTTP request for system_id: #{system_id}, limit: #{limit}")
     # According to zKillboard API docs, the correct format is:
     # https://zkillboard.com/api/systemID/ID/
-    url = "https://zkillboard.com/api/systemID/#{system_id}/"
+    url = "#{@base_url}/systemID/#{system_id}/"
     label = "ZKill.system_kills-#{system_id}"
 
     headers = [{"User-Agent", @user_agent}]
@@ -183,7 +183,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
 
         # According to zKillboard API docs, the correct format is:
         # https://zkillboard.com/api/characterID/ID/
-        url = "https://zkillboard.com/api/characterID/#{validated_id}/page/#{page}/"
+        url = "#{@base_url}/characterID/#{validated_id}/page/#{page}/"
         label = "ZKill.character_kills-#{validated_id}-page-#{page}"
 
         headers = [
