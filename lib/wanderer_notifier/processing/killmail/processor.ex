@@ -135,7 +135,7 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
       end
 
     AppLogger.kill_info(
-      "📥 WEBSOCKET KILL RECEIVED: Processing killmail #{kill_id} in system #{system_name} (#{system_id})",
+      "📥 WEBSOCKET KILL RECEIVED: #{kill_id} in #{system_name} (#{system_id})",
       %{
         kill_id: kill_id,
         system_id: system_id,
@@ -147,16 +147,16 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     # Skip processing if no kill ID or already processed
     cond do
       is_nil(kill_id) ->
-        AppLogger.kill_warn("Received killmail without kill ID")
+        AppLogger.kill_warn("⚠️ Received killmail without kill ID")
         state
 
       Map.has_key?(state.processed_kill_ids, kill_id) ->
-        AppLogger.kill_debug("Kill #{kill_id} already processed, skipping")
+        AppLogger.kill_debug("🔄 Kill #{kill_id} already processed, skipping")
         state
 
       true ->
         # Process the new kill - first standardize to Killmail struct
-        AppLogger.kill_debug("Processing new kill #{kill_id}")
+        AppLogger.kill_debug("⚙️ Processing kill #{kill_id}")
 
         # Extract zkb data
         zkb_data = Map.get(killmail, "zkb", %{})

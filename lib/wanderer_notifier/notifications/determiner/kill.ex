@@ -11,7 +11,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Logger.Logger.BatchLogger
 
   @doc """
   Determines if a notification should be sent for a kill.
@@ -182,7 +181,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    AppLogger.processor_info("[Determiner] Checking if system #{system_id_str} is tracked",
+    AppLogger.processor_debug("🔍 Checking system tracking status",
       system_id: system_id_str,
       system_id_type: typeof(system_id_str)
     )
@@ -192,7 +191,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     cache_value = CacheRepo.get(cache_key)
 
     # Log the cache check with actual value
-    AppLogger.processor_info("[Determiner] Tracked system cache check",
+    AppLogger.processor_debug("🔍 Tracked system cache check",
       system_id: system_id_str,
       cache_key: cache_key,
       cache_value: cache_value,
@@ -203,7 +202,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_cache_key = CacheKeys.system(system_id_str)
     system_in_cache = CacheRepo.get(system_cache_key)
 
-    AppLogger.processor_info("[Determiner] System cache check",
+    AppLogger.processor_debug("🔍 System cache check",
       system_id: system_id_str,
       system_cache_key: system_cache_key,
       system_in_cache: inspect(system_in_cache),
@@ -213,13 +212,13 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     # Return tracking status with detailed logging
     tracked = cache_value != nil
 
-    AppLogger.processor_info("[Determiner] System tracking check result",
+    AppLogger.processor_info("🎯 System tracking determination",
       system_id: system_id_str,
       tracked: tracked,
       reason:
         if(tracked,
-          do: "Found in tracked systems cache",
-          else: "Not found in tracked systems cache"
+          do: "System is being tracked",
+          else: "System is not tracked"
         )
     )
 
@@ -249,11 +248,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       # Handle different killmail formats
       kill_data = extract_kill_data(killmail)
       kill_id = extract_kill_id(killmail)
-
-      # Use batch logger for character tracking checks
-      BatchLogger.count_event(:character_tracked, %{
-        kill_id: kill_id
-      })
 
       # Get all tracked character IDs for comparison
       all_character_ids = get_all_tracked_character_ids()
@@ -294,7 +288,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp get_all_tracked_character_ids do
     all_characters = CacheRepo.get(CacheKeys.character_list()) || []
 
-    AppLogger.processor_debug("[Determiner] Getting tracked characters",
+    AppLogger.processor_debug("🔍 Getting tracked characters list",
       characters_count: length(all_characters)
     )
 
@@ -320,19 +314,34 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(kill_data, _kill_id, all_character_ids) do
+  defp check_victim_tracked(kill_data, kill_id, all_character_ids) do
     # Extract and format victim ID
     victim_id_str = extract_victim_id(kill_data)
+
+    AppLogger.processor_debug("🔍 Checking victim tracking",
+      kill_id: kill_id,
+      victim_id: victim_id_str
+    )
 
     # Check if victim is tracked against character_id list
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
     # Also try direct cache lookup for victim if not already tracked
-    if !victim_tracked && victim_id_str do
-      check_direct_victim_tracking(victim_id_str)
-    else
-      victim_tracked
+    is_tracked =
+      if !victim_tracked && victim_id_str do
+        check_direct_victim_tracking(victim_id_str)
+      else
+        victim_tracked
+      end
+
+    if is_tracked do
+      AppLogger.processor_info("🎯 Character tracking determination: victim is tracked",
+        kill_id: kill_id,
+        victim_id: victim_id_str
+      )
     end
+
+    is_tracked
   end
 
   # Extract attackers from kill data
@@ -341,17 +350,41 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Check if any attacker is tracked
-  defp check_attackers_tracked(kill_data, _kill_id, all_character_ids) do
+  defp check_attackers_tracked(kill_data, kill_id, all_character_ids) do
     # Get attacker data
     attackers = extract_attackers(kill_data)
 
+    AppLogger.processor_debug("🔍 Checking attackers tracking",
+      kill_id: kill_id,
+      attackers_count: length(attackers)
+    )
+
     # Check if any attacker is in our tracked list
-    if attacker_in_tracked_list?(attackers, all_character_ids) do
-      true
-    else
-      # If no attackers in tracked list, check direct cache lookup
-      attacker_directly_tracked?(attackers)
+    is_tracked =
+      if attacker_in_tracked_list?(attackers, all_character_ids) do
+        true
+      else
+        # If no attackers in tracked list, check direct cache lookup
+        attacker_directly_tracked?(attackers)
+      end
+
+    if is_tracked do
+      tracked_attacker =
+        Enum.find(attackers, fn attacker ->
+          attacker_id = extract_attacker_id(attacker)
+
+          attacker_id &&
+            (Enum.member?(all_character_ids, attacker_id) ||
+               check_direct_victim_tracking(attacker_id))
+        end)
+
+      AppLogger.processor_info("🎯 Character tracking determination: attacker is tracked",
+        kill_id: kill_id,
+        attacker_id: extract_attacker_id(tracked_attacker)
+      )
     end
+
+    is_tracked
   end
 
   # Check if any attacker is in our tracked characters list

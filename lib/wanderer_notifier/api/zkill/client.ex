@@ -125,7 +125,7 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
   end
 
   def get_system_kills(system_id, limit) do
-    Logger.info("ZKill system_kills HTTP request for system_id: #{system_id}, limit: #{limit}")
+    Logger.debug("🌐 ZKill request: system_id=#{system_id}, limit=#{limit}")
     # According to zKillboard API docs, the correct format is:
     # https://zkillboard.com/api/systemID/ID/
     url = "#{@base_url}/systemID/#{system_id}/"
@@ -133,7 +133,10 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
 
     headers = [{"User-Agent", @user_agent}]
 
-    AppLogger.api_info("[ZKill] Requesting system kills for #{system_id} (limit: #{limit})")
+    AppLogger.api_debug("🌐 Requesting system kills",
+      system_id: system_id,
+      limit: limit
+    )
 
     case HttpClient.get(url, headers, label: label) do
       {:ok, _} = response ->
@@ -144,19 +147,16 @@ defmodule WandererNotifier.Api.ZKill.Client.HTTP do
             {:ok, result}
 
           {:ok, []} ->
-            AppLogger.api_info("[ZKill] No kills found for system #{system_id}")
+            AppLogger.api_debug("🌐 No kills found for system #{system_id}")
             {:ok, []}
 
           {:ok, %{"error" => error_msg}} ->
-            AppLogger.api_warn("[ZKill] API returned error for system #{system_id}: #{error_msg}")
+            AppLogger.api_warn("⚠️ ZKill API error for system #{system_id}: #{error_msg}")
             {:error, {:domain_error, :zkill, {:api_error, error_msg}}}
 
           {:ok, other} ->
-            AppLogger.api_warn(
-              "[ZKill] Unexpected response format from zKill for system #{system_id} kills"
-            )
-
-            AppLogger.api_warn("[ZKill] Response keys: #{inspect(other |> Map.keys())}")
+            AppLogger.api_warn("⚠️ Unexpected ZKill response format for system #{system_id}")
+            AppLogger.api_debug("Response keys: #{inspect(other |> Map.keys())}")
             {:error, {:domain_error, :zkill, {:unexpected_format, :not_a_list}}}
 
           error ->

@@ -163,11 +163,11 @@ defmodule WandererNotifier.Api.Character.KillsService do
     processed = length(kills)
 
     if persisted > 0 do
-      deps.logger.debug("[CHARACTER_KILLS] Successfully persisted #{persisted} kills")
+      deps.logger.info("👥 Character kills update: persisted #{persisted}/#{processed} kills")
     end
 
     if length(failed) > 0 do
-      deps.logger.warn("[CHARACTER_KILLS] Failed to persist #{length(failed)} kills")
+      deps.logger.warn("⚠️ Failed to persist #{length(failed)}/#{processed} character kills")
     end
 
     {:ok, %{processed: processed, persisted: persisted}}
