@@ -18,8 +18,9 @@ jobs:
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
     steps:
-      - name: Initial checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
@@ -57,8 +58,9 @@ jobs:
     env:
       MIX_ENV: "dev"
     steps:
-      - name: Initial checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
