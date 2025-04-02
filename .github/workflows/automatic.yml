@@ -46,15 +46,15 @@ jobs:
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
-          push: "false"
+          context: .
+          push: false
+          load: true
           tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
-          build_args: |
+          build-args: |
             APP_VERSION=${{ steps.version.outputs.dev_version }}
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.WANDERER_NOTIFIER_API_TOKEN }}
-          cache_from: type=registry,ref=guarzo/wanderer-notifier:dev
-          cache_to: type=inline
-          docker_username: guarzo
-          docker_password: ${{ secrets.DOCKERHUB_PAT }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
+          cache-to: type=inline
 
       - name: Test Docker image
         run: |
@@ -65,13 +65,14 @@ jobs:
       - name: Build and Push Docker image with tags
         uses: ./.github/actions/common-docker-build
         with:
-          push: "true"
+          context: .
+          push: true
           tags: ${{ steps.version.outputs.docker_tags }}
-          build_args: |
+          build-args: |
             APP_VERSION=${{ steps.version.outputs.dev_version }}
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-          cache_from: type=registry,ref=guarzo/wanderer-notifier:dev
-          cache_to: type=inline
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:dev
+          cache-to: type=inline
           docker_username: guarzo
           docker_password: ${{ secrets.DOCKERHUB_PAT }}
 
