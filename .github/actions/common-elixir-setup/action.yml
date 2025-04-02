@@ -1,14 +1,6 @@
 name: "Common Elixir Setup"
-description: "Checkout code, set up Elixir, and restore dependencies cache for Elixir projects"
+description: "Set up Elixir and restore dependencies cache for Elixir projects"
 inputs:
-  branch:
-    description: "Branch to checkout"
-    required: false
-    default: "main"
-  fetch-depth:
-    description: "Git fetch depth"
-    required: false
-    default: "0"
   elixir-version:
     description: "Elixir version"
     required: true
@@ -27,11 +19,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ inputs.branch }}
-        fetch-depth: ${{ inputs.fetch-depth }}
     - name: Set up Elixir
       uses: erlef/setup-beam@v1
       with:
