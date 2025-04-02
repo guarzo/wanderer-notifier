@@ -17,14 +17,14 @@ defmodule EnvironmentHelper do
   def log_deprecation(_old_var, _new_var, _value), do: :ok
 
   def check_env_vars do
-    # Check if WANDERER_API_TOKEN is set
-    if is_nil(System.get_env("WANDERER_API_TOKEN")) do
+    # Check if WANDERER_NOTIFIER_API_TOKEN is set
+    if is_nil(System.get_env("WANDERER_NOTIFIER_API_TOKEN")) do
       IO.puts(
         IO.ANSI.yellow() <>
           IO.ANSI.bright() <>
           "[CONFIGURATION WARNING] " <>
           IO.ANSI.reset() <>
-          "WANDERER_API_TOKEN is not set. This may affect the application's functionality."
+          "WANDERER_NOTIFIER_API_TOKEN is not set. This may affect the application's functionality."
       )
     end
 
@@ -33,6 +33,12 @@ defmodule EnvironmentHelper do
       "APP_VERSION",
       "compile-time version from mix.exs",
       System.get_env("APP_VERSION")
+    )
+
+    EnvironmentHelper.log_deprecation(
+      "WANDERER_API_TOKEN",
+      "WANDERER_NOTIFIER_API_TOKEN",
+      System.get_env("WANDERER_API_TOKEN")
     )
 
     EnvironmentHelper.log_deprecation(
@@ -279,11 +285,6 @@ map_charts_enabled =
     "true" -> true
     _ -> false
   end
-
-# Log the feature configuration for debugging
-IO.puts("Feature Configuration:")
-IO.puts("  Kill Charts: #{kill_charts_enabled}")
-IO.puts("  Map Charts: #{map_charts_enabled}")
 
 config :wanderer_notifier, :wanderer_feature_map_charts, map_charts_enabled
 

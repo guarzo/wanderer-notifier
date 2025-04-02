@@ -93,7 +93,7 @@ defmodule WandererNotifier.Config.API do
   @spec notifier_config() :: api_config()
   def notifier_config do
     %{
-      token: get_env(:api_token) || get_env(:notifier_api_token)
+      token: get_env(:notifier_api_token)
     }
   end
 
@@ -102,7 +102,7 @@ defmodule WandererNotifier.Config.API do
   """
   @spec api_token() :: String.t() | nil
   def api_token do
-    get_env(:api_token) || get_env(:notifier_api_token)
+    get_env(:notifier_api_token)
   end
 
   @doc """
