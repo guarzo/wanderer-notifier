@@ -18,6 +18,9 @@ jobs:
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
     steps:
+      - name: Initial checkout
+        uses: actions/checkout@v3
+
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
         with:
