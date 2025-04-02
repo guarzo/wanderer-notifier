@@ -125,18 +125,15 @@ jobs:
           echo "Using SHA: ${SHORT_SHA}"
 
       - name: Build Docker image (for testing)
-        uses: ./.github/actions/common-docker-build
+        uses: docker/build-push-action@v5
         with:
-          push: "false"
-          load: "true"
+          context: .
+          push: false
+          load: true
           tags: wanderer-notifier:pr-${{ steps.sha.outputs.short_sha }}
-          build_args: |
+          build-args: |
             APP_VERSION=0.0.0-ci-test
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-          cache_from: ""
-          cache_to: ""
-          docker_username: guarzo
-          docker_password: ${{ secrets.DOCKERHUB_PAT }}
 
       - name: Full Docker validation with web server
         env:
