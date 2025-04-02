@@ -81,7 +81,7 @@ Create a file named `docker-compose.yml` with the following content:
 services:
   wanderer_notifier:
     image: guarzo/wanderer-notifier:v1
-    container_name: wanderer
+    container_name: wanderer-notifier
     restart: unless-stopped
     env_file:
       - .env
@@ -107,44 +107,9 @@ services:
     volumes:
       - wanderer_data:/app/data
 
-  # Database service
-  postgres:
-    image: postgres:16-alpine
-    container_name: wanderer-postgres
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    environment:
-      - POSTGRES_USER=${WANDERER_DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${WANDERER_DB_PASSWORD:-postgres}
-      - POSTGRES_DB=${WANDERER_DB_NAME:-wanderer_notifier}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # Database initialization container
-  db_init:
-    image: guarzo/wanderer-notifier:latest
-    profiles: ["database"]
-    environment:
-      # Database configuration
-      WANDERER_DB_HOST: postgres
-      WANDERER_DB_USER: ${WANDERER_DB_USER:-postgres}
-      WANDERER_DB_PASSWORD: ${WANDERER_DB_PASSWORD:-postgres}
-      WANDERER_DB_NAME: ${WANDERER_DB_NAME:-wanderer_notifier}
-      WANDERER_DB_PORT: "5432"
-    command: sh -c '/app/bin/wanderer_notifier eval "WandererNotifier.Release.createdb()" && /app/bin/wanderer_notifier eval "WandererNotifier.Release.migrate()"'
-    depends_on:
-      postgres:
-        condition: service_healthy
-
 volumes:
   wanderer_data:
-  postgres_data:
-    name: wanderer_postgres_data
-
+    name: wanderer_data
 ```
 
 #### 4. Run It
