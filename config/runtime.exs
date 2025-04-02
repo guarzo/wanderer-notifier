@@ -17,6 +17,17 @@ defmodule EnvironmentHelper do
   def log_deprecation(_old_var, _new_var, _value), do: :ok
 
   def check_env_vars do
+    # Check if WANDERER_API_TOKEN is set
+    if is_nil(System.get_env("WANDERER_API_TOKEN")) do
+      IO.puts(
+        IO.ANSI.yellow() <>
+          IO.ANSI.bright() <>
+          "[CONFIGURATION WARNING] " <>
+          IO.ANSI.reset() <>
+          "WANDERER_API_TOKEN is not set. This may affect the application's functionality."
+      )
+    end
+
     # Log deprecation warnings for legacy variables
     EnvironmentHelper.log_deprecation(
       "APP_VERSION",

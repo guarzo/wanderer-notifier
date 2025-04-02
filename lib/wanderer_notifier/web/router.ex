@@ -48,6 +48,9 @@ defmodule WandererNotifier.Web.Router do
   plug(:match)
   plug(:dispatch)
 
+  # Health check endpoint
+  forward("/health", to: HealthController)
+
   # API Routes
   forward("/api/health", to: HealthController)
   forward("/api/characters", to: CharacterController)

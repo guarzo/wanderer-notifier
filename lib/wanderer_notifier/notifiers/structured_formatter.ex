@@ -278,8 +278,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     base_fields = [
       %{name: "Value", value: kill_context.formatted_value, inline: true},
       %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
-      %{name: "Final Blow", value: final_blow_details.text, inline: true},
-      %{name: "Security", value: kill_context.security_formatted || "Unknown", inline: true}
+      %{name: "Final Blow", value: final_blow_details.text, inline: true}
     ]
 
     # Add alliance field if available
