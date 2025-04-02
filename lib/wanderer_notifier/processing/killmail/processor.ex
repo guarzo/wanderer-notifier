@@ -13,6 +13,7 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   require Logger
 
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Enrichment, Notification, Stats}
@@ -126,11 +127,19 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     # Extract basic info for logging
     system_id = get_kill_system_id(killmail)
 
+    # Get system name for enhanced logging
+    system_name =
+      case ESIService.get_system_info(system_id) do
+        {:ok, system_info} -> Map.get(system_info, "name", "Unknown")
+        _ -> "Unknown"
+      end
+
     AppLogger.kill_info(
-      "📥 WEBSOCKET KILL RECEIVED: Processing killmail #{kill_id} in system #{system_id}",
+      "📥 WEBSOCKET KILL RECEIVED: #{kill_id} in #{system_name} (#{system_id})",
       %{
         kill_id: kill_id,
         system_id: system_id,
+        system_name: system_name,
         message_type: "killmail"
       }
     )
@@ -138,22 +147,26 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     # Skip processing if no kill ID or already processed
     cond do
       is_nil(kill_id) ->
-        AppLogger.kill_warn("Received killmail without kill ID")
+        AppLogger.kill_warn("⚠️ Received killmail without kill ID")
         state
 
       Map.has_key?(state.processed_kill_ids, kill_id) ->
-        AppLogger.kill_debug("Kill #{kill_id} already processed, skipping")
+        AppLogger.kill_debug("🔄 Kill #{kill_id} already processed, skipping")
         state
 
       true ->
         # Process the new kill - first standardize to Killmail struct
-        AppLogger.kill_debug("Processing new kill #{kill_id}")
+        AppLogger.kill_debug("⚙️ Processing kill #{kill_id}")
 
         # Extract zkb data
         zkb_data = Map.get(killmail, "zkb", %{})
 
-        # The rest is treated as ESI data, removing zkb key
-        esi_data = Map.drop(killmail, ["zkb"])
+        # The rest is treated as ESI data, removing zkb key and ensuring system ID is in correct format
+        esi_data =
+          killmail
+          |> Map.drop(["zkb"])
+          |> Map.put("solar_system_id", system_id)
+          |> Map.put("solar_system_name", system_name)
 
         # Create a Killmail struct to standardize the data structure
         killmail_struct = Killmail.new(kill_id, zkb_data, esi_data)
@@ -270,14 +283,34 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   defp get_killmail_id(_), do: nil
 
+  # Helper to try different paths for system ID
+  defp try_system_id_paths(killmail) do
+    [
+      # Direct solar_system_id field
+      Map.get(killmail, "solar_system_id"),
+      # ESI data path
+      get_in(killmail, ["esi_data", "solar_system_id"]),
+      # ZKB data path
+      get_in(killmail, ["zkb", "system_id"]),
+      # System object path
+      get_in(killmail, ["system", "id"]),
+      # Solar system object path
+      get_in(killmail, ["solar_system", "id"])
+    ]
+    |> Enum.find(& &1)
+  end
+
+  # Helper to format system ID
+  defp format_system_id(nil), do: "unknown"
+  defp format_system_id(id) when is_integer(id), do: to_string(id)
+  defp format_system_id(id) when is_binary(id), do: id
+  defp format_system_id(_), do: "unknown"
+
   # Helper to get system ID from killmail
   defp get_kill_system_id(killmail) when is_map(killmail) do
-    system_id =
-      Map.get(killmail, "solar_system_id") ||
-        (killmail["zkb"] && killmail["zkb"]["system_id"]) ||
-        "unknown"
-
-    to_string(system_id)
+    killmail
+    |> try_system_id_paths()
+    |> format_system_id()
   end
 
   defp get_kill_system_id(_), do: "unknown"

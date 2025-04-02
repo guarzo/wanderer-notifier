@@ -1,22 +1,14 @@
 defmodule WandererNotifier.Data.Cache.CacheBehaviour do
   @moduledoc """
-  Behaviour definition for cache helper functions.
-  Defines the contract that any implementation must fulfill.
+  Defines the contract for cache implementations.
   """
 
-  @doc """
-  Retrieves the list of tracked characters from cache or database.
-
-  ## Returns
-  - `list(map())`: List of tracked character maps, each containing character information
-  """
-  @callback get_tracked_characters() :: list(map())
-
-  @callback get_character_name(character_id :: integer()) ::
-              {:ok, String.t()} | {:error, term()}
-
-  @callback get_ship_name(ship_type_id :: integer()) ::
-              {:ok, String.t()} | {:error, term()}
-
-  @callback get_cached_kills(character_id :: integer()) :: {:ok, list(map())} | {:error, term()}
+  @callback get(key :: String.t()) :: term() | nil
+  @callback set(key :: String.t(), value :: term(), ttl :: non_neg_integer()) ::
+              :ok | {:error, term()}
+  @callback put(key :: String.t(), value :: term()) :: :ok | {:error, term()}
+  @callback delete(key :: String.t()) :: :ok | {:error, term()}
+  @callback clear() :: :ok | {:error, term()}
+  @callback get_and_update(key :: String.t(), (term() -> {term(), term()})) ::
+              {term(), term()} | {:error, term()}
 end

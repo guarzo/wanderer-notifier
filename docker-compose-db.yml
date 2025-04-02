@@ -1,30 +1,12 @@
 services:
   wanderer_notifier:
-    image: guarzo/wanderer-notifier:latest
-    container_name: wanderer-notifier
+    image: guarzo/wanderer-notifier:v1
+    container_name: wanderer
     restart: unless-stopped
-    environment:
-      # Core application configuration
-      WANDERER_PORT: "4000"
-      WANDERER_DISCORD_BOT_TOKEN: ${WANDERER_DISCORD_BOT_TOKEN}
-      WANDERER_DISCORD_CHANNEL_ID: ${WANDERER_DISCORD_CHANNEL_ID}
-      WANDERER_MAP_URL: ${WANDERER_MAP_URL}
-      WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN}
-      WANDERER_LICENSE_KEY: ${WANDERER_LICENSE_KEY}
-
-      # Database configuration
-      WANDERER_DB_HOST: postgres
-      WANDERER_DB_USER: postgres
-      WANDERER_DB_PASSWORD: postgres
-      WANDERER_DB_NAME: wanderer_notifier
-      WANDERER_DB_PORT: "5432"
+    env_file:
+      - .env
     ports:
       - "${WANDERER_PORT:-4000}:4000"
-    depends_on:
-      db_init:
-        condition: service_completed_successfully
-    volumes:
-      - wanderer_data:/app/data
     deploy:
       resources:
         limits:
@@ -32,15 +14,7 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:4000/health",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -50,6 +24,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    volumes:
+      - wanderer_data:/app/data
 
   # Database service
   postgres:
@@ -88,5 +64,3 @@ volumes:
   wanderer_data:
   postgres_data:
     name: wanderer_postgres_data
-  db_backups:
-    name: wanderer_db_backups

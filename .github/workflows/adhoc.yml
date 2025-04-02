@@ -96,6 +96,7 @@ jobs:
           tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline
 
@@ -116,5 +117,6 @@ jobs:
           tags: ${{ steps.version.outputs.docker_tags }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
           cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
           cache-to: type=inline

@@ -14,7 +14,7 @@ defmodule WandererNotifier.Core.Stats do
   Starts the Stats GenServer.
   """
   def start_link(opts \\ []) do
-    AppLogger.config_info("Starting Stats tracking service...")
+    AppLogger.startup_debug("Starting Stats tracking service...")
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -73,31 +73,31 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def init(_opts) do
-    AppLogger.config_info("Initializing stats tracking service...")
-
-    initial_state = %{
-      startup_time: DateTime.utc_now(),
-      notifications: %{
-        kills: 0,
-        errors: 0,
-        systems: 0,
-        characters: 0,
-        total: 0
-      },
-      websocket: %{
-        connected: false,
-        last_message: nil,
-        reconnects: 0
-      },
-      # Track first notifications with the GenServer state instead of Process dictionary
-      first_notifications: %{
-        kill: true,
-        character: true,
-        system: true
-      }
-    }
-
-    {:ok, initial_state}
+    AppLogger.startup_debug("Initializing stats tracking service...")
+    # Initialize the state with default values
+    {:ok,
+     %{
+       websocket: %{
+         connected: false,
+         connecting: false,
+         last_message: nil,
+         startup_time: nil,
+         reconnects: 0,
+         url: nil,
+         last_disconnect: nil
+       },
+       notifications: %{
+         total: 0,
+         kills: 0,
+         systems: 0,
+         characters: 0
+       },
+       first_notifications: %{
+         kill: true,
+         character: true,
+         system: true
+       }
+     }}
   end
 
   @impl true
@@ -110,7 +110,18 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_cast({:update_websocket, status}, state) do
-    {:noreply, %{state | websocket: status}}
+    # Merge the new status with existing websocket state to preserve fields
+    # Convert any DateTime fields to ensure proper comparison
+    normalized_status = normalize_datetime_fields(status)
+    updated_websocket = Map.merge(state.websocket, normalized_status)
+
+    # Log the update for debugging
+    AppLogger.websocket_debug("Updated websocket status",
+      old_status: state.websocket,
+      new_status: updated_websocket
+    )
+
+    {:noreply, %{state | websocket: updated_websocket}}
   end
 
   @impl true
@@ -124,15 +135,19 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_call(:get_stats, _from, state) do
-    uptime_seconds = DateTime.diff(DateTime.utc_now(), state.startup_time)
+    uptime_seconds =
+      case state.websocket.startup_time do
+        nil -> 0
+        startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
+      end
 
     stats = %{
       uptime: format_uptime(uptime_seconds),
       uptime_seconds: uptime_seconds,
-      startup_time: state.startup_time,
+      startup_time: state.websocket.startup_time,
       notifications: state.notifications,
       websocket: state.websocket,
-      first_notifications: state.first_notifications
+      first_notifications: Map.get(state, :first_notifications, %{})
     }
 
     {:reply, stats, state}
@@ -162,5 +177,24 @@ defmodule WandererNotifier.Core.Stats do
       minutes > 0 -> "#{minutes}m #{seconds}s"
       true -> "#{seconds}s"
     end
+  end
+
+  # Helper to normalize DateTime fields in the status map
+  defp normalize_datetime_fields(status) do
+    status
+    |> Enum.map(fn
+      {key, %DateTime{} = dt} ->
+        {key, dt}
+
+      {key, nil} ->
+        {key, nil}
+
+      {key, val} when is_integer(val) and key in [:startup_time] ->
+        {key, DateTime.from_unix!(val)}
+
+      {key, val} ->
+        {key, val}
+    end)
+    |> Map.new()
   end
 end

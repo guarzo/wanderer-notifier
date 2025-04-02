@@ -99,16 +99,16 @@ defmodule WandererNotifier.Processing.Killmail.Stats do
         time_diff = current_time - stats.last_kill_time
 
         cond do
-          time_diff < 60 -> "#{time_diff} seconds ago"
-          time_diff < 3600 -> "#{div(time_diff, 60)} minutes ago"
-          true -> "#{div(time_diff, 3600)} hours ago"
+          time_diff < 60 -> "#{time_diff}s ago"
+          time_diff < 3600 -> "#{div(time_diff, 60)}m ago"
+          true -> "#{div(time_diff, 3600)}h ago"
         end
       else
-        "none received"
+        "none"
       end
 
     AppLogger.kill_info(
-      "📊 KILL STATS: Processed #{stats.total_kills_received} kills, sent #{stats.total_notifications_sent} notifications. Last kill: #{last_kill_ago}. Uptime: #{hours}h #{minutes}m #{seconds}s"
+      "📊 Stats: #{stats.total_kills_received} kills processed, #{stats.total_notifications_sent} notifications sent | Last kill: #{last_kill_ago} | Uptime: #{hours}h #{minutes}m #{seconds}s"
     )
 
     # Reschedule stats logging - make sure we only have one active timer

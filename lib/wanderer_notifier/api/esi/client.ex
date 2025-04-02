@@ -155,6 +155,23 @@ defmodule WandererNotifier.Api.ESI.Client do
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.region")
   end
 
+  @doc """
+  Gets recent kills for a specific solar system.
+
+  ## Parameters
+    - system_id: The ID of the solar system
+    - limit: Maximum number of kills to return
+
+  ## Returns
+    - {:ok, list} on success
+    - {:error, term} on failure
+  """
+  def get_system_kills(system_id, limit) when is_integer(system_id) and is_integer(limit) do
+    # ESI doesn't have a direct endpoint for system kills
+    # We'll return an empty list as this is actually handled by ZKill
+    {:ok, []}
+  end
+
   defp default_headers do
     [
       {"User-Agent", @user_agent},

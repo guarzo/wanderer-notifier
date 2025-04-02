@@ -43,14 +43,7 @@ defmodule WandererNotifier.Schedulers.Registry do
 
   @impl true
   def init(_opts) do
-    # Use startup tracker if available
-    if Process.get(:startup_tracker) do
-      StartupTracker.record_event(:scheduler_registry, %{
-        status: "initializing"
-      })
-    else
-      AppLogger.scheduler_info("Initializing Scheduler Registry...")
-    end
+    AppLogger.scheduler_debug("Initializing Scheduler Registry...")
 
     # Initialize with a counter to track the number of schedulers
     {:ok, %{schedulers: [], enabled_count: 0, disabled_count: 0}}

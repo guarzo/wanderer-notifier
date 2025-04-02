@@ -36,11 +36,14 @@ const SchedulerDashboard = () => {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       
-      const data = await response.json();
-      console.log('Scheduler data received:', data);
+      const responseData = await response.json();
+      console.log('Scheduler data received:', responseData);
+      
+      // Extract data from the nested structure
+      const data = responseData.data || {};
       
       if (!data.schedulers || !Array.isArray(data.schedulers)) {
-        console.warn('No schedulers array in response:', data);
+        console.warn('No schedulers array in response:', responseData);
         setSchedulers([]);
         setSummary(data.summary || {
           total: 0,

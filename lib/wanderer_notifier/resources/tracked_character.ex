@@ -389,7 +389,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
           # Early return if characters is nil or empty
           if is_nil(characters) || (is_list(characters) && characters == []) do
-            AppLogger.persistence_info("[TrackedCharacter] No characters to sync to database")
+            AppLogger.persistence_debug("[TrackedCharacter] No characters to sync to database")
             return_empty_stats()
           else
             # Continue with normal sync logic for non-empty characters
@@ -397,7 +397,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
               # Ensure we have a list
               characters_list = ensure_list(characters)
 
-              AppLogger.persistence_info(
+              AppLogger.persistence_debug(
                 "[TrackedCharacter] Syncing characters directly to database",
                 character_count: length(characters_list)
               )
@@ -445,12 +445,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
                 end)
 
               {final_stats, errors} = results
-
-              # Log the results
-              AppLogger.persistence_info(
-                "[TrackedCharacter] Sync completed",
-                stats: inspect(final_stats)
-              )
 
               if length(errors) > 0 do
                 AppLogger.persistence_warning(
@@ -718,8 +712,12 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully created test record"),
          {:read, {:ok, [_fetched_record | _]}} <- {:read, read_test_record(test_id)},
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully read test record"),
-         {:delete, {:ok, _}} <-
-           {:delete, Api.destroy(__MODULE__, record.id)},
+         {:delete, delete_result} <- {:delete, Api.destroy(__MODULE__, record.id)},
+         _ <-
+           AppLogger.persistence_info(
+             "[TrackedCharacter] Delete result: #{inspect(delete_result)}"
+           ),
+         {:ok, _} <- handle_delete_result(delete_result),
          _ <- AppLogger.persistence_info("[TrackedCharacter] Successfully deleted test record") do
       # All operations successful
       :ok
@@ -751,7 +749,23 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
         )
 
         {:error, {:delete_failed, delete_error}}
+
+      {:error, reason} ->
+        AppLogger.persistence_error(
+          "[TrackedCharacter] Delete operation failed: #{inspect(reason)}"
+        )
+
+        {:error, {:delete_failed, reason}}
     end
+  end
+
+  # Helper to handle delete results
+  defp handle_delete_result({:ok, _} = result), do: result
+  defp handle_delete_result({:delete, :ok}), do: {:ok, :deleted}
+
+  defp handle_delete_result(other) do
+    AppLogger.persistence_error("[TrackedCharacter] Unexpected delete result: #{inspect(other)}")
+    {:error, :invalid_delete_result}
   end
 
   # Helper to read a test record by character_id
@@ -771,11 +785,14 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       "[TrackedCharacter] Starting forced sync from cache (destructive operation)"
     )
 
-    # First, verify we can write to the database
-    with :ok <- verify_database_permissions(),
-         {:ok, _deleted_count} <- delete_existing_characters(),
+    # Get current tracked characters from database
+    with {:ok, existing_chars} <- Api.read(__MODULE__),
+         _ <-
+           AppLogger.persistence_info(
+             "[TrackedCharacter] Found #{length(existing_chars)} existing characters in database"
+           ),
+         {:ok, _} <- delete_existing_characters(existing_chars),
          {:ok, stats} <- sync_characters_from_cache() do
-      AppLogger.persistence_info("[TrackedCharacter] Force sync completed: #{inspect(stats)}")
       {:ok, stats}
     else
       {:error, reason} = error ->
@@ -795,53 +812,84 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     AppLogger.persistence_error("[TrackedCharacter] Force sync failed: #{inspect(reason)}")
   end
 
-  # Delete all existing characters from the database
-  defp delete_existing_characters do
-    # Get current tracked characters from database
-    db_result = __MODULE__ |> Api.read()
+  # Process a batch of character deletions
+  defp process_deletion_batch(batch) do
+    Enum.map(batch, fn char ->
+      case Api.destroy(__MODULE__, char.id) do
+        {:ok, _} ->
+          {:ok, char.id}
 
-    existing_chars =
-      case db_result do
-        {:ok, chars} -> chars
-        _ -> []
+        {:error, reason} ->
+          AppLogger.persistence_error(
+            "[TrackedCharacter] Failed to delete character: #{inspect(reason)}",
+            character_id: char.character_id
+          )
+
+          {:error, reason}
       end
+    end)
+  end
+
+  # Count successful deletions and log failures
+  defp process_deletion_results(deletion_results, total_count) do
+    successes = Enum.count(deletion_results, &match?({:ok, _}, &1))
+
+    failures = Enum.reject(deletion_results, &match?({:ok, _}, &1))
+
+    if length(failures) > 0 do
+      AppLogger.persistence_error(
+        "[TrackedCharacter] Some characters failed to delete",
+        failures: inspect(failures)
+      )
+    end
 
     AppLogger.persistence_info(
-      "[TrackedCharacter] Found #{length(existing_chars)} existing characters in database"
+      "[TrackedCharacter] Deleted #{successes}/#{total_count} characters from database"
     )
 
-    # Don't proceed if we got an error reading the characters
-    if match?({:error, _}, db_result) do
-      {:error, :failed_to_read_existing_characters}
+    {successes, total_count}
+  end
+
+  # Delete existing characters in batches
+  defp delete_existing_characters(existing_chars) do
+    deletion_results =
+      existing_chars
+      |> Enum.chunk_every(50)
+      |> Enum.map(&process_deletion_batch/1)
+      |> List.flatten()
+
+    {successes, total} = process_deletion_results(deletion_results, length(existing_chars))
+
+    if successes == total do
+      {:ok, successes}
     else
-      perform_character_deletion(existing_chars)
+      {:error, "Failed to delete all characters"}
     end
   end
 
-  # Perform the actual deletion of characters
-  defp perform_character_deletion(existing_chars) do
-    # Delete all existing characters - do this in blocks to avoid memory issues
-    deletion_results =
-      Enum.chunk_every(existing_chars, 50)
-      |> Enum.map(fn batch ->
-        Enum.map(batch, fn char ->
-          Api.destroy(__MODULE__, char.id)
-        end)
-      end)
-      |> List.flatten()
+  # Process characters and collect stats
+  defp process_characters(cached_characters) do
+    Enum.reduce(cached_characters, {0, 0, []}, fn char_data, {succ, fail, errs} ->
+      case process_single_character(char_data) do
+        {:ok, _} -> {succ + 1, fail, errs}
+        {:error, reason} -> {succ, fail + 1, [reason | errs]}
+      end
+    end)
+  end
 
-    # Count successful deletions
-    deletion_successes =
-      Enum.count(deletion_results, fn
-        {:ok, _} -> true
-        _ -> false
-      end)
-
-    AppLogger.persistence_info(
-      "[TrackedCharacter] Deleted #{deletion_successes}/#{length(existing_chars)} characters from database"
-    )
-
-    {:ok, deletion_successes}
+  # Format sync results into stats map
+  defp format_sync_stats(successes, failures, errors, total) do
+    {:ok,
+     %{
+       stats: %{
+         total: total,
+         created: successes,
+         updated: 0,
+         unchanged: 0,
+         errors: failures
+       },
+       errors: errors
+     }}
   end
 
   # Sync characters from cache to database
@@ -855,7 +903,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       character_count: length(cached_characters)
     )
 
-    # Handle case where cache is empty
     if Enum.empty?(cached_characters) do
       AppLogger.persistence_warn("No characters found in cache, nothing to sync")
       return_empty_stats()
@@ -863,8 +910,9 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       # For debugging, log a sample of characters
       log_character_sample(cached_characters)
 
-      # Process each character
-      process_cached_characters(cached_characters)
+      # Process characters and collect stats
+      {successes, failures, errors} = process_characters(cached_characters)
+      format_sync_stats(successes, failures, errors, length(cached_characters))
     end
   rescue
     e ->
@@ -883,24 +931,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     AppLogger.persistence_debug("Sample characters from cache",
       sample: inspect(sample)
     )
-  end
-
-  # Process the cached characters and return statistics
-  defp process_cached_characters(cached_characters) do
-    {successes, failures, errors} =
-      Enum.reduce(cached_characters, {0, 0, []}, fn char_data, {succ, fail, errs} ->
-        case process_single_character(char_data) do
-          {:ok, _} -> {succ + 1, fail, errs}
-          {:error, reason} -> {succ, fail + 1, [reason | errs]}
-        end
-      end)
-
-    # Build result stats
-    %{
-      success_count: successes,
-      failure_count: failures,
-      errors: errors
-    }
   end
 
   # Process a single character record
@@ -1437,7 +1467,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     end
   end
 
-  # Fetch characters from database and format them for cache
+  # Fetch characters from database and format them for cache storage
   defp fetch_and_format_characters do
     if database_enabled?() do
       case list_all() do

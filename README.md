@@ -249,4 +249,8 @@ If you encounter issues or have questions, please open an issue on the project r
 
 ```
  mix archive.install hex bunt
+ docker buildx build . \
+  --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
+  --build-arg APP_VERSION=local \
+  -t notifier:local
 ```

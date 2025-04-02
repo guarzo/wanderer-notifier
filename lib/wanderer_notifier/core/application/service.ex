@@ -42,7 +42,7 @@ defmodule WandererNotifier.Core.Application.Service do
   Starts the service.
   """
   def start_link(opts \\ []) do
-    AppLogger.startup_info("Starting WandererNotifier Service")
+    AppLogger.startup_debug("Starting WandererNotifier Service")
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -52,7 +52,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def init(_opts) do
-    AppLogger.startup_info("Initializing WandererNotifier Service")
+    AppLogger.startup_debug("Initializing WandererNotifier Service")
     # Trap exits so the GenServer doesn't crash when a linked process dies
     Process.flag(:trap_exit, true)
     now = :os.system_time(:second)
@@ -85,7 +85,7 @@ defmodule WandererNotifier.Core.Application.Service do
     {:ok, state}
   rescue
     e ->
-      AppLogger.startup_error("Error in Service initialization",
+      AppLogger.startup_error("❌ Error in Service initialization",
         error: Exception.message(e),
         stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       )
@@ -198,14 +198,14 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:update_tracked_data, state) do
-    AppLogger.startup_info("Running scheduled initial data update")
+    AppLogger.startup_debug("Running scheduled initial data update")
 
     try do
       # Execute the system and character update schedulers directly
       SystemUpdateScheduler.execute_now()
       CharacterUpdateScheduler.execute_now()
 
-      AppLogger.startup_info("Initial tracked data update complete")
+      AppLogger.startup_debug("Initial tracked data update complete")
 
       {:noreply, state}
     rescue
@@ -443,15 +443,15 @@ defmodule WandererNotifier.Core.Application.Service do
   defp start_zkill_ws(state) do
     # Check if websocket is enabled in config
     if Websocket.enabled() do
-      AppLogger.websocket_info("Starting zKill websocket")
+      AppLogger.websocket_debug("Starting zKill websocket")
 
       case ZKillWebsocket.start_link(self()) do
         {:ok, pid} ->
-          AppLogger.websocket_info("zKill websocket started successfully")
+          AppLogger.websocket_info("🔌 zKill websocket ready")
           %{state | ws_pid: pid}
 
         {:error, reason} ->
-          AppLogger.websocket_error("Failed to start websocket", error: inspect(reason))
+          AppLogger.websocket_error("❌ Failed to start websocket", error: inspect(reason))
 
           # Notify about the failure
           NotifierFactory.notify(:send_message, ["Failed to start websocket: #{inspect(reason)}"])
@@ -460,7 +460,7 @@ defmodule WandererNotifier.Core.Application.Service do
           state
       end
     else
-      AppLogger.websocket_info("zKill websocket disabled by configuration")
+      AppLogger.websocket_debug("zKill websocket disabled by configuration")
       state
     end
   end

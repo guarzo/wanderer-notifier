@@ -22,4 +22,10 @@ defmodule WandererNotifier.Config.Behaviour do
   @callback get_map_config() :: map()
   @callback static_info_cache_ttl() :: integer()
   @callback get_env(atom(), any()) :: any()
+  @callback get_feature_status() :: %{
+              kill_notifications_enabled: boolean(),
+              system_tracking_enabled: boolean(),
+              character_tracking_enabled: boolean(),
+              activity_charts: boolean()
+            }
 end

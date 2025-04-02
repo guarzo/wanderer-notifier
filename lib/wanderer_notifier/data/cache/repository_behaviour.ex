@@ -10,4 +10,5 @@ defmodule WandererNotifier.Data.Cache.RepositoryBehaviour do
   @callback exists?(key :: String.t()) :: boolean()
   @callback set(key :: String.t(), value :: any(), ttl :: non_neg_integer() | nil) :: :ok
   @callback get_tracked_characters() :: list(map())
+  @callback clear() :: :ok
 end

@@ -4,6 +4,8 @@ defmodule WandererNotifier.Api.Map.Characters do
   """
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Config.Config
+  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Character
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -352,7 +354,7 @@ defmodule WandererNotifier.Api.Map.Characters do
       cached_characters
     else
       # Otherwise just get from cache directly - this is our single source of truth
-      CacheRepo.get("map:characters") || []
+      CacheRepo.get(CacheKeys.character_list()) || []
     end
   end
 
@@ -404,11 +406,23 @@ defmodule WandererNotifier.Api.Map.Characters do
     long_ttl = 86_400
 
     # Update the cache
-    CacheRepo.set("map:characters", merged_characters, long_ttl)
+    CacheRepo.set(CacheKeys.character_list(), merged_characters, long_ttl)
+
+    # Cache individual characters and mark them as tracked
+    Enum.each(merged_characters, fn char ->
+      char_id = char.character_id
+
+      if char_id do
+        # Cache individual character
+        CacheRepo.set(CacheKeys.character(char_id), char, long_ttl)
+        # Mark as tracked
+        CacheHelpers.add_character_to_tracked(char_id, char)
+      end
+    end)
 
     # Verify the update (with brief delay to ensure it's written)
     Process.sleep(50)
-    post_update_count = length(CacheRepo.get("map:characters") || [])
+    post_update_count = length(CacheRepo.get(CacheKeys.character_list()) || [])
 
     AppLogger.api_info(
       "Character cache updated",

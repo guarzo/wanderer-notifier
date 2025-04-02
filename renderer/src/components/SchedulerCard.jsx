@@ -54,9 +54,11 @@ const SchedulerCard = ({ scheduler }) => {
   const getScheduleDisplay = () => {
     if (type === 'interval' && interval) {
       return `Every ${formatInterval(interval)}`;
-    } else if (type === 'time' && hour !== undefined && minute !== undefined) {
-      // Format hour and minute as 24-hour clock
-      return `Daily at ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} UTC`;
+    } else if (type === 'time') {
+      // Safely handle potentially null hour and minute values
+      const hourStr = hour !== null && hour !== undefined ? hour.toString().padStart(2, '0') : '00';
+      const minuteStr = minute !== null && minute !== undefined ? minute.toString().padStart(2, '0') : '00';
+      return `Daily at ${hourStr}:${minuteStr} UTC`;
     }
     return 'Unknown schedule';
   };

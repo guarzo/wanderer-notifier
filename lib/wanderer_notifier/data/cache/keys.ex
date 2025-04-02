@@ -191,6 +191,42 @@ defmodule WandererNotifier.Data.Cache.Keys do
   end
 
   @doc """
+  Generates a cache key for the tracked systems list.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.tracked_systems_list()
+      "tracked:systems"
+  """
+  @spec tracked_systems_list() :: String.t()
+  def tracked_systems_list do
+    join_parts([@prefix_tracked, "systems"])
+  end
+
+  @doc """
+  Generates a cache key for the systems list.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.map_systems()
+      "map:systems"
+  """
+  @spec map_systems() :: String.t()
+  def map_systems do
+    join_parts([@prefix_map, "systems"])
+  end
+
+  @doc """
+  Generates a cache key for the system IDs list.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.map_system_ids()
+      "map:system_ids"
+  """
+  @spec map_system_ids() :: String.t()
+  def map_system_ids do
+    join_parts([@prefix_map, "system_ids"])
+  end
+
+  @doc """
   Validates if a cache key follows the established patterns.
 
   ## Examples

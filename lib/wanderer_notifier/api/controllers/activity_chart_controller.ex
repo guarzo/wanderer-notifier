@@ -255,86 +255,54 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
   # Fetches character activity data for display in the UI.
   # Responds with JSON containing the activity data.
   get "/character-activity" do
-    AppLogger.api_info("Character activity data request received")
+    case CharactersClient.get_character_activity(nil, 7) do
+      {:ok, data} ->
+        characters =
+          cond do
+            # If data is a map with a "data" key that contains a list
+            is_map(data) && Map.has_key?(data, "data") && is_list(data["data"]) ->
+              data["data"]
 
-    response =
-      case CharactersClient.get_character_activity(nil, 7) do
-        {:ok, data} ->
-          # Log the data information
-          AppLogger.api_info("Retrieved character activity data")
+            # If data is a map with a "data" key that contains a map with a "characters" key
+            is_map(data) && Map.has_key?(data, "data") && is_map(data["data"]) &&
+                Map.has_key?(data["data"], "characters") ->
+              data["data"]["characters"]
 
-          AppLogger.api_debug("Character activity data structure",
-            data: inspect(data, pretty: true, limit: 2000)
-          )
+            # If data is already a list of character data
+            is_list(data) ->
+              data
 
-          # Determine the structure of the data and log appropriate information
-          characters =
-            cond do
-              # If data is a map with a "data" key that contains a list
-              is_map(data) && Map.has_key?(data, "data") && is_list(data["data"]) ->
-                AppLogger.api_debug(
-                  "Found data structure",
-                  type: "map with 'data' key containing a list",
-                  record_count: length(data["data"])
-                )
+            # Handle other cases
+            true ->
+              AppLogger.api_warn("⚠️ Unexpected character activity data structure",
+                data_preview: inspect(data, limit: 200)
+              )
 
-                data["data"]
+              []
+          end
 
-              # If data is a map with a "data" key that contains a map with a "characters" key
-              is_map(data) && Map.has_key?(data, "data") && is_map(data["data"]) &&
-                  Map.has_key?(data["data"], "characters") ->
-                char_data = data["data"]["characters"]
+        # Return success with the data in a consistent format
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          200,
+          Jason.encode!(%{
+            status: "ok",
+            data: %{characters: characters}
+          })
+        )
 
-                AppLogger.api_debug(
-                  "Found data structure",
-                  type: "nested map with characters key",
-                  record_count: length(char_data)
-                )
+      _ ->
+        # Fall back to error response
+        AppLogger.api_error("Failed to retrieve character activity data")
 
-                char_data
-
-              # If data is already a list of character data
-              is_list(data) ->
-                AppLogger.api_debug("Found data structure",
-                  type: "list",
-                  record_count: length(data)
-                )
-
-                data
-
-              # Handle other cases
-              true ->
-                AppLogger.api_warn("Unexpected data structure",
-                  data_preview: inspect(data, limit: 200)
-                )
-
-                []
-            end
-
-          # Return success with the data in a consistent format
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            200,
-            Jason.encode!(%{
-              status: "ok",
-              data: %{characters: characters}
-            })
-          )
-
-        _ ->
-          # Fall back to error response
-          AppLogger.api_error("Failed to retrieve character activity data")
-
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            500,
-            Jason.encode!(%{status: "error", message: "Failed to retrieve activity data"})
-          )
-      end
-
-    response
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          500,
+          Jason.encode!(%{status: "error", message: "Failed to retrieve activity data"})
+        )
+    end
   end
 
   # Catch-all route

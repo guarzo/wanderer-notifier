@@ -8,13 +8,14 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   on the structured data provided by these schemas.
   """
 
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Api.ZKill.Service, as: ZKillService
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Data.{Character, MapSystem}
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  # Get configured services
+  defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)
+  defp esi_service, do: Application.get_env(:wanderer_notifier, :esi_service)
 
   # Color constants for Discord notifications
   # Default blue
@@ -277,8 +278,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     base_fields = [
       %{name: "Value", value: kill_context.formatted_value, inline: true},
       %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
-      %{name: "Final Blow", value: final_blow_details.text, inline: true},
-      %{name: "Security", value: kill_context.security_formatted || "Unknown", inline: true}
+      %{name: "Final Blow", value: final_blow_details.text, inline: true}
     ]
 
     # Add alliance field if available
@@ -407,7 +407,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     - character: The Character struct
 
   ## Returns
-    - A generic structured map that can be converted to platform-specific format
+    - A Discord-formatted embed for the notification
   """
   def format_character_notification(%Character{} = character) do
     # Build notification structure
@@ -466,7 +466,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     display_name = MapSystem.format_display_name(system)
 
     # Generate notification elements
-    notification_elements = generate_notification_elements(system, is_wormhole)
+    {title, description, color, icon_url} = generate_notification_elements(system, is_wormhole)
 
     # Format statics list and system link
     formatted_statics = format_statics_list(system.static_details || system.statics)
@@ -484,58 +484,49 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Create the generic notification structure
     %{
       type: :system_notification,
-      title: notification_elements.title,
-      description: notification_elements.description,
-      color: notification_elements.color,
+      title: title,
+      description: description,
+      color: color,
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
-      thumbnail: %{url: notification_elements.icon_url},
+      thumbnail: %{url: icon_url},
       fields: fields,
       footer: %{
         text: "System ID: #{system.solar_system_id}"
       }
     }
+  rescue
+    e ->
+      AppLogger.processor_error("[StructuredFormatter] Error formatting system notification",
+        system: system.name,
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      reraise e, __STACKTRACE__
   end
 
   # Helper function to validate required system fields
   defp validate_system_fields(system) do
     if is_nil(system.solar_system_id) do
-      AppLogger.processor_error(
-        "[StructuredFormatter] Missing solar_system_id in MapSystem struct"
-      )
-
       raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
     end
 
     if is_nil(system.name) do
-      AppLogger.processor_error("[StructuredFormatter] Missing name in MapSystem struct")
       raise "Cannot format system notification: name is missing in MapSystem struct"
     end
   end
 
   # Generate notification elements (title, description, color, icon)
   defp generate_notification_elements(system, is_wormhole) do
-    # Generate title and description
     title = generate_system_title(is_wormhole, system.class_title, system.type_description)
-    AppLogger.processor_debug("Generated title", title: inspect(title))
 
     description =
       generate_system_description(is_wormhole, system.class_title, system.type_description)
 
-    AppLogger.processor_debug("Generated description", description: inspect(description))
-
-    # Generate color and icon
     system_color = determine_system_color(system.type_description, is_wormhole)
-    AppLogger.processor_debug("Determined system color", color: inspect(system_color))
-
     icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
-    AppLogger.processor_debug("Determined icon URL", icon_url: inspect(icon_url))
 
-    %{
-      title: title,
-      description: description,
-      color: system_color,
-      icon_url: icon_url
-    }
+    {title, description, system_color, icon_url}
   end
 
   # Create system name with zkillboard link
@@ -545,7 +536,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
 
     if has_numeric_id do
-      # For numerical IDs, create a zkillboard link
       system_id_str = to_string(system.solar_system_id)
 
       has_temp_and_original =
@@ -558,7 +548,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         "[#{system.name}](https://zkillboard.com/system/#{system_id_str}/)"
       end
     else
-      # For non-numerical IDs, just show the display name without a link
       display_name
     end
   end
@@ -570,32 +559,27 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
          formatted_statics,
          system_name_with_link
        ) do
-    # Start with basic system field
     fields = [%{name: "System", value: system_name_with_link, inline: true}]
-
-    # Add various optional fields based on system properties
     fields = add_shattered_field(fields, is_wormhole, system.is_shattered)
     fields = add_statics_field(fields, is_wormhole, formatted_statics)
     fields = add_region_field(fields, system.region_name)
     fields = add_effect_field(fields, is_wormhole, system.effect_name)
-
-    # Add recent kills field from ZKill API
     fields = add_zkill_system_kills(fields, system.solar_system_id)
-
     fields
   end
 
   # Add recent kills from ZKill API
   defp add_zkill_system_kills(fields, system_id) do
-    # Format the system_id to integer (if it's a string)
     system_id_int = parse_system_id(system_id)
 
-    # If we don't have a valid system ID, return fields unchanged
     if is_nil(system_id_int) do
-      log_invalid_system_id(system_id)
-      return_unchanged(fields)
+      fields
     else
-      fetch_and_process_kills(fields, system_id_int)
+      case zkill_service().get_system_kills(system_id_int, 3) do
+        {:ok, []} -> fields
+        {:ok, zkill_kills} when is_list(zkill_kills) -> process_kill_data(fields, zkill_kills)
+        {:error, _} -> fields
+      end
     end
   end
 
@@ -610,212 +594,45 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
 
-  # Helper for logging invalid system_id
-  defp log_invalid_system_id(system_id) do
-    AppLogger.processor_warn(
-      "[StructuredFormatter] Invalid system ID format: #{inspect(system_id)}"
-    )
-  end
-
-  # Helper for returning fields unchanged
-  defp return_unchanged(fields), do: fields
-
-  # Helper for fetching and processing kills
-  defp fetch_and_process_kills(fields, system_id_int) do
-    case ZKillService.get_system_kills(system_id_int, 3) do
-      {:ok, []} ->
-        fields
-
-      {:ok, zkill_kills} when is_list(zkill_kills) ->
-        process_kill_data(fields, zkill_kills)
-
-      {:error, {:domain_error, :zkill, {:api_error, error_msg}}} ->
-        AppLogger.processor_warn("[StructuredFormatter] ZKill API error: #{error_msg}")
-        fields
-
-      {:error, reason} ->
-        log_zkill_error(system_id_int, :error, reason)
-        fields
-
-      {code, error} ->
-        log_zkill_error(system_id_int, code, error)
-        fields
-    end
-  end
-
-  # Helper to log ZKill errors
-  defp log_zkill_error(system_id_int, code, error) do
-    AppLogger.processor_error(
-      "[StructuredFormatter] Failed to get kills for system #{system_id_int}: #{code} - #{inspect(error)}"
-    )
-  end
-
-  # Helper to process kill data and add to fields
-  defp process_kill_data(fields, zkill_kills) do
-    # Enrich each killmail with complete data from ESI
-    detailed_kills = Enum.map(zkill_kills, &fetch_complete_killmail/1)
-
-    # Format the kills and add to fields if we got any valid kills
-    if Enum.any?(detailed_kills) do
-      formatted_kills = format_system_kills(detailed_kills)
-      fields ++ [%{name: "Recent Kills", value: formatted_kills, inline: false}]
-    else
-      fields
-    end
-  end
-
-  # Fetch complete killmail details using ESI API
-  defp fetch_complete_killmail(zkill_data) do
-    # The ZKill API returns data in this format:
-    # %{
-    #   "killmail_id" => 123456789,
-    #   "zkb" => %{
-    #     "locationID" => 30000142,
-    #     "hash" => "hash_string",
-    #     "fittedValue" => 1000000,
-    #     "totalValue" => 1200000,
-    #     "points" => 1,
-    #     "npc" => false,
-    #     ...
-    #   }
-    # }
-
-    # Extract the killmail_id and hash
-    kill_id = Map.get(zkill_data, "killmail_id")
-    hash = get_in(zkill_data, ["zkb", "hash"])
-
-    if kill_id && hash do
-      case ESIService.get_killmail(kill_id, hash) do
-        {:ok, esi_data} ->
-          # Create a complete kill structure with both ESI and ZKill data
-          Map.merge(zkill_data, %{"esi_killmail" => esi_data})
-
-        error ->
-          AppLogger.processor_error(
-            "[StructuredFormatter] Failed to get ESI data for killmail #{kill_id}: #{inspect(error)}"
-          )
-
-          # Return original zkill data
-          zkill_data
-      end
-    else
-      AppLogger.processor_warn(
-        "[StructuredFormatter] Missing killmail_id or hash in zkill data: #{inspect(zkill_data)}"
-      )
-
-      zkill_data
-    end
-  end
-
-  # Format kills list for system notification
-  defp format_system_kills(kills) do
-    Enum.map_join(kills, "\n", fn kill ->
-      # Get kill ID and value from zkill data
-      kill_id = Map.get(kill, "killmail_id")
-      total_value = get_in(kill, ["zkb", "totalValue"]) || 0
-
-      # Try to get victim and ship info from ESI data if available
-      esi_data = Map.get(kill, "esi_killmail", %{})
-
-      # Extract victim info from ESI data if available
-      victim_data = Map.get(esi_data, "victim", %{})
-      victim_id = Map.get(victim_data, "character_id")
-      ship_type_id = Map.get(victim_data, "ship_type_id")
-
-      # Use ESI names when available or fallback to defaults
-      {victim_name, ship_name} = get_victim_and_ship_names(victim_id, ship_type_id)
-
-      # Format the kill details
-      formatted_value = format_compact_isk_value(total_value)
-
-      # Return the formatted kill line
-      "[#{victim_name} (#{ship_name})](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value}"
-    end)
-  end
-
-  # Get victim and ship names using ESI API
-  defp get_victim_and_ship_names(victim_id, ship_type_id) do
-    # Get character name
-    victim_name =
-      if victim_id do
-        case ESIService.get_character_info(victim_id) do
-          {:ok, char_info} -> Map.get(char_info, "name", "Unknown")
-          _ -> "Unknown"
-        end
-      else
-        "Unknown"
-      end
-
-    # Get ship name
-    ship_name =
-      if ship_type_id do
-        case ESIService.get_ship_type_name(ship_type_id) do
-          {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
-          _ -> "Unknown Ship"
-        end
-      else
-        "Unknown Ship"
-      end
-
-    {victim_name, ship_name}
-  end
-
-  # Format ISK value in a compact way
-  defp format_compact_isk_value(value) when is_number(value) do
+  defp generate_system_title(is_wormhole, class_title, type_description) do
     cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
-      true -> "#{Float.round(value, 1)} ISK"
+      is_wormhole && class_title && class_title != "" ->
+        "New #{class_title} System Mapped"
+
+      is_wormhole ->
+        "New Wormhole System Mapped"
+
+      type_description && type_description != "" ->
+        "New #{type_description} System Mapped"
+
+      true ->
+        "New System Mapped"
     end
   end
 
-  defp format_compact_isk_value(_), do: "Unknown Value"
+  defp generate_system_description(is_wormhole, class_title, type_description) do
+    cond do
+      is_wormhole && class_title && class_title != "" ->
+        "A #{class_title} wormhole system has been discovered and added to the map."
 
-  # Add shattered field if applicable
-  defp add_shattered_field(fields, true, true) do
-    fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
+      is_wormhole ->
+        "A wormhole system has been discovered and added to the map."
+
+      type_description && type_description != "" ->
+        "A #{type_description} system has been discovered and added to the map."
+
+      true ->
+        "A new system has been discovered and added to the map."
+    end
   end
-
-  defp add_shattered_field(fields, _, _), do: fields
-
-  # Add statics field if applicable
-  defp add_statics_field(fields, true, formatted_statics)
-       when formatted_statics != nil and formatted_statics != "None" do
-    fields ++ [%{name: "Statics", value: formatted_statics, inline: true}]
-  end
-
-  defp add_statics_field(fields, _, _), do: fields
-
-  # Add region field if available
-  defp add_region_field(fields, nil), do: fields
-
-  defp add_region_field(fields, region_name) do
-    encoded_region_name = URI.encode(region_name)
-    region_link = "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
-    fields ++ [%{name: "Region", value: region_link, inline: true}]
-  end
-
-  # Add effect field if available for wormhole systems
-  defp add_effect_field(fields, true, effect_name)
-       when effect_name != nil and effect_name != "" do
-    fields ++ [%{name: "Effect", value: effect_name, inline: true}]
-  end
-
-  defp add_effect_field(fields, _, _), do: fields
 
   # Helper to determine system icon URL based on MapSystem data
   defp determine_system_icon(is_wormhole, type_description, sun_type_id) do
-    # Parse sun_type_id if it's a string
     sun_id = parse_sun_type_id(sun_type_id)
 
-    # First check if we have a valid sun_type_id
     if sun_id && sun_id > 0 do
-      # Use the actual sun type for the icon (more accurate representation)
-      AppLogger.processor_info("[StructuredFormatter] Using sun type icon for system: #{sun_id}")
       "https://images.evetech.net/types/#{sun_id}/icon"
     else
-      # Fallback to category-based icons
       get_system_type_icon(is_wormhole, type_description)
     end
   end
@@ -852,42 +669,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       type_description && String.contains?(type_description, "Low-sec") -> @lowsec_color
       type_description && String.contains?(type_description, "Null-sec") -> @nullsec_color
       true -> @default_color
-    end
-  end
-
-  # Generate system title based on system properties
-  defp generate_system_title(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "New #{class_title} System Mapped"
-
-      is_wormhole ->
-        "New Wormhole System Mapped"
-
-      type_description && type_description != "" ->
-        "New #{type_description} System Mapped"
-
-      true ->
-        # Default title if both class_title and type_description are missing
-        "New System Mapped"
-    end
-  end
-
-  # Generate system description based on system properties
-  defp generate_system_description(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "A #{class_title} wormhole system has been discovered and added to the map."
-
-      is_wormhole ->
-        "A wormhole system has been discovered and added to the map."
-
-      type_description && type_description != "" ->
-        "A #{type_description} system has been discovered and added to the map."
-
-      true ->
-        # Default description if both class_title and type_description are missing
-        "A new system has been discovered and added to the map."
     end
   end
 
@@ -1200,11 +981,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Extract components if available
     components = Map.get(notification, :components, [])
 
-    # Convert to Discord embed format
-    %{
-      "title" => notification.title,
-      "description" => notification.description,
-      "color" => notification.color,
+    # Convert to Discord embed format with safe field access
+    embed = %{
+      "title" => Map.get(notification, :title, ""),
+      "description" => Map.get(notification, :description, ""),
+      "color" => Map.get(notification, :color, @default_color),
       "url" => Map.get(notification, :url),
       "timestamp" => Map.get(notification, :timestamp),
       "footer" => Map.get(notification, :footer),
@@ -1212,18 +993,143 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       "image" => Map.get(notification, :image),
       "author" => Map.get(notification, :author),
       "fields" =>
-        Enum.map(notification.fields || [], fn field ->
-          %{
-            "name" => field.name,
-            "value" => field.value,
-            "inline" => Map.get(field, :inline, false)
-          }
-        end)
+        case Map.get(notification, :fields) do
+          fields when is_list(fields) ->
+            Enum.map(fields, fn field ->
+              %{
+                "name" => Map.get(field, :name, ""),
+                "value" => Map.get(field, :value, ""),
+                "inline" => Map.get(field, :inline, false)
+              }
+            end)
+
+          _ ->
+            []
+        end
     }
-    |> add_components_if_present(components)
+
+    # Add components if present
+    add_components_if_present(embed, components)
   end
 
   # Helper to add components if present
   defp add_components_if_present(embed, []), do: embed
   defp add_components_if_present(embed, components), do: Map.put(embed, "components", components)
+
+  # Add shattered field if applicable
+  defp add_shattered_field(fields, true, true) do
+    fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
+  end
+
+  defp add_shattered_field(fields, _, _), do: fields
+
+  # Add statics field if applicable
+  defp add_statics_field(fields, true, formatted_statics)
+       when formatted_statics != nil and formatted_statics != "None" do
+    fields ++ [%{name: "Statics", value: formatted_statics, inline: true}]
+  end
+
+  defp add_statics_field(fields, _, _), do: fields
+
+  # Add region field if available
+  defp add_region_field(fields, nil), do: fields
+
+  defp add_region_field(fields, region_name) do
+    encoded_region_name = URI.encode(region_name)
+    region_link = "[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})"
+    fields ++ [%{name: "Region", value: region_link, inline: true}]
+  end
+
+  # Add effect field if available for wormhole systems
+  defp add_effect_field(fields, true, effect_name)
+       when effect_name != nil and effect_name != "" do
+    fields ++ [%{name: "Effect", value: effect_name, inline: true}]
+  end
+
+  defp add_effect_field(fields, _, _), do: fields
+
+  # Process kill data and add to fields
+  defp process_kill_data(fields, zkill_kills) do
+    # Enrich each killmail with complete data from ESI
+    detailed_kills = Enum.map(zkill_kills, &fetch_complete_killmail/1)
+
+    # Format the kills and add to fields if we got any valid kills
+    if Enum.any?(detailed_kills) do
+      formatted_kills = format_system_kills(detailed_kills)
+      fields ++ [%{name: "Recent Kills", value: formatted_kills, inline: false}]
+    else
+      fields
+    end
+  end
+
+  # Fetch complete killmail details using ESI API
+  defp fetch_complete_killmail(zkill_data) do
+    kill_id = Map.get(zkill_data, "killmail_id")
+    hash = get_in(zkill_data, ["zkb", "hash"])
+
+    if kill_id && hash do
+      case esi_service().get_killmail(kill_id, hash) do
+        {:ok, esi_data} -> Map.merge(zkill_data, %{"esi_killmail" => esi_data})
+        _ -> zkill_data
+      end
+    else
+      zkill_data
+    end
+  end
+
+  # Format kills list for system notification
+  defp format_system_kills(kills) do
+    Enum.map_join(kills, "\n", fn kill ->
+      kill_id = Map.get(kill, "killmail_id")
+      total_value = get_in(kill, ["zkb", "totalValue"]) || 0
+
+      # Try to get victim and ship info from ESI data if available
+      esi_data = Map.get(kill, "esi_killmail", %{})
+      victim_data = Map.get(esi_data, "victim", %{})
+      victim_id = Map.get(victim_data, "character_id")
+      ship_type_id = Map.get(victim_data, "ship_type_id")
+
+      {victim_name, ship_name} = get_victim_and_ship_names(victim_id, ship_type_id)
+      formatted_value = format_compact_isk_value(total_value)
+
+      "[#{victim_name} (#{ship_name})](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value}"
+    end)
+  end
+
+  # Get victim and ship names using ESI API
+  defp get_victim_and_ship_names(victim_id, ship_type_id) do
+    victim_name =
+      if victim_id do
+        case esi_service().get_character_info(victim_id) do
+          {:ok, char_info} -> Map.get(char_info, "name", "Unknown")
+          _ -> "Unknown"
+        end
+      else
+        "Unknown"
+      end
+
+    ship_name =
+      if ship_type_id do
+        case esi_service().get_ship_type_name(ship_type_id) do
+          {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
+          _ -> "Unknown Ship"
+        end
+      else
+        "Unknown Ship"
+      end
+
+    {victim_name, ship_name}
+  end
+
+  # Format ISK value in a compact way
+  defp format_compact_isk_value(value) when is_number(value) do
+    cond do
+      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
+      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
+      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
+      true -> "#{Float.round(value, 1)} ISK"
+    end
+  end
+
+  defp format_compact_isk_value(_), do: "Unknown Value"
 end

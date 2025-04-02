@@ -170,14 +170,12 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Persists a new killmail record
   defp persist_new_killmail(
          killmail,
-         killmail_id_str,
+         _killmail_id_str,
          character_id,
          character_name,
          role,
          str_character_id
        ) do
-    AppLogger.persistence_info("Persisting killmail", killmail_id: killmail_id_str)
-
     # Transform and persist the killmail
     killmail_attrs = transform_killmail_to_resource(killmail, character_id, character_name, role)
 

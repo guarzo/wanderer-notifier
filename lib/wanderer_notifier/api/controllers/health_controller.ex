@@ -5,7 +5,12 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   use WandererNotifier.Api.Controllers.BaseController
 
   # Health check endpoint
-  get "/health" do
+  get "/" do
+    send_success_response(conn, %{status: "OK"})
+  end
+
+  # Support HEAD requests for health checks
+  head "/" do
     send_success_response(conn, %{status: "OK"})
   end
 

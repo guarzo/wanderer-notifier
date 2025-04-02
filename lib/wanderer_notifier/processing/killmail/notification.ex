@@ -4,11 +4,14 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   Encapsulates all the notification handling logic for kills.
   """
 
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Processing.Killmail.Stats
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -29,28 +32,32 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   @doc """
   Sends a kill notification.
   """
-  def send_kill_notification(enriched_killmail, kill_id, bypass_dedup \\ false) do
+  def send_kill_notification(enriched_killmail, kill_id, _bypass_dedup \\ false) do
     AppLogger.kill_info("Sending kill notification", %{kill_id: kill_id})
 
-    # Check if we should send the notification
-    if bypass_dedup || should_send_notification?(kill_id) do
-      # Send the notification
-      case NotifierFactory.notify(:send_enriched_kill_embed, [enriched_killmail, kill_id]) do
-        {:ok, _} ->
-          AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
-          {:ok, kill_id}
+    # Create a generic notification that can be converted to various formats
+    generic_notification = StructuredFormatter.format_kill_notification(enriched_killmail)
+    discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
-        {:error, reason} ->
-          AppLogger.kill_error("Failed to send kill notification", %{
-            kill_id: kill_id,
-            error: inspect(reason)
-          })
+    # Send notification via factory with correct type
+    case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
+      :ok ->
+        AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        Stats.update(:notification_sent)
+        {:ok, kill_id}
 
-          {:error, reason}
-      end
-    else
-      AppLogger.kill_debug("Skipping duplicate kill notification", %{kill_id: kill_id})
-      {:ok, :duplicate}
+      {:ok, _} ->
+        AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        Stats.update(:notification_sent)
+        {:ok, kill_id}
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to send kill notification", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        {:error, reason}
     end
   end
 
@@ -60,8 +67,8 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   def send_test do
     AppLogger.kill_info("Sending test kill notification...")
 
-    # Get recent kills
-    recent_kills = CacheRepo.get_recent_kills()
+    # Get recent kills using proper cache key
+    recent_kills = CacheRepo.get(CacheKeys.zkill_recent_kills())
     AppLogger.kill_debug("Found #{length(recent_kills)} recent kills in shared cache repository")
 
     if recent_kills == [] do
@@ -191,10 +198,5 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
       true ->
         :ok
     end
-  end
-
-  # Private function to check if we should send a notification for a kill
-  defp should_send_notification?(kill_id) do
-    KillDeterminer.should_notify?(kill_id)
   end
 end

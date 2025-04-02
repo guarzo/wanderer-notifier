@@ -15,23 +15,23 @@ import { FaChartBar, FaHome, FaSkullCrossbones, FaCalendarAlt } from "react-icon
 const queryClient = new QueryClient();
 
 function App() {
-  const [corpToolsEnabled, setCorpToolsEnabled] = useState(false);
-  const [mapChartsEnabled, setMapChartsEnabled] = useState(false);
+  const [activityChartsEnabled, setActivityChartsEnabled] = useState(false);
   const [killChartsEnabled, setKillChartsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch configuration when component mounts
-    fetch('/api/charts/config')
+    // Fetch status when component mounts
+    fetch('/api/debug/status')
       .then(response => response.json())
-      .then(data => {
-        setMapChartsEnabled(data.map_charts_enabled);
-        setKillChartsEnabled(data.kill_charts_enabled);
+      .then(response => {
+        const features = response.data.features;
+        setActivityChartsEnabled(features.activity_charts);
+        setKillChartsEnabled(features.kill_charts);
         setLoading(false);
       })
       .catch(error => {
-        console.error('Error fetching chart config:', error);
-        setMapChartsEnabled(false);
+        console.error('Error fetching status:', error);
+        setActivityChartsEnabled(false);
         setKillChartsEnabled(false);
         setLoading(false);
       });
@@ -43,8 +43,8 @@ function App() {
     </div>;
   }
 
-  // Determine whether to show charts link (if either map charts or kill charts is enabled)
-  const showChartsLink = mapChartsEnabled || killChartsEnabled;
+  // Determine whether to show charts link (if either activity charts or kill charts is enabled)
+  const showChartsLink = activityChartsEnabled || killChartsEnabled;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -63,10 +63,10 @@ function App() {
                     <FaHome />
                     <span>Home</span>
                   </Link>
-                  {showChartsLink && (
+                  {activityChartsEnabled && (
                     <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                       <FaChartBar />
-                      <span>Charts</span>
+                      <span>Activity Charts</span>
                     </Link>
                   )}
                   {killChartsEnabled && (
@@ -75,7 +75,6 @@ function App() {
                       <span>Kill Analysis</span>
                     </Link>
                   )}
-                  
                   <Link to="/schedulers" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                     <FaCalendarAlt />
                     <span>Schedulers</span>
@@ -86,10 +85,10 @@ function App() {
             
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              {/* Only render charts route if at least one chart type is enabled, otherwise redirect to home */}
+              {/* Only render charts route if activity charts is enabled */}
               <Route 
                 path="/charts" 
-                element={showChartsLink ? <ChartsDashboard /> : <Navigate to="/" replace />} 
+                element={activityChartsEnabled ? <ChartsDashboard /> : <Navigate to="/" replace />} 
               />
               {/* Kill comparison route */}
               <Route 

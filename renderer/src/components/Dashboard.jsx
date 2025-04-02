@@ -512,10 +512,10 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {/* Activity Charts - Only shown if Map Tools is enabled */}
-            {status?.features?.map_charts && (
+            {/* Activity Charts */}
+            {status?.features?.activity_charts && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Map Charts</span>
+                <span className="font-medium text-gray-700">Activity Charts</span>
                 <div className="flex items-center space-x-2">
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
@@ -526,28 +526,28 @@ export default function Dashboard() {
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Charts
+                      View Activity Charts
                     </div>
                   </button>
                 </div>
               </div>
             )}
             
-            {/* Killmail Charts - Only shown if Kill Charts is enabled */}
+            {/* Kill Charts */}
             {status?.features?.kill_charts && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Killmail Charts</span>
+                <span className="font-medium text-gray-700">Kill Charts</span>
                 <div className="flex items-center space-x-2">
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
                   </span>
                   <button
                     className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                    onClick={() => window.open('/charts', '_blank')}
+                    onClick={() => window.open('/kill-charts', '_blank')}
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Charts
+                      View Kill Charts
                     </div>
                   </button>
                 </div>

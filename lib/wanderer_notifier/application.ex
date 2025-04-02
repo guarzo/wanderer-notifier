@@ -36,9 +36,17 @@ defmodule WandererNotifier.Application do
     if minimal_test do
       start_minimal_application()
     else
-      # Validate configuration before starting the application
-      validate_configuration()
-      start_main_application()
+      # Check if we're in test mode
+      is_test = Application.get_env(:wanderer_notifier, :env) == :test
+
+      if is_test do
+        # Start with minimal validation for tests
+        start_test_application()
+      else
+        # Full validation for production
+        validate_configuration()
+        start_main_application()
+      end
     end
   end
 
@@ -67,7 +75,7 @@ defmodule WandererNotifier.Application do
 
   defp validate_configuration do
     # Log application version on startup
-    AppLogger.config_info("Starting application",
+    AppLogger.startup_debug("Starting application",
       version: Version.version(),
       environment: Application.get_env(:wanderer_notifier, :env, :dev)
     )
@@ -122,8 +130,8 @@ defmodule WandererNotifier.Application do
   defp process_validation_result(_module, name, info, result) do
     case result do
       :ok ->
-        # Log success with any extra info
-        AppLogger.config_info("#{name} configuration validated successfully", info)
+        # Log success with any extra info at debug level
+        AppLogger.config_debug("#{name} configuration validated successfully", info)
         :ok
 
       {:error, reason} when is_binary(reason) ->
@@ -156,23 +164,47 @@ defmodule WandererNotifier.Application do
     Supervisor.start_link(children, opts)
   end
 
+  defp start_test_application do
+    # Minimal validation for test environment
+    AppLogger.startup_debug("Starting application in test mode")
+
+    children = [
+      # Core services needed for testing
+      {WandererNotifier.NoopConsumer, []},
+      {Cachex, name: :wanderer_cache},
+      {WandererNotifier.Web.Server, []}
+    ]
+
+    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        AppLogger.startup_info("✨ Test application started")
+        {:ok, pid}
+
+      {:error, reason} = error ->
+        AppLogger.startup_error("❌ Failed to start test application", error: inspect(reason))
+        error
+    end
+  end
+
   defp start_main_application do
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
-    AppLogger.startup_info("Starting supervisor", child_count: length(children))
+    AppLogger.startup_info("🚀 Starting WandererNotifier", child_count: length(children))
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
-        AppLogger.startup_info("Application started successfully")
+        AppLogger.startup_info("✨ WandererNotifier started successfully")
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        AppLogger.startup_warn("Supervisor already started", pid: inspect(pid))
+        AppLogger.startup_warn("⚠️ Supervisor already started", pid: inspect(pid))
         {:ok, pid}
 
       {:error, reason} = error ->
-        AppLogger.startup_error("Failed to start application", error: inspect(reason))
+        AppLogger.startup_error("❌ Failed to start application", error: inspect(reason))
         error
     end
   end
@@ -185,6 +217,7 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},
+      {Cachex, name: :wanderer_cache},
       {WandererNotifier.Data.Cache.Repository, []},
       {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []},

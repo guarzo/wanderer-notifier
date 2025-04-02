@@ -51,26 +51,73 @@ defmodule WandererNotifier.MockESI do
 
   @impl true
   def get_type(_type_id), do: {:ok, %{}}
+
+  @impl true
+  def get_ship_type_name(_ship_type_id), do: {:ok, %{"name" => "Test Ship"}}
+
+  @impl true
+  def get_system_kills(_system_id, _limit) do
+    {:ok, []}
+  end
 end
 
-defmodule WandererNotifier.MockCacheHelpers do
+defmodule WandererNotifier.ETSCache do
   @moduledoc """
-  Mock implementation of the cache helpers for testing.
+  ETS-based implementation of cache behavior for testing using ETS tables
   """
 
   @behaviour WandererNotifier.Data.Cache.CacheBehaviour
 
   @impl true
-  def get_cached_kills(_character_id), do: {:ok, []}
+  def get(key) do
+    case :ets.lookup(:cache_table, key) do
+      [{^key, value}] -> {:ok, value}
+      [] -> {:error, :not_found}
+    end
+  end
 
   @impl true
-  def get_character_name(_character_id), do: {:ok, "Test Character"}
+  def set(key, value, _ttl \\ nil) do
+    :ets.insert(:cache_table, {key, value})
+    {:ok, value}
+  end
 
   @impl true
-  def get_ship_name(_ship_id), do: {:ok, "Test Ship"}
+  def put(key, value, _ttl \\ nil) do
+    :ets.insert(:cache_table, {key, value})
+    {:ok, value}
+  end
 
   @impl true
-  def get_tracked_characters, do: {:ok, []}
+  def delete(key) do
+    :ets.delete(:cache_table, key)
+    :ok
+  end
+
+  @impl true
+  def clear do
+    :ets.delete_all_objects(:cache_table)
+    :ok
+  end
+
+  @impl true
+  def get_and_update(key, update_fn) do
+    case get(key) do
+      {:ok, value} ->
+        case update_fn.(value) do
+          {get_value, update_value} ->
+            set(key, update_value)
+            {:ok, get_value}
+        end
+
+      {:error, :not_found} ->
+        case update_fn.(nil) do
+          {get_value, update_value} ->
+            set(key, update_value)
+            {:ok, get_value}
+        end
+    end
+  end
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -100,6 +147,9 @@ defmodule WandererNotifier.MockRepository do
 
   @impl true
   def set(_key, _value, _ttl), do: :ok
+
+  @impl true
+  def clear, do: :ok
 end
 
 defmodule WandererNotifier.MockKillmailPersistence do
@@ -225,4 +275,87 @@ defmodule WandererNotifier.MockConfig do
   @impl true
   def discord_channel_id_for(:kill_charts), do: "123456789"
   def discord_channel_id_for(_), do: nil
+
+  @impl true
+  def get_feature_status do
+    %{
+      kill_notifications_enabled: true,
+      system_tracking_enabled: true,
+      character_tracking_enabled: true,
+      activity_charts: true
+    }
+  end
 end
+
+defmodule WandererNotifier.MockCacheHelpers do
+  @moduledoc """
+  Mock implementation of cache helpers for testing.
+  """
+
+  @behaviour WandererNotifier.Data.Cache.HelpersBehaviour
+
+  @impl true
+  def get_cached_kills(_id) do
+    {:ok, []}
+  end
+
+  @impl true
+  def get_tracked_systems do
+    []
+  end
+
+  @impl true
+  def get_tracked_characters do
+    []
+  end
+
+  @impl true
+  def get_ship_name(_ship_type_id) do
+    {:ok, "Test Ship"}
+  end
+
+  @impl true
+  def get_character_name(_character_id) do
+    {:ok, "Test Character"}
+  end
+end
+
+defmodule WandererNotifier.TestHelpers.Mocks do
+  @moduledoc """
+  Defines mock behaviors for external services used in tests.
+  """
+
+  # Define mock behaviors for ZKill service
+  defmodule ZKillBehavior do
+    @moduledoc """
+    Behaviour module for ZKill service mocks in tests.
+    Defines the contract that ZKill service mocks must implement.
+    """
+
+    @callback get_killmail(String.t(), String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_kills(String.t(), integer()) :: {:ok, list()} | {:error, any()}
+  end
+
+  # Define mock behaviors for ESI service
+  defmodule ESIBehavior do
+    @moduledoc """
+    Behaviour module for ESI service mocks in tests.
+    Defines the contract that ESI service mocks must implement.
+    """
+
+    @callback get_character_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_type_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_ship_type_name(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_kills(String.t(), integer()) :: {:ok, list()} | {:error, any()}
+    @callback get_killmail(String.t(), String.t()) :: {:ok, map()} | {:error, any()}
+  end
+end
+
+# Define the mocks
+Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
+  for: WandererNotifier.TestHelpers.Mocks.ZKillBehavior
+)
+
+Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
+  for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
+)

@@ -1,9 +1,134 @@
 import Config
 import Dotenvy
 
+defmodule EnvironmentHelper do
+  @moduledoc """
+  Helper functions for environment variable handling and deprecation warnings.
+  """
+
+  # Log deprecation warnings for legacy environment variables.
+  def log_deprecation(old_var, new_var, value) when not is_nil(value) do
+    IO.puts(
+      IO.ANSI.yellow() <>
+        IO.ANSI.bright() <>
+        "[DEPRECATION WARNING] " <>
+        IO.ANSI.reset() <>
+        "Environment variable #{old_var} is deprecated and will be removed in a future release. " <>
+        "Please use #{new_var} instead."
+    )
+  end
+
+  def log_deprecation(_old_var, _new_var, _value), do: :ok
+
+  def check_env_vars do
+    # Check API token exists
+    if is_nil(System.get_env("WANDERER_NOTIFIER_API_TOKEN")) do
+      raise "WANDERER_NOTIFIER_API_TOKEN must be provided via environment variable"
+    end
+
+    # Log deprecation warnings for legacy variables
+    log_deprecation(
+      "APP_VERSION",
+      "compile-time version from mix.exs",
+      System.get_env("APP_VERSION")
+    )
+
+    log_deprecation(
+      "WANDERER_API_TOKEN",
+      "WANDERER_NOTIFIER_API_TOKEN",
+      System.get_env("WANDERER_API_TOKEN")
+    )
+
+    log_deprecation(
+      "NOTIFIER_API_TOKEN",
+      "WANDERER_NOTIFIER_API_TOKEN",
+      System.get_env("NOTIFIER_API_TOKEN")
+    )
+
+    log_deprecation(
+      "ENABLE_TRACK_KSPACE_SYSTEMS",
+      "WANDERER_FEATURE_TRACK_KSPACE",
+      System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+    )
+
+    log_deprecation(
+      "ENABLE_KILL_CHARTS",
+      "WANDERER_FEATURE_KILL_CHARTS",
+      System.get_env("ENABLE_KILL_CHARTS")
+    )
+
+    log_deprecation(
+      "ENABLE_MAP_CHARTS",
+      "WANDERER_FEATURE_MAP_CHARTS",
+      System.get_env("ENABLE_MAP_CHARTS")
+    )
+
+    log_deprecation("MAP_URL", "WANDERER_MAP_URL", System.get_env("MAP_URL"))
+
+    log_deprecation(
+      "MAP_TOKEN",
+      "WANDERER_MAP_TOKEN",
+      System.get_env("MAP_TOKEN")
+    )
+
+    # Log complete removal for websocket URL
+    if System.get_env("WANDERER_WEBSOCKET_URL") do
+      IO.puts([
+        :yellow,
+        :bright,
+        "[CONFIGURATION NOTICE] ",
+        :reset,
+        "Environment variable WANDERER_WEBSOCKET_URL is no longer used. ",
+        "The websocket URL is now fixed to wss://zkillboard.com/websocket/."
+      ])
+    end
+  end
+
+  @doc """
+  Retrieves an environment variable value using the new naming if available,
+  falling back to the legacy name, and returning the default if neither exists.
+  """
+  def get_env(env_vars, mapping, legacy_name, default) do
+    new_name = Map.get(mapping, legacy_name)
+
+    cond do
+      new_name && Map.has_key?(env_vars, new_name) ->
+        Map.get(env_vars, new_name)
+
+      Map.has_key?(env_vars, legacy_name) ->
+        Map.get(env_vars, legacy_name)
+
+      true ->
+        default
+    end
+  end
+
+  @doc """
+  Safely parses a string into an integer, returning a default if parsing fails.
+  """
+  def parse_integer_env(string_value, default) when is_binary(string_value) do
+    case Integer.parse(string_value) do
+      {value, _} when value > 0 -> value
+      _ -> default
+    end
+  end
+
+  def parse_integer_env(_, default), do: default
+
+  @doc """
+  Parses a map URL with name and extracts the base URL and the name component.
+  """
+  def parse_map_url_with_name(map_url_with_name) do
+    uri = URI.parse(map_url_with_name)
+    name = uri.path |> String.trim("/") |> String.split("/") |> List.last()
+    url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+    {url, name}
+  end
+end
+
 env_dir_prefix = Path.expand("..", __DIR__)
 
-# Load environment variables from files and system env
+# Load environment variables from files and system environment.
 env_vars =
   source!([
     Path.absname(".env", env_dir_prefix),
@@ -11,16 +136,15 @@ env_vars =
     System.get_env()
   ])
 
-# Make sure MIX_ENV is explicitly set in the system environment
+# Ensure MIX_ENV is explicitly set.
 mix_env = Map.get(env_vars, "MIX_ENV", Atom.to_string(config_env()))
 System.put_env("MIX_ENV", mix_env)
 
-# Set the runtime environment based on MIX_ENV
+# Set the runtime environment based on MIX_ENV.
 runtime_env = String.to_atom(mix_env)
 config :wanderer_notifier, :env, runtime_env
 
-# Mapping from legacy to new variable names
-# This provides backward compatibility during the migration period
+# Mapping from legacy to new variable names for backward compatibility.
 legacy_to_new_mapping = %{
   "DISCORD_BOT_TOKEN" => "WANDERER_DISCORD_BOT_TOKEN",
   "LICENSE_KEY" => "WANDERER_LICENSE_KEY",
@@ -53,314 +177,446 @@ legacy_to_new_mapping = %{
   "LICENSE_MANAGER_API_URL" => "WANDERER_LICENSE_MANAGER_URL"
 }
 
-# Helper function to get env var with new naming priority
-get_env = fn legacy_name, default ->
-  new_name = legacy_to_new_mapping[legacy_name]
-
-  cond do
-    # Check if new variable name is set
-    new_name && Map.has_key?(env_vars, new_name) ->
-      Map.get(env_vars, new_name)
-
-    # Fall back to legacy name if available
-    Map.has_key?(env_vars, legacy_name) ->
-      Map.get(env_vars, legacy_name)
-
-    # Use default if neither is available
-    true ->
-      default
-  end
-end
-
-# Set environment variables with both old and new names for backward compatibility
+# Set environment variables with both old and new names for backward compatibility.
 Enum.each(legacy_to_new_mapping, fn {legacy_name, new_name} ->
-  value = get_env.(legacy_name, nil)
+  # First check if new name exists
+  value = Map.get(env_vars, new_name)
+
+  # If new name doesn't exist, try legacy name
+  value = if is_nil(value), do: Map.get(env_vars, legacy_name), else: value
 
   if value do
-    System.put_env(legacy_name, value)
+    # Only set the new name
     System.put_env(new_name, value)
   end
 end)
 
-# Core Discord configuration
-discord_token = get_env.("DISCORD_BOT_TOKEN", nil)
-trimmed_token = if is_binary(discord_token), do: String.trim(discord_token), else: nil
+# -- Core Discord configuration --
+discord_token =
+  EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_BOT_TOKEN", nil)
+
+trimmed_token =
+  if is_binary(discord_token), do: String.trim(discord_token), else: nil
 
 if is_nil(trimmed_token) or trimmed_token == "" do
   raise "Discord bot token environment variable is required but not set or is empty"
 end
 
-# Only set the runtime token for Nostrum
+# Set the runtime token for Nostrum.
 config :nostrum,
   token: trimmed_token
 
-# Discord and Map Configuration
-map_url_with_name = get_env.("MAP_URL_WITH_NAME", nil)
+# -- Discord and Map Configuration --
+map_url_with_name =
+  EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "MAP_URL_WITH_NAME", nil)
 
-# Parse map_url_with_name to extract map_url and map_name
 {map_url, map_name} =
   if map_url_with_name do
-    # Parse the URL properly
-    uri = URI.parse(map_url_with_name)
-    name = uri.path |> String.trim("/") |> String.split("/") |> List.last()
-    url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-    {url, name}
+    EnvironmentHelper.parse_map_url_with_name(map_url_with_name)
   else
     {"", ""}
   end
 
 config :wanderer_notifier,
   discord_bot_token: trimmed_token,
-  discord_channel_id: get_env.("DISCORD_CHANNEL_ID", nil),
+  discord_channel_id:
+    EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_CHANNEL_ID", nil),
   map_url: map_url,
   map_name: map_name,
   map_url_with_name: map_url_with_name,
-  map_token: get_env.("MAP_TOKEN", nil)
+  map_token: EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "MAP_TOKEN", nil)
 
-# License Configuration
-license_key = get_env.("WANDERER_LICENSE_KEY", get_env.("LICENSE_KEY", nil))
+# -- License Configuration --
+license_key =
+  EnvironmentHelper.get_env(
+    env_vars,
+    legacy_to_new_mapping,
+    "WANDERER_LICENSE_KEY",
+    EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "LICENSE_KEY", nil)
+  )
 
-# Define a function to get the license manager URL based on environment
+# Define a function to get the license manager URL based on the environment.
 get_license_manager_url = fn env ->
   case env do
     :prod ->
-      # In production, don't use environment variables for security
       "https://lm.wanderer.ltd"
 
     _ ->
-      # In development, allow environment variable overrides
       System.get_env("WANDERER_LICENSE_MANAGER_URL") ||
         System.get_env("LICENSE_MANAGER_API_URL") ||
         "https://lm.wanderer.ltd"
   end
 end
 
-# Handle license manager URL differently for production vs development
 license_manager_url = get_license_manager_url.(runtime_env)
-
-# Get API token with fallback sequence
-api_token_value =
-  System.get_env("WANDERER_NOTIFIER_API_TOKEN") ||
-    System.get_env("NOTIFIER_API_TOKEN")
+api_token_value = System.get_env("WANDERER_NOTIFIER_API_TOKEN")
 
 config :wanderer_notifier,
   license_key: license_key,
   notifier_api_token: api_token_value,
   license_manager_api_url: license_manager_url
 
-# In both development and production, set the API token
-config :wanderer_notifier, api_token: api_token_value
-
-# Feature flag configuration
-
-# Handle ENABLE_TRACK_KSPACE_SYSTEMS first
+# -- Feature Flag Configuration --
 enable_track_kspace_systems = System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
-# Handle WANDERER_FEATURE_TRACK_KSPACE as fallback
 wanderer_feature_track_kspace = System.get_env("WANDERER_FEATURE_TRACK_KSPACE")
 
-# Determine the final value - prioritize direct environment variables
 track_kspace_enabled =
   cond do
     enable_track_kspace_systems == "true" -> true
     enable_track_kspace_systems == "false" -> false
     wanderer_feature_track_kspace == "true" -> true
     wanderer_feature_track_kspace == "false" -> false
-    # Default to true if neither is explicitly set
     true -> true
   end
 
-# Configure kill charts feature
 kill_charts_enabled =
-  case get_env.("WANDERER_FEATURE_KILL_CHARTS", get_env.("ENABLE_KILL_CHARTS", "false")) do
+  case EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_FEATURE_KILL_CHARTS",
+         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "ENABLE_KILL_CHARTS", "false")
+       ) do
     "true" -> true
     _ -> false
   end
 
-# Configure map charts feature
 map_charts_enabled =
-  case get_env.("WANDERER_FEATURE_MAP_CHARTS", get_env.("ENABLE_MAP_CHARTS", "false")) do
+  case EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_FEATURE_MAP_CHARTS",
+         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "ENABLE_MAP_CHARTS", "false")
+       ) do
     "true" -> true
     _ -> false
   end
-
-# Log the feature configuration for debugging
-IO.puts("Feature Configuration:")
-IO.puts("  Kill Charts: #{kill_charts_enabled}")
-IO.puts("  Map Charts: #{map_charts_enabled}")
 
 config :wanderer_notifier, :wanderer_feature_map_charts, map_charts_enabled
 
-# Parse retention days with safer handling
 retention_days =
   case Integer.parse(
-         get_env.(
+         EnvironmentHelper.get_env(
+           env_vars,
+           legacy_to_new_mapping,
            "WANDERER_PERSISTENCE_RETENTION_DAYS",
-           get_env.("PERSISTENCE_RETENTION_DAYS", "180")
+           EnvironmentHelper.get_env(
+             env_vars,
+             legacy_to_new_mapping,
+             "PERSISTENCE_RETENTION_DAYS",
+             "180"
+           )
          )
        ) do
     {days, _} -> days
     :error -> 180
   end
 
-# Configure persistence settings
 config :wanderer_notifier, :persistence,
   enabled: kill_charts_enabled,
   retention_period_days: retention_days,
-  # Daily at midnight
   aggregation_schedule:
-    get_env.(
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
       "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
-      get_env.("PERSISTENCE_AGGREGATION_SCHEDULE", "0 0 * * *")
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "PERSISTENCE_AGGREGATION_SCHEDULE",
+        "0 0 * * *"
+      )
     )
 
-# Update the features map to be consistent with individual settings
 features_map = %{
-  notifications_enabled: get_env.("WANDERER_NOTIFICATIONS_ENABLED", "true") == "true",
+  notifications_enabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
   character_notifications_enabled:
-    get_env.("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", "true") == "true",
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_CHARACTER_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
   system_notifications_enabled:
-    get_env.("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", "true") == "true",
-  kill_notifications_enabled: get_env.("WANDERER_KILL_NOTIFICATIONS_ENABLED", "true") == "true",
-  character_tracking_enabled: get_env.("WANDERER_CHARACTER_TRACKING_ENABLED", "true") == "true",
-  system_tracking_enabled: get_env.("WANDERER_SYSTEM_TRACKING_ENABLED", "true") == "true",
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_SYSTEM_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
+  kill_notifications_enabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_KILL_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
+  character_tracking_enabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_CHARACTER_TRACKING_ENABLED",
+      "true"
+    ) == "true",
+  system_tracking_enabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_SYSTEM_TRACKING_ENABLED",
+      "true"
+    ) == "true",
   tracked_systems_notifications_enabled:
-    get_env.("WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED", "true") == "true",
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
   tracked_characters_notifications_enabled:
-    get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
-  activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
-  # Use the same value we configured above
-  kill_charts: kill_charts_enabled,
-  # Use the same value we configured above
-  map_charts: map_charts_enabled,
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED",
+      "true"
+    ) == "true",
+  kill_charts:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_FEATURE_KILL_CHARTS",
+      "false"
+    ) == "true",
+  map_charts:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_FEATURE_MAP_CHARTS",
+      "false"
+    ) == "true",
   track_kspace_systems: track_kspace_enabled
 }
 
 config :wanderer_notifier, features: features_map
 
-# Websocket Configuration - URL is fixed and not configurable via environment
+# -- Websocket Configuration --
 config :wanderer_notifier, :websocket,
-  enabled: get_env.("WANDERER_WEBSOCKET_ENABLED", "true") == "true",
-  # The URL is fixed in WandererNotifier.Config.Websocket and not configurable here
-  reconnect_delay: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_DELAY", "5000")),
-  max_reconnects: String.to_integer(get_env.("WANDERER_WEBSOCKET_MAX_RECONNECTS", "20")),
-  reconnect_window: String.to_integer(get_env.("WANDERER_WEBSOCKET_RECONNECT_WINDOW", "3600"))
+  enabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_WEBSOCKET_ENABLED",
+      "true"
+    ) == "true",
+  reconnect_delay:
+    String.to_integer(
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_WEBSOCKET_RECONNECT_DELAY",
+        "5000"
+      )
+    ),
+  max_reconnects:
+    String.to_integer(
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_WEBSOCKET_MAX_RECONNECTS",
+        "20"
+      )
+    ),
+  reconnect_window:
+    String.to_integer(
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_WEBSOCKET_RECONNECT_WINDOW",
+        "3600"
+      )
+    )
 
-# Define a function to parse integer environment variables with default value
-parse_integer_env_var = fn
-  string_value, default when is_binary(string_value) ->
-    case Integer.parse(string_value) do
-      {value, _} when value > 0 -> value
-      _ -> default
-    end
+# -- Web and Port Configuration --
+web_port_value =
+  if runtime_env == :prod do
+    4000
+  else
+    web_port_str =
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_PORT",
+        EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "PORT", "4000")
+      )
 
-  _, default ->
-    default
-end
+    EnvironmentHelper.parse_integer_env(web_port_str, 4000)
+  end
 
-# Parse the web port value with safer error handling
-web_port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-web_port_value = parse_integer_env_var.(web_port_str, 4000)
 config :wanderer_notifier, web_port: web_port_value
 
-# Configure cache directory
 config :wanderer_notifier,
        :cache_dir,
-       get_env.("WANDERER_CACHE_DIR", get_env.("CACHE_DIR", "/app/data/cache"))
+       EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_CACHE_DIR",
+         EnvironmentHelper.get_env(
+           env_vars,
+           legacy_to_new_mapping,
+           "CACHE_DIR",
+           "/app/data/cache"
+         )
+       )
 
-# Configure public URL for assets
 config :wanderer_notifier,
        :public_url,
-       get_env.("WANDERER_PUBLIC_URL", get_env.("PUBLIC_URL", nil))
+       EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_PUBLIC_URL",
+         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "PUBLIC_URL", nil)
+       )
 
-config :wanderer_notifier, :host, get_env.("WANDERER_HOST", get_env.("HOST", "localhost"))
+config :wanderer_notifier,
+       :host,
+       EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_HOST",
+         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "HOST", "localhost")
+       )
 
-# Parse port with safer error handling
-port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-port_value = parse_integer_env_var.(port_str, 4000)
+port_value =
+  if runtime_env == :prod do
+    4000
+  else
+    port_str =
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_PORT",
+        EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "PORT", "4000")
+      )
+
+    EnvironmentHelper.parse_integer_env(port_str, 4000)
+  end
+
 config :wanderer_notifier, :port, port_value
 
-config :wanderer_notifier, :scheme, get_env.("WANDERER_SCHEME", get_env.("SCHEME", "http"))
+config :wanderer_notifier,
+       :scheme,
+       EnvironmentHelper.get_env(
+         env_vars,
+         legacy_to_new_mapping,
+         "WANDERER_SCHEME",
+         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "SCHEME", "http")
+       )
 
-# Configure database settings
-# Store database configuration in the standardized format for WandererNotifier.Config.Database
+# -- Database Configuration --
 config :wanderer_notifier, :database,
-  username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
-  password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
-  hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),
+  username:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_USER",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_USER", "postgres")
+    ),
+  password:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_PASSWORD",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_PASSWORD", "postgres")
+    ),
+  hostname:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_HOST",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_HOST", "postgres")
+    ),
   database:
-    get_env.("WANDERER_DB_NAME", get_env.("POSTGRES_DB", "wanderer_notifier_#{config_env()}")),
-  port: get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432")),
-  pool_size: get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10"))
-
-# Configure Repo with the values from our standardized database configuration
-# This maintains backward compatibility while we transition to the new approach
-config :wanderer_notifier, WandererNotifier.Data.Repo,
-  username: get_env.("WANDERER_DB_USER", get_env.("POSTGRES_USER", "postgres")),
-  password: get_env.("WANDERER_DB_PASSWORD", get_env.("POSTGRES_PASSWORD", "postgres")),
-  hostname: get_env.("WANDERER_DB_HOST", get_env.("POSTGRES_HOST", "postgres")),
-  database:
-    get_env.("WANDERER_DB_NAME", get_env.("POSTGRES_DB", "wanderer_notifier_#{config_env()}")),
-  port: String.to_integer(get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432"))),
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_NAME",
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "POSTGRES_DB",
+        "wanderer_notifier_#{config_env()}"
+      )
+    ),
+  port:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_PORT",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_PORT", "5432")
+    ),
   pool_size:
-    String.to_integer(get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10")))
-
-# Add a helper function to log deprecation warnings
-defmodule EnvironmentHelper do
-  def log_deprecation(old_var, new_var, value) when not is_nil(value) do
-    IO.puts(
-      IO.ANSI.yellow() <>
-        IO.ANSI.bright() <>
-        "[DEPRECATION WARNING] " <>
-        IO.ANSI.reset() <>
-        "Environment variable #{old_var} is deprecated and will be removed in a future release. " <>
-        "Please use #{new_var} instead."
-    )
-  end
-
-  def log_deprecation(_old_var, _new_var, _value), do: :ok
-
-  def check_env_vars do
-    # Log deprecation warnings for legacy variables
-    log_deprecation(
-      "APP_VERSION",
-      "compile-time version from mix.exs",
-      System.get_env("APP_VERSION")
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_POOL_SIZE",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_POOL_SIZE", "10")
     )
 
-    log_deprecation(
-      "ENABLE_TRACK_KSPACE_SYSTEMS",
-      "WANDERER_FEATURE_TRACK_KSPACE",
-      System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+config :wanderer_notifier, WandererNotifier.Data.Repo,
+  username:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_USER",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_USER", "postgres")
+    ),
+  password:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_PASSWORD",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_PASSWORD", "postgres")
+    ),
+  hostname:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_HOST",
+      EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_HOST", "postgres")
+    ),
+  database:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DB_NAME",
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "POSTGRES_DB",
+        "wanderer_notifier_#{config_env()}"
+      )
+    ),
+  port:
+    String.to_integer(
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_DB_PORT",
+        EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_PORT", "5432")
+      )
+    ),
+  pool_size:
+    String.to_integer(
+      EnvironmentHelper.get_env(
+        env_vars,
+        legacy_to_new_mapping,
+        "WANDERER_DB_POOL_SIZE",
+        EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_POOL_SIZE", "10")
+      )
     )
 
-    log_deprecation(
-      "LICENSE_MANAGER_API_URL",
-      "WANDERER_LICENSE_MANAGER_URL",
-      System.get_env("LICENSE_MANAGER_API_URL")
-    )
-
-    log_deprecation(
-      "NOTIFIER_API_TOKEN",
-      "WANDERER_NOTIFIER_API_TOKEN",
-      System.get_env("NOTIFIER_API_TOKEN")
-    )
-
-    log_deprecation("MAP_URL", "WANDERER_MAP_URL", System.get_env("MAP_URL"))
-    log_deprecation("MAP_TOKEN", "WANDERER_MAP_TOKEN", System.get_env("MAP_TOKEN"))
-
-    # Log complete removal for websocket URL
-    if System.get_env("WANDERER_WEBSOCKET_URL") do
-      IO.puts([
-        :yellow,
-        :bright,
-        "[CONFIGURATION NOTICE] ",
-        :reset,
-        "Environment variable WANDERER_WEBSOCKET_URL is no longer used. ",
-        "The websocket URL is now fixed to wss://zkillboard.com/websocket/."
-      ])
-    end
-  end
-end
-
-# Add call to check environment variables at the end of the file
 EnvironmentHelper.check_env_vars()

@@ -18,7 +18,7 @@
   },
 
   // Add port forwarding configuration
-  "forwardPorts": [4000, 3001, 5432],
+  "forwardPorts": [5432],
 
   "remoteUser": "elixir",
   "updateRemoteUserUID": false,

@@ -30,7 +30,7 @@ defmodule WandererNotifier.Config.TimingsTest do
 
       # Check a sample value from each section
       assert config.cache.systems.ttl == Timings.systems_cache_ttl()
-      assert config.intervals.systems_update == Timings.systems_update_interval()
+      assert config.intervals.system_update == Timings.system_update_scheduler_interval()
       assert config.schedulers.activity_chart.interval == Timings.activity_chart_interval()
     end
   end
@@ -58,14 +58,14 @@ defmodule WandererNotifier.Config.TimingsTest do
   end
 
   describe "interval functions" do
-    test "systems_update_interval/0 returns the configured value or default" do
+    test "system_update_scheduler_interval/0 returns the configured value or default" do
       # Test with configured value
-      Application.put_env(:wanderer_notifier, :systems_update_interval, 60_000)
-      assert Timings.systems_update_interval() == 60_000
+      Application.put_env(:wanderer_notifier, :system_update_scheduler_interval, 60_000)
+      assert Timings.system_update_scheduler_interval() == 60_000
 
       # Test with default value
-      Application.delete_env(:wanderer_notifier, :systems_update_interval)
-      assert Timings.systems_update_interval() == 300_000
+      Application.delete_env(:wanderer_notifier, :system_update_scheduler_interval)
+      assert Timings.system_update_scheduler_interval() == 30_000
     end
 
     test "reconnect_delay/0 returns the configured value or default" do
@@ -104,7 +104,7 @@ defmodule WandererNotifier.Config.TimingsTest do
   describe "validation" do
     test "validate/0 returns :ok for valid configuration" do
       # Set valid test values
-      Application.put_env(:wanderer_notifier, :systems_update_interval, 60_000)
+      Application.put_env(:wanderer_notifier, :system_update_scheduler_interval, 60_000)
       Application.put_env(:wanderer_notifier, :systems_cache_ttl, 86_400)
       Application.put_env(:wanderer_notifier, :chart_service_hour, 12)
 
@@ -113,10 +113,10 @@ defmodule WandererNotifier.Config.TimingsTest do
 
     test "validate/0 returns error for invalid interval" do
       # Set invalid value
-      Application.put_env(:wanderer_notifier, :systems_update_interval, -1)
+      Application.put_env(:wanderer_notifier, :system_update_scheduler_interval, -1)
 
       assert {:error, errors} = Timings.validate()
-      assert Enum.any?(errors, &String.contains?(&1, "systems_update_interval"))
+      assert Enum.any?(errors, &String.contains?(&1, "system_update_scheduler_interval"))
     end
 
     test "validate/0 returns error for invalid TTL" do
