@@ -125,7 +125,7 @@ jobs:
           echo "Using SHA: ${SHORT_SHA}"
 
       - name: Build Docker image (for testing)
-        uses: docker/build-push-action@v5
+        uses: ./.github/actions/common-docker-build
         with:
           context: .
           push: false
