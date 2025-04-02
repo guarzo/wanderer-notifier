@@ -17,6 +17,7 @@ jobs:
       MIX_ENV: "test"
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
+      WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -128,6 +129,7 @@ jobs:
           tags: wanderer-notifier:pr-${{ steps.sha.outputs.short_sha }}
           build-args: |
             APP_VERSION=0.0.0-ci-test
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
 
       - name: Full Docker validation with web server
         env:
