@@ -18,18 +18,19 @@ jobs:
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          cache-key-prefix: mix-test
+          cache-paths: |
+            deps
+            _build
 
       - name: Common Elixir Setup for Test
         uses: ./.github/actions/common-elixir-setup
         with:
           elixir-version: "1.18"
           otp-version: "27"
-          cache-key-prefix: mix-test
-          cache-paths: |
-            deps
-            _build
 
       - name: Install dependencies
         run: |
