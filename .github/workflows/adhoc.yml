@@ -14,60 +14,28 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
         with:
-          ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 0 # required for getting commit history
-
-      - name: Set up build cache
-        uses: actions/cache@v3
-        with:
-          path: |
+          branch: ${{ github.event.inputs.branch }}
+          cache-key-prefix: mix
+          cache-paths: |
             deps
             _build
             priv/static
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-
 
       - name: Generate version information
         id: version
-        run: |
-          chmod +x ./scripts/version.sh
-
-          # Replace slashes in branch name with hyphens for Docker tag
-          SAFE_BRANCH=$(echo "${{ github.event.inputs.branch }}" | sed 's/\//-/g')
-
-          # Get short SHA for image tagging
-          SHORT_SHA=$(git rev-parse --short HEAD)
-
-          # Get current version (don't bump for ad-hoc builds)
-          CURRENT_VERSION=$(./scripts/version.sh get)
-          # Generate dev version with date/git info and branch name
-          FULL_VERSION="${CURRENT_VERSION}-${SAFE_BRANCH}+$(date +'%Y%m%d').${SHORT_SHA}"
-
-          # Store in environment for later steps
-          echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-          # Create Docker tag list
-          DOCKER_TAG_LIST="guarzo/wanderer-notifier:branch-${SAFE_BRANCH},guarzo/wanderer-notifier:branch-${SAFE_BRANCH}-$(date +'%Y%m%d')-${SHORT_SHA}"
-
-          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
-
-          echo "Current version: ${CURRENT_VERSION}"
-          echo "Full version: ${FULL_VERSION}"
-          echo "Docker tags: ${DOCKER_TAG_LIST}"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/common-versioning
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "renderer/package-lock.json"
+          mode: adhoc
+          branch: ${{ github.event.inputs.branch }}
+
+      - name: Common Node.js Setup
+        uses: ./.github/actions/common-node-setup
+        with:
+          node_version: "20"
+          cache_dependency_path: "renderer/package-lock.json"
 
       - name: Install frontend dependencies and build
         run: |
@@ -76,47 +44,34 @@ jobs:
           npm run build
           cd ..
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          buildkitd-flags: --debug
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: guarzo
-          password: ${{ secrets.DOCKERHUB_PAT }}
-
       - name: Build Docker image (SHA tagged)
-        uses: docker/build-push-action@v5
+        uses: ./.github/actions/common-docker-build
         with:
-          context: .
-          push: false
-          load: true
+          push: "false"
           tags: guarzo/wanderer-notifier:sha-${{ steps.version.outputs.short_sha }}
-          build-args: |
+          build_args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
-          cache-to: type=inline
+          cache_from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache_to: type=inline
+          docker_username: guarzo
+          docker_password: ${{ secrets.DOCKERHUB_PAT }}
 
       - name: Test Docker image
         run: |
           echo "Testing Docker image..."
-          # Run our enhanced tests with the basic flag for CI speed
-          # But ensure configuration path testing is included
           ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --basic --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
-
           echo "Docker image test passed successfully!"
 
       - name: Push Docker image with branch tags
-        uses: docker/build-push-action@v5
+        uses: ./.github/actions/common-docker-build
         with:
-          context: .
-          push: true
+          push: "true"
           tags: ${{ steps.version.outputs.docker_tags }}
-          build-args: |
+          build_args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
-          cache-to: type=inline
+          cache_from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache_to: type=inline
+          docker_username: guarzo
+          docker_password: ${{ secrets.DOCKERHUB_PAT }}

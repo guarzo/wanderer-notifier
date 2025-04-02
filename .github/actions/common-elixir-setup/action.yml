@@ -1,0 +1,47 @@
+name: "Common Elixir Setup"
+description: "Checkout code, set up Elixir, and restore dependencies cache for Elixir projects"
+inputs:
+  branch:
+    description: "Branch to checkout"
+    required: false
+    default: "main"
+  fetch-depth:
+    description: "Git fetch depth"
+    required: false
+    default: "0"
+  elixir-version:
+    description: "Elixir version"
+    required: true
+  otp-version:
+    description: "OTP version"
+    required: true
+  cache-key-prefix:
+    description: "Cache key prefix (e.g., mix-test, mix-lint)"
+    required: true
+  cache-paths:
+    description: "Cache paths (newline separated)"
+    required: false
+    default: |
+      deps
+      _build
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.branch }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: ${{ inputs.elixir-version }}
+        otp-version: ${{ inputs.otp-version }}
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ runner.os }}-${{ inputs.cache-key-prefix }}-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ inputs.cache-key-prefix }}-
+          ${{ runner.os }}-mix-

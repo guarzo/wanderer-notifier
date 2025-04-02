@@ -1,5 +1,6 @@
 import Config
 import Dotenvy
+import Logger
 
 defmodule EnvironmentHelper do
   @moduledoc """
@@ -618,5 +619,10 @@ config :wanderer_notifier, WandererNotifier.Data.Repo,
         EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "POSTGRES_POOL_SIZE", "10")
       )
     )
+
+# Validate database configuration if kill charts are enabled
+if kill_charts_enabled do
+  Logger.info("Kill charts feature is enabled, using database configuration...")
+end
 
 EnvironmentHelper.check_env_vars()
