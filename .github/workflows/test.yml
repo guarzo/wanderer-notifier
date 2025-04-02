@@ -57,18 +57,22 @@ jobs:
     env:
       MIX_ENV: "dev"
     steps:
-      - name: Checkout repository
+      - name: Initial checkout
         uses: actions/checkout@v3
 
-      - name: Common Elixir Setup for Lint
-        uses: ./.github/actions/common-elixir-setup
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
           cache-key-prefix: mix-lint
           cache-paths: |
             deps
             _build
+
+      - name: Common Elixir Setup for Test
+        uses: ./.github/actions/common-elixir-setup
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
 
       - name: Install dependencies
         run: |

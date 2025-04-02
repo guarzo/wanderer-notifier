@@ -14,6 +14,9 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
+      - name: Initial checkout
+        uses: actions/checkout@v3
+
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
         with:
