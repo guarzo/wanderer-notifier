@@ -17,15 +17,9 @@ defmodule EnvironmentHelper do
   def log_deprecation(_old_var, _new_var, _value), do: :ok
 
   def check_env_vars do
-    # Check if WANDERER_NOTIFIER_API_TOKEN is set
+    # Check API token exists
     if is_nil(System.get_env("WANDERER_NOTIFIER_API_TOKEN")) do
-      IO.puts(
-        IO.ANSI.yellow() <>
-          IO.ANSI.bright() <>
-          "[CONFIGURATION WARNING] " <>
-          IO.ANSI.reset() <>
-          "WANDERER_NOTIFIER_API_TOKEN is not set. This may affect the application's functionality."
-      )
+      raise "WANDERER_NOTIFIER_API_TOKEN must be provided via environment variable"
     end
 
     # Log deprecation warnings for legacy variables
@@ -224,26 +218,14 @@ end
 # Handle license manager URL differently for production vs development
 license_manager_url = get_license_manager_url.(runtime_env)
 
-# Get API token with fallback sequence - only for non-prod environments
-api_token_value =
-  if runtime_env == :prod do
-    # In production, don't use environment variables for security
-    # This will use the baked-in value from release configuration
-    nil
-  else
-    # In development/test, allow environment variable configuration
-    System.get_env("WANDERER_NOTIFIER_API_TOKEN") ||
-      System.get_env("NOTIFIER_API_TOKEN")
-  end
+# Get the API token value from environment
+api_token_value = System.get_env("WANDERER_NOTIFIER_API_TOKEN")
 
-# Configure the API token
+# Configure the API token - use a single configuration key
 config :wanderer_notifier,
   license_key: license_key,
   notifier_api_token: api_token_value,
   license_manager_api_url: license_manager_url
-
-# Set the API token configuration
-config :wanderer_notifier, api_token: api_token_value
 
 # Log a warning if using legacy API token name in non-prod environments
 if runtime_env != :prod do

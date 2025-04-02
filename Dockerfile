@@ -28,9 +28,7 @@ RUN mix local.hex --force && \
 
 # Only copy dependency files
 COPY mix.exs mix.lock ./
-
-# Extract version
-RUN grep 'version:' mix.exs | sed -E 's/.*version: "([^"]+)".*/\1/' > /app/version
+COPY VERSION /app/version
 
 # Get dependencies
 RUN mix deps.get --only prod && \
@@ -41,13 +39,6 @@ RUN mix deps.get --only prod && \
 # ----------------------------------------
 FROM deps AS builder
 
-# Set version from deps stage
-COPY --from=deps /app/version /app/version
-ARG VERSION
-ENV VERSION=${VERSION}
-RUN VERSION=$(cat /app/version) && \
-    echo "Building version: ${VERSION}"
-
 # Add build argument for API token
 ARG WANDERER_NOTIFIER_API_TOKEN
 ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
@@ -57,16 +48,17 @@ COPY config config/
 COPY lib lib/
 COPY priv priv/
 
-# Copy frontend files
-COPY renderer renderer/
-COPY chart-service chart-service/
-
 # Create the overlays directory and copy required files
 RUN mkdir -p rel/overlays
+
 COPY rel/overlays/env.bat rel/overlays/
 COPY rel/overlays/env.sh rel/overlays/
 COPY rel/overlays/sys.config rel/overlays/
 COPY rel/overlays/wanderer_notifier.service rel/overlays/
+
+# Copy frontend files
+COPY renderer renderer/
+COPY chart-service chart-service/
 
 # Build frontend assets if they haven't been built
 RUN if [ -d renderer ] && [ -f renderer/package.json ]; then \
@@ -81,9 +73,6 @@ RUN if [ -d renderer ] && [ -f renderer/package.json ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Create a release config file with the API token
-RUN echo "import Config\n\n# API token configuration\nconfig :wanderer_notifier,\n  api_token: \"${WANDERER_NOTIFIER_API_TOKEN}\"" > config/release.exs
-
 # Compile and build release
 RUN mix compile --warnings-as-errors && \
     mix release --overwrite
@@ -93,9 +82,14 @@ RUN mix compile --warnings-as-errors && \
 # ----------------------------------------
 FROM elixir:1.18-otp-27-slim AS runtime
 
+# Get the API token from build arg
+ARG WANDERER_NOTIFIER_API_TOKEN
+
 # Set runtime environment variables
 ENV LANG=C.UTF-8 \
-    HOME=/app
+    HOME=/app \
+    MIX_ENV=prod \
+    WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
 
 # Install runtime dependencies (minimal set) using BuildKit caching
 RUN --mount=type=cache,target=/var/lib/apt/lists \
@@ -113,9 +107,6 @@ WORKDIR /app
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
     chmod -R 777 /app/data
-
-# Create a minimal config file
-RUN echo "import Config" > /app/etc/wanderer_notifier.exs
 
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
