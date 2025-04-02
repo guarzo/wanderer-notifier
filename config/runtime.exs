@@ -228,11 +228,13 @@ config :wanderer_notifier,
   license_manager_api_url: license_manager_url
 
 # Log a warning if using legacy API token name in non-prod environments
-if runtime_env != :prod do
+old_token = System.get_env("NOTIFIER_API_TOKEN")
+
+if runtime_env != :prod && old_token != nil do
   EnvironmentHelper.log_deprecation(
     "NOTIFIER_API_TOKEN",
     "WANDERER_NOTIFIER_API_TOKEN",
-    System.get_env("NOTIFIER_API_TOKEN")
+    old_token
   )
 end
 

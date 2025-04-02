@@ -59,10 +59,7 @@ defmodule WandererNotifier.MixProject do
         applications: [runtime_tools: :permanent],
         steps: [:assemble, :tar],
         validate_compile_env: false,
-        overlays: ["rel/overlays"],
-        config_providers: [
-          {Config.Reader, "/app/etc/wanderer_notifier.exs"}
-        ]
+        overlays: ["rel/overlays"]
       ]
     ]
   end
