@@ -29,6 +29,9 @@ RUN mix local.hex --force && \
 # Only copy dependency files
 COPY mix.exs mix.lock ./
 
+# Extract version
+RUN grep 'version:' mix.exs | sed -E 's/.*version: "([^"]+)".*/\1/' > /app/version
+
 # Get dependencies
 RUN mix deps.get --only prod && \
     mix deps.compile
@@ -38,9 +41,16 @@ RUN mix deps.get --only prod && \
 # ----------------------------------------
 FROM deps AS builder
 
-# Declare build argument for version
-ARG APP_VERSION
-ENV APP_VERSION=${APP_VERSION}
+# Set version from deps stage
+COPY --from=deps /app/version /app/version
+ARG VERSION
+ENV VERSION=${VERSION}
+RUN VERSION=$(cat /app/version) && \
+    echo "Building version: ${VERSION}"
+
+# Add build argument for API token
+ARG WANDERER_NOTIFIER_API_TOKEN
+ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
 
 # Copy application code - core content first
 COPY config config/
@@ -58,54 +68,30 @@ COPY rel/overlays/env.sh rel/overlays/
 COPY rel/overlays/sys.config rel/overlays/
 COPY rel/overlays/wanderer_notifier.service rel/overlays/
 
-# Debug: Verify overlays directory
-RUN ls -la rel/overlays/
-
 # Build frontend assets if they haven't been built
 RUN if [ -d renderer ] && [ -f renderer/package.json ]; then \
     apt-get update && \
     apt-get install -y nodejs npm && \
     cd renderer && \
-    echo "Building frontend assets..." && \
     npm ci && \
-    echo "Running Vite build..." && \
     npm run build && \
-    echo "Checking dist directory contents:" && \
-    ls -la dist/ && \
-    echo "Running postbuild script..." && \
     npm run postbuild && \
     cd .. && \
-    echo "Verifying static files in priv/static/app:" && \
-    ls -la priv/static/app/ && \
-    if [ ! -f priv/static/app/index.html ]; then \
-        echo "Error: index.html not found after build" && exit 1; \
-    fi && \
-    echo "Static files successfully built and copied" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Ensure static files are properly copied in the release
-RUN mkdir -p /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app && \
-    cp -r priv/static/app/* /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app/ && \
-    echo "Verifying files in release directory:" && \
-    ls -la /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app/
+# Create a release config file with the API token
+RUN echo "import Config\n\n# API token configuration\nconfig :wanderer_notifier,\n  api_token: \"${WANDERER_NOTIFIER_API_TOKEN}\"" > config/release.exs
 
 # Compile and build release
 RUN mix compile --warnings-as-errors && \
     mix release --overwrite
 
-# Debug: Show release version (optional)
-RUN find _build/prod/rel/wanderer_notifier/lib -name "wanderer_notifier-*.ez" | head -n1 | sed 's/.*wanderer_notifier-\(.*\)\.ez/\1/' > /tmp/app_version.txt && \
-    echo "Application version: $(cat /tmp/app_version.txt)"
-
 # ----------------------------------------
 # 3. RUNTIME STAGE - Minimal image for running the application
 # ----------------------------------------
 FROM elixir:1.18-otp-27-slim AS runtime
-
-# Accept the build argument for version in the runtime stage
-ARG APP_VERSION
 
 # Set runtime environment variables
 ENV LANG=C.UTF-8 \
@@ -134,12 +120,14 @@ RUN echo "import Config" > /app/etc/wanderer_notifier.exs
 # Copy the release from the builder
 COPY --from=builder /app/_build/prod/rel/wanderer_notifier ./
 
-# Use the build argument directly instead of a file-based substitution
-RUN mkdir -p /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app
-COPY --from=builder /app/priv/static/app /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app
+# Create static directory and copy static files
+RUN mkdir -p /app/priv/static/app
+COPY --from=builder /app/priv/static/app /app/priv/static/app/
 
-# Debug: Verify files in runtime stage
-RUN ls -la /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app || true
+# Set permissions and verify
+RUN chmod -R 755 /app/priv/static/app && \
+    echo "Verifying static files:" && \
+    ls -la /app/priv/static/app/
 
 # Copy only necessary runtime scripts
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
@@ -164,9 +152,6 @@ fi\n\
 exec "$@"' > /app/bin/validate_and_start.sh && \
 chmod +x /app/bin/validate_and_start.sh
 
-# Add version file
-RUN if [ -n "$APP_VERSION" ]; then echo "$APP_VERSION" > /app/VERSION; fi
-
 # Expose port
 EXPOSE 4000
 
@@ -177,9 +162,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Set entrypoint to use the validation wrapper
 ENTRYPOINT ["/app/bin/validate_and_start.sh"]
 CMD ["/app/bin/start_with_db.sh"]
-
-# In the runtime stage, update the copy command to ensure proper permissions
-COPY --from=builder /app/priv/static/app /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app/
-RUN chmod -R 755 /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app && \
-    echo "Verifying runtime static files:" && \
-    ls -la /app/lib/wanderer_notifier-${APP_VERSION}/priv/static/app/

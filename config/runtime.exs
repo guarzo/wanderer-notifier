@@ -1,6 +1,75 @@
 import Config
 import Dotenvy
 
+# Add a helper function to log deprecation warnings
+defmodule EnvironmentHelper do
+  def log_deprecation(old_var, new_var, value) when not is_nil(value) do
+    IO.puts(
+      IO.ANSI.yellow() <>
+        IO.ANSI.bright() <>
+        "[DEPRECATION WARNING] " <>
+        IO.ANSI.reset() <>
+        "Environment variable #{old_var} is deprecated and will be removed in a future release. " <>
+        "Please use #{new_var} instead."
+    )
+  end
+
+  def log_deprecation(_old_var, _new_var, _value), do: :ok
+
+  def check_env_vars do
+    # Log deprecation warnings for legacy variables
+    EnvironmentHelper.log_deprecation(
+      "APP_VERSION",
+      "compile-time version from mix.exs",
+      System.get_env("APP_VERSION")
+    )
+
+    EnvironmentHelper.log_deprecation(
+      "NOTIFIER_API_TOKEN",
+      "WANDERER_NOTIFIER_API_TOKEN",
+      System.get_env("NOTIFIER_API_TOKEN")
+    )
+
+    EnvironmentHelper.log_deprecation(
+      "ENABLE_TRACK_KSPACE_SYSTEMS",
+      "WANDERER_FEATURE_TRACK_KSPACE",
+      System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
+    )
+
+    EnvironmentHelper.log_deprecation(
+      "ENABLE_KILL_CHARTS",
+      "WANDERER_FEATURE_KILL_CHARTS",
+      System.get_env("ENABLE_KILL_CHARTS")
+    )
+
+    EnvironmentHelper.log_deprecation(
+      "ENABLE_MAP_CHARTS",
+      "WANDERER_FEATURE_MAP_CHARTS",
+      System.get_env("ENABLE_MAP_CHARTS")
+    )
+
+    EnvironmentHelper.log_deprecation("MAP_URL", "WANDERER_MAP_URL", System.get_env("MAP_URL"))
+
+    EnvironmentHelper.log_deprecation(
+      "MAP_TOKEN",
+      "WANDERER_MAP_TOKEN",
+      System.get_env("MAP_TOKEN")
+    )
+
+    # Log complete removal for websocket URL
+    if System.get_env("WANDERER_WEBSOCKET_URL") do
+      IO.puts([
+        :yellow,
+        :bright,
+        "[CONFIGURATION NOTICE] ",
+        :reset,
+        "Environment variable WANDERER_WEBSOCKET_URL is no longer used. ",
+        "The websocket URL is now fixed to wss://zkillboard.com/websocket/."
+      ])
+    end
+  end
+end
+
 env_dir_prefix = Path.expand("..", __DIR__)
 
 # Load environment variables from files and system env
@@ -138,18 +207,35 @@ end
 # Handle license manager URL differently for production vs development
 license_manager_url = get_license_manager_url.(runtime_env)
 
-# Get API token with fallback sequence
+# Get API token with fallback sequence - only for non-prod environments
 api_token_value =
-  System.get_env("WANDERER_NOTIFIER_API_TOKEN") ||
-    System.get_env("NOTIFIER_API_TOKEN")
+  if runtime_env == :prod do
+    # In production, don't use environment variables for security
+    # This will use the baked-in value from release configuration
+    nil
+  else
+    # In development/test, allow environment variable configuration
+    System.get_env("WANDERER_NOTIFIER_API_TOKEN") ||
+      System.get_env("NOTIFIER_API_TOKEN")
+  end
 
+# Configure the API token
 config :wanderer_notifier,
   license_key: license_key,
   notifier_api_token: api_token_value,
   license_manager_api_url: license_manager_url
 
-# In both development and production, set the API token
+# Set the API token configuration
 config :wanderer_notifier, api_token: api_token_value
+
+# Log a warning if using legacy API token name in non-prod environments
+if runtime_env != :prod do
+  EnvironmentHelper.log_deprecation(
+    "NOTIFIER_API_TOKEN",
+    "WANDERER_NOTIFIER_API_TOKEN",
+    System.get_env("NOTIFIER_API_TOKEN")
+  )
+end
 
 # Feature flag configuration
 
@@ -227,11 +313,10 @@ features_map = %{
     get_env.("WANDERER_TRACKED_SYSTEMS_NOTIFICATIONS_ENABLED", "true") == "true",
   tracked_characters_notifications_enabled:
     get_env.("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED", "true") == "true",
-  activity_charts: get_env.("FEATURE_ACTIVITY_CHARTS", "true") == "true",
   # Use the same value we configured above
-  kill_charts: kill_charts_enabled,
+  kill_charts: get_env.("WANDERER_FEATURE_KILL_CHARTS", "false") == "true",
   # Use the same value we configured above
-  map_charts: map_charts_enabled,
+  map_charts: get_env.("WANDERER_FEATURE_MAP_CHARTS", "false") == "true",
   track_kspace_systems: track_kspace_enabled
 }
 
@@ -258,12 +343,15 @@ parse_integer_env_var = fn
 end
 
 # Parse the web port value with safer error handling
-web_port_value = if runtime_env == :prod do
-  4000  # Fixed port for production
-else
-  web_port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-  parse_integer_env_var.(web_port_str, 4000)
-end
+web_port_value =
+  if runtime_env == :prod do
+    # Fixed port for production
+    4000
+  else
+    web_port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
+    parse_integer_env_var.(web_port_str, 4000)
+  end
+
 config :wanderer_notifier, web_port: web_port_value
 
 # Configure cache directory
@@ -279,12 +367,15 @@ config :wanderer_notifier,
 config :wanderer_notifier, :host, get_env.("WANDERER_HOST", get_env.("HOST", "localhost"))
 
 # Parse port with safer error handling
-port_value = if runtime_env == :prod do
-  4000  # Fixed port for production
-else
-  port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
-  parse_integer_env_var.(port_str, 4000)
-end
+port_value =
+  if runtime_env == :prod do
+    # Fixed port for production
+    4000
+  else
+    port_str = get_env.("WANDERER_PORT", get_env.("PORT", "4000"))
+    parse_integer_env_var.(port_str, 4000)
+  end
+
 config :wanderer_notifier, :port, port_value
 
 config :wanderer_notifier, :scheme, get_env.("WANDERER_SCHEME", get_env.("SCHEME", "http"))
@@ -311,64 +402,6 @@ config :wanderer_notifier, WandererNotifier.Data.Repo,
   port: String.to_integer(get_env.("WANDERER_DB_PORT", get_env.("POSTGRES_PORT", "5432"))),
   pool_size:
     String.to_integer(get_env.("WANDERER_DB_POOL_SIZE", get_env.("POSTGRES_POOL_SIZE", "10")))
-
-# Add a helper function to log deprecation warnings
-defmodule EnvironmentHelper do
-  def log_deprecation(old_var, new_var, value) when not is_nil(value) do
-    IO.puts(
-      IO.ANSI.yellow() <>
-        IO.ANSI.bright() <>
-        "[DEPRECATION WARNING] " <>
-        IO.ANSI.reset() <>
-        "Environment variable #{old_var} is deprecated and will be removed in a future release. " <>
-        "Please use #{new_var} instead."
-    )
-  end
-
-  def log_deprecation(_old_var, _new_var, _value), do: :ok
-
-  def check_env_vars do
-    # Log deprecation warnings for legacy variables
-    log_deprecation(
-      "APP_VERSION",
-      "compile-time version from mix.exs",
-      System.get_env("APP_VERSION")
-    )
-
-    log_deprecation(
-      "ENABLE_TRACK_KSPACE_SYSTEMS",
-      "WANDERER_FEATURE_TRACK_KSPACE",
-      System.get_env("ENABLE_TRACK_KSPACE_SYSTEMS")
-    )
-
-    log_deprecation(
-      "LICENSE_MANAGER_API_URL",
-      "WANDERER_LICENSE_MANAGER_URL",
-      System.get_env("LICENSE_MANAGER_API_URL")
-    )
-
-    log_deprecation(
-      "NOTIFIER_API_TOKEN",
-      "WANDERER_NOTIFIER_API_TOKEN",
-      System.get_env("NOTIFIER_API_TOKEN")
-    )
-
-    log_deprecation("MAP_URL", "WANDERER_MAP_URL", System.get_env("MAP_URL"))
-    log_deprecation("MAP_TOKEN", "WANDERER_MAP_TOKEN", System.get_env("MAP_TOKEN"))
-
-    # Log complete removal for websocket URL
-    if System.get_env("WANDERER_WEBSOCKET_URL") do
-      IO.puts([
-        :yellow,
-        :bright,
-        "[CONFIGURATION NOTICE] ",
-        :reset,
-        "Environment variable WANDERER_WEBSOCKET_URL is no longer used. ",
-        "The websocket URL is now fixed to wss://zkillboard.com/websocket/."
-      ])
-    end
-  end
-end
 
 # Add call to check environment variables at the end of the file
 EnvironmentHelper.check_env_vars()

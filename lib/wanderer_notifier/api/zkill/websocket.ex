@@ -102,7 +102,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   def handle_connect(_conn, state) do
     AppLogger.websocket_info("Connected to zKill websocket")
     now = DateTime.utc_now()
-    
+
     # Set startup time if not already set
     startup_time = state.startup_time || System.os_time(:second)
     new_state = %{state | connected: true, startup_time: startup_time}
@@ -231,12 +231,12 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   defp process_text_frame(raw_msg, state) do
     # Update timestamp of last received message for monitoring
     now = DateTime.utc_now()
-    
+
     # Always update status when processing a message
     try do
       # Get current stats to preserve existing values
       current_stats = Stats.get_stats()
-      
+
       Stats.update_websocket(%{
         connected: true,
         connecting: false,
@@ -247,7 +247,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       })
     rescue
       e ->
-        AppLogger.websocket_error("Failed to update websocket status", 
+        AppLogger.websocket_error("Failed to update websocket status",
           error: inspect(e),
           stacktrace: __STACKTRACE__
         )
@@ -257,7 +257,8 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       {:ok, json_data} ->
         # Log the type of message (debug level to avoid excessive logging)
         message_type = classify_message_type(json_data)
-        AppLogger.websocket_debug("Processed message", 
+
+        AppLogger.websocket_debug("Processed message",
           type: message_type,
           connected: state.connected,
           reconnects: state.reconnects

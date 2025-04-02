@@ -114,13 +114,13 @@ defmodule WandererNotifier.Core.Stats do
     # Convert any DateTime fields to ensure proper comparison
     normalized_status = normalize_datetime_fields(status)
     updated_websocket = Map.merge(state.websocket, normalized_status)
-    
+
     # Log the update for debugging
-    AppLogger.websocket_debug("Updated websocket status", 
+    AppLogger.websocket_debug("Updated websocket status",
       old_status: state.websocket,
       new_status: updated_websocket
     )
-    
+
     {:noreply, %{state | websocket: updated_websocket}}
   end
 
@@ -135,10 +135,11 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_call(:get_stats, _from, state) do
-    uptime_seconds = case state.websocket.startup_time do
-      nil -> 0
-      startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
-    end
+    uptime_seconds =
+      case state.websocket.startup_time do
+        nil -> 0
+        startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
+      end
 
     stats = %{
       uptime: format_uptime(uptime_seconds),
@@ -182,11 +183,17 @@ defmodule WandererNotifier.Core.Stats do
   defp normalize_datetime_fields(status) do
     status
     |> Enum.map(fn
-      {key, %DateTime{} = dt} -> {key, dt}
-      {key, nil} -> {key, nil}
+      {key, %DateTime{} = dt} ->
+        {key, dt}
+
+      {key, nil} ->
+        {key, nil}
+
       {key, val} when is_integer(val) and key in [:startup_time] ->
         {key, DateTime.from_unix!(val)}
-      {key, val} -> {key, val}
+
+      {key, val} ->
+        {key, val}
     end)
     |> Map.new()
   end
