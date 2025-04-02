@@ -1,6 +1,10 @@
 name: "Common Checkout and Cache"
 description: "Restore dependencies cache"
 inputs:
+  branch:
+    description: "Branch to checkout"
+    required: false
+    default: "main"
   cache-key-prefix:
     description: "Cache key prefix (e.g., mix)"
     required: true

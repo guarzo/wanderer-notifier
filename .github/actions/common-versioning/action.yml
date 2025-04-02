@@ -10,6 +10,19 @@ inputs:
   version_type:
     description: "Version increment type (required for release mode)"
     required: false
+outputs:
+  short_sha:
+    description: "Short SHA of the current commit"
+  version:
+    description: "Version number (for release and adhoc modes)"
+  full_version:
+    description: "Full version string including build metadata"
+  dev_version:
+    description: "Development version string (for automatic mode)"
+  safe_branch:
+    description: "Sanitized branch name (for adhoc mode)"
+  docker_tags:
+    description: "Comma-separated list of Docker tags to apply"
 runs:
   using: "composite"
   steps:
