@@ -8,7 +8,6 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   @behaviour WandererNotifier.ChartService.KillmailChartAdapterBehaviour
 
-  require Logger
   require Ash.Query
   alias Ash.Query
 

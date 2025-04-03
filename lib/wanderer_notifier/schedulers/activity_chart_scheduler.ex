@@ -15,7 +15,7 @@ defmodule WandererNotifier.Schedulers.ActivityChartScheduler do
 
   @impl true
   def enabled? do
-    Features.activity_charts_enabled?()
+    Features.map_charts_enabled?()
   end
 
   @impl true

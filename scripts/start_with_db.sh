@@ -100,39 +100,58 @@ validate_env() {
   # Ensure critical variables are set
   local missing=false
   
-  if [ -z "${WANDERER_DISCORD_BOT_TOKEN:-${DISCORD_BOT_TOKEN:-}}" ]; then
+  # Check Discord bot token
+  local discord_token="${WANDERER_DISCORD_BOT_TOKEN:-${DISCORD_BOT_TOKEN:-}}"
+  if [ -z "$discord_token" ]; then
     log_message "error" "Discord bot token is required but not set"
     missing=true
   fi
   
-  if [ -z "${WANDERER_DISCORD_CHANNEL_ID:-${DISCORD_CHANNEL_ID:-}}" ]; then
+  # Check Discord channel ID
+  local channel_id="${WANDERER_DISCORD_CHANNEL_ID:-${DISCORD_CHANNEL_ID:-}}"
+  if [ -z "$channel_id" ]; then
     log_message "error" "Discord channel ID is required but not set"
     missing=true
   fi
   
-  if [ -z "${WANDERER_LICENSE_KEY:-${LICENSE_KEY:-}}" ]; then
+  # Check License key
+  local license_key="${WANDERER_LICENSE_KEY:-${LICENSE_KEY:-}}"
+  if [ -z "$license_key" ]; then
     log_message "error" "License key is required but not set"
     missing=true
   fi
   
-  if [ -z "${WANDERER_MAP_URL:-${MAP_URL_WITH_NAME:-}}" ]; then
+  # Check Map URL
+  local map_url="${WANDERER_MAP_URL:-${MAP_URL_WITH_NAME:-}}"
+  if [ -z "$map_url" ]; then
     log_message "error" "Map URL is required but not set"
     missing=true
   fi
   
-  if [ -z "${WANDERER_MAP_TOKEN:-${MAP_TOKEN:-}}" ]; then
+  # Check Map token
+  local map_token="${WANDERER_MAP_TOKEN:-${MAP_TOKEN:-}}"
+  if [ -z "$map_token" ]; then
     log_message "error" "Map token is required but not set"
     missing=true
   fi
   
   # Check if kill charts are enabled but database details are missing
-  if [ "${WANDERER_FEATURE_KILL_CHARTS:-${ENABLE_KILL_CHARTS:-false}}" = "true" ]; then
+  local kill_charts_enabled="${WANDERER_FEATURE_KILL_CHARTS:-${ENABLE_KILL_CHARTS:-false}}"
+  if [ "$kill_charts_enabled" = "true" ]; then
     log_message "info" "Kill charts feature is enabled, validating database configuration..."
     
-    if [ -z "${WANDERER_DB_HOST:-${POSTGRES_HOST:-}}" ]; then
-      log_message "error" "Kill charts are enabled but database host is not set"
-      missing=true
-    fi
+    # All database variables have defaults in runtime.exs, so we don't need to validate them
+    # Just log the configuration that will be used
+    local db_host="${WANDERER_DB_HOST:-${POSTGRES_HOST:-postgres}}"
+    local db_port="${WANDERER_DB_PORT:-${POSTGRES_PORT:-5432}}"
+    local db_user="${WANDERER_DB_USER:-${POSTGRES_USER:-postgres}}"
+    local db_name="${WANDERER_DB_NAME:-${POSTGRES_DB:-wanderer_notifier}}"
+    
+    log_message "info" "Using database configuration:"
+    log_message "info" "  Host: $db_host"
+    log_message "info" "  Port: $db_port"
+    log_message "info" "  User: $db_user"
+    log_message "info" "  Database: $db_name"
   fi
   
   if [ "$missing" = "true" ]; then

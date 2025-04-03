@@ -40,7 +40,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
     else
       # Get activity data using new CharactersClient
       activity_data =
-        case CharactersClient.get_character_activity(nil, 7) do
+        case CharactersClient.get_character_activity(nil, 1) do
           {:ok, data} ->
             AppLogger.api_info("Retrieved activity data for chart generation")
             data
@@ -69,6 +69,13 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
         end
 
       case chart_result do
+        {:ok, image_data} when is_binary(image_data) ->
+          AppLogger.api_info("Generated chart")
+
+          conn
+          |> put_resp_content_type("image/png")
+          |> send_resp(200, image_data)
+
         {:ok, chart_url, title} ->
           AppLogger.api_info("Generated chart", title: title)
 
@@ -136,7 +143,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
     else
       # Get activity data using new CharactersClient
       activity_data =
-        case CharactersClient.get_character_activity(nil, 7) do
+        case CharactersClient.get_character_activity(nil, 1) do
           {:ok, data} ->
             AppLogger.api_info("Retrieved activity data for sending chart")
             data
@@ -150,7 +157,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
       result = send_chart_to_discord(chart_type, activity_data)
 
       case result do
-        {:ok, chart_url, title} ->
+        {:ok, %{title: title}} ->
           AppLogger.api_info("Sent chart to Discord", title: title)
 
           conn
@@ -160,7 +167,6 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
             Jason.encode!(%{
               status: "ok",
               message: "Chart sent to Discord",
-              chart_url: chart_url,
               title: title
             })
           )
@@ -200,7 +206,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
 
     # Get character activity data
     activity_data =
-      case CharactersClient.get_character_activity(nil, 7) do
+      case CharactersClient.get_character_activity(nil, 1) do
         {:ok, data} -> data
         _ -> nil
       end
@@ -255,7 +261,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
   # Fetches character activity data for display in the UI.
   # Responds with JSON containing the activity data.
   get "/character-activity" do
-    case CharactersClient.get_character_activity(nil, 7) do
+    case CharactersClient.get_character_activity(nil, 1) do
       {:ok, data} ->
         characters =
           cond do
@@ -379,7 +385,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
 
   # Fetch activity data from the API
   defp fetch_activity_data do
-    case CharactersClient.get_character_activity(nil, 7) do
+    case CharactersClient.get_character_activity(nil, 1) do
       {:ok, activity_data} ->
         {:ok, activity_data}
 
@@ -394,13 +400,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
 
   # Handle chart generation and sending based on chart type
   defp generate_and_send_chart(:activity_summary, activity_data, channel_id) do
-    ActivityChartAdapter.send_chart_to_discord(
-      activity_data,
-      "Character Activity Summary",
-      "activity_summary",
-      "Top characters by connections, passages, and signatures in the last 24 hours.\nData is refreshed daily.",
-      channel_id
-    )
+    ActivityChartAdapter.generate_and_send_activity_chart(activity_data, channel_id)
   end
 
   defp generate_and_send_chart(:activity_timeline, _activity_data, _channel_id) do

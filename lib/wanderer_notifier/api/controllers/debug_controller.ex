@@ -116,6 +116,41 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
     })
   end
 
+  # Execute a specific scheduler
+  post "/schedulers/:name/execute" do
+    scheduler_name = conn.params["name"]
+
+    # Find the scheduler module
+    scheduler_module =
+      WandererNotifier.Schedulers.Registry.get_all_schedulers()
+      |> Enum.find(fn %{module: module} ->
+        module
+        |> to_string()
+        |> String.split(".")
+        |> List.last()
+        |> String.replace("Scheduler", "") == scheduler_name
+      end)
+
+    case scheduler_module do
+      %{module: module, enabled: true} ->
+        # Execute the scheduler
+        module.execute_now()
+        send_success_response(conn, %{message: "Scheduler execution triggered"})
+
+      %{enabled: false} ->
+        send_error_response(conn, 400, "Scheduler is disabled")
+
+      nil ->
+        send_error_response(conn, 404, "Scheduler not found")
+    end
+  end
+
+  # Execute all schedulers
+  post "/schedulers/execute" do
+    WandererNotifier.Schedulers.Registry.execute_all()
+    send_success_response(conn, %{message: "All schedulers execution triggered"})
+  end
+
   match _ do
     send_error_response(conn, 404, "Not found")
   end

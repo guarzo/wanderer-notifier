@@ -15,7 +15,7 @@ import { FaChartBar, FaHome, FaSkullCrossbones, FaCalendarAlt } from "react-icon
 const queryClient = new QueryClient();
 
 function App() {
-  const [activityChartsEnabled, setActivityChartsEnabled] = useState(false);
+  const [mapChartsEnabled, setMapChartsEnabled] = useState(false);
   const [killChartsEnabled, setKillChartsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -25,13 +25,13 @@ function App() {
       .then(response => response.json())
       .then(response => {
         const features = response.data.features;
-        setActivityChartsEnabled(features.activity_charts);
+        setMapChartsEnabled(features.map_charts);
         setKillChartsEnabled(features.kill_charts);
         setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching status:', error);
-        setActivityChartsEnabled(false);
+        setMapChartsEnabled(false);
         setKillChartsEnabled(false);
         setLoading(false);
       });
@@ -43,8 +43,8 @@ function App() {
     </div>;
   }
 
-  // Determine whether to show charts link (if either activity charts or kill charts is enabled)
-  const showChartsLink = activityChartsEnabled || killChartsEnabled;
+  // Determine whether to show charts link (if either map charts or kill charts is enabled)
+  const showChartsLink = mapChartsEnabled || killChartsEnabled;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -63,10 +63,10 @@ function App() {
                     <FaHome />
                     <span>Home</span>
                   </Link>
-                  {activityChartsEnabled && (
+                  {mapChartsEnabled && (
                     <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                       <FaChartBar />
-                      <span>Activity Charts</span>
+                      <span>Map Charts</span>
                     </Link>
                   )}
                   {killChartsEnabled && (
@@ -85,10 +85,10 @@ function App() {
             
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              {/* Only render charts route if activity charts is enabled */}
+              {/* Only render charts route if map charts is enabled */}
               <Route 
                 path="/charts" 
-                element={activityChartsEnabled ? <ChartsDashboard /> : <Navigate to="/" replace />} 
+                element={mapChartsEnabled ? <ChartsDashboard /> : <Navigate to="/" replace />} 
               />
               {/* Kill comparison route */}
               <Route 

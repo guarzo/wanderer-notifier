@@ -203,14 +203,6 @@ defmodule WandererNotifier.Config.Features do
   #
 
   @doc """
-  Checks if activity charts are enabled.
-  """
-  @spec activity_charts_enabled?() :: boolean()
-  def activity_charts_enabled? do
-    get_feature(:activity_charts, false)
-  end
-
-  @doc """
   Checks if kill charts are enabled.
   """
   @spec kill_charts_enabled?() :: boolean()
@@ -270,9 +262,8 @@ defmodule WandererNotifier.Config.Features do
   @spec get_feature_status() :: map()
   def get_feature_status do
     %{
-      activity_charts: activity_charts_enabled?(),
-      kill_charts: kill_charts_enabled?(),
       map_charts: map_charts_enabled?(),
+      kill_charts: kill_charts_enabled?(),
       character_notifications_enabled: character_notifications_enabled?(),
       system_notifications_enabled: system_notifications_enabled?(),
       character_tracking_enabled: character_tracking_enabled?(),

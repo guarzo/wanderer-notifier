@@ -10,11 +10,22 @@ function ActivityChartCard({ title, description, chartType }) {
   const [debugInfo, setDebugInfo] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Cleanup function for blob URLs
+  const cleanupBlobUrl = (url) => {
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const generateChart = (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setDebugInfo(null);
     
+    // Cleanup previous blob URL if it exists
+    cleanupBlobUrl(chartUrl);
+    
+    // Only add timestamp when explicitly forcing a refresh
     const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
     console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
     
@@ -24,12 +35,29 @@ function ActivityChartCard({ title, description, chartType }) {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        return response.json();
+        
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('image/png')) {
+          // Handle binary image data
+          return response.blob().then(blob => {
+            const imageUrl = URL.createObjectURL(blob);
+            return { status: 'ok', chart_url: imageUrl };
+          });
+        } else {
+          // Handle JSON response
+          return response.json();
+        }
       })
       .then(data => {
         console.log('Chart data received:', data);
-        if (data.status === 'ok' && data.chart_url) {
-          const urlWithCache = `${data.chart_url}${data.chart_url.includes('?') ? '&' : '?'}cache=${Date.now()}`;
+        if (data.status === 'ok') {
+          const chartUrl = data.chart_url;
+          // Only add cache buster if it's not a blob URL and we're forcing a refresh
+          const urlWithCache = chartUrl.includes('blob:') ? 
+            chartUrl : 
+            forceRefresh ? 
+              `${chartUrl}${chartUrl.includes('?') ? '&' : '?'}cache=${Date.now()}` :
+              chartUrl;
           setChartUrl(urlWithCache);
           console.log('Chart URL set to:', urlWithCache);
           setRetryCount(0);
@@ -56,7 +84,10 @@ function ActivityChartCard({ title, description, chartType }) {
   };
 
   useEffect(() => {
-    generateChart();
+    // Only generate chart on initial load
+    generateChart(false);
+    // Cleanup blob URL when component unmounts
+    return () => cleanupBlobUrl(chartUrl);
   }, [chartType]);
 
   const sendToDiscord = () => {

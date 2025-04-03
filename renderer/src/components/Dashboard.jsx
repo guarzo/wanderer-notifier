@@ -512,10 +512,10 @@ export default function Dashboard() {
               </div>
             </div>
             
-            {/* Activity Charts */}
-            {status?.features?.activity_charts && (
+            {/* Map Charts */}
+            {status?.features?.map_charts && (
               <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Activity Charts</span>
+                <span className="font-medium text-gray-700">Map Charts</span>
                 <div className="flex items-center space-x-2">
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
@@ -526,7 +526,7 @@ export default function Dashboard() {
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Activity Charts
+                      View Map Charts
                     </div>
                   </button>
                 </div>

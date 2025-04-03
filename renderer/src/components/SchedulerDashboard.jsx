@@ -273,10 +273,14 @@ const SchedulerDashboard = () => {
           </button>
         </div>
         
-        {/* Scheduler card grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Scheduler cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSchedulers().map((scheduler) => (
-            <SchedulerCard key={scheduler.id} scheduler={scheduler} />
+            <SchedulerCard 
+              key={scheduler.name} 
+              scheduler={scheduler}
+              onRefresh={fetchSchedulers}
+            />
           ))}
         </div>
         

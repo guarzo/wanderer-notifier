@@ -358,7 +358,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       errors: []
     }
 
-    AppLogger.api_info(
+    AppLogger.api_debug(
       "[CharactersClient] Returning empty sync result due to disabled database operations"
     )
 
@@ -529,7 +529,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     - {:error, reason} on failure
   """
   def get_character_activity(slug, days) when is_integer(days) do
-    AppLogger.api_info("[CharactersClient] Getting character activity for #{days} days")
+    AppLogger.api_debug("[CharactersClient] Getting character activity for #{days} days")
 
     # Build URL for activity endpoint with days parameter
     case UrlBuilder.build_url("map/character-activity", %{days: days}, slug) do
@@ -572,8 +572,17 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   defp parse_activity_data(body) do
     case Jason.decode(body) do
       {:ok, parsed_json} ->
+        # Log the raw parsed JSON for debugging
+        AppLogger.api_debug(
+          "[CharactersClient] Raw parsed JSON structure: #{inspect(parsed_json, pretty: true, limit: 5000)}"
+        )
+
         # Extract and format activity data
         activity_data = extract_activity_data(parsed_json)
+
+        AppLogger.api_debug(
+          "[CharactersClient] Extracted activity data structure: #{inspect(activity_data, pretty: true, limit: 5000)}"
+        )
 
         AppLogger.api_debug(
           "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
@@ -659,7 +668,7 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   defp notify_characters([]), do: {:ok, []}
 
   defp notify_characters(added_characters) do
-    AppLogger.api_info(
+    AppLogger.api_debug(
       "[CharactersClient] Found #{length(added_characters)} new tracked characters"
     )
 

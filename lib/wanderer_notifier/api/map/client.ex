@@ -110,10 +110,10 @@ defmodule WandererNotifier.Api.Map.Client do
     - {:error, reason} on failure
   """
   def get_character_activity(slug \\ nil) do
-    if Features.activity_charts_enabled?() do
+    if Features.map_charts_enabled?() do
       CharactersClient.get_character_activity(slug)
     else
-      AppLogger.api_debug("[Map.Client] Activity charts disabled due to license restrictions")
+      AppLogger.api_debug("[Map.Client] Map charts disabled due to license restrictions")
       {:error, :feature_disabled}
     end
   rescue
