@@ -12,6 +12,7 @@ defmodule WandererNotifier.Config.Web do
   @default_web_port 4000
   @default_host "localhost"
   @default_scheme "http"
+  @default_chart_service_port 3001
 
   @type url_config :: %{
           host: String.t(),
@@ -168,10 +169,9 @@ defmodule WandererNotifier.Config.Web do
 
   @doc """
   Get the chart service port.
-  Defaults to the web server port.
   """
   def get_chart_service_port do
-    get_env(:chart_service_port, port())
+    get_env(:chart_service_port, @default_chart_service_port)
   end
 
   # Private helper function to get configuration values

@@ -175,7 +175,8 @@ legacy_to_new_mapping = %{
   "PERSISTENCE_AGGREGATION_SCHEDULE" => "WANDERER_PERSISTENCE_AGGREGATION_SCHEDULE",
   "CACHE_DIR" => "WANDERER_CACHE_DIR",
   "NOTIFIER_API_TOKEN" => "WANDERER_NOTIFIER_API_TOKEN",
-  "LICENSE_MANAGER_API_URL" => "WANDERER_LICENSE_MANAGER_URL"
+  "LICENSE_MANAGER_API_URL" => "WANDERER_LICENSE_MANAGER_URL",
+  "CHART_SERVICE_PORT" => "WANDERER_CHART_SERVICE_PORT"
 }
 
 # Set environment variables with both old and new names for backward compatibility.
@@ -626,3 +627,10 @@ if kill_charts_enabled do
 end
 
 EnvironmentHelper.check_env_vars()
+
+# -- Core Configuration --
+config :wanderer_notifier,
+  chart_service_port:
+    env_vars
+    |> Map.get("WANDERER_CHART_SERVICE_PORT", Map.get(env_vars, "CHART_SERVICE_PORT", "3001"))
+    |> EnvironmentHelper.parse_integer_env(3001)

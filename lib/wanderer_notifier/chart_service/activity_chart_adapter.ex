@@ -13,6 +13,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Api.Map.CharactersClient
 
   @doc """
   Generates a chart URL for character activity summary.
@@ -21,19 +22,50 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   def generate_activity_summary_chart(activity_data) do
     case prepare_activity_summary_data(activity_data) do
       {:ok, chart_data, title, options} ->
+        # Log the chart configuration
+        AppLogger.api_debug("Generating activity summary chart with config",
+          chart_type: "bar",
+          data_preview: %{
+            "labels_count" => length(chart_data["labels"] || []),
+            "datasets_count" => length(chart_data["datasets"] || []),
+            "first_label" => List.first(chart_data["labels"] || [])
+          },
+          options: options
+        )
+
         # Create chart configuration using the ChartConfig struct
         case ChartConfig.new(
-               ChartTypes.horizontal_bar(),
+               "bar",
                chart_data,
                title,
                options
              ) do
-          {:ok, config} -> ChartService.generate_chart_url(config)
-          {:error, reason} -> {:error, reason}
+          {:ok, config} ->
+            AppLogger.api_debug("Chart configuration created successfully",
+              config_preview: inspect(config, pretty: true, limit: 5000)
+            )
+
+            # Use generate_chart_image instead of generate_chart_url
+            result = ChartService.generate_chart_image(config)
+
+            case result do
+              {:ok, image_data} ->
+                AppLogger.api_info("Chart image generated successfully")
+                result
+
+              {:error, reason} = error ->
+                AppLogger.api_error("Failed to generate chart image", error: inspect(reason))
+                error
+            end
+
+          {:error, reason} = error ->
+            AppLogger.api_error("Failed to create chart configuration", error: inspect(reason))
+            error
         end
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, reason} = error ->
+        AppLogger.api_error("Failed to prepare activity summary data", error: inspect(reason))
+        error
     end
   end
 
@@ -51,19 +83,32 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
       # Extract character data based on format
       characters = extract_character_data(activity_data)
 
+      AppLogger.api_debug("Extracted character data",
+        count: length(characters),
+        data_preview: inspect(characters, limit: 1000)
+      )
+
       if characters && length(characters) > 0 do
         # Get top characters by activity
         top_characters = get_top_characters(characters, 5)
 
         AppLogger.api_info("Selected characters for activity chart",
-          count: length(top_characters)
+          count: length(top_characters),
+          characters: inspect(top_characters, pretty: true, limit: 1000)
         )
 
         # Extract chart elements
         character_labels = extract_character_labels(top_characters)
+        AppLogger.api_debug("Extracted character labels", labels: character_labels)
 
         {connections_data, passages_data, signatures_data} =
           extract_activity_metrics(top_characters)
+
+        AppLogger.api_debug("Extracted activity metrics",
+          connections: connections_data,
+          passages: passages_data,
+          signatures: signatures_data
+        )
 
         # Create chart data structure
         chart_data =
@@ -76,19 +121,43 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
         options = create_summary_chart_options()
 
+        AppLogger.api_debug("Created chart data structure",
+          chart_data: inspect(chart_data, pretty: true, limit: 2000),
+          options: inspect(options, pretty: true, limit: 2000)
+        )
+
         {:ok, chart_data, "Character Activity Summary", options}
       else
+        AppLogger.api_error("No character data available",
+          data_preview: inspect(activity_data, limit: 1000)
+        )
+
         {:error, "No character data available"}
       end
     end
   rescue
     e ->
-      AppLogger.api_error("Error preparing activity summary data", error: inspect(e))
+      AppLogger.api_error("Error preparing activity summary data",
+        error: inspect(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
       {:error, "Error preparing activity summary data: #{inspect(e)}"}
   end
 
   # Extracts character data from various formats
   defp extract_character_data(activity_data) do
+    AppLogger.api_debug("Extracting character data from format",
+      data_type:
+        case activity_data do
+          nil -> "nil"
+          data when is_map(data) -> "map"
+          data when is_list(data) -> "list"
+          data -> inspect(data.__struct__) || "unknown"
+        end,
+      data_preview: inspect(activity_data, limit: 1000)
+    )
+
     cond do
       # If activity_data is already a list of character data
       is_list(activity_data) ->
@@ -105,24 +174,59 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
       # Return empty list for other formats
       true ->
-        AppLogger.api_error("Invalid data format - couldn't extract character data")
+        AppLogger.api_error("Invalid data format - couldn't extract character data",
+          data_type:
+            case activity_data do
+              nil -> "nil"
+              data when is_map(data) -> "map"
+              data when is_list(data) -> "list"
+              data -> inspect(data.__struct__) || "unknown"
+            end,
+          data_preview: inspect(activity_data, limit: 1000)
+        )
+
         []
     end
   end
 
   # Gets top N characters sorted by total activity
   defp get_top_characters(characters, limit) do
-    characters
-    |> Enum.sort_by(
-      fn char ->
-        connections = Map.get(char, "connections", 0)
-        passages = Map.get(char, "passages", 0)
-        signatures = Map.get(char, "signatures", 0)
-        connections + passages + signatures
-      end,
-      :desc
+    sorted_characters =
+      characters
+      |> Enum.sort_by(
+        fn char ->
+          connections = Map.get(char, "connections", 0)
+          passages = Map.get(char, "passages", 0)
+          signatures = Map.get(char, "signatures", 0)
+          total = connections + passages + signatures
+
+          AppLogger.api_debug("Character activity score",
+            character: get_in(char, ["character", "name"]),
+            connections: connections,
+            passages: passages,
+            signatures: signatures,
+            total: total
+          )
+
+          total
+        end,
+        :desc
+      )
+      |> Enum.take(limit)
+
+    AppLogger.api_debug("Top characters sorted by activity",
+      characters:
+        Enum.map(sorted_characters, fn char ->
+          %{
+            name: get_in(char, ["character", "name"]),
+            connections: Map.get(char, "connections", 0),
+            passages: Map.get(char, "passages", 0),
+            signatures: Map.get(char, "signatures", 0)
+          }
+        end)
     )
-    |> Enum.take(limit)
+
+    sorted_characters
   end
 
   # Extracts character names for labels
@@ -147,9 +251,16 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
     # Define vibrant colors with good contrast
     {connection_color, passage_color, signature_color} = get_chart_colors()
 
+    AppLogger.api_debug("Creating summary chart data",
+      labels: labels,
+      connections: connections_data,
+      passages: passages_data,
+      signatures: signatures_data
+    )
+
     # Create the chart data
-    %{
-      "type" => "horizontalBar",
+    chart_data = %{
+      "type" => "bar",
       "labels" => labels,
       "datasets" => [
         %{
@@ -175,67 +286,79 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         }
       ]
     }
+
+    AppLogger.api_debug("Created chart data structure",
+      chart_data: inspect(chart_data, pretty: true, limit: 2000)
+    )
+
+    chart_data
   end
 
   # Creates options for summary chart
   defp create_summary_chart_options do
-    %{
+    options = %{
+      "type" => "bar",
       "responsive" => true,
       "maintainAspectRatio" => false,
+      "indexAxis" => "y",
       "scales" => %{
-        "xAxes" => [
-          %{
-            "stacked" => true,
-            "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
-            },
-            "ticks" => %{
-              "beginAtZero" => true,
-              "fontColor" => "rgb(255, 255, 255)"
-            },
-            "scaleLabel" => %{
-              "display" => true,
-              "labelString" => "Count",
-              "fontColor" => "rgb(255, 255, 255)"
-            }
+        "x" => %{
+          "stacked" => true,
+          "grid" => %{
+            "color" => "rgba(255, 255, 255, 0.1)"
+          },
+          "ticks" => %{
+            "beginAtZero" => true,
+            "color" => "rgb(255, 255, 255)",
+            "precision" => 0
           }
-        ],
-        "yAxes" => [
-          %{
-            "stacked" => true,
-            "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
-            },
-            "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)"
-            },
-            "scaleLabel" => %{
-              "display" => true,
-              "labelString" => "Characters",
-              "fontColor" => "rgb(255, 255, 255)"
-            }
+        },
+        "y" => %{
+          "stacked" => true,
+          "grid" => %{
+            "color" => "rgba(255, 255, 255, 0.1)"
+          },
+          "ticks" => %{
+            "color" => "rgb(255, 255, 255)"
           }
-        ]
-      },
-      "legend" => %{
-        "display" => true,
-        "position" => "top",
-        "labels" => %{
-          "fontColor" => "rgb(255, 255, 255)"
         }
       },
-      "title" => %{
-        "display" => true,
-        "text" => "Character Activity Summary",
-        "fontColor" => "rgb(255, 255, 255)",
-        "fontSize" => 16
+      "plugins" => %{
+        "legend" => %{
+          "display" => true,
+          "position" => "top",
+          "labels" => %{
+            "color" => "rgb(255, 255, 255)",
+            "font" => %{
+              "size" => 12
+            }
+          }
+        },
+        "title" => %{
+          "display" => false
+        },
+        "datalabels" => %{
+          "display" => false
+        }
       },
-      "tooltips" => %{
-        "enabled" => true,
-        "mode" => "index",
-        "intersect" => false
+      "layout" => %{
+        "padding" => %{
+          "left" => 20,
+          "right" => 20,
+          "top" => 20,
+          "bottom" => 20
+        }
+      },
+      "animation" => %{
+        "duration" => 0
       }
     }
+
+    AppLogger.api_debug("Created chart options",
+      options: inspect(options, pretty: true, limit: 2000)
+    )
+
+    options
   end
 
   @doc """
@@ -292,26 +415,26 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
         activity_data,
         title,
         chart_type \\ "activity_summary",
-        description \\ nil,
+        description \\ "Top characters by connections, passages, and signatures in the last 24 hours",
         channel_id \\ nil
       ) do
     # Determine actual parameters based on input format
     {actual_chart_type, actual_title, actual_description} =
       resolve_chart_parameters(activity_data, title, chart_type, description)
 
-    # Generate the chart URL based on the chart type
+    # Generate the chart based on the chart type
     chart_result = generate_chart_by_type(actual_chart_type, activity_data)
 
     # Send the chart to Discord using the ChartService
     case chart_result do
-      {:ok, url} ->
+      {:ok, image_data} ->
         # Build embed parameters
         embed_title = resolve_embed_title(actual_title, actual_chart_type)
         enhanced_description = resolve_embed_description(actual_description, actual_chart_type)
 
-        # Send the embed with the chart and convert response format
+        # Send the embed with the chart
         ChartService.send_chart_to_discord(
-          url,
+          image_data,
           embed_title,
           enhanced_description,
           channel_id
@@ -326,8 +449,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   # Resolves input parameters to determine actual chart type, title, and description
   defp resolve_chart_parameters(activity_data, title, chart_type, description) do
     if is_binary(activity_data) do
-      # If activity_data is a string, it's likely the old chart_type, title format
-      {activity_data, title, chart_type}
+      # If activity_data is a string, it's likely the old chart_type format
+      {chart_type, title, description}
     else
       # Otherwise, use the new format
       {chart_type, title, description}
@@ -337,19 +460,13 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   # Generates chart based on the specified type
   defp generate_chart_by_type(chart_type, activity_data) do
     case chart_type do
-      "activity_summary" ->
-        generate_activity_summary_chart(activity_data)
-
-      "activity_timeline" ->
-        # Return error for removed functionality
-        {:error, "Activity Timeline chart has been removed"}
-
-      "activity_distribution" ->
-        # Return error for removed functionality
-        {:error, "Activity Distribution chart has been removed"}
-
-      _ ->
-        {:error, "Unsupported chart type: #{chart_type}"}
+      "activity_summary" -> generate_activity_summary_chart(activity_data)
+      :activity_summary -> generate_activity_summary_chart(activity_data)
+      "activity_timeline" -> {:error, "Activity Timeline chart has been removed"}
+      :activity_timeline -> {:error, "Activity Timeline chart has been removed"}
+      "activity_distribution" -> {:error, "Activity Distribution chart has been removed"}
+      :activity_distribution -> {:error, "Activity Distribution chart has been removed"}
+      _ -> {:error, "Unsupported chart type: #{inspect(chart_type)}"}
     end
   end
 
@@ -369,7 +486,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   defp resolve_embed_description(nil, chart_type) do
     case chart_type do
       "activity_summary" ->
-        "Top characters by connections, passages, and signatures in the last 24 hours"
+        "Over the last 24 hours"
 
       "activity_timeline" ->
         "This chart type has been removed"
@@ -409,8 +526,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
     # Chart types and their descriptions
     charts = [
-      {"activity_summary", "Character Activity Summary",
-       "Top characters by connections, passages, and signatures in the last 24 hours.\nData is refreshed daily."}
+      {"activity_summary", "Character Activity Summary", "Over the last 24 hours"}
       # Timeline and distribution charts removed
     ]
 
@@ -432,12 +548,49 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   end
 
   @doc """
-  Updates activity charts.
+  Updates activity charts by generating and sending them to Discord.
+  Returns {:ok, count} where count is the number of charts generated and sent,
+  or {:error, reason} if the feature is disabled or an error occurs.
   """
   def update_activity_charts do
-    if Features.activity_charts_enabled?() do
-      # Implementation here
-      {:ok, 0}
+    if Features.map_charts_enabled?() do
+      AppLogger.api_info("Generating activity charts")
+
+      # Get activity data
+      case CharactersClient.get_character_activity(nil, 1) do
+        {:ok, activity_data} ->
+          # Get Discord channel ID
+          channel_id = get_activity_charts_channel_id()
+
+          if channel_id do
+            # Generate and send the activity summary chart
+            case send_chart_to_discord(
+                   activity_data,
+                   "Character Activity Summary",
+                   "activity_summary",
+                   "Over the last 24 hours",
+                   channel_id
+                 ) do
+              {:ok, _url, _title} ->
+                AppLogger.api_info("Successfully sent activity chart to Discord")
+                {:ok, 1}
+
+              {:error, reason} ->
+                AppLogger.api_error("Failed to send activity chart to Discord",
+                  error: inspect(reason)
+                )
+
+                {:error, reason}
+            end
+          else
+            AppLogger.api_error("No Discord channel configured for activity charts")
+            {:error, :no_channel_configured}
+          end
+
+        {:error, reason} ->
+          AppLogger.api_error("Failed to get activity data", error: inspect(reason))
+          {:error, reason}
+      end
     else
       {:error, :feature_disabled}
     end

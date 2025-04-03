@@ -17,6 +17,8 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
   # Get the chart service URL from the manager
   defp get_chart_service_url do
+    default_url = "http://localhost:#{WandererNotifier.Config.Web.get_chart_service_port()}"
+
     if Process.whereis(WandererNotifier.ChartService.ChartServiceManager) do
       try do
         # Add timeout to prevent hanging if the manager is not responding
@@ -26,27 +28,27 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
           _ ->
             AppLogger.api_warn("ChartServiceManager returned invalid URL, using default")
-            "http://localhost:3001"
+            default_url
         end
       rescue
         e ->
           AppLogger.api_warn("Error getting URL from ChartServiceManager", error: inspect(e))
-          "http://localhost:3001"
+          default_url
       catch
         :exit, {:timeout, _} ->
           AppLogger.api_warn("Timeout getting URL from ChartServiceManager")
-          "http://localhost:3001"
+          default_url
 
         :exit, reason ->
           AppLogger.api_warn("Exit when getting URL from ChartServiceManager",
             error: inspect(reason)
           )
 
-          "http://localhost:3001"
+          default_url
       end
     else
       AppLogger.api_debug("ChartServiceManager process not found, using default URL")
-      "http://localhost:3001"
+      default_url
     end
   end
 

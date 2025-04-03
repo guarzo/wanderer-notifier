@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   FaCalendarCheck, 
   FaHourglassHalf, 
@@ -6,11 +6,14 @@ import {
   FaCheckCircle, 
   FaExclamationTriangle, 
   FaClock, 
-  FaPlayCircle 
+  FaPlayCircle,
+  FaCircleNotch
 } from 'react-icons/fa';
 
 // Component for displaying individual scheduler information in a card
-const SchedulerCard = ({ scheduler }) => {
+const SchedulerCard = ({ scheduler, onRefresh }) => {
+  const [executing, setExecuting] = useState(false);
+
   // Handle case when scheduler isn't fully loaded
   if (!scheduler) return null;
 
@@ -68,6 +71,31 @@ const SchedulerCard = ({ scheduler }) => {
     if (type === 'interval') return <FaHourglassHalf className="mr-1 text-indigo-500" />;
     if (type === 'time') return <FaCalendarAlt className="mr-1 text-purple-500" />;
     return <FaClock className="mr-1 text-gray-500" />;
+  };
+
+  // Execute the scheduler
+  const handleExecute = async () => {
+    if (!enabled || executing) return;
+    
+    try {
+      setExecuting(true);
+      const response = await fetch(`/api/debug/schedulers/${name}/execute`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      // Wait a bit before refreshing to allow the scheduler to complete
+      setTimeout(() => {
+        if (onRefresh) onRefresh();
+        setExecuting(false);
+      }, 1000);
+    } catch (err) {
+      console.error('Error executing scheduler:', err);
+      setExecuting(false);
+    }
   };
 
   return (
@@ -150,19 +178,23 @@ const SchedulerCard = ({ scheduler }) => {
         )}
       </div>
 
-      {/* Run now button - disabled if scheduler is disabled */}
+      {/* Run now button - disabled if scheduler is disabled or currently executing */}
       <div className="mt-3 flex justify-end">
         <button
-          disabled={!enabled}
+          disabled={!enabled || executing}
           className={`text-xs px-2 py-1 rounded flex items-center ${
-            enabled
+            enabled && !executing
               ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
               : 'bg-gray-50 text-gray-400 cursor-not-allowed'
           }`}
-          onClick={() => {/* TODO: Implement execute scheduler functionality */}}
+          onClick={handleExecute}
         >
-          <FaPlayCircle className="mr-1" />
-          Run Now
+          {executing ? (
+            <FaCircleNotch className="mr-1 animate-spin" />
+          ) : (
+            <FaPlayCircle className="mr-1" />
+          )}
+          {executing ? 'Running...' : 'Run Now'}
         </button>
       </div>
     </div>

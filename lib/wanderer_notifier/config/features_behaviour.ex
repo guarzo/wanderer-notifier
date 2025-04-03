@@ -18,7 +18,6 @@ defmodule WandererNotifier.Config.FeaturesBehaviour do
   @callback character_tracking_enabled?() :: boolean()
   @callback system_tracking_enabled?() :: boolean()
   @callback track_kspace_systems?() :: boolean()
-  @callback activity_charts_enabled?() :: boolean()
   @callback kill_charts_enabled?() :: boolean()
   @callback map_charts_enabled?() :: boolean()
   @callback test_mode_enabled?() :: boolean()
