@@ -4,6 +4,8 @@ run-name: Test - ${{ github.event.head_commit.message || github.event.pull_reque
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "mix.exs" # Ignore version bump commits
   pull_request:
     branches: [main]
 

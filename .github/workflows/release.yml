@@ -1,5 +1,5 @@
 name: Release
-run-name: Release - v${{ steps.version.outputs.version }}
+run-name: Release - ${{ github.event.inputs.version_type }} version update
 
 on:
   workflow_dispatch:
@@ -40,12 +40,16 @@ jobs:
           mode: release
           version_type: ${{ github.event.inputs.version_type }}
 
+      - name: Update workflow title
+        run: |
+          echo "title=Release - Version v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+
       - name: Create Git tag
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add VERSION mix.exs
-          git commit -m "Release version ${{ steps.version.outputs.version }}"
+          git commit -m "release v${{ steps.version.outputs.version }}"
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
           git push
@@ -120,3 +124,11 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit version bump
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add mix.exs
+          git commit -m "Release version v${{ steps.version.outputs.version }} [skip ci]"
+          git push origin main

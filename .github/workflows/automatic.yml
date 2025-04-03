@@ -4,6 +4,8 @@ run-name: Automatic - ${{ github.event.head_commit.message || 'Manual trigger' }
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "mix.exs" # Ignore version bump commits
   workflow_dispatch:
 
 jobs:
