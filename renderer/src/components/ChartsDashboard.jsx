@@ -8,7 +8,7 @@ export default function ChartsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [features, setFeatures] = useState({
-    activityChartsEnabled: false,
+    mapChartsEnabled: false,
     killChartsEnabled: false
   });
   const [sendingAllCharts, setSendingAllCharts] = useState(false);
@@ -22,8 +22,9 @@ export default function ChartsDashboard() {
         .then(response => {
           const features = response.data.features;
           setFeatures({
-            activityChartsEnabled: features.activity_charts || false,
-            killChartsEnabled: features.kill_charts || false
+            mapChartsEnabled: features.map_charts || false,
+            killChartsEnabled: false
+            // killChartsEnabled: features.kill_charts || false
           });
           setLoading(false);
         })
@@ -31,7 +32,7 @@ export default function ChartsDashboard() {
           console.error('Error fetching chart configuration:', error);
           setError(`Failed to load chart configuration: ${error.message}`);
           setFeatures({
-            activityChartsEnabled: false,
+            mapChartsEnabled: false,
             killChartsEnabled: false
           });
           setLoading(false);
@@ -140,10 +141,10 @@ export default function ChartsDashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className={`p-4 rounded-lg ${features.activityChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
+        <div className={`p-4 rounded-lg ${features.mapChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${features.activityChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="font-medium">Activity Charts: {features.activityChartsEnabled ? 'Enabled' : 'Disabled'}</span>
+            <div className={`w-3 h-3 rounded-full mr-2 ${features.mapChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="font-medium">Map Charts: {features.mapChartsEnabled ? 'Enabled' : 'Disabled'}</span>
           </div>
         </div>
         <div className={`p-4 rounded-lg ${features.killChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
@@ -155,7 +156,7 @@ export default function ChartsDashboard() {
       </div>
 
       {/* Chart Cards */}
-      {features.activityChartsEnabled && (
+      {features.mapChartsEnabled && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <ActivityChartCard 
             title="Activity Summary"
@@ -181,11 +182,11 @@ export default function ChartsDashboard() {
         </div>
       )}
 
-      {(!features.activityChartsEnabled && !features.killChartsEnabled) && (
+      {(!features.mapChartsEnabled && !features.killChartsEnabled) && (
         <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-6 text-center">
           <h3 className="text-lg font-medium text-yellow-800">No chart features are enabled</h3>
           <p className="mt-2 text-yellow-700">
-            Enable Activity Charts or Kill Charts in your configuration to view available charts.
+            Enable Map Charts or Kill Charts in your configuration to view available charts.
           </p>
         </div>
       )}
