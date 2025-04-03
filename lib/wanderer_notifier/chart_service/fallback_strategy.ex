@@ -287,10 +287,15 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
   end
 
   defp generate_chart_url(config) do
-    chart_json = Jason.encode!(config.chart_data)
-    encoded_data = Base.encode64(chart_json)
-    url = "https://quickchart.io/chart?c=#{encoded_data}"
-    {:ok, url}
+    if is_nil(config) or is_nil(config.chart_data) do
+      AppLogger.api_error("Invalid chart config for URL generation", config: inspect(config))
+      {:error, :invalid_config}
+    else
+      chart_json = Jason.encode!(config.chart_data)
+      encoded_data = Base.encode64(chart_json)
+      url = "https://quickchart.io/chart?c=#{encoded_data}"
+      {:ok, url}
+    end
   rescue
     e ->
       AppLogger.api_error("Failed to generate QuickChart URL",
