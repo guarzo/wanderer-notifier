@@ -152,8 +152,15 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           {:noreply, new_state}
 
         _ ->
-          # Schedule another restart attempt
-          Process.send_after(self(), :restart_chart_service, 5000)
+          # Schedule another restart attempt with exponential backoff
+          backoff_time = calculate_backoff_time(state.restart_attempts)
+
+          AppLogger.startup_warn("Scheduling chart service restart with backoff",
+            attempt: state.restart_attempts + 1,
+            backoff_ms: backoff_time
+          )
+
+          Process.send_after(self(), :restart_chart_service, backoff_time)
           {:noreply, %{state | restart_attempts: state.restart_attempts + 1}}
       end
     else
@@ -238,5 +245,13 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   defp schedule_health_check do
     # Check every 30 seconds
     Process.send_after(self(), :health_check, 30_000)
+  end
+
+  # Calculate exponential backoff time in milliseconds
+  defp calculate_backoff_time(attempt) do
+    # Base delay of 5 seconds with exponential increase (5s, 10s, 20s)
+    base_delay = 5000
+    backoff_time = base_delay * :math.pow(2, attempt)
+    trunc(backoff_time)
   end
 end
