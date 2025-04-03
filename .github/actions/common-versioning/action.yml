@@ -31,6 +31,7 @@ runs:
       run: |
         SHORT_SHA=$(git rev-parse --short HEAD)
         echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
         if [ "${{ inputs.mode }}" = "adhoc" ]; then
           if [ -z "${{ inputs.branch }}" ]; then
             echo "Branch input is required for adhoc mode"
@@ -50,22 +51,16 @@ runs:
           echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
           echo "docker_tags=${DOCKER_TAGS}" >> "$GITHUB_OUTPUT"
         elif [ "${{ inputs.mode }}" = "release" ]; then
+          if [ -z "${{ inputs.version_type }}" ]; then
+            echo "Version type input is required for release mode"
+            exit 1
+          fi
           chmod +x ./scripts/version.sh
           NEW_VERSION=$(./scripts/version.sh bump ${{ inputs.version_type }})
           FULL_VERSION=$(./scripts/version.sh full)
           ./scripts/version.sh update ${{ inputs.version_type }}
-          DOCKER_TAGS=$(./scripts/version.sh tags)
-          DOCKER_TAG_LIST=""
-          while IFS= read -r tag; do
-            if [ -n "$DOCKER_TAG_LIST" ]; then
-              DOCKER_TAG_LIST="${DOCKER_TAG_LIST},guarzo/wanderer-notifier:${tag}"
-            else
-              DOCKER_TAG_LIST="guarzo/wanderer-notifier:${tag}"
-            fi
-          done <<< "$DOCKER_TAGS"
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
         else
           echo "Invalid mode: ${{ inputs.mode }}"
           exit 1
