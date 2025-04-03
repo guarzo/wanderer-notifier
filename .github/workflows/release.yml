@@ -81,12 +81,19 @@ jobs:
           ./scripts/test_docker_image.sh -t "sha-${{ steps.version.outputs.short_sha }}" --discord-token "${{ secrets.FAKE_DISCORD_TOKEN }}"
           echo "Docker image validation successful!"
 
+      - name: Extract major version
+        id: major_version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR_VERSION="v${VERSION%%.*}"
+          echo "value=${MAJOR_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Push Docker image with release tags
         uses: ./.github/actions/common-docker-build
         with:
           context: .
           push: true
-          tags: ${{ steps.version.outputs.docker_tags }}
+          tags: guarzo/wanderer-notifier:latest,guarzo/wanderer-notifier:${{ steps.major_version.outputs.value }},guarzo/wanderer-notifier:v${{ steps.version.outputs.version }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.full_version }}
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}

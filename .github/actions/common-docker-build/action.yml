@@ -34,6 +34,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ "${{ inputs.push }}" == "true" ]]; then
+          if [[ -z "${{ inputs.tags }}" ]]; then
+            echo "Error: tags are required when push is true"
+            exit 1
+          fi
+          if [[ -z "${{ inputs.docker_username }}" || -z "${{ inputs.docker_password }}" ]]; then
+            echo "Error: Docker credentials are required when push is true"
+            exit 1
+          fi
+        fi
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
