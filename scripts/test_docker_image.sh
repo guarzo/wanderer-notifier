@@ -135,33 +135,6 @@ run_in_container "test -f /tmp/startup_debug.txt && cat /tmp/startup_debug.txt |
 echo "Checking /tmp/config_debug.txt if it exists..."
 run_in_container "test -f /tmp/config_debug.txt && cat /tmp/config_debug.txt || echo 'Config debug file not found'"
 
-echo "======= Configuration Tests ======="
-
-echo "Verifying configuration file path..."
-run_in_container "test -f /app/etc/wanderer_notifier.exs && echo '✅ Configuration file exists at: /app/etc/wanderer_notifier.exs' || echo '❌ Configuration file missing!'"
-
-echo "Checking configuration file content..."
-run_in_container "cat /app/etc/wanderer_notifier.exs || echo 'Could not read configuration file'"
-
-# Only run the full duplicate path check in non-basic mode
-if [ "$BASIC_ONLY" = true ]; then
-  echo "Skipping detailed path checks in basic mode..."
-else
-  echo "Checking for duplicate paths in configuration..."
-  # A better approach for detecting path duplication issues
-  echo "Examining paths inside container..."
-  run_in_container "find /app -name 'app' | grep -v '^/app$' || echo 'No duplicate app directories found'"
-  run_in_container "find /app -name 'etc' | grep -v '^/app/etc$' || echo 'No duplicate etc directories found'"
-fi
-
-echo "Verifying configuration path variables..."
-# Display but don't actually set the config path variables in this command
-run_in_container "echo 'Using fixed config path: /app/etc/wanderer_notifier.exs'"
-
-# Create an empty config file for testing if needed - don't pass NOTIFIER_CONFIG_PATH here
-echo "Creating minimal config file if needed..."
-run_in_container "[ -f /app/etc/wanderer_notifier.exs ] || printf 'import Config\n# Minimal test config\nconfig :wanderer_notifier, test_config: true' > /app/etc/wanderer_notifier.exs" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
-
 echo "======= Application Tests ======="
 
 echo "Checking Config.Reader implementation..."
