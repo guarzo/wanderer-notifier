@@ -1,0 +1,17 @@
+name: "Common Elixir Setup"
+description: "Set up Elixir environment"
+inputs:
+  elixir-version:
+    description: "Elixir version"
+    required: true
+  otp-version:
+    description: "OTP version"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: ${{ inputs.elixir-version }}
+        otp-version: ${{ inputs.otp-version }}

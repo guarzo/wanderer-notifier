@@ -1,0 +1,58 @@
+name: "Common Docker Build"
+description: "Build and optionally push a Docker image using Buildx"
+inputs:
+  context:
+    description: "Build context"
+    required: false
+    default: "."
+  push:
+    description: "Push image after building (true/false)"
+    required: false
+    default: "false"
+  load:
+    description: "Load image into Docker daemon (true/false)"
+    required: false
+    default: "false"
+  tags:
+    description: "Docker image tags (comma-separated if multiple)"
+    required: true
+  build-args:
+    description: "Build arguments (newline separated)"
+    required: false
+  cache-from:
+    description: "Cache-from configuration"
+    required: false
+  cache-to:
+    description: "Cache-to configuration"
+    required: false
+  docker_username:
+    description: "Docker Hub username (required if pushing)"
+    required: false
+  docker_password:
+    description: "Docker Hub password (required if pushing)"
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        buildkitd-flags: --debug
+
+    - name: Login to Docker Hub
+      if: inputs.push == 'true'
+      uses: docker/login-action@v2
+      with:
+        username: ${{ inputs.docker_username }}
+        password: ${{ inputs.docker_password }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ inputs.context }}
+        push: ${{ inputs.push }}
+        load: ${{ inputs.load }}
+        tags: ${{ inputs.tags }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}

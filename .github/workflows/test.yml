@@ -6,39 +6,47 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Build and test
     runs-on: ubuntu-latest
     env:
-      # Add environment variables for testing
       DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       WANDERER_DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       MIX_ENV: "test"
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
-
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.value }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
+      # Generate a cache key based on mix.lock and elixir version
+      - id: cache-key
+        run: |
+          echo "value=${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}-1.18-27" >> $GITHUB_OUTPUT
+
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          cache-key-prefix: mix-test
+          cache-paths: |
+            deps
+            _build
+
+      - name: Common Elixir Setup for Test
+        uses: ./.github/actions/common-elixir-setup
         with:
           elixir-version: "1.18"
           otp-version: "27"
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-test-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-test-
-            ${{ runner.os }}-mix-
 
       - name: Install dependencies
         run: |
@@ -58,30 +66,27 @@ jobs:
   lint:
     name: Lint code
     runs-on: ubuntu-latest
-    needs: test
+    needs: test # We depend on test job for the cache
     env:
       MIX_ENV: "dev"
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          cache-key-prefix: mix-lint
+          cache-paths: |
+            deps
+            _build
+
+      - name: Common Elixir Setup for Test
+        uses: ./.github/actions/common-elixir-setup
         with:
           elixir-version: "1.18"
           otp-version: "27"
-
-      - name: Restore dependencies cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-lint-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-lint-
-            ${{ runner.os }}-mix-
 
       - name: Install dependencies
         run: |
@@ -101,12 +106,11 @@ jobs:
     needs: lint
     env:
       MIX_ENV: prod
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # required for getting commit history
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -121,7 +125,7 @@ jobs:
           echo "Using SHA: ${SHORT_SHA}"
 
       - name: Build Docker image (for testing)
-        uses: docker/build-push-action@v5
+        uses: ./.github/actions/common-docker-build
         with:
           context: .
           push: false
@@ -141,8 +145,6 @@ jobs:
         run: |
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
-
-          # Run full validation including web server startup test
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} \
             --discord-token "$DISCORD_TOKEN" \
             --env "MAP_URL_WITH_NAME=$MAP_URL_WITH_NAME" \
@@ -151,5 +153,4 @@ jobs:
             --env "LICENSE_KEY=$LICENSE_KEY" \
             --env "WANDERER_ENV=test" \
             --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
-
           echo "Docker image validation successful!"

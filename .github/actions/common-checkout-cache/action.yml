@@ -1,0 +1,28 @@
+name: "Common Checkout and Cache"
+description: "Restore dependencies cache"
+inputs:
+  branch:
+    description: "Branch to checkout"
+    required: false
+    default: "main"
+  cache-key-prefix:
+    description: "Cache key prefix (e.g., mix)"
+    required: true
+  cache-paths:
+    description: "Cache paths to restore (newline separated)"
+    required: false
+    default: |
+      deps
+      _build
+      priv/static
+runs:
+  using: "composite"
+  steps:
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ runner.os }}-${{ inputs.cache-key-prefix }}-${{ hashFiles('**/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ inputs.cache-key-prefix }}-
+          ${{ runner.os }}-mix-
