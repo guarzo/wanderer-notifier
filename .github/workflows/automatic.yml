@@ -1,4 +1,5 @@
 name: Automatic Image
+run-name: Automatic - ${{ github.event.head_commit.message || 'Manual trigger' }}
 
 on:
   push:

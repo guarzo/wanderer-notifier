@@ -1,4 +1,5 @@
 name: Ad-hoc
+run-name: Adhoc - Building ${{ github.event.inputs.branch }}
 
 on:
   workflow_dispatch:
