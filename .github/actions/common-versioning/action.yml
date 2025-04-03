@@ -29,6 +29,7 @@ runs:
     - name: Run versioning script
       shell: bash
       run: |
+        set -x  # Enable debug output
         SHORT_SHA=$(git rev-parse --short HEAD)
         echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
@@ -55,12 +56,37 @@ runs:
             echo "Version type input is required for release mode"
             exit 1
           fi
+          echo "Running in release mode with version_type: ${{ inputs.version_type }}"
           chmod +x ./scripts/version.sh
+          
+          echo "Current version from version.sh get:"
+          CURRENT_VERSION=$(./scripts/version.sh get)
+          echo "$CURRENT_VERSION"
+          
+          echo "Bumping version..."
           NEW_VERSION=$(./scripts/version.sh bump ${{ inputs.version_type }})
-          FULL_VERSION=$(./scripts/version.sh full)
+          echo "New version will be: ${NEW_VERSION}"
+          
+          echo "Updating version files..."
           ./scripts/version.sh update ${{ inputs.version_type }}
-          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
+          
+          # Verify the version was updated
+          UPDATED_VERSION=$(cat VERSION)
+          echo "Updated version from VERSION file: ${UPDATED_VERSION}"
+          
+          # Set outputs
+          {
+            echo "version=${NEW_VERSION}"
+            echo "full_version=${NEW_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "Debug: Contents of GITHUB_OUTPUT:"
+          cat "$GITHUB_OUTPUT"
+          
+          echo "Debug: Showing contents of VERSION file:"
+          cat VERSION
+          echo "Debug: Showing relevant line from mix.exs:"
+          grep "version:" mix.exs
         else
           echo "Invalid mode: ${{ inputs.mode }}"
           exit 1

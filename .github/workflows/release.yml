@@ -67,6 +67,19 @@ jobs:
 
           # Get the version number for commit message
           VERSION="${{ steps.version.outputs.version }}"
+          echo "Debug: Version from outputs: $VERSION"
+
+          # Fallback to reading from VERSION file if output is empty
+          if [ -z "$VERSION" ]; then
+            VERSION=$(cat VERSION)
+            echo "Debug: Version from file: $VERSION"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not determine version number"
+            exit 1
+          fi
+
           echo "Using version: $VERSION"
 
           # Create version bump commit with [skip ci]
