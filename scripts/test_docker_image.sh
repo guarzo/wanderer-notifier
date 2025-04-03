@@ -159,6 +159,7 @@ else \
   IO.puts(\"Function Config.Reader.load/2 is NOT exported!\") \
 end'" "-e WANDERER_ENV=test"
 
+
 if [ "$BASIC_ONLY" = true ]; then
   echo "Running basic application tests only (without starting the app)..."
   
