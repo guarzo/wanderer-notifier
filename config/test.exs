@@ -42,7 +42,16 @@ config :wanderer_notifier,
 config :nostrum,
   token: "fake_token_for_testing",
   gateway_intents: [],
-  start_nostrum: false
+  start_nostrum: false,
+  gateway: [
+    # Disable gateway connection in tests
+    connect_automatically: false
+  ],
+  # Add rate limit settings
+  request_handler: [
+    # Disable rate limiting in tests
+    rate_limit_requests: false
+  ]
 
 # Configure logger for test environment
 config :logger, level: :warning
