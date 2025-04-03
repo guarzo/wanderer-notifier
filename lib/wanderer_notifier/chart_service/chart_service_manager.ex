@@ -7,7 +7,6 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   chart service is available for generating charts.
   """
   use GenServer
-  require Logger
   alias WandererNotifier.Config.Web
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -94,9 +93,9 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       {:ok, new_state} ->
         {:reply, :ok, new_state}
 
-      {:error, reason} ->
-        AppLogger.startup_error("Failed to restart chart service", error: inspect(reason))
-        {:reply, {:error, reason}, state}
+      _ ->
+        AppLogger.startup_error("Failed to restart chart service")
+        {:reply, :error, state}
     end
   end
 
@@ -113,8 +112,8 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
         schedule_health_check()
         {:noreply, new_state}
 
-      {:error, reason} ->
-        AppLogger.startup_error("Failed to start chart service", error: inspect(reason))
+      _ ->
+        AppLogger.startup_error("Failed to start chart service")
         {:noreply, state}
     end
   end
@@ -152,7 +151,7 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
           schedule_health_check()
           {:noreply, new_state}
 
-        {:error, _reason} ->
+        _ ->
           # Schedule another restart attempt
           Process.send_after(self(), :restart_chart_service, 5000)
           {:noreply, %{state | restart_attempts: state.restart_attempts + 1}}

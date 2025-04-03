@@ -223,6 +223,24 @@ config :wanderer_notifier,
   discord_bot_token: trimmed_token,
   discord_channel_id:
     EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_CHANNEL_ID", nil),
+  discord_kill_channel_id:
+    EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_KILL_CHANNEL_ID", nil),
+  discord_system_channel_id:
+    EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_SYSTEM_CHANNEL_ID", nil),
+  discord_character_channel_id:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "DISCORD_CHARACTER_CHANNEL_ID",
+      nil
+    ),
+  discord_charts_channel_id:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "DISCORD_MAP_CHARTS_CHANNEL_ID",
+      nil
+    ),
   map_url: map_url,
   map_name: map_name,
   map_url_with_name: map_url_with_name,

@@ -7,9 +7,10 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
   Elixir and the Node.js service.
   """
 
-  require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.ChartService.ChartConfigHandler
+  alias WandererNotifier.ChartService.ChartServiceManager
+  alias WandererNotifier.Config.Web
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Configuration
@@ -17,12 +18,12 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
   # Get the chart service URL from the manager
   defp get_chart_service_url do
-    default_url = "http://localhost:#{WandererNotifier.Config.Web.get_chart_service_port()}"
+    default_url = "http://localhost:#{Web.get_chart_service_port()}"
 
-    if Process.whereis(WandererNotifier.ChartService.ChartServiceManager) do
+    if Process.whereis(ChartServiceManager) do
       try do
         # Add timeout to prevent hanging if the manager is not responding
-        case GenServer.call(WandererNotifier.ChartService.ChartServiceManager, :get_url, 1000) do
+        case GenServer.call(ChartServiceManager, :get_url, 1000) do
           url when is_binary(url) ->
             url
 

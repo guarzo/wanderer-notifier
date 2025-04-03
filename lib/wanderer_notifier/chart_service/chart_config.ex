@@ -8,7 +8,7 @@ defmodule WandererNotifier.ChartService.ChartConfig do
   """
 
   alias WandererNotifier.ChartService.ChartTypes
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @enforce_keys [:type, :data]
   defstruct [
@@ -99,37 +99,35 @@ defmodule WandererNotifier.ChartService.ChartConfig do
     - Map that can be encoded to JSON
   """
   def to_json_map(%__MODULE__{} = config) do
-    require Logger
-
     # Base configuration
     json_map = %{
       "type" => config.type,
       "data" => config.data
     }
 
-    Logger.debug("Creating chart JSON map",
+    AppLogger.chart_debug("Creating chart JSON map", %{
       type: config.type,
-      data: inspect(config.data, pretty: true, limit: 2000)
-    )
+      data_preview: inspect(config.data, pretty: true, limit: 2000)
+    })
 
     # Add options with defaults if not provided
     json_map =
       case config.options do
         opts when is_map(opts) and map_size(opts) > 0 ->
-          Logger.debug("Using provided options with defaults",
-            options: inspect(opts, pretty: true, limit: 2000)
-          )
+          AppLogger.chart_debug("Using provided options with defaults", %{
+            options_preview: inspect(opts, pretty: true, limit: 2000)
+          })
 
           Map.put(json_map, "options", merge_with_default_options(opts, config.title))
 
         _ ->
-          Logger.debug("Using default options")
+          AppLogger.chart_debug("Using default options", %{})
           Map.put(json_map, "options", default_options(config.title))
       end
 
-    Logger.debug("Final chart configuration",
-      config: inspect(json_map, pretty: true, limit: 5000)
-    )
+    AppLogger.chart_debug("Final chart configuration", %{
+      config_preview: inspect(json_map, pretty: true, limit: 5000)
+    })
 
     json_map
   end
@@ -137,8 +135,6 @@ defmodule WandererNotifier.ChartService.ChartConfig do
   # Private helpers
 
   defp valid_type?(type) do
-    require Logger
-
     valid_types = [
       ChartTypes.bar(),
       ChartTypes.line(),
@@ -154,7 +150,7 @@ defmodule WandererNotifier.ChartService.ChartConfig do
     ]
 
     is_valid = type in valid_types
-    Logger.debug("Validating chart type", type: type, valid: is_valid)
+    AppLogger.chart_debug("Validating chart type", %{type: type, valid: is_valid})
     is_valid
   end
 

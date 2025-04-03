@@ -21,6 +21,7 @@ defmodule WandererNotifier.Logger.Logger do
   @category_config "CONFIG"
   @category_maintenance "MAINTENANCE"
   @category_scheduler "SCHEDULER"
+  @category_chart "CHART"
 
   # Log levels mapped to their appropriate use cases
   # Detailed troubleshooting information
@@ -564,4 +565,17 @@ defmodule WandererNotifier.Logger.Logger do
   defp should_log_debug? do
     Debug.debug_logging_enabled?()
   end
+
+  # Chart category helpers
+  def chart_debug(message, metadata \\ []),
+    do: log(@level_debug, @category_chart, message, metadata)
+
+  def chart_info(message, metadata \\ []),
+    do: log(@level_info, @category_chart, message, metadata)
+
+  def chart_warn(message, metadata \\ []),
+    do: log(@level_warn, @category_chart, message, metadata)
+
+  def chart_error(message, metadata \\ []),
+    do: log(@level_error, @category_chart, message, metadata)
 end

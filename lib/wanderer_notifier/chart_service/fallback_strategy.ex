@@ -285,4 +285,39 @@ defmodule WandererNotifier.ChartService.FallbackStrategy do
     # Return the placeholder image
     {:ok, transparent_png}
   end
+
+  defp generate_chart_url(config) do
+    chart_json = Jason.encode!(config.chart_data)
+    encoded_data = Base.encode64(chart_json)
+    url = "https://quickchart.io/chart?c=#{encoded_data}"
+    {:ok, url}
+  rescue
+    e ->
+      AppLogger.api_error("Failed to generate QuickChart URL",
+        error: inspect(e),
+        config: inspect(config)
+      )
+
+      {:error, :url_generation_failed}
+  end
+
+  @doc """
+  Handles chart generation failure by attempting fallback strategies.
+  """
+  def handle_chart_failure(config) do
+    # First try QuickChart.io URL generation
+    case generate_chart_url(config) do
+      {:ok, url} ->
+        download_with_retry(url)
+
+      {:error, reason} ->
+        AppLogger.api_error("Fallback chart generation also failed",
+          error: inspect(reason)
+        )
+
+        # Create a placeholder as last resort
+        title = config.title || "Chart"
+        generate_placeholder_chart(title, "Chart generation failed")
+    end
+  end
 end

@@ -157,21 +157,6 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
       result = send_chart_to_discord(chart_type, activity_data)
 
       case result do
-        {:ok, %{url: chart_url, title: title}} ->
-          AppLogger.api_info("Sent chart to Discord", title: title)
-
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            200,
-            Jason.encode!(%{
-              status: "ok",
-              message: "Chart sent to Discord",
-              chart_url: chart_url,
-              title: title
-            })
-          )
-
         {:ok, %{title: title}} ->
           AppLogger.api_info("Sent chart to Discord", title: title)
 
@@ -415,13 +400,7 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
 
   # Handle chart generation and sending based on chart type
   defp generate_and_send_chart(:activity_summary, activity_data, channel_id) do
-    ActivityChartAdapter.send_chart_to_discord(
-      activity_data,
-      "Character Activity Summary",
-      "activity_summary",
-      "Over the last 24 hours",
-      channel_id
-    )
+    ActivityChartAdapter.generate_and_send_activity_chart(activity_data, channel_id)
   end
 
   defp generate_and_send_chart(:activity_timeline, _activity_data, _channel_id) do

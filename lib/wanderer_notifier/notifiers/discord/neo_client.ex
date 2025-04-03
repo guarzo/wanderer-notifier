@@ -21,8 +21,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   """
   def channel_id do
     config = Notifications.get_discord_config()
-    # Convert the channel id from string to integer
-    config.main_channel |> String.to_integer()
+    normalize_channel_id(config.main_channel)
   end
 
   # -- MESSAGING API --
@@ -50,7 +49,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
         if is_nil(override_channel_id) do
           channel_id()
         else
-          override_channel_id
+          normalize_channel_id(override_channel_id)
         end
 
       # Convert to Nostrum.Struct.Embed
@@ -99,7 +98,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
         if is_nil(override_channel_id) do
           channel_id()
         else
-          override_channel_id
+          normalize_channel_id(override_channel_id)
         end
 
       # Convert to Nostrum structs
@@ -154,7 +153,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
         if is_nil(override_channel_id) do
           channel_id()
         else
-          override_channel_id
+          normalize_channel_id(override_channel_id)
         end
 
       AppLogger.api_debug("Sending text message via Nostrum",
@@ -218,19 +217,21 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
         if is_nil(override_channel_id) do
           channel_id()
         else
-          override_channel_id
+          normalize_channel_id(override_channel_id)
         end
 
       # Create the embed (use custom if provided, otherwise create default)
       embed =
         if custom_embed do
-          convert_to_nostrum_embed(custom_embed)
+          embed = convert_to_nostrum_embed(custom_embed)
+          %{embed | image: %{url: "attachment://#{filename}"}}
         else
           %Embed{
             title: title,
             description: description,
             timestamp: DateTime.utc_now(),
-            color: 3_447_003
+            color: 3_447_003,
+            image: %{url: "attachment://#{filename}"}
           }
         end
 
@@ -282,6 +283,14 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   end
 
   # -- HELPERS --
+
+  defp normalize_channel_id(channel_id) do
+    case channel_id do
+      channel_id when is_binary(channel_id) -> String.to_integer(channel_id)
+      channel_id when is_integer(channel_id) -> channel_id
+      nil -> nil
+    end
+  end
 
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
@@ -444,34 +453,35 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   defp extract_image(embed) do
     image = get_field_with_fallback(embed, :image, "image")
 
-    # Try different formats in order of likelihood
-    cond do
-      valid_image = extract_image_from_map(image) ->
-        valid_image
+    case extract_image_from_map(image) do
+      {:ok, url} ->
+        %Embed.Image{url: url}
 
-      valid_url = extract_valid_url(image) ->
-        %Embed.Image{url: valid_url}
+      {:error, _} ->
+        cond do
+          valid_url = extract_valid_url(image) ->
+            %Embed.Image{url: valid_url}
 
-      valid_url = extract_valid_url(get_field_with_fallback(embed, :image_url, "image_url")) ->
-        %Embed.Image{url: valid_url}
+          valid_url = extract_valid_url(get_field_with_fallback(embed, :image_url, "image_url")) ->
+            %Embed.Image{url: valid_url}
 
-      true ->
-        nil
+          true ->
+            nil
+        end
     end
   end
 
-  # Extract image from a map with url key
-  defp extract_image_from_map(image) when is_map(image) do
-    cond do
-      valid_url = extract_valid_url(get_field_with_fallback(image, :url, "url")) ->
-        %Embed.Image{url: valid_url}
-
-      true ->
-        nil
+  # Extract image data from a map structure
+  defp extract_image_from_map(data) when is_map(data) do
+    if Map.has_key?(data, "image") and is_map(data["image"]) and
+         Map.has_key?(data["image"], "url") do
+      {:ok, data["image"]["url"]}
+    else
+      {:error, "No image URL found in map"}
     end
   end
 
-  defp extract_image_from_map(_), do: nil
+  defp extract_image_from_map(_), do: {:error, "Data is not a map"}
 
   defp get_retry_after(%{"retry_after" => retry_after}) when is_number(retry_after) do
     round(retry_after * 1000)
