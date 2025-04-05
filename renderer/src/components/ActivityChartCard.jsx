@@ -164,30 +164,45 @@ function ActivityChartCard({ title, description, chartType }) {
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="p-4 border-t flex justify-end space-x-2">
-        <button
-          type="button"
-          onClick={retryWithDirectUrl}
-          title="Refresh chart"
-          className="p-2 text-gray-600 hover:text-gray-800 rounded"
-        >
-          <FaSync size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={sendToDiscord}
-          disabled={sending || !chartUrl}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {sending ? (
-            <FaCircleNotch className="animate-spin mr-2" />
-          ) : (
-            <FaDiscord className="mr-2" />
-          )}
-          Send to Discord
-        </button>
-      </div>
+const generateChart = async (forceRefresh = false) => {
+  setLoading(true);
+  setError(null);
+  setDebugInfo(null);
+  
+  // Cleanup previous blob URL if it exists
+  cleanupBlobUrl(chartUrl);
+  
+  // Only add timestamp when explicitly forcing a refresh
+  const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
+  console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
+  
+  try {
+    const response = await fetch(`/api/charts/activity/generate/${chartType}${timestamp}`);
+    console.log(`Response status: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    
+    const blob = await response.blob();
+    const imageUrl = URL.createObjectURL(blob);
+    setChartUrl(imageUrl);
+    console.log('Chart image blob URL created');
+    setRetryCount(0);
+  } catch (error) {
+    console.error(`Error generating ${chartType} chart:`, error);
+    setError(error.message);
+    if (retryCount < 2) {
+      console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
+      const timeout = Math.pow(2, retryCount) * 1000;
+      setTimeout(() => {
+        setRetryCount(prev => prev + 1);
+        generateChart(true);
+      }, timeout);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
     </div>
   );
 }
