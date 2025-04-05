@@ -61,11 +61,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
   Tracks when a killmail is persisted.
   """
   @spec track_persistence(Context.t()) :: :ok
-  def track_persistence(%Context{} = ctx) do
-    metric_key = "killmail.persistence.#{mode_name(ctx)}"
-    increment_counter(metric_key)
-    :ok
-  end
+  def track_persistence(%Context{} = ctx), do: track_metric(ctx, "persistence")
 
   @doc """
   Tracks a notification being sent.
@@ -78,6 +74,13 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
   end
 
   # Private functions
+
+  # Generic function to track metrics with a specific key pattern
+  defp track_metric(%Context{} = ctx, operation) do
+    metric_key = "killmail.#{operation}.#{mode_name(ctx)}"
+    increment_counter(metric_key)
+    :ok
+  end
 
   defp mode_name(%Context{mode: %{mode: mode}}), do: Atom.to_string(mode)
 
