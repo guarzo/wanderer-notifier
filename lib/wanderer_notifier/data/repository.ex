@@ -61,27 +61,25 @@ defmodule WandererNotifier.Data.Repository do
   """
   @spec count_kills_for_character(integer()) :: integer()
   def count_kills_for_character(character_id) do
-    try do
-      # Use Ash.Query to count kills for this character
-      query =
-        Killmail
-        |> Ash.Query.new()
-        |> Ash.Query.filter(
-          fragment(
-            "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
-            ^to_string(character_id),
-            ^to_string(character_id)
-          )
+    # Use Ash.Query to count kills for this character
+    query =
+      Killmail
+      |> Ash.Query.new()
+      |> Ash.Query.filter(
+        fragment(
+          "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
+          ^to_string(character_id),
+          ^to_string(character_id)
         )
-        |> Ash.Query.aggregate(:count, :id, :total)
+      )
+      |> Ash.Query.aggregate(:count, :id, :total)
 
-      case Api.read(query) do
-        {:ok, [%{total: count}]} -> count
-        _ -> 0
-      end
-    rescue
+    case Api.read(query) do
+      {:ok, [%{total: count}]} -> count
       _ -> 0
     end
+  rescue
+    _ -> 0
   end
 
   @doc """
@@ -90,27 +88,25 @@ defmodule WandererNotifier.Data.Repository do
   """
   @spec get_last_kill_timestamp_for_character(integer()) :: DateTime.t() | nil
   def get_last_kill_timestamp_for_character(character_id) do
-    try do
-      # Use Ash.Query to get the most recent kill for this character
-      query =
-        Killmail
-        |> Ash.Query.new()
-        |> Ash.Query.filter(
-          fragment(
-            "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
-            ^to_string(character_id),
-            ^to_string(character_id)
-          )
+    # Use Ash.Query to get the most recent kill for this character
+    query =
+      Killmail
+      |> Ash.Query.new()
+      |> Ash.Query.filter(
+        fragment(
+          "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
+          ^to_string(character_id),
+          ^to_string(character_id)
         )
-        |> Ash.Query.sort(updated_at: :desc)
-        |> Ash.Query.limit(1)
+      )
+      |> Ash.Query.sort(updated_at: :desc)
+      |> Ash.Query.limit(1)
 
-      case Api.read(query) do
-        {:ok, [kill]} -> kill.updated_at
-        _ -> nil
-      end
-    rescue
+    case Api.read(query) do
+      {:ok, [kill]} -> kill.updated_at
       _ -> nil
     end
+  rescue
+    _ -> nil
   end
 end

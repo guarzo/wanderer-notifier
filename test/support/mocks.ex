@@ -163,7 +163,10 @@ defmodule WandererNotifier.MockKillmailPersistence do
   def maybe_persist_killmail(_killmail), do: {:ok, %{}}
 
   @impl true
-  def persist_killmail(_killmail), do: :ok
+  def persist_killmail(_killmail), do: {:ok, %{}}
+
+  @impl true
+  def persist_killmail(_killmail, _character_id), do: {:ok, %{}}
 end
 
 defmodule WandererNotifier.MockLogger do

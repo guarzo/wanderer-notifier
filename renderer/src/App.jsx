@@ -66,10 +66,10 @@ function App() {
                     <FaHome />
                     <span>Home</span>
                   </Link>
-                  {mapChartsEnabled && (
+                  {mapChartsEnabled || killChartsEnabled && (
                     <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                       <FaChartBar />
-                      <span>Map Charts</span>
+                      <span>Charts</span>
                     </Link>
                   )}
                   {debugEnabled && killChartsEnabled && (

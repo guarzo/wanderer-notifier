@@ -11,9 +11,6 @@ export default function ChartsDashboard() {
     mapChartsEnabled: false,
     killChartsEnabled: false
   });
-  const [sendingAllCharts, setSendingAllCharts] = useState(false);
-  const [sendAllSuccess, setSendAllSuccess] = useState(null);
-  const [sendAllError, setSendAllError] = useState(null);
 
   useEffect(() => {
     try {
@@ -55,41 +52,6 @@ export default function ChartsDashboard() {
       console.error('Error loading chart image:', error);
       throw error;
     }
-  };
-
-  const sendAllKillmailCharts = () => {
-    setSendingAllCharts(true);
-    setSendAllSuccess(null);
-    setSendAllError(null);
-    
-    console.log("Sending all killmail charts to Discord...");
-    
-    fetch('/api/charts/killmail/send-all')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.status === 'ok') {
-          setSendAllSuccess('All charts successfully sent to Discord!');
-          setTimeout(() => setSendAllSuccess(null), 5000);
-        } else {
-          let errorMessage = data.message || 'Failed to send charts to Discord';
-          if (data.details) {
-            errorMessage += `: ${JSON.stringify(data.details)}`;
-          }
-          throw new Error(errorMessage);
-        }
-      })
-      .catch(error => {
-        console.error('Error sending all killmail charts to Discord:', error);
-        setSendAllError(error.message);
-      })
-      .finally(() => {
-        setSendingAllCharts(false);
-      });
   };
 
   if (loading) {
@@ -160,44 +122,6 @@ export default function ChartsDashboard() {
           </div>
         </div>
       </div>
-
-      {/* Status Messages */}
-      {sendAllSuccess && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm">
-          <div className="flex items-center text-green-700">
-            <FaCheckCircle className="mr-2" />
-            {sendAllSuccess}
-          </div>
-        </div>
-      )}
-
-      {sendAllError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg shadow-sm">
-          <div className="flex items-center text-red-700">
-            <FaExclamationTriangle className="mr-2" />
-            {sendAllError}
-          </div>
-        </div>
-      )}
-
-      {/* Send All Charts Button (only visible if Kill Charts are enabled) */}
-      {features.killChartsEnabled && (
-        <div className="mb-6">
-          <button 
-            type="button"
-            onClick={sendAllKillmailCharts}
-            disabled={sendingAllCharts}
-            className="flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition-colors disabled:opacity-50"
-          >
-            {sendingAllCharts ? (
-              <FaCircleNotch className="animate-spin mr-2" />
-            ) : (
-              <FaDiscord className="mr-2" />
-            )}
-            Send All Killmail Charts to Discord
-          </button>
-        </div>
-      )}
 
       {/* Chart Cards with better layout */}
       {features.mapChartsEnabled && (

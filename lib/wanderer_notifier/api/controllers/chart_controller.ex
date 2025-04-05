@@ -12,6 +12,7 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Repo
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
   alias WandererNotifier.Resources.{KillmailAggregation, TrackedCharacter}
 
   # Forward activity chart requests to the ActivityChartController
@@ -285,11 +286,68 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
             message: "ISK destroyed chart sent to Discord successfully"
           })
 
+        {:ok, %{title: _}} ->
+          # Handle the case where a tuple with title is returned
+          send_success_response(conn, %{
+            status: "ok",
+            message: "ISK destroyed chart sent to Discord successfully"
+          })
+
         {:error, reason} ->
           send_error_response(
             conn,
             400,
             "Failed to send ISK destroyed chart to Discord: #{reason}"
+          )
+      end
+    else
+      send_error_response(conn, 403, "Killmail persistence is not enabled")
+    end
+  end
+
+  # Send a kill validation chart to Discord
+  get "/killmail/send-to-discord/validation" do
+    if Config.kill_charts_enabled?() do
+      title = conn.params["title"] || "Kill Validation"
+
+      description =
+        conn.params["description"] || "Comparison of kills in ZKillboard API vs Database"
+
+      channel_id = conn.params["channel_id"]
+
+      AppLogger.api_info("Sending kill validation chart to Discord", title: title)
+
+      # Generate the chart
+      case KillmailChartAdapter.generate_kill_validation_chart() do
+        {:ok, image_data} when is_binary(image_data) ->
+          # Use Discord client to send the file directly
+          case DiscordClient.send_file(
+                 "validation.png",
+                 image_data,
+                 title,
+                 description,
+                 channel_id,
+                 %{"title" => title, "color" => 3_447_003}
+               ) do
+            :ok ->
+              send_success_response(conn, %{
+                status: "ok",
+                message: "Validation chart sent to Discord successfully"
+              })
+
+            {:error, reason} ->
+              send_error_response(
+                conn,
+                400,
+                "Failed to send validation chart to Discord: #{reason}"
+              )
+          end
+
+        {:error, reason} ->
+          send_error_response(
+            conn,
+            400,
+            "Failed to generate validation chart: #{reason}"
           )
       end
     else

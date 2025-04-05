@@ -103,49 +103,64 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   def handle_info(:cleanup_existing_service, state) do
     # First check if there's already a valid chart service running that we can use
     if verify_chart_service(state.port_num) do
-      # If there's already a valid chart service, try to find its PID
-      case find_process_using_port(state.port_num) do
-        {:ok, existing_pid} ->
-          AppLogger.info(
-            "[Chart Service] Found existing valid chart service with PID #{existing_pid}"
-          )
-
-          # Adopt this existing service
-          {:noreply, %{state | pid: existing_pid, status: :adopted}}
-
-        _ ->
-          AppLogger.warn(
-            "[Chart Service] Found valid chart service but couldn't determine PID, starting new one"
-          )
-
-          Process.send_after(self(), :start_chart_service, 100)
-          {:noreply, state}
-      end
+      handle_existing_chart_service(state)
     else
-      # If no valid chart service found, we'll try to clean up any process using our port
-      case find_process_using_port(state.port_num) do
-        {:ok, existing_pid} ->
-          AppLogger.info(
-            "[Chart Service] Found process #{existing_pid} using port #{state.port_num}"
-          )
+      handle_no_valid_chart_service(state)
+    end
+  end
 
-          # Try to terminate gracefully if we found an existing process
-          System.cmd("kill", ["-15", "#{existing_pid}"], stderr_to_stdout: true)
-          :timer.sleep(500)
-          # Now check if it's still running
-          if process_running?(existing_pid) do
-            AppLogger.warn("[Chart Service] Process still running, forcing termination")
-            System.cmd("kill", ["-9", "#{existing_pid}"], stderr_to_stdout: true)
-            :timer.sleep(100)
-          end
+  # Handle case where a valid chart service is already running
+  defp handle_existing_chart_service(state) do
+    # If there's already a valid chart service, try to find its PID
+    case find_process_using_port(state.port_num) do
+      {:ok, existing_pid} ->
+        AppLogger.info(
+          "[Chart Service] Found existing valid chart service with PID #{existing_pid}"
+        )
 
-        _ ->
-          AppLogger.info("[Chart Service] No process using port #{state.port_num}")
-      end
+        # Adopt this existing service
+        {:noreply, %{state | pid: existing_pid, status: :adopted}}
 
-      # Now start our service
-      Process.send_after(self(), :start_chart_service, 100)
-      {:noreply, state}
+      _ ->
+        AppLogger.warn(
+          "[Chart Service] Found valid chart service but couldn't determine PID, starting new one"
+        )
+
+        Process.send_after(self(), :start_chart_service, 100)
+        {:noreply, state}
+    end
+  end
+
+  # Handle case where no valid chart service is running
+  defp handle_no_valid_chart_service(state) do
+    # If no valid chart service found, we'll try to clean up any process using our port
+    case find_process_using_port(state.port_num) do
+      {:ok, existing_pid} ->
+        AppLogger.info(
+          "[Chart Service] Found process #{existing_pid} using port #{state.port_num}"
+        )
+
+        clean_up_existing_process(existing_pid)
+
+      _ ->
+        AppLogger.info("[Chart Service] No process using port #{state.port_num}")
+    end
+
+    # Now start our service
+    Process.send_after(self(), :start_chart_service, 100)
+    {:noreply, state}
+  end
+
+  # Clean up an existing process using the port
+  defp clean_up_existing_process(pid) do
+    # Try to terminate gracefully if we found an existing process
+    System.cmd("kill", ["-15", "#{pid}"], stderr_to_stdout: true)
+    :timer.sleep(500)
+    # Now check if it's still running
+    if process_running?(pid) do
+      AppLogger.warn("[Chart Service] Process still running, forcing termination")
+      System.cmd("kill", ["-9", "#{pid}"], stderr_to_stdout: true)
+      :timer.sleep(100)
     end
   end
 
@@ -190,53 +205,66 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     data = String.trim(data)
 
     # Extract process ID from the output if it contains one
-    state =
-      case Regex.run(~r/Process started with PID: (\d+)/, data) do
-        [_, pid_str] ->
-          pid = String.to_integer(pid_str)
-          AppLogger.startup_info("[Chart Service] Process ID: #{pid}")
-          %{state | pid: pid, status: :running}
-
-        _ ->
-          state
-      end
+    state = extract_pid_from_output(data, state)
 
     # Check for address in use error
-    state =
-      case Regex.run(~r/Error: listen EADDRINUSE: address already in use :::(\d+)/, data) do
-        [_, port_str] ->
-          port = String.to_integer(port_str)
-          AppLogger.warn("[Chart Service] Port #{port} already in use")
-
-          # Try to find the process using this port
-          case find_process_using_port(port) do
-            {:ok, port_pid} ->
-              AppLogger.info("[Chart Service] Found process #{port_pid} using port #{port}")
-
-              # Verify this is actually a chart service by testing a connection
-              if verify_chart_service(port) do
-                AppLogger.info("[Chart Service] Verified and adopting existing chart service")
-                # Adopt the existing process instead of starting a new one
-                %{state | pid: port_pid, status: :adopted}
-              else
-                AppLogger.error(
-                  "[Chart Service] Process on port #{port} is not a valid chart service"
-                )
-
-                %{state | status: :error}
-              end
-
-            _ ->
-              AppLogger.error("[Chart Service] Could not find process using port #{port}")
-              %{state | status: :error}
-          end
-
-        _ ->
-          state
-      end
+    state = check_for_address_in_use(data, state)
 
     AppLogger.info("[Chart Service] #{data}")
     {:noreply, state}
+  end
+
+  # Extract PID from the chart service output
+  defp extract_pid_from_output(data, state) do
+    case Regex.run(~r/Process started with PID: (\d+)/, data) do
+      [_, pid_str] ->
+        pid = String.to_integer(pid_str)
+        AppLogger.startup_info("[Chart Service] Process ID: #{pid}")
+        %{state | pid: pid, status: :running}
+
+      _ ->
+        state
+    end
+  end
+
+  # Check if the chart service reports an "address in use" error
+  defp check_for_address_in_use(data, state) do
+    case Regex.run(~r/Error: listen EADDRINUSE: address already in use :::(\d+)/, data) do
+      [_, port_str] ->
+        port = String.to_integer(port_str)
+        AppLogger.warn("[Chart Service] Port #{port} already in use")
+        handle_port_in_use(port, state)
+
+      _ ->
+        state
+    end
+  end
+
+  # Handle the case when a port is already in use
+  defp handle_port_in_use(port, state) do
+    # Try to find the process using this port
+    case find_process_using_port(port) do
+      {:ok, port_pid} ->
+        AppLogger.info("[Chart Service] Found process #{port_pid} using port #{port}")
+        handle_existing_process_on_port(port, port_pid, state)
+
+      _ ->
+        AppLogger.error("[Chart Service] Could not find process using port #{port}")
+        %{state | status: :error}
+    end
+  end
+
+  # Handle an existing process found on the required port
+  defp handle_existing_process_on_port(port, port_pid, state) do
+    # Verify this is actually a chart service by testing a connection
+    if verify_chart_service(port) do
+      AppLogger.info("[Chart Service] Verified and adopting existing chart service")
+      # Adopt the existing process instead of starting a new one
+      %{state | pid: port_pid, status: :adopted}
+    else
+      AppLogger.error("[Chart Service] Process on port #{port} is not a valid chart service")
+      %{state | status: :error}
+    end
   end
 
   @impl true
@@ -362,42 +390,38 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
 
   # Try to find process using lsof
   defp try_lsof(port) do
-    try do
-      # Use lsof to find process using this port
-      case System.cmd("lsof", ["-i", ":#{port}", "-t"], stderr_to_stdout: true) do
-        {pid_str, 0} ->
-          pid_str = String.trim(pid_str)
+    # Use lsof to find process using this port
+    case System.cmd("lsof", ["-i", ":#{port}", "-t"], stderr_to_stdout: true) do
+      {pid_str, 0} ->
+        pid_str = String.trim(pid_str)
 
-          if pid_str != "" do
-            {:ok, String.to_integer(pid_str)}
-          else
-            :not_found
-          end
-
-        _ ->
+        if pid_str != "" do
+          {:ok, String.to_integer(pid_str)}
+        else
           :not_found
-      end
-    rescue
-      # Handle case where lsof is not available
-      _ -> :not_found
+        end
+
+      _ ->
+        :not_found
     end
+  rescue
+    # Handle case where lsof is not available
+    _ -> :not_found
   end
 
   # Try to find process using netstat (fallback method)
   defp try_netstat(port) do
-    try do
-      # Use netstat as a fallback
-      {output, 0} = System.cmd("netstat", ["-tulpn"], stderr_to_stdout: true)
+    # Use netstat as a fallback
+    {output, 0} = System.cmd("netstat", ["-tulpn"], stderr_to_stdout: true)
 
-      # Parse netstat output to find the process
-      case Regex.run(~r/#{port}\s+.*?(\d+)\//, output) do
-        [_, pid_str] -> {:ok, String.to_integer(pid_str)}
-        _ -> :not_found
-      end
-    rescue
-      # Handle case where netstat fails or isn't available
+    # Parse netstat output to find the process
+    case Regex.run(~r/#{port}\s+.*?(\d+)\//, output) do
+      [_, pid_str] -> {:ok, String.to_integer(pid_str)}
       _ -> :not_found
     end
+  rescue
+    # Handle case where netstat fails or isn't available
+    _ -> :not_found
   end
 
   # Verify that a service running on the port is actually our chart service

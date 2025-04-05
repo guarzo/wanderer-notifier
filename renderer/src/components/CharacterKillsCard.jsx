@@ -15,7 +15,7 @@ import {
   FaCaretUp
 } from 'react-icons/fa';
 
-function CharacterKillsCard({ title = "Character Kill Data", description = "Load and aggregate kill data for tracked characters" }) {
+function CharacterKillsCard({ title = "Debug Functions", description = "use with caution" }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);

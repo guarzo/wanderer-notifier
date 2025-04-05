@@ -20,10 +20,10 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
     AppLogger.api_info("Received request for character kill statistics")
 
     # Access the data repo directly to ensure we get accurate data
-    alias WandererNotifier.Data.Repo
     alias Ecto.Adapters.SQL
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Data.Repo
 
     # Get tracked characters directly from cache
     characters = CacheRepo.get(CacheKeys.character_list()) || []
@@ -304,10 +304,10 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
 
   # Debug endpoint to dump character data
   get "/dump-character-data" do
-    alias WandererNotifier.Data.Repo
     alias Ecto.Adapters.SQL
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Data.Repo
 
     # Get tracked characters directly from cache
     characters = CacheRepo.get(CacheKeys.character_list()) || []
@@ -358,8 +358,8 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
 
   # Debug endpoint to get kill count for a specific character
   get "/kill-count/:character_id" do
-    alias WandererNotifier.Data.Repo
     alias Ecto.Adapters.SQL
+    alias WandererNotifier.Data.Repo
 
     character_id_str = character_id
 

@@ -7,6 +7,8 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
 
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.KillmailProcessing.Context
+  alias WandererNotifier.KillmailProcessing.MetricRegistry
+  alias WandererNotifier.Stats
 
   @doc """
   Tracks the start of killmail processing.
@@ -92,7 +94,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
 
   defp increment_counter_impl(key) do
     # Check if the metric is registered in our metrics registry
-    registered_metrics = WandererNotifier.KillmailProcessing.MetricRegistry.registered_metrics()
+    registered_metrics = MetricRegistry.registered_metrics()
     atom_key = String.to_atom(key)
 
     if atom_key in registered_metrics do
