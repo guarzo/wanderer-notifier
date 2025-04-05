@@ -43,7 +43,8 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
         }
       })
     else
-      send_error_response(conn, 400, "Missing required parameter: all=true")
+-      send_error_response(conn, 400, "Missing required parameter: all=true")
++      send_error_response(conn, 400, "Missing required parameter: all=true - This parameter is needed to confirm fetching kills for all tracked characters.")
     end
   end
 
