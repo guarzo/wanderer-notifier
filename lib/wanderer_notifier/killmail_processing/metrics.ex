@@ -22,20 +22,21 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
   Tracks the completion of killmail processing.
   """
   @spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
-  def track_processing_complete(%Context{} = ctx, result) do
-    metric_key = "killmail.processing.#{mode_name(ctx)}.complete"
-    increment_counter(metric_key)
+@spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
+def track_processing_complete(%Context{} = ctx, result) do
+  base_metric = "processing.#{mode_name(ctx)}.complete"
+  track_metric(ctx, base_metric)
 
-    case result do
-      {:ok, _} ->
-        increment_counter("#{metric_key}.success")
-
-      {:error, _} ->
-        increment_counter("#{metric_key}.error")
-    end
-
-    :ok
+  case result do
+    {:ok, _} ->
+      increment_counter("killmail.#{base_metric}.success")
+      
+    {:error, _} ->
+      increment_counter("killmail.#{base_metric}.error")
   end
+
+  :ok
+end
 
   @doc """
   Tracks when a killmail is skipped.
