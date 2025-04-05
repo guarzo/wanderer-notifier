@@ -53,12 +53,12 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
     AppLogger.processor_debug("[Determiner] Checking if character #{character_id_str} is tracked")
 
-    # First check if the character is in the blacklist
-    character_blacklist = Application.get_env(:wanderer_notifier, :character_blacklist, [])
+    # First check if the character is in the exclude_list
+    character_exclude_list = Application.get_env(:wanderer_notifier, :character_exclude_list, [])
 
-    if character_id_str in character_blacklist do
+    if character_id_str in character_exclude_list do
       AppLogger.processor_debug(
-        "[Determiner] Character #{character_id_str} is in blacklist, skipping"
+        "[Determiner] Character #{character_id_str} is in exclude_list, skipping"
       )
 
       false

@@ -31,6 +31,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
+  alias WandererNotifier.Utils.ListUtils
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
@@ -50,29 +51,23 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     timestamps()
   end
 
-  # Helper function to ensure a list
-  defp ensure_list(nil), do: []
-  defp ensure_list(list) when is_list(list), do: list
-  defp ensure_list({:ok, list}) when is_list(list), do: list
-  defp ensure_list({:error, _}), do: []
-
   # Gets list of tracked characters from the cache
   defp get_tracked_characters do
     # Get characters from cache and ensure we return a proper list
     characters = CacheRepo.get(CacheKeys.character_list()) || []
 
     AppLogger.persistence_debug("Retrieved tracked characters from cache",
-      character_count: length(ensure_list(characters)),
-      characters: ensure_list(characters)
+      character_count: length(ListUtils.ensure_list(characters)),
+      characters: ListUtils.ensure_list(characters)
     )
 
-    ensure_list(characters)
+    ListUtils.ensure_list(characters)
   end
 
   # Checks if a character ID is in the list of tracked characters
   defp tracked_character?(character_id, tracked_characters) do
     # Ensure we're working with a proper list
-    characters_list = ensure_list(tracked_characters)
+    characters_list = ListUtils.ensure_list(tracked_characters)
 
     # Now we can safely use Enum functions
     result =
@@ -152,12 +147,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @impl true
-  def persist_killmail(%KillmailStruct{} = killmail, character_id \\ nil) do
-    if character_id do
-      process_provided_character_id(killmail, character_id)
-    else
-      process_killmail_without_character_id(killmail)
-    end
+  def persist_killmail(%KillmailStruct{} = killmail, nil) do
+    process_killmail_without_character_id(killmail)
+  end
+
+  @impl true
+  def persist_killmail(%KillmailStruct{} = killmail, character_id) do
+    process_provided_character_id(killmail, character_id)
   end
 
   defp process_provided_character_id(killmail, character_id) do

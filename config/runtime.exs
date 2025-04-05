@@ -347,20 +347,20 @@ config :wanderer_notifier, :persistence,
       )
     )
 
-# Parse character blacklist from environment variable
-character_blacklist_str =
+# Parse character exclude_list from environment variable
+character_exclude_list_str =
   EnvironmentHelper.get_env(
     env_vars,
     legacy_to_new_mapping,
-    "WANDERER_CHARACTER_BLACKLIST",
+    "WANDERER_CHARACTER_EXCLUDE_LIST",
     ""
   )
 
-character_blacklist =
-  if character_blacklist_str == "" do
+character_exclude_list =
+  if character_exclude_list_str == "" do
     []
   else
-    character_blacklist_str
+    character_exclude_list_str
     |> String.split(",", trim: true)
     |> Enum.map(&String.trim/1)
   end
@@ -447,7 +447,7 @@ features_map = %{
 }
 
 config :wanderer_notifier, features: features_map
-config :wanderer_notifier, character_blacklist: character_blacklist
+config :wanderer_notifier, character_exclude_list: character_exclude_list
 
 # -- Websocket Configuration --
 config :wanderer_notifier, :websocket,

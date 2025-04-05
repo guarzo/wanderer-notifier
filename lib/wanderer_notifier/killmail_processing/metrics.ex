@@ -87,7 +87,16 @@ end
 
   defp increment_counter(key) do
     # Track metrics using Core Stats
-    Stats.increment(String.to_atom(key))
-    :ok
+    try do
+      # Use to_existing_atom to prevent atom table exhaustion
+      Stats.increment(String.to_existing_atom(key))
+      :ok
+    rescue
+      ArgumentError ->
+        # Log that we tried to use a non-existing atom and ensure safe operation
+        require Logger
+        Logger.warn("Attempted to track metrics with non-existing atom key: #{key}")
+        :error
+    end
   end
 end

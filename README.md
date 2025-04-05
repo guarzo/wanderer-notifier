@@ -179,7 +179,8 @@ All environment variables now use a standardized `WANDERER_` prefix. Legacy vari
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
 
 8. **Character Configuration**
-   - `WANDERER_CHARACTER_BLACKLIST`: Comma-separated list of character IDs to exclude from tracking
+
+   - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
 
 9. **Debug Settings**
    - `WANDERER_DEBUG_LOGGING`: Enable debug logging (default: false)

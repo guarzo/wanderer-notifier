@@ -296,14 +296,24 @@ defmodule WandererNotifier.Api.Character.KillsService do
         timeout: 300_000,
         # Reduced concurrency to prevent overload
         max_concurrency: 2,
-        # Kill the task on timeout
-        on_timeout: :kill_task
+        # Allow partial success by returning error instead of killing task
+        on_timeout: :exit_task
       )
       |> Enum.to_list()
       |> Enum.map(fn
-        {:ok, result} -> result
-        {:exit, :timeout} -> {:error, :timeout}
-        {:exit, reason} -> {:error, reason}
+        {:ok, result} ->
+          result
+
+        {:exit, :timeout} ->
+          AppLogger.kill_warn("[CHARACTER_KILLS] Character processing timed out")
+          {:error, :timeout}
+
+        {:exit, reason} ->
+          AppLogger.kill_warn("[CHARACTER_KILLS] Character processing exited", %{
+            reason: inspect(reason)
+          })
+
+          {:error, reason}
       end)
 
     summarize_batch_results(results)

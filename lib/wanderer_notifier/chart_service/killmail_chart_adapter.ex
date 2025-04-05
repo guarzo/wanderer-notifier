@@ -267,8 +267,22 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
           ordered: false
         )
         |> Enum.map(fn
-          {:ok, result} -> result
-          _ -> nil
+          {:ok, result} ->
+            result
+
+          {:exit, reason} ->
+            # Include error details per character when tasks fail
+            character_id = get_in(reason, [:character, :character_id]) || "unknown"
+
+            AppLogger.kill_warn("Failed to get comparison data for character", %{
+              character_id: character_id,
+              reason: inspect(reason)
+            })
+
+            nil
+
+          _ ->
+            nil
         end)
         |> Enum.filter(&(&1 != nil))
 

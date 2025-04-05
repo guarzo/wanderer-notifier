@@ -44,6 +44,9 @@ defmodule WandererNotifier.Data.Cache.Keys do
   @entity_character "character"
   @entity_killmail "killmail"
   @entity_kills "kills"
+  @entity_corporation "corporation"
+  @entity_alliance "alliance"
+  @entity_region "region"
 
   # Separator
   @separator ":"
@@ -364,6 +367,42 @@ defmodule WandererNotifier.Data.Cache.Keys do
   @spec system_kills(integer() | String.t()) :: String.t()
   def system_kills(system_id) when is_integer(system_id) or is_binary(system_id) do
     join_parts(["kills", @entity_system, to_string(system_id)])
+  end
+
+  @doc """
+  Generates a cache key for corporation data.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.corporation(12345)
+      "map:corporation:12345"
+  """
+  @spec corporation(integer() | String.t()) :: String.t()
+  def corporation(id) when is_integer(id) or is_binary(id) do
+    join_parts([@prefix_map, @entity_corporation, to_string(id)])
+  end
+
+  @doc """
+  Generates a cache key for alliance data.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.alliance(12345)
+      "map:alliance:12345"
+  """
+  @spec alliance(integer() | String.t()) :: String.t()
+  def alliance(id) when is_integer(id) or is_binary(id) do
+    join_parts([@prefix_map, @entity_alliance, to_string(id)])
+  end
+
+  @doc """
+  Generates a cache key for region data.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.region(10000001)
+      "map:region:10000001"
+  """
+  @spec region(integer() | String.t()) :: String.t()
+  def region(id) when is_integer(id) or is_binary(id) do
+    join_parts([@prefix_map, @entity_region, to_string(id)])
   end
 
   # Helper to join parts with the separator

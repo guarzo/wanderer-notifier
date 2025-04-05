@@ -53,7 +53,13 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
         _kill_id = get_killmail_id(killmail)
         handle_killmail(killmail, state)
 
-      {:ok, _} ->
+      {:ok, payload} ->
+        # Log when we receive a message without a killmail_id
+        AppLogger.websocket_debug("Received message without killmail_id", %{
+          message_type: "unknown",
+          payload_keys: Map.keys(payload)
+        })
+
         state
 
       {:error, reason} ->
@@ -90,31 +96,33 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
     end
   end
 
-  defp process_zkill_data(kill_data, character_id, character_name) do
-    kill_id = Map.get(kill_data, "killmail_id")
-    state = %{processed_kill_ids: %{}}
+  defp process_zkill_data(kill_data, kill_id, state) do
+    # Use the kill_id from the parameter, don't redefine it
+    kill_id_from_data = Map.get(kill_data, "killmail_id")
+    # Don't reinitialize state, preserve the one passed in
 
     # Check if we've already processed this kill
     if Map.get(state.processed_kill_ids, kill_id) do
       AppLogger.processor_debug("Skipping already processed kill", %{
-        kill_id: kill_id,
-        character_id: character_id
+        kill_id: kill_id
       })
 
-      {:ok, :skipped}
+      # Return state unchanged
+      state
     else
       # Create context for processing
-      ctx = create_realtime_context(character_id, character_name)
+      # Since we don't have character_id/name, use kill_id as identifier
+      ctx = create_realtime_context(kill_id, "Killmail #{kill_id}")
 
       # Process the kill
       case process_single_kill(kill_data, ctx) do
         {:ok, _result} ->
           # Update state with processed kill
-          updated_state = Map.update!(state, :processed_kill_ids, &Map.put(&1, kill_id, true))
-          {:ok, updated_state}
+          Map.update!(state, :processed_kill_ids, &Map.put(&1, kill_id, true))
 
-        error ->
-          error
+        _ ->
+          # Just return state on any error
+          state
       end
     end
   end
