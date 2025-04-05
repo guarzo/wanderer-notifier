@@ -177,7 +177,7 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     AppLogger.api_debug("[SystemsClient] Extracted systems data result",
       count: length(result),
-      first_system: if(length(result) > 0, do: List.first(result), else: nil)
+      first_system: List.first(result)
     )
 
     result
