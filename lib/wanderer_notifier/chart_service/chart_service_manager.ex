@@ -99,16 +99,6 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     {:noreply, %{new_state | pid: nil, status: :restarting}}
   end
 
-  @impl true
-  def handle_info(:cleanup_existing_service, state) do
-    # First check if there's already a valid chart service running that we can use
-    if verify_chart_service(state.port_num) do
-      handle_existing_chart_service(state)
-    else
-      handle_no_valid_chart_service(state)
-    end
-  end
-
   # Handle case where a valid chart service is already running
   defp handle_existing_chart_service(state) do
     # If there's already a valid chart service, try to find its PID
@@ -165,6 +155,16 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   end
 
   @impl true
+  def handle_info(:cleanup_existing_service, state) do
+    # First check if there's already a valid chart service running that we can use
+    if verify_chart_service(state.port_num) do
+      handle_existing_chart_service(state)
+    else
+      handle_no_valid_chart_service(state)
+    end
+  end
+
+  @impl true
   def handle_info(:start_chart_service, state) do
     # Get absolute path
     chart_service_path = Path.expand(@chart_service_dir)
@@ -213,6 +213,25 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     AppLogger.info("[Chart Service] #{data}")
     {:noreply, state}
   end
+
+  @impl true
+  def handle_info({_port, {:exit_status, status}}, state) do
+    # Don't restart immediately if we're in adopted mode - we're using an external service
+    if state.status == :adopted do
+      AppLogger.info("[Chart Service] Using externally managed service - not restarting")
+      {:noreply, %{state | port_process: nil}}
+    else
+      AppLogger.error(
+        "[Chart Service] Chart service exited with status #{status}. Restarting in 5 seconds..."
+      )
+
+      Process.send_after(self(), :start_chart_service, 5000)
+      {:noreply, %{state | port_process: nil, pid: nil, status: :restarting}}
+    end
+  end
+
+  @impl true
+  def handle_info(_, state), do: {:noreply, state}
 
   # Extract PID from the chart service output
   defp extract_pid_from_output(data, state) do
@@ -266,25 +285,6 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
       %{state | status: :error}
     end
   end
-
-  @impl true
-  def handle_info({_port, {:exit_status, status}}, state) do
-    # Don't restart immediately if we're in adopted mode - we're using an external service
-    if state.status == :adopted do
-      AppLogger.info("[Chart Service] Using externally managed service - not restarting")
-      {:noreply, %{state | port_process: nil}}
-    else
-      AppLogger.error(
-        "[Chart Service] Chart service exited with status #{status}. Restarting in 5 seconds..."
-      )
-
-      Process.send_after(self(), :start_chart_service, 5000)
-      {:noreply, %{state | port_process: nil, pid: nil, status: :restarting}}
-    end
-  end
-
-  @impl true
-  def handle_info(_, state), do: {:noreply, state}
 
   @impl true
   def terminate(reason, state) do

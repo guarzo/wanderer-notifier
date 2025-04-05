@@ -8,7 +8,6 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.KillmailProcessing.Context
   alias WandererNotifier.KillmailProcessing.MetricRegistry
-  alias WandererNotifier.Stats
 
   @doc """
   Tracks the start of killmail processing.
