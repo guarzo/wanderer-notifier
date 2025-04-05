@@ -12,10 +12,12 @@ function KillmailChartCard({ title, description, chartType, loadChartImage }) {
     setLoading(true);
     setError(null);
     
+    // Add a timestamp for force refresh
     const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
     console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
     
     try {
+      // Use the original endpoint (UI-specific one was removed)
       const response = await fetch(`/api/charts/killmail/generate/${chartType}${timestamp}`);
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -51,6 +53,8 @@ function KillmailChartCard({ title, description, chartType, loadChartImage }) {
     console.log('Sending chart to Discord...');
     
     try {
+      // Note: We're still using the original endpoint for Discord sending
+      // This ensures we use the default Discord-friendly background
       const response = await fetch(`/api/charts/killmail/send-to-discord/${chartType}`);
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -79,7 +83,7 @@ function KillmailChartCard({ title, description, chartType, loadChartImage }) {
         )}
       </div>
       
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+      <div className="relative bg-black rounded-lg overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <FaCircleNotch className="h-8 w-8 text-gray-400 animate-spin" />

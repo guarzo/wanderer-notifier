@@ -332,8 +332,7 @@ defmodule WandererNotifier.Data.Cache.Keys do
   end
 
   @doc """
-  Generates a cache key for a killmail.
-  
+  Generates a cache key for a killmail
   ## Examples
       iex> WandererNotifier.Data.Cache.Keys.killmail(12345, "abc123")
       "esi:killmail:12345:abc123"

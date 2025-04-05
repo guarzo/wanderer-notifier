@@ -189,6 +189,9 @@ defmodule WandererNotifier.Application do
   end
 
   defp start_main_application do
+    # Initialize metric registry to ensure all metrics are pre-registered
+    initialize_metric_registry()
+
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
@@ -206,6 +209,24 @@ defmodule WandererNotifier.Application do
       {:error, reason} = error ->
         AppLogger.startup_error("❌ Failed to start application", error: inspect(reason))
         error
+    end
+  end
+
+  # Initialize metric registry
+  defp initialize_metric_registry do
+    alias WandererNotifier.KillmailProcessing.MetricRegistry
+    AppLogger.startup_info("Initializing metric registry")
+
+    case MetricRegistry.initialize() do
+      {:ok, atoms} ->
+        AppLogger.startup_info("Metric registry initialized successfully",
+          metric_count: length(atoms)
+        )
+
+      error ->
+        AppLogger.startup_error("Failed to initialize metric registry",
+          error: inspect(error)
+        )
     end
   end
 

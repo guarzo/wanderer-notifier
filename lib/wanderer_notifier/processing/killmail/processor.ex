@@ -97,9 +97,16 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   end
 
   defp process_zkill_data(kill_data, kill_id, state) do
-    # Use the kill_id from the parameter, don't redefine it
+    # Check if the kill_id from parameters matches the one in data for validation
     kill_id_from_data = Map.get(kill_data, "killmail_id")
-    # Don't reinitialize state, preserve the one passed in
+
+    # Log if there's a mismatch between the provided kill_id and the one in the data
+    if kill_id_from_data && kill_id_from_data != kill_id do
+      AppLogger.processor_warn("Kill ID mismatch", %{
+        parameter_kill_id: kill_id,
+        data_kill_id: kill_id_from_data
+      })
+    end
 
     # Check if we've already processed this kill
     if Map.get(state.processed_kill_ids, kill_id) do

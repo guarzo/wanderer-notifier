@@ -207,4 +207,16 @@ console.log(`Environment variables: WANDERER_CHART_SERVICE_PORT=${process.env.WA
 
 app.listen(PORT, () => {
   console.log(`Chart service running on port ${PORT}`);
+  console.log(`Process started with PID: ${process.pid}`);
+  
+  // Setup graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing chart service');
+    process.exit(0);
+  });
+  
+  process.on('SIGINT', () => {
+    console.log('SIGINT signal received: closing chart service');
+    process.exit(0);
+  });
 });

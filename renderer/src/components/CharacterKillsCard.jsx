@@ -10,7 +10,9 @@ import {
   FaRegCalendar,
   FaBug,
   FaHammer,
-  FaSync
+  FaSync,
+  FaCaretDown,
+  FaCaretUp
 } from 'react-icons/fa';
 
 function CharacterKillsCard({ title = "Character Kill Data", description = "Load and aggregate kill data for tracked characters" }) {
@@ -26,6 +28,7 @@ function CharacterKillsCard({ title = "Character Kill Data", description = "Load
   const [debugData, setDebugData] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
   const [forceSyncing, setForceSyncing] = useState(false);
+  const [showCharacters, setShowCharacters] = useState(false);
 
   useEffect(() => {
     fetchTrackedInfo();
@@ -225,13 +228,55 @@ function CharacterKillsCard({ title = "Character Kill Data", description = "Load
       
       {trackedInfo && (
         <div className="px-4 py-3 bg-gray-50 border-b">
-          <div className="flex items-center text-sm text-gray-700">
-            <FaInfoCircle className="mr-2 text-indigo-500" />
-            <div>
-              <span className="font-medium">{trackedInfo.tracked_characters || 0}</span> tracked, 
-              <span className="font-medium ml-1">{trackedInfo.total_kills || 0}</span> kills
+          <div className="flex items-center justify-between">
+            <div className="flex items-center text-sm text-gray-700">
+              <FaInfoCircle className="mr-2 text-indigo-500" />
+              <div>
+                <span className="font-medium">{trackedInfo.tracked_characters}</span> tracked characters, 
+                <span className="font-medium ml-1">{trackedInfo.total_kills}</span> total kills
+              </div>
             </div>
+            <button 
+              onClick={() => setShowCharacters(!showCharacters)} 
+              className="text-sm text-indigo-600 flex items-center hover:text-indigo-800"
+            >
+              {showCharacters ? <FaCaretUp className="mr-1" /> : <FaCaretDown className="mr-1" />}
+              {showCharacters ? 'Hide Details' : 'Show Details'}
+              <span className="ml-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs">
+                {trackedInfo.character_stats?.length || 0}
+              </span>
+            </button>
           </div>
+          
+          {showCharacters && trackedInfo.character_stats && (
+            <div className="mt-3 p-2 max-h-60 overflow-y-auto bg-white rounded border border-gray-200">
+              {trackedInfo.character_stats.every(char => char.kill_count === 0) && (
+                <div className="bg-yellow-50 p-2 mb-2 rounded border border-yellow-200 text-xs text-yellow-800">
+                  <FaExclamationTriangle className="inline-block mr-1" /> 
+                  All characters have 0 kill counts. Try running the "Load Kill Data" operation to fetch and process kill data.
+                </div>
+              )}
+              <table className="w-full text-sm text-left text-gray-600">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-1">Character</th>
+                    <th className="px-2 py-1 text-right">Kills</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trackedInfo.character_stats
+                    .sort((a, b) => b.kill_count - a.kill_count)
+                    .map((character) => (
+                      <tr key={character.character_id} className="border-b hover:bg-gray-50">
+                        <td className="px-2 py-1">{character.character_name}</td>
+                        <td className="px-2 py-1 text-right">{character.kill_count}</td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
       
@@ -308,7 +353,7 @@ function CharacterKillsCard({ title = "Character Kill Data", description = "Load
             className="p-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center disabled:opacity-50"
           >
             <FaBug className="mr-2" />
-            <span>View Database Status</span>
+            <span>Database Status</span>
           </button>
 
           <button

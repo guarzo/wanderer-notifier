@@ -17,7 +17,7 @@ function ActivityChartCard({ title, description, chartType }) {
     }
   };
 
-  const generateChart = (forceRefresh = false) => {
+  const generateChart = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setDebugInfo(null);
@@ -29,35 +29,32 @@ function ActivityChartCard({ title, description, chartType }) {
     const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
     console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
     
-    fetch(`/api/charts/activity/generate/${chartType}${timestamp}`)
-      .then(response => {
-        console.log(`Response status: ${response.status}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
-        setChartUrl(imageUrl);
-        console.log('Chart image blob URL created');
-        setRetryCount(0);
-      })
-      .catch(error => {
-        console.error(`Error generating ${chartType} chart:`, error);
-        setError(error.message);
-        if (retryCount < 2) {
-          console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
-          const timeout = Math.pow(2, retryCount) * 1000;
-          setTimeout(() => {
-            setRetryCount(prev => prev + 1);
-            generateChart(true);
-          }, timeout);
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      const response = await fetch(`/api/charts/activity/generate/${chartType}${timestamp}`);
+      console.log(`Response status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const imageUrl = URL.createObjectURL(blob);
+      setChartUrl(imageUrl);
+      console.log('Chart image blob URL created');
+      setRetryCount(0);
+    } catch (error) {
+      console.error(`Error generating ${chartType} chart:`, error);
+      setError(error.message);
+      if (retryCount < 2) {
+        console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
+        const timeout = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          generateChart(true);
+        }, timeout);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -110,7 +107,7 @@ function ActivityChartCard({ title, description, chartType }) {
         <p className="text-gray-600 text-sm mt-1">{description}</p>
       </div>
 
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+      <div className="relative bg-black rounded-lg overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <FaCircleNotch className="h-8 w-8 text-gray-400 animate-spin" />
@@ -164,45 +161,26 @@ function ActivityChartCard({ title, description, chartType }) {
         </div>
       )}
 
-const generateChart = async (forceRefresh = false) => {
-  setLoading(true);
-  setError(null);
-  setDebugInfo(null);
-  
-  // Cleanup previous blob URL if it exists
-  cleanupBlobUrl(chartUrl);
-  
-  // Only add timestamp when explicitly forcing a refresh
-  const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
-  console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
-  
-  try {
-    const response = await fetch(`/api/charts/activity/generate/${chartType}${timestamp}`);
-    console.log(`Response status: ${response.status}`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    const blob = await response.blob();
-    const imageUrl = URL.createObjectURL(blob);
-    setChartUrl(imageUrl);
-    console.log('Chart image blob URL created');
-    setRetryCount(0);
-  } catch (error) {
-    console.error(`Error generating ${chartType} chart:`, error);
-    setError(error.message);
-    if (retryCount < 2) {
-      console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
-      const timeout = Math.pow(2, retryCount) * 1000;
-      setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        generateChart(true);
-      }, timeout);
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+      {/* Action Buttons */}
+      <div className="p-4 border-t bg-gray-50 flex justify-between">
+        <button
+          onClick={retryWithDirectUrl}
+          className="flex items-center px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition duration-200"
+          disabled={loading}
+        >
+          <FaSync className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+        
+        <button
+          onClick={sendToDiscord}
+          className="flex items-center px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition duration-200"
+          disabled={sending || loading || !chartUrl}
+        >
+          <FaDiscord className="mr-2" />
+          <span>{sending ? 'Sending...' : 'Send to Discord'}</span>
+        </button>
+      </div>
     </div>
   );
 }

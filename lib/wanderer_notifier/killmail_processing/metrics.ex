@@ -22,21 +22,21 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
   Tracks the completion of killmail processing.
   """
   @spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
-@spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
-def track_processing_complete(%Context{} = ctx, result) do
-  base_metric = "processing.#{mode_name(ctx)}.complete"
-  track_metric(ctx, base_metric)
+  @spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
+  def track_processing_complete(%Context{} = ctx, result) do
+    base_metric = "processing.#{mode_name(ctx)}.complete"
+    track_metric(ctx, base_metric)
 
-  case result do
-    {:ok, _} ->
-      increment_counter("killmail.#{base_metric}.success")
-      
-    {:error, _} ->
-      increment_counter("killmail.#{base_metric}.error")
+    case result do
+      {:ok, _} ->
+        increment_counter("killmail.#{base_metric}.success")
+
+      {:error, _} ->
+        increment_counter("killmail.#{base_metric}.error")
+    end
+
+    :ok
   end
-
-  :ok
-end
 
   @doc """
   Tracks when a killmail is skipped.
@@ -87,16 +87,29 @@ end
 
   defp increment_counter(key) do
     # Track metrics using Core Stats
-    try do
-      # Use to_existing_atom to prevent atom table exhaustion
-      Stats.increment(String.to_existing_atom(key))
+    increment_counter_impl(key)
+  end
+
+  defp increment_counter_impl(key) do
+    # Check if the metric is registered in our metrics registry
+    registered_metrics = WandererNotifier.KillmailProcessing.MetricRegistry.registered_metrics()
+    atom_key = String.to_atom(key)
+
+    if atom_key in registered_metrics do
+      # If the atom is registered, increment it
+      Stats.increment(atom_key)
       :ok
-    rescue
-      ArgumentError ->
-        # Log that we tried to use a non-existing atom and ensure safe operation
-        require Logger
-        Logger.warn("Attempted to track metrics with non-existing atom key: #{key}")
-        :error
+    else
+      # Log that we tried to use a non-registered atom
+      require Logger
+      Logger.warning("Attempted to track metrics with non-registered atom key: #{key}")
+      :error
     end
+  rescue
+    error ->
+      # Log any other errors
+      require Logger
+      Logger.warning("Error tracking metric [#{key}]: #{inspect(error)}")
+      :error
   end
 end

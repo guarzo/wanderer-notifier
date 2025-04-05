@@ -156,6 +156,12 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     process_provided_character_id(killmail, character_id)
   end
 
+  @impl true
+  def persist_killmail(%KillmailStruct{} = killmail) do
+    # Call the function with nil character_id to perform the default processing
+    persist_killmail(killmail, nil)
+  end
+
   defp process_provided_character_id(killmail, character_id) do
     if tracked_character?(character_id, get_tracked_characters()) do
       process_tracked_character(killmail, character_id)

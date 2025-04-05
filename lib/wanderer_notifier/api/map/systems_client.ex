@@ -115,16 +115,6 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       count: length(updated_systems)
     )
 
-    # ... rest of the function or module code ...
-
-# Add the structured logging helper function in the module
-defp log_processing_step(step, data) do
-  AppLogger.api_debug(
-    "[SystemsClient] #{step}",
-    count: length(data),
-    first_system: List.first(data)
-  )
-end
     # Verify systems were cached successfully
     verify_systems_cached(updated_systems)
 
@@ -148,6 +138,15 @@ end
 
       cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
       {:ok, cached}
+  end
+
+  # Add the structured logging helper function as a separate function
+  defp log_processing_step(step, data) do
+    AppLogger.api_debug(
+      "[SystemsClient] #{step}",
+      count: length(data),
+      first_system: List.first(data)
+    )
   end
 
   # Extract systems data from different response formats

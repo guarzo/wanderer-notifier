@@ -72,7 +72,7 @@ function App() {
                       <span>Map Charts</span>
                     </Link>
                   )}
-                  {killChartsEnabled && (
+                  {debugEnabled && killChartsEnabled && (
                     <Link to="/kill-comparison" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                       <FaSkullCrossbones />
                       <span>Kill Analysis</span>

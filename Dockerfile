@@ -95,7 +95,9 @@ RUN apt-get update -y && \
         postgresql-client \
         openssl \
         ca-certificates \
-        wget
+        wget \
+        lsof \
+        net-tools
 
 WORKDIR /app
 

@@ -53,6 +53,43 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
     end
   end
 
+  # Helper function to handle connection errors
+  defp handle_connection_error(reason) do
+    case reason do
+      :econnrefused ->
+        AppLogger.api_warn("Connection refused error detected, requesting chart service restart")
+
+        # Check chart service status first if manager is available
+        if Process.whereis(ChartServiceManager) do
+          try do
+            # Get service state through an introspection call
+            case GenServer.call(ChartServiceManager, :get_state, 1000) do
+              %{status: status, pid: pid} ->
+                AppLogger.api_info(
+                  "Chart service status before restart: #{status}, PID: #{inspect(pid)}"
+                )
+
+              _ ->
+                AppLogger.api_warn("Unable to get chart service status")
+            end
+          catch
+            kind, err ->
+              AppLogger.api_warn(
+                "Error checking chart service status: #{inspect(kind)} #{inspect(err)}"
+              )
+          end
+        end
+
+        # Request restart after logging status
+        ChartServiceManager.request_restart()
+
+      _ ->
+        :ok
+    end
+
+    {:error, "Failed to communicate with chart service"}
+  end
+
   @doc """
   Generates a chart image from a chart configuration.
 
@@ -121,7 +158,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
       {:error, reason} ->
         AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
-        {:error, "Failed to communicate with chart service"}
+        handle_connection_error(reason)
     end
   end
 
@@ -194,7 +231,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
       {:error, reason} ->
         AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
-        {:error, "Failed to communicate with chart service"}
+        handle_connection_error(reason)
     end
   rescue
     e ->
@@ -257,7 +294,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
 
       {:error, reason} ->
         AppLogger.api_error("Failed to communicate with chart service", error: inspect(reason))
-        {:error, "Failed to communicate with chart service"}
+        handle_connection_error(reason)
     end
   rescue
     e ->

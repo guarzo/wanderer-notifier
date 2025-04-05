@@ -231,7 +231,7 @@ defmodule WandererNotifier.Api.ESI.Service do
       nil ->
         AppLogger.api_debug("🔍 ESI cache miss for region", region_id: region_id)
 
-        case Client.get_region(region_id, retry_opts()) do
+        case Client.get_region(region_id) do
           {:ok, data} = result ->
             CacheRepo.put(cache_key, data)
             result

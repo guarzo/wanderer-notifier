@@ -1,3 +1,5 @@
+- [ ] Fix logging metadata/keyword list -- ensure standardization (emoji, module, etc)
+- [ ] Remove direct SQL
 - [ ] **Organize Code into Domain Contexts**  
   - Evaluate your modules and group them by business domain (e.g. \`Character\`, \`Kill\`, \`Chart\`).  
   - Move overlapping functionalities into shared context modules to isolate concerns and improve clarity.

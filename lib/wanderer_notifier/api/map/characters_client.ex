@@ -231,30 +231,11 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     cache_ttl = Cache.characters_cache_ttl()
 
     try do
-      # Cache individual characters first and build the list
+      # Cache individual characters and build the list
       tracked_characters_list =
         Enum.reduce(tracked_characters, [], fn char, acc ->
-tracked_characters_list =
-  Enum.reduce(tracked_characters, [], fn char, acc ->
-    cache_character(char, cache_ttl, acc)
-  end)
-
-defp cache_character(char, cache_ttl, acc) do
-  if character_id = char.character_id do
-    # Cache individual character
-    CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
-    AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
-
-    # Mark as tracked
-    CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
-    AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
-
-    # Add to list only if successfully cached
-    [char | acc]
-  else
-    acc
-  end
-end
+          cache_character(char, cache_ttl, acc)
+        end)
 
       # Cache the main character list only after all individual characters are processed
       # Ensure the list is in the same order as the input
@@ -281,6 +262,24 @@ end
         AppLogger.api_error("[CharactersClient] #{Exception.format_stacktrace()}")
         # Let it crash - the supervisor will handle restart if needed
         reraise e, __STACKTRACE__
+    end
+  end
+
+  # Cache a single character and return updated accumulator
+  defp cache_character(char, cache_ttl, acc) do
+    if character_id = char.character_id do
+      # Cache individual character
+      CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
+
+      # Mark as tracked
+      CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
+
+      # Add to list only if successfully cached
+      [char | acc]
+    else
+      acc
     end
   end
 
