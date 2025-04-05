@@ -234,21 +234,27 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       # Cache individual characters first and build the list
       tracked_characters_list =
         Enum.reduce(tracked_characters, [], fn char, acc ->
-          if character_id = char.character_id do
-            # Cache individual character
-            CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
-            AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
+tracked_characters_list =
+  Enum.reduce(tracked_characters, [], fn char, acc ->
+    cache_character(char, cache_ttl, acc)
+  end)
 
-            # Mark as tracked
-            CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
-            AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
+defp cache_character(char, cache_ttl, acc) do
+  if character_id = char.character_id do
+    # Cache individual character
+    CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
+    AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
 
-            # Add to list only if successfully cached
-            [char | acc]
-          else
-            acc
-          end
-        end)
+    # Mark as tracked
+    CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
+    AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
+
+    # Add to list only if successfully cached
+    [char | acc]
+  else
+    acc
+  end
+end
 
       # Cache the main character list only after all individual characters are processed
       # Ensure the list is in the same order as the input
