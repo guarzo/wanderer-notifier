@@ -330,7 +330,12 @@ defmodule WandererNotifier.Data.Cache.Keys do
 
   @doc """
   Generates a cache key for a killmail.
+  
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.killmail(12345, "abc123")
+      "esi:killmail:12345:abc123"
   """
+  @spec killmail(integer() | String.t(), String.t()) :: String.t()
   def killmail(kill_id, killmail_hash) do
     [@prefix_esi, @entity_killmail, to_string(kill_id), killmail_hash]
     |> Enum.join(@separator)
