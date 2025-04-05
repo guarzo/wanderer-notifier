@@ -25,5 +25,8 @@ defmodule WandererNotifier.Util.Number.Human do
     end
   end
 
+  @doc """
+  Fallback for handling non-numeric inputs, returns "0".
+  """
   def number_to_human(_), do: "0"
 end
