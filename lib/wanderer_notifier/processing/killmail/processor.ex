@@ -20,6 +20,8 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   alias WandererNotifier.Processing.Killmail.{Cache, Notification}
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
+  @max_retries 3
+  @retry_backoff_ms 1000
 
   @impl WandererNotifier.Processing.Killmail.ProcessorBehaviour
   def init do
@@ -86,11 +88,46 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   end
 
   defp process_new_killmail(_unused_killmail, kill_id, state) do
-    case ZKillClient.get_single_killmail(kill_id) do
+    # Check cache first
+    case Cache.get_kill(kill_id) do
       {:ok, zkb_data} ->
+        # Use cached data
+        AppLogger.processor_debug("Using cached killmail data", %{
+          kill_id: kill_id,
+          source: :cache
+        })
+
         process_zkill_data(zkb_data, kill_id, state)
 
+      _ ->
+        # Fetch from ZKillboard with retry logic
+        fetch_and_process_zkill_data(kill_id, state)
+    end
+  end
+
+  defp fetch_and_process_zkill_data(kill_id, state, retry_count \\ 0) do
+    case ZKillClient.get_single_killmail(kill_id) do
+      {:ok, zkb_data} ->
+        # Cache the result
+        Cache.cache_kill(kill_id, zkb_data)
+        process_zkill_data(zkb_data, kill_id, state)
+
+      error when retry_count < @max_retries ->
+        # Log and retry
+        AppLogger.processor_warn("Retrying killmail fetch", %{
+          kill_id: kill_id,
+          retry: retry_count + 1,
+          max_retries: @max_retries,
+          error: inspect(error)
+        })
+
+        # Exponential backoff
+        backoff = (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
+        :timer.sleep(backoff)
+        fetch_and_process_zkill_data(kill_id, state, retry_count + 1)
+
       error ->
+        # Max retries reached, log error and return unchanged state
         log_zkill_error(kill_id, error)
         state
     end

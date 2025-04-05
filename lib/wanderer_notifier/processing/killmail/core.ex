@@ -90,6 +90,16 @@ defmodule WandererNotifier.Processing.Killmail.Core do
     })
   end
 
+  defp fetch_zkb_data(kill_id) do
+    with {:ok, [zkb_data | _]} <- ZKillClient.get_single_killmail(kill_id),
+         zkb_map <- Map.get(zkb_data, "zkb", %{}),
+         hash <- Map.get(zkb_map, "hash") do
+      {:ok, {zkb_data, hash}}
+    else
+      error -> error
+    end
+  end
+
   @doc """
   Process a killmail through the standardized pipeline.
 
@@ -127,11 +137,8 @@ defmodule WandererNotifier.Processing.Killmail.Core do
         _ -> "Unknown"
       end
 
-    with {:ok, zkb_data} <- ZKillClient.get_single_killmail(kill_id),
-         zkb_map <- Map.get(zkb_data, "zkb", %{}),
-         hash <- Map.get(zkb_map, "hash"),
-         {:ok, _} = result <- process_kill(kill_id, hash, character_id, character_name) do
-      result
+    with {:ok, {zkb_data, hash}} <- fetch_zkb_data(kill_id) do
+      process_kill_with_data(kill_id, hash, zkb_data, character_id, character_name)
     end
   end
 end
