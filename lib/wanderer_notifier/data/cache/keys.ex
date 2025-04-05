@@ -343,7 +343,12 @@ defmodule WandererNotifier.Data.Cache.Keys do
 
   @doc """
   Generates a cache key for a ship type.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.ship_type(683)
+      "esi:ship_type:683"
   """
+  @spec ship_type(integer() | String.t()) :: String.t()
   def ship_type(ship_type_id) do
     [@prefix_esi, "ship_type", to_string(ship_type_id)]
     |> Enum.join(@separator)
