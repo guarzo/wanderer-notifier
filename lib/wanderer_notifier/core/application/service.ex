@@ -374,7 +374,10 @@ defmodule WandererNotifier.Core.Application.Service do
   @impl true
   def handle_info(:send_startup_notification, state) do
     # Check if status messages are disabled
-    if Features.status_messages_disabled?() do
+    status_disabled = Features.status_messages_disabled?()
+    AppLogger.startup_info("Status messages disabled flag value", value: status_disabled)
+
+    if status_disabled do
       AppLogger.startup_info("Startup notification skipped - disabled by configuration")
       {:noreply, state}
     else

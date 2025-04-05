@@ -422,13 +422,7 @@ features_map = %{
       "WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED",
       "true"
     ) == "true",
-  status_messages_disabled:
-    EnvironmentHelper.get_env(
-      env_vars,
-      legacy_to_new_mapping,
-      "WANDERER_DISABLE_STATUS_MESSAGES",
-      "false"
-    ) == "true",
+  status_messages_disabled: System.get_env("WANDERER_DISABLE_STATUS_MESSAGES") == "true",
   kill_charts:
     EnvironmentHelper.get_env(
       env_vars,
