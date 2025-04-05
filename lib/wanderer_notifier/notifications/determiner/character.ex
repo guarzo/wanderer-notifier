@@ -53,36 +53,47 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
     AppLogger.processor_debug("[Determiner] Checking if character #{character_id_str} is tracked")
 
-    # First check if we have a direct tracking entry for the character
-    cache_key = CacheKeys.tracked_character(character_id_str)
-    cache_value = CacheRepo.get(cache_key)
+    # First check if the character is in the exclude_list
+    character_exclude_list = Application.get_env(:wanderer_notifier, :character_exclude_list, [])
 
-    # Log the cache check
-    AppLogger.processor_debug("[Determiner] Tracked character cache check",
-      character_id: character_id_str,
-      value: inspect(cache_value)
-    )
+    if character_id_str in character_exclude_list do
+      AppLogger.processor_debug(
+        "[Determiner] Character #{character_id_str} is in exclude_list, skipping"
+      )
 
-    # Get the character details from cache too
-    character_cache_key = CacheKeys.character(character_id_str)
-    character_in_cache = CacheRepo.get(character_cache_key)
+      false
+    else
+      # Check if we have a direct tracking entry for the character
+      cache_key = CacheKeys.tracked_character(character_id_str)
+      cache_value = CacheRepo.get(cache_key)
 
-    AppLogger.processor_debug("[Determiner] Character cache check",
-      character_id: character_id_str,
-      character: inspect(character_in_cache)
-    )
+      # Log the cache check
+      AppLogger.processor_debug("[Determiner] Tracked character cache check",
+        character_id: character_id_str,
+        value: inspect(cache_value)
+      )
 
-    # Return tracking status with detailed logging
-    tracked = cache_value != nil
+      # Get the character details from cache too
+      character_cache_key = CacheKeys.character(character_id_str)
+      character_in_cache = CacheRepo.get(character_cache_key)
 
-    AppLogger.processor_debug("[Determiner] Character tracking check result",
-      character_id: character_id_str,
-      tracked: tracked,
-      character_cache_key: character_cache_key,
-      character_in_cache: character_in_cache != nil
-    )
+      AppLogger.processor_debug("[Determiner] Character cache check",
+        character_id: character_id_str,
+        character: inspect(character_in_cache)
+      )
 
-    tracked
+      # Return tracking status with detailed logging
+      tracked = cache_value != nil
+
+      AppLogger.processor_debug("[Determiner] Character tracking check result",
+        character_id: character_id_str,
+        tracked: tracked,
+        character_cache_key: character_cache_key,
+        character_in_cache: character_in_cache != nil
+      )
+
+      tracked
+    end
   end
 
   def tracked_character?(_), do: false

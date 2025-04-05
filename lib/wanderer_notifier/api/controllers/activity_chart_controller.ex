@@ -76,36 +76,6 @@ defmodule WandererNotifier.Api.Controllers.ActivityChartController do
           |> put_resp_content_type("image/png")
           |> send_resp(200, image_data)
 
-        {:ok, chart_url, title} ->
-          AppLogger.api_info("Generated chart", title: title)
-
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            200,
-            Jason.encode!(%{
-              status: "ok",
-              chart_url: chart_url,
-              title: title
-            })
-          )
-
-        {:ok, chart_url} ->
-          # Handle new return format from ChartService
-          title = "Character Activity Chart"
-          AppLogger.api_info("Generated chart", format: "new", title: title)
-
-          conn
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            200,
-            Jason.encode!(%{
-              status: "ok",
-              chart_url: chart_url,
-              title: title
-            })
-          )
-
         {:error, reason} ->
           AppLogger.api_error("Failed to generate chart",
             chart_type: chart_type,

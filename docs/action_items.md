@@ -1,3 +1,5 @@
+- [ ] Fix logging metadata/keyword list -- ensure standardization (emoji, module, etc)
+- [ ] Remove direct SQL
 - [ ] **Organize Code into Domain Contexts**  
   - Evaluate your modules and group them by business domain (e.g. \`Character\`, \`Kill\`, \`Chart\`).  
   - Move overlapping functionalities into shared context modules to isolate concerns and improve clarity.
@@ -54,7 +56,7 @@
   - Ensure every public function has proper \`@doc\` and \`@spec\` annotations.  
   - Comprehensive documentation and type specifications improve code clarity, aid Dialyzer analysis, and support long-term maintainability.
 
-- [ ] **Standardize Logging Practices**   - use AppLogger everywhere
+- [ ] **Standardize Logging Practices**   - use AppLogger everywhere - map instead of keyword list
   - Create helper macros or functions for logging to enforce consistent log formatting and context information (such as request path or parameters).  
   - Use these standardized logging functions across controllers and services to make logs more uniform and easier to analyze.
 

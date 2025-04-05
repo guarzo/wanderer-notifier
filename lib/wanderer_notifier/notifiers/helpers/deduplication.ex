@@ -95,7 +95,7 @@ defmodule WandererNotifier.Notifiers.Helpers.Deduplication do
         AppLogger.kill_info("Kill is new, notification allowed", kill_id: kill_id_str)
 
       {:ok, :duplicate} ->
-        AppLogger.kill_info("Kill is a duplicate, notification skipped", kill_id: kill_id_str)
+        AppLogger.kill_debug("Kill is a duplicate, notification skipped", kill_id: kill_id_str)
 
       _ ->
         AppLogger.kill_warn("Unexpected result for kill check", result: inspect(result))

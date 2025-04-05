@@ -176,8 +176,13 @@ All environment variables now use a standardized `WANDERER_` prefix. Legacy vari
    - `WANDERER_FEATURE_KILL_CHARTS`: Enable kill charts (default: false)
    - `WANDERER_FEATURE_MAP_CHARTS`: Enable map charts (default: false)
    - `WANDERER_FEATURE_ACTIVITY_CHARTS`: Enable activity charts (default: false)
+   - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
 
-8. **Debug Settings**
+8. **Character Configuration**
+
+   - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
+
+9. **Debug Settings**
    - `WANDERER_DEBUG_LOGGING`: Enable debug logging (default: false)
 
 ### Legacy Variables Support
@@ -253,4 +258,10 @@ If you encounter issues or have questions, please open an issue on the project r
   --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \
   -t notifier:local
+
+  docker run \
+    --publish=7474:7474 --publish=7687:7687 \
+    --volume=$HOME/neo4j/data:/data \
+    --volume=$HOME/neo4j/logs:/logs \
+    neo4j:latest
 ```

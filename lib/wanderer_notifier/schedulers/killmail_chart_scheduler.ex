@@ -76,10 +76,10 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
       _ ->
         try do
           case adapter().generate_weekly_kills_chart() do
-            {:ok, chart_url} ->
+            {:ok, image_data} ->
               # Send chart to Discord
-              AppLogger.scheduler_info("Generated weekly kills chart", %{url: chart_url})
-              send_chart_to_discord(chart_url)
+              AppLogger.scheduler_info("Generated weekly kills chart")
+              send_chart_to_discord(image_data)
 
             {:error, reason} ->
               AppLogger.scheduler_error("Failed to generate weekly kills chart", error: reason)
@@ -93,25 +93,23 @@ defmodule WandererNotifier.Schedulers.KillmailChartScheduler do
     end
   end
 
-  defp send_chart_to_discord(chart_url) do
+  defp send_chart_to_discord(image_data) do
     embed = %{
       title: "Weekly Kill Charts",
-      description: "Here are the weekly kill charts!",
-      image: %{url: chart_url},
-      color: 0x00FF00
+      description: "Here are the weekly kill charts!"
     }
 
-    case notifier_factory().notify(:send_discord_embed, [embed]) do
+    case notifier_factory().notify(:send_discord_file, [image_data, "weekly_kills.png", embed]) do
       {:ok, result} ->
-        {:ok, result, %{chart_url: chart_url}}
+        {:ok, result, %{}}
 
       {:error, reason} when is_binary(reason) ->
         AppLogger.scheduler_error("Failed to send chart", error: reason)
-        {:error, "Failed to send chart: #{reason}", %{chart_url: chart_url}}
+        {:error, "Failed to send chart: #{reason}", %{}}
 
       {:error, other_error} ->
         AppLogger.scheduler_error("Failed to send chart", error: inspect(other_error))
-        {:error, "Failed to send chart: Failed to send notification", %{chart_url: chart_url}}
+        {:error, "Failed to send chart: Failed to send notification", %{}}
     end
   end
 

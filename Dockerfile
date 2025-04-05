@@ -25,6 +25,16 @@ RUN npm ci
 COPY renderer/ ./
 RUN npm run build && npm run postbuild
 
+# Set up chart-service
+WORKDIR /chart-service
+
+# Copy package files first for effective caching
+COPY chart-service/package*.json ./
+RUN npm install
+
+# Copy the rest of the chart-service code
+COPY chart-service/ ./
+
 # ----------------------------------------
 # 2. DEPS STAGE
 # ----------------------------------------
@@ -85,7 +95,9 @@ RUN apt-get update -y && \
         postgresql-client \
         openssl \
         ca-certificates \
-        wget
+        wget \
+        lsof \
+        net-tools
 
 WORKDIR /app
 
@@ -98,6 +110,9 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 
 # Copy static assets from builder (if needed)
 COPY --from=builder /app/priv/static /app/priv/static
+
+# Copy chart-service from node builder
+COPY --from=node_builder /chart-service /app/chart-service
 
 # Copy runtime scripts and set executable permissions
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/

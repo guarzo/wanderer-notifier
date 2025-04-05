@@ -17,7 +17,7 @@ function ActivityChartCard({ title, description, chartType }) {
     }
   };
 
-  const generateChart = (forceRefresh = false) => {
+  const generateChart = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setDebugInfo(null);
@@ -29,58 +29,32 @@ function ActivityChartCard({ title, description, chartType }) {
     const timestamp = forceRefresh ? `?t=${Date.now()}` : '';
     console.log(`Fetching chart for ${chartType}${forceRefresh ? ' (force refresh)' : ''}...`);
     
-    fetch(`/api/charts/activity/generate/${chartType}${timestamp}`)
-      .then(response => {
-        console.log(`Response status: ${response.status}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('image/png')) {
-          // Handle binary image data
-          return response.blob().then(blob => {
-            const imageUrl = URL.createObjectURL(blob);
-            return { status: 'ok', chart_url: imageUrl };
-          });
-        } else {
-          // Handle JSON response
-          return response.json();
-        }
-      })
-      .then(data => {
-        console.log('Chart data received:', data);
-        if (data.status === 'ok') {
-          const chartUrl = data.chart_url;
-          // Only add cache buster if it's not a blob URL and we're forcing a refresh
-          const urlWithCache = chartUrl.includes('blob:') ? 
-            chartUrl : 
-            forceRefresh ? 
-              `${chartUrl}${chartUrl.includes('?') ? '&' : '?'}cache=${Date.now()}` :
-              chartUrl;
-          setChartUrl(urlWithCache);
-          console.log('Chart URL set to:', urlWithCache);
-          setRetryCount(0);
-        } else {
-          setDebugInfo(JSON.stringify(data, null, 2));
-          throw new Error(data.message || 'Failed to generate chart');
-        }
-      })
-      .catch(error => {
-        console.error(`Error generating ${chartType} chart:`, error);
-        setError(error.message);
-        if (retryCount < 2) {
-          console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
-          const timeout = Math.pow(2, retryCount) * 1000;
-          setTimeout(() => {
-            setRetryCount(prev => prev + 1);
-            generateChart(true);
-          }, timeout);
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      const response = await fetch(`/api/charts/activity/generate/${chartType}${timestamp}`);
+      console.log(`Response status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const imageUrl = URL.createObjectURL(blob);
+      setChartUrl(imageUrl);
+      console.log('Chart image blob URL created');
+      setRetryCount(0);
+    } catch (error) {
+      console.error(`Error generating ${chartType} chart:`, error);
+      setError(error.message);
+      if (retryCount < 2) {
+        console.log(`Auto-retrying (attempt ${retryCount + 1})...`);
+        const timeout = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          generateChart(true);
+        }, timeout);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -122,65 +96,18 @@ function ActivityChartCard({ title, description, chartType }) {
   };
 
   const retryWithDirectUrl = () => {
-    if (chartUrl) {
-      const baseUrl = chartUrl.split('?')[0];
-      const newUrl = `${baseUrl}?t=${Date.now()}`;
-      setDebugInfo(`Trying to load: ${newUrl}`);
-      const img = new Image();
-      img.onload = () => {
-        setDebugInfo(`Image loaded successfully via direct URL: ${newUrl}`);
-        setChartUrl(newUrl);
-      };
-      img.onerror = (e) => {
-        setDebugInfo(`Failed to load image directly from URL: ${newUrl}. Error: ${e.message || 'Unknown error'}`);
-      };
-      img.src = newUrl;
-    }
+    setRetryCount(0);
+    generateChart(true);
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-          {description && (
-            <p className="text-sm text-gray-600 mt-1">{description}</p>
-          )}
-        </div>
-        <div className="flex space-x-2">
-          <button
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            onClick={() => generateChart(true)}
-            disabled={loading}
-          >
-            <FaSync className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            onClick={sendToDiscord}
-            disabled={sending || loading || !chartUrl}
-          >
-            <FaDiscord className={sending ? 'animate-pulse' : ''} />
-          </button>
-        </div>
+    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="p-4 border-b">
+        <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+        <p className="text-gray-600 text-sm mt-1">{description}</p>
       </div>
 
-      {/* Status Messages */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md flex items-center">
-          <FaExclamationTriangle className="mr-2" />
-          <span>{error}</span>
-        </div>
-      )}
-      
-      {success && (
-        <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-md">
-          {success}
-        </div>
-      )}
-
-      {/* Chart Display */}
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+      <div className="relative bg-black rounded-lg overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <FaCircleNotch className="h-8 w-8 text-gray-400 animate-spin" />
@@ -218,6 +145,42 @@ function ActivityChartCard({ title, description, chartType }) {
           </pre>
         </div>
       )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="p-4 bg-red-50 text-red-700 flex items-center">
+          <FaExclamationTriangle className="mr-2" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="p-4 bg-green-50 text-green-700">
+          {success}
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="p-4 border-t bg-gray-50 flex justify-between">
+        <button
+          onClick={retryWithDirectUrl}
+          className="flex items-center px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition duration-200"
+          disabled={loading}
+        >
+          <FaSync className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+        
+        <button
+          onClick={sendToDiscord}
+          className="flex items-center px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition duration-200"
+          disabled={sending || loading || !chartUrl}
+        >
+          <FaDiscord className="mr-2" />
+          <span>{sending ? 'Sending...' : 'Send to Discord'}</span>
+        </button>
+      </div>
     </div>
   );
 }

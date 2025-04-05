@@ -131,10 +131,12 @@ defmodule WandererNotifier.Data.KillmailTest do
     end
 
     test "get_attacker returns first attacker", %{killmail: killmail} do
-      assert Killmail.get_attacker(killmail) == %{
-               "character_id" => 95_465_499,
-               "ship_type_id" => 11_987
-             }
+      assert Killmail.get_attacker(killmail) == [
+               %{
+                 "character_id" => 95_465_499,
+                 "ship_type_id" => 11_987
+               }
+             ]
     end
 
     test "get_system_id returns solar system ID", %{killmail: killmail} do

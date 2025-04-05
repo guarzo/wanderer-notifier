@@ -163,24 +163,6 @@ defmodule WandererNotifier.Data.MapSystem do
     end
   end
 
-  # Determine system type and class information
-  defp determine_system_type_info(system_type, solar_system_id, map_response, type_description) do
-    if system_type == :wormhole do
-      class_title =
-        map_response["class_title"] || get_in(map_response, ["staticInfo", "class_title"])
-
-      if class_title do
-        {class_title, class_title}
-      else
-        wh_class = determine_wormhole_class(solar_system_id)
-        {wh_class, wh_class}
-      end
-    else
-      {type_description,
-       map_response["class_title"] || get_in(map_response, ["staticInfo", "class_title"])}
-    end
-  end
-
   # Determine the original name for the system
   defp determine_original_name(map_response, system_type, solar_system_id) do
     cond do
@@ -208,47 +190,43 @@ defmodule WandererNotifier.Data.MapSystem do
     end
   end
 
-  # Extract statics from map response
-  defp extract_statics(map_response) do
-    map_response["statics"] || get_in(map_response, ["staticInfo", "statics"]) || []
-  end
-
-  # Extract static details from map response
-  defp extract_static_details(map_response) do
-    map_response["static_details"] || get_in(map_response, ["staticInfo", "static_details"]) || []
-  end
-
-  # Extract effect name from map response
-  defp extract_effect_name(map_response) do
-    map_response["effect_name"] || get_in(map_response, ["staticInfo", "effectName"])
-  end
-
-  # Extract region name from map response
-  defp extract_region_name(map_response) do
-    map_response["region_name"] || get_in(map_response, ["staticInfo", "regionName"])
-  end
-
-  # Extract sun type ID from map response
-  defp extract_sun_type_id(map_response) do
-    map_response["sun_type_id"] || get_in(map_response, ["staticInfo", "sun_type_id"])
-  end
-
   def new(map_response) do
+    AppLogger.processor_debug("[MapSystem] Creating new system from response",
+      response_keys: Map.keys(map_response),
+      has_static_info: not is_nil(get_in(map_response, ["staticInfo"])),
+      system_name: map_response["name"],
+      system_id: map_response["solar_system_id"]
+    )
+
     # Convert solar_system_id to integer if it's a string
     solar_system_id = parse_solar_system_id(map_response["solar_system_id"])
+
+    AppLogger.processor_debug("[MapSystem] Parsed solar system ID",
+      original: map_response["solar_system_id"],
+      parsed: solar_system_id
+    )
 
     # Determine the system_type based on the ID
     system_type = determine_system_type(solar_system_id)
 
-    # Get a more specific type description for the system
-    type_description = extract_type_description(map_response)
-
-    # For wormhole systems, enhance with class information if available
-    {type_description, class_title} =
-      determine_system_type_info(system_type, solar_system_id, map_response, type_description)
+    AppLogger.processor_debug("[MapSystem] Determined system type",
+      system_id: solar_system_id,
+      system_type: system_type
+    )
 
     # Determine original_name (proper J-name for wormholes)
     original_name = determine_original_name(map_response, system_type, solar_system_id)
+
+    AppLogger.processor_debug("[MapSystem] Determined original name",
+      original_name: original_name
+    )
+
+    # Log the final system details before creation
+    AppLogger.processor_debug("[MapSystem] Creating system with details",
+      system_id: solar_system_id,
+      system_type: system_type,
+      original_name: original_name
+    )
 
     # Use the documented fields from the API
     %__MODULE__{
@@ -260,20 +238,25 @@ defmodule WandererNotifier.Data.MapSystem do
       temporary_name: determine_temporary_name(map_response, original_name),
       locked: map_response["locked"] || false,
       system_type: system_type,
-      type_description: type_description,
-      # Use the updated class_title
-      class_title: class_title,
-      # Will be populated if system-static-info is called
-      effect_name: extract_effect_name(map_response),
-      # Will be populated if system-static-info is called
-      statics: extract_statics(map_response),
-      # Will be populated if system-static-info is called
-      static_details: extract_static_details(map_response),
-      # Will be populated if system-static-info is called
-      region_name: extract_region_name(map_response),
-      is_shattered: extract_is_shattered(map_response),
-      sun_type_id: extract_sun_type_id(map_response)
+      # These fields will be populated by static info
+      type_description: nil,
+      class_title: nil,
+      effect_name: nil,
+      statics: [],
+      static_details: [],
+      region_name: nil,
+      is_shattered: false,
+      sun_type_id: nil
     }
+  rescue
+    e ->
+      AppLogger.processor_error("[MapSystem] Error creating system",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        map_response: inspect(map_response, limit: 100)
+      )
+
+      reraise e, __STACKTRACE__
   end
 
   @doc """
@@ -290,6 +273,11 @@ defmodule WandererNotifier.Data.MapSystem do
     if valid_static_info?(static_info) do
       update_system_with_valid_info(system, static_info)
     else
+      AppLogger.processor_warn("[MapSystem] Invalid static info for system", %{
+        system_name: system.name,
+        static_info: inspect(static_info)
+      })
+
       system
     end
   end
@@ -299,44 +287,48 @@ defmodule WandererNotifier.Data.MapSystem do
     not is_nil(static_info) and is_map(static_info)
   end
 
-  # Extract fields from static_info with fallbacks
-  defp extract_field(static_info, primary_key, alternate_key \\ nil, default \\ nil) do
-    cond do
-      not is_nil(Map.get(static_info, primary_key)) ->
-        Map.get(static_info, primary_key)
-
-      not is_nil(alternate_key) and not is_nil(Map.get(static_info, alternate_key)) ->
-        Map.get(static_info, alternate_key)
-
-      true ->
-        default
-    end
-  end
-
   # Update the system with extracted static information
   defp update_system_with_valid_info(system, static_info) do
-    # Extract all necessary fields
-    statics = extract_field(static_info, "statics", nil, [])
-    static_details = extract_field(static_info, "static_details", nil, [])
-    class_title = extract_field(static_info, "class_title")
-    effect_name = extract_field(static_info, "effect_name")
-    region_name = extract_field(static_info, "region_name")
-    type_description = extract_field(static_info, "type_description", "typeDescription")
-    is_shattered = extract_field(static_info, "is_shattered", "isShattered")
-    sun_type_id = extract_field(static_info, "sun_type_id")
+    # Extract all necessary fields directly from static_info
+    statics = Map.get(static_info, "statics", [])
+    static_details = Map.get(static_info, "static_details", [])
+    class_title = Map.get(static_info, "class_title")
+    effect_name = Map.get(static_info, "effect_name")
+    region_name = Map.get(static_info, "region_name")
+    type_description = Map.get(static_info, "type_description")
+    is_shattered = Map.get(static_info, "is_shattered", false)
+    sun_type_id = Map.get(static_info, "sun_type_id")
 
-    # Update the system with new information, falling back to existing values
-    %__MODULE__{
+    # Validate required fields
+    if is_nil(type_description) do
+      AppLogger.processor_error(
+        "STATIC INFO ERROR - System: #{system.name} (#{system.id}) - Raw response: #{inspect(static_info, pretty: true, limit: :infinity)}"
+      )
+
+      raise "Missing required type_description for system #{system.name} (ID: #{system.id})"
+    end
+
+    # Update the system with new information
+    updated_system = %__MODULE__{
       system
-      | class_title: class_title || system.class_title,
-        effect_name: effect_name || system.effect_name,
+      | class_title: class_title,
+        effect_name: effect_name,
         statics: statics,
         static_details: static_details,
-        region_name: region_name || system.region_name,
-        type_description: type_description || system.type_description,
-        is_shattered: is_shattered || system.is_shattered,
-        sun_type_id: sun_type_id || system.sun_type_id
+        region_name: region_name,
+        type_description: type_description,
+        is_shattered: is_shattered,
+        sun_type_id: sun_type_id
     }
+
+    AppLogger.processor_debug("[MapSystem] Successfully updated system with static info",
+      system_name: system.name,
+      type_description: type_description,
+      class_title: class_title,
+      region_name: region_name
+    )
+
+    updated_system
   end
 
   @doc """
@@ -424,147 +416,6 @@ defmodule WandererNotifier.Data.MapSystem do
     :kspace
   end
 
-  # Helper function to determine system type description based on ID
-  defp determine_system_type_description(system_id) when is_integer(system_id) do
-    cond do
-      wormhole_id?(system_id) ->
-        classify_wormhole(system_id)
-
-      kspace_id?(system_id) ->
-        classify_kspace(system_id)
-
-      system_id < 30_000_000 ->
-        "Unknown"
-
-      true ->
-        "K-space"
-    end
-  end
-
-  defp determine_system_type_description(_), do: "Unknown"
-
-  # Check if ID is in wormhole range
-  defp wormhole_id?(system_id) do
-    system_id >= 31_000_000 and system_id < 32_000_000
-  end
-
-  # Check if ID is in k-space range
-  defp kspace_id?(system_id) do
-    system_id >= 30_000_000 and system_id < 31_000_000
-  end
-
-  # Classify wormhole system based on ID range
-  defp classify_wormhole(system_id) do
-    cond do
-      system_id < 31_000_006 -> "Thera"
-      system_id < 31_001_000 -> "Class 1"
-      system_id < 31_002_000 -> "Class 2"
-      system_id < 31_003_000 -> "Class 3"
-      system_id < 31_004_000 -> "Class 4"
-      system_id < 31_005_000 -> "Class 5"
-      system_id < 31_006_000 -> "Class 6"
-      true -> "Wormhole"
-    end
-  end
-
-  # Classify k-space system (high-sec, low-sec, or null-sec)
-  # Current implementation uses system ID remainder to approximate security status
-  defp classify_kspace(system_id) do
-    remainder = rem(system_id, 1000)
-    # High-sec systems typically have higher ID remainders (700-999)
-    # Low-sec systems typically have middle remainders (500-699)
-    # Null-sec systems typically have lower remainders (0-499)
-    cond do
-      remainder < 500 -> "Null-sec"
-      remainder >= 700 -> "High-sec"
-      true -> "Low-sec"
-    end
-  end
-
-  # Add helper function to determine wormhole class based on ID
-  defp determine_wormhole_class(system_id) when is_integer(system_id) do
-    # Use the existing classify_wormhole function to avoid duplication
-    classify_wormhole(system_id)
-  end
-
-  defp determine_wormhole_class(_), do: "Wormhole"
-
-  # Helper function to extract type description with consistent field names
-  defp extract_type_description(map_response) do
-    # First check if we can determine type from security value
-    case extract_type_from_security(map_response) do
-      nil -> extract_type_from_fields(map_response)
-      type_desc -> type_desc
-    end
-  end
-
-  # Try to determine system type from security value
-  defp extract_type_from_security(map_response) do
-    security = extract_security_value(map_response)
-
-    if is_nil(security),
-      do: nil,
-      else: security_to_type_description(parse_security_value(security))
-  end
-
-  # Try to extract type from various possible field names
-  defp extract_type_from_fields(map_response) do
-    # Check various field paths in order of preference
-    type_fields = [
-      map_response["type_description"],
-      map_response["typeDescription"],
-      get_in(map_response, ["staticInfo", "type_description"]),
-      get_in(map_response, ["staticInfo", "typeDescription"]),
-      get_in(map_response, ["staticInfo", "class_title"]),
-      get_in(map_response, ["data", "type_description"])
-    ]
-
-    # Find first non-nil value or fall back to ID-based classification
-    Enum.find(type_fields, &(not is_nil(&1))) ||
-      extract_type_from_id(map_response)
-  end
-
-  # Fall back to determining type from system ID
-  defp extract_type_from_id(map_response) do
-    case Map.get(map_response, "solar_system_id") do
-      nil -> "Unknown"
-      id -> determine_system_type_description(id)
-    end
-  end
-
-  # Helper to extract security value from map response
-  defp extract_security_value(map_response) do
-    map_response["security"] ||
-      get_in(map_response, ["staticInfo", "security"]) ||
-      get_in(map_response, ["data", "security"])
-  end
-
-  # Helper to parse security value to float
-  defp parse_security_value(security) when is_binary(security) do
-    case Float.parse(security) do
-      {value, _} -> value
-      :error -> nil
-    end
-  end
-
-  defp parse_security_value(security) when is_number(security), do: security
-  defp parse_security_value(_), do: nil
-
-  # Convert security value to type description
-  defp security_to_type_description(nil), do: nil
-  defp security_to_type_description(security) when security >= 0.5, do: "High-sec"
-  defp security_to_type_description(security) when security > 0.0, do: "Low-sec"
-  defp security_to_type_description(_security), do: "Null-sec"
-
-  # Helper function to extract is_shattered status with consistent field names
-  defp extract_is_shattered(map_response) do
-    Map.get(map_response, "is_shattered") ||
-      Map.get(map_response, "isShattered") ||
-      get_in(map_response, ["staticInfo", "is_shattered"]) ||
-      get_in(map_response, ["staticInfo", "isShattered"]) ||
-      false
-  end
-
   @doc """
   Safely gets the statics list for a system, ensuring it's never nil.
   Important for notification formatting.
@@ -583,47 +434,8 @@ defmodule WandererNotifier.Data.MapSystem do
       is_list(system.statics) and length(system.statics) > 0 ->
         system.statics
 
-      system.system_type == :wormhole ->
-        # For wormholes with no statics info, provide basic info based on class
-        add_default_statics_by_class(system)
-
       true ->
         []
     end
-  end
-
-  # Add default statics based on wormhole class
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 1", "C1"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 2", "C2"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 3", "C3"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 4", "C4"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 5", "C5"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(%{class_title: class_title})
-       when class_title in ["Class 6", "C6"] do
-    ["K162"]
-  end
-
-  defp add_default_statics_by_class(_system) do
-    []
   end
 end

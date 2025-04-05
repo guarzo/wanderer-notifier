@@ -69,6 +69,45 @@ defmodule WandererNotifier.Core.Stats do
     GenServer.cast(__MODULE__, {:mark_notification_sent, type})
   end
 
+  @doc """
+  Prints a summary of current statistics to the log.
+  """
+  def print_summary do
+    stats = get_stats()
+
+    # Format uptime
+    uptime = stats.uptime
+
+    # Format notification counts
+    notifications = stats.notifications
+    total_notifications = notifications.total
+    _kills_notified = notifications.kills
+    systems_notified = notifications.systems
+    characters_notified = notifications.characters
+
+    # Format processing stats
+    processing = stats.processing
+    kills_processed = processing.kills_processed
+    kills_notified = processing.kills_notified
+
+    # Format websocket status
+    websocket = stats.websocket
+    connected = if websocket.connected, do: "connected", else: "disconnected"
+
+    last_message =
+      case websocket.last_message do
+        nil -> "never"
+        dt -> "#{DateTime.diff(DateTime.utc_now(), dt)}s ago"
+      end
+
+    # Log the summary
+    AppLogger.kill_info("📊 Stats Summary:
+    Uptime: #{uptime}
+    Notifications: #{total_notifications} total (#{kills_notified} kills, #{systems_notified} systems, #{characters_notified} characters)
+    Processing: #{kills_processed} kills processed, #{kills_notified} kills notified
+    WebSocket: #{connected}, last message #{last_message}")
+  end
+
   # Server Implementation
 
   @impl true
@@ -92,6 +131,10 @@ defmodule WandererNotifier.Core.Stats do
          systems: 0,
          characters: 0
        },
+       processing: %{
+         kills_processed: 0,
+         kills_notified: 0
+       },
        first_notifications: %{
          kill: true,
          character: true,
@@ -102,10 +145,20 @@ defmodule WandererNotifier.Core.Stats do
 
   @impl true
   def handle_cast({:increment, type}, state) do
-    notifications = Map.update(state.notifications, type, 1, &(&1 + 1))
-    notifications = Map.update(notifications, :total, 1, &(&1 + 1))
+    case type do
+      :kill_processed ->
+        processing = Map.update(state.processing, :kills_processed, 1, &(&1 + 1))
+        {:noreply, %{state | processing: processing}}
 
-    {:noreply, %{state | notifications: notifications}}
+      :kill_notified ->
+        processing = Map.update(state.processing, :kills_notified, 1, &(&1 + 1))
+        {:noreply, %{state | processing: processing}}
+
+      _ ->
+        notifications = Map.update(state.notifications, type, 1, &(&1 + 1))
+        notifications = Map.update(notifications, :total, 1, &(&1 + 1))
+        {:noreply, %{state | notifications: notifications}}
+    end
   end
 
   @impl true
@@ -147,7 +200,8 @@ defmodule WandererNotifier.Core.Stats do
       startup_time: state.websocket.startup_time,
       notifications: state.notifications,
       websocket: state.websocket,
-      first_notifications: Map.get(state, :first_notifications, %{})
+      first_notifications: Map.get(state, :first_notifications, %{}),
+      processing: state.processing
     }
 
     {:reply, stats, state}

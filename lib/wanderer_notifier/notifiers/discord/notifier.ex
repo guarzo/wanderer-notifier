@@ -205,6 +205,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         # Create notification with StructuredFormatter
         generic_notification = StructuredFormatter.format_character_notification(character)
         send_to_discord(generic_notification, :character_tracking)
+
+        # Record stats
+        Stats.increment(:characters)
       else
         # This is a duplicate or doesn't meet criteria, skip notification
         AppLogger.processor_info("Skipping character notification",
@@ -431,11 +434,11 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       is_map(killmail) ->
         system_id =
           Map.get(killmail, "solar_system_id") ||
-            get_in(killmail, ["esi_data", "solar_system_id"])
+            Map.get(killmail, "esi_data", %{})["solar_system_id"]
 
         system_name =
           Map.get(killmail, "solar_system_name") ||
-            get_in(killmail, ["esi_data", "solar_system_name"])
+            Map.get(killmail, "esi_data", %{})["solar_system_name"]
 
         # Return system_id, but log it with the name if available
         AppLogger.processor_debug(

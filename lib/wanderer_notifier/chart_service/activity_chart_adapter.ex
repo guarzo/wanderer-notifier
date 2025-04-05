@@ -9,7 +9,6 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
   alias WandererNotifier.Api.Map.CharactersClient
   alias WandererNotifier.ChartService
   alias WandererNotifier.ChartService.ChartConfig
-  alias WandererNotifier.ChartService.FallbackStrategy
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -25,7 +24,7 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
     with {:ok, character_data} <- extract_character_data(activity_data),
          {:ok, config} <- create_chart_config(character_data) do
-      generate_chart_with_fallback(config)
+      generate_chart(config)
     else
       {:error, reason} = error ->
         AppLogger.api_error("Failed to generate activity summary chart",
@@ -175,8 +174,8 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
       {:error, "Error creating chart configuration: #{inspect(e)}"}
   end
 
-  # Generate chart with fallback strategy
-  defp generate_chart_with_fallback(config) do
+  # Generate chart using the Node.js service
+  defp generate_chart(config) do
     AppLogger.api_debug("Attempting to generate chart with config",
       config: inspect(config, limit: 2000)
     )
@@ -191,34 +190,13 @@ defmodule WandererNotifier.ChartService.ActivityChartAdapter do
 
       {:error, reason} = error ->
         AppLogger.api_error(
-          "Failed to generate chart image, attempting fallback  #{inspect(error)}",
+          "Failed to generate chart image",
           error: inspect(reason),
           config: inspect(config, limit: 2000)
         )
 
-        case FallbackStrategy.handle_chart_failure(config) do
-          {:ok, _} = success ->
-            AppLogger.api_debug("Successfully generated chart using fallback strategy")
-            success
-
-          {:error, fallback_reason} = fallback_error ->
-            AppLogger.api_error("Fallback strategy also _debug",
-              original_error: inspect(reason),
-              fallback_error: inspect(fallback_reason)
-            )
-
-            fallback_error
-        end
+        error
     end
-  rescue
-    e ->
-      AppLogger.api_error("Unexpected error generating chart",
-        error: inspect(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
-        config: inspect(config, limit: 1000)
-      )
-
-      {:error, "Unexpected error generating chart: #{inspect(e)}"}
   end
 
   @doc """

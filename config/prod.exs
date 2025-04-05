@@ -32,4 +32,8 @@ config :logger, :module_levels, %{
   "WandererNotifier.Api.ZKill.Websocket" => :warning
 }
 
+# Configure chart service directory for production
+config :wanderer_notifier,
+  chart_service_dir: "/app/chart-service"
+
 # Runtime configuration should be in runtime.exs

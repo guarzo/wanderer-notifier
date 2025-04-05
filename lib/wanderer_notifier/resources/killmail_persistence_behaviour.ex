@@ -17,5 +17,32 @@ defmodule WandererNotifier.Resources.KillmailPersistenceBehaviour do
   @callback maybe_persist_killmail(killmail :: KillmailStruct.t() | map()) ::
               {:ok, map()} | {:error, term()} | :ignored
 
-  @callback persist_killmail(killmail :: KillmailStruct.t()) :: :ok | {:error, term()}
+  @doc """
+  Persists a killmail.
+
+  ## Parameters
+    - killmail: The killmail data to persist
+
+  ## Returns
+    - {:ok, persisted_killmail} on success
+    - {:error, reason} on failure
+    - :ignored if not relevant
+  """
+  @callback persist_killmail(killmail :: KillmailStruct.t()) ::
+              {:ok, map()} | {:error, term()} | :ignored
+
+  @doc """
+  Persists a killmail with an explicitly provided character_id.
+
+  ## Parameters
+    - killmail: The killmail data to persist
+    - character_id: The character ID to associate with this killmail, or nil to detect automatically
+
+  ## Returns
+    - {:ok, persisted_killmail} on success
+    - {:error, reason} on failure
+    - :ignored if not relevant
+  """
+  @callback persist_killmail(killmail :: KillmailStruct.t(), character_id :: integer() | nil) ::
+              {:ok, map()} | {:error, term()} | :ignored
 end

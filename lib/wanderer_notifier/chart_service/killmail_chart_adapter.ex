@@ -12,6 +12,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   alias Ash.Query
 
   alias WandererNotifier.ChartService
+  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
   alias WandererNotifier.Resources.Api
@@ -46,6 +47,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   @doc """
   Generates a chart showing only ISK destroyed for tracked characters.
   """
+  @impl true
   def generate_weekly_isk_chart(options \\ %{}) do
     limit = extract_limit_from_options(options)
     AppLogger.kill_info("Generating weekly ISK destroyed chart", limit: limit)
@@ -58,6 +60,39 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         AppLogger.kill_error("Failed to prepare weekly ISK data", error: inspect(reason))
         generate_empty_chart()
     end
+  end
+
+  @doc """
+  Generates a killmail validation chart showing zkill API kill counts vs database kill counts
+  for each tracked character.
+
+  This chart helps identify discrepancies between kills retrieved from the ZKillboard API
+  and what's been successfully stored in the database.
+
+  ## Returns
+    - {:ok, image_data} if successful
+    - {:error, reason} if chart generation fails
+  """
+  @impl true
+  def generate_kill_validation_chart do
+    AppLogger.kill_info("Generating kill validation chart")
+
+    case prepare_kill_validation_data() do
+      {:ok, chart_data, title, chart_options} ->
+        generate_chart_from_data(chart_data, title, chart_options)
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to prepare kill validation data", error: inspect(reason))
+        generate_empty_chart()
+    end
+  rescue
+    e ->
+      AppLogger.kill_error("Error generating kill validation chart",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error generating kill validation chart: #{Exception.message(e)}"}
   end
 
   # Helper to extract limit from options
@@ -96,14 +131,16 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       options: chart_options
     }
 
-    # Generate URL from the config
-    ChartService.generate_chart_url(chart_config)
+    # Generate chart using the Node.js service
+    ChartService.generate_chart_image(chart_config)
   end
 
   # Generate an empty chart with error message
   defp generate_empty_chart do
-    {:ok,
-     "https://quickchart.io/chart?c={type:%27bar%27,data:{labels:[%27No%20Data%27],datasets:[{label:%27No%20weekly%20kill%20statistics%20available%27,data:[0]}]}}&bkg=rgb(47,49,54)&width=800&height=400"}
+    ChartService.create_no_data_chart(
+      "No Killmail Data Available",
+      "No weekly kill statistics available"
+    )
   end
 
   @doc """
@@ -210,11 +247,83 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       {:error, "Error preparing weekly ISK data: #{Exception.message(e)}"}
   end
 
+  @doc """
+  Prepares data for the kill validation chart.
+  """
+  def prepare_kill_validation_data do
+    AppLogger.kill_info("Preparing kill validation data")
+
+    # Get tracked characters - limit to 8 to prevent timeouts and improve performance
+    tracked_characters = get_tracked_characters() |> Enum.take(8)
+
+    if length(tracked_characters) > 0 do
+      # Get comparison data for each character in parallel (with a limit of 3 concurrent tasks)
+      validation_data =
+        tracked_characters
+        |> Task.async_stream(
+          &get_character_kill_comparison/1,
+          max_concurrency: 3,
+          timeout: 10_000,
+          ordered: false
+        )
+        |> Enum.map(fn
+          {:ok, result} ->
+            result
+
+          {:exit, reason} ->
+            # Include error details per character when tasks fail
+            character_id = get_in(reason, [:character, :character_id]) || "unknown"
+
+            AppLogger.kill_warn("Failed to get comparison data for character", %{
+              character_id: character_id,
+              reason: inspect(reason)
+            })
+
+            nil
+
+          _ ->
+            nil
+        end)
+        |> Enum.filter(&(&1 != nil))
+
+      if length(validation_data) > 0 do
+        # Extract chart elements
+        {character_labels, zkill_counts, db_counts} = extract_validation_metrics(validation_data)
+
+        # Create chart data structure
+        chart_data = create_kill_validation_chart_data(character_labels, zkill_counts, db_counts)
+        options = create_kill_validation_chart_options()
+
+        {:ok, chart_data, "Killmail Validation", options}
+      else
+        AppLogger.kill_warn("No validation data available for tracked characters")
+        empty_chart_data = create_empty_kills_chart_data("No validation data available")
+        options = create_empty_chart_options()
+
+        {:ok, empty_chart_data, "Killmail Validation", options}
+      end
+    else
+      AppLogger.kill_warn("No tracked characters available")
+      empty_chart_data = create_empty_kills_chart_data("No tracked characters available")
+      options = create_empty_chart_options()
+
+      {:ok, empty_chart_data, "Killmail Validation", options}
+    end
+  rescue
+    e ->
+      AppLogger.kill_error("Error preparing kill validation data",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, "Error preparing kill validation data: #{Exception.message(e)}"}
+  end
+
   @impl true
   def send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
     # Generate both kills and ISK charts
-    with {:ok, kills_chart_url} <- generate_weekly_kills_chart(),
-         {:ok, isk_chart_url} <- generate_weekly_isk_chart(%{limit: 20}) do
+    with {:ok, kills_chart_data} <- generate_weekly_kills_chart(),
+         {:ok, isk_chart_data} <- generate_weekly_isk_chart(%{limit: 20}) do
       # Send both charts to Discord
       kill_title =
         "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
@@ -225,29 +334,42 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       # Create embeds with chart URLs
       kill_embed = %{
         "title" => kill_title,
-        "image" => %{
-          "url" => kills_chart_url
-        },
-        # Discord blue
         "color" => 3_447_003
       }
 
       isk_embed = %{
         "title" => isk_title,
-        "image" => %{
-          "url" => isk_chart_url
-        },
-        # Discord blue
         "color" => 3_447_003
       }
 
       # Send kills chart and handle potential errors
-      with {:ok, kills_message} <- DiscordClient.send_embed(kill_embed, channel_id),
-           {:ok, isk_message} <- DiscordClient.send_embed(isk_embed, channel_id) do
-        {:ok, %{kills_message: kills_message, isk_message: isk_message}}
-      else
+      case DiscordClient.send_file(
+             "weekly_kills.png",
+             kills_chart_data,
+             kill_title,
+             nil,
+             channel_id,
+             kill_embed
+           ) do
+        :ok ->
+          case DiscordClient.send_file(
+                 "weekly_isk.png",
+                 isk_chart_data,
+                 isk_title,
+                 nil,
+                 channel_id,
+                 isk_embed
+               ) do
+            :ok ->
+              {:ok, %{status: :ok, message: "Successfully sent both charts to Discord"}}
+
+            {:error, reason} ->
+              AppLogger.kill_error("Failed to send ISK chart to Discord", error: inspect(reason))
+              {:error, reason}
+          end
+
         {:error, reason} ->
-          AppLogger.kill_error("Failed to send charts to Discord", error: inspect(reason))
+          AppLogger.kill_error("Failed to send kills chart to Discord", error: inspect(reason))
           {:error, reason}
       end
     else
@@ -471,33 +593,55 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
 
   # Creates chart data structure for the weekly kills chart
   defp create_weekly_kills_only_chart_data(labels, kills_data, solo_kills_data, final_blows_data) do
+    # Calculate non-solo, non-final blow kills for proper stacking
+    # Since kills_data is total kills, we need to calculate the "other" kills
+    # that are not solo kills or final blows
+    other_kills_data =
+      Enum.zip([kills_data, solo_kills_data, final_blows_data])
+      |> Enum.map(fn {total, solo, final} ->
+        # Ensure we don't go negative due to data inconsistencies
+        max(0, total - solo - final)
+      end)
+
     %{
       "type" => "bar",
       "labels" => labels,
       "datasets" => [
         %{
           "label" => "Kills",
-          "backgroundColor" => "rgba(255, 99, 132, 0.8)",
-          "borderColor" => "rgba(255, 99, 132, 0.8)",
+          # EVE Online red
+          "backgroundColor" => "rgba(220, 53, 69, 0.8)",
+          "borderColor" => "rgba(220, 53, 69, 1.0)",
           "borderWidth" => 1,
-          "data" => kills_data,
-          "yAxisID" => "kills"
+          "borderRadius" => 4,
+          "data" => other_kills_data,
+          "stack" => "kills",
+          "barPercentage" => 0.8,
+          "categoryPercentage" => 0.9
         },
         %{
           "label" => "Solo Kills",
-          "backgroundColor" => "rgba(54, 162, 235, 0.8)",
-          "borderColor" => "rgba(54, 162, 235, 0.8)",
+          # EVE Online blue
+          "backgroundColor" => "rgba(0, 123, 255, 0.8)",
+          "borderColor" => "rgba(0, 123, 255, 1.0)",
           "borderWidth" => 1,
+          "borderRadius" => 0,
           "data" => solo_kills_data,
-          "yAxisID" => "kills"
+          "stack" => "kills",
+          "barPercentage" => 0.8,
+          "categoryPercentage" => 0.9
         },
         %{
           "label" => "Final Blows",
-          "backgroundColor" => "rgba(75, 192, 192, 0.8)",
-          "borderColor" => "rgba(75, 192, 192, 0.8)",
+          # EVE Online teal
+          "backgroundColor" => "rgba(32, 201, 151, 0.8)",
+          "borderColor" => "rgba(32, 201, 151, 1.0)",
           "borderWidth" => 1,
+          "borderRadius" => 2,
           "data" => final_blows_data,
-          "yAxisID" => "kills"
+          "stack" => "kills",
+          "barPercentage" => 0.8,
+          "categoryPercentage" => 0.9
         }
       ]
     }
@@ -512,15 +656,22 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "xAxes" => [
           %{
             "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
+              "color" => "rgba(255, 255, 255, 0.1)",
+              "zeroLineColor" => "rgba(255, 255, 255, 0.25)"
             },
             "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 12,
               "maxRotation" => 45,
-              "autoSkip" => false
+              "autoSkip" => false,
+              "padding" => 8
             },
             "scaleLabel" => %{
-              "display" => false
+              "display" => true,
+              "labelString" => "Character",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 14,
+              "padding" => 10
             },
             "stacked" => true
           }
@@ -530,17 +681,24 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
             "id" => "kills",
             "position" => "left",
             "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
+              "color" => "rgba(255, 255, 255, 0.1)",
+              "zeroLineColor" => "rgba(255, 255, 255, 0.25)",
+              "drawBorder" => true
             },
             "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 12,
               "padding" => 10,
               "beginAtZero" => true,
               "stepSize" => 1,
               "precision" => 0
             },
             "scaleLabel" => %{
-              "display" => false
+              "display" => true,
+              "labelString" => "Number of Kills",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 14,
+              "padding" => 10
             },
             "stacked" => true
           }
@@ -550,26 +708,67 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "display" => true,
         "position" => "top",
         "labels" => %{
-          "fontColor" => "rgb(255, 255, 255)"
+          "fontColor" => "rgb(235, 235, 235)",
+          "fontSize" => 14,
+          "padding" => 20,
+          "usePointStyle" => true,
+          "boxWidth" => 8
         }
       },
       "title" => %{
         "display" => true,
-        "text" => "Weekly Character Kills",
-        "fontColor" => "rgb(255, 255, 255)",
-        "fontSize" => 16
+        "text" => "Weekly Character Kills (Stacked)",
+        "fontColor" => "rgb(235, 235, 235)",
+        "fontSize" => 18,
+        "padding" => 20
       },
       "tooltips" => %{
         "enabled" => true,
         "mode" => "index",
-        "intersect" => false
+        "intersect" => false,
+        "backgroundColor" => "rgba(15, 17, 26, 0.9)",
+        "titleFontSize" => 14,
+        "bodyFontSize" => 13,
+        "cornerRadius" => 4,
+        "xPadding" => 10,
+        "yPadding" => 10,
+        "callbacks" => %{
+          "title" => %{
+            "__fn" => "function(tooltipItems, data) {
+              const characterName = data.labels[tooltipItems[0].index];
+
+              // Calculate total kills for this character
+              const totalKills = tooltipItems.reduce((sum, item) => {
+                return sum + item.yLabel;
+              }, 0);
+
+              return `${characterName} - Total: ${totalKills} kills`;
+            }"
+          },
+          "label" => %{
+            "__fn" => "function(tooltipItem, data) {
+              const datasetLabel = data.datasets[tooltipItem.datasetIndex].label;
+              const value = tooltipItem.yLabel;
+
+              // Calculate the total for this character (all datasets at this index)
+              const total = data.datasets.reduce((sum, dataset) => {
+                return sum + dataset.data[tooltipItem.index];
+              }, 0);
+
+              // Calculate and format percentage
+              const percentage = Math.round((value / total) * 100);
+
+              return `${datasetLabel}: ${value} (${percentage}% of total)`;
+            }"
+          }
+        }
       },
       "layout" => %{
         "padding" => %{
-          "left" => 15,
-          "right" => 15,
-          "top" => 10,
-          "bottom" => 20
+          "left" => 20,
+          "right" => 20,
+          "top" => 20,
+          "bottom" => 30
         }
       },
       "plugins" => %{
@@ -586,28 +785,31 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       "labels" => ["No Data"],
       "datasets" => [
         %{
-          "label" => "Kills",
-          "backgroundColor" => "rgba(255, 99, 132, 0.2)",
-          "borderColor" => "rgba(255, 99, 132, 0.2)",
+          "label" => "Other Kills",
+          # EVE Online red (transparent)
+          "backgroundColor" => "rgba(220, 53, 69, 0.2)",
+          "borderColor" => "rgba(220, 53, 69, 0.2)",
           "borderWidth" => 1,
           "data" => [0],
-          "yAxisID" => "kills"
+          "stack" => "kills"
         },
         %{
           "label" => "Solo Kills",
-          "backgroundColor" => "rgba(54, 162, 235, 0.2)",
-          "borderColor" => "rgba(54, 162, 235, 0.2)",
+          # EVE Online blue (transparent)
+          "backgroundColor" => "rgba(0, 123, 255, 0.2)",
+          "borderColor" => "rgba(0, 123, 255, 0.2)",
           "borderWidth" => 1,
           "data" => [0],
-          "yAxisID" => "kills"
+          "stack" => "kills"
         },
         %{
           "label" => "Final Blows",
-          "backgroundColor" => "rgba(75, 192, 192, 0.2)",
-          "borderColor" => "rgba(75, 192, 192, 0.2)",
+          # EVE Online teal (transparent)
+          "backgroundColor" => "rgba(32, 201, 151, 0.2)",
+          "borderColor" => "rgba(32, 201, 151, 0.2)",
           "borderWidth" => 1,
           "data" => [0],
-          "yAxisID" => "kills"
+          "stack" => "kills"
         }
       ],
       "options" => %{
@@ -671,9 +873,11 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       "datasets" => [
         %{
           "label" => "ISK Destroyed (Millions)",
-          "backgroundColor" => "rgba(54, 162, 235, 0.8)",
-          "borderColor" => "rgba(54, 162, 235, 0.8)",
+          # EVE Online blue
+          "backgroundColor" => "rgba(0, 123, 255, 0.8)",
+          "borderColor" => "rgba(0, 123, 255, 1.0)",
           "borderWidth" => 1,
+          "borderRadius" => 4,
           "data" => isk_destroyed_data,
           "yAxisID" => "isk"
         }
@@ -690,15 +894,22 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "xAxes" => [
           %{
             "gridLines" => %{
-              "color" => "rgba(255, 255, 255, 0.1)"
+              "color" => "rgba(255, 255, 255, 0.1)",
+              "zeroLineColor" => "rgba(255, 255, 255, 0.25)"
             },
             "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 12,
               "maxRotation" => 45,
-              "autoSkip" => false
+              "autoSkip" => false,
+              "padding" => 8
             },
             "scaleLabel" => %{
-              "display" => false
+              "display" => true,
+              "labelString" => "Character",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 14,
+              "padding" => 10
             }
           }
         ],
@@ -708,15 +919,24 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
             "position" => "left",
             "gridLines" => %{
               "color" => "rgba(255, 255, 255, 0.1)",
+              "zeroLineColor" => "rgba(255, 255, 255, 0.25)",
               "display" => true
             },
             "ticks" => %{
-              "fontColor" => "rgb(255, 255, 255)",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 12,
               "padding" => 10,
-              "beginAtZero" => true
+              "beginAtZero" => true,
+              "callback" => %{
+                "__fn" => "function(value) { return value.toLocaleString() + ' M'; }"
+              }
             },
             "scaleLabel" => %{
-              "display" => false
+              "display" => true,
+              "labelString" => "ISK (Millions)",
+              "fontColor" => "rgb(235, 235, 235)",
+              "fontSize" => 14,
+              "padding" => 10
             }
           }
         ]
@@ -725,26 +945,42 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         "display" => true,
         "position" => "top",
         "labels" => %{
-          "fontColor" => "rgb(255, 255, 255)"
+          "fontColor" => "rgb(235, 235, 235)",
+          "fontSize" => 14,
+          "padding" => 20,
+          "usePointStyle" => true,
+          "boxWidth" => 8
         }
       },
       "title" => %{
         "display" => true,
         "text" => "Weekly ISK Destroyed",
-        "fontColor" => "rgb(255, 255, 255)",
-        "fontSize" => 16
+        "fontColor" => "rgb(235, 235, 235)",
+        "fontSize" => 18,
+        "padding" => 20
       },
       "tooltips" => %{
         "enabled" => true,
         "mode" => "index",
-        "intersect" => false
+        "intersect" => false,
+        "backgroundColor" => "rgba(15, 17, 26, 0.9)",
+        "titleFontSize" => 14,
+        "bodyFontSize" => 13,
+        "cornerRadius" => 4,
+        "xPadding" => 10,
+        "yPadding" => 10,
+        "callbacks" => %{
+          "__fn" => "function(tooltipItem, data) {
+            return tooltipItem.yLabel.toLocaleString() + ' Million ISK';
+          }"
+        }
       },
       "layout" => %{
         "padding" => %{
-          "left" => 15,
-          "right" => 15,
-          "top" => 10,
-          "bottom" => 20
+          "left" => 20,
+          "right" => 20,
+          "top" => 20,
+          "bottom" => 30
         }
       },
       "plugins" => %{
@@ -791,5 +1027,191 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
         }
       }
     }
+  end
+
+  # Get comparison data for a character
+  defp get_character_kill_comparison(character) do
+    # Get database kill count
+    db_count = get_character_db_kill_count(character.character_id)
+
+    # Get zkill API kill count
+    zkill_count = get_character_zkill_count(character.character_id)
+
+    case {db_count, zkill_count} do
+      {{:ok, db_count}, {:ok, zkill_count}} ->
+        %{
+          character_id: character.character_id,
+          character_name: character.character_name || "Character #{character.character_id}",
+          db_count: db_count,
+          zkill_count: zkill_count
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  # Get kill count from database
+  defp get_character_db_kill_count(character_id) do
+    query = """
+    SELECT COUNT(*) FROM killmails
+    WHERE related_character_id = $1
+    """
+
+    case Repo.query(query, [character_id]) do
+      {:ok, %{rows: [[count]]}} -> {:ok, count}
+      _ -> {:error, :query_failed}
+    end
+  rescue
+    _ -> {:error, :database_error}
+  end
+
+  # Get kill count from ZKill API
+  defp get_character_zkill_count(character_id) do
+    alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+
+    # Use a 100 kill limit to match the load kill data call, without date restrictions
+    date_range = %{start: nil, end: nil}
+    max_kills = 100
+
+    # Add a task timeout to prevent long-running API calls
+    task =
+      Task.async(fn ->
+        ZKillClient.get_character_kills(character_id, date_range, max_kills)
+      end)
+
+    # Wait for result with a 5 second timeout
+    try do
+      case Task.yield(task, 5000) || Task.shutdown(task) do
+        {:ok, {:ok, kills}} when is_list(kills) ->
+          AppLogger.kill_debug(
+            "Got #{length(kills)} kills from ZKill API for character #{character_id}"
+          )
+
+          {:ok, length(kills)}
+
+        {:ok, {:error, reason}} ->
+          AppLogger.kill_warn("ZKill API error for character #{character_id}: #{inspect(reason)}")
+          {:ok, 0}
+
+        nil ->
+          AppLogger.kill_warn("ZKill API timeout for character #{character_id}")
+          {:ok, 0}
+
+        _ ->
+          AppLogger.kill_warn("Unknown ZKill API response for character #{character_id}")
+          {:ok, 0}
+      end
+    rescue
+      e ->
+        AppLogger.kill_error("Exception in ZKill API call for character #{character_id}",
+          error: Exception.message(e)
+        )
+
+        {:ok, 0}
+    end
+  end
+
+  # Extract validation metrics from data
+  defp extract_validation_metrics(validation_data) do
+    character_labels = Enum.map(validation_data, & &1.character_name)
+    zkill_counts = Enum.map(validation_data, & &1.zkill_count)
+    db_counts = Enum.map(validation_data, & &1.db_count)
+
+    {character_labels, zkill_counts, db_counts}
+  end
+
+  # Create chart data for kill validation
+  defp create_kill_validation_chart_data(character_labels, zkill_counts, db_counts) do
+    %{
+      "type" => "bar",
+      "labels" => character_labels,
+      "datasets" => [
+        %{
+          "label" => "ZKill API",
+          "data" => zkill_counts,
+          "backgroundColor" => "rgba(54, 162, 235, 0.7)",
+          "borderColor" => "rgba(54, 162, 235, 1)",
+          "borderWidth" => 1
+        },
+        %{
+          "label" => "Database",
+          "data" => db_counts,
+          "backgroundColor" => "rgba(75, 192, 192, 0.7)",
+          "borderColor" => "rgba(75, 192, 192, 1)",
+          "borderWidth" => 1
+        }
+      ]
+    }
+  end
+
+  # Create options for kill validation chart
+  defp create_kill_validation_chart_options do
+    %{
+      "responsive" => true,
+      "maintainAspectRatio" => false,
+      "legend" => %{
+        "position" => "top"
+      },
+      "title" => %{
+        "display" => true,
+        "text" => "Killmail Validation - ZKill API vs Database"
+      },
+      "scales" => %{
+        "yAxes" => [
+          %{
+            "ticks" => %{
+              "beginAtZero" => true
+            },
+            "scaleLabel" => %{
+              "display" => true,
+              "labelString" => "Kill Count"
+            }
+          }
+        ],
+        "xAxes" => [
+          %{
+            "ticks" => %{
+              "autoSkip" => false,
+              "maxRotation" => 90,
+              "minRotation" => 45
+            }
+          }
+        ]
+      }
+    }
+  end
+
+  @doc """
+  Schedules a kill validation chart to be generated.
+  Can be called from a scheduler or manually.
+
+  ## Returns
+    - :ok if scheduled
+    - {:error, reason} on failure
+  """
+  def schedule_kill_validation_chart do
+    AppLogger.kill_info("Scheduling kill validation chart")
+
+    try do
+      # Simply generate the chart now
+      case generate_kill_validation_chart() do
+        {:ok, _} ->
+          AppLogger.kill_info("Kill validation chart generated successfully")
+          :ok
+
+        {:error, reason} ->
+          AppLogger.kill_error("Failed to generate kill validation chart", error: inspect(reason))
+          {:error, reason}
+      end
+    rescue
+      e ->
+        AppLogger.kill_error("Error scheduling kill validation chart",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        {:error, "Error scheduling kill validation chart: #{Exception.message(e)}"}
+    end
   end
 end

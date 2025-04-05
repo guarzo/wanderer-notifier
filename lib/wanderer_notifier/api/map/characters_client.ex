@@ -231,26 +231,28 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     cache_ttl = Cache.characters_cache_ttl()
 
     try do
-      # Cache the main character list
-      CacheRepo.set(CacheKeys.character_list(), tracked_characters, cache_ttl)
-      AppLogger.api_debug("[CharactersClient] Cached main character list")
+      # Cache individual characters and build the list
+      tracked_characters_list =
+        Enum.reduce(tracked_characters, [], fn char, acc ->
+          cache_character(char, cache_ttl, acc)
+        end)
 
-      # Cache individual characters
-      Enum.each(tracked_characters, fn char ->
-        if character_id = char.character_id do
-          # Cache individual character
-          CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
-          AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
+      # Cache the main character list only after all individual characters are processed
+      # Ensure the list is in the same order as the input
+      tracked_characters_list = Enum.reverse(tracked_characters_list)
+      CacheRepo.set(CacheKeys.character_list(), tracked_characters_list, cache_ttl)
 
-          # Mark as tracked
-          CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
-          AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
-        end
-      end)
+      AppLogger.api_debug(
+        "[CharactersClient] Cached main character list with #{length(tracked_characters_list)} characters"
+      )
+
+      # Also update the map:characters key for backward compatibility
+      CacheRepo.set("map:characters", tracked_characters_list, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Updated map:characters cache for compatibility")
 
       # Handle persistence and notifications
-      handle_character_persistence(tracked_characters)
-      handle_character_notifications(tracked_characters, cached_characters)
+      handle_character_persistence(tracked_characters_list)
+      handle_character_notifications(tracked_characters_list, cached_characters)
     rescue
       e ->
         AppLogger.api_error(
@@ -260,6 +262,24 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
         AppLogger.api_error("[CharactersClient] #{Exception.format_stacktrace()}")
         # Let it crash - the supervisor will handle restart if needed
         reraise e, __STACKTRACE__
+    end
+  end
+
+  # Cache a single character and return updated accumulator
+  defp cache_character(char, cache_ttl, acc) do
+    if character_id = char.character_id do
+      # Cache individual character
+      CacheRepo.set(CacheKeys.character(character_id), char, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Cached character #{character_id}")
+
+      # Mark as tracked
+      CacheRepo.set(CacheKeys.tracked_character(character_id), true, cache_ttl)
+      AppLogger.api_debug("[CharactersClient] Marked character #{character_id} as tracked")
+
+      # Add to list only if successfully cached
+      [char | acc]
+    else
+      acc
     end
   end
 

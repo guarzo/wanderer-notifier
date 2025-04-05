@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaCircleNotch, FaDiscord, FaExclamationTriangle } from 'react-icons/fa';
+import { FaCircleNotch, FaDiscord, FaExclamationTriangle, FaCheckCircle, FaChartBar, FaInfoCircle, FaMapMarkedAlt } from 'react-icons/fa';
 import ActivityChartCard from './ActivityChartCard';
 import KillmailChartCard from './KillmailChartCard';
 import CharacterKillsCard from './CharacterKillsCard';
@@ -11,9 +11,6 @@ export default function ChartsDashboard() {
     mapChartsEnabled: false,
     killChartsEnabled: false
   });
-  const [sendingAllCharts, setSendingAllCharts] = useState(false);
-  const [sendAllSuccess, setSendAllSuccess] = useState(false);
-  const [sendAllError, setSendAllError] = useState(null);
 
   useEffect(() => {
     try {
@@ -23,8 +20,7 @@ export default function ChartsDashboard() {
           const features = response.data.features;
           setFeatures({
             mapChartsEnabled: features.map_charts || false,
-            killChartsEnabled: false
-            // killChartsEnabled: features.kill_charts || false
+            killChartsEnabled: features.kill_charts || false
           });
           setLoading(false);
         })
@@ -44,88 +40,41 @@ export default function ChartsDashboard() {
     }
   }, []);
 
-  const sendAllActivityCharts = () => {
-    setSendingAllCharts(true);
-    setSendAllSuccess(false);
-    setSendAllError(null);
-    
-    console.log("Sending all activity charts to Discord...");
-    
-    fetch('/charts/activity/send-all')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.status === 'ok') {
-          setSendAllSuccess(true);
-          setTimeout(() => setSendAllSuccess(false), 5000);
-        } else {
-          throw new Error(data.message || 'Failed to send all charts to Discord');
-        }
-      })
-      .catch(error => {
-        console.error('Error sending all charts to Discord:', error);
-        setSendAllError(error.message);
-      })
-      .finally(() => {
-        setSendingAllCharts(false);
-      });
-  };
-
-  const sendAllKillmailCharts = () => {
-    setSendingAllCharts(true);
-    setSendAllSuccess(false);
-    setSendAllError(null);
-    
-    console.log("Sending all killmail charts to Discord...");
-    
-    fetch('/charts/killmail/send-all')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.status === 'ok') {
-          setSendAllSuccess(true);
-          setTimeout(() => setSendAllSuccess(false), 5000);
-        } else {
-          let errorMessage = data.message || 'Failed to send charts to Discord';
-          if (data.details) {
-            errorMessage += `: ${JSON.stringify(data.details)}`;
-          }
-          throw new Error(errorMessage);
-        }
-      })
-      .catch(error => {
-        console.error('Error sending all killmail charts to Discord:', error);
-        setSendAllError(error.message);
-      })
-      .finally(() => {
-        setSendingAllCharts(false);
-      });
+  const loadChartImage = async (url) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Error loading chart image:', error);
+      throw error;
+    }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <FaCircleNotch className="h-10 w-10 text-indigo-600 animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+        <FaCircleNotch className="h-12 w-12 text-indigo-600 animate-spin mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700">Loading Charts Dashboard...</h2>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded">
-          <div className="flex items-center">
-            <FaExclamationTriangle className="mr-2" />
-            <p>Error loading chart configuration: {error}</p>
+      <div className="container mx-auto px-4 py-16">
+        <div className="bg-red-100 border border-red-200 rounded-lg p-6 shadow-md">
+          <div className="flex items-center mb-4">
+            <FaExclamationTriangle className="text-red-500 h-8 w-8 mr-3" />
+            <h2 className="text-xl font-bold text-red-700">Configuration Error</h2>
           </div>
+          <p className="text-red-700 mb-4">{error}</p>
+          <p className="text-gray-600">
+            Please check your configuration settings and ensure the backend services are running.
+          </p>
         </div>
       </div>
     );
@@ -133,60 +82,109 @@ export default function ChartsDashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header with EVE-inspired styling */}
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Charts Dashboard</h1>
+        <div className="inline-block bg-gradient-to-r from-blue-600 to-indigo-800 p-2 rounded-lg shadow-lg mb-4">
+          <FaChartBar className="h-8 w-8 text-white" />
+        </div>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">EVE Online Charts Dashboard</h1>
         <p className="text-gray-600">
-          Generate and send charts to Discord channels
+          Killmail visualization and statistics for tracked characters
         </p>
       </div>
 
+      {/* Feature Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className={`p-4 rounded-lg ${features.mapChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
+        <div className={`p-4 rounded-lg shadow-sm transition-all duration-300 ${features.mapChartsEnabled ? 'bg-green-50 border border-green-200 hover:shadow-md' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${features.mapChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="font-medium">Map Charts: {features.mapChartsEnabled ? 'Enabled' : 'Disabled'}</span>
+            <div className={`flex-shrink-0 rounded-full p-2 mr-3 ${features.mapChartsEnabled ? 'bg-green-100 text-green-500' : 'bg-gray-200 text-gray-400'}`}>
+              <FaMapMarkedAlt className="h-5 w-5" />
+            </div>
+            <div>
+              <span className="block font-medium">Map Charts</span>
+              <span className={`text-sm ${features.mapChartsEnabled ? 'text-green-600' : 'text-gray-500'}`}>
+                {features.mapChartsEnabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
           </div>
         </div>
-        <div className={`p-4 rounded-lg ${features.killChartsEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-100 border border-gray-200'}`}>
+        <div className={`p-4 rounded-lg shadow-sm transition-all duration-300 ${features.killChartsEnabled ? 'bg-green-50 border border-green-200 hover:shadow-md' : 'bg-gray-100 border border-gray-200'}`}>
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${features.killChartsEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="font-medium">Kill Charts: {features.killChartsEnabled ? 'Enabled' : 'Disabled'}</span>
+            <div className={`flex-shrink-0 rounded-full p-2 mr-3 ${features.killChartsEnabled ? 'bg-green-100 text-green-500' : 'bg-gray-200 text-gray-400'}`}>
+              <FaChartBar className="h-5 w-5" />
+            </div>
+            <div>
+              <span className="block font-medium">Kill Charts</span>
+              <span className={`text-sm ${features.killChartsEnabled ? 'text-green-600' : 'text-gray-500'}`}>
+                {features.killChartsEnabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Chart Cards */}
+      {/* Chart Cards with better layout */}
       {features.mapChartsEnabled && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <ActivityChartCard 
-            title="Activity Summary"
-            description="Character activity summary for the last 24 hours"
-            chartType="activity_summary"
-          />
+        <div className="mb-10">
+          <div className="flex items-center mb-4">
+            <FaMapMarkedAlt className="text-indigo-500 mr-2" />
+            <h2 className="text-xl font-semibold text-gray-800">Activity Charts</h2>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ActivityChartCard 
+              title="Activity Summary"
+              description="Character activity summary for the last 24 hours"
+              chartType="activity_summary"
+              loadChartImage={loadChartImage}
+            />
+          </div>
         </div>
       )}
 
       {features.killChartsEnabled && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <KillmailChartCard 
-            title="Weekly Character Kills"
-            description="Top characters by kills in the past week"
-            chartType="weekly_kills"
-          />
-          <KillmailChartCard 
-            title="Weekly ISK Destroyed"
-            description="Top characters by ISK destroyed in the past week"
-            chartType="weekly_isk"
-          />
-          <CharacterKillsCard />
+        <div>
+          <div className="flex items-center mb-4">
+            <FaChartBar className="text-indigo-500 mr-2" />
+            <h2 className="text-xl font-semibold text-gray-800">Killmail Charts</h2>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <KillmailChartCard 
+              title="Weekly Character Kills"
+              description="Top characters by kills in the past week"
+              chartType="weekly_kills"
+              loadChartImage={loadChartImage}
+            />
+            <KillmailChartCard 
+              title="Weekly ISK Destroyed"
+              description="Top characters by ISK destroyed in the past week"
+              chartType="weekly_isk"
+              loadChartImage={loadChartImage}
+            />
+            <KillmailChartCard 
+              title="Kill Validation"
+              description="Comparison of kills in ZKillboard API vs Database"
+              chartType="validation"
+              loadChartImage={loadChartImage}
+            />
+          </div>
+          <div className="mt-6">
+            <CharacterKillsCard 
+              title="Character Kill Data" 
+              description="Load and aggregate kill data for tracked characters"
+            />
+          </div>
         </div>
       )}
 
       {(!features.mapChartsEnabled && !features.killChartsEnabled) && (
-        <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-6 text-center">
-          <h3 className="text-lg font-medium text-yellow-800">No chart features are enabled</h3>
-          <p className="mt-2 text-yellow-700">
-            Enable Map Charts or Kill Charts in your configuration to view available charts.
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center shadow-md">
+          <FaInfoCircle className="h-10 w-10 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-xl font-medium text-yellow-800 mb-2">No Chart Features Enabled</h3>
+          <p className="text-yellow-700 mb-4">
+            Both map and kill chart features are currently disabled in your configuration.
+          </p>
+          <p className="text-gray-600 text-sm">
+            Enable these features in your application configuration to view available charts.
           </p>
         </div>
       )}

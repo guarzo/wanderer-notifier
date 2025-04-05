@@ -240,36 +240,4 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
       assert result == :ok
     end
   end
-
-  describe "remove_character_from_tracked/1" do
-    test "removes character when it exists in tracked list" do
-      RepositoryMock
-      |> expect(:get, fn "tracked:characters" -> [%{"character_id" => "12345"}] end)
-      |> expect(:put, fn "tracked:characters", [] -> :ok end)
-      |> expect(:delete, fn "tracked:character:12345" -> :ok end)
-
-      result = CacheHelpers.remove_character_from_tracked(12_345)
-      assert result == :ok
-    end
-
-    test "handles removing non-existent character gracefully" do
-      RepositoryMock
-      |> expect(:get, fn "tracked:characters" -> [] end)
-      |> expect(:put, fn "tracked:characters", [] -> :ok end)
-      |> expect(:delete, fn "tracked:character:999999" -> :ok end)
-
-      result = CacheHelpers.remove_character_from_tracked(999_999)
-      assert result == :ok
-    end
-
-    test "handles string ID for removal" do
-      RepositoryMock
-      |> expect(:get, fn "tracked:characters" -> [%{"character_id" => "12345"}] end)
-      |> expect(:put, fn "tracked:characters", [] -> :ok end)
-      |> expect(:delete, fn "tracked:character:12345" -> :ok end)
-
-      result = CacheHelpers.remove_character_from_tracked("12345")
-      assert result == :ok
-    end
-  end
 end

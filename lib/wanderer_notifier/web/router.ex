@@ -16,9 +16,10 @@ defmodule WandererNotifier.Web.Router do
     NotificationController
   }
 
+  # Basic request logging
   plug(Plug.Logger)
 
-  # Serve JavaScript and CSS files with correct MIME types
+  # Serve static assets with specific paths first
   plug(Plug.Static,
     at: "/assets",
     from: {:wanderer_notifier, "priv/static/app/assets"},
@@ -28,23 +29,21 @@ defmodule WandererNotifier.Web.Router do
     }
   )
 
-  # Serve static assets directly from app directory without filename restrictions
-  plug(Plug.Static,
-    at: "/",
-    from: {:wanderer_notifier, "priv/static/app"},
-    headers: %{
-      "access-control-allow-origin" => "*",
-      "cache-control" => "public, max-age=0"
-    }
-  )
-
-  # Serve additional static files
+  # Serve specific static files
   plug(Plug.Static,
     at: "/",
     from: :wanderer_notifier,
-    only: ~w(app images css js favicon.ico robots.txt)
+    only: ~w(favicon.ico robots.txt)
   )
 
+  # Parse request body for JSON API endpoints
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason
+  )
+
+  # Enable routing
   plug(:match)
   plug(:dispatch)
 
@@ -53,6 +52,7 @@ defmodule WandererNotifier.Web.Router do
 
   # API Routes
   forward("/api/health", to: HealthController)
+  forward("/api/character-kills", to: CharacterController)
   forward("/api/characters", to: CharacterController)
   forward("/api/kills", to: KillController)
   forward("/api/notifications", to: NotificationController)
@@ -60,9 +60,7 @@ defmodule WandererNotifier.Web.Router do
   forward("/api/charts", to: ChartController)
   forward("/api/activity-charts", to: ActivityChartController)
 
-  # React app routes - these need to be before other routes to ensure proper SPA routing
-
-  # Map tools routes
+  # React app routes
   get "/schedulers" do
     send_file(conn, 200, "priv/static/app/index.html")
   end
@@ -75,11 +73,12 @@ defmodule WandererNotifier.Web.Router do
     send_file(conn, 200, "priv/static/app/index.html")
   end
 
-  # Catch-all route for SPA - must be after all other specific routes
+  # Catch-all route for SPA
   get "/*path" do
     send_file(conn, 200, "priv/static/app/index.html")
   end
 
+  # 404 handler
   match _ do
     send_resp(conn, 404, "Not found")
   end

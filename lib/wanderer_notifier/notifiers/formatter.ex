@@ -14,8 +14,8 @@ defmodule WandererNotifier.Notifiers.Formatter do
         character_data["character_id"]
 
       # Standard API format
-      get_in(character_data, ["character", "character_id"]) ->
-        get_in(character_data, ["character", "character_id"])
+      character = Map.get(character_data, "character", %{}) ->
+        Map.get(character, "character_id")
 
       # No character ID found
       true ->
@@ -33,8 +33,8 @@ defmodule WandererNotifier.Notifiers.Formatter do
         character_data["character_name"]
 
       # Standard API format
-      get_in(character_data, ["character", "name"]) ->
-        get_in(character_data, ["character", "name"])
+      character = Map.get(character_data, "character", %{}) ->
+        Map.get(character, "name")
 
       # No character name found
       true ->
@@ -52,8 +52,8 @@ defmodule WandererNotifier.Notifiers.Formatter do
         character_data["corporation_id"]
 
       # Standard API format
-      get_in(character_data, ["character", "corporation_id"]) ->
-        get_in(character_data, ["character", "corporation_id"])
+      character = Map.get(character_data, "character", %{}) ->
+        Map.get(character, "corporation_id")
 
       # No corporation ID found
       true ->
@@ -70,9 +70,9 @@ defmodule WandererNotifier.Notifiers.Formatter do
       Map.has_key?(character_data, "corporation_name") ->
         character_data["corporation_name"]
 
-      # Standard API format with ticker
-      get_in(character_data, ["character", "corporation_ticker"]) ->
-        get_in(character_data, ["character", "corporation_ticker"])
+      # Standard API format
+      character = Map.get(character_data, "character", %{}) ->
+        Map.get(character, "corporation_ticker")
 
       # No corporation name found
       true ->

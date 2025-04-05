@@ -4,6 +4,12 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   Helps identify discrepancies in kill tracking.
   """
 
+  # EVE Online type IDs
+  # Structure category
+  @structure_category_id 65
+  # Capsule (pod) type ID
+  @pod_type_id 670
+
   import Ash.Query
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
@@ -121,7 +127,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   # Process kill data from ZKB and ESI
   defp process_kill_data(character_id, kill_id, kill_data) do
     # Get the hash from ZKB data
-    hash = get_in(kill_data, ["zkb", "hash"])
+    hash = extract_hash(kill_data)
 
     # Fetch ESI data
     case ESIService.get_killmail(kill_id, hash) do
@@ -718,7 +724,7 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
     # Fetch from ESI if not in cache
     case ESIService.get_killmail(
            kill["killmail_id"],
-           get_in(kill, ["zkb", "hash"])
+           extract_hash(kill)
          ) do
       {:ok, esi_data} ->
         # Store in cache for future reference with 24h TTL
@@ -811,80 +817,41 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
     })
 
     # Log the full kill data structure for debugging
+    log_kill_data(kill_data, character_id)
+
+    # Get zkb data once for NPC check
+    zkb_data = Map.get(kill_data, "zkb", %{})
+    is_npc = Map.get(zkb_data, "npc", false) == true
+
+    # Check each possible reason in order
+    cond do
+      old_kill?(kill_data) -> {:ok, :old_kill}
+      is_npc -> {:ok, :npc_kill}
+      structure_kill?(kill_data) -> {:ok, :structure_kill}
+      pod_kill?(kill_data) -> {:ok, :pod_kill}
+      not_in_attackers_or_victim?(kill_data, character_id) -> {:ok, :not_involved}
+      true -> {:error, :unknown_reason}
+    end
+  end
+
+  defp log_kill_data(kill_data, character_id) do
     AppLogger.processor_info("Full kill data for analysis", %{
       character_id: character_id,
       kill_id: kill_data["killmail_id"],
       kill_time: kill_data["killmail_time"],
-      victim_data: %{
-        character_id: get_in(kill_data, ["victim", "character_id"]),
-        ship_type_id: get_in(kill_data, ["victim", "ship_type_id"]),
-        category_id: get_in(kill_data, ["victim", "category_id"])
-      },
-      attackers:
-        Enum.map(kill_data["attackers"] || [], fn attacker ->
-          %{
-            character_id: attacker["character_id"],
-            ship_type_id: attacker["ship_type_id"]
-          }
-        end),
-      zkb_data: get_in(kill_data, ["zkb"])
+      victim_data: extract_victim_data(kill_data),
+      attackers: extract_attackers_data(kill_data),
+      zkb_data: extract_hash(kill_data)
     })
+  end
 
-    # Check each condition in sequence and return the first matching reason
-    cond do
-      # First check if the character is found in the kill - if found, it's valid
-      !not_in_attackers_or_victim?(kill_data, character_id) ->
-        AppLogger.processor_info("Kill classified as valid - character found", %{
-          kill_id: kill_data["killmail_id"],
-          character_id: character_id
-        })
-
-        :valid_kill
-
-      # Check if the kill is too old (might have been before tracking started)
-      old_kill?(kill_data) ->
-        AppLogger.processor_info("Kill classified as too old", %{
-          kill_id: kill_data["killmail_id"],
-          kill_time: kill_data["killmail_time"]
-        })
-
-        :kill_too_old
-
-      # Check if it's an NPC kill
-      get_in(kill_data, ["zkb", "npc"]) == true ->
-        AppLogger.processor_info("Kill classified as NPC kill", %{
-          kill_id: kill_data["killmail_id"],
-          zkb_data: get_in(kill_data, ["zkb"])
-        })
-
-        :npc_kill
-
-      # Check if it's a structure kill
-      structure_kill?(kill_data) ->
-        AppLogger.processor_info("Kill classified as structure kill", %{
-          kill_id: kill_data["killmail_id"],
-          victim_category: get_in(kill_data, ["victim", "category_id"])
-        })
-
-        :structure_kill
-
-      # Check if it's a pod kill
-      pod_kill?(kill_data) ->
-        AppLogger.processor_info("Kill classified as pod kill", %{
-          kill_id: kill_data["killmail_id"],
-          victim_ship_type: get_in(kill_data, ["victim", "ship_type_id"])
-        })
-
-        :pod_kill
-
-      # Default case
-      true ->
-        AppLogger.processor_info("Kill classified as unknown reason", %{
-          kill_id: kill_data["killmail_id"]
-        })
-
-        :unknown_reason
-    end
+  defp extract_attackers_data(kill_data) do
+    Enum.map(kill_data["attackers"] || [], fn attacker ->
+      %{
+        character_id: attacker["character_id"],
+        ship_type_id: attacker["ship_type_id"]
+      }
+    end)
   end
 
   defp old_kill?(kill_data) do
@@ -904,17 +871,13 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
   end
 
   defp structure_kill?(kill_data) do
-    victim = kill_data["victim"] || %{}
-    # Structure categories in EVE
-    # 65 is the structure category
-    structure_categories = [65]
-    victim["category_id"] in structure_categories
+    victim = Map.get(kill_data, "victim") || %{}
+    Map.get(victim, "category_id") == @structure_category_id
   end
 
   defp pod_kill?(kill_data) do
-    victim = kill_data["victim"] || %{}
-    # 670 is the Capsule (pod) type ID
-    victim["ship_type_id"] == 670
+    victim = Map.get(kill_data, "victim") || %{}
+    Map.get(victim, "ship_type_id") == @pod_type_id
   end
 
   defp not_in_attackers_or_victim?(kill_data, character_id) do
@@ -1263,5 +1226,25 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
 
         error
     end
+  end
+
+  defp extract_hash(kill_data) do
+    zkb_map = Map.get(kill_data, "zkb", %{})
+    Map.get(zkb_map, "hash")
+  end
+
+  defp extract_victim_data(killmail) do
+    victim = Map.get(killmail, "victim", %{})
+    character_id = Map.get(victim, "character_id")
+    corporation_id = Map.get(victim, "corporation_id")
+    alliance_id = Map.get(victim, "alliance_id")
+    ship_type_id = Map.get(victim, "ship_type_id")
+
+    %{
+      character_id: character_id,
+      corporation_id: corporation_id,
+      alliance_id: alliance_id,
+      ship_type_id: ship_type_id
+    }
   end
 end

@@ -18,6 +18,12 @@ defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
     # Default to Monday
     stub(MockDate, :utc_today, fn -> ~D[2024-03-25] end)
 
+    # Configure application environment for dependency injection
+    Application.put_env(:wanderer_notifier, :killmail_chart_adapter, ChartAdapter)
+    Application.put_env(:wanderer_notifier, :config_module, MockConfig)
+    Application.put_env(:wanderer_notifier, :date_module, MockDate)
+    Application.put_env(:wanderer_notifier, :notifier_factory, MockNotifierFactory)
+
     stub(MockDate, :day_of_week, fn date ->
       case Date.day_of_week(date) do
         # Monday
@@ -48,13 +54,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
 
       expect(MockDate, :utc_today, fn -> sunday end)
 
-      expect(MockNotifierFactory, :notify, fn :send_discord_embed,
+      expect(MockNotifierFactory, :notify, fn :send_discord_file,
                                               [
+                                                "http://example.com/chart.png",
+                                                "weekly_kills.png",
                                                 %{
                                                   title: "Weekly Kill Charts",
-                                                  description: "Here are the weekly kill charts!",
-                                                  image: %{url: "http://example.com/chart.png"},
-                                                  color: 0x00FF00
+                                                  description: "Here are the weekly kill charts!"
                                                 }
                                               ] ->
         {:ok, %{status_code: 200}}
@@ -62,8 +68,7 @@ defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
 
       assert {:noreply, state} = KillmailChartScheduler.handle_info(:execute, %{last_run: nil})
 
-      assert {:ok, %{status_code: 200}, %{chart_url: "http://example.com/chart.png"}} =
-               state.last_result
+      assert {:ok, %{status_code: 200}, %{}} = state.last_result
     end
 
     test "skips execution on non-Sunday" do
@@ -105,13 +110,13 @@ defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
 
       expect(MockDate, :utc_today, fn -> sunday end)
 
-      expect(MockNotifierFactory, :notify, fn :send_discord_embed,
+      expect(MockNotifierFactory, :notify, fn :send_discord_file,
                                               [
+                                                "http://example.com/chart.png",
+                                                "weekly_kills.png",
                                                 %{
                                                   title: "Weekly Kill Charts",
-                                                  description: "Here are the weekly kill charts!",
-                                                  image: %{url: "http://example.com/chart.png"},
-                                                  color: 0x00FF00
+                                                  description: "Here are the weekly kill charts!"
                                                 }
                                               ] ->
         {:error,
@@ -135,8 +140,8 @@ defmodule WandererNotifier.Schedulers.KillmailChartSchedulerTest do
 
       assert {:noreply, state} = KillmailChartScheduler.handle_info(:execute, %{last_run: nil})
 
-      assert {:error, "Failed to send chart: Failed to send notification",
-              %{chart_url: "http://example.com/chart.png"}} = state.last_result
+      assert {:error, "Failed to send chart: Failed to send notification", %{}} =
+               state.last_result
     end
   end
 
