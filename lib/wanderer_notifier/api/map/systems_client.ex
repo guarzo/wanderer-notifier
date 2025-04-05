@@ -91,10 +91,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     systems = Enum.map(systems_data, &MapSystem.new/1)
 
-    AppLogger.api_debug("[SystemsClient] Created MapSystem structs",
-      count: length(systems),
-      first_system: List.first(systems)
-    )
+    # Refactored logging using the helper function
+    log_processing_step("Created MapSystem structs", systems)
 
     tracked_systems = filter_systems_for_tracking(systems)
 
@@ -117,6 +115,16 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       count: length(updated_systems)
     )
 
+    # ... rest of the function or module code ...
+
+# Add the structured logging helper function in the module
+defp log_processing_step(step, data) do
+  AppLogger.api_debug(
+    "[SystemsClient] #{step}",
+    count: length(data),
+    first_system: List.first(data)
+  )
+end
     # Verify systems were cached successfully
     verify_systems_cached(updated_systems)
 
