@@ -578,4 +578,19 @@ defmodule WandererNotifier.Logger.Logger do
 
   def chart_error(message, metadata \\ []),
     do: log(@level_error, @category_chart, message, metadata)
+
+  def log_full_data(level, category, message, data, metadata \\ []) do
+    # Format the data with no truncation
+    formatted_data = inspect(data, pretty: true, limit: :infinity, printable_limit: :infinity)
+
+    # Combine message with data
+    full_message = """
+    #{message}
+    DATA:
+    #{formatted_data}
+    """
+
+    # Log with standard metadata
+    log(level, category, full_message, metadata)
+  end
 end

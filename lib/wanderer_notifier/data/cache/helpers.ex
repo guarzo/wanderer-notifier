@@ -52,7 +52,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   Gets tracked characters from cache.
   """
   def get_tracked_characters do
-    case repo_module().get("tracked:characters") do
+    case repo_module().get(CacheKeys.character_list()) do
       nil -> []
       characters when is_list(characters) -> characters
       _ -> []
@@ -63,7 +63,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   Gets cached ship name.
   """
   def get_ship_name(ship_type_id) do
-    case repo_module().get("ship:#{ship_type_id}") do
+    case repo_module().get(CacheKeys.ship_type(ship_type_id)) do
       nil -> {:error, :not_found}
       name when is_binary(name) -> {:ok, name}
       _ -> {:error, :invalid_data}
@@ -74,7 +74,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   Gets cached character name.
   """
   def get_character_name(character_id) do
-    case repo_module().get("character:#{character_id}") do
+    case repo_module().get(CacheKeys.character(character_id)) do
       nil -> {:error, :not_found}
       name when is_binary(name) -> {:ok, name}
       _ -> {:error, :invalid_data}
@@ -85,7 +85,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   Gets cached kills.
   """
   def get_cached_kills(system_id) do
-    case repo_module().get("kills:#{system_id}") do
+    case repo_module().get(CacheKeys.system_kills(system_id)) do
       nil -> {:ok, []}
       kills when is_list(kills) -> {:ok, kills}
       _ -> {:error, :invalid_data}
@@ -205,14 +205,14 @@ defmodule WandererNotifier.Data.Cache.Helpers do
 
   def remove_character_from_tracked(character_id) when is_integer(character_id) do
     # Get current tracked characters
-    characters = repo_module().get("tracked:characters") || []
+    characters = repo_module().get(CacheKeys.character_list()) || []
 
     # Update tracked characters list
     updated_characters = Enum.reject(characters, &(&1["character_id"] == to_string(character_id)))
-    repo_module().put("tracked:characters", updated_characters)
+    repo_module().put(CacheKeys.character_list(), updated_characters)
 
     # Remove character tracking
-    repo_module().delete("tracked:character:#{character_id}")
+    repo_module().delete(CacheKeys.tracked_character(character_id))
 
     :ok
   end

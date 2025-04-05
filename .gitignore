@@ -1,3 +1,4 @@
+log/
 # Build artifacts
 *.bak
 .cursor

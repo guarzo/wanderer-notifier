@@ -481,21 +481,11 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
 
     # Helper functions for extracting character information
     defp extract_character_id_from_data(char_data) do
-      AppLogger.persistence_debug("Extracting character ID",
-        data_type: typeof(char_data),
-        has_struct: is_struct(char_data),
-        has_map: is_map(char_data),
-        keys: if(is_map(char_data), do: Map.keys(char_data), else: "not a map")
-      )
-
       # Try extracting in order of preference
       character_id =
         extract_from_struct(char_data) ||
           extract_from_map(char_data) ||
           extract_from_primitive(char_data)
-
-      # Log the extracted ID for debugging
-      AppLogger.persistence_debug("Extracted character ID result: #{inspect(character_id)}")
 
       character_id
     end
@@ -521,12 +511,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       # Try multiple possible key formats for character_id, with consistent type handling
       char_id = char_data["character_id"] || char_data[:character_id]
 
-      # Log what we're extracting
-      AppLogger.persistence_debug("Extracting from map",
-        found_id: char_id,
-        id_type: typeof(char_id)
-      )
-
       # Early return for nil values
       if is_nil(char_id) do
         nil
@@ -545,7 +529,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
         # Valid integer string
         id
       else
-        # Log invalid ID format - this might be a UUID we want to reject
         AppLogger.persistence_warn("Invalid character ID format (non-numeric)",
           id: id
         )
@@ -565,22 +548,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
     end
 
     defp numeric_string?(_), do: false
-
-    # Helper to get a string representation of a data type for debugging
-    defp typeof(nil), do: "nil"
-    defp typeof(value) when is_binary(value), do: "string"
-    defp typeof(value) when is_integer(value), do: "integer"
-    defp typeof(value) when is_float(value), do: "float"
-    defp typeof(value) when is_boolean(value), do: "boolean"
-    defp typeof(value) when is_map(value) and not is_struct(value), do: "map"
-    defp typeof(value) when is_list(value), do: "list"
-    defp typeof(value) when is_atom(value), do: "atom"
-    defp typeof(value) when is_function(value), do: "function"
-    defp typeof(value) when is_pid(value), do: "pid"
-    defp typeof(value) when is_reference(value), do: "reference"
-    defp typeof(value) when is_tuple(value), do: "tuple"
-    defp typeof(value) when is_struct(value), do: "struct:#{inspect(value.__struct__)}"
-    defp typeof(_), do: "unknown"
 
     defp extract_character_name(char_data) when is_map(char_data) do
       char_data["name"] ||
@@ -1295,12 +1262,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   defp update_existing_character(existing, character_data) do
     if database_enabled?() do
       # Character exists, update if needed
-      character_name = character_data[:name] || existing.character_name
-
-      AppLogger.persistence_debug("Found existing character",
-        character_id: character_data[:character_id],
-        character_name: character_name
-      )
 
       # Build changes map by comparing fields and adding only what's different
       changes = build_character_changes(existing, character_data)
@@ -1309,10 +1270,6 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
       if map_size(changes) > 0 do
         apply_character_updates(existing, changes, character_data[:character_id])
       else
-        AppLogger.persistence_debug("No changes needed for character",
-          character_id: character_data[:character_id]
-        )
-
         {:ok, :unchanged}
       end
     else
@@ -1386,18 +1343,8 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
         change_fields: Map.keys(changes)
       )
 
-      AppLogger.persistence_debug(
-        "Character update changes",
-        changes: inspect(changes)
-      )
-
       update_result =
         Api.update(__MODULE__, existing.id, changes)
-
-      AppLogger.persistence_debug(
-        "Update result",
-        result: inspect(update_result)
-      )
 
       case update_result do
         {:ok, _updated} -> {:ok, :updated}

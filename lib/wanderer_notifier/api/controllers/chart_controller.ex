@@ -124,15 +124,32 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
 
       # Note: We're ignoring the limit parameter as it's now handled internally
       case KillmailChartAdapter.generate_weekly_kills_chart() do
-        {:ok, chart_url} ->
-          send_success_response(conn, %{
-            status: "ok",
-            title: "Character Activity Chart",
-            chart_url: chart_url
-          })
+        {:ok, image_data} when is_binary(image_data) ->
+          conn
+          |> put_resp_content_type("image/png")
+          |> send_resp(200, image_data)
 
         {:error, reason} ->
           send_error_response(conn, 400, "Failed to generate weekly kills chart: #{reason}")
+      end
+    else
+      send_error_response(conn, 403, "Killmail persistence is not enabled")
+    end
+  end
+
+  # Generate kill validation chart
+  get "/killmail/generate/validation" do
+    if Config.kill_charts_enabled?() do
+      AppLogger.api_info("Generating kill validation chart")
+
+      case KillmailChartAdapter.generate_kill_validation_chart() do
+        {:ok, image_data} when is_binary(image_data) ->
+          conn
+          |> put_resp_content_type("image/png")
+          |> send_resp(200, image_data)
+
+        {:error, reason} ->
+          send_error_response(conn, 400, "Failed to generate kill validation chart: #{reason}")
       end
     else
       send_error_response(conn, 403, "Killmail persistence is not enabled")
@@ -161,12 +178,10 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
         end
 
       case KillmailChartAdapter.generate_weekly_isk_chart(limit) do
-        {:ok, chart_url} ->
-          send_success_response(conn, %{
-            status: "ok",
-            title: "Weekly ISK Destroyed",
-            chart_url: chart_url
-          })
+        {:ok, image_data} when is_binary(image_data) ->
+          conn
+          |> put_resp_content_type("image/png")
+          |> send_resp(200, image_data)
 
         {:error, reason} ->
           send_error_response(

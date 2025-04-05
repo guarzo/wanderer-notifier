@@ -347,6 +347,24 @@ config :wanderer_notifier, :persistence,
       )
     )
 
+# Parse character blacklist from environment variable
+character_blacklist_str =
+  EnvironmentHelper.get_env(
+    env_vars,
+    legacy_to_new_mapping,
+    "WANDERER_CHARACTER_BLACKLIST",
+    ""
+  )
+
+character_blacklist =
+  if character_blacklist_str == "" do
+    []
+  else
+    character_blacklist_str
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+  end
+
 features_map = %{
   notifications_enabled:
     EnvironmentHelper.get_env(
@@ -404,6 +422,13 @@ features_map = %{
       "WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED",
       "true"
     ) == "true",
+  status_messages_disabled:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "WANDERER_DISABLE_STATUS_MESSAGES",
+      "false"
+    ) == "true",
   kill_charts:
     EnvironmentHelper.get_env(
       env_vars,
@@ -422,6 +447,7 @@ features_map = %{
 }
 
 config :wanderer_notifier, features: features_map
+config :wanderer_notifier, character_blacklist: character_blacklist
 
 # -- Websocket Configuration --
 config :wanderer_notifier, :websocket,

@@ -8,6 +8,7 @@ defmodule WandererNotifier.Core.Application.Service do
   use GenServer
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
@@ -372,53 +373,61 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:send_startup_notification, state) do
-    # Create a generic notification that can be converted to various formats
-    generic_notification =
-      StructuredFormatter.format_system_status_message(
-        "WandererNotifier Service Started",
-        "The service has started and is now operational.",
-        %{
-          websocket: %{
-            connected: state.ws_pid != nil,
-            last_message: nil
+    # Check if status messages are disabled
+    if Features.status_messages_disabled?() do
+      AppLogger.startup_info("Startup notification skipped - disabled by configuration")
+      {:noreply, state}
+    else
+      # Get the current websocket status
+      ws_status = %{
+        connected: state.ws_pid != nil,
+        last_message: nil
+      }
+
+      # Create a generic notification that can be converted to various formats
+      generic_notification =
+        StructuredFormatter.format_system_status_message(
+          "WandererNotifier Service Started",
+          "The service has started and is now operational.",
+          %{
+            websocket: ws_status,
+            notifications: %{
+              total: 0,
+              kills: 0,
+              systems: 0,
+              characters: 0
+            }
           },
-          notifications: %{
-            total: 0,
-            kills: 0,
-            systems: 0,
-            characters: 0
-          }
-        },
-        :os.system_time(:second) - state.service_start_time,
-        %{},
-        %{valid: true},
-        state.systems_count,
-        state.characters_count
-      )
+          :os.system_time(:second) - state.service_start_time,
+          %{},
+          %{valid: true},
+          state.systems_count,
+          state.characters_count
+        )
 
-    discord_embed =
-      StructuredFormatter.to_discord_format(generic_notification)
+      discord_embed = StructuredFormatter.to_discord_format(generic_notification)
 
-    # Send notification via factory
-    result = NotifierFactory.notify(:send_discord_embed, [discord_embed])
+      # Send notification via factory
+      result = NotifierFactory.notify(:send_discord_embed, [discord_embed])
 
-    case result do
-      :ok ->
-        AppLogger.startup_info("Startup notification sent successfully")
+      case result do
+        :ok ->
+          AppLogger.startup_info("Startup notification sent successfully")
 
-      {:ok, _} ->
-        AppLogger.startup_info("Startup notification sent successfully")
+        {:ok, _} ->
+          AppLogger.startup_info("Startup notification sent successfully")
 
-      {:error, reason} ->
-        AppLogger.startup_error("Failed to send startup notification", error: inspect(reason))
+        {:error, reason} ->
+          AppLogger.startup_error("Failed to send startup notification", error: inspect(reason))
+      end
+
+      {:noreply, state}
     end
-
-    {:noreply, state}
   end
 
   @impl true
   def terminate(_reason, state) do
-    if state.ws_pid, do: Process.exit(state.ws_pid, :normal)
+    if is_map(state) and Map.get(state, :ws_pid), do: Process.exit(state.ws_pid, :normal)
     :ok
   end
 

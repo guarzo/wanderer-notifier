@@ -55,8 +55,17 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   defp process_systems_response(response, cached_systems) do
     alias WandererNotifier.Api.Http.ErrorHandler
 
+    AppLogger.api_debug("[SystemsClient] Processing systems response",
+      response_type: typeof(response),
+      has_cached_systems: not is_nil(cached_systems)
+    )
+
     case ErrorHandler.handle_http_response(response, domain: :map, tag: "SystemsClient") do
       {:ok, parsed_response} ->
+        AppLogger.api_debug("[SystemsClient] Successfully parsed response",
+          response_keys: Map.keys(parsed_response)
+        )
+
         # Process and cache the system data
         process_and_cache_systems(parsed_response, cached_systems)
 
@@ -67,14 +76,46 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   end
 
   defp process_and_cache_systems(parsed_response, cached_systems) do
+    AppLogger.api_debug("[SystemsClient] Starting process_and_cache_systems",
+      response_keys: Map.keys(parsed_response),
+      has_cached_systems: not is_nil(cached_systems)
+    )
+
     # Extract systems data with fallbacks for different API formats
     systems_data = extract_systems_data(parsed_response)
+
+    AppLogger.api_debug("[SystemsClient] Extracted systems data",
+      count: length(systems_data),
+      first_system: List.first(systems_data)
+    )
+
     systems = Enum.map(systems_data, &MapSystem.new/1)
+
+    AppLogger.api_debug("[SystemsClient] Created MapSystem structs",
+      count: length(systems),
+      first_system: List.first(systems)
+    )
+
     tracked_systems = filter_systems_for_tracking(systems)
+
+    AppLogger.api_debug("[SystemsClient] Filtered systems for tracking",
+      count: length(tracked_systems),
+      first_system: List.first(tracked_systems)
+    )
+
     enriched_systems = enrich_tracked_systems(tracked_systems)
+
+    AppLogger.api_debug("[SystemsClient] Enriched systems",
+      count: length(enriched_systems),
+      first_system: List.first(enriched_systems)
+    )
 
     # Cache the enriched systems
     updated_systems = update_systems_cache(enriched_systems)
+
+    AppLogger.api_debug("[SystemsClient] Updated systems cache",
+      count: length(updated_systems)
+    )
 
     # Verify systems were cached successfully
     verify_systems_cached(updated_systems)
@@ -92,7 +133,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     e ->
       AppLogger.api_error("⚠️ Exception in process_and_cache_systems",
         error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        parsed_response: inspect(parsed_response, limit: 100),
+        cached_systems_count: if(is_list(cached_systems), do: length(cached_systems), else: 0)
       )
 
       cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
@@ -101,12 +144,43 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
   # Extract systems data from different response formats
   defp extract_systems_data(parsed_response) do
-    case parsed_response do
-      %{"data" => data} when is_list(data) -> data
-      %{"systems" => systems} when is_list(systems) -> systems
-      data when is_list(data) -> data
-      _ -> []
-    end
+    AppLogger.api_debug("[SystemsClient] Extracting systems data",
+      response_type: typeof(parsed_response),
+      response_keys: if(is_map(parsed_response), do: Map.keys(parsed_response), else: [])
+    )
+
+    result =
+      case parsed_response do
+        %{"data" => data} when is_list(data) ->
+          AppLogger.api_debug("[SystemsClient] Found systems in data field", count: length(data))
+          data
+
+        %{"systems" => systems} when is_list(systems) ->
+          AppLogger.api_debug("[SystemsClient] Found systems in systems field",
+            count: length(systems)
+          )
+
+          systems
+
+        data when is_list(data) ->
+          AppLogger.api_debug("[SystemsClient] Found systems in root", count: length(data))
+          data
+
+        _ ->
+          AppLogger.api_error("[SystemsClient] No systems found in response",
+            response_type: typeof(parsed_response),
+            response: inspect(parsed_response, limit: 100)
+          )
+
+          []
+      end
+
+    AppLogger.api_debug("[SystemsClient] Extracted systems data result",
+      count: length(result),
+      first_system: if(length(result) > 0, do: List.first(result), else: nil)
+    )
+
+    result
   end
 
   # Filter systems based on configuration
@@ -147,16 +221,12 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
   # Process each system for enrichment
   defp process_systems_for_enrichment(tracked_systems, system_map) do
     Enum.reduce(tracked_systems, system_map, fn system, acc ->
-      if MapSystem.wormhole?(system) do
-        process_wormhole_system(system, acc)
-      else
-        process_non_wormhole_system(system, acc)
-      end
+      process_system(system, acc)
     end)
   end
 
-  # Process a wormhole system with enrichment
-  defp process_wormhole_system(system, acc) do
+  # Process a system with enrichment
+  defp process_system(system, acc) do
     # Try to enrich with a strict timeout
     task =
       Task.async(fn ->
@@ -186,16 +256,16 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
           "[SystemsClient] Using basic system info for #{system.name} (enrichment skipped or failed)"
         )
 
-        # Ensure statics is never nil
-        updated_system = ensure_statics_not_nil(system)
+        # Ensure statics is never nil for wormhole systems
+        updated_system =
+          if MapSystem.wormhole?(system) do
+            ensure_statics_not_nil(system)
+          else
+            system
+          end
+
         Map.put(acc, system.solar_system_id, updated_system)
     end
-  end
-
-  # Process a non-wormhole system (no enrichment needed)
-  defp process_non_wormhole_system(system, acc) do
-    # Update the map with the original system
-    Map.put(acc, system.solar_system_id, system)
   end
 
   # Ensure statics field is never nil

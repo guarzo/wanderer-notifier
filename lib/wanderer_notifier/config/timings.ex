@@ -144,6 +144,24 @@ defmodule WandererNotifier.Config.Timings do
     get_env(:activity_chart_interval, 24 * 60 * 60 * 1000)
   end
 
+  @doc """
+  Returns the weekly kill chart interval in milliseconds.
+  Default: 7 days (604,800,000 ms)
+  """
+  @spec weekly_kill_chart_interval() :: integer()
+  def weekly_kill_chart_interval do
+    get_env(:weekly_kill_chart_interval, 7 * 24 * 60 * 60 * 1000)
+  end
+
+  @doc """
+  Returns the weekly character kill data fetch interval in milliseconds.
+  Default: 7 days (604,800,000 ms)
+  """
+  @spec weekly_kill_data_fetch_interval() :: integer()
+  def weekly_kill_data_fetch_interval do
+    get_env(:weekly_kill_data_fetch_interval, 7 * 24 * 60 * 60 * 1000)
+  end
+
   #
   # Scheduler functions
   #

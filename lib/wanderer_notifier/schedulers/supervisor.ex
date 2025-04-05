@@ -99,7 +99,10 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   defp create_kill_chart_schedulers do
     [
       {Schedulers.KillmailRetentionScheduler, []},
-      {Schedulers.KillmailAggregationScheduler, []}
+      {Schedulers.KillmailAggregationScheduler, []},
+      {Schedulers.KillValidationChartScheduler, []},
+      {Schedulers.WeeklyKillChartScheduler, []},
+      {Schedulers.WeeklyKillDataScheduler, []}
     ]
   end
 

@@ -17,6 +17,7 @@ const queryClient = new QueryClient();
 function App() {
   const [mapChartsEnabled, setMapChartsEnabled] = useState(false);
   const [killChartsEnabled, setKillChartsEnabled] = useState(false);
+  const [debugEnabled, setDebugEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,12 +28,14 @@ function App() {
         const features = response.data.features;
         setMapChartsEnabled(features.map_charts);
         setKillChartsEnabled(features.kill_charts);
+        setDebugEnabled(features.debug);
         setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching status:', error);
         setMapChartsEnabled(false);
         setKillChartsEnabled(false);
+        setDebugEnabled(false);
         setLoading(false);
       });
   }, []);
@@ -75,10 +78,12 @@ function App() {
                       <span>Kill Analysis</span>
                     </Link>
                   )}
+                  {debugEnabled && (
                   <Link to="/schedulers" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                     <FaCalendarAlt />
                     <span>Schedulers</span>
                   </Link>
+                  )}
                 </div>
               </div>
             </nav>
@@ -93,12 +98,12 @@ function App() {
               {/* Kill comparison route */}
               <Route 
                 path="/kill-comparison" 
-                element={killChartsEnabled ? <KillComparison /> : <Navigate to="/" replace />} 
+                element={debugEnabled && killChartsEnabled ? <KillComparison /> : <Navigate to="/" replace />} 
               />
               {/* Scheduler dashboard route */}
               <Route 
                 path="/schedulers" 
-                element={<SchedulerDashboard />} 
+                element={debugEnabled ? <SchedulerDashboard /> : <Navigate to="/" replace />} 
               />
             </Routes>
           </div>

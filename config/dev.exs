@@ -15,7 +15,33 @@ config :wanderer_notifier,
 # Set a higher log level in development to see more details
 config :logger, level: :info
 
+# Configure both console and file logging
+config :logger,
+  backends: [:console, {LoggerFileBackend, :debug_log}]
+
 # Include more metadata in development logs
 config :logger, :console,
   format: "$time [$level] $message\n",
   metadata: [:trace_id]
+
+# Configure file logging
+config :logger, :debug_log,
+  path: "log/debug.log",
+  level: :debug,
+  format: "$time [$level] $metadata$message\n",
+  metadata: [:trace_id, :character_id, :kill_count, :killmail_id]
+
+# Set ZKill-specific logs to info level
+config :logger, :module_levels, %{
+  "WandererNotifier.Api.ZKill" => :info,
+  "WandererNotifier.Api.ZKill.Client" => :info,
+  "WandererNotifier.Api.ZKill.Service" => :info,
+  "WandererNotifier.Api.ZKill.Websocket" => :info
+}
+
+# Configure persistence feature overrides for development
+config :wanderer_notifier, :persistence,
+  enabled: true,
+  retention_period_days: 180,
+  # Run aggregation every 5 minutes in development for testing
+  aggregation_schedule: "*/5 * * * *"

@@ -186,12 +186,11 @@ defmodule WandererNotifier.Data.Killmail do
   - killmail: The killmail struct
 
   ## Returns
-  A list of attacker data maps, or nil if not available
+  A list of attacker data maps, or empty list if not available
   """
   def get_attacker(killmail) do
-    # Return the first attacker if there are multiple
-    attackers = get(killmail, "attackers")
-    if is_list(attackers) && length(attackers) > 0, do: hd(attackers), else: nil
+    # Return the full list of attackers
+    get(killmail, "attackers") || []
   end
 
   @doc """

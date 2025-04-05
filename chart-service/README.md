@@ -1,13 +1,13 @@
 # Chart.js Node Service for WandererNotifier
 
-This service provides server-side chart generation using Chart.js and Node.js. It replaces the external dependency on QuickChart.io with a local service that can generate chart images directly.
+This service provides server-side chart generation using Chart.js and Node.js. It provides a local service that can generate chart images directly.
 
 ## Features
 
-- Generate chart images using Chart.js
-- Support for all standard Chart.js chart types and options
-- Optimized for Discord's dark theme
-- Fallback to QuickChart.io if service is unavailable
+- Server-side chart generation
+- Support for various chart types
+- Binary image data response
+- Error handling and logging
 
 ## Installation
 
@@ -38,6 +38,7 @@ The service runs on port 3001 by default. You can change this by setting the `CH
 Generates a chart image from a configuration.
 
 Request body:
+
 ```json
 {
   "chart": {
@@ -61,6 +62,7 @@ Request body:
 Generates a placeholder chart when no data is available.
 
 Request body:
+
 ```json
 {
   "title": "Chart Title",
@@ -75,6 +77,7 @@ Request body:
 Generates a chart and saves it to disk.
 
 Request body:
+
 ```json
 {
   "chart": {...},
@@ -90,6 +93,7 @@ Request body:
 The service is integrated with the Elixir application through:
 
 1. `WandererNotifier.ChartService.ChartServiceManager` - Manages the lifecycle of the Node.js chart service, including:
+
    - Starting the service automatically when the Elixir application starts
    - Monitoring the service's health
    - Restarting the service if it crashes or becomes unresponsive
@@ -97,7 +101,7 @@ The service is integrated with the Elixir application through:
 
 2. `WandererNotifier.ChartService.NodeChartAdapter` - Communicates with the service via HTTP:
    - Translates between Elixir chart configurations and the Node.js service format
-   - Handles error cases with automatic fallbacks 
+   - Handles error cases with automatic fallbacks
    - Supports multiple output formats (binary data, file output)
 
 ### Health Check Endpoint

@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Api.ZKill.Service, as: ZKillService
+  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail
@@ -31,10 +32,12 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
           :ok ->
             AppLogger.info("Test system notification sent successfully")
+            Stats.increment(:systems)
             {:ok, "Test system notification sent successfully"}
 
           {:ok, result} ->
             AppLogger.info("Test system notification sent successfully")
+            Stats.increment(:systems)
             {:ok, result}
 
           {:error, reason} ->
@@ -142,10 +145,12 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
       :ok ->
         AppLogger.kill_info("Test kill notification sent successfully")
+        Stats.increment(:kills)
         {:ok, kill_id}
 
       {:ok, result} ->
         AppLogger.kill_info("Test kill notification sent successfully")
+        Stats.increment(:kills)
         {:ok, result}
 
       {:error, reason} ->
@@ -178,10 +183,12 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
           :ok ->
             AppLogger.info("Test character notification sent successfully")
+            Stats.increment(:characters)
             {:ok, "Test character notification sent successfully"}
 
           {:ok, result} ->
             AppLogger.info("Test character notification sent successfully")
+            Stats.increment(:characters)
             {:ok, result}
 
           {:error, reason} ->

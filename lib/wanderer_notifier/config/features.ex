@@ -231,6 +231,14 @@ defmodule WandererNotifier.Config.Features do
   end
 
   @doc """
+  Checks if status messages are disabled.
+  """
+  @spec status_messages_disabled?() :: boolean()
+  def status_messages_disabled? do
+    get_feature(:status_messages_disabled, false)
+  end
+
+  @doc """
   Check if we should load tracking data (systems and characters) for use in kill notifications.
   """
   @spec should_load_tracking_data?() :: boolean()

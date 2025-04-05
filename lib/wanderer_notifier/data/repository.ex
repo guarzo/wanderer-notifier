@@ -5,6 +5,9 @@ defmodule WandererNotifier.Data.Repository do
   """
 
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Logger.AppLogger, as: Logger
 
   @doc """
   Gets tracked characters from the data store.
@@ -12,7 +15,14 @@ defmodule WandererNotifier.Data.Repository do
   """
   @spec get_tracked_characters() :: [map()]
   def get_tracked_characters do
-    CacheHelpers.get_tracked_characters()
+    characters = CacheRepo.get(CacheKeys.character_list()) || []
+
+    Logger.processor_info("Retrieved tracked characters from cache",
+      character_count: length(characters),
+      sample_ids: Enum.take(Enum.map(characters, & &1["character_id"]), 3)
+    )
+
+    characters
   end
 
   @doc """

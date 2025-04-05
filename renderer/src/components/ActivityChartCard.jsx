@@ -35,36 +35,13 @@ function ActivityChartCard({ title, description, chartType }) {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('image/png')) {
-          // Handle binary image data
-          return response.blob().then(blob => {
-            const imageUrl = URL.createObjectURL(blob);
-            return { status: 'ok', chart_url: imageUrl };
-          });
-        } else {
-          // Handle JSON response
-          return response.json();
-        }
+        return response.blob();
       })
-      .then(data => {
-        console.log('Chart data received:', data);
-        if (data.status === 'ok') {
-          const chartUrl = data.chart_url;
-          // Only add cache buster if it's not a blob URL and we're forcing a refresh
-          const urlWithCache = chartUrl.includes('blob:') ? 
-            chartUrl : 
-            forceRefresh ? 
-              `${chartUrl}${chartUrl.includes('?') ? '&' : '?'}cache=${Date.now()}` :
-              chartUrl;
-          setChartUrl(urlWithCache);
-          console.log('Chart URL set to:', urlWithCache);
-          setRetryCount(0);
-        } else {
-          setDebugInfo(JSON.stringify(data, null, 2));
-          throw new Error(data.message || 'Failed to generate chart');
-        }
+      .then(blob => {
+        const imageUrl = URL.createObjectURL(blob);
+        setChartUrl(imageUrl);
+        console.log('Chart image blob URL created');
+        setRetryCount(0);
       })
       .catch(error => {
         console.error(`Error generating ${chartType} chart:`, error);
@@ -122,64 +99,17 @@ function ActivityChartCard({ title, description, chartType }) {
   };
 
   const retryWithDirectUrl = () => {
-    if (chartUrl) {
-      const baseUrl = chartUrl.split('?')[0];
-      const newUrl = `${baseUrl}?t=${Date.now()}`;
-      setDebugInfo(`Trying to load: ${newUrl}`);
-      const img = new Image();
-      img.onload = () => {
-        setDebugInfo(`Image loaded successfully via direct URL: ${newUrl}`);
-        setChartUrl(newUrl);
-      };
-      img.onerror = (e) => {
-        setDebugInfo(`Failed to load image directly from URL: ${newUrl}. Error: ${e.message || 'Unknown error'}`);
-      };
-      img.src = newUrl;
-    }
+    setRetryCount(0);
+    generateChart(true);
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-          {description && (
-            <p className="text-sm text-gray-600 mt-1">{description}</p>
-          )}
-        </div>
-        <div className="flex space-x-2">
-          <button
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            onClick={() => generateChart(true)}
-            disabled={loading}
-          >
-            <FaSync className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-            onClick={sendToDiscord}
-            disabled={sending || loading || !chartUrl}
-          >
-            <FaDiscord className={sending ? 'animate-pulse' : ''} />
-          </button>
-        </div>
+    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="p-4 border-b">
+        <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+        <p className="text-gray-600 text-sm mt-1">{description}</p>
       </div>
 
-      {/* Status Messages */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md flex items-center">
-          <FaExclamationTriangle className="mr-2" />
-          <span>{error}</span>
-        </div>
-      )}
-      
-      {success && (
-        <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-md">
-          {success}
-        </div>
-      )}
-
-      {/* Chart Display */}
       <div className="relative bg-gray-100 rounded-lg overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -218,6 +148,46 @@ function ActivityChartCard({ title, description, chartType }) {
           </pre>
         </div>
       )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="p-4 bg-red-50 text-red-700 flex items-center">
+          <FaExclamationTriangle className="mr-2" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="p-4 bg-green-50 text-green-700">
+          {success}
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="p-4 border-t flex justify-end space-x-2">
+        <button
+          type="button"
+          onClick={retryWithDirectUrl}
+          title="Refresh chart"
+          className="p-2 text-gray-600 hover:text-gray-800 rounded"
+        >
+          <FaSync size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={sendToDiscord}
+          disabled={sending || !chartUrl}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {sending ? (
+            <FaCircleNotch className="animate-spin mr-2" />
+          ) : (
+            <FaDiscord className="mr-2" />
+          )}
+          Send to Discord
+        </button>
+      </div>
     </div>
   );
 }

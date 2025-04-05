@@ -328,6 +328,34 @@ defmodule WandererNotifier.Data.Cache.Keys do
     String.ends_with?(key, "static_info")
   end
 
+  @doc """
+  Generates a cache key for a killmail.
+  """
+  def killmail(kill_id, killmail_hash) do
+    [@prefix_esi, @entity_killmail, to_string(kill_id), killmail_hash]
+    |> Enum.join(@separator)
+  end
+
+  @doc """
+  Generates a cache key for a ship type.
+  """
+  def ship_type(ship_type_id) do
+    [@prefix_esi, "ship_type", to_string(ship_type_id)]
+    |> Enum.join(@separator)
+  end
+
+  @doc """
+  Generates a cache key for cached kills for a specific system.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.system_kills(30004759)
+      "kills:system:30004759"
+  """
+  @spec system_kills(integer() | String.t()) :: String.t()
+  def system_kills(system_id) when is_integer(system_id) or is_binary(system_id) do
+    join_parts(["kills", @entity_system, to_string(system_id)])
+  end
+
   # Helper to join parts with the separator
   defp join_parts(parts) when is_list(parts) do
     Enum.join(parts, @separator)

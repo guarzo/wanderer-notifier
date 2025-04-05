@@ -66,18 +66,39 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   def enrich_killmail_data(%Killmail{} = killmail) do
     %Killmail{esi_data: esi_data} = killmail
 
+    AppLogger.kill_debug("[Enrichment] Starting enrichment process",
+      kill_id: killmail.killmail_id,
+      initial_esi_data: inspect(esi_data, limit: 500)
+    )
+
     # Enrich with system name if needed
     esi_data = enrich_with_system_name(esi_data)
+
+    AppLogger.kill_debug("[Enrichment] After system name enrichment",
+      kill_id: killmail.killmail_id,
+      system_name: Map.get(esi_data, "solar_system_name"),
+      has_victim: Map.has_key?(esi_data, "victim"),
+      has_attackers: Map.has_key?(esi_data, "attackers")
+    )
 
     # Enrich victim data if available
     esi_data =
       if Map.has_key?(esi_data, "victim") do
         victim = Map.get(esi_data, "victim")
+
+        AppLogger.kill_debug("[Enrichment] Processing victim data",
+          kill_id: killmail.killmail_id,
+          victim_data: inspect(victim, limit: 200)
+        )
+
         enriched_victim = enrich_entity(victim)
         Map.put(esi_data, "victim", enriched_victim)
       else
         # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing victim data in killmail")
+        AppLogger.kill_warning("[Enrichment] Missing victim data in killmail",
+          kill_id: killmail.killmail_id
+        )
+
         esi_data
       end
 
@@ -85,13 +106,29 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     esi_data =
       if Map.has_key?(esi_data, "attackers") do
         attackers = Map.get(esi_data, "attackers", [])
+
+        AppLogger.kill_debug("[Enrichment] Processing attackers data",
+          kill_id: killmail.killmail_id,
+          attackers_count: length(attackers),
+          sample_attacker:
+            if(length(attackers) > 0, do: inspect(hd(attackers), limit: 200), else: nil)
+        )
+
         enriched_attackers = Enum.map(attackers, &enrich_entity/1)
         Map.put(esi_data, "attackers", enriched_attackers)
       else
         # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing attackers data in killmail")
+        AppLogger.kill_warning("[Enrichment] Missing attackers data in killmail",
+          kill_id: killmail.killmail_id
+        )
+
         esi_data
       end
+
+    AppLogger.kill_debug("[Enrichment] Completed enrichment process",
+      kill_id: killmail.killmail_id,
+      final_esi_data: inspect(esi_data, limit: 500)
+    )
 
     # Return updated killmail with enriched ESI data
     %Killmail{killmail | esi_data: esi_data}

@@ -14,26 +14,26 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches a killmail from ESI.
   """
-  def get_killmail(kill_id, hash) do
+  def get_killmail(kill_id, hash, opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
     label = "ESI.killmail-#{kill_id}"
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, label: label)
+    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.killmail")
   end
 
   @doc """
   Fetches character info from ESI.
   """
-  def get_character_info(character_id) do
+  def get_character_info(character_id, opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
     label = "ESI.character-#{character_id}"
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, label: label)
+    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.character")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "character_id", character_id)}
@@ -44,13 +44,13 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches corporation info from ESI.
   """
-  def get_corporation_info(corporation_id) do
+  def get_corporation_info(corporation_id, opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
     label = "ESI.corporation-#{corporation_id}"
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, label: label)
+    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.corporation")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "corporation_id", corporation_id)}
@@ -61,13 +61,13 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches alliance info from ESI.
   """
-  def get_alliance_info(alliance_id) do
+  def get_alliance_info(alliance_id, opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
     label = "ESI.alliance-#{alliance_id}"
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, label: label)
+    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.alliance")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "alliance_id", alliance_id)}
@@ -78,13 +78,13 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches universe type info (e.g. ship type) from ESI.
   """
-  def get_universe_type(ship_type_id) do
+  def get_universe_type(ship_type_id, opts \\ []) do
     url = "#{@base_url}/universe/types/#{ship_type_id}/"
     label = "ESI.universe_type-#{ship_type_id}"
 
     headers = default_headers()
 
-    HttpClient.get(url, headers, label: label)
+    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.universe_type")
   end
 
@@ -113,7 +113,7 @@ defmodule WandererNotifier.Api.ESI.Client do
   @doc """
   Fetches solar system info from ESI.
   """
-  def get_solar_system(system_id) do
+  def get_solar_system(system_id, opts \\ []) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
     label = "ESI.solar_system-#{system_id}"
 
@@ -121,7 +121,7 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     AppLogger.api_debug("[ESI] Fetching solar system #{system_id}")
 
-    result = HttpClient.get(url, headers, label: label)
+    result = HttpClient.get(url, headers, Keyword.merge([label: label], opts))
 
     case result do
       {:ok, %{status: 404}} ->

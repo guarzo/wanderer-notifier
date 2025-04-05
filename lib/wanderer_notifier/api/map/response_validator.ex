@@ -291,7 +291,8 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
     # Check for required minimal fields per documentation
     is_map(info) and
       is_list(Map.get(info, "statics", nil)) and
-      (Map.has_key?(info, "solar_system_id") or Map.has_key?(info, "class_title"))
+      (Map.has_key?(info, "solar_system_id") or Map.has_key?(info, "class_title")) and
+      Map.has_key?(info, "type_description")
   end
 
   # Helper to safely get a nested value with a default

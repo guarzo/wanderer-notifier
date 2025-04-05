@@ -1,68 +1,116 @@
 defmodule WandererNotifier.Api.ESI.Service do
   @moduledoc """
-  Service for accessing EVE Online ESI data.
-  Provides higher-level functions for retrieving and processing game data.
+  Service for interacting with EVE Online's ESI (Swagger Interface) API.
+  Provides high-level functions for common ESI operations.
   """
-  @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
 
   require Logger
-  alias WandererNotifier.Api.ESI.Client, as: ESIClient
+  alias WandererNotifier.Api.ESI.Client
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash) do
-    AppLogger.api_debug("Fetching killmail from ESI", kill_id: kill_id, hash: killmail_hash)
-    ESIClient.get_killmail(kill_id, killmail_hash)
+    cache_key = CacheKeys.killmail(kill_id, killmail_hash)
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        AppLogger.api_debug("🔍 ESI cache miss for killmail", kill_id: kill_id)
+
+        case Client.get_killmail(kill_id, killmail_hash, retry_opts()) do
+          {:ok, data} = result ->
+            CacheRepo.put(cache_key, data)
+            result
+
+          error ->
+            error
+        end
+
+      data ->
+        AppLogger.api_debug("✨ ESI cache hit for killmail", kill_id: kill_id)
+        {:ok, data}
+    end
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_character_info(character_id, _opts \\ []) do
-    ESIClient.get_character_info(character_id)
+    cache_key = CacheKeys.character(character_id)
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
+
+        case Client.get_character_info(character_id, retry_opts()) do
+          {:ok, data} = result ->
+            CacheRepo.put(cache_key, data)
+            result
+
+          error ->
+            error
+        end
+
+      data ->
+        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
+        {:ok, data}
+    end
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_corporation_info(corporation_id, _opts \\ []) do
-    ESIClient.get_corporation_info(corporation_id)
+    Client.get_corporation_info(corporation_id)
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_alliance_info(alliance_id, _opts \\ []) do
-    ESIClient.get_alliance_info(alliance_id)
+    Client.get_alliance_info(alliance_id)
   end
 
   @impl true
   def get_ship_type_name(ship_type_id, _opts \\ []) do
-    AppLogger.api_debug("[ESI] Fetching ship type name for ID #{ship_type_id}")
+    cache_key = CacheKeys.ship_type(ship_type_id)
 
-    case ESIClient.get_universe_type(ship_type_id) do
-      {:ok, type_info} ->
-        name = Map.get(type_info, "name")
+    case CacheRepo.get(cache_key) do
+      nil -> handle_cache_miss(ship_type_id, cache_key)
+      data -> handle_cache_hit(ship_type_id, data)
+    end
+  end
 
-        if name do
-          AppLogger.api_debug("[ESI] Found ship type name: #{name}")
-          {:ok, %{"name" => name}}
-        else
-          AppLogger.api_warn("[ESI] No name found in type info for ship ID #{ship_type_id}")
-          {:error, :name_not_found}
-        end
+  defp handle_cache_miss(ship_type_id, cache_key) do
+    AppLogger.api_debug("🔍 ESI cache miss for ship type", ship_type_id: ship_type_id)
 
-      {:error, :not_found} ->
-        AppLogger.api_warn("[ESI] Ship type ID #{ship_type_id} not found")
-        {:error, :not_found}
+    case Client.get_universe_type(ship_type_id, retry_opts()) do
+      {:ok, type_info} -> process_type_info(type_info, cache_key)
+      error -> error
+    end
+  end
 
-      error ->
-        AppLogger.api_error("[ESI] Failed to fetch ship type: #{inspect(error)}")
-        error
+  defp handle_cache_hit(ship_type_id, data) do
+    AppLogger.api_debug("✨ ESI cache hit for ship type", ship_type_id: ship_type_id)
+    {:ok, data}
+  end
+
+  defp process_type_info(type_info, cache_key) do
+    name = Map.get(type_info, "name")
+
+    if name do
+      result = %{"name" => name}
+      CacheRepo.put(cache_key, result)
+      {:ok, result}
+    else
+      {:error, :name_not_found}
     end
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_type_info(type_id, _opts \\ []) do
-    ESIClient.get_universe_type(type_id)
+    Client.get_universe_type(type_id)
   end
 
   def search_inventory_type(query, strict \\ true, _opts \\ []) do
-    ESIClient.search_inventory_type(query, strict)
+    Client.search_inventory_type(query, strict)
   end
 
   @doc """
@@ -70,7 +118,7 @@ defmodule WandererNotifier.Api.ESI.Service do
   Expects the response to include a "name" field.
   """
   def get_solar_system_name(system_id, _opts \\ []) do
-    ESIClient.get_solar_system(system_id)
+    Client.get_solar_system(system_id)
   end
 
   @doc """
@@ -78,8 +126,26 @@ defmodule WandererNotifier.Api.ESI.Service do
   Fetches solar system info from ESI given a system_id.
   """
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
-  def get_system_info(system_id, opts \\ []) do
-    get_solar_system_name(system_id, opts)
+  def get_system_info(system_id, _opts \\ []) do
+    cache_key = CacheKeys.system(system_id)
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        AppLogger.api_debug("🔍 ESI cache miss for system", system_id: system_id)
+
+        case Client.get_solar_system(system_id, retry_opts()) do
+          {:ok, data} = result ->
+            CacheRepo.put(cache_key, data)
+            result
+
+          error ->
+            error
+        end
+
+      data ->
+        AppLogger.api_debug("✨ ESI cache hit for system", system_id: system_id)
+        {:ok, data}
+    end
   end
 
   @doc """
@@ -87,7 +153,7 @@ defmodule WandererNotifier.Api.ESI.Service do
   Expects the response to include a "name" field.
   """
   def get_region_name(region_id, _opts \\ []) do
-    ESIClient.get_region(region_id)
+    Client.get_region(region_id)
   end
 
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
@@ -108,6 +174,16 @@ defmodule WandererNotifier.Api.ESI.Service do
   @impl true
   def get_system_kills(system_id, limit) do
     AppLogger.api_debug("[ESI] Fetching system kills", system_id: system_id, limit: limit)
-    ESIClient.get_system_kills(system_id, limit)
+    Client.get_system_kills(system_id, limit)
+  end
+
+  # Helper to get retry options
+  defp retry_opts do
+    [
+      max_retries: 3,
+      # 1 second
+      initial_backoff: 1000,
+      label: "ESI"
+    ]
   end
 end
