@@ -201,6 +201,24 @@ defmodule WandererNotifier.Api.ESI.Client do
   end
 
   @doc """
+  Fetches constellation info from ESI.
+  """
+  def get_constellation(constellation_id) do
+    url = "#{@base_url}/universe/constellations/#{constellation_id}/"
+    label = "ESI.constellation-#{constellation_id}"
+
+    headers = default_headers()
+
+    AppLogger.api_debug("ESI fetching constellation", %{
+      constellation_id: constellation_id,
+      method: "get_constellation"
+    })
+
+    HttpClient.get(url, headers, label: label)
+    |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.constellation")
+  end
+
+  @doc """
   Gets recent kills for a specific solar system.
 
   ## Parameters

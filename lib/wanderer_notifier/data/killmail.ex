@@ -175,34 +175,86 @@ defmodule WandererNotifier.Data.Killmail do
   ## Returns
   A map with victim data, or nil if not available
   """
-  def get_victim(killmail) do
+  def get_victim(%__MODULE__{} = killmail) do
     get(killmail, "victim")
   end
 
   @doc """
-  Gets attacker information from a killmail.
+  Gets attackers information from a killmail.
 
   ## Parameters
   - killmail: The killmail struct
 
   ## Returns
-  A list of attacker data maps, or empty list if not available
+  A list of attacker maps, or an empty list if not available
   """
-  def get_attacker(killmail) do
-    # Return the full list of attackers
-    get(killmail, "attackers") || []
+  def get_attacker(%__MODULE__{} = killmail) do
+    get(killmail, "attackers")
   end
 
   @doc """
-  Gets the solar system ID from a killmail.
+  Gets the system id from a killmail.
 
   ## Parameters
   - killmail: The killmail struct
 
   ## Returns
-  The solar system ID as an integer, or nil if not available
+  The system id, or nil if not available
   """
-  def get_system_id(killmail) do
-    get(killmail, "solar_system_id")
+  def get_system_id(%__MODULE__{} = killmail) do
+    Map.get(killmail.esi_data || %{}, "solar_system_id")
+  end
+
+  @doc """
+  Gets the region id from a killmail.
+
+  ## Parameters
+  - killmail: The killmail struct
+
+  ## Returns
+  The region id, or nil if not available
+  """
+  def get_region_id(%__MODULE__{} = killmail) do
+    Map.get(killmail.esi_data || %{}, "region_id")
+  end
+
+  @doc """
+  Dumps all available data fields in the killmail for debugging.
+  Useful for identifying missing data issues.
+
+  ## Parameters
+  - killmail: The killmail struct
+
+  ## Returns
+  Map with all available data points
+  """
+  def debug_data(%__MODULE__{} = killmail) do
+    %{
+      # Basic fields
+      killmail_id: killmail.killmail_id,
+
+      # ESI fields (if present)
+      solar_system_id: get_system_id(killmail),
+      solar_system_name: get(killmail, "solar_system_name"),
+      region_id: get_region_id(killmail),
+      region_name: get(killmail, "region_name"),
+      killmail_time: get(killmail, "killmail_time"),
+
+      # Victim and attacker data
+      victim: get_victim(killmail),
+      attackers_count:
+        case get_attacker(killmail) do
+          attackers when is_list(attackers) -> length(attackers)
+          _ -> 0
+        end,
+
+      # ZKB data
+      zkb_total_value: Map.get(killmail.zkb || %{}, "totalValue"),
+
+      # Extra info
+      has_esi_data: not is_nil(killmail.esi_data),
+      esi_data_keys: if(killmail.esi_data, do: Map.keys(killmail.esi_data), else: []),
+      zkb_keys: if(killmail.zkb, do: Map.keys(killmail.zkb), else: [])
+    }
   end
 end

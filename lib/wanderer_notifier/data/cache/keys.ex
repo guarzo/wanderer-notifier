@@ -393,6 +393,18 @@ defmodule WandererNotifier.Data.Cache.Keys do
   end
 
   @doc """
+  Generates a cache key for constellation data.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.constellation(20000001)
+      "map:constellation:20000001"
+  """
+  @spec constellation(integer() | String.t()) :: String.t()
+  def constellation(id) when is_integer(id) or is_binary(id) do
+    join_parts([@prefix_map, "constellation", to_string(id)])
+  end
+
+  @doc """
   Generates a cache key for region data.
 
   ## Examples

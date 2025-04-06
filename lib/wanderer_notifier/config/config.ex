@@ -98,12 +98,18 @@ defmodule WandererNotifier.Config.Config do
   end
 
   @impl true
+  def kill_notifications_enabled? do
+    Features.kill_notifications_enabled?()
+  end
+
+  @impl true
   def get_feature_status do
     %{
-      kill_notifications_enabled: kill_charts_enabled?(),
+      kill_notifications_enabled: kill_notifications_enabled?(),
       system_tracking_enabled: system_notifications_enabled?(),
       character_tracking_enabled: character_tracking_enabled?(),
-      activity_charts: map_charts_enabled?()
+      activity_charts: map_charts_enabled?(),
+      kill_charts: kill_charts_enabled?()
     }
   end
 

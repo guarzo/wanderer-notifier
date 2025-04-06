@@ -246,6 +246,36 @@ defmodule WandererNotifier.Api.ESI.Service do
     end
   end
 
+  @doc """
+  Fetches constellation info from ESI given a constellation_id.
+  """
+  def get_constellation_info(constellation_id, _opts \\ []) do
+    cache_key = CacheKeys.constellation(constellation_id)
+
+    case CacheRepo.get(cache_key) do
+      nil ->
+        AppLogger.api_debug("🔍 ESI cache miss for constellation",
+          constellation_id: constellation_id
+        )
+
+        case Client.get_constellation(constellation_id) do
+          {:ok, data} = result ->
+            CacheRepo.put(cache_key, data)
+            result
+
+          error ->
+            error
+        end
+
+      data ->
+        AppLogger.api_debug("✨ ESI cache hit for constellation",
+          constellation_id: constellation_id
+        )
+
+        {:ok, data}
+    end
+  end
+
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_character(character_id) do
     get_character_info(character_id)

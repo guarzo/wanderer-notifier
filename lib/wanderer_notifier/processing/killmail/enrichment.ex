@@ -66,17 +66,27 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   def enrich_killmail_data(%Killmail{} = killmail) do
     %Killmail{esi_data: esi_data} = killmail
 
+    # Log detailed raw data for debugging
+    AppLogger.kill_debug("[Enrichment] Raw killmail data debugging",
+      kill_id: killmail.killmail_id,
+      raw_zkb_data: inspect(killmail.zkb, limit: 2000, pretty: true),
+      raw_esi_data: inspect(esi_data, limit: 2000, pretty: true)
+    )
+
     AppLogger.kill_debug("[Enrichment] Starting enrichment process",
       kill_id: killmail.killmail_id,
       initial_esi_data: inspect(esi_data, limit: 500)
     )
 
-    # Enrich with system name if needed
+    # Enrich with system name and region info if needed
     esi_data = enrich_with_system_name(esi_data)
+    esi_data = enrich_with_region_info(esi_data)
 
-    AppLogger.kill_debug("[Enrichment] After system name enrichment",
+    AppLogger.kill_debug("[Enrichment] After system and region enrichment",
       kill_id: killmail.killmail_id,
       system_name: Map.get(esi_data, "solar_system_name"),
+      region_id: Map.get(esi_data, "region_id"),
+      region_name: Map.get(esi_data, "region_name"),
       has_victim: Map.has_key?(esi_data, "victim"),
       has_attackers: Map.has_key?(esi_data, "attackers")
     )
@@ -289,4 +299,150 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       _ -> nil
     end
   end
+
+  # Add region information to ESI data if missing
+  defp enrich_with_region_info(esi_data) when is_map(esi_data) do
+    # Skip if already has region information
+    if Map.has_key?(esi_data, "region_name") and Map.has_key?(esi_data, "region_id") do
+      esi_data
+    else
+      add_region_info_to_data(esi_data)
+    end
+  end
+
+  defp enrich_with_region_info(data), do: data
+
+  # Helper to add region info based on system_id
+  defp add_region_info_to_data(esi_data) do
+    system_id = Map.get(esi_data, "solar_system_id")
+
+    # No system ID, return original data
+    if is_nil(system_id) do
+      AppLogger.kill_warning("[Enrichment] No system ID available for region lookup")
+      esi_data
+    else
+      # Try to get system info which includes constellation (which includes region)
+      AppLogger.kill_debug("[Enrichment] Getting system info for region lookup",
+        system_id: system_id
+      )
+
+      case ESIService.get_system_info(system_id) do
+        {:ok, system_info} ->
+          # Log the raw system info for debugging
+          AppLogger.kill_debug("[Enrichment] Got system info for region lookup",
+            system_id: system_id,
+            system_info: inspect(system_info, limit: 1000, pretty: true)
+          )
+
+          # Extract constellation ID from system info
+          constellation_id = Map.get(system_info, "constellation_id")
+
+          if constellation_id do
+            # Get constellation info to find region
+            AppLogger.kill_debug("[Enrichment] Getting constellation info for region lookup",
+              constellation_id: constellation_id
+            )
+
+            case ESIService.get_constellation_info(constellation_id) do
+              {:ok, constellation_info} ->
+                # Log the raw constellation info for debugging
+                AppLogger.kill_debug("[Enrichment] Got constellation info for region lookup",
+                  constellation_id: constellation_id,
+                  constellation_info: inspect(constellation_info, limit: 1000, pretty: true)
+                )
+
+                region_id = Map.get(constellation_info, "region_id")
+
+                if region_id do
+                  # Get region name
+                  AppLogger.kill_debug("[Enrichment] Getting region info",
+                    region_id: region_id
+                  )
+
+                  case ESIService.get_region_name(region_id) do
+                    {:ok, region_info} ->
+                      # Log the raw region info for debugging
+                      AppLogger.kill_debug("[Enrichment] Got region info",
+                        region_id: region_id,
+                        region_info: inspect(region_info, limit: 1000, pretty: true)
+                      )
+
+                      region_name = Map.get(region_info, "name", "Unknown Region")
+
+                      AppLogger.kill_debug("[Enrichment] Successfully added region info",
+                        region_id: region_id,
+                        region_name: region_name
+                      )
+
+                      esi_data
+                      |> Map.put("region_id", region_id)
+                      |> Map.put("region_name", region_name)
+
+                    error ->
+                      AppLogger.kill_warning("[Enrichment] Failed to get region info",
+                        region_id: region_id,
+                        error: inspect(error)
+                      )
+
+                      # Could find region ID but not name
+                      esi_data
+                      |> Map.put("region_id", region_id)
+                      |> Map.put("region_name", handle_wormhole_region(system_id))
+                  end
+                else
+                  AppLogger.kill_warning("[Enrichment] No region ID in constellation info",
+                    constellation_id: constellation_id
+                  )
+
+                  # Fallback for wormhole systems which may not have standard regions
+                  esi_data
+                  |> Map.put("region_name", handle_wormhole_region(system_id))
+                end
+
+              error ->
+                AppLogger.kill_warning("[Enrichment] Failed to get constellation info",
+                  constellation_id: constellation_id,
+                  error: inspect(error)
+                )
+
+                # Could not get constellation info
+                esi_data
+                |> Map.put("region_name", handle_wormhole_region(system_id))
+            end
+          else
+            AppLogger.kill_warning("[Enrichment] No constellation ID in system info",
+              system_id: system_id
+            )
+
+            # No constellation ID found
+            esi_data
+            |> Map.put("region_name", handle_wormhole_region(system_id))
+          end
+
+        error ->
+          AppLogger.kill_warning("[Enrichment] Failed to get system info",
+            system_id: system_id,
+            error: inspect(error)
+          )
+
+          # Could not get system info
+          esi_data
+          |> Map.put("region_name", handle_wormhole_region(system_id))
+      end
+    end
+  end
+
+  # For wormhole systems that don't have regions in ESI
+  defp handle_wormhole_region(system_id) when is_integer(system_id) do
+    system_id_str = to_string(system_id)
+
+    # Higher ranges are typically wormhole systems
+    if system_id > 31_000_000 do
+      "J-Space"
+    else
+      "Unknown Region"
+    end
+  end
+
+  defp handle_wormhole_region(_), do: "Unknown Region"
 end

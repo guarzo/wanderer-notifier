@@ -11,7 +11,8 @@ import {
   FaExclamationTriangle,
   FaBell,
   FaSkullCrossbones,
-  FaChartBar
+  FaChartBar,
+  FaTrophy
 } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
@@ -123,6 +124,28 @@ export default function Dashboard() {
     } catch (err) {
       console.error("Error sending kill notification:", err);
       setTestMessage("Error sending kill notification");
+    }
+  }
+
+  async function testKillHighlights() {
+    try {
+      console.log("Sending kill highlights request...");
+      const response = await fetch("/api/notifications/test", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'kill_highlights' })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log("Kill highlights response:", data);
+      setTestMessage(data.message || "Kill highlights sent!");
+    } catch (err) {
+      console.error("Error sending kill highlights:", err);
+      setTestMessage("Error sending kill highlights");
     }
   }
 
@@ -512,6 +535,27 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+            
+            {/* Kill Highlights */}
+            {status?.features?.kill_charts && (
+              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
+                <span className="font-medium text-gray-700">Kill Highlights</span>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
+                    Enabled
+                  </span>
+                  <button
+                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
+                    onClick={testKillHighlights}
+                  >
+                    <FaTrophy />
+                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      Send Best/Worst Kills
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
             
             {/* Map Charts */}
             {status?.features?.map_charts && (

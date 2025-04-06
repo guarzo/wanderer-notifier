@@ -5,7 +5,7 @@ defmodule WandererNotifier.Config.Application do
   """
   @behaviour WandererNotifier.Config.Behaviour
 
-  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Config
 
   @type env :: :dev | :test | :prod
   @type startup_mode :: :minimal | :full
@@ -151,62 +151,62 @@ defmodule WandererNotifier.Config.Application do
 
   @impl true
   def discord_channel_id_for(feature) do
-    get_wanderer_env(:"discord_channel_#{feature}")
+    Config.discord_channel_id_for(feature)
   end
 
   @impl true
   def discord_channel_id_for_activity_charts do
-    discord_channel_id_for(:activity_charts)
+    Config.discord_channel_id_for_activity_charts()
   end
 
   @impl true
   def kill_charts_enabled? do
-    Features.kill_charts_enabled?()
+    Config.kill_charts_enabled?()
   end
 
   @impl true
   def map_charts_enabled? do
-    Features.map_charts_enabled?()
+    Config.map_charts_enabled?()
   end
 
   @impl true
   def character_tracking_enabled? do
-    Features.character_tracking_enabled?()
+    Config.character_tracking_enabled?()
   end
 
   @impl true
   def character_notifications_enabled? do
-    Features.character_notifications_enabled?()
+    Config.character_notifications_enabled?()
   end
 
   @impl true
   def system_notifications_enabled? do
-    Features.system_notifications_enabled?()
+    Config.system_notifications_enabled?()
   end
 
   @impl true
   def track_kspace_systems? do
-    Features.track_kspace_systems?()
+    Config.track_kspace_systems?()
   end
 
   @impl true
   def get_map_config do
-    get_wanderer_env(:map_config, %{})
+    Config.get_map_config()
   end
 
   @impl true
   def static_info_cache_ttl do
-    get_wanderer_env(:static_info_cache_ttl, 3600)
+    Config.static_info_cache_ttl()
+  end
+
+  @impl true
+  def kill_notifications_enabled? do
+    Config.kill_notifications_enabled?()
   end
 
   @impl true
   def get_feature_status do
-    %{
-      kill_notifications_enabled: kill_charts_enabled?(),
-      system_tracking_enabled: system_notifications_enabled?(),
-      character_tracking_enabled: character_tracking_enabled?(),
-      activity_charts: map_charts_enabled?()
-    }
+    Config.get_feature_status()
   end
 
   # Private Helpers

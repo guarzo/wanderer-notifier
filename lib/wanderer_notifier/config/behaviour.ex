@@ -19,6 +19,7 @@ defmodule WandererNotifier.Config.Behaviour do
   @callback character_notifications_enabled?() :: boolean()
   @callback system_notifications_enabled?() :: boolean()
   @callback track_kspace_systems?() :: boolean()
+  @callback kill_notifications_enabled?() :: boolean()
   @callback get_map_config() :: map()
   @callback static_info_cache_ttl() :: integer()
   @callback get_env(atom(), any()) :: any()
@@ -26,6 +27,7 @@ defmodule WandererNotifier.Config.Behaviour do
               kill_notifications_enabled: boolean(),
               system_tracking_enabled: boolean(),
               character_tracking_enabled: boolean(),
-              activity_charts: boolean()
+              activity_charts: boolean(),
+              kill_charts: boolean()
             }
 end

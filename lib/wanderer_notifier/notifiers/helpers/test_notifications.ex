@@ -14,6 +14,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler
 
   @doc """
   Sends a test system notification.
@@ -241,6 +242,31 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
       true ->
         :ok
+    end
+  end
+
+  @doc """
+  Sends a test kill highlights notification.
+  This triggers the weekly best kill and worst loss notifications manually.
+  """
+  def send_test_kill_highlights do
+    AppLogger.info("Sending test kill highlights notification...")
+
+    # Execute the scheduler directly to generate the highlights
+    case WeeklyKillHighlightsScheduler.execute(%{}) do
+      {:ok, :completed, _state} ->
+        AppLogger.info("Test kill highlights sent successfully")
+        {:ok, "Test kill highlights sent successfully"}
+
+      {:ok, :skipped, state} ->
+        reason = Map.get(state, :reason, "unknown reason")
+        message = "Kill highlights skipped: #{reason}"
+        AppLogger.info(message)
+        {:ok, message}
+
+      {:error, reason, _state} ->
+        AppLogger.error("Failed to send test kill highlights: #{inspect(reason)}")
+        {:error, "Failed to send test kill highlights: #{inspect(reason)}"}
     end
   end
 end

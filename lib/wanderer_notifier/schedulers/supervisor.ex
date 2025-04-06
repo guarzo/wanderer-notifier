@@ -102,7 +102,8 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       {Schedulers.KillmailAggregationScheduler, []},
       {Schedulers.KillValidationChartScheduler, []},
       {Schedulers.WeeklyKillChartScheduler, []},
-      {Schedulers.WeeklyKillDataScheduler, []}
+      {Schedulers.WeeklyKillDataScheduler, []},
+      {Schedulers.WeeklyKillHighlightsScheduler, []}
     ]
   end
 

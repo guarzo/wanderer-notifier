@@ -30,6 +30,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
         "kill" -> NotificationHelpers.send_test_kill_notification()
         "character" -> NotificationHelpers.send_test_character_notification()
         "system" -> NotificationHelpers.send_test_system_notification()
+        "kill_highlights" -> NotificationHelpers.send_test_kill_highlights()
         _ -> {:error, "Invalid notification type"}
       end
 
