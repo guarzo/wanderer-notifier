@@ -310,7 +310,7 @@ export default function Dashboard() {
         </section>
 
         {/* Database Statistics */}
-        {dbStats && (
+        {dbStats && dbStats.db_health.status !== "disabled" && (
           <section>
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
               <FaChartBar className="text-purple-600" />
