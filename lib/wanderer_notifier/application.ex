@@ -40,12 +40,15 @@ defmodule WandererNotifier.Application do
     CachexImpl.init_batch_logging()
 
     # Log application version
-    AppLogger.log_startup_state_change(:version, "Application version", %{
-      value: Version.version()
+    AppLogger.log_startup_state_change(:version, "Running WandererNotifier", %{
+      value: "v#{Version.version()}"
     })
 
+    # Get environment using a robust detection mechanism
+    env_value = get_environment()
+
     AppLogger.log_startup_state_change(:environment, "Environment", %{
-      value: Application.get_env(:wanderer_notifier, :env, :dev)
+      value: env_value
     })
 
     minimal_test = Application.get_env(:wanderer_notifier, :minimal_test, false)
@@ -301,5 +304,31 @@ defmodule WandererNotifier.Application do
 
     # Add schedulers last
     children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
+  end
+
+  # Helper to get the current environment in a robust way
+  defp get_environment do
+    # Try different environment detection methods in order of preference
+    cond do
+      # Check for explicitly set Application environment
+      env = Application.get_env(:wanderer_notifier, :env) ->
+        to_string(env)
+
+      # Check for Mix.env() (works in development)
+      function_exported?(Mix, :env, 0) ->
+        to_string(Mix.env())
+
+      # Check for MIX_ENV environment variable
+      System.get_env("MIX_ENV") ->
+        System.get_env("MIX_ENV")
+
+      # Check for RELEASE_MODE (which implies prod)
+      System.get_env("RELEASE_MODE") ->
+        "prod"
+
+      # Default to dev if no other method works
+      true ->
+        "dev"
+    end
   end
 end

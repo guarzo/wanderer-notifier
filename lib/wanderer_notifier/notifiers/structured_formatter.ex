@@ -1093,27 +1093,98 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Get victim and ship names using ESI API
   defp get_victim_and_ship_names(victim_id, ship_type_id) do
-    victim_name =
-      if victim_id do
-        case esi_service().get_character_info(victim_id) do
-          {:ok, char_info} -> Map.get(char_info, "name", "Unknown")
-          _ -> "Unknown"
-        end
-      else
-        "Unknown"
-      end
-
-    ship_name =
-      if ship_type_id do
-        case esi_service().get_ship_type_name(ship_type_id) do
-          {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
-          _ -> "Unknown Ship"
-        end
-      else
-        "Unknown Ship"
-      end
+    victim_name = get_victim_name(victim_id)
+    ship_name = get_ship_name(ship_type_id)
 
     {victim_name, ship_name}
+  end
+
+  # Get the victim name using either tracking data or ESI
+  defp get_victim_name(nil), do: "Unknown"
+
+  defp get_victim_name(victim_id) do
+    # First check if this is a tracked character
+    case check_tracked_character(victim_id) do
+      {:ok, name} when is_binary(name) and name != "" and name != "Unknown" ->
+        # We found the character in our tracked characters with a valid name, use that data
+        AppLogger.processor_debug("[StructuredFormatter] Using tracked character name: #{name}")
+        name
+
+      _ ->
+        # Fall back to ESI lookup only if we couldn't get name from tracking system
+        AppLogger.processor_debug(
+          "[StructuredFormatter] Character #{victim_id} not found in tracking or has invalid name, using ESI"
+        )
+
+        lookup_character_from_esi(victim_id)
+    end
+  end
+
+  # Lookup character from ESI
+  defp lookup_character_from_esi(victim_id) do
+    case esi_service().get_character_info(victim_id) do
+      {:ok, char_info} -> Map.get(char_info, "name", "Unknown")
+      _ -> "Unknown"
+    end
+  end
+
+  # Get the ship name from ESI
+  defp get_ship_name(nil), do: "Unknown Ship"
+
+  defp get_ship_name(ship_type_id) do
+    case esi_service().get_ship_type_name(ship_type_id) do
+      {:ok, ship_info} -> Map.get(ship_info, "name", "Unknown Ship")
+      _ -> "Unknown Ship"
+    end
+  end
+
+  # Helper function to check if a character is in our tracked characters
+  defp check_tracked_character(victim_id) do
+    alias WandererNotifier.Data.Cache.{Keys, Repository}
+    alias WandererNotifier.Data.Repository, as: DataRepository
+
+    # First check if character is in tracking list
+    cache_key = Keys.tracked_character(to_string(victim_id))
+    is_tracked = Repository.get(cache_key) != nil
+
+    if is_tracked do
+      # If character is tracked, get full character data from appropriate repository
+      case DataRepository.get_character_name(victim_id) do
+        {:ok, name} when is_binary(name) and name != "" ->
+          {:ok, name}
+
+        _ ->
+          # Fall back to character list cache
+          get_name_from_character_list(victim_id)
+      end
+    else
+      {:error, :not_tracked}
+    end
+  end
+
+  # Helper to try getting character name from the character list cache
+  defp get_name_from_character_list(victim_id) do
+    alias WandererNotifier.Data.Cache.{Keys, Repository}
+
+    # Get the full character list
+    character_list =
+      Repository.get(Keys.character_list()) || []
+
+    # Try to find the character in the list
+    victim_id_str = to_string(victim_id)
+
+    character =
+      Enum.find(character_list, fn char ->
+        char_id = Map.get(char, "character_id") || Map.get(char, :character_id)
+        to_string(char_id) == victim_id_str
+      end)
+
+    if character do
+      name = Map.get(character, "name") || Map.get(character, :name) || "Unknown"
+      {:ok, name}
+    else
+      {:error, :not_in_character_list}
+    end
   end
 
   # Format ISK value in a compact way

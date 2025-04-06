@@ -39,37 +39,54 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   """
   def send_embed(embed, override_channel_id \\ nil) do
     if env() == :test do
-      AppLogger.api_info("TEST MODE: Would send embed to Discord via Nostrum",
-        embed: inspect(embed)
-      )
-
-      :ok
+      log_test_embed(embed)
     else
-      target_channel =
-        if is_nil(override_channel_id) do
-          channel_id()
-        else
-          normalize_channel_id(override_channel_id)
-        end
+      target_channel = resolve_target_channel(override_channel_id)
+      send_embed_to_channel(embed, target_channel)
+    end
+  end
 
-      # Convert to Nostrum.Struct.Embed
-      discord_embed = convert_to_nostrum_embed(embed)
+  # Log test mode embed without sending
+  defp log_test_embed(embed) do
+    AppLogger.api_info("TEST MODE: Would send embed to Discord via Nostrum",
+      embed: inspect(embed)
+    )
 
-      # Use Nostrum.Api.Message.create with embeds (plural) as an array
-      # This is what Discord API expects
-      case Message.create(target_channel, embeds: [discord_embed]) do
-        {:ok, _message} ->
-          :ok
+    :ok
+  end
 
-        {:error, %{status_code: 429, response: response}} ->
-          retry_after = get_retry_after(response)
-          AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
-          {:error, {:rate_limited, retry_after}}
+  # Resolve the target channel ID
+  defp resolve_target_channel(override_channel_id) do
+    if is_nil(override_channel_id) do
+      channel_id()
+    else
+      normalize_channel_id(override_channel_id)
+    end
+  end
 
-        {:error, error} ->
-          AppLogger.api_error("Failed to send embed via Nostrum", error: inspect(error))
-          {:error, error}
-      end
+  # Send embed to the specified channel
+  defp send_embed_to_channel(embed, nil) do
+    AppLogger.api_error("Failed to send embed: nil channel ID", embed: inspect(embed))
+    {:error, :nil_channel_id}
+  end
+
+  defp send_embed_to_channel(embed, target_channel) do
+    # Convert to Nostrum.Struct.Embed
+    discord_embed = convert_to_nostrum_embed(embed)
+
+    # Use Nostrum.Api.Message.create with embeds (plural) as an array
+    case Message.create(target_channel, embeds: [discord_embed]) do
+      {:ok, _message} ->
+        :ok
+
+      {:error, %{status_code: 429, response: response}} ->
+        retry_after = get_retry_after(response)
+        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+        {:error, {:rate_limited, retry_after}}
+
+      {:error, error} ->
+        AppLogger.api_error("Failed to send embed via Nostrum", error: inspect(error))
+        {:error, error}
     end
   end
 
@@ -87,49 +104,58 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   """
   def send_message_with_components(embed, components, override_channel_id \\ nil) do
     if env() == :test do
-      AppLogger.api_info("TEST MODE: Would send message with components via Nostrum",
-        embed: inspect(embed),
-        components: inspect(components)
-      )
-
-      :ok
+      log_test_message_with_components(embed, components)
     else
-      target_channel =
-        if is_nil(override_channel_id) do
-          channel_id()
-        else
-          normalize_channel_id(override_channel_id)
-        end
+      target_channel = resolve_target_channel(override_channel_id)
+      send_message_with_components_to_channel(embed, components, target_channel)
+    end
+  end
 
-      # Convert to Nostrum structs
-      discord_embed = convert_to_nostrum_embed(embed)
-      discord_components = components
+  # Log test mode message with components without sending
+  defp log_test_message_with_components(embed, components) do
+    AppLogger.api_info("TEST MODE: Would send message with components via Nostrum",
+      embed: inspect(embed),
+      components: inspect(components)
+    )
 
-      # Log detailed info about what we're sending
-      AppLogger.api_debug("Sending message with components via Nostrum",
-        channel_id: target_channel,
-        embed_type: typeof(discord_embed)
-      )
+    :ok
+  end
 
-      case Message.create(target_channel,
-             embeds: [discord_embed],
-             components: discord_components
-           ) do
-        {:ok, _message} ->
-          :ok
+  # Send message with components to the specified channel
+  defp send_message_with_components_to_channel(_embed, _components, nil) do
+    AppLogger.api_error("Failed to send message with components: nil channel ID")
+    {:error, :nil_channel_id}
+  end
 
-        {:error, %{status_code: 429, response: response}} ->
-          retry_after = get_retry_after(response)
-          AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
-          {:error, {:rate_limited, retry_after}}
+  defp send_message_with_components_to_channel(embed, components, target_channel) do
+    # Convert to Nostrum structs
+    discord_embed = convert_to_nostrum_embed(embed)
+    discord_components = components
 
-        {:error, error} ->
-          AppLogger.api_error("Failed to send message with components via Nostrum",
-            error: inspect(error)
-          )
+    # Log detailed info about what we're sending
+    AppLogger.api_debug("Sending message with components via Nostrum",
+      channel_id: target_channel,
+      embed_type: typeof(discord_embed)
+    )
 
-          {:error, error}
-      end
+    case Message.create(target_channel,
+           embeds: [discord_embed],
+           components: discord_components
+         ) do
+      {:ok, _message} ->
+        :ok
+
+      {:error, %{status_code: 429, response: response}} ->
+        retry_after = get_retry_after(response)
+        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+        {:error, {:rate_limited, retry_after}}
+
+      {:error, error} ->
+        AppLogger.api_error("Failed to send message with components via Nostrum",
+          error: inspect(error)
+        )
+
+        {:error, error}
     end
   end
 
@@ -146,34 +172,43 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   """
   def send_message(message, override_channel_id \\ nil) do
     if env() == :test do
-      AppLogger.api_info("TEST MODE: Would send message via Nostrum", message: message)
-      :ok
+      log_test_message(message)
     else
-      target_channel =
-        if is_nil(override_channel_id) do
-          channel_id()
-        else
-          normalize_channel_id(override_channel_id)
-        end
+      target_channel = resolve_target_channel(override_channel_id)
+      send_message_to_channel(message, target_channel)
+    end
+  end
 
-      AppLogger.api_debug("Sending text message via Nostrum",
-        channel_id: target_channel,
-        message_length: String.length(message)
-      )
+  # Log test mode message without sending
+  defp log_test_message(message) do
+    AppLogger.api_info("TEST MODE: Would send message via Nostrum", message: message)
+    :ok
+  end
 
-      case Message.create(target_channel, content: message) do
-        {:ok, _message} ->
-          :ok
+  # Send message to the specified channel
+  defp send_message_to_channel(_message, nil) do
+    AppLogger.api_error("Failed to send message: nil channel ID")
+    {:error, :nil_channel_id}
+  end
 
-        {:error, %{status_code: 429, response: response}} ->
-          retry_after = get_retry_after(response)
-          AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
-          {:error, {:rate_limited, retry_after}}
+  defp send_message_to_channel(message, target_channel) do
+    AppLogger.api_debug("Sending text message via Nostrum",
+      channel_id: target_channel,
+      message_length: String.length(message)
+    )
 
-        {:error, error} ->
-          AppLogger.api_error("Failed to send message via Nostrum", error: inspect(error))
-          {:error, error}
-      end
+    case Message.create(target_channel, content: message) do
+      {:ok, _message} ->
+        :ok
+
+      {:error, %{status_code: 429, response: response}} ->
+        retry_after = get_retry_after(response)
+        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+        {:error, {:rate_limited, retry_after}}
+
+      {:error, error} ->
+        AppLogger.api_error("Failed to send message via Nostrum", error: inspect(error))
+        {:error, error}
     end
   end
 
@@ -205,58 +240,71 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     AppLogger.api_info("Sending file to Discord via Nostrum", filename: filename)
 
     if env() == :test do
-      AppLogger.api_info("TEST MODE: Would send file to Discord via Nostrum",
-        filename: filename,
-        title: title,
-        description: description
-      )
-
-      :ok
+      log_test_file(filename, title, description)
     else
-      target_channel =
-        if is_nil(override_channel_id) do
-          channel_id()
-        else
-          normalize_channel_id(override_channel_id)
-        end
+      target_channel = resolve_target_channel(override_channel_id)
+      send_file_to_channel(filename, file_data, title, description, target_channel, custom_embed)
+    end
+  end
 
-      # Create the embed (use custom if provided, otherwise create default)
-      embed =
-        if custom_embed do
-          embed = convert_to_nostrum_embed(custom_embed)
-          %{embed | image: %{url: "attachment://#{filename}"}}
-        else
-          %Embed{
-            title: title,
-            description: description,
-            timestamp: DateTime.utc_now(),
-            color: 3_447_003,
-            image: %{url: "attachment://#{filename}"}
-          }
-        end
+  # Log test mode file without sending
+  defp log_test_file(filename, title, description) do
+    AppLogger.api_info("TEST MODE: Would send file to Discord via Nostrum",
+      filename: filename,
+      title: title,
+      description: description
+    )
 
-      AppLogger.api_debug("Sending file with embed via Nostrum",
-        channel_id: target_channel,
-        filename: filename,
-        embed: inspect(embed)
-      )
+    :ok
+  end
 
-      case Message.create(target_channel,
-             file: %{name: filename, body: file_data},
-             embeds: [embed]
-           ) do
-        {:ok, _message} ->
-          :ok
+  # Send file to the specified channel
+  defp send_file_to_channel(_filename, _file_data, _title, _description, nil, _custom_embed) do
+    AppLogger.api_error("Failed to send file: nil channel ID")
+    {:error, :nil_channel_id}
+  end
 
-        {:error, %{status_code: 429, response: response}} ->
-          retry_after = get_retry_after(response)
-          AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
-          {:error, {:rate_limited, retry_after}}
+  defp send_file_to_channel(filename, file_data, title, description, target_channel, custom_embed) do
+    # Create the embed (use custom if provided, otherwise create default)
+    embed = create_file_embed(filename, title, description, custom_embed)
 
-        {:error, error} ->
-          AppLogger.api_error("Failed to send file via Nostrum", error: inspect(error))
-          {:error, error}
-      end
+    AppLogger.api_debug("Sending file with embed via Nostrum",
+      channel_id: target_channel,
+      filename: filename,
+      embed: inspect(embed)
+    )
+
+    case Message.create(target_channel,
+           file: %{name: filename, body: file_data},
+           embeds: [embed]
+         ) do
+      {:ok, _message} ->
+        :ok
+
+      {:error, %{status_code: 429, response: response}} ->
+        retry_after = get_retry_after(response)
+        AppLogger.api_error("Discord rate limit hit via Nostrum", retry_after: retry_after)
+        {:error, {:rate_limited, retry_after}}
+
+      {:error, error} ->
+        AppLogger.api_error("Failed to send file via Nostrum", error: inspect(error))
+        {:error, error}
+    end
+  end
+
+  # Create embed for file upload
+  defp create_file_embed(filename, title, description, custom_embed) do
+    if custom_embed do
+      embed = convert_to_nostrum_embed(custom_embed)
+      %{embed | image: %{url: "attachment://#{filename}"}}
+    else
+      %Embed{
+        title: title,
+        description: description,
+        timestamp: DateTime.utc_now(),
+        color: 3_447_003,
+        image: %{url: "attachment://#{filename}"}
+      }
     end
   end
 

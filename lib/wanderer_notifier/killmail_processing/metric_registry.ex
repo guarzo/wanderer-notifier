@@ -3,6 +3,10 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   Registers metrics-related atoms to prevent 'non-existing atom' errors.
   This module ensures that all metric keys used by the Metrics module
   are pre-registered as atoms during application startup.
+
+  IMPORTANT: The metric keys generated here must match those in
+  WandererNotifier.KillmailProcessing.Metrics@registered_metrics exactly.
+  If you add metrics to one module, you must update the other.
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -10,28 +14,19 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   # List of processing modes
   @processing_modes ["realtime", "historical", "manual", "batch"]
 
-  # List of metric operations
+  # List of metric operations - MUST match the keys in Metrics@registered_metrics
   @metric_operations [
+    # Base processing metrics
     "start",
+    "complete",
+    "complete.success",
+    "complete.error",
     "skipped",
     "error",
+    # Only the metric name without the mode part
     "persistence",
-    "processing.realtime.complete",
-    "processing.historical.complete",
-    "processing.manual.complete",
-    "processing.batch.complete",
-    "processing.realtime.complete.success",
-    "processing.historical.complete.success",
-    "processing.manual.complete.success",
-    "processing.batch.complete.success",
-    "processing.realtime.complete.error",
-    "processing.historical.complete.error",
-    "processing.manual.complete.error",
-    "processing.batch.complete.error",
-    "notification.realtime.sent",
-    "notification.historical.sent",
-    "notification.manual.sent",
-    "notification.batch.sent"
+    # Notification metrics
+    "notification.sent"
   ]
 
   @doc """
@@ -65,24 +60,29 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
 
   # Private function to build all metric keys
   defp build_metric_keys do
-    # Generate the full set of metric keys
-    # Create a key for the specific combination
-    # Create the atom to ensure it exists
-    # Also register these simplified metrics
-    (for operation <- @metric_operations,
-         mode <- @processing_modes do
-       key = "killmail.processing.#{mode}.#{operation}"
-       String.to_atom(key)
-     end ++
-       for mode <- @processing_modes do
-         [
-           String.to_atom("killmail.processing.#{mode}.start"),
-           String.to_atom("killmail.processing.#{mode}.skipped"),
-           String.to_atom("killmail.processing.#{mode}.error"),
-           String.to_atom("killmail.notification.#{mode}.sent")
-         ]
-       end)
-    |> List.flatten()
+    # Add base processing metrics (with killmail.processing prefix)
+    processing_metrics =
+      for operation <- @metric_operations,
+          mode <- @processing_modes,
+          !String.starts_with?(operation, "notification.") do
+        if operation == "persistence" do
+          # Special case for persistence metrics
+          "killmail.#{operation}.#{mode}"
+        else
+          # Normal processing metrics
+          "killmail.processing.#{mode}.#{operation}"
+        end
+      end
+
+    # Add notification metrics (with killmail.notification prefix)
+    notification_metrics =
+      for mode <- @processing_modes do
+        "killmail.notification.#{mode}.sent"
+      end
+
+    # Combine all metrics
+    (processing_metrics ++ notification_metrics)
     |> Enum.uniq()
+    |> Enum.map(&String.to_atom/1)
   end
 end
