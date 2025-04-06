@@ -294,6 +294,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Helper function to get the victim character ID
+  defp get_victim_character_id(killmail) when is_nil(killmail), do: nil
   defp get_victim_character_id(killmail) do
     esi_data = Map.get(killmail, :esi_data, %{})
     victim = Map.get(esi_data, "victim", %{})
