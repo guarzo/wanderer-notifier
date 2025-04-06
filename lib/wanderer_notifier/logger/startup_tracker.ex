@@ -16,12 +16,18 @@ defmodule WandererNotifier.Logger.StartupTracker do
   @phases [
     # Initial app boot
     :initialization,
+    # Configuration validation
+    :configuration,
     # Loading dependencies and setting up env
     :dependencies,
     # Starting core services
     :services,
     # Cache initialization
     :cache,
+    # Metrics initialization
+    :metrics,
+    # Starting child processes
+    :children,
     # Network connections
     :network,
     # Database connections
@@ -31,7 +37,11 @@ defmodule WandererNotifier.Logger.StartupTracker do
     # Web server startup
     :web,
     # Final startup tasks
-    :completion
+    :completion,
+    # Minimal test mode
+    :minimal,
+    # Test mode
+    :test
   ]
 
   # Events that should always be logged regardless of phase

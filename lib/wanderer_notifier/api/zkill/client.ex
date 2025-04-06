@@ -5,7 +5,6 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
   @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
 
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -50,7 +49,6 @@ defmodule WandererNotifier.Api.ZKill.Client do
     HTTP client implementation for ZKillboard API.
     """
 
-    require Logger
     alias WandererNotifier.Logger.Logger, as: AppLogger
 
     @base_url "https://zkillboard.com/api"
@@ -63,12 +61,14 @@ defmodule WandererNotifier.Api.ZKill.Client do
     Gets a single killmail by its ID.
     """
     def get_single_killmail(kill_id) do
-      AppLogger.kill_debug("ZKill single_killmail HTTP request for kill_id: #{kill_id}")
+      AppLogger.api_debug("ZKill requesting single killmail", %{
+        kill_id: kill_id,
+        method: "get_single_killmail"
+      })
 
       url = "#{@base_url}/killID/#{kill_id}/"
       headers = build_headers()
 
-      AppLogger.kill_debug("[ZKill] Requesting killmail #{kill_id}")
       :timer.sleep(@rate_limit_ms)
 
       make_request_with_retry(fn ->
@@ -86,7 +86,11 @@ defmodule WandererNotifier.Api.ZKill.Client do
       url = "#{@base_url}/recent/"
       headers = build_headers()
 
-      Logger.info("[ZKill] Requesting recent kills (limit: #{limit})")
+      AppLogger.api_info("ZKill requesting recent kills", %{
+        limit: limit,
+        method: "get_recent_kills"
+      })
+
       :timer.sleep(@rate_limit_ms)
 
       with {:ok, body} <- make_http_request(url, headers),
@@ -102,7 +106,12 @@ defmodule WandererNotifier.Api.ZKill.Client do
       url = "#{@base_url}/systemID/#{system_id}/"
       headers = build_headers()
 
-      Logger.info("[ZKill] Requesting system kills for #{system_id} (limit: #{limit})")
+      AppLogger.api_info("ZKill requesting system kills", %{
+        system_id: system_id,
+        limit: limit,
+        method: "get_system_kills"
+      })
+
       :timer.sleep(@rate_limit_ms)
 
       with {:ok, body} <- make_http_request(url, headers),
@@ -118,12 +127,41 @@ defmodule WandererNotifier.Api.ZKill.Client do
       url = build_character_kills_url(character_id, date_range)
       headers = build_headers()
 
-      Logger.info("[ZKill] Requesting character kills for #{url} (limit: #{limit})")
+      date_range_info =
+        if date_range,
+          do: %{
+            start_time: date_range.start && DateTime.to_iso8601(date_range.start),
+            end_time: date_range.end && DateTime.to_iso8601(date_range.end)
+          },
+          else: %{date_range: "none"}
+
+      AppLogger.api_info(
+        "ZKill requesting character kills",
+        Map.merge(
+          %{
+            character_id: character_id,
+            limit: limit,
+            method: "get_character_kills",
+            url: url
+          },
+          date_range_info
+        )
+      )
+
       :timer.sleep(@rate_limit_ms)
 
       with {:ok, body} <- make_http_request(url, headers),
            {:ok, kills} <- decode_kills_response(body) do
-        {:ok, Enum.take(kills, limit)}
+        kill_count = length(kills)
+        limited_kills = Enum.take(kills, limit)
+
+        AppLogger.api_debug("ZKill character kills retrieved", %{
+          character_id: character_id,
+          total_kills: kill_count,
+          limited_kills: length(limited_kills)
+        })
+
+        {:ok, limited_kills}
       end
     end
 
@@ -141,17 +179,19 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:ok, body}
 
         {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
-          AppLogger.api_error("[ZKill] HTTP error",
+          AppLogger.api_error("ZKill HTTP error", %{
             status: status,
-            body: body
-          )
+            body_sample: String.slice(body || "", 0, 200),
+            url: url
+          })
 
           {:error, {:http_error, status}}
 
         {:error, reason} ->
-          AppLogger.api_error("[ZKill] HTTP request failed",
-            error: inspect(reason)
-          )
+          AppLogger.api_error("ZKill HTTP request failed", %{
+            error: inspect(reason),
+            url: url
+          })
 
           {:error, reason}
       end
@@ -159,50 +199,70 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
     defp decode_killmail_response(body, kill_id) do
       case Jason.decode(body) do
-        {:ok, killmail} when is_map(killmail) ->
-          {:ok, killmail}
-
-        {:ok, [killmail]} when is_map(killmail) ->
-          {:ok, killmail}
-
-        {:ok, []} ->
-          AppLogger.api_warn("[ZKill] No killmail found for ID #{kill_id}")
-          {:error, {:domain_error, :zkill, {:not_found, kill_id}}}
-
-        {:ok, killmails} when is_list(killmails) ->
-          AppLogger.api_warn("[ZKill] Multiple killmails returned for single ID",
-            kill_id: kill_id,
-            count: length(killmails)
-          )
-
-          [killmail | _] = killmails
-          {:ok, killmail}
-
-        {:ok, true} ->
-          AppLogger.api_warn("[ZKill] Warning: got `true` from zKill for killmail #{kill_id}")
-          {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_true}}}
-
-        {:ok, false} ->
-          AppLogger.api_warn("[ZKill] Warning: got `false` from zKill for killmail #{kill_id}")
-          {:error, {:domain_error, :zkill, {:unexpected_format, :boolean_false}}}
-
         {:ok, response} ->
-          AppLogger.api_warn("[ZKill] Unexpected response format",
-            kill_id: kill_id,
-            response_type: typeof(response),
-            response: inspect(response, limit: 50)
-          )
-
-          {:error, {:domain_error, :zkill, {:unexpected_format, typeof(response)}}}
+          handle_decoded_response(response, kill_id)
 
         {:error, reason} ->
-          AppLogger.api_error("[ZKill] JSON decode error",
-            kill_id: kill_id,
-            error: inspect(reason)
+          handle_decode_error(reason, body, kill_id)
+      end
+    end
+
+    # Handle different types of successful response formats
+    defp handle_decoded_response(response, kill_id) do
+      cond do
+        # Single killmail map
+        is_map(response) ->
+          {:ok, response}
+
+        # Single killmail in a list
+        is_list(response) && length(response) == 1 ->
+          [killmail] = response
+          {:ok, killmail}
+
+        # Empty list - no killmail found
+        is_list(response) && response == [] ->
+          log_zkill_warning(kill_id, "empty_response", "No killmail found")
+          {:error, {:domain_error, :zkill, {:not_found, kill_id}}}
+
+        # Multiple killmails - unexpected but we can take the first one
+        is_list(response) ->
+          log_zkill_warning(
+            kill_id,
+            "multiple_killmails",
+            "Multiple killmails returned for single ID",
+            %{count: length(response)}
           )
 
-          {:error, {:domain_error, :zkill, {:json_decode_error, reason}}}
+          [killmail | _] = response
+          {:ok, killmail}
+
+        # Boolean or other unexpected formats
+        true ->
+          format_type = typeof(response)
+
+          log_zkill_warning(kill_id, "unexpected_format", "Unexpected response format", %{
+            format_type: format_type
+          })
+
+          {:error, {:domain_error, :zkill, {:unexpected_format, format_type}}}
       end
+    end
+
+    # Handle JSON decode errors
+    defp handle_decode_error(reason, body, kill_id) do
+      AppLogger.api_error("ZKill JSON decode error", %{
+        kill_id: kill_id,
+        error: inspect(reason),
+        body_sample: String.slice(body || "", 0, 200)
+      })
+
+      {:error, {:domain_error, :zkill, {:json_decode_error, reason}}}
+    end
+
+    # Helper to log ZKill warnings consistently
+    defp log_zkill_warning(kill_id, reason, message, extra_metadata \\ %{}) do
+      metadata = Map.merge(%{kill_id: kill_id, reason: reason}, extra_metadata)
+      AppLogger.api_warn("ZKill #{message}", metadata)
     end
 
     defp decode_kills_response(body) do
@@ -210,11 +270,21 @@ defmodule WandererNotifier.Api.ZKill.Client do
         {:ok, kills} when is_list(kills) ->
           {:ok, kills}
 
-        {:ok, _} ->
+        {:ok, response} ->
+          AppLogger.api_error("ZKill invalid kills response format", %{
+            response_type: typeof(response),
+            response_sample: inspect(response, limit: 50)
+          })
+
           {:error, :invalid_response_format}
 
-        error ->
-          error
+        {:error, reason} ->
+          AppLogger.api_error("ZKill JSON decode error for kills", %{
+            error: inspect(reason),
+            body_sample: String.slice(body || "", 0, 200)
+          })
+
+          {:error, {:json_decode_error, reason}}
       end
     end
 
@@ -222,10 +292,11 @@ defmodule WandererNotifier.Api.ZKill.Client do
       if Map.has_key?(killmail, "killmail_id") do
         {:ok, killmail}
       else
-        AppLogger.api_warn("[ZKill] Invalid killmail format: missing killmail_id",
+        AppLogger.api_warn("ZKill invalid killmail format", %{
           kill_id: kill_id,
+          reason: "missing_killmail_id",
           response_keys: Map.keys(killmail)
-        )
+        })
 
         {:error, {:domain_error, :zkill, {:invalid_format, :missing_killmail_id}}}
       end
@@ -262,9 +333,12 @@ defmodule WandererNotifier.Api.ZKill.Client do
         when status in [429, 500, 502, 503, 504] and retry_count < @max_retries ->
           backoff_time = (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
 
-          Logger.warning(
-            "[ZKill] Retrying request after #{backoff_time}ms (attempt #{retry_count + 1}/#{@max_retries})"
-          )
+          AppLogger.api_warn("ZKill retrying request after error", %{
+            status_code: status,
+            retry_count: retry_count + 1,
+            max_retries: @max_retries,
+            backoff_ms: backoff_time
+          })
 
           :timer.sleep(backoff_time)
           make_request_with_retry(request_fn, retry_count + 1)
@@ -274,6 +348,16 @@ defmodule WandererNotifier.Api.ZKill.Client do
       end
     end
 
+    defp typeof(term) when is_boolean(term), do: "boolean"
+    defp typeof(term) when is_binary(term), do: "string"
+    defp typeof(term) when is_number(term), do: "number"
+    defp typeof(term) when is_list(term), do: "list"
+    defp typeof(term) when is_map(term), do: "map"
+    defp typeof(term) when is_atom(term), do: "atom"
+    defp typeof(term) when is_function(term), do: "function"
+    defp typeof(term) when is_pid(term), do: "pid"
+    defp typeof(term) when is_reference(term), do: "reference"
+    defp typeof(term) when is_tuple(term), do: "tuple"
     defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
     defp typeof(_), do: "unknown"
   end

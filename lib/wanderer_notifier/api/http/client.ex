@@ -5,7 +5,6 @@ defmodule WandererNotifier.Api.Http.Client do
   """
   @behaviour WandererNotifier.Api.Http.ClientBehaviour
 
-  require Logger
   alias WandererNotifier.Api.Http.ResponseHandler
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -275,7 +274,7 @@ defmodule WandererNotifier.Api.Http.Client do
       jitter = :rand.uniform(trunc(current_backoff * 0.2))
       actual_backoff = trunc(current_backoff + jitter)
 
-      Logger.warning(
+      AppLogger.api_warn(
         "HTTP #{method_str} [#{config.label}] failed: #{inspect(reason)}. Retrying in #{actual_backoff}ms (attempt #{retry_count + 1}/#{config.max_retries})"
       )
 
@@ -339,7 +338,7 @@ defmodule WandererNotifier.Api.Http.Client do
           inspect(body)
       end
 
-    Logger.debug("""
+    AppLogger.api_debug("""
     HTTP Request:
       #{method_str} #{url}
       Headers:

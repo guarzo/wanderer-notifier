@@ -4,7 +4,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
   Provides functionality to store and retrieve historical kill comparison data.
   """
 
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.KillTrackingHistory
 
@@ -15,6 +15,14 @@ defmodule WandererNotifier.Resources.KillHistoryService do
     our_kills = Map.get(comparison_result, :our_kills, 0)
     zkill_kills = Map.get(comparison_result, :zkill_kills, 0)
     missing_kills = Map.get(comparison_result, :missing_kills, [])
+
+    AppLogger.persistence_debug("Recording kill comparison", %{
+      character_id: character_id,
+      our_kills: our_kills,
+      zkill_kills: zkill_kills,
+      missing_count: length(missing_kills),
+      time_range_type: time_range_type
+    })
 
     Api.create(KillTrackingHistory, %{
       character_id: character_id,
@@ -32,10 +40,34 @@ defmodule WandererNotifier.Resources.KillHistoryService do
   Gets the most recent comparison data for a character and time range.
   """
   def get_latest_comparison(character_id, time_range_type) do
+    AppLogger.persistence_debug("Fetching latest comparison", %{
+      character_id: character_id,
+      time_range_type: time_range_type
+    })
+
     case KillTrackingHistory.get_latest_for_character(character_id, time_range_type) do
-      {:ok, nil} -> {:error, :not_found}
-      {:ok, record} -> {:ok, to_comparison_result(record)}
-      error -> error
+      {:ok, nil} ->
+        AppLogger.persistence_debug("No comparison data found", %{
+          character_id: character_id,
+          time_range_type: time_range_type
+        })
+        {:error, :not_found}
+
+      {:ok, record} ->
+        AppLogger.persistence_debug("Found comparison data", %{
+          character_id: character_id,
+          time_range_type: time_range_type,
+          timestamp: record.timestamp
+        })
+        {:ok, to_comparison_result(record)}
+
+      error ->
+        AppLogger.persistence_error("Error fetching comparison data", %{
+          character_id: character_id,
+          time_range_type: time_range_type,
+          error: inspect(error)
+        })
+        error
     end
   end
 
@@ -43,9 +75,28 @@ defmodule WandererNotifier.Resources.KillHistoryService do
   Gets historical comparison data for trend analysis.
   """
   def get_historical_data(character_id, time_range_type, limit \\ 100) do
+    AppLogger.persistence_debug("Fetching historical comparison data", %{
+      character_id: character_id,
+      time_range_type: time_range_type,
+      limit: limit
+    })
+
     case KillTrackingHistory.get_history_for_character(character_id, time_range_type, limit) do
-      {:ok, records} -> {:ok, Enum.map(records, &to_trend_data/1)}
-      error -> error
+      {:ok, records} ->
+        AppLogger.persistence_debug("Found historical records", %{
+          character_id: character_id,
+          time_range_type: time_range_type,
+          count: length(records)
+        })
+        {:ok, Enum.map(records, &to_trend_data/1)}
+
+      error ->
+        AppLogger.persistence_error("Error fetching historical data", %{
+          character_id: character_id,
+          time_range_type: time_range_type,
+          error: inspect(error)
+        })
+        error
     end
   end
 
@@ -58,9 +109,23 @@ defmodule WandererNotifier.Resources.KillHistoryService do
     case get_latest_comparison(character_id, time_range_type) do
       {:ok, record} ->
         age_seconds = DateTime.diff(DateTime.utc_now(), record.timestamp)
-        age_seconds > max_age
+        needs_refresh = age_seconds > max_age
+
+        AppLogger.persistence_debug("Checking if refresh needed", %{
+          character_id: character_id,
+          time_range_type: time_range_type,
+          age_seconds: age_seconds,
+          max_age: max_age,
+          needs_refresh: needs_refresh
+        })
+
+        needs_refresh
 
       _ ->
+        AppLogger.persistence_debug("No data found, refresh needed", %{
+          character_id: character_id,
+          time_range_type: time_range_type
+        })
         true
     end
   end

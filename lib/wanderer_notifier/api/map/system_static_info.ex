@@ -66,7 +66,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   }
   """
 
-  require Logger
   alias WandererNotifier.Api.Http.Client
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.ResponseValidator

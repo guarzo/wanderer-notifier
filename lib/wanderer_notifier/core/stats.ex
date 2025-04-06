@@ -5,7 +5,6 @@ defmodule WandererNotifier.Core.Stats do
   Also tracks first notification flags for feature gating.
   """
   use GenServer
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Client API

@@ -44,7 +44,6 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
   - `:unsupported_media_type` - Media type not supported (415)
   - `:conflict` - Resource conflict (409)
   """
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type error_type ::

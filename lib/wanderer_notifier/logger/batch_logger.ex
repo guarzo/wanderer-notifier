@@ -41,6 +41,16 @@ defmodule WandererNotifier.Logger.Logger.BatchLogger do
     :cache_hit,
     # Cache miss events
     :cache_miss,
+    # Cache set events
+    :cache_set,
+    # Cache delete events
+    :cache_delete,
+    # Cache update events
+    :cache_update,
+    # WebSocket message events
+    :websocket_message,
+    # WebSocket connection events
+    :websocket_connection,
     # Notification events
     :notification_sent
   ]
@@ -89,6 +99,9 @@ defmodule WandererNotifier.Logger.Logger.BatchLogger do
     if category not in @event_categories do
       raise ArgumentError, "Invalid event category: #{category}"
     end
+
+    # Store the current category for use in should_log_now?
+    Process.put({:batch_logger, :current_category}, category)
 
     # Get the current counters for this category
     counters = Process.get({:batch_logger, category}) || %{}
@@ -168,10 +181,20 @@ defmodule WandererNotifier.Logger.Logger.BatchLogger do
 
   # Check if we should log now based on the current count
   defp should_log_now?(count) do
-    # Log at powers of 10 (1, 10, 100, 1000, etc.)
-    # Also log at every 1000 events after 1000
-    count in [1, 10, 100, 1000, 10_000] ||
-      (count > 1000 && rem(count, 1000) == 0)
+    # For system tracking events, use a higher threshold
+    # Log only every 1000 events
+    category = Process.get({:batch_logger, :current_category})
+
+    if category == :system_tracked do
+      # Only log at 1000, 10000, etc.
+      count in [1000, 10_000, 100_000] ||
+        (count > 1000 && rem(count, 10_000) == 0)
+    else
+      # For other events, log at powers of 10 (1, 10, 100, 1000, etc.)
+      # Also log at every 1000 events after 1000
+      count in [1, 10, 100, 1000, 10_000] ||
+        (count > 1000 && rem(count, 1000) == 0)
+    end
   end
 
   # Create a unique key for an event based on its details
@@ -262,6 +285,48 @@ defmodule WandererNotifier.Logger.Logger.BatchLogger do
     AppLogger.cache_debug("Cache misses",
       count: count,
       key_pattern: Map.get(details, :key_pattern, "various")
+    )
+  end
+
+  defp log_batch(:cache_set, count, details) do
+    # Only log at debug level for cache operations
+    AppLogger.cache_debug("Cache set",
+      count: count,
+      key_pattern: Map.get(details, :key_pattern, "various")
+    )
+  end
+
+  defp log_batch(:cache_delete, count, details) do
+    # Only log at debug level for cache operations
+    AppLogger.cache_debug("Cache delete",
+      count: count,
+      key_pattern: Map.get(details, :key_pattern, "various")
+    )
+  end
+
+  defp log_batch(:cache_update, count, details) do
+    # Only log at debug level for cache operations
+    AppLogger.cache_debug("Cache update",
+      count: count,
+      key_pattern: Map.get(details, :key_pattern, "various")
+    )
+  end
+
+  defp log_batch(:websocket_message, count, details) do
+    # Only log at debug level for WebSocket operations
+    AppLogger.websocket_debug("WebSocket message",
+      count: count,
+      message_type: Map.get(details, :message_type, "unknown"),
+      content: Map.get(details, :content, "unknown")
+    )
+  end
+
+  defp log_batch(:websocket_connection, count, details) do
+    # Only log at debug level for WebSocket operations
+    AppLogger.websocket_debug("WebSocket connection",
+      count: count,
+      connection_type: Map.get(details, :connection_type, "unknown"),
+      status: Map.get(details, :status, "unknown")
     )
   end
 

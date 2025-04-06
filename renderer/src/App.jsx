@@ -66,16 +66,10 @@ function App() {
                     <FaHome />
                     <span>Home</span>
                   </Link>
-                  {mapChartsEnabled || killChartsEnabled && (
+                  {showChartsLink && (
                     <Link to="/charts" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
                       <FaChartBar />
                       <span>Charts</span>
-                    </Link>
-                  )}
-                  {debugEnabled && killChartsEnabled && (
-                    <Link to="/kill-comparison" className="flex items-center space-x-1 hover:text-indigo-300 transition-colors">
-                      <FaSkullCrossbones />
-                      <span>Kill Analysis</span>
                     </Link>
                   )}
                   {debugEnabled && (
@@ -90,17 +84,10 @@ function App() {
             
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              {/* Only render charts route if map charts is enabled */}
               <Route 
                 path="/charts" 
-                element={mapChartsEnabled ? <ChartsDashboard /> : <Navigate to="/" replace />} 
+                element={showChartsLink ? <ChartsDashboard /> : <Navigate to="/" replace />} 
               />
-              {/* Kill comparison route */}
-              <Route 
-                path="/kill-comparison" 
-                element={debugEnabled && killChartsEnabled ? <KillComparison /> : <Navigate to="/" replace />} 
-              />
-              {/* Scheduler dashboard route */}
               <Route 
                 path="/schedulers" 
                 element={debugEnabled ? <SchedulerDashboard /> : <Navigate to="/" replace />} 

@@ -3,7 +3,6 @@ defmodule WandererNotifier.Api.ESI.Client do
   Client for interacting with EVE Online's ESI (Swagger Interface) API.
   Provides low-level functions for making requests to ESI endpoints.
   """
-  require Logger
   alias WandererNotifier.Api.Http.Client, as: HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -20,6 +19,12 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
+    AppLogger.api_debug("ESI fetching killmail", %{
+      kill_id: kill_id,
+      hash: hash,
+      method: "get_killmail"
+    })
+
     HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.killmail")
   end
@@ -32,6 +37,11 @@ defmodule WandererNotifier.Api.ESI.Client do
     label = "ESI.character-#{character_id}"
 
     headers = default_headers()
+
+    AppLogger.api_debug("ESI fetching character info", %{
+      character_id: character_id,
+      method: "get_character_info"
+    })
 
     HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.character")
@@ -50,6 +60,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
+    AppLogger.api_debug("ESI fetching corporation info", %{
+      corporation_id: corporation_id,
+      method: "get_corporation_info"
+    })
+
     HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.corporation")
     |> case do
@@ -67,6 +82,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
+    AppLogger.api_debug("ESI fetching alliance info", %{
+      alliance_id: alliance_id,
+      method: "get_alliance_info"
+    })
+
     HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.alliance")
     |> case do
@@ -83,6 +103,11 @@ defmodule WandererNotifier.Api.ESI.Client do
     label = "ESI.universe_type-#{ship_type_id}"
 
     headers = default_headers()
+
+    AppLogger.api_debug("ESI fetching universe type", %{
+      ship_type_id: ship_type_id,
+      method: "get_universe_type"
+    })
 
     HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.universe_type")
@@ -104,7 +129,11 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    AppLogger.api_debug("[ESI] Searching inventory_type with query #{query} (strict=#{strict})")
+    AppLogger.api_debug("ESI searching inventory type", %{
+      query: query,
+      strict: strict,
+      method: "search_inventory_type"
+    })
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.search")
@@ -119,17 +148,30 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    AppLogger.api_debug("[ESI] Fetching solar system #{system_id}")
+    AppLogger.api_debug("ESI fetching solar system", %{
+      system_id: system_id,
+      method: "get_solar_system"
+    })
 
     result = HttpClient.get(url, headers, Keyword.merge([label: label], opts))
 
     case result do
       {:ok, %{status: 404}} ->
-        AppLogger.api_warn("[ESI] Solar system ID #{system_id} not found (404)")
+        AppLogger.api_warn("ESI solar system not found", %{
+          system_id: system_id,
+          status_code: 404,
+          method: "get_solar_system"
+        })
+
         {:error, :not_found}
 
       {:error, error} ->
-        AppLogger.api_error("[ESI] Failed to fetch solar system #{system_id}: #{inspect(error)}")
+        AppLogger.api_error("ESI failed to fetch solar system", %{
+          system_id: system_id,
+          error: inspect(error),
+          method: "get_solar_system"
+        })
+
         {:error, error}
 
       {:ok, %{status: 200, body: body}} ->
@@ -149,7 +191,10 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    AppLogger.api_debug("[ESI] Fetching region #{region_id}")
+    AppLogger.api_debug("ESI fetching region", %{
+      region_id: region_id,
+      method: "get_region"
+    })
 
     HttpClient.get(url, headers, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.region")
@@ -169,6 +214,12 @@ defmodule WandererNotifier.Api.ESI.Client do
   def get_system_kills(system_id, limit) when is_integer(system_id) and is_integer(limit) do
     # ESI doesn't have a direct endpoint for system kills
     # We'll return an empty list as this is actually handled by ZKill
+    AppLogger.api_debug("ESI get_system_kills not implemented", %{
+      system_id: system_id,
+      limit: limit,
+      note: "Functionality handled by ZKill"
+    })
+
     {:ok, []}
   end
 

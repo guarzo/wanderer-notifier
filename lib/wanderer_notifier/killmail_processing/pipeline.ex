@@ -4,8 +4,6 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   Handles both realtime and historical processing modes.
   """
 
-  require Logger
-
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Killmail
@@ -70,7 +68,8 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     {:ok, enriched}
   rescue
     error ->
-      log_killmail_error(killmail, nil, error)
+      stacktrace = __STACKTRACE__
+      log_killmail_error(killmail, nil, {error, stacktrace})
       {:error, :enrichment_failed}
   end
 
@@ -140,50 +139,44 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = get_kill_id(killmail)
     kill_time = Map.get(killmail, "killmail_time")
 
+    metadata = %{
+      kill_id: kill_id,
+      kill_time: kill_time,
+      character_id: ctx && ctx.character_id,
+      character_name: ctx && ctx.character_name,
+      batch_id: ctx && ctx.batch_id,
+      reason: reason,
+      processing_mode: ctx && ctx.mode && ctx.mode.mode
+    }
+
+    # Determine status and message based on outcomes
+    {message, status} = get_log_details(persisted, notified, reason)
+
+    # Add status to metadata and log with appropriate level
+    updated_metadata = Map.put(metadata, :status, status)
+
+    # Use debug level for skipped and duplicates, info for others
+    if status in ["skipped", "duplicate"] do
+      AppLogger.kill_debug(message, updated_metadata)
+    else
+      AppLogger.kill_info(message, updated_metadata)
+    end
+  end
+
+  # Helper function to get log message and status based on outcomes
+  defp get_log_details(persisted, notified, reason) do
     case {persisted, notified, reason} do
       {true, true, _} ->
-        AppLogger.kill_info("[KILLMAIL] Saved and notified", %{
-          kill_id: kill_id,
-          kill_time: kill_time,
-          character_id: ctx.character_id,
-          character_name: ctx.character_name,
-          batch_id: ctx.batch_id,
-          status: "saved_and_notified",
-          reason: reason
-        })
+        {"Killmail saved and notified", "saved_and_notified"}
 
       {true, false, "Duplicate kill"} ->
-        AppLogger.kill_debug("[KILLMAIL] Duplicate kill", %{
-          kill_id: kill_id,
-          kill_time: kill_time,
-          character_id: ctx.character_id,
-          character_name: ctx.character_name,
-          batch_id: ctx.batch_id,
-          status: "duplicate",
-          reason: "already_exists"
-        })
+        {"Duplicate killmail detected", "duplicate"}
 
       {true, false, _} ->
-        AppLogger.kill_info("[KILLMAIL] Saved without notification", %{
-          kill_id: kill_id,
-          kill_time: kill_time,
-          character_id: ctx.character_id,
-          character_name: ctx.character_name,
-          batch_id: ctx.batch_id,
-          status: "saved",
-          reason: reason
-        })
+        {"Killmail saved without notification", "saved"}
 
       {false, false, _} ->
-        AppLogger.kill_debug("[KILLMAIL] Skipped", %{
-          kill_id: kill_id,
-          kill_time: kill_time,
-          character_id: ctx.character_id,
-          character_name: ctx.character_name,
-          batch_id: ctx.batch_id,
-          status: "skipped",
-          reason: reason
-        })
+        {"Killmail processing skipped", "skipped"}
     end
   end
 
@@ -191,20 +184,43 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = get_kill_id(killmail)
     kill_time = Map.get(killmail, "killmail_time")
 
-    # Handle nil context gracefully
-    character_id = if ctx, do: ctx.character_id, else: nil
-    character_name = if ctx, do: ctx.character_name, else: "unknown"
-    batch_id = if ctx, do: ctx.batch_id, else: "unknown"
+    # Safely extract context values with default fallbacks
+    character_id = ctx && ctx.character_id
+    character_name = (ctx && ctx.character_name) || "unknown"
+    batch_id = (ctx && ctx.batch_id) || "unknown"
+    processing_mode = ctx && ctx.mode && ctx.mode.mode
 
-    AppLogger.kill_error("[KILLMAIL] Processing failed", %{
+    # Create base metadata
+    metadata = %{
       kill_id: kill_id,
       kill_time: kill_time,
       character_id: character_id,
       character_name: character_name,
       batch_id: batch_id,
       status: "error",
-      error: inspect(error)
-    })
+      processing_mode: processing_mode
+    }
+
+    # Format error information based on error type
+    error_info = format_error_info(error)
+
+    # Log the error with formatted information
+    AppLogger.kill_error(
+      "Killmail processing failed",
+      Map.merge(metadata, error_info)
+    )
+  end
+
+  # Helper to format error information based on error type
+  defp format_error_info({exception, stacktrace}) when is_list(stacktrace) do
+    %{
+      error: Exception.message(exception),
+      stacktrace: Exception.format_stacktrace(stacktrace)
+    }
+  end
+
+  defp format_error_info(error) do
+    %{error: inspect(error)}
   end
 
   defp get_kill_id(%Killmail{} = killmail), do: killmail.killmail_id
@@ -212,7 +228,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   defp get_kill_id(%{killmail_id: id}), do: id
 
   defp get_kill_id(data) do
-    AppLogger.kill_error("[KILLMAIL] Failed to extract kill_id", %{
+    AppLogger.kill_error("Failed to extract kill_id", %{
       data: inspect(data)
     })
 
