@@ -167,9 +167,6 @@ Customize your notification experience with several configuration options availa
 - **ENABLE_CHARACTER_NOTIFICATIONS:** Enable/disable notifications when new characters are added (default: true).
 - **ENABLE_SYSTEM_NOTIFICATIONS:** Enable/disable system notifications (default: true).
 
-> **Note:**  
-> - **Character Tracking:** Determines whether the application monitors characters.  
-> - **Character Notifications:** Controls whether you receive Discord alerts when new characters are added.
 
 To disable a notification type, set the corresponding variable to `false` or `0` in your `.env` file:
 

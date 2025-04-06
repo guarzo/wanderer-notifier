@@ -97,7 +97,15 @@ RUN apt-get update -y && \
         ca-certificates \
         wget \
         lsof \
-        net-tools
+        net-tools \
+        gnupg \
+        curl && \
+    # Install Node.js
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    # Clean up
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

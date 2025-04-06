@@ -135,7 +135,7 @@ On startup, the application validates all configuration settings. If there are i
 
 ### Standardized Environment Variables
 
-All environment variables now use a standardized `WANDERER_` prefix. Legacy variable names are still supported with deprecation warnings, but will be removed in a future release.
+All environment variables now use a standardized `WANDERER_` prefix.
 
 ### Key Configuration Options
 
@@ -193,22 +193,6 @@ All environment variables now use a standardized `WANDERER_` prefix. Legacy vari
 
    - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
 
-9. **Debug Settings**
-   - `WANDERER_DEBUG_LOGGING`: Enable debug logging (default: false)
-
-### Legacy Variables Support
-
-For backward compatibility, the following legacy variable names are still supported but will show deprecation warnings:
-
-- `DISCORD_BOT_TOKEN` → use `WANDERER_DISCORD_BOT_TOKEN` instead
-- `DISCORD_CHANNEL_ID` → use `WANDERER_DISCORD_CHANNEL_ID` instead
-- `MAP_URL_WITH_NAME` → use `WANDERER_MAP_URL` instead
-- `MAP_TOKEN` → use `WANDERER_MAP_TOKEN` instead
-- `LICENSE_KEY` → use `WANDERER_LICENSE_KEY` instead
-- `ENABLE_TRACK_KSPACE_SYSTEMS` → use `WANDERER_FEATURE_TRACK_KSPACE` instead
-
-For a complete list of all available environment variables, see the [Environment Variables Documentation](docs/configuration/environment-variables.md).
-
 ## Development
 
 ### Using the Dev Container
@@ -241,17 +225,6 @@ Wanderer Notifier follows an event-driven, functional, and component-based archi
 - Notifications are determined based on configured rules
 - Messages are formatted and sent to Discord channels
 
-For more details, see the [Architecture Documentation](docs/architecture/overview.md).
-
-## Documentation
-
-Comprehensive documentation is available in the `docs/` directory:
-
-- **Architecture**: [Overview](docs/architecture/overview.md), [Components](docs/architecture/components.md), and [Data Flow](docs/architecture/data-flow.md)
-- **Features**: [System Notifications](docs/features/system-notifications.md), [Character Notifications](docs/features/character-notifications.md), [Kill Notifications](docs/features/kill-notifications.md)
-- **Configuration**: [Environment Variables](docs/configuration/environment-variables.md) and [Feature Flags](docs/configuration/feature-flags.md)
-- **Development**: [Code Style](docs/development/code-style.md) and [Error Handling](docs/development/error-handling.md)
-- **Deployment**: [Docker Deployment](docs/deployment/docker-deployment.md)
 
 ## License
 
@@ -265,6 +238,7 @@ If you encounter issues or have questions, please open an issue on the project r
 
 ```
  mix archive.install hex bunt
+ 
  docker buildx build . \
   --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \

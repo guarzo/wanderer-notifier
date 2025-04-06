@@ -69,8 +69,7 @@ WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 # WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
 ```
 
-> **Note:** For backward compatibility, legacy variable names (without the WANDERER\_ prefix) are still supported but will display deprecation warnings.
->
+
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
 
 #### 3. Create the Docker Compose Configuration

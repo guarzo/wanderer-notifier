@@ -207,7 +207,7 @@ defmodule WandererNotifier.Config.Features do
   """
   @spec kill_charts_enabled?() :: boolean()
   def kill_charts_enabled? do
-    notifications_enabled?() && get_feature(:kill_charts_enabled, true)
+    notifications_enabled?() && get_feature(:kill_charts_enabled, false)
   end
 
   @doc """
