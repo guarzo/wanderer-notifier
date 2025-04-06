@@ -3,8 +3,8 @@ import { Chart } from 'chart.js/auto';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import express from 'express';
 import bodyParser from 'body-parser';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Initialize fonts to ensure consistent rendering across environments
 function initializeFonts() {
@@ -196,7 +196,7 @@ app.post('/generate', async (req, res) => {
     }
 
     // Ensure font family is specified in the chart options
-    if (chart.options && chart.options.plugins) {
+    if (chart.options?.plugins) {
       // Ensure we have a plugins object
       if (!chart.options.plugins) {
         chart.options.plugins = {};
@@ -233,7 +233,8 @@ app.post('/generate', async (req, res) => {
     }
     
     // Set global defaults for scales
-    if (chart.options && chart.options.scales) {
+-    if (chart.options && chart.options.scales) {
++    if (chart.options?.scales) {
       const scaleTypes = ['x', 'y', 'r', 'xAxes', 'yAxes'];
       
       for (const scaleType of scaleTypes) {
@@ -254,7 +255,6 @@ app.post('/generate', async (req, res) => {
         }
       }
     }
-
     // Create the chart
     new Chart(ctx, chart);
     
@@ -327,7 +327,7 @@ app.post('/save', async (req, res) => {
     }
     
     // Ensure font family is specified in the chart options (same as in /generate endpoint)
-    if (chart.options && chart.options.plugins) {
+    if (chart.options?.plugins) {
       // Ensure we have a plugins object
       if (!chart.options.plugins) {
         chart.options.plugins = {};
@@ -364,7 +364,7 @@ app.post('/save', async (req, res) => {
     }
     
     // Set global defaults for scales
-    if (chart.options && chart.options.scales) {
+    if (chart.options?.scales) {
       const scaleTypes = ['x', 'y', 'r', 'xAxes', 'yAxes'];
       
       for (const scaleType of scaleTypes) {

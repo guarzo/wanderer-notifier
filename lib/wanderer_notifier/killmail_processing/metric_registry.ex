@@ -60,8 +60,6 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
 
   # Private function to build all metric keys
   defp build_metric_keys do
-    _metric_keys = []
-
     # Add base processing metrics (with killmail.processing prefix)
     processing_metrics =
       for operation <- @metric_operations,
