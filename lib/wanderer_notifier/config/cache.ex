@@ -4,7 +4,7 @@ defmodule WandererNotifier.Config.Cache do
   Handles cache directory, name, and TTL configurations.
   """
 
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @default_cache_dir "/app/data/cache"
   @default_cache_name :wanderer_notifier_cache
@@ -15,7 +15,9 @@ defmodule WandererNotifier.Config.Cache do
   """
   @spec get_cache_dir() :: String.t()
   def get_cache_dir do
-    get_env(:cache_dir, @default_cache_dir)
+    dir = get_env(:cache_dir, @default_cache_dir)
+    AppLogger.cache_debug("Retrieved cache directory", %{dir: dir})
+    dir
   end
 
   @doc """
@@ -24,7 +26,9 @@ defmodule WandererNotifier.Config.Cache do
   """
   @spec get_cache_name() :: atom()
   def get_cache_name do
-    get_env(:cache_name, @default_cache_name)
+    name = get_env(:cache_name, @default_cache_name)
+    AppLogger.cache_debug("Retrieved cache name", %{name: name})
+    name
   end
 
   @doc """
@@ -32,38 +36,54 @@ defmodule WandererNotifier.Config.Cache do
   """
   @spec get_persistence_config() :: Keyword.t()
   def get_persistence_config do
-    get_env(:persistence, [])
+    config = get_env(:persistence, [])
+    AppLogger.cache_debug("Retrieved persistence configuration", %{config: config})
+    config
   end
 
   @doc """
   Get the cache configuration.
   """
   def get_cache_config do
-    {:ok, get_env(:cache, %{})}
+    config = get_env(:cache, %{})
+    AppLogger.cache_debug("Retrieved cache configuration", %{config: config})
+    {:ok, config}
   end
 
   @doc """
   Gets the TTL for character cache entries.
   """
   def characters_cache_ttl do
-    Application.get_env(:wanderer_notifier, :cache, %{})
-    |> Map.get(:characters_cache_ttl, 3600)
+    ttl =
+      Application.get_env(:wanderer_notifier, :cache, %{})
+      |> Map.get(:characters_cache_ttl, 3600)
+
+    AppLogger.cache_debug("Retrieved character cache TTL", %{ttl: ttl})
+    ttl
   end
 
   @doc """
   Gets the TTL for system cache entries.
   """
   def systems_cache_ttl do
-    Application.get_env(:wanderer_notifier, :cache, %{})
-    |> Map.get(:systems_cache_ttl, 3600)
+    ttl =
+      Application.get_env(:wanderer_notifier, :cache, %{})
+      |> Map.get(:systems_cache_ttl, 3600)
+
+    AppLogger.cache_debug("Retrieved system cache TTL", %{ttl: ttl})
+    ttl
   end
 
   @doc """
   Gets the TTL for static info cache entries.
   """
   def static_info_cache_ttl do
-    Application.get_env(:wanderer_notifier, :cache, %{})
-    |> Map.get(:static_info_cache_ttl, 86_400)
+    ttl =
+      Application.get_env(:wanderer_notifier, :cache, %{})
+      |> Map.get(:static_info_cache_ttl, 86_400)
+
+    AppLogger.cache_debug("Retrieved static info cache TTL", %{ttl: ttl})
+    ttl
   end
 
   defp get_env(key, default) do

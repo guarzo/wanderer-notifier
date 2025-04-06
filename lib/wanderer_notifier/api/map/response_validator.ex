@@ -5,7 +5,6 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   This module ensures that API responses match the expected structure before
   processing, to prevent errors from unexpected data formats.
   """
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -27,7 +26,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_systems = Enum.reject(data, &valid_system?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_systems)} systems have invalid format"
           )
 
@@ -39,7 +38,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
 
       %{"systems" => systems} when is_list(systems) ->
         # Legacy format support
-        Logger.warning(
+        AppLogger.api_warn(
           "[ResponseValidator] Legacy systems response format detected with 'systems' key"
         )
 
@@ -49,7 +48,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_systems = Enum.reject(systems, &valid_system?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_systems)} systems have invalid format"
           )
 
@@ -84,7 +83,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_characters = Enum.reject(data, &valid_character?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_characters)} characters have invalid format"
           )
 
@@ -96,7 +95,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
 
       %{"characters" => characters} when is_list(characters) ->
         # Legacy format support
-        Logger.warning(
+        AppLogger.api_warn(
           "[ResponseValidator] Legacy characters response format detected with 'characters' key"
         )
 
@@ -106,7 +105,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_characters = Enum.reject(characters, &valid_legacy_character?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_characters)} characters have invalid format"
           )
 
@@ -141,7 +140,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_entries = Enum.reject(data, &valid_activity?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_entries)} activity entries have invalid format"
           )
 
@@ -153,7 +152,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
 
       %{"activity" => activity} when is_list(activity) ->
         # Legacy format support
-        Logger.warning(
+        AppLogger.api_warn(
           "[ResponseValidator] Legacy activity response format detected with 'activity' key"
         )
 
@@ -163,7 +162,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         else
           invalid_entries = Enum.reject(activity, &valid_legacy_activity?/1)
 
-          Logger.warning(
+          AppLogger.api_warn(
             "[ResponseValidator] #{length(invalid_entries)} activity entries have invalid format"
           )
 
@@ -171,7 +170,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         end
 
       _ ->
-        Logger.error(
+        AppLogger.api_error(
           "[ResponseValidator] Expected 'data' or 'activity' array in activity response"
         )
 
@@ -223,7 +222,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
         validate_static_info_data(direct_data)
 
       _ ->
-        Logger.error(
+        AppLogger.api_error(
           "[ResponseValidator] Unexpected static info response format: #{inspect(response_data)}"
         )
 
@@ -235,7 +234,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
     if valid_static_info?(data) do
       {:ok, data}
     else
-      Logger.warning(
+      AppLogger.api_warn(
         "[ResponseValidator] System static info has invalid format: #{inspect(data)}"
       )
 
@@ -307,7 +306,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   defp log_invalid_system_example([]), do: :ok
 
   defp log_invalid_system_example(invalid_systems) do
-    Logger.debug(
+    AppLogger.api_debug(
       "[ResponseValidator] Example invalid system: #{inspect(List.first(invalid_systems))}"
     )
   end
@@ -315,7 +314,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   defp log_invalid_character_example([]), do: :ok
 
   defp log_invalid_character_example(invalid_characters) do
-    Logger.debug(
+    AppLogger.api_debug(
       "[ResponseValidator] Example invalid character: #{inspect(List.first(invalid_characters))}"
     )
   end
@@ -323,7 +322,7 @@ defmodule WandererNotifier.Api.Map.ResponseValidator do
   defp log_invalid_activity_example([]), do: :ok
 
   defp log_invalid_activity_example(invalid_entries) do
-    Logger.debug(
+    AppLogger.api_debug(
       "[ResponseValidator] Example invalid activity entry: #{inspect(List.first(invalid_entries))}"
     )
   end

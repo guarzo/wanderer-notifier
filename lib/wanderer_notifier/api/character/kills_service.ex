@@ -3,8 +3,6 @@ defmodule WandererNotifier.Api.Character.KillsService do
   Service for fetching and processing character kills from ESI.
   """
 
-  require Logger
-
   # Maximum number of kills to fetch in a single operation
   @max_kills 100
 

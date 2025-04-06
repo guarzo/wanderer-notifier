@@ -42,9 +42,10 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
 
       @impl true
       def handle_info(:execute, %{disabled: true} = state) do
-        AppLogger.scheduler_info(
-          "#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)"
-        )
+        AppLogger.scheduler_info("Skipping scheduled execution", %{
+          scheduler: inspect(@scheduler_name),
+          reason: "disabled"
+        })
 
         {:noreply, state}
       end
@@ -59,9 +60,10 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
             {:noreply, %{new_state | last_run: DateTime.utc_now()}}
 
           {:error, reason, new_state} ->
-            AppLogger.scheduler_error(
-              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
-            )
+            AppLogger.scheduler_error("Execution failed", %{
+              scheduler: inspect(@scheduler_name),
+              error: inspect(reason)
+            })
 
             # Schedule next execution even if this one failed
             schedule_next_run(new_state.hour, new_state.minute)
@@ -87,17 +89,19 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
           # Calculate milliseconds until next run
           milliseconds_until_next_run = DateTime.diff(next_run, now, :millisecond)
 
-          AppLogger.scheduler_info(
-            "Scheduled next execution",
+          AppLogger.scheduler_info("Scheduled next execution", %{
             scheduler: inspect(@scheduler_name),
             next_run: DateTime.to_string(next_run),
             minutes_until: div(milliseconds_until_next_run, 60_000)
-          )
+          })
 
           # Schedule the next run
           Process.send_after(self(), :execute, milliseconds_until_next_run)
         else
-          AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
+          AppLogger.scheduler_info("Not scheduling execution", %{
+            scheduler: inspect(@scheduler_name),
+            reason: "disabled"
+          })
         end
       end
 

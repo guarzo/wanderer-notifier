@@ -62,6 +62,8 @@ config :logger, :module_levels, %{
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
   "WandererNotifier.Data.Cache.Repository" => :info,
+  "WandererNotifier.Data.Cache.Helpers" => :warn,
+  "WandererNotifier.Data.Cache" => :warn,
   "WandererNotifier.Core.Application.Service" => :info,
   "WandererNotifier.Services.KillProcessor" => :debug,
   "WandererNotifier.Services.NotificationDeterminer" => :debug,

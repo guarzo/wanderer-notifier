@@ -1,38 +1,38 @@
 defmodule WandererNotifier.Logger.AppLogger do
   @moduledoc """
-  Application logger for WandererNotifier.
+  DEPRECATED: This module exists for backwards compatibility.
+
+  Please use WandererNotifier.Logger.Logger directly for all new code.
+  This module simply forwards calls to the main Logger implementation.
   """
 
-  require Logger
+  alias WandererNotifier.Logger.Logger
 
   @doc """
   Logs a debug message with processor information.
   """
   def processor_debug(message, opts \\ []) do
-    Logger.debug(fn -> "[Processor] #{message} #{format_opts(opts)}" end)
+    Logger.processor_debug(message, opts)
   end
 
   @doc """
   Logs an info message with processor information.
   """
   def processor_info(message, opts \\ []) do
-    Logger.info(fn -> "[Processor] #{message} #{format_opts(opts)}" end)
+    Logger.processor_info(message, opts)
   end
 
   @doc """
   Logs a warning message with processor information.
   """
   def processor_warning(message, opts \\ []) do
-    Logger.warning(fn -> "[Processor] #{message} #{format_opts(opts)}" end)
+    Logger.processor_warn(message, opts)
   end
 
   @doc """
   Logs an error message with processor information.
   """
   def processor_error(message, opts \\ []) do
-    Logger.error(fn -> "[Processor] #{message} #{format_opts(opts)}" end)
+    Logger.processor_error(message, opts)
   end
-
-  defp format_opts([]), do: ""
-  defp format_opts(opts), do: "(#{Enum.map_join(opts, ", ", fn {k, v} -> "#{k}: #{v}" end)})"
 end

@@ -13,6 +13,7 @@ import {
   FaSkullCrossbones,
   FaChartBar
 } from "react-icons/fa";
+import { Link } from "react-router-dom";
 
 export default function Dashboard() {
   const [status, setStatus] = useState(null);
@@ -520,15 +521,15 @@ export default function Dashboard() {
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
                   </span>
-                  <button
+                  <Link
+                    to="/charts"
                     className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                    onClick={() => window.open('/charts', '_blank')}
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
                       View Map Charts
                     </div>
-                  </button>
+                  </Link>
                 </div>
               </div>
             )}
@@ -541,15 +542,15 @@ export default function Dashboard() {
                   <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
                     Enabled
                   </span>
-                  <button
+                  <Link
+                    to="/charts"
                     className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                    onClick={() => window.open('/kill-charts', '_blank')}
                   >
                     <FaChartBar />
                     <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
                       View Kill Charts
                     </div>
-                  </button>
+                  </Link>
                 </div>
               </div>
             )}

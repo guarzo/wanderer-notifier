@@ -56,7 +56,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Get characters from cache and ensure we return a proper list
     characters = CacheRepo.get(CacheKeys.character_list()) || []
 
-    AppLogger.persistence_debug("Retrieved tracked characters from cache",
+    AppLogger.persistence_info("Retrieved tracked characters from cache",
       character_count: length(ListUtils.ensure_list(characters)),
       characters: ListUtils.ensure_list(characters)
     )
@@ -69,13 +69,33 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Ensure we're working with a proper list
     characters_list = ListUtils.ensure_list(tracked_characters)
 
+    # Convert the character_id to string for consistent comparison
+    character_id_str = to_string(character_id)
+
+    # Log the tracking check for debugging
+    AppLogger.persistence_info("Checking if character is tracked", %{
+      character_id: character_id,
+      tracked_characters_count: length(characters_list)
+    })
+
     # Now we can safely use Enum functions
     result =
       Enum.any?(characters_list, fn tracked ->
-        tracked_id = tracked["character_id"]
-        # Handle both direct matches and string conversion
-        tracked_id == character_id ||
-          to_string(tracked_id) == to_string(character_id)
+        # Try to extract character_id using different approaches
+        tracked_id =
+          cond do
+            is_map(tracked) && Map.has_key?(tracked, "character_id") ->
+              tracked["character_id"]
+
+            is_map(tracked) && Map.has_key?(tracked, :character_id) ->
+              tracked.character_id
+
+            true ->
+              nil
+          end
+
+        # Compare as strings for consistency
+        tracked_id && to_string(tracked_id) == character_id_str
       end)
 
     result
@@ -163,15 +183,30 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   defp process_provided_character_id(killmail, character_id) do
-    if tracked_character?(character_id, get_tracked_characters()) do
-      process_tracked_character(killmail, character_id)
-    else
-      AppLogger.persistence_info("Provided character_id is not tracked",
-        killmail_id: killmail.killmail_id,
-        character_id: character_id
+    # Validate character_id doesn't match kill_id (indicates data error)
+    kill_id = killmail.killmail_id
+
+    if character_id == kill_id do
+      AppLogger.kill_error(
+        "Character ID equals kill ID in process_provided_character_id - likely a data error",
+        %{
+          character_id: character_id,
+          kill_id: kill_id
+        }
       )
 
       :ignored
+    else
+      if tracked_character?(character_id, get_tracked_characters()) do
+        process_tracked_character(killmail, character_id)
+      else
+        AppLogger.persistence_info("Provided character_id is not tracked",
+          killmail_id: killmail.killmail_id,
+          character_id: character_id
+        )
+
+        :ignored
+      end
     end
   end
 
@@ -224,12 +259,29 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     system_id = KillmailStruct.get_system_id(killmail)
     system_name = KillmailStruct.get(killmail, "solar_system_name") || "Unknown System"
 
+    # Validate character_id doesn't match kill_id (indicates data error)
+    character_id_validated =
+      if character_id == kill_id do
+        AppLogger.kill_error(
+          "Character ID equals kill ID in maybe_persist_killmail - likely a data error",
+          %{
+            character_id: character_id,
+            kill_id: kill_id
+          }
+        )
+
+        # Treat as if no character ID was provided
+        nil
+      else
+        character_id
+      end
+
     case get_killmail(kill_id) do
       nil ->
-        process_new_killmail(killmail, character_id, kill_id, system_id, system_name)
+        process_new_killmail(killmail, character_id_validated, kill_id, system_id, system_name)
 
       _ ->
-        AppLogger.kill_debug("Killmail already exists", %{
+        AppLogger.kill_info("Killmail already exists", %{
           kill_id: kill_id,
           system_id: system_id,
           system_name: system_name
@@ -240,55 +292,58 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   defp process_new_killmail(killmail, character_id, kill_id, system_id, system_name) do
-    tracked_character_id = get_tracked_character_id(killmail, character_id)
-
-    case tracked_character_id do
-      nil ->
-        AppLogger.kill_debug("No tracked character found in killmail",
-          kill_id: kill_id,
-          system_id: system_id,
-          system_name: system_name
-        )
-
-        :ignored
-
-      id ->
-        process_tracked_character_killmail(killmail, id, kill_id, system_id, system_name)
-    end
-  end
-
-  defp get_tracked_character_id(killmail, character_id) do
-    if character_id do
-      character_id
-    else
-      case find_tracked_character_in_killmail(killmail) do
-        {id, _name, _role} -> id
-        nil -> nil
-      end
-    end
-  end
-
-  defp process_tracked_character_killmail(killmail, character_id, kill_id, system_id, system_name) do
-    case determine_character_role(killmail, character_id) do
-      {:ok, role} ->
-        AppLogger.kill_debug("Processing killmail", %{
-          kill_id: kill_id,
+    # Add validation to ensure character_id isn't the same as kill_id - this indicates a data problem
+    character_id_validated =
+      if character_id == kill_id do
+        AppLogger.kill_error("Character ID equals kill ID - likely a data error", %{
           character_id: character_id,
+          kill_id: kill_id
+        })
+
+        # Treat as if no character ID was provided
+        nil
+      else
+        character_id
+      end
+
+    # Use find_tracked_character_in_killmail directly to get both ID and role
+    character_result =
+      if character_id_validated do
+        # If character_id is provided, still need to determine role
+        case determine_character_role(killmail, character_id_validated) do
+          {:ok, role} ->
+            # Get character name
+            character_name = get_character_name(killmail, character_id_validated, role)
+            {character_id_validated, character_name, role}
+
+          _ ->
+            nil
+        end
+      else
+        # Find both the character and role at once
+        find_tracked_character_in_killmail(killmail)
+      end
+
+    case character_result do
+      {id, name, role} ->
+        AppLogger.kill_info("Processing killmail with identified character", %{
+          kill_id: kill_id,
+          character_id: id,
+          character_name: name,
           role: role,
           system_id: system_id,
           system_name: system_name
         })
 
-        persist_killmail(killmail, character_id)
+        # Process directly with the character info we already have
+        handle_tracked_character_found(killmail, to_string(kill_id), id, name, role)
 
-      {:error, reason} ->
-        AppLogger.kill_error("❌ Failed to determine character role", %{
+      nil ->
+        AppLogger.kill_info("No tracked character found in killmail",
           kill_id: kill_id,
-          character_id: character_id,
-          error: inspect(reason),
           system_id: system_id,
           system_name: system_name
-        })
+        )
 
         :ignored
     end
@@ -296,52 +351,327 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper functions for finding tracked characters in killmails
   defp find_tracked_character_in_killmail(%KillmailStruct{} = killmail) do
+    # Get victim and attacker information
     victim = KillmailStruct.get_victim(killmail)
     victim_character_id = victim && Map.get(victim, "character_id")
+    victim_id_str = victim_character_id && to_string(victim_character_id)
+    attackers = KillmailStruct.get_attacker(killmail) || []
 
-    if victim_character_id && tracked_character?(victim_character_id, get_tracked_characters()) do
-      {victim_character_id, Map.get(victim, "character_name"), :victim}
+    # Log victim and attacker information for debugging
+    log_killmail_characters(killmail.killmail_id, victim, victim_id_str, length(attackers))
+
+    # Get tracked characters
+    tracked_characters = get_tracked_characters()
+
+    # Check if we have any tracked characters
+    if Enum.empty?(tracked_characters) do
+      log_no_tracked_characters(killmail.killmail_id)
+      nil
     else
-      find_tracked_attacker_in_killmail(killmail)
+      # Extract tracked IDs for easier comparison
+      tracked_ids = extract_and_log_tracked_ids(tracked_characters)
+
+      # Check if victim is tracked
+      check_if_victim_is_tracked(
+        killmail,
+        victim,
+        victim_character_id,
+        victim_id_str,
+        tracked_ids
+      )
     end
   end
 
-  defp find_tracked_attacker_in_killmail(%KillmailStruct{} = killmail) do
+  # Helper function to log victim and attacker information
+  defp log_killmail_characters(killmail_id, victim, victim_id_str, attacker_count) do
+    AppLogger.kill_info(
+      "Searching for tracked character in killmail #{killmail_id}: " <>
+        "victim=#{victim_id_str || "none"} (#{(victim && Map.get(victim, "character_name")) || "unknown"}), " <>
+        "attackers=#{attacker_count}",
+      %{
+        killmail_id: killmail_id,
+        victim_id: victim && Map.get(victim, "character_id"),
+        victim_id_str: victim_id_str,
+        victim_name: victim && Map.get(victim, "character_name"),
+        attacker_count: attacker_count
+      }
+    )
+  end
+
+  # Helper function to log when no tracked characters are found
+  defp log_no_tracked_characters(killmail_id) do
+    AppLogger.kill_info("No tracked characters found for killmail",
+      killmail_id: killmail_id
+    )
+  end
+
+  # Helper function to extract and log tracked IDs
+  defp extract_and_log_tracked_ids(tracked_characters) do
+    # Log tracked characters for debugging
+    sample_chars = Enum.take(tracked_characters, min(3, length(tracked_characters)))
+
+    AppLogger.kill_info("Tracked characters found", %{
+      count: length(tracked_characters),
+      sample: sample_chars
+    })
+
+    # Safely extract IDs based on structure
+    tracked_ids = extract_tracked_ids(tracked_characters)
+
+    # Log the extracted tracked IDs
+    AppLogger.kill_info("Extracted tracked character IDs", %{
+      count: MapSet.size(tracked_ids),
+      sample: Enum.take(MapSet.to_list(tracked_ids), min(3, MapSet.size(tracked_ids)))
+    })
+
+    tracked_ids
+  end
+
+  # Helper function to check if victim is tracked
+  defp check_if_victim_is_tracked(
+         killmail,
+         victim,
+         victim_character_id,
+         victim_id_str,
+         tracked_ids
+       ) do
+    # Check if victim is tracked using string comparison
+    if victim_id_str && MapSet.member?(tracked_ids, victim_id_str) do
+      # Log and return victim information
+      log_found_tracked_victim(victim_character_id, victim, killmail.killmail_id)
+      {victim_character_id, Map.get(victim, "character_name"), :victim}
+    else
+      # Check attackers if victim isn't tracked
+      find_tracked_attacker_in_killmail(killmail, tracked_ids)
+    end
+  end
+
+  # Helper function to log when a tracked victim is found
+  defp log_found_tracked_victim(victim_character_id, victim, killmail_id) do
+    AppLogger.kill_info("Found tracked character as victim", %{
+      character_id: victim_character_id,
+      character_name: Map.get(victim, "character_name"),
+      killmail_id: killmail_id
+    })
+  end
+
+  # Updated to accept tracked_ids (removed default parameter)
+  defp find_tracked_attacker_in_killmail(%KillmailStruct{} = killmail, tracked_ids) do
     # Get attackers list
     attackers = KillmailStruct.get_attacker(killmail) || []
 
-    # Get tracked characters once
-    tracked_characters = get_tracked_characters()
-    tracked_ids = MapSet.new(tracked_characters, & &1.character_id)
+    # If no tracked_ids provided or no attackers, return early
+    if is_nil(tracked_ids) || Enum.empty?(attackers) do
+      log_no_tracked_ids_or_attackers(killmail.killmail_id)
+      nil
+    else
+      # Log attacker information for debugging
+      log_attacker_info(killmail.killmail_id, attackers, tracked_ids)
 
-    # Check if any attacker is tracked
-    Enum.find_value(attackers, fn attacker ->
-      character_id = Map.get(attacker, "character_id")
+      # Find the first tracked attacker
+      find_first_tracked_attacker(attackers, tracked_ids, killmail.killmail_id)
+    end
+  end
 
-      if character_id && MapSet.member?(tracked_ids, character_id) do
-        character_id
-      end
-    end)
+  # Helper to log when no tracked IDs or attackers are found
+  defp log_no_tracked_ids_or_attackers(killmail_id) do
+    AppLogger.kill_info("No tracked IDs or attackers found for killmail",
+      killmail_id: killmail_id
+    )
+  end
+
+  # Helper to log attacker information
+  defp log_attacker_info(killmail_id, attackers, tracked_ids) do
+    attacker_sample = Enum.take(attackers, min(5, length(attackers)))
+
+    AppLogger.kill_info("Checking attackers for tracked characters", %{
+      killmail_id: killmail_id,
+      attacker_count: length(attackers),
+      tracked_ids_count: MapSet.size(tracked_ids),
+      sample_attacker_ids:
+        Enum.map(
+          attacker_sample,
+          &%{
+            id: Map.get(&1, "character_id"),
+            name: Map.get(&1, "character_name")
+          }
+        )
+    })
+  end
+
+  # Helper to find the first tracked attacker
+  defp find_first_tracked_attacker(attackers, tracked_ids, killmail_id) do
+    result =
+      Enum.find_value(attackers, fn attacker ->
+        character_id = Map.get(attacker, "character_id")
+        character_name = Map.get(attacker, "character_name")
+        character_id_str = character_id && to_string(character_id)
+
+        if character_id_str && MapSet.member?(tracked_ids, character_id_str) do
+          log_found_tracked_attacker(character_id, character_name, killmail_id)
+          {character_id, character_name, :attacker}
+        else
+          nil
+        end
+      end)
+
+    # Log if no tracked attackers were found
+    if is_nil(result) do
+      AppLogger.kill_info("No tracked attackers found in killmail", %{
+        killmail_id: killmail_id
+      })
+    end
+
+    result
+  end
+
+  # Helper to log when a tracked attacker is found
+  defp log_found_tracked_attacker(character_id, character_name, killmail_id) do
+    AppLogger.kill_info("Found tracked character as attacker", %{
+      character_id: character_id,
+      character_name: character_name,
+      killmail_id: killmail_id
+    })
+  end
+
+  # Helper to safely extract IDs regardless of structure
+  defp extract_tracked_ids(characters) do
+    ids =
+      Enum.map(characters, fn char ->
+        cond do
+          is_map(char) && Map.has_key?(char, "character_id") ->
+            to_string(char["character_id"])
+
+          is_map(char) && Map.has_key?(char, :character_id) ->
+            to_string(char.character_id)
+
+          true ->
+            nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    MapSet.new(ids)
   end
 
   # Helper functions for character role determination
   defp determine_character_role(killmail, character_id) do
-    # Get victim and attacker data
     victim = KillmailStruct.get_victim(killmail)
     attackers = KillmailStruct.get_attacker(killmail) || []
 
-    # Check victim first
-    victim_id = get_in(victim, ["character_id"])
+    # Get character ID as string for consistent comparison
+    char_id_str = to_string(character_id)
 
-    if victim_id == character_id do
+    # Convert victim ID to string if present
+    victim_id = get_in(victim, ["character_id"])
+    victim_id_str = victim_id && to_string(victim_id)
+
+    # Check victim match with comprehensive logging
+    victim_match = char_id_str == victim_id_str
+
+    # Log checks for better debugging
+    log_role_determination_info(killmail, character_id, victim_id, victim_match, attackers)
+
+    # Check victim role first
+    if victim_match do
+      log_character_as_victim(killmail.killmail_id, character_id, victim)
       {:ok, :victim}
     else
-      # Then check attackers
-      case Enum.find(attackers, &(Map.get(&1, "character_id") == character_id)) do
-        nil -> {:error, :character_not_found}
-        _ -> {:ok, :attacker}
-      end
+      # Check if character is an attacker
+      check_if_character_is_attacker(killmail.killmail_id, attackers, character_id, char_id_str)
     end
+  end
+
+  # Helper to log role determination information
+  defp log_role_determination_info(killmail, character_id, victim_id, victim_match, attackers) do
+    char_id_str = to_string(character_id)
+    victim_id_str = victim_id && to_string(victim_id)
+
+    AppLogger.kill_info(
+      "Character role determination: character_id=#{character_id} victim_id=#{victim_id} matched=#{victim_match} (attackers: #{length(attackers)})",
+      %{
+        killmail_id: killmail.killmail_id,
+        character_id: character_id,
+        character_id_type: typeof(character_id),
+        char_id_str: char_id_str,
+        victim_id: victim_id,
+        victim_id_type: victim_id && typeof(victim_id),
+        victim_id_str: victim_id_str,
+        victim_matched: victim_match,
+        attacker_count: length(attackers)
+      }
+    )
+  end
+
+  # Helper to log when character is found as victim
+  defp log_character_as_victim(killmail_id, character_id, victim) do
+    AppLogger.kill_info("Character found as victim", %{
+      killmail_id: killmail_id,
+      character_id: character_id,
+      character_name: Map.get(victim, "character_name")
+    })
+  end
+
+  # Helper to check if character is an attacker
+  defp check_if_character_is_attacker(killmail_id, attackers, character_id, char_id_str) do
+    # Find matching attacker using string comparison
+    found_attacker = find_matching_attacker(attackers, character_id, char_id_str)
+
+    case found_attacker do
+      nil ->
+        log_attacker_not_found(killmail_id, attackers, character_id, char_id_str)
+        {:error, :character_not_found}
+
+      attacker ->
+        log_character_as_attacker(killmail_id, character_id, attacker)
+        {:ok, :attacker}
+    end
+  end
+
+  # Helper to find a matching attacker
+  defp find_matching_attacker(attackers, character_id, char_id_str) do
+    Enum.find(attackers, fn attacker ->
+      attacker_id = Map.get(attacker, "character_id")
+      attacker_id_str = attacker_id && to_string(attacker_id)
+      matched = attacker_id_str == char_id_str
+
+      if matched do
+        AppLogger.kill_info("Found matching attacker ID", %{
+          character_id: character_id,
+          attacker_id: attacker_id,
+          attacker_id_str: attacker_id_str,
+          char_id_str: char_id_str
+        })
+      end
+
+      matched
+    end)
+  end
+
+  # Helper to log when attacker is not found
+  defp log_attacker_not_found(killmail_id, attackers, character_id, char_id_str) do
+    attacker_sample = Enum.take(attackers, min(5, length(attackers)))
+    sample_ids = Enum.map(attacker_sample, &Map.get(&1, "character_id"))
+
+    AppLogger.kill_info(
+      "Character not found in attackers: character_id=#{character_id} (#{char_id_str}) - " <>
+        "checked #{length(attackers)} attackers, sample IDs: #{inspect(Enum.take(sample_ids, 3))}",
+      %{
+        killmail_id: killmail_id,
+        character_id: character_id,
+        char_id_str: char_id_str,
+        sample_attacker_ids: sample_ids
+      }
+    )
+  end
+
+  # Helper to log when character is found as attacker
+  defp log_character_as_attacker(killmail_id, character_id, attacker) do
+    AppLogger.kill_info("Character found as attacker", %{
+      killmail_id: killmail_id,
+      character_id: character_id,
+      character_name: Map.get(attacker, "character_name")
+    })
   end
 
   defp get_character_name(killmail, character_id, {:ok, role}) do
@@ -392,7 +722,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
     # Check if this killmail already exists for this character and role
     if check_killmail_exists_in_database(killmail_id_str, str_character_id, role) do
-      AppLogger.kill_debug("Killmail already exists", %{
+      AppLogger.kill_info("Killmail already exists", %{
         kill_id: killmail_id_str,
         character_id: str_character_id
       })
@@ -405,7 +735,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
       case create_killmail_record(killmail_attrs) do
         {:ok, record} ->
-          AppLogger.kill_debug("✅ Successfully persisted killmail", %{
+          AppLogger.kill_info("✅ Successfully persisted killmail", %{
             kill_id: killmail_id_str,
             character_id: str_character_id,
             role: role
@@ -825,4 +1155,19 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       _ -> nil
     end
   end
+
+  # Helper to get type of value for logs
+  defp typeof(value) when is_binary(value), do: "string"
+  defp typeof(value) when is_boolean(value), do: "boolean"
+  defp typeof(value) when is_integer(value), do: "integer"
+  defp typeof(value) when is_float(value), do: "float"
+  defp typeof(value) when is_list(value), do: "list"
+  defp typeof(value) when is_map(value), do: "map"
+  defp typeof(value) when is_tuple(value), do: "tuple"
+  defp typeof(value) when is_atom(value), do: "atom"
+  defp typeof(value) when is_function(value), do: "function"
+  defp typeof(value) when is_pid(value), do: "pid"
+  defp typeof(value) when is_reference(value), do: "reference"
+  defp typeof(value) when is_port(value), do: "port"
+  defp typeof(_value), do: "unknown"
 end

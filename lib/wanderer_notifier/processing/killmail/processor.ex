@@ -11,8 +11,6 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   - Cache: Manages caching of killmail data
   """
 
-  require Logger
-
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
@@ -65,9 +63,24 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
         state
 
       {:error, reason} ->
-        AppLogger.websocket_error("Failed to decode WebSocket message", error: inspect(reason))
+        AppLogger.websocket_error("Failed to decode WebSocket message", %{
+          error: inspect(reason),
+          message_sample: String.slice(message, 0, 100)
+        })
+
         state
     end
+  rescue
+    error ->
+      stacktrace = __STACKTRACE__
+
+      AppLogger.websocket_error("Exception while processing WebSocket message", %{
+        error: Exception.message(error),
+        stacktrace: Exception.format_stacktrace(stacktrace),
+        message_sample: String.slice(message, 0, 100)
+      })
+
+      state
   end
 
   # Handle a killmail from the websocket
@@ -118,7 +131,8 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
           kill_id: kill_id,
           retry: retry_count + 1,
           max_retries: @max_retries,
-          error: inspect(error)
+          error: inspect(error),
+          backoff_ms: (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
         })
 
         # Exponential backoff
@@ -155,8 +169,9 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
       state
     else
       # Create context for processing
-      # Since we don't have character_id/name, use kill_id as identifier
-      ctx = create_realtime_context(kill_id, "Killmail #{kill_id}")
+      # Don't use kill_id as character_id as that causes errors
+      # Instead, set character_id to nil for websocket kills
+      ctx = create_realtime_context(nil, "Websocket kill #{kill_id}")
 
       # Process the kill
       case process_single_kill(kill_data, ctx) do
@@ -183,7 +198,8 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   defp log_zkill_error(kill_id, error) do
     AppLogger.websocket_error("Failed to fetch killmail from ZKill", %{
       kill_id: kill_id,
-      error: inspect(error)
+      error: inspect(error),
+      max_retries_reached: true
     })
   end
 
@@ -213,15 +229,26 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   defp handle_tq_status(%{"tqStatus" => %{"players" => player_count, "vip" => vip}}) do
     # Store in process dictionary for now, we could use the state or a separate GenServer later
+    timestamp = :os.system_time(:second)
+
+    AppLogger.websocket_debug("Received TQ status update", %{
+      player_count: player_count,
+      vip: vip,
+      timestamp: timestamp
+    })
+
     Process.put(:tq_status, %{
       player_count: player_count,
       vip: vip,
-      timestamp: :os.system_time(:second)
+      timestamp: timestamp
     })
   end
 
-  defp handle_tq_status(_status) do
-    AppLogger.websocket_error("Received malformed TQ status message")
+  defp handle_tq_status(status) do
+    AppLogger.websocket_error("Received malformed TQ status message", %{
+      status_keys: Map.keys(status),
+      status_type: inspect(status)
+    })
   end
 
   @doc """
@@ -237,7 +264,11 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   end
 
   def handle_message(message, state) do
-    AppLogger.websocket_error("Received unknown message type", message_keys: Map.keys(message))
+    AppLogger.websocket_error("Received unknown message type", %{
+      message_keys: Map.keys(message),
+      sample_data: inspect(message) |> String.slice(0, 100)
+    })
+
     {:ok, state}
   end
 
@@ -258,13 +289,38 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
       hash: hash,
       character_id: ctx.character_id,
       character_name: ctx.character_name,
-      batch_id: ctx.batch_id
+      batch_id: ctx.batch_id,
+      processing_mode: ctx.mode && ctx.mode.mode
     })
 
     case Pipeline.process_killmail(kill, ctx) do
-      {:ok, _} -> :processed
-      {:error, :skipped} -> :skipped
-      error -> error
+      {:ok, _} ->
+        AppLogger.kill_debug("Kill successfully processed", %{
+          kill_id: kill_id,
+          character_id: ctx.character_id,
+          batch_id: ctx.batch_id
+        })
+
+        :processed
+
+      {:error, :skipped} ->
+        AppLogger.kill_debug("Kill processing skipped", %{
+          kill_id: kill_id,
+          character_id: ctx.character_id,
+          batch_id: ctx.batch_id
+        })
+
+        :skipped
+
+      error ->
+        AppLogger.kill_error("Kill processing failed", %{
+          kill_id: kill_id,
+          character_id: ctx.character_id,
+          batch_id: ctx.batch_id,
+          error: inspect(error)
+        })
+
+        error
     end
   end
 end

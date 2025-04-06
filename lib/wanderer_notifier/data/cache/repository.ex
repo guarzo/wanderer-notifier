@@ -5,7 +5,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
   """
 
   use GenServer
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Data.Cache.CacheBehaviour
 
@@ -18,6 +18,10 @@ defmodule WandererNotifier.Data.Cache.Repository do
   # -- PUBLIC API --
 
   def start_link(args) do
+    AppLogger.cache_debug("Starting cache repository", %{
+      implementation: @cache_impl
+    })
+
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
@@ -56,12 +60,21 @@ defmodule WandererNotifier.Data.Cache.Repository do
   def sync_with_db(cache_key, db_read_fun, ttl) do
     case get(cache_key) do
       nil ->
+        AppLogger.cache_debug("Cache miss, loading from database", %{
+          key: cache_key,
+          ttl: ttl
+        })
+
         with {:ok, data} <- db_read_fun.() do
           set(cache_key, data, ttl)
           {:ok, data}
         end
 
       data ->
+        AppLogger.cache_debug("Cache hit, using cached data", %{
+          key: cache_key
+        })
+
         {:ok, data}
     end
   end
@@ -70,6 +83,11 @@ defmodule WandererNotifier.Data.Cache.Repository do
   Updates cache after database write
   """
   def update_after_db_write(cache_key, data, ttl) do
+    AppLogger.cache_debug("Updating cache after database write", %{
+      key: cache_key,
+      ttl: ttl
+    })
+
     set(cache_key, data, ttl)
     {:ok, data}
   end
@@ -95,6 +113,7 @@ defmodule WandererNotifier.Data.Cache.Repository do
 
   @impl true
   def init(args) do
+    AppLogger.cache_info("Cache repository initialized")
     {:ok, args}
   end
 end

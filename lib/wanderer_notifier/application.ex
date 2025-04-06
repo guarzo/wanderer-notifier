@@ -25,12 +25,29 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Config.Version
   alias WandererNotifier.Config.Web
   alias WandererNotifier.Config.Websocket
+  alias WandererNotifier.Data.Cache.CachexImpl
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Starts the application.
   """
   def start(_type, _args) do
+    # Initialize startup tracker
+    AppLogger.init_startup_tracker()
+    AppLogger.begin_startup_phase(:initialization, "Starting WandererNotifier")
+
+    # Initialize batch logging for cache operations
+    CachexImpl.init_batch_logging()
+
+    # Log application version
+    AppLogger.log_startup_state_change(:version, "Application version", %{
+      value: Version.version()
+    })
+
+    AppLogger.log_startup_state_change(:environment, "Environment", %{
+      value: Application.get_env(:wanderer_notifier, :env, :dev)
+    })
+
     minimal_test = Application.get_env(:wanderer_notifier, :minimal_test, false)
 
     if minimal_test do
@@ -44,7 +61,9 @@ defmodule WandererNotifier.Application do
         start_test_application()
       else
         # Full validation for production
+        AppLogger.begin_startup_phase(:configuration, "Validating configuration")
         validate_configuration()
+        AppLogger.begin_startup_phase(:services, "Starting main application")
         start_main_application()
       end
     end
@@ -74,12 +93,6 @@ defmodule WandererNotifier.Application do
   # Private functions
 
   defp validate_configuration do
-    # Log application version on startup
-    AppLogger.startup_debug("Starting application",
-      version: Version.version(),
-      environment: Application.get_env(:wanderer_notifier, :env, :dev)
-    )
-
     # Define all configuration modules to validate with their display names and extra info
     config_modules = [
       {Database, "Database", []},
@@ -156,17 +169,22 @@ defmodule WandererNotifier.Application do
   end
 
   defp start_minimal_application do
+    AppLogger.begin_startup_phase(:minimal, "Starting minimal application")
+
     children = [
       {WandererNotifier.NoopConsumer, []}
     ]
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    Supervisor.start_link(children, opts)
+    result = Supervisor.start_link(children, opts)
+
+    AppLogger.complete_startup()
+    result
   end
 
   defp start_test_application do
     # Minimal validation for test environment
-    AppLogger.startup_debug("Starting application in test mode")
+    AppLogger.begin_startup_phase(:test, "Starting application in test mode")
 
     children = [
       # Core services needed for testing
@@ -180,34 +198,43 @@ defmodule WandererNotifier.Application do
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
         AppLogger.startup_info("✨ Test application started")
+        AppLogger.complete_startup()
         {:ok, pid}
 
       {:error, reason} = error ->
         AppLogger.startup_error("❌ Failed to start test application", error: inspect(reason))
+        AppLogger.complete_startup()
         error
     end
   end
 
   defp start_main_application do
     # Initialize metric registry to ensure all metrics are pre-registered
+    AppLogger.begin_startup_phase(:metrics, "Initializing metrics")
     initialize_metric_registry()
 
+    AppLogger.begin_startup_phase(:children, "Starting child processes")
     children = get_children()
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
 
-    AppLogger.startup_info("🚀 Starting WandererNotifier", child_count: length(children))
+    AppLogger.log_startup_state_change(:child_processes, "Starting child processes", %{
+      child_count: length(children)
+    })
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
         AppLogger.startup_info("✨ WandererNotifier started successfully")
+        AppLogger.complete_startup()
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
         AppLogger.startup_warn("⚠️ Supervisor already started", pid: inspect(pid))
+        AppLogger.complete_startup()
         {:ok, pid}
 
       {:error, reason} = error ->
         AppLogger.startup_error("❌ Failed to start application", error: inspect(reason))
+        AppLogger.complete_startup()
         error
     end
   end
@@ -215,18 +242,26 @@ defmodule WandererNotifier.Application do
   # Initialize metric registry
   defp initialize_metric_registry do
     alias WandererNotifier.KillmailProcessing.MetricRegistry
-    AppLogger.startup_info("Initializing metric registry")
 
+    # Register the metric atoms
     case MetricRegistry.initialize() do
       {:ok, atoms} ->
-        AppLogger.startup_info("Metric registry initialized successfully",
-          metric_count: length(atoms)
+        AppLogger.log_startup_state_change(
+          :metric_registry,
+          "Metric registry initialized successfully",
+          %{
+            metric_count: length(atoms)
+          }
         )
+
+        :ok
 
       error ->
         AppLogger.startup_error("Failed to initialize metric registry",
           error: inspect(error)
         )
+
+        error
     end
   end
 
@@ -236,6 +271,10 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.NoopConsumer, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Stats, []},
+      %{
+        id: WandererNotifier.KillmailProcessing.Metrics,
+        start: {WandererNotifier.KillmailProcessing.Metrics, :start_link, [[]]}
+      },
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},
       {Cachex, name: :wanderer_cache},
@@ -245,8 +284,15 @@ defmodule WandererNotifier.Application do
     ]
 
     # Add ChartServiceManager only if charts are enabled
+    charts_enabled = Features.kill_charts_enabled?() or Features.map_charts_enabled?()
+
+    AppLogger.log_startup_state_change(:feature_status, "Charts enabled", %{
+      feature: "charts",
+      value: charts_enabled
+    })
+
     children =
-      if Features.kill_charts_enabled?() or Features.map_charts_enabled?() do
+      if charts_enabled do
         base_children ++ [{WandererNotifier.ChartService.ChartServiceManager, []}]
       else
         base_children

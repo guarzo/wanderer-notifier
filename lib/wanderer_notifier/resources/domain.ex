@@ -7,5 +7,6 @@ defmodule WandererNotifier.Resources.Domain do
 
   resources do
     resource(WandererNotifier.Resources.KillmailPersistence)
+    resource(WandererNotifier.Resources.KillmailAggregation)
   end
 end

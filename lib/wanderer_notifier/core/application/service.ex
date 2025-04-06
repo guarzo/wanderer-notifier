@@ -4,7 +4,6 @@ defmodule WandererNotifier.Core.Application.Service do
   Coordinates periodic maintenance and kill processing.
   """
 
-  require Logger
   use GenServer
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
@@ -375,7 +374,7 @@ defmodule WandererNotifier.Core.Application.Service do
   def handle_info(:send_startup_notification, state) do
     # Check if status messages are disabled
     status_disabled = Features.status_messages_disabled?()
-    AppLogger.startup_info("Status messages disabled flag value", value: status_disabled)
+    AppLogger.startup_kv("Status messages disabled flag value", status_disabled)
 
     if status_disabled do
       AppLogger.startup_info("Startup notification skipped - disabled by configuration")
@@ -426,6 +425,18 @@ defmodule WandererNotifier.Core.Application.Service do
 
       {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info(:flush_batch_logs, state) do
+    # Forward the flush_batch_logs message to the BatchLogger
+    alias WandererNotifier.Logger.Logger.BatchLogger
+    BatchLogger.flush_all()
+    {:noreply, state}
+  rescue
+    e ->
+      AppLogger.processor_error("Error flushing batch logs", error: Exception.message(e))
+      {:noreply, state}
   end
 
   @impl true

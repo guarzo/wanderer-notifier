@@ -49,7 +49,6 @@ defmodule WandererNotifier.Api.Controllers.BaseController do
   Handles common error cases and sends appropriate responses.
   """
   def handle_error(conn, error, opts) do
-    require Logger
     alias WandererNotifier.Logger.Logger, as: AppLogger
 
     try do

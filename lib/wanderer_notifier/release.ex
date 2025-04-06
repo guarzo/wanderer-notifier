@@ -3,7 +3,7 @@ defmodule WandererNotifier.Release do
   Release-specific functions for database management.
   Used in production for migrations and database setup.
   """
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @app :wanderer_notifier
 
@@ -11,27 +11,29 @@ defmodule WandererNotifier.Release do
   Creates the database if it doesn't exist.
   """
   def createdb do
-    Logger.info("Checking if database exists")
+    AppLogger.startup_info("Checking if database exists")
 
     try do
       Enum.each(repos(), fn repo ->
         case repo.__adapter__().storage_up(repo.config()) do
           :ok ->
-            Logger.info("Database created successfully")
+            AppLogger.startup_info("Database created successfully")
 
           {:error, :already_up} ->
-            Logger.info("Database already exists")
+            AppLogger.startup_info("Database already exists")
 
           {:error, {:logger, _}} ->
-            Logger.info("Database status check completed with logger initialization warning")
+            AppLogger.startup_info(
+              "Database status check completed with logger initialization warning"
+            )
 
           {:error, error} ->
-            Logger.warning("Failed to create database: #{inspect(error)}")
+            AppLogger.startup_warn("Failed to create database", error: inspect(error))
         end
       end)
     rescue
       e ->
-        Logger.error("Exception during database creation: #{inspect(e)}")
+        AppLogger.startup_error("Exception during database creation", error: Exception.message(e))
     end
   end
 
@@ -39,27 +41,33 @@ defmodule WandererNotifier.Release do
   Runs pending migrations.
   """
   def migrate do
-    Logger.info("Running migrations")
+    AppLogger.startup_info("Running migrations")
 
     try do
       Enum.each(repos(), fn repo ->
         case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true)) do
           {:ok, _, _} ->
-            Logger.info("Migrations for #{inspect(repo)} completed successfully")
+            AppLogger.startup_info("Migrations completed successfully", repo: inspect(repo))
 
           {:error, {:logger, _}} = error ->
             # Handle logger error but continue with migrations
-            Logger.info("Migration completed with logger warning: #{inspect(error)}")
+            AppLogger.startup_info("Migration completed with logger warning",
+              error: inspect(error)
+            )
 
           other ->
-            Logger.info("Migration returned: #{inspect(other)}")
+            AppLogger.startup_info("Migration completed", result: inspect(other))
         end
       end)
 
-      Logger.info("All migrations completed")
+      AppLogger.startup_info("All migrations completed")
     rescue
       e ->
-        Logger.error("Exception during migration: #{inspect(e)}")
+        AppLogger.startup_error("Exception during migration",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         # Re-raise to stop the migration process with proper error
         reraise e, __STACKTRACE__
     end
@@ -69,22 +77,26 @@ defmodule WandererNotifier.Release do
   Rollback migrations.
   """
   def rollback(repo, version) do
-    Logger.info("Rolling back migrations to version #{version}")
+    AppLogger.startup_info("Rolling back migrations", version: version)
 
     case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version)) do
       {:ok, _, _} ->
-        Logger.info("Rollback to version #{version} completed successfully")
+        AppLogger.startup_info("Rollback completed successfully", version: version)
 
       {:error, {:logger, _}} = error ->
         # Handle logger error but continue
-        Logger.info("Rollback completed with logger warning: #{inspect(error)}")
+        AppLogger.startup_info("Rollback completed with logger warning", error: inspect(error))
 
       other ->
-        Logger.info("Rollback returned: #{inspect(other)}")
+        AppLogger.startup_info("Rollback completed", result: inspect(other))
     end
   rescue
     e ->
-      Logger.error("Exception during rollback: #{inspect(e)}")
+      AppLogger.startup_error("Exception during rollback",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
       # Re-raise to stop the rollback process with proper error
       reraise e, __STACKTRACE__
   end
@@ -99,12 +111,12 @@ defmodule WandererNotifier.Release do
         repos
 
       :error ->
-        Logger.warning("Could not find ecto_repos configuration, using default")
+        AppLogger.startup_warn("Could not find ecto_repos configuration, using default")
         [WandererNotifier.Data.Repo]
     end
   rescue
     e ->
-      Logger.error("Error loading application config: #{inspect(e)}")
+      AppLogger.startup_error("Error loading application config", error: Exception.message(e))
       # Default to known repo
       [WandererNotifier.Data.Repo]
   end

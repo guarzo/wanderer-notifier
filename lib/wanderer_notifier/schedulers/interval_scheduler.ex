@@ -53,9 +53,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         if enabled?() do
           schedule_next(interval_ms)
 
-          AppLogger.scheduler_info(
-            "#{inspect(@scheduler_name)}: Interval updated to #{interval_ms}ms"
-          )
+          AppLogger.scheduler_info("Interval updated", %{
+            scheduler: inspect(@scheduler_name),
+            interval_ms: interval_ms
+          })
         end
 
         {:reply, :ok, new_state}
@@ -63,9 +64,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       @impl true
       def handle_info(:execute, %{disabled: true} = state) do
-        AppLogger.scheduler_info(
-          "#{inspect(@scheduler_name)}: Skipping scheduled execution (disabled)"
-        )
+        AppLogger.scheduler_info("Skipping scheduled execution", %{
+          scheduler: inspect(@scheduler_name),
+          reason: "disabled"
+        })
 
         {:noreply, state}
       end
@@ -80,9 +82,10 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
             {:noreply, %{new_state | last_run: DateTime.utc_now()}}
 
           {:error, reason, new_state} ->
-            AppLogger.scheduler_error(
-              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}"
-            )
+            AppLogger.scheduler_error("Execution failed", %{
+              scheduler: inspect(@scheduler_name),
+              error: inspect(reason)
+            })
 
             # Schedule next execution even if this one failed
             schedule_next(new_state.interval)
@@ -102,13 +105,15 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         if enabled?() do
           Process.send_after(self(), :execute, interval)
 
-          AppLogger.scheduler_debug(
-            "Scheduled next execution",
+          AppLogger.scheduler_debug("Scheduled next execution", %{
             scheduler: inspect(@scheduler_name),
             minutes: Float.round(interval / 1000 / 60, 2)
-          )
+          })
         else
-          AppLogger.scheduler_info("#{inspect(@scheduler_name)}: Not scheduling (disabled)")
+          AppLogger.scheduler_info("Not scheduling execution", %{
+            scheduler: inspect(@scheduler_name),
+            reason: "disabled"
+          })
         end
       end
 

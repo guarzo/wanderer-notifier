@@ -122,23 +122,37 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
       {:error, :fetch_exception, e}
   end
 
-  # Run aggregation for a specific period
+  # Aggregate by period
   defp aggregate_for_period(period_type, date) do
     AppLogger.scheduler_info(
-      "#{inspect(@scheduler_name)}: Running #{period_type} aggregation for #{date}"
+      "#{inspect(@scheduler_name)}: Starting #{period_type} aggregation for #{Date.to_string(date)}"
     )
 
-    case KillmailAggregation.aggregate_statistics(period_type, date) do
-      :ok -> {:ok, period_type}
-      {:error, reason} -> {:error, period_type, reason}
-    end
-  rescue
-    e ->
-      AppLogger.scheduler_error(
-        "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation: #{Exception.message(e)}"
-      )
+    # Try to aggregate the statistics
+    case KillmailAggregation.aggregate_for_period(period_type, date) do
+      {:ok, stats} ->
+        AppLogger.scheduler_info(
+          "#{inspect(@scheduler_name)}: Completed #{period_type} aggregation",
+          %{
+            date: Date.to_string(date),
+            characters: map_size(stats.characters || %{}),
+            killmails: stats.processed || 0
+          }
+        )
 
-      {:error, period_type, e}
+        {:ok, stats}
+
+      {:error, message} ->
+        AppLogger.scheduler_error(
+          "#{inspect(@scheduler_name)}: Error during #{period_type} aggregation",
+          %{
+            date: Date.to_string(date),
+            error: message
+          }
+        )
+
+        {:error, message}
+    end
   end
 
   # Log aggregation results

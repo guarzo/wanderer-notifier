@@ -41,7 +41,6 @@ defmodule WandererNotifier.Data.Character do
   at the top level is a UUID and not the EVE Online ID.
   """
   @behaviour Access
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @typedoc "Type representing a tracked character"
@@ -179,8 +178,6 @@ defmodule WandererNotifier.Data.Character do
 
   # Validate required fields are present
   defp validate_required_fields(character_id, name) do
-    require Logger
-
     if !(character_id && name) do
       AppLogger.processor_error(
         "Missing required character fields",
@@ -380,14 +377,12 @@ defmodule WandererNotifier.Data.Character do
         int
 
       :error ->
-        require Logger
         AppLogger.processor_debug("Failed to parse integer", value: val)
         nil
     end
   end
 
   defp parse_integer(val) do
-    require Logger
     AppLogger.processor_debug("Unhandled value type in parse_integer", value: inspect(val))
     nil
   end

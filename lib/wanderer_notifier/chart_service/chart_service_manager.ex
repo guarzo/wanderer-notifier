@@ -50,14 +50,14 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     {:ok, _} = Application.ensure_all_started(:inets)
     {:ok, _} = Application.ensure_all_started(:ssl)
 
-    # First ensure any existing instances are cleaned up
-    Process.send_after(self(), :cleanup_existing_service, 0)
-
     # Get port from config
     port_num =
       Application.get_env(:wanderer_notifier, :chart_service_port, 3001)
       |> to_string()
       |> String.to_integer()
+
+    # First ensure any existing instances are cleaned up
+    send(self(), :cleanup_existing_service)
 
     {:ok, %{port_num: port_num, port_process: nil, pid: nil, status: :initializing}}
   end
@@ -84,6 +84,13 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
     AppLogger.info("[Chart Service] Manual stop requested")
     new_state = do_stop_chart_service(state)
     {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_cast(:request_restart, %{status: status} = state)
+      when status in [:starting, :restarting] do
+    AppLogger.info("[Chart Service] Restart already in progress, ignoring restart request")
+    {:noreply, state}
   end
 
   @impl true
@@ -189,15 +196,25 @@ defmodule WandererNotifier.ChartService.ChartServiceManager do
   @impl true
   def handle_info(:verify_chart_service, state) do
     # Verify that the service actually started and is responding
-    if verify_chart_service(state.port_num) do
-      AppLogger.info(
-        "[Chart Service] Verified service is running and healthy after start/restart"
-      )
-    else
-      AppLogger.warn("[Chart Service] Service verification failed after start/restart")
-    end
+    case verify_chart_service(state.port_num) do
+      true ->
+        AppLogger.info(
+          "[Chart Service] Verified service is running and healthy after start/restart"
+        )
 
-    {:noreply, state}
+        {:noreply, %{state | status: :running}}
+
+      false ->
+        AppLogger.warn("[Chart Service] Service verification failed after start/restart")
+        # If service verification failed and we're in starting state, try starting again
+        if state.status == :starting do
+          AppLogger.info("[Chart Service] Retrying service start in 3 seconds...")
+          Process.send_after(self(), :start_chart_service, 3000)
+          {:noreply, %{state | status: :restarting}}
+        else
+          {:noreply, state}
+        end
+    end
   end
 
   @impl true

@@ -4,8 +4,6 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   Encapsulates all the notification handling logic for kills.
   """
 
-  require Logger
-
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo

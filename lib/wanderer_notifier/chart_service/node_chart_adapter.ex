@@ -57,7 +57,7 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
   defp handle_connection_error(reason) do
     case reason do
       :econnrefused ->
-        AppLogger.api_warn("Connection refused error detected, requesting chart service restart")
+        AppLogger.api_warn("Connection refused error detected, checking chart service status")
 
         # Check chart service status first if manager is available
         if Process.whereis(ChartServiceManager) do
@@ -69,19 +69,29 @@ defmodule WandererNotifier.ChartService.NodeChartAdapter do
                   "Chart service status before restart: #{status}, PID: #{inspect(pid)}"
                 )
 
+                # Only request restart if the service is not already starting or restarting
+                if status in [:starting, :restarting] do
+                  AppLogger.api_info("Chart service is already #{status}, not requesting restart")
+                else
+                  AppLogger.api_warn("Requesting chart service restart")
+                  ChartServiceManager.request_restart()
+                end
+
               _ ->
-                AppLogger.api_warn("Unable to get chart service status")
+                AppLogger.api_warn("Unable to get chart service status, requesting restart")
+                ChartServiceManager.request_restart()
             end
           catch
             kind, err ->
               AppLogger.api_warn(
-                "Error checking chart service status: #{inspect(kind)} #{inspect(err)}"
+                "Error checking chart service status: #{inspect(kind)} #{inspect(err)}, requesting restart"
               )
-          end
-        end
 
-        # Request restart after logging status
-        ChartServiceManager.request_restart()
+              ChartServiceManager.request_restart()
+          end
+        else
+          AppLogger.api_warn("Chart service manager not running, cannot restart")
+        end
 
       _ ->
         :ok

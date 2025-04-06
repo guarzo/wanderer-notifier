@@ -27,7 +27,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         Starts the scheduler process.
         """
         def start_link(opts \\ []) do
-          AppLogger.scheduler_debug("Starting #{inspect(@scheduler_name)}")
+          AppLogger.scheduler_debug("Starting scheduler", %{
+            scheduler: inspect(@scheduler_name)
+          })
+
           GenServer.start_link(__MODULE__, opts, name: __MODULE__)
         end
 
@@ -80,13 +83,17 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             {:ok, state} = initialize(opts)
 
             # Log only at debug level, will be summarized by the Registry
-            AppLogger.scheduler_debug("#{inspect(@scheduler_name)} initialized and scheduled")
+            AppLogger.scheduler_debug("Scheduler initialized and scheduled", %{
+              scheduler: inspect(@scheduler_name)
+            })
+
             {:ok, Map.merge(state, %{retry_count: 0, last_execution: nil, last_result: nil})}
           else
             # Log only at debug level, will be summarized by the Registry
-            AppLogger.scheduler_debug(
-              "#{inspect(@scheduler_name)} initialized but not scheduled (disabled)"
-            )
+            AppLogger.scheduler_debug("Scheduler initialized but not scheduled", %{
+              scheduler: inspect(@scheduler_name),
+              reason: "disabled"
+            })
 
             {:ok, %{disabled: true}}
           end
@@ -94,9 +101,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
         @impl true
         def handle_cast(:execute_now, %{disabled: true} = state) do
-          AppLogger.scheduler_info(
-            "#{inspect(@scheduler_name)}: Skipping manually triggered execution (disabled)"
-          )
+          AppLogger.scheduler_info("Skipping manually triggered execution", %{
+            scheduler: inspect(@scheduler_name),
+            reason: "disabled"
+          })
 
           {:noreply, state}
         end
@@ -151,23 +159,31 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
         # Register with retry to handle race conditions where the registry might not be ready
         defp register_with_retry(attempts \\ 0) do
           if Process.whereis(SchedulerRegistry) do
-            AppLogger.scheduler_debug("Registering #{inspect(@scheduler_name)} with registry")
+            AppLogger.scheduler_debug("Registering scheduler with registry", %{
+              scheduler: inspect(@scheduler_name)
+            })
+
             SchedulerRegistry.register(__MODULE__)
           else
             if attempts < 5 do
               # Retry with exponential backoff
               backoff = min(@backoff_ms * 2 ** attempts, @max_backoff_ms)
 
-              AppLogger.scheduler_debug(
-                "Registry not available, retrying in #{backoff}ms (attempt #{attempts + 1}/5)"
-              )
+              AppLogger.scheduler_debug("Registry not available, retrying registration", %{
+                scheduler: inspect(@scheduler_name),
+                backoff_ms: backoff,
+                attempt: attempts + 1,
+                max_attempts: 5
+              })
 
               Process.sleep(backoff)
               register_with_retry(attempts + 1)
             else
-              AppLogger.scheduler_warn(
-                "Failed to register #{inspect(@scheduler_name)} after 5 attempts - registry not available"
-              )
+              AppLogger.scheduler_warn("Failed to register scheduler with registry", %{
+                scheduler: inspect(@scheduler_name),
+                reason: "registry_not_available",
+                attempts: 5
+              })
             end
           end
         end
@@ -192,16 +208,19 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           # Log execution attempt
           log_level = if retry_count > 0, do: :warn, else: :debug
 
-          AppLogger.scheduler_log(
-            log_level,
-            "#{inspect(@scheduler_name)}: Executing (attempt #{retry_count + 1}/#{@max_retry_attempts + 1})"
-          )
+          AppLogger.scheduler_log(log_level, "Executing scheduled task", %{
+            scheduler: inspect(@scheduler_name),
+            attempt: retry_count + 1,
+            max_attempts: @max_retry_attempts + 1
+          })
 
           # Execute the task
           case safely_execute(state) do
             {:ok, result, updated_state} ->
               # Execution succeeded, reset retry count
-              AppLogger.scheduler_debug("#{inspect(@scheduler_name)}: Execution successful")
+              AppLogger.scheduler_debug("Execution successful", %{
+                scheduler: inspect(@scheduler_name)
+              })
 
               final_state =
                 Map.merge(updated_state, %{
@@ -224,17 +243,20 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
           e ->
             stacktrace = Process.info(self(), :current_stacktrace)
 
-            AppLogger.scheduler_error(
-              "#{inspect(@scheduler_name)}: Execution raised exception: #{Exception.message(e)}",
+            AppLogger.scheduler_error("Execution raised exception", %{
+              scheduler: inspect(@scheduler_name),
+              error: Exception.message(e),
               stacktrace: inspect(stacktrace)
-            )
+            })
 
             {:error, {:exception, e}, state}
         catch
           kind, value ->
-            AppLogger.scheduler_error(
-              "#{inspect(@scheduler_name)}: Execution failed with #{kind}: #{inspect(value)}"
-            )
+            AppLogger.scheduler_error("Execution failed with unexpected error", %{
+              scheduler: inspect(@scheduler_name),
+              error_kind: kind,
+              error_value: inspect(value)
+            })
 
             {:error, {kind, value}, state}
         end
@@ -253,10 +275,13 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             # Calculate backoff time with exponential increase
             backoff = min(@backoff_ms * 2 ** retry_count, @max_backoff_ms)
 
-            AppLogger.scheduler_warn(
-              "#{inspect(@scheduler_name)}: Execution failed: #{inspect(reason)}, " <>
-                "retrying in #{backoff}ms (attempt #{retry_count + 1}/#{@max_retry_attempts})"
-            )
+            AppLogger.scheduler_warn("Execution failed, scheduling retry", %{
+              scheduler: inspect(@scheduler_name),
+              error: inspect(reason),
+              backoff_ms: backoff,
+              attempt: retry_count + 1,
+              max_attempts: @max_retry_attempts
+            })
 
             # Schedule retry after backoff
             Process.send_after(self(), {:retry_execution, retry_count + 1}, backoff)
@@ -273,10 +298,11 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
             {:noreply, new_state}
           else
             # Max retries reached, give up
-            AppLogger.scheduler_error(
-              "#{inspect(@scheduler_name)}: Execution failed after #{@max_retry_attempts} " <>
-                "retries: #{inspect(reason)}"
-            )
+            AppLogger.scheduler_error("Execution failed after maximum retries", %{
+              scheduler: inspect(@scheduler_name),
+              error: inspect(reason),
+              max_attempts: @max_retry_attempts
+            })
 
             # Update state with final error information
             new_state =
@@ -294,9 +320,10 @@ defmodule WandererNotifier.Schedulers.BaseScheduler do
 
         # Default handler for unexpected messages
         def handle_unexpected_message(message, state) do
-          AppLogger.scheduler_warn(
-            "#{inspect(@scheduler_name)}: Received unexpected message: #{inspect(message)}"
-          )
+          AppLogger.scheduler_warn("Received unexpected message", %{
+            scheduler: inspect(@scheduler_name),
+            message: inspect(message)
+          })
 
           {:noreply, state}
         end

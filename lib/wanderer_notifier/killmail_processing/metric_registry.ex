@@ -5,7 +5,6 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   are pre-registered as atoms during application startup.
   """
 
-  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # List of processing modes
@@ -48,7 +47,10 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
     # Count the number of registered atoms
     count = length(metric_atoms)
 
-    AppLogger.startup_info("Registered #{count} metric atoms")
+    AppLogger.startup_info("Registered metric atoms", %{
+      count: count,
+      category: "killmail_metrics"
+    })
 
     # Return the list of registered atoms
     {:ok, metric_atoms}

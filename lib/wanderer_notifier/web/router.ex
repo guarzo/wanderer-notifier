@@ -4,7 +4,6 @@ defmodule WandererNotifier.Web.Router do
   """
   use Plug.Router
   import Plug.Conn
-  require Logger
 
   alias WandererNotifier.Api.Controllers.{
     ActivityChartController,
