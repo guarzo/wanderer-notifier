@@ -239,7 +239,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the kill happened in a tracked system
     - false otherwise
   """
-  def tracked_system?(killmail) do
+  def tracked_in_system?(killmail) do
     system_id = get_kill_system_id(killmail)
     tracked_system?(system_id)
   end

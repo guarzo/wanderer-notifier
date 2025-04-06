@@ -36,7 +36,7 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     AppLogger.kill_info("Sending kill notification", %{kill_id: kill_id})
 
     # Check if the kill is relevant for system and/or character channels
-    has_tracked_system = KillDeterminer.tracked_system?(enriched_killmail)
+    has_tracked_system = KillDeterminer.tracked_in_system?(enriched_killmail)
     tracked_characters = KillDeterminer.get_tracked_characters(enriched_killmail)
     has_tracked_characters = length(tracked_characters) > 0
 
