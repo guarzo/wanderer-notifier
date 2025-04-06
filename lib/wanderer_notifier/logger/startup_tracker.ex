@@ -263,8 +263,7 @@ defmodule WandererNotifier.Logger.StartupTracker do
   - details: Additional details
   """
   def log_state_change(type, message, details \\ %{}) do
-    # Log immediately and record
-    AppLogger.startup_info("#{String.upcase(to_string(type))}: #{message}")
+    # Only record the event - force_log parameter set to true will ensure it's logged
     record_event(type, Map.put(details, :message, message), true)
   end
 
@@ -279,10 +278,20 @@ defmodule WandererNotifier.Logger.StartupTracker do
   defp format_event(type, details) do
     base = String.upcase(to_string(type))
 
-    if Map.has_key?(details, :message) do
-      "#{base}: #{details.message}"
-    else
-      "#{base} event recorded"
+    cond do
+      # Special formatting for version information
+      type == :version && Map.has_key?(details, :value) ->
+        "#{base}: #{details.value}"
+
+      # Special formatting for environment information
+      type == :environment && Map.has_key?(details, :value) ->
+        "#{base}: #{details.value}"
+
+      Map.has_key?(details, :message) ->
+        "#{base}: #{details.message}"
+
+      true ->
+        "#{base} event recorded"
     end
   end
 

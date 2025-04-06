@@ -4,29 +4,13 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
 
   alias WandererNotifier.Core.Application.Service
   alias WandererNotifier.MockDiscordNotifier, as: DiscordNotifier
+  alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
   alias WandererNotifier.MockStructuredFormatter, as: StructuredFormatter
 
   setup :verify_on_exit!
 
   setup do
-    # Set up default mock behaviors
-    stub(WandererNotifier.MockConfig, :get_feature_status, fn ->
-      %{
-        activity_charts: true,
-        kill_charts: true,
-        map_charts: true,
-        character_notifications_enabled: true,
-        system_notifications_enabled: true,
-        character_tracking_enabled: true,
-        system_tracking_enabled: true,
-        tracked_systems_notifications_enabled: true,
-        tracked_characters_notifications_enabled: true,
-        kill_notifications_enabled: true,
-        notifications_enabled: true
-      }
-    end)
-
-    # Mock the structured formatter
+    # Mock StructuredFormatter
     stub(StructuredFormatter, :format_system_status_message, fn _title,
                                                                 _desc,
                                                                 _stats,
@@ -49,6 +33,13 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
 
     stub(DiscordNotifier, :send_notification, fn _type, _data ->
       {:ok, %{status_code: 200}}
+    end)
+
+    # Mock NotifierFactory to handle the notification properly
+    stub(NotifierFactory, :notify, fn
+      :send_discord_embed_to_channel, [_channel_id, _embed] -> :ok
+      :send_message, [_message] -> :ok
+      _type, _args -> :ok
     end)
 
     :ok

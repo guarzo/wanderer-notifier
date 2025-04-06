@@ -43,7 +43,7 @@ If you'd rather set up everything manually, follow these steps:
 Pull the latest Docker image:
 
 ```bash
-docker pull guarzo/wanderer-notifier:latest
+docker pull guarzo/wanderer-notifier:v1
 ```
 
 #### 2. Configure Your Environment
@@ -62,10 +62,11 @@ WANDERER_MAP_TOKEN=your_map_api_token
 # Note: Premium features are enabled with your map subscription
 WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 
-# Feature Flags (all enabled by default)
+# Feature Flags (default values shown below)
 # WANDERER_FEATURE_KILL_NOTIFICATIONS=true
 # WANDERER_FEATURE_CHARACTER_NOTIFICATIONS=true
 # WANDERER_FEATURE_SYSTEM_NOTIFICATIONS=true
+# WANDERER_DISABLE_STATUS_MESSAGES=false # Disable startup and status notifications
 # WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
 ```
 

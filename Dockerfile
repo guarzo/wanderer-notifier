@@ -17,6 +17,19 @@ WORKDIR /app
 FROM node:18-slim AS node_builder
 WORKDIR /renderer
 
+# Install required fonts and dependencies for canvas
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    fonts-liberation \
+    fonts-dejavu \
+    fontconfig \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy package files first for effective caching
 COPY renderer/package*.json ./
 RUN npm ci
@@ -99,7 +112,16 @@ RUN apt-get update -y && \
         lsof \
         net-tools \
         gnupg \
-        curl && \
+        curl \
+        # Canvas dependencies
+        libcairo2-dev \
+        libpango1.0-dev \
+        libjpeg-dev \
+        libgif-dev \
+        librsvg2-dev \
+        fonts-liberation \
+        fonts-dejavu \
+        fontconfig && \
     # Install Node.js
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \

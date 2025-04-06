@@ -102,23 +102,131 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
     registry_metric_strings = Enum.map(registry_metrics, &Atom.to_string/1)
 
     # Find metrics that are in the registry but not in @registered_metrics
-    missing_metrics =
+    missing_from_metrics =
       Enum.filter(registry_metric_strings, fn metric_string ->
         !Map.has_key?(@registered_metrics, metric_string)
       end)
 
+    # Find metrics that are in @registered_metrics but not in registry
+    missing_from_registry =
+      Enum.filter(Map.keys(@registered_metrics), fn metric_key ->
+        !Enum.member?(registry_metric_strings, metric_key)
+      end)
+
     # Log any discrepancies
-    if !Enum.empty?(missing_metrics) do
-      AppLogger.startup_warn(
-        "Found metrics in registry that aren't in @registered_metrics map",
-        %{count: length(missing_metrics), metrics: Enum.take(missing_metrics, 5)}
-      )
+    cond do
+      # Both lists have discrepancies
+      !Enum.empty?(missing_from_metrics) && !Enum.empty?(missing_from_registry) ->
+        log_metric_discrepancies(
+          missing_from_metrics,
+          missing_from_registry,
+          "Metrics discrepancies found in both directions"
+        )
+
+      # Only registry has metrics that aren't in @registered_metrics
+      !Enum.empty?(missing_from_metrics) ->
+        log_metric_discrepancies(
+          missing_from_metrics,
+          [],
+          "Found metrics in registry that aren't in @registered_metrics map"
+        )
+
+      # Only @registered_metrics has metrics that aren't in registry
+      !Enum.empty?(missing_from_registry) ->
+        log_metric_discrepancies(
+          [],
+          missing_from_registry,
+          "Found metrics in @registered_metrics that aren't in registry"
+        )
+
+      # Everything is in sync
+      true ->
+        AppLogger.startup_debug("Metrics registry is in sync", %{
+          metric_count: length(registry_metric_strings)
+        })
     end
 
-    # No need to modify @registered_metrics at runtime since it's a module attribute
-    # This function primarily serves as a diagnostic tool
-
     :ok
+  end
+
+  # Helper function to log metric discrepancies in a useful way
+  defp log_metric_discrepancies(missing_from_metrics, missing_from_registry, message) do
+    # Log a summary warning with counts
+    AppLogger.startup_warn(message, %{
+      missing_from_metrics_count: length(missing_from_metrics),
+      missing_from_registry_count: length(missing_from_registry),
+      first_few_from_metrics: Enum.take(missing_from_metrics, 3),
+      first_few_from_registry: Enum.take(missing_from_registry, 3)
+    })
+
+    # Log details about metrics missing from @registered_metrics
+    if !Enum.empty?(missing_from_metrics) do
+      log_missing_metrics_chunks(missing_from_metrics)
+    end
+
+    # Log details about metrics missing from registry
+    if !Enum.empty?(missing_from_registry) do
+      log_missing_registry_chunks(missing_from_registry)
+    end
+
+    # Provide instructions
+    log_help_message(missing_from_metrics, missing_from_registry)
+  end
+
+  # Helper to log chunks of missing metrics
+  defp log_missing_metrics_chunks(missing_metrics) do
+    Enum.chunk_every(missing_metrics, 10)
+    |> Enum.with_index()
+    |> Enum.each(fn {chunk, idx} ->
+      # Format for easy copy/paste to add to @registered_metrics
+      formatted_metrics = format_metric_chunk(chunk)
+
+      AppLogger.startup_debug(
+        "Missing from @registered_metrics (chunk #{idx + 1})",
+        %{metrics_for_copy_paste: "\n    #{formatted_metrics}"}
+      )
+    end)
+  end
+
+  # Format a chunk of metrics using map_join for efficiency
+  defp format_metric_chunk(chunk) do
+    Enum.map_join(chunk, ",\n    ", fn metric ->
+      ~s("#{metric}" => :counter)
+    end)
+  end
+
+  # Helper to log chunks of missing registry items
+  defp log_missing_registry_chunks(missing_registry) do
+    Enum.chunk_every(missing_registry, 10)
+    |> Enum.with_index()
+    |> Enum.each(fn {chunk, idx} ->
+      AppLogger.startup_debug(
+        "Missing from registry (chunk #{idx + 1})",
+        %{metrics: chunk}
+      )
+    end)
+  end
+
+  # Helper to log the appropriate help message
+  defp log_help_message(missing_from_metrics, missing_from_registry) do
+    help_message =
+      case {Enum.empty?(missing_from_metrics), Enum.empty?(missing_from_registry)} do
+        {false, false} ->
+          "To fix this warning, update both the @registered_metrics in #{__MODULE__} and @metric_operations in MetricRegistry"
+
+        {false, true} ->
+          "To fix this warning, add the missing metrics to @registered_metrics in #{__MODULE__}"
+
+        {true, false} ->
+          "To fix this warning, update @metric_operations in MetricRegistry to include these metrics"
+
+        _ ->
+          ""
+      end
+
+    if help_message != "" do
+      AppLogger.startup_debug(help_message)
+    end
   end
 
   @doc """
