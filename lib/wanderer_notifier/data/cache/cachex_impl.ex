@@ -21,6 +21,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         # Use batch logging for cache hits
         AppLogger.count_batch_event(:cache_hit, %{key_pattern: get_key_pattern(key)})
         value
+
       _ ->
         # Use batch logging for cache misses
         AppLogger.count_batch_event(:cache_miss, %{key_pattern: get_key_pattern(key)})
@@ -32,6 +33,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         key: key,
         error: Exception.message(e)
       )
+
       nil
   end
 
@@ -41,6 +43,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
       key: key,
       ttl_seconds: ttl
     )
+
     Cachex.put(@cache_name, key, value, ttl: ttl * 1000)
   rescue
     e ->
@@ -49,6 +52,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         ttl_seconds: ttl,
         error: Exception.message(e)
       )
+
       {:error, e}
   end
 
@@ -63,6 +67,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         key: key,
         error: Exception.message(e)
       )
+
       {:error, e}
   end
 
@@ -76,6 +81,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         key: key,
         error: Exception.message(e)
       )
+
       {:error, e}
   end
 
@@ -88,6 +94,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
       AppLogger.cache_error("Error clearing cache",
         error: Exception.message(e)
       )
+
       {:error, e}
   end
 
@@ -103,6 +110,7 @@ defmodule WandererNotifier.Data.Cache.CachexImpl do
         key: key,
         error: Exception.message(e)
       )
+
       {nil, {:error, e}}
   end
 

@@ -108,7 +108,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
       end)
 
     # Log any discrepancies
-    unless Enum.empty?(missing_metrics) do
+    if !Enum.empty?(missing_metrics) do
       AppLogger.startup_warn(
         "Found metrics in registry that aren't in @registered_metrics map",
         %{count: length(missing_metrics), metrics: Enum.take(missing_metrics, 5)}
@@ -240,7 +240,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
       end)
 
       # Only log the warning once per key to reduce log spam
-      unless already_warned do
+      if !already_warned do
         AppLogger.processor_warn("Attempted to track metrics with non-registered key", %{
           counter: counter,
           value: value

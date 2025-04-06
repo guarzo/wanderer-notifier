@@ -51,6 +51,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           character_id: character_id,
           time_range_type: time_range_type
         })
+
         {:error, :not_found}
 
       {:ok, record} ->
@@ -59,6 +60,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           time_range_type: time_range_type,
           timestamp: record.timestamp
         })
+
         {:ok, to_comparison_result(record)}
 
       error ->
@@ -67,6 +69,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           time_range_type: time_range_type,
           error: inspect(error)
         })
+
         error
     end
   end
@@ -88,6 +91,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           time_range_type: time_range_type,
           count: length(records)
         })
+
         {:ok, Enum.map(records, &to_trend_data/1)}
 
       error ->
@@ -96,6 +100,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           time_range_type: time_range_type,
           error: inspect(error)
         })
+
         error
     end
   end
@@ -126,6 +131,7 @@ defmodule WandererNotifier.Resources.KillHistoryService do
           character_id: character_id,
           time_range_type: time_range_type
         })
+
         true
     end
   end
