@@ -35,28 +35,154 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   def send_kill_notification(enriched_killmail, kill_id, _bypass_dedup \\ false) do
     AppLogger.kill_info("Sending kill notification", %{kill_id: kill_id})
 
-    # Create a generic notification that can be converted to various formats
-    generic_notification = StructuredFormatter.format_kill_notification(enriched_killmail)
-    discord_format = StructuredFormatter.to_discord_format(generic_notification)
+    # Check if the kill is relevant for system and/or character channels
+    has_tracked_system = KillDeterminer.tracked_in_system?(enriched_killmail)
+    tracked_characters = KillDeterminer.get_tracked_characters(enriched_killmail)
+    has_tracked_characters = length(tracked_characters) > 0
 
-    # Send notification via factory with correct type
-    case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
+    # Log what was detected
+    log_notification_relevance(
+      kill_id,
+      has_tracked_system,
+      has_tracked_characters,
+      tracked_characters
+    )
+
+    # Send notifications to appropriate channels
+    system_result = process_system_notification(enriched_killmail, kill_id, has_tracked_system)
+
+    character_result =
+      process_character_notification(
+        enriched_killmail,
+        kill_id,
+        has_tracked_characters,
+        tracked_characters
+      )
+
+    # Return combined result
+    combine_notification_results(system_result, character_result, kill_id)
+  end
+
+  # Log relevance information for debugging
+  defp log_notification_relevance(
+         kill_id,
+         has_tracked_system,
+         has_tracked_characters,
+         tracked_characters
+       ) do
+    AppLogger.kill_debug("Notification relevance", %{
+      kill_id: kill_id,
+      has_tracked_system: has_tracked_system,
+      has_tracked_characters: has_tracked_characters,
+      num_tracked_characters: length(tracked_characters)
+    })
+  end
+
+  # Process system notification if needed
+  defp process_system_notification(enriched_killmail, kill_id, has_tracked_system) do
+    if has_tracked_system do
+      # Prepare system notification
+      system_generic_notification =
+        StructuredFormatter.format_kill_notification(enriched_killmail)
+
+      system_discord_format = StructuredFormatter.to_discord_format(system_generic_notification)
+
+      # Send system notification
+      send_system_notification(system_discord_format, kill_id)
+    else
+      {:ok, :skipped_system}
+    end
+  end
+
+  # Process character notification if needed
+  defp process_character_notification(
+         enriched_killmail,
+         kill_id,
+         has_tracked_characters,
+         tracked_characters
+       ) do
+    if has_tracked_characters do
+      # Determine if tracked characters are victims or attackers
+      are_victims =
+        KillDeterminer.are_tracked_characters_victims?(enriched_killmail, tracked_characters)
+
+      # Prepare character notification with appropriate color
+      character_generic_notification =
+        StructuredFormatter.format_character_kill_notification(
+          enriched_killmail,
+          tracked_characters,
+          are_victims
+        )
+
+      character_discord_format =
+        StructuredFormatter.to_discord_format(character_generic_notification)
+
+      # Send character notification
+      send_character_notification(character_discord_format, kill_id)
+    else
+      {:ok, :skipped_character}
+    end
+  end
+
+  # Send system notification and handle result
+  defp send_system_notification(discord_format, kill_id) do
+    case NotifierFactory.notify(:send_system_kill_discord_embed, [discord_format]) do
       :ok ->
-        AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        AppLogger.kill_info("System kill notification sent successfully", %{kill_id: kill_id})
         Stats.increment(:kills)
         {:ok, kill_id}
 
       {:ok, _} ->
-        AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+        AppLogger.kill_info("System kill notification sent successfully", %{kill_id: kill_id})
         Stats.increment(:kills)
         {:ok, kill_id}
 
       {:error, reason} ->
-        AppLogger.kill_error("Failed to send kill notification", %{
+        AppLogger.kill_error("Failed to send system kill notification", %{
           kill_id: kill_id,
           error: inspect(reason)
         })
 
+        {:error, reason}
+    end
+  end
+
+  # Send character notification and handle result
+  defp send_character_notification(discord_format, kill_id) do
+    case NotifierFactory.notify(:send_character_kill_discord_embed, [discord_format]) do
+      :ok ->
+        AppLogger.kill_info("Character kill notification sent successfully", %{kill_id: kill_id})
+        Stats.increment(:kills)
+        {:ok, kill_id}
+
+      {:ok, _} ->
+        AppLogger.kill_info("Character kill notification sent successfully", %{kill_id: kill_id})
+        Stats.increment(:kills)
+        {:ok, kill_id}
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to send character kill notification", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        {:error, reason}
+    end
+  end
+
+  # Combine notification results and return appropriate response
+  defp combine_notification_results(system_result, character_result, kill_id) do
+    case {system_result, character_result} do
+      {{:ok, _}, {:ok, _}} ->
+        # Both succeeded or were skipped
+        {:ok, kill_id}
+
+      {{:error, reason}, _} ->
+        # System notification failed
+        {:error, reason}
+
+      {_, {:error, reason}} ->
+        # Character notification failed
         {:error, reason}
     end
   end

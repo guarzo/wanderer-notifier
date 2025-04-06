@@ -8,6 +8,7 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
@@ -409,8 +410,11 @@ defmodule WandererNotifier.Core.Application.Service do
 
       discord_embed = StructuredFormatter.to_discord_format(generic_notification)
 
-      # Send notification via factory
-      result = NotifierFactory.notify(:send_discord_embed, [discord_embed])
+      # Send notification via factory - specify main channel to avoid nil channel issue
+      main_channel_id = Notifications.channel_id(:main)
+
+      result =
+        NotifierFactory.notify(:send_discord_embed_to_channel, [main_channel_id, discord_embed])
 
       case result do
         :ok ->

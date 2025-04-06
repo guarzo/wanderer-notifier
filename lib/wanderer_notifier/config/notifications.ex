@@ -33,7 +33,14 @@ defmodule WandererNotifier.Config.Notifications do
     %{
       channels: %{
         main: get_channel_config(:discord_channel_id, "main", :general),
-        kill: get_channel_config(:discord_kill_channel_id, "kill", :kill),
+        system_kill:
+          get_channel_config(:discord_system_kill_channel_id, "system_kill", :system_kill),
+        character_kill:
+          get_channel_config(
+            :discord_character_kill_channel_id,
+            "character_kill",
+            :character_kill
+          ),
         system: get_channel_config(:discord_system_channel_id, "system", :system),
         character: get_channel_config(:discord_character_channel_id, "character", :character),
         charts: get_channel_config(:discord_charts_channel_id, "charts", :charts)
@@ -82,7 +89,8 @@ defmodule WandererNotifier.Config.Notifications do
 
   # Private helper to get the primary channel ID based on channel type
   defp get_primary_channel_id(:main), do: get_env(:discord_channel_id)
-  defp get_primary_channel_id(:kill), do: get_env(:discord_kill_channel_id)
+  defp get_primary_channel_id(:system_kill), do: get_env(:discord_system_kill_channel_id)
+  defp get_primary_channel_id(:character_kill), do: get_env(:discord_character_kill_channel_id)
   defp get_primary_channel_id(:system), do: get_env(:discord_system_channel_id)
   defp get_primary_channel_id(:character), do: get_env(:discord_character_channel_id)
   defp get_primary_channel_id(:charts), do: get_env(:discord_charts_channel_id)
@@ -157,7 +165,8 @@ defmodule WandererNotifier.Config.Notifications do
     # Validate that at least one channel is configured
     all_channels = [
       channel_id(:main),
-      channel_id(:kill),
+      channel_id(:system_kill),
+      channel_id(:character_kill),
       channel_id(:system),
       channel_id(:character),
       channel_id(:charts)
@@ -207,7 +216,9 @@ defmodule WandererNotifier.Config.Notifications do
     case channel_key do
       :general -> channel_id(:main)
       :activity_charts -> channel_id(:charts)
-      :kill -> channel_id(:kill)
+      :kill -> channel_id(:system_kill)
+      :system_kill -> channel_id(:system_kill)
+      :character_kill -> channel_id(:character_kill)
       :system -> channel_id(:system)
       :character -> channel_id(:character)
       _ -> channel_id(:main)
@@ -231,7 +242,9 @@ defmodule WandererNotifier.Config.Notifications do
     %{
       token: discord_token(),
       main_channel: channel_id(:main),
-      kill_channel: channel_id(:kill),
+      kill_channel: channel_id(:system_kill),
+      system_kill_channel: channel_id(:system_kill),
+      character_kill_channel: channel_id(:character_kill),
       system_channel: channel_id(:system),
       character_channel: channel_id(:character),
       charts_channel: channel_id(:charts)

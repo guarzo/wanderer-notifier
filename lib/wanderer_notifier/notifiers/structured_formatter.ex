@@ -466,7 +466,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     display_name = MapSystem.format_display_name(system)
 
     # Generate notification elements
-    {title, description, color, icon_url} = generate_notification_elements(system, is_wormhole)
+    {title, description, color, icon_url} =
+      generate_notification_elements(system, is_wormhole, display_name)
 
     # Format statics list and system link
     formatted_statics = format_statics_list(system.static_details || system.statics)
@@ -517,8 +518,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   end
 
   # Generate notification elements (title, description, color, icon)
-  defp generate_notification_elements(system, is_wormhole) do
-    title = generate_system_title(is_wormhole, system.class_title, system.type_description)
+  defp generate_notification_elements(system, is_wormhole, display_name) do
+    title = generate_system_title(display_name)
 
     description =
       generate_system_description(is_wormhole, system.class_title, system.type_description)
@@ -594,36 +595,30 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
 
-  defp generate_system_title(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "New #{class_title} System Mapped"
-
-      is_wormhole ->
-        "New Wormhole System Mapped"
-
-      type_description && type_description != "" ->
-        "New #{type_description} System Mapped"
-
-      true ->
-        "New System Mapped"
-    end
+  defp generate_system_title(display_name) when is_binary(display_name) and display_name != "" do
+    "New System Mapped: #{display_name}"
   end
 
-  defp generate_system_description(is_wormhole, class_title, type_description) do
-    cond do
-      is_wormhole && class_title && class_title != "" ->
-        "A #{class_title} wormhole system has been discovered and added to the map."
+  defp generate_system_title(_) do
+    "New System Mapped"
+  end
 
-      is_wormhole ->
-        "A wormhole system has been discovered and added to the map."
+  defp generate_system_description(true, class_title, _)
+       when is_binary(class_title) and class_title != "" do
+    "#{class_title} wormhole added to the map."
+  end
 
-      type_description && type_description != "" ->
-        "A #{type_description} system has been discovered and added to the map."
+  defp generate_system_description(true, _, _) do
+    "Wormhole added to the map."
+  end
 
-      true ->
-        "A new system has been discovered and added to the map."
-    end
+  defp generate_system_description(_, _, type_description)
+       when is_binary(type_description) and type_description != "" do
+    "#{type_description} system added to the map."
+  end
+
+  defp generate_system_description(_, _, _) do
+    "New system added to the map."
   end
 
   # Helper to determine system icon URL based on MapSystem data
@@ -1132,4 +1127,28 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   end
 
   defp format_compact_isk_value(_), do: "Unknown Value"
+
+  @doc """
+  Creates a standard formatted kill notification specifically for character channel.
+  Similar to format_kill_notification but uses green color for kills where tracked characters are attackers,
+  and red for when tracked characters are victims.
+
+  ## Parameters
+    - killmail: The Killmail struct
+    - tracked_characters: List of tracked character IDs involved in this kill
+    - are_victims: Boolean indicating if tracked characters are victims (true) or attackers (false)
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  """
+  def format_character_kill_notification(%Killmail{} = killmail, _tracked_characters, are_victims) do
+    # Use the standard formatting logic
+    standard_notification = format_kill_notification(killmail)
+
+    # Override the color based on victim/attacker status
+    color = if are_victims, do: @error_color, else: @success_color
+
+    # Update the notification with the new color
+    Map.put(standard_notification, :color, color)
+  end
 end

@@ -46,6 +46,17 @@ The application provides several types of Discord notifications:
    - Connection status monitoring
    - Error reporting and diagnostic information
 
+## Kill Notifications
+
+The notifier supports configurable kill notifications based on tracked systems and tracked characters. Notifications can be sent to separate channels:
+
+- **System kill notifications**: Sent to `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID` when a kill happens in a tracked system
+- **Character kill notifications**: Sent to `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID` when tracked characters are involved in a kill
+  - Green color: When tracked characters are attackers (successful kills)
+  - Red color: When tracked characters are victims (losses)
+
+If a kill involves both tracked systems and tracked characters, notifications will be sent to both channels. This allows for more targeted monitoring of activity.
+
 ## Requirements
 
 - Elixir (>= 1.14 recommended)

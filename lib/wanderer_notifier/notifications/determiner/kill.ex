@@ -228,4 +228,110 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.reject(&is_nil/1)
     |> Enum.any?(&check_direct_victim_tracking/1)
   end
+
+  @doc """
+  Determines if a kill is in a tracked system.
+
+  ## Parameters
+    - killmail: The killmail to check
+
+  ## Returns
+    - true if the kill happened in a tracked system
+    - false otherwise
+  """
+  def tracked_in_system?(killmail) do
+    system_id = get_kill_system_id(killmail)
+    tracked_system?(system_id)
+  end
+
+  @doc """
+  Gets the list of tracked characters involved in a kill.
+
+  ## Parameters
+    - killmail: The killmail to check
+
+  ## Returns
+    - List of tracked character IDs involved in the kill
+  """
+  def get_tracked_characters(killmail) do
+    # Extract all character IDs from the killmail
+    all_character_ids = extract_all_character_ids(killmail)
+
+    # Filter to only include tracked characters
+    Enum.filter(all_character_ids, fn char_id -> tracked_character?(char_id) end)
+  end
+
+  @doc """
+  Determines if tracked characters are victims in a kill.
+
+  ## Parameters
+    - killmail: The killmail to check
+    - tracked_characters: List of tracked character IDs
+
+  ## Returns
+    - true if any tracked character is a victim
+    - false if all tracked characters are attackers
+  """
+  def are_tracked_characters_victims?(killmail, tracked_characters) do
+    # Get the victim character ID
+    victim_character_id = get_victim_character_id(killmail)
+
+    # Check if any tracked character is the victim
+    Enum.member?(tracked_characters, victim_character_id)
+  end
+
+  # Helper function to extract all character IDs from a killmail
+  defp extract_all_character_ids(killmail) do
+    # Get victim character ID
+    victim_id = get_victim_character_id(killmail)
+    victim_ids = if victim_id, do: [victim_id], else: []
+
+    # Get attacker character IDs
+    attacker_ids = get_attacker_character_ids(killmail)
+
+    # Combine and remove duplicates
+    (victim_ids ++ attacker_ids) |> Enum.uniq()
+  end
+
+  # Helper function to get the victim character ID
+  defp get_victim_character_id(killmail) when is_nil(killmail), do: nil
+
+  defp get_victim_character_id(killmail) do
+    esi_data = Map.get(killmail, :esi_data, %{})
+    victim = Map.get(esi_data, "victim", %{})
+    Map.get(victim, "character_id")
+  end
+
+  # Helper function to get attacker character IDs
+  defp get_attacker_character_ids(killmail) do
+    esi_data = Map.get(killmail, :esi_data, %{})
+    attackers = Map.get(esi_data, "attackers", [])
+
+    Enum.map(attackers, fn attacker ->
+      Map.get(attacker, "character_id")
+    end)
+    |> Enum.filter(fn id -> not is_nil(id) end)
+  end
+
+  @doc """
+  Checks if a character is being tracked.
+
+  ## Parameters
+    - character_id: The ID of the character to check
+
+  ## Returns
+    - true if the character is tracked
+    - false otherwise
+  """
+  def tracked_character?(character_id) when is_integer(character_id) do
+    character_id_str = Integer.to_string(character_id)
+    tracked_character?(character_id_str)
+  end
+
+  def tracked_character?(character_id_str) when is_binary(character_id_str) do
+    cache_key = CacheKeys.tracked_character(character_id_str)
+    CacheRepo.get(cache_key) != nil
+  end
+
+  def tracked_character?(_), do: false
 end
