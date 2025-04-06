@@ -28,15 +28,23 @@ defmodule WandererNotifier.Schedulers.KillmailRetentionScheduler do
 
     AppLogger.scheduler_info("Cleaning killmails older than #{retention_days} days")
 
-    {deleted_count, error_count} = KillmailAggregation.clean_old_killmails(retention_days)
+    case KillmailAggregation.clean_old_killmails(retention_days) do
+      {:ok, %{deleted: deleted_count, errors: error_count}} ->
+        AppLogger.scheduler_info("Killmail retention job complete", %{
+          deleted_count: deleted_count,
+          error_count: error_count
+        })
 
-    AppLogger.scheduler_info("Killmail retention job complete", %{
-      deleted_count: deleted_count,
-      error_count: error_count
-    })
+        # Return the proper tuple format expected by IntervalScheduler
+        {:ok, %{deleted_count: deleted_count, error_count: error_count}, state}
 
-    # Return the proper tuple format expected by IntervalScheduler
-    {:ok, %{deleted_count: deleted_count, error_count: error_count}, state}
+      {:error, reason} ->
+        AppLogger.scheduler_error("Killmail retention job failed", %{
+          reason: inspect(reason)
+        })
+
+        {:error, reason, state}
+    end
   rescue
     e ->
       AppLogger.scheduler_error(
