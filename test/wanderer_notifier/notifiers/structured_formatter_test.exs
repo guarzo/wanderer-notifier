@@ -311,10 +311,10 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       # Check that the result has the expected structure
       assert is_map(result)
       assert result.type == :system_notification
-      assert result.title == "New Class 5 System Mapped"
+      assert result.title == "New System Mapped: J123456"
 
       assert result.description ==
-               "A Class 5 wormhole system has been discovered and added to the map."
+               "Class 5 wormhole added to the map."
 
       assert result.color
       assert result.thumbnail.url
@@ -357,8 +357,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       # Check that the result has the expected structure
       assert is_map(result)
       assert result.type == :system_notification
-      assert result.title =~ "High-sec"
-      assert result.description =~ "High-sec system"
+      assert result.title =~ "New System Mapped: Jita"
+      assert result.description =~ "High-sec system added to the map."
       assert result.color
       assert result.thumbnail.url
       assert result.fields

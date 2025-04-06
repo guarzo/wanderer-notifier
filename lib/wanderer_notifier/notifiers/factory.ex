@@ -5,6 +5,7 @@ defmodule WandererNotifier.Notifiers.Factory do
 
   require Logger
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
 
@@ -27,6 +28,32 @@ defmodule WandererNotifier.Notifiers.Factory do
       TestNotifier
     else
       DiscordNotifier
+    end
+  end
+
+  defp do_notify(notifier, :send_system_kill_discord_embed, [embed]) do
+    # Get the channel ID for system kill notifications
+    channel_id = Notifications.channel_id(:system_kill)
+
+    if is_nil(channel_id) do
+      # Fall back to main channel if no dedicated channel is configured
+      notifier.send_notification(:send_discord_embed, [embed])
+    else
+      # Send to the system kill channel
+      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+    end
+  end
+
+  defp do_notify(notifier, :send_character_kill_discord_embed, [embed]) do
+    # Get the channel ID for character kill notifications
+    channel_id = Notifications.channel_id(:character_kill)
+
+    if is_nil(channel_id) do
+      # Fall back to main channel if no dedicated channel is configured
+      notifier.send_notification(:send_discord_embed, [embed])
+    else
+      # Send to the character kill channel
+      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
     end
   end
 

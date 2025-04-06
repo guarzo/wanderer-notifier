@@ -285,6 +285,10 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         [embed] = data
         NeoClient.send_embed(embed)
 
+      :send_discord_embed_to_channel ->
+        [channel_id, embed] = data
+        NeoClient.send_embed(embed, channel_id)
+
       :send_message ->
         [message] = data
         send_message(message)

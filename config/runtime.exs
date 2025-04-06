@@ -161,7 +161,8 @@ legacy_to_new_mapping = %{
   "ENABLE_TRACK_KSPACE_SYSTEMS" => "WANDERER_FEATURE_TRACK_KSPACE",
   "FEATURE_ACTIVITY_CHARTS" => "WANDERER_FEATURE_ACTIVITY_CHARTS",
   "FEATURE_MAP_TOOLS" => "WANDERER_FEATURE_MAP_TOOLS",
-  "DISCORD_KILL_CHANNEL_ID" => "WANDERER_DISCORD_KILL_CHANNEL_ID",
+  "DISCORD_SYSTEM_KILL_CHANNEL_ID" => "WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID",
+  "DISCORD_CHARACTER_KILL_CHANNEL_ID" => "WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID",
   "DISCORD_SYSTEM_CHANNEL_ID" => "WANDERER_DISCORD_SYSTEM_CHANNEL_ID",
   "DISCORD_CHARACTER_CHANNEL_ID" => "WANDERER_DISCORD_CHARACTER_CHANNEL_ID",
   "DISCORD_MAP_CHARTS_CHANNEL_ID" => "WANDERER_DISCORD_CHARTS_CHANNEL_ID",
@@ -223,8 +224,20 @@ config :wanderer_notifier,
   discord_bot_token: trimmed_token,
   discord_channel_id:
     EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_CHANNEL_ID", nil),
-  discord_kill_channel_id:
-    EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_KILL_CHANNEL_ID", nil),
+  discord_system_kill_channel_id:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "DISCORD_SYSTEM_KILL_CHANNEL_ID",
+      nil
+    ),
+  discord_character_kill_channel_id:
+    EnvironmentHelper.get_env(
+      env_vars,
+      legacy_to_new_mapping,
+      "DISCORD_CHARACTER_KILL_CHANNEL_ID",
+      nil
+    ),
   discord_system_channel_id:
     EnvironmentHelper.get_env(env_vars, legacy_to_new_mapping, "DISCORD_SYSTEM_CHANNEL_ID", nil),
   discord_character_channel_id:

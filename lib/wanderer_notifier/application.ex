@@ -115,7 +115,8 @@ defmodule WandererNotifier.Application do
 
          [
            main_channel: channels.main.enabled,
-           kill_channel: channels.kill.enabled,
+           system_kill_channel: channels.system_kill.enabled,
+           character_kill_channel: channels.character_kill.enabled,
            system_channel: channels.system.enabled
          ]
        end},
