@@ -129,12 +129,16 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     case NotifierFactory.notify(:send_system_kill_discord_embed, [discord_format]) do
       :ok ->
         AppLogger.kill_info("System kill notification sent successfully", %{kill_id: kill_id})
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, kill_id}
 
       {:ok, _} ->
         AppLogger.kill_info("System kill notification sent successfully", %{kill_id: kill_id})
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, kill_id}
 
       {:error, reason} ->
@@ -152,12 +156,16 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     case NotifierFactory.notify(:send_character_kill_discord_embed, [discord_format]) do
       :ok ->
         AppLogger.kill_info("Character kill notification sent successfully", %{kill_id: kill_id})
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, kill_id}
 
       {:ok, _} ->
         AppLogger.kill_info("Character kill notification sent successfully", %{kill_id: kill_id})
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, kill_id}
 
       {:error, reason} ->

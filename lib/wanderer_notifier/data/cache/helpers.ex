@@ -713,7 +713,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
           })
 
           # Cache for 24 hours
-          repo_module().set(character_key, character_name, 86400)
+          repo_module().set(character_key, character_name, 86_400)
           :ok
         else
           # If the name is "Unknown" or "Unknown Pilot", still cache it but with shorter TTL
@@ -760,7 +760,7 @@ defmodule WandererNotifier.Data.Cache.Helpers do
                   })
 
                   # Cache for 24 hours
-                  repo_module().set(character_key, esi_name, 86400)
+                  repo_module().set(character_key, esi_name, 86_400)
                   :ok
                 else
                   AppLogger.cache_warn("ESI returned invalid character name", %{

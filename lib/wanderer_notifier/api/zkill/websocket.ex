@@ -408,7 +408,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         connected: false,
         connecting: false,
         last_message: state.last_message,
-        startup_time: state.startup_time,
+        startup_time: ensure_datetime(state.startup_time),
         reconnects: new_state.reconnects,
         url: state.url,
         last_disconnect: DateTime.utc_now()
@@ -430,7 +430,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         connected: false,
         connecting: true,
         last_message: state.last_message,
-        startup_time: state.startup_time,
+        startup_time: ensure_datetime(state.startup_time),
         reconnects: new_state.reconnects,
         url: state.url,
         last_disconnect: DateTime.utc_now()
@@ -516,4 +516,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     # No special cleanup needed
     :ok
   end
+
+  # Helper to ensure a timestamp is converted to DateTime
+  defp ensure_datetime(nil), do: DateTime.utc_now()
+  defp ensure_datetime(%DateTime{} = dt), do: dt
+  defp ensure_datetime(timestamp) when is_integer(timestamp), do: DateTime.from_unix!(timestamp)
+  defp ensure_datetime(_), do: DateTime.utc_now()
 end

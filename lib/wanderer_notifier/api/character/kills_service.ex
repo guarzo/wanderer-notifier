@@ -12,6 +12,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Repository
   alias WandererNotifier.KillmailProcessing.Context
+  alias WandererNotifier.KillmailProcessing.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailPersistence
 
@@ -458,18 +459,10 @@ defmodule WandererNotifier.Api.Character.KillsService do
         deps \\ @default_deps
       ) do
     # First check if this character is actually tracked
-    is_tracked = is_character_tracked?(character_id)
+    is_tracked = character_tracked?(character_id)
 
-    # Skip processing for untracked characters
-    if not is_tracked do
-      # Don't include character_name in the log for untracked characters
-      AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
-        character_id: character_id
-      })
-
-      return_stats = %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}
-      {:ok, return_stats}
-    else
+    # Process based on tracking status
+    if is_tracked do
       # Get the most accurate character name before logging anything
       # Use direct repository lookup first (which should have cached data)
       character_name =
@@ -578,11 +571,19 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
           {:error, reason}
       end
+    else
+      # Don't include character_name in the log for untracked characters
+      AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
+        character_id: character_id
+      })
+
+      return_stats = %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}
+      {:ok, return_stats}
     end
   end
 
   # Helper function to check if a character is tracked
-  defp is_character_tracked?(character_id) do
+  defp character_tracked?(character_id) do
     # Get the list of tracked characters
     tracked_characters = Repository.get_tracked_characters()
 
@@ -669,7 +670,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
           case ESIService.get_character(character_id) do
             {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
               # Update the cache for future use
-              WandererNotifier.Data.Cache.Helpers.cache_character_info(%{
+              CacheHelpers.cache_character_info(%{
                 "character_id" => character_id,
                 "name" => name
               })
@@ -707,7 +708,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     # Create a set of known kill IDs that we've already processed
     # We'll skip these to avoid duplicate processing
     known_kill_ids =
-      WandererNotifier.Resources.KillmailPersistence.get_already_processed_kill_ids(
+      KillmailPersistence.get_already_processed_kill_ids(
         ctx.character_id
       )
 
@@ -833,7 +834,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     })
 
     # Directly use the same Pipeline module that the realtime processing uses
-    case WandererNotifier.KillmailProcessing.Pipeline.process_killmail(kill, ctx) do
+    case Pipeline.process_killmail(kill, ctx) do
       {:ok, _} ->
         :processed
 

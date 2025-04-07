@@ -10,34 +10,6 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   # List of processing modes
   @processing_modes ["realtime", "historical", "manual", "batch", "unknown"]
 
-  # List of metric operations
-  @metric_operations [
-    "start",
-    "skipped",
-    "error",
-    "persistence",
-    "processing.realtime.complete",
-    "processing.historical.complete",
-    "processing.manual.complete",
-    "processing.batch.complete",
-    "processing.unknown.complete",
-    "processing.realtime.complete.success",
-    "processing.historical.complete.success",
-    "processing.manual.complete.success",
-    "processing.batch.complete.success",
-    "processing.unknown.complete.success",
-    "processing.realtime.complete.error",
-    "processing.historical.complete.error",
-    "processing.manual.complete.error",
-    "processing.batch.complete.error",
-    "processing.unknown.complete.error",
-    "notification.realtime.sent",
-    "notification.historical.sent",
-    "notification.manual.sent",
-    "notification.batch.sent",
-    "notification.unknown.sent"
-  ]
-
   @doc """
   Initializes all atom keys used for metrics.
   Call this function during application startup.
@@ -79,14 +51,7 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
     registry_metrics = build_metric_keys() |> Enum.map(&Atom.to_string/1)
 
     # Get metrics module registered metrics using reflection (only in dev/test)
-    metrics_map =
-      try do
-        # Verify module exists
-        apply(Metrics, :__info__, [:module])
-        apply(Metrics, :__registered_metrics_for_debug__, [])
-      rescue
-        UndefinedFunctionError -> %{}
-      end
+    metrics_map = get_registered_metrics_safely()
 
     # Metrics that are in registry but not in Metrics module
     missing_in_metrics = Enum.filter(registry_metrics, fn m -> !Map.has_key?(metrics_map, m) end)
@@ -98,6 +63,19 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
       missing_in_metrics_count: length(missing_in_metrics),
       missing_in_metrics_samples: Enum.take(missing_in_metrics, 10)
     }
+  end
+
+  # Safely gets registered metrics from the Metrics module
+  defp get_registered_metrics_safely do
+    alias WandererNotifier.KillmailProcessing.Metrics
+
+    # Check if module exists and has the required function
+    if Code.ensure_loaded?(Metrics) &&
+         function_exported?(Metrics, :__registered_metrics_for_debug__, 0) do
+      Metrics.__registered_metrics_for_debug__()
+    else
+      %{}
+    end
   end
 
   # Private function to build all metric keys

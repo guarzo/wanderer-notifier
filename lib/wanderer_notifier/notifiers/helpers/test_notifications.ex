@@ -34,11 +34,13 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
           :ok ->
             AppLogger.info("Test system notification sent successfully")
             Stats.increment(:systems)
+            Stats.increment(:kill_notified)
             {:ok, "Test system notification sent successfully"}
 
           {:ok, result} ->
             AppLogger.info("Test system notification sent successfully")
             Stats.increment(:systems)
+            Stats.increment(:kill_notified)
             {:ok, result}
 
           {:error, reason} ->
@@ -146,12 +148,16 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
       :ok ->
         AppLogger.kill_info("Test kill notification sent successfully")
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, kill_id}
 
       {:ok, result} ->
         AppLogger.kill_info("Test kill notification sent successfully")
+        # Increment both notifications.kills and processing.kills_notified
         Stats.increment(:kills)
+        Stats.increment(:kill_notified)
         {:ok, result}
 
       {:error, reason} ->
@@ -185,11 +191,13 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
           :ok ->
             AppLogger.info("Test character notification sent successfully")
             Stats.increment(:characters)
+            Stats.increment(:kill_notified)
             {:ok, "Test character notification sent successfully"}
 
           {:ok, result} ->
             AppLogger.info("Test character notification sent successfully")
             Stats.increment(:characters)
+            Stats.increment(:kill_notified)
             {:ok, result}
 
           {:error, reason} ->

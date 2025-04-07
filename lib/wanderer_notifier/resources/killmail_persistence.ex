@@ -24,7 +24,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
              ]}
 
   require Ash.Query
+  alias WandererNotifier.Api.ESI.Service, as: EsiService
   alias WandererNotifier.Config.Features
+  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail, as: KillmailStruct
@@ -537,7 +539,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       if character_name == "Unknown Pilot" || character_name == "Unknown" ||
            is_nil(character_name) do
         # Try to get a better name - this only affects logging
-        case WandererNotifier.Api.ESI.Service.get_character(victim_character_id) do
+        case EsiService.get_character(victim_character_id) do
           {:ok, %{"name" => name}} when is_binary(name) and name != "" -> name
           _ -> character_name || "Unknown Victim"
         end
@@ -630,7 +632,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       if character_name == "Unknown Pilot" || character_name == "Unknown" ||
            is_nil(character_name) do
         # Try to get a better name - this only affects logging
-        case WandererNotifier.Api.ESI.Service.get_character(character_id) do
+        case EsiService.get_character(character_id) do
           {:ok, %{"name" => name}} when is_binary(name) and name != "" -> name
           _ -> character_name || "Unknown Attacker"
         end
@@ -845,7 +847,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
       _ ->
         # Fall back to ESI API
-        case WandererNotifier.Api.ESI.Service.get_character(char_id) do
+        case EsiService.get_character(char_id) do
           {:ok, character_data} when is_map(character_data) ->
             name = Map.get(character_data, "name")
 
@@ -960,13 +962,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       # If validation specifically found "Unknown Pilot" name, try to resolve it
       {:error, "Invalid character name: Unknown Pilot"} ->
         # Use ESI to get the real name
-        case WandererNotifier.Api.ESI.Service.get_character(character_id) do
+        case EsiService.get_character(character_id) do
           {:ok, character_data} when is_map(character_data) ->
             name = Map.get(character_data, "name")
 
             if is_binary(name) && name != "" do
               # Cache the correct character name for future use
-              WandererNotifier.Data.Cache.Helpers.cache_character_info(%{
+              CacheHelpers.cache_character_info(%{
                 "character_id" => character_id,
                 "name" => name
               })

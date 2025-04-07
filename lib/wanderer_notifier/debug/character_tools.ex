@@ -87,34 +87,33 @@ defmodule WandererNotifier.Debug.CharacterTools do
       # Define problematic patterns
       invalid_names = ["Unknown Character", "Unknown", "Unknown pilot", "Unknown Pilot"]
 
-      # Track issues
-      issues_found = 0
+      # Use reduce to count issues
+      issues_found =
+        Enum.reduce(characters, 0, fn char, acc ->
+          # Extract character information
+          character_id =
+            Map.get(char, "character_id") || Map.get(char, :character_id) || "Unknown ID"
 
-      characters
-      |> Enum.each(fn char ->
-        # Extract character information
-        character_id =
-          Map.get(char, "character_id") || Map.get(char, :character_id) || "Unknown ID"
+          character_name = Map.get(char, "name") || Map.get(char, :name) || "Unknown Name"
 
-        character_name = Map.get(char, "name") || Map.get(char, :name) || "Unknown Name"
+          # Check for issues
+          cond do
+            character_name in invalid_names ->
+              IO.puts("⚠️  Character #{character_id} has invalid name: #{character_name}")
+              acc + 1
 
-        # Check for issues
-        cond do
-          character_name in invalid_names ->
-            IO.puts("⚠️  Character #{character_id} has invalid name: #{character_name}")
-            issues_found = issues_found + 1
+            is_binary(character_name) && String.starts_with?(character_name, "Unknown") ->
+              IO.puts("⚠️  Character #{character_id} has suspicious name: #{character_name}")
+              acc + 1
 
-          is_binary(character_name) && String.starts_with?(character_name, "Unknown") ->
-            IO.puts("⚠️  Character #{character_id} has suspicious name: #{character_name}")
-            issues_found = issues_found + 1
+            is_nil(character_name) || character_name == "" ->
+              IO.puts("⚠️  Character #{character_id} has missing name")
+              acc + 1
 
-          is_nil(character_name) || character_name == "" ->
-            IO.puts("⚠️  Character #{character_id} has missing name")
-
-          true ->
-            :ok
-        end
-      end)
+            true ->
+              acc
+          end
+        end)
 
       # Summary
       if issues_found > 0 do

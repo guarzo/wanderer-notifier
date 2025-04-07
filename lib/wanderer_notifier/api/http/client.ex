@@ -24,7 +24,7 @@ defmodule WandererNotifier.Api.Http.Client do
   # Start with 2 seconds for rate limits
   @rate_limit_initial_backoff 2000
   # Max 30 seconds for rate limits
-  @rate_limit_max_backoff 30000
+  @rate_limit_max_backoff 30_000
   @default_max_retries 3
   # milliseconds
   @default_initial_backoff 500
@@ -275,7 +275,7 @@ defmodule WandererNotifier.Api.Http.Client do
         do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
 
       # Handle server errors (500-599) with retry
-      {:ok, response = %{status_code: status_code}} when status_code >= 500 and status_code < 600 ->
+      {:ok, _response = %{status_code: status_code}} when status_code >= 500 and status_code < 600 ->
         if retry_count < config.max_retries do
           # Calculate backoff for server error
           backoff_ms = calculate_backoff(retry_count, 0, false)

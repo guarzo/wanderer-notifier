@@ -206,7 +206,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
     # Try updating characters
     case Client.update_tracked_characters(cached_characters) do
-      {:ok, characters} = success ->
+      {:ok, _characters} = success ->
         success
 
       {:error, :rate_limited} when retry_count < max_retries ->
@@ -247,8 +247,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   # Calculate backoff with jitter for rate limits
   defp calculate_rate_limit_backoff(retry_count) do
     # Start with 2 seconds, max 10 seconds
-    base_ms = 2000
-    max_ms = 10000
+    base_ms = 2_000
+    max_ms = 10_000
 
     # Calculate exponential backoff
     backoff = min(base_ms * :math.pow(2, retry_count), max_ms)
