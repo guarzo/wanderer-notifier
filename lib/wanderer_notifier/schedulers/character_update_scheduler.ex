@@ -58,7 +58,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
       Task.async(fn ->
         try do
           # Update characters through the MapClient with exception handling
-          Client.update_tracked_characters(cached_characters_safe)
+          handle_character_update_with_rate_limit(cached_characters_safe)
         rescue
           e ->
             AppLogger.maintenance_error("⚠️ Exception in character update task",
@@ -70,8 +70,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         end
       end)
 
-    # Wait for the task with a timeout (10 seconds should be plenty)
-    case Task.yield(task, 10_000) do
+    # Wait for the task with a timeout (15 seconds should be plenty for rate-limited operations)
+    case Task.yield(task, 15_000) do
       {:ok, {:ok, characters}} ->
         AppLogger.maintenance_info(
           "👥 Characters updated: #{length(ensure_list(characters))} characters synchronized"
@@ -81,6 +81,22 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
       {:ok, {:error, :feature_disabled}} ->
         {:ok, :disabled, state}
+
+      {:ok, {:error, :rate_limited}} ->
+        # Handle rate limiting - log and return current state to retry later
+        AppLogger.maintenance_warn(
+          "⚠️ Character update rate limited - will retry on next schedule"
+        )
+
+        {:error, :rate_limited, state}
+
+      {:ok, {:error, {:domain_error, _domain, :rate_limited}}} ->
+        # Handle domain-specific rate limiting - log and return current state to retry later
+        AppLogger.maintenance_warn(
+          "⚠️ Character update rate limited - will retry on next schedule"
+        )
+
+        {:error, :rate_limited, state}
 
       {:ok, {:error, reason}} ->
         AppLogger.maintenance_error("⚠️ Character update failed",
@@ -92,7 +108,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
       nil ->
         # Task took too long, kill it
         Task.shutdown(task, :brutal_kill)
-        AppLogger.maintenance_error("⚠️ Character update timed out after 10 seconds")
+        AppLogger.maintenance_error("⚠️ Character update timed out after 15 seconds")
         {:error, :timeout, state}
 
       {:exit, reason} ->
@@ -182,5 +198,63 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         cache_ttl
       )
     end
+  end
+
+  # Handle character updates with rate limit retry logic
+  defp handle_character_update_with_rate_limit(cached_characters, retry_count \\ 0) do
+    max_retries = 3
+
+    # Try updating characters
+    case Client.update_tracked_characters(cached_characters) do
+      {:ok, characters} = success ->
+        success
+
+      {:error, :rate_limited} when retry_count < max_retries ->
+        # Calculate exponential backoff with jitter for rate limits
+        backoff_ms = calculate_rate_limit_backoff(retry_count)
+
+        AppLogger.maintenance_warn(
+          "⚠️ Character update rate limited - retrying after #{backoff_ms}ms (#{retry_count + 1}/#{max_retries})"
+        )
+
+        Process.sleep(backoff_ms)
+
+        # Retry with incrementing the retry counter
+        handle_character_update_with_rate_limit(cached_characters, retry_count + 1)
+
+      {:error, {:domain_error, _domain, :rate_limited}} when retry_count < max_retries ->
+        # Calculate exponential backoff with jitter for rate limits
+        backoff_ms = calculate_rate_limit_backoff(retry_count)
+
+        AppLogger.maintenance_warn(
+          "⚠️ Character update rate limited - retrying after #{backoff_ms}ms (#{retry_count + 1}/#{max_retries})"
+        )
+
+        Process.sleep(backoff_ms)
+
+        # Retry with incrementing the retry counter
+        handle_character_update_with_rate_limit(cached_characters, retry_count + 1)
+
+      {:error, _reason} = error when retry_count >= max_retries ->
+        # Max retries reached, return the error
+        error
+
+      error ->
+        error
+    end
+  end
+
+  # Calculate backoff with jitter for rate limits
+  defp calculate_rate_limit_backoff(retry_count) do
+    # Start with 2 seconds, max 10 seconds
+    base_ms = 2000
+    max_ms = 10000
+
+    # Calculate exponential backoff
+    backoff = min(base_ms * :math.pow(2, retry_count), max_ms)
+
+    # Add jitter (±20%)
+    jitter = :rand.uniform(trunc(backoff * 0.4)) - trunc(backoff * 0.2)
+    trunc(backoff + jitter)
   end
 end

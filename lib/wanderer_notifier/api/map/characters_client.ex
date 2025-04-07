@@ -67,17 +67,56 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   defp fetch_characters_data(url) do
     headers = UrlBuilder.get_auth_headers()
 
-    case Client.get(url, headers) do
+    # Use HTTP client with built-in retry logic for rate limits
+    # Setting max_retries high and enabling rate_limit_aware
+    case Client.get(url, headers, rate_limit_aware: true, max_retries: 10) do
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
-        {:ok, body}
+        # Only return success for status 200 with non-empty body
+        if String.trim(body) == "" do
+          AppLogger.api_warn(
+            "⚠️ Got empty body with 200 status - treating as potential rate limit"
+          )
 
-      {:ok, %{status_code: status_code}} ->
-        AppLogger.api_error("⚠️ API returned non-200 status: #{status_code}")
+          {:error, {:http_error, :empty_body}}
+        else
+          {:ok, body}
+        end
+
+      # Catch specific rate limit errors
+      {:error, :rate_limited} ->
+        AppLogger.api_warn("⚠️ Characters endpoint reported rate limiting")
+        {:error, {:http_error, :rate_limited}}
+
+      # Explicitly handle other status codes to avoid pattern match errors
+      {:ok, %{status_code: status_code}} when status_code != 200 ->
+        AppLogger.api_warn("⚠️ Characters endpoint returned unexpected status: #{status_code}")
         {:error, {:http_error, status_code}}
 
+      # Catch all other errors
       {:error, reason} ->
         AppLogger.api_error("⚠️ HTTP request failed", error: inspect(reason))
         {:error, {:http_error, reason}}
+    end
+  end
+
+  # Extract the Retry-After header if present
+  defp extract_retry_after(headers) do
+    retry_header =
+      Enum.find(headers, fn {header_name, _} ->
+        String.downcase(header_name) == "retry-after"
+      end)
+
+    case retry_header do
+      {_, value} ->
+        # Try to parse as integer seconds
+        case Integer.parse(value) do
+          # Convert to milliseconds
+          {seconds, _} -> seconds * 1000
+          :error -> nil
+        end
+
+      nil ->
+        nil
     end
   end
 
@@ -96,13 +135,20 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   @spec handle_character_response(String.t(), [Character.t()] | nil) ::
           {:ok, [Character.t()]} | {:error, {:json_parse_error, term()}}
   def handle_character_response(body, cached_characters) when is_binary(body) do
-    case Jason.decode(body) do
-      {:ok, parsed_json} ->
-        process_parsed_character_data(parsed_json, cached_characters)
+    # First verify the body is not empty (which could indicate rate limiting)
+    if String.trim(body) == "" do
+      AppLogger.api_warn("⚠️ Empty response body received - this may indicate rate limiting")
+      {:error, {:possible_rate_limit, "Empty response body"}}
+    else
+      # Proceed with normal JSON parsing
+      case Jason.decode(body) do
+        {:ok, parsed_json} ->
+          process_parsed_character_data(parsed_json, cached_characters)
 
-      {:error, reason} ->
-        AppLogger.api_error("⚠️ Failed to parse JSON", error: inspect(reason))
-        {:error, {:json_parse_error, reason}}
+        {:error, reason} ->
+          AppLogger.api_error("⚠️ Failed to parse JSON", error: inspect(reason))
+          {:error, {:json_parse_error, reason}}
+      end
     end
   rescue
     e ->
@@ -507,10 +553,44 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
           {:ok, %{status_code: status}} when status >= 200 and status < 300 ->
             {:ok, true}
 
-          %{status_code: status, body: body} ->
+          {:ok, %{status_code: 429, headers: headers}} ->
+            # Handle rate limiting with backoff
+            retry_after = extract_retry_after(headers)
+            # Default to 5 seconds
+            wait_time = retry_after || 5000
+
+            AppLogger.api_warn(
+              "⚠️ Characters endpoint rate limited. Retrying after #{wait_time}ms"
+            )
+
+            Process.sleep(wait_time)
+
+            # Try again after waiting
+            check_characters_endpoint_availability()
+
+          {:ok, %{status_code: status, body: body}} ->
             error_reason = "Endpoint returned status #{status}: #{body}"
             AppLogger.api_warn("⚠️ Characters endpoint error", error: error_reason)
             {:error, error_reason}
+
+          {:error, :rate_limited} ->
+            # API recognized as rate limited from HTTP client
+            AppLogger.api_warn("⚠️ Characters endpoint rate limited. Retrying after 5 seconds")
+            Process.sleep(5000)
+            check_characters_endpoint_availability()
+
+          {:error, {:domain_error, _domain, :rate_limited}} ->
+            # Domain-specific rate limiting from HTTP client
+            AppLogger.api_warn(
+              "⚠️ Characters endpoint domain-specific rate limited. Retrying after 5 seconds"
+            )
+
+            Process.sleep(5000)
+            check_characters_endpoint_availability()
+
+          {:error, reason} ->
+            AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
+            {:error, reason}
         end
 
       {:error, reason} ->

@@ -36,10 +36,30 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       {:ok, url} ->
         headers = UrlBuilder.get_auth_headers()
 
-        # Process the systems request
-        case Client.get(url, headers) do
-          {:ok, response} ->
-            process_systems_response(response, cached_systems)
+        # Use HTTP client with built-in retry logic for rate limits
+        # Setting max_retries high and enabling rate_limit_aware
+        case Client.get(url, headers, rate_limit_aware: true, max_retries: 10) do
+          # Only return success for status 200 with non-empty body
+          {:ok, %{status_code: 200, body: body} = response} when is_binary(body) ->
+            if String.trim(body) == "" do
+              AppLogger.api_warn(
+                "⚠️ Got empty body with 200 status - treating as potential rate limit"
+              )
+
+              {:error, {:http_error, :empty_body}}
+            else
+              process_systems_response(response, cached_systems)
+            end
+
+          # Catch specific rate limit errors
+          {:error, :rate_limited} ->
+            AppLogger.api_warn("⚠️ Systems endpoint reported rate limiting")
+            {:error, {:http_error, :rate_limited}}
+
+          # Explicitly handle other status codes to avoid pattern match errors
+          {:ok, %{status_code: status_code}} when status_code != 200 ->
+            AppLogger.api_warn("⚠️ Systems endpoint returned unexpected status: #{status_code}")
+            {:error, {:http_error, status_code}}
 
           {:error, reason} ->
             AppLogger.api_error("⚠️ Failed to fetch systems", error: inspect(reason))

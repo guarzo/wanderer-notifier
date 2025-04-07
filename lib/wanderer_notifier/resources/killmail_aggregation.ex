@@ -273,9 +273,15 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
         %{start_date: start_date, end_date: now}
 
       :weekly ->
-        # 7 day period ending now
-        start_date = DateTime.add(now, -7 * 86_400, :second)
-        %{start_date: start_date, end_date: now}
+        # Calculate week start (Monday)
+        today = DateTime.to_date(now)
+        days_since_monday = Date.day_of_week(today) - 1
+
+        # Get datetime for start of current week (Monday)
+        monday = Date.add(today, -days_since_monday)
+        start_of_monday = DateTime.new!(monday, ~T[00:00:00])
+
+        %{start_date: start_of_monday, end_date: now}
 
       :monthly ->
         # 30 day period ending now
@@ -309,14 +315,17 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     log_character_statistics(character, stats)
 
     # Save to database
-    save_character_statistics(
-      character,
-      stats,
-      Atom.to_string(period_type),
-      start_date,
-      end_date,
-      character.character_id
-    )
+    case save_character_statistics(
+           character,
+           stats,
+           Atom.to_string(period_type),
+           start_date,
+           end_date,
+           character.character_id
+         ) do
+      :ok -> {:ok, stats}
+      error -> error
+    end
   end
 
   # Aggregate killmails for a single character

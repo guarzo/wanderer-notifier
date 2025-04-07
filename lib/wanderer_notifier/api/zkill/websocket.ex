@@ -113,6 +113,14 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     # Set startup time if not already set
     startup_time = state.startup_time || System.os_time(:second)
+    # Ensure it's a DateTime object for Stats
+    startup_time_dt =
+      if is_integer(startup_time) do
+        DateTime.from_unix!(startup_time)
+      else
+        startup_time
+      end
+
     new_state = %{state | connected: true, startup_time: startup_time}
 
     # Update websocket status with complete information
@@ -120,7 +128,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       connected: true,
       connecting: false,
       last_message: now,
-      startup_time: DateTime.from_unix!(startup_time),
+      startup_time: startup_time_dt,
       reconnects: new_state.reconnects,
       url: new_state.url,
       last_disconnect: nil
@@ -256,11 +264,24 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       # Get current stats to preserve existing values
       current_stats = Stats.get_stats()
 
+      # Ensure startup_time is a DateTime object, not an integer timestamp
+      startup_time =
+        cond do
+          current_stats && current_stats.websocket && current_stats.websocket.startup_time ->
+            current_stats.websocket.startup_time
+
+          is_integer(state.startup_time) ->
+            DateTime.from_unix!(state.startup_time)
+
+          true ->
+            DateTime.utc_now()
+        end
+
       Stats.update_websocket(%{
         connected: true,
         connecting: false,
         last_message: now,
-        startup_time: current_stats.websocket.startup_time || state.startup_time,
+        startup_time: startup_time,
         reconnects: state.reconnects,
         url: state.url
       })

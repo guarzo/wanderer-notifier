@@ -200,6 +200,21 @@ defmodule WandererNotifier.Api.Map.Characters do
         AppLogger.api_debug("Characters API endpoint successful")
         {:ok, body}
 
+      {:ok, %{status_code: 429, headers: headers}} ->
+        # Special handling for rate limiting
+        retry_after = extract_retry_after(headers)
+        # Default to 5 seconds if no Retry-After header
+        wait_time = retry_after || 5000
+
+        AppLogger.api_warn(
+          "⚠️ Rate limited (429) received from API. Waiting #{wait_time}ms before retrying."
+        )
+
+        :timer.sleep(wait_time)
+
+        # Try again after waiting
+        fetch_characters_body(chars_url)
+
       {:ok, %{status_code: status_code, body: body}} ->
         AppLogger.api_error("API returned non-200 status",
           status_code: status_code,
@@ -211,6 +226,27 @@ defmodule WandererNotifier.Api.Map.Characters do
       {:error, reason} ->
         AppLogger.api_error("API request failed", error: inspect(reason))
         {:error, reason}
+    end
+  end
+
+  # Extract the Retry-After header if present
+  defp extract_retry_after(headers) do
+    retry_header =
+      Enum.find(headers, fn {header_name, _} ->
+        String.downcase(header_name) == "retry-after"
+      end)
+
+    case retry_header do
+      {_, value} ->
+        # Try to parse as integer seconds
+        case Integer.parse(value) do
+          # Convert to milliseconds
+          {seconds, _} -> seconds * 1000
+          :error -> nil
+        end
+
+      nil ->
+        nil
     end
   end
 

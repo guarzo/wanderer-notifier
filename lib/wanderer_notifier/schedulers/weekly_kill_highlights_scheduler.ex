@@ -19,8 +19,70 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   # EVE Online type IDs
   # Structure category
   @structure_category_id 65
+  # Deployable category
+  @deployable_category_id 22
   # Capsule (pod) type ID
   @pod_type_id 670
+  # Default ship category ID for non-structure ships
+  @ship_category_id 6
+
+  # Known structure group IDs (partial list of important ones)
+  @structure_group_ids [
+    # Citadels and other upwell structures
+    # Citadels (Astrahus, Fortizar, Keepstar)
+    1657,
+    # Engineering Complexes (Raitaru, Azbel, Sotiyo)
+    1404,
+    # Refineries (Athanor, Tatara)
+    1406,
+    # Other structure types
+    # Starbases (POS)
+    365,
+    # Starbase Control Towers
+    297,
+    # Infrastructure Hubs (iHubs)
+    1025,
+    # FLEX Structures
+    1876,
+    # Engineering Complexes (Legacy)
+    1677,
+    # Observatories
+    1927,
+    # Forward Operating Bases
+    1980
+  ]
+
+  # Known deployable group IDs
+  @deployable_group_ids [
+    # Mobile Depots
+    361,
+    # Mobile Tractor Units
+    363,
+    # Mobile Siphon Units
+    715,
+    # Mobile Scan Inhibitors
+    1022,
+    # Ship Maintenance Arrays
+    1247,
+    # Corporate Hangar Arrays
+    1249,
+    # Mobile Cyno Inhibitors
+    1246,
+    # Mobile Missile Sentry
+    1248,
+    # Mobile Warp Disruptors
+    1201,
+    # Mobile Micro Jump Units
+    1297,
+    # Mobile Service Units
+    1275
+  ]
+
+  # Add alias for ESI service
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
+
+  # Cached structure type IDs to avoid redundant API calls
+  @structure_types_cache_key :structure_types_cache
 
   @impl true
   def enabled? do
@@ -244,7 +306,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         |> Query.filter(kill_time >= ^start_date)
         |> Query.filter(kill_time <= ^end_date)
         |> Query.filter(ship_type_id != ^@pod_type_id)
-        |> Query.filter(ship_type_id != ^@structure_category_id)
         |> Query.sort(total_value: :desc)
         |> Query.limit(100)
 
@@ -259,6 +320,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
           AppLogger.scheduler_info("Found #{kills_count} total kills in date range")
 
           # Filter to keep only kills where the character is actually tracked
+          # and where the victim ship is not a structure or deployable
           tracked_kills =
             Enum.filter(kills, fn kill ->
               # Convert the related_character_id to integer to match our list
@@ -273,13 +335,32 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
               is_tracked = Enum.member?(all_tracked_character_ids, character_id_int)
 
               # Log which characters aren't tracked for debugging
-              unless is_tracked do
+              if !is_tracked do
                 AppLogger.scheduler_debug(
                   "Character #{character_id} is not tracked - ignoring kill #{kill.killmail_id}"
                 )
               end
 
-              is_tracked
+              # Get victim ship type ID to check if it's a structure or deployable
+              victim_ship_type_id =
+                if kill.victim_data && is_map(kill.victim_data) do
+                  Map.get(kill.victim_data, "ship_type_id")
+                else
+                  nil
+                end
+
+              # Check if the victim ship is a structure or deployable
+              is_structure_or_deployable =
+                victim_ship_type_id && is_structure_or_deployable?(victim_ship_type_id)
+
+              if is_structure_or_deployable do
+                AppLogger.scheduler_debug(
+                  "Victim ship is a structure or deployable - ignoring kill #{kill.killmail_id}"
+                )
+              end
+
+              # Include kill only if character is tracked and victim ship is not a structure or deployable
+              is_tracked && !is_structure_or_deployable
             end)
 
           # Group by killmail_id to handle multiple tracked characters in same killmail
@@ -424,7 +505,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         |> Query.filter(kill_time >= ^start_date)
         |> Query.filter(kill_time <= ^end_date)
         |> Query.filter(ship_type_id != ^@pod_type_id)
-        |> Query.filter(ship_type_id != ^@structure_category_id)
         |> Query.sort(total_value: :desc)
         |> Query.limit(100)
 
@@ -439,6 +519,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
           AppLogger.scheduler_info("Found #{losses_count} total losses in date range")
 
           # Filter to keep only losses where the character is actually tracked
+          # and the ship is not a structure or deployable
           tracked_losses =
             Enum.filter(losses, fn loss ->
               # Convert the related_character_id to integer to match our list
@@ -453,13 +534,26 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
               is_tracked = Enum.member?(all_tracked_character_ids, character_id_int)
 
               # Log which characters aren't tracked for debugging
-              unless is_tracked do
+              if !is_tracked do
                 AppLogger.scheduler_debug(
                   "Character #{character_id} is not tracked - ignoring loss #{loss.killmail_id}"
                 )
               end
 
-              is_tracked
+              # Check if the ship that was lost is a structure or deployable
+              ship_type_id = loss.ship_type_id
+
+              is_structure_or_deployable =
+                ship_type_id && is_structure_or_deployable?(ship_type_id)
+
+              if is_structure_or_deployable do
+                AppLogger.scheduler_debug(
+                  "Lost ship is a structure or deployable - ignoring loss #{loss.killmail_id}"
+                )
+              end
+
+              # Include loss only if character is tracked and ship is not a structure or deployable
+              is_tracked && !is_structure_or_deployable
             end)
 
           # Group by killmail_id to handle multiple tracked characters in same killmail
@@ -1147,19 +1241,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         embed
       end
 
-    # Add view link field
-    updated_fields =
-      embed["fields"] ++
-        [
-          %{
-            "name" => "Links",
-            "value" => "[View on zKillboard](#{zkill_url})",
-            "inline" => false
-          }
-        ]
-
-    embed = %{embed | "fields" => updated_fields}
-
     # Add thumbnail if possible
     embed =
       if is_kill do
@@ -1330,5 +1411,92 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   # For dependency injection in tests
   defp config do
     Application.get_env(:wanderer_notifier, :config_module, NotificationConfig)
+  end
+
+  # Check if a ship type ID belongs to a structure or deployable category/group
+  defp is_structure_or_deployable?(ship_type_id) when is_nil(ship_type_id), do: false
+
+  defp is_structure_or_deployable?(ship_type_id) do
+    # Convert to integer if needed
+    type_id =
+      case ship_type_id do
+        id when is_integer(id) ->
+          id
+
+        id when is_binary(id) ->
+          case Integer.parse(id) do
+            {int_id, _} -> int_id
+            :error -> nil
+          end
+
+        _ ->
+          nil
+      end
+
+    if is_nil(type_id) do
+      false
+    else
+      # Check the process dictionary cache first
+      case Process.get(@structure_types_cache_key) do
+        nil ->
+          # Initialize cache
+          Process.put(@structure_types_cache_key, %{})
+          check_and_cache_structure_type(type_id)
+
+        cache when is_map(cache) ->
+          # Check if we have this type ID in cache
+          case Map.get(cache, type_id) do
+            nil ->
+              # Not in cache, look it up
+              check_and_cache_structure_type(type_id)
+
+            is_structure ->
+              # Return cached result
+              is_structure
+          end
+      end
+    end
+  end
+
+  # Check ESI API for type information and cache result
+  defp check_and_cache_structure_type(type_id) do
+    # Try to get type information from ESI
+    case ESIService.get_type_info(type_id) do
+      {:ok, type_info} when is_map(type_info) ->
+        # Extract category ID and group ID from type info
+        category_id = Map.get(type_info, "category_id")
+        group_id = Map.get(type_info, "group_id")
+
+        AppLogger.scheduler_debug(
+          "ESI type info for type_id #{type_id}: category_id=#{category_id}, group_id=#{group_id}"
+        )
+
+        # Check if it's a structure by category ID or in our known structure group IDs
+        # Also check for deployable categories and groups
+        is_structure =
+          category_id == @structure_category_id ||
+            category_id == @deployable_category_id ||
+            (group_id && (group_id in @structure_group_ids || group_id in @deployable_group_ids))
+
+        # Cache the result
+        cache = Process.get(@structure_types_cache_key)
+        updated_cache = Map.put(cache, type_id, is_structure)
+        Process.put(@structure_types_cache_key, updated_cache)
+
+        is_structure
+
+      error ->
+        # Log error and default to false
+        AppLogger.scheduler_warn(
+          "Failed to get type info for type_id #{type_id}: #{inspect(error)}"
+        )
+
+        # Cache as false to avoid repeated failures
+        cache = Process.get(@structure_types_cache_key)
+        updated_cache = Map.put(cache, type_id, false)
+        Process.put(@structure_types_cache_key, updated_cache)
+
+        false
+    end
   end
 end

@@ -100,7 +100,8 @@ defmodule WandererNotifier.Api.Http.ErrorHandler do
       :connect_timeout,
       :checkout_timeout,
       :overload,
-      :service_unavailable
+      :service_unavailable,
+      {:domain_error, :map, :rate_limited}
     ]
   end
 

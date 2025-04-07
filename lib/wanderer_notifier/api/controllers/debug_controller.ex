@@ -237,8 +237,9 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
     %{
       notifications: %{
         total: 0,
-        success: 0,
-        error: 0
+        kills: 0,
+        systems: 0,
+        characters: 0
       },
       websocket: %{
         connected: false,
@@ -246,6 +247,15 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
         messages_received: 0,
         messages_processed: 0,
         errors: 0
+      },
+      processing: %{
+        kills_processed: 0,
+        kills_notified: 0
+      },
+      first_notifications: %{
+        kill: true,
+        character: true,
+        system: true
       }
     }
   end

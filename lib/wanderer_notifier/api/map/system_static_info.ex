@@ -153,7 +153,12 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   end
 
   # Make the actual API request for static info
-  defp make_static_info_request(url, headers) do
+  defp make_static_info_request(url, headers, retry_count \\ 0) do
+    # Default backoff settings
+    max_retries = 3
+    initial_backoff_ms = 1000
+    max_backoff_ms = 5000
+
     case Client.get(url, headers) do
       {:ok, response} ->
         # Process the response with proper validation
@@ -166,9 +171,45 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
             # Validate the static info format
             validate_static_info(parsed_response)
 
+          {:error, :rate_limited} when retry_count < max_retries ->
+            # Calculate exponential backoff with jitter
+            current_backoff = min(initial_backoff_ms * :math.pow(2, retry_count), max_backoff_ms)
+            jitter = :rand.uniform(trunc(current_backoff * 0.2))
+            actual_backoff = trunc(current_backoff + jitter)
+
+            AppLogger.api_warn("[SystemStaticInfo] Rate limited, retrying",
+              retry_count: retry_count + 1,
+              max_retries: max_retries,
+              backoff_ms: actual_backoff
+            )
+
+            # Sleep for the backoff period
+            :timer.sleep(actual_backoff)
+
+            # Retry the request
+            make_static_info_request(url, headers, retry_count + 1)
+
           error ->
             error
         end
+
+      {:error, :rate_limited} when retry_count < max_retries ->
+        # Calculate exponential backoff with jitter
+        current_backoff = min(initial_backoff_ms * :math.pow(2, retry_count), max_backoff_ms)
+        jitter = :rand.uniform(trunc(current_backoff * 0.2))
+        actual_backoff = trunc(current_backoff + jitter)
+
+        AppLogger.api_warn("[SystemStaticInfo] Rate limited, retrying",
+          retry_count: retry_count + 1,
+          max_retries: max_retries,
+          backoff_ms: actual_backoff
+        )
+
+        # Sleep for the backoff period
+        :timer.sleep(actual_backoff)
+
+        # Retry the request
+        make_static_info_request(url, headers, retry_count + 1)
 
       {:error, reason} ->
         AppLogger.api_error("[SystemStaticInfo] Request failed",
