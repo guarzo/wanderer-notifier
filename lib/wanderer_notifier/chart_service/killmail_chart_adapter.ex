@@ -581,7 +581,10 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
           decimal ->
             # Safely convert to float, handling potential errors
             try do
-              Decimal.to_float(decimal) / 1_000_000.0
+              decimal
+              |> Decimal.round(2)
+              |> Decimal.to_float()
+              |> Kernel./(1_000_000.0)
             rescue
               _ -> 0.0
             end

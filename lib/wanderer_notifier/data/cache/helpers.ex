@@ -163,17 +163,16 @@ defmodule WandererNotifier.Data.Cache.Helpers do
   def get_character_name(character_id) do
     key = CacheKeys.character(character_id)
 
-    AppLogger.cache_debug("Getting character name from cache", %{
-      key: key,
-      character_id: character_id
-    })
+    AppLogger.cache_debug("Getting character name from cache for character ID #{character_id}",
+      key: key
+    )
 
     case repo_module().get(key) do
       nil ->
-        AppLogger.cache_debug("Character name not found in cache", %{
-          key: key,
-          character_id: character_id
-        })
+        AppLogger.cache_debug(
+          "Character name not found in cache for character ID #{character_id}",
+          key: key
+        )
 
         # Attempt to fetch from ESI and cache it
         case fetch_and_cache_character_name(character_id) do
@@ -181,38 +180,56 @@ defmodule WandererNotifier.Data.Cache.Helpers do
           error -> error
         end
 
-      # Valid name found in cache
+      # Valid name found in cache as a string
       name when is_binary(name) and name != "" and name != "Unknown" and name != "Unknown Pilot" ->
-        AppLogger.cache_debug("Retrieved character name from cache", %{
-          key: key,
-          character_id: character_id,
-          name: name
-        })
+        AppLogger.cache_debug(
+          "Retrieved character name '#{name}' from cache for character ID #{character_id}",
+          key: key
+        )
 
         {:ok, name}
 
       # Return "Unknown" or "Unknown Pilot" without retrying if it was cached recently
       name when is_binary(name) and name in ["Unknown", "Unknown Pilot"] ->
-        AppLogger.cache_debug("Retrieved fallback character name from cache", %{
-          key: key,
-          character_id: character_id,
-          name: name
-        })
+        AppLogger.cache_debug(
+          "Retrieved fallback character name '#{name}' from cache for character ID #{character_id}",
+          key: key
+        )
 
         # Return the name even though it's a fallback - this prevents constant retries
         {:ok, name}
 
+      # Handle Character struct - extract name from it
+      %WandererNotifier.Data.Character{name: char_name}
+      when is_binary(char_name) and char_name != "" ->
+        AppLogger.cache_debug(
+          "Retrieved character name '#{char_name}' from Character struct for character ID #{character_id}",
+          key: key
+        )
+
+        # Consider updating the cache to store just the name string for future lookups
+        repo_module().set(key, char_name, 86_400)
+        {:ok, char_name}
+
+      # Handle map with name field (in case it's not a proper struct but has the field)
+      %{name: char_name} when is_binary(char_name) and char_name != "" ->
+        AppLogger.cache_debug(
+          "Retrieved character name '#{char_name}' from map for character ID #{character_id}",
+          key: key
+        )
+
+        # Consider updating the cache to store just the name string for future lookups
+        repo_module().set(key, char_name, 86_400)
+        {:ok, char_name}
+
       invalid ->
-        AppLogger.cache_warn("Invalid character name data in cache", %{
-          key: key,
-          character_id: character_id,
-          type: typeof(invalid),
-          value: inspect(invalid)
-        })
+        AppLogger.cache_warn(
+          "Invalid character name data in cache for character ID #{character_id}: #{typeof(invalid)}, value: #{inspect(invalid)}",
+          key: key
+        )
 
         # Clear the invalid cache entry
         repo_module().delete(key)
-
         # Attempt to fetch from ESI and cache it
         case fetch_and_cache_character_name(character_id) do
           {:ok, name} -> {:ok, name}
