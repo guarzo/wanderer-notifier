@@ -416,6 +416,20 @@ defmodule WandererNotifier.Data.Cache.Keys do
     join_parts([@prefix_map, @entity_region, to_string(id)])
   end
 
+  @doc """
+  Generates a cache key for a character's processed kills.
+  Used to track which killmails have already been processed for a character.
+
+  ## Examples
+      iex> WandererNotifier.Data.Cache.Keys.character_processed_kills(12345)
+      "character:12345:processed_kills"
+  """
+  @spec character_processed_kills(integer() | String.t()) :: String.t()
+  def character_processed_kills(character_id)
+      when is_integer(character_id) or is_binary(character_id) do
+    join_parts([@entity_character, to_string(character_id), "processed_kills"])
+  end
+
   # Helper to join parts with the separator
   defp join_parts(parts) when is_list(parts) do
     Enum.join(parts, @separator)

@@ -187,12 +187,9 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   end
 
   defp create_realtime_context(character_id, character_name) do
-    %Context{
-      mode: %{mode: :realtime},
-      character_id: character_id,
-      character_name: character_name,
-      source: :zkill_websocket
-    }
+    # Use the proper Context.new_realtime function to ensure a valid mode
+    alias WandererNotifier.KillmailProcessing.Context
+    Context.new_realtime(character_id, character_name, :zkill_websocket, %{})
   end
 
   defp log_zkill_error(kill_id, error) do

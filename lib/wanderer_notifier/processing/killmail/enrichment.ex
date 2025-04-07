@@ -66,27 +66,41 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   def enrich_killmail_data(%Killmail{} = killmail) do
     %Killmail{esi_data: esi_data} = killmail
 
-    # Log detailed raw data for debugging
-    AppLogger.kill_debug("[Enrichment] Raw killmail data debugging",
-      kill_id: killmail.killmail_id,
-      raw_zkb_data: inspect(killmail.zkb, limit: 2000, pretty: true),
-      raw_esi_data: inspect(esi_data, limit: 2000, pretty: true)
+    # Print killmail enrichment header only when logging is enabled
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("\n=====================================================")
+      IO.puts("🔍 ENRICHING KILLMAIL #{killmail.killmail_id}")
+      IO.puts("=====================================================\n")
+    end
+
+    # Continue with regular AppLogger for non-IO.puts logging
+    AppLogger.kill_debug(
+      "[Enrichment] Starting enrichment process for killmail #{killmail.killmail_id}"
     )
 
-    AppLogger.kill_debug("[Enrichment] Starting enrichment process",
-      kill_id: killmail.killmail_id,
-      initial_esi_data: inspect(esi_data, limit: 500)
-    )
+    # Debug logging the initial state
+    AppLogger.kill_debug("[Enrichment] Initial state:", %{
+      has_esi_data: not is_nil(esi_data),
+      has_victim: is_map(esi_data) && Map.has_key?(esi_data, "victim"),
+      has_attackers: is_map(esi_data) && Map.has_key?(esi_data, "attackers"),
+      has_system_id: is_map(esi_data) && Map.has_key?(esi_data, "solar_system_id"),
+      has_system_name: is_map(esi_data) && Map.has_key?(esi_data, "solar_system_name")
+    })
 
-    # Enrich with system name and region info if needed
+    # If esi_data is nil, initialize it
+    esi_data = if is_nil(esi_data), do: %{}, else: esi_data
+
+    # Print header for system data enrichment
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("\n------ SOLAR SYSTEM DATA ------")
+    end
+
+    # Enrich with system name if needed
     esi_data = enrich_with_system_name(esi_data)
-    esi_data = enrich_with_region_info(esi_data)
 
-    AppLogger.kill_debug("[Enrichment] After system and region enrichment",
+    AppLogger.kill_debug("[Enrichment] After system name enrichment",
       kill_id: killmail.killmail_id,
       system_name: Map.get(esi_data, "solar_system_name"),
-      region_id: Map.get(esi_data, "region_id"),
-      region_name: Map.get(esi_data, "region_name"),
       has_victim: Map.has_key?(esi_data, "victim"),
       has_attackers: Map.has_key?(esi_data, "attackers")
     )
@@ -96,12 +110,26 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       if Map.has_key?(esi_data, "victim") do
         victim = Map.get(esi_data, "victim")
 
+        # Print header for victim data
+        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+          IO.puts("\n------ VICTIM DATA ------")
+        end
+
         AppLogger.kill_debug("[Enrichment] Processing victim data",
           kill_id: killmail.killmail_id,
           victim_data: inspect(victim, limit: 200)
         )
 
         enriched_victim = enrich_entity(victim)
+
+        # Log the enriched victim data specifically
+        AppLogger.kill_debug("[Enrichment] Victim after enrichment",
+          ship_type_name: Map.get(enriched_victim, "ship_type_name"),
+          character_name: Map.get(enriched_victim, "character_name"),
+          corporation_name: Map.get(enriched_victim, "corporation_name"),
+          alliance_name: Map.get(enriched_victim, "alliance_name")
+        )
+
         Map.put(esi_data, "victim", enriched_victim)
       else
         # Log and continue without adding placeholder
@@ -117,14 +145,33 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       if Map.has_key?(esi_data, "attackers") do
         attackers = Map.get(esi_data, "attackers", [])
 
+        # Print header for attacker data
+        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+          IO.puts("\n------ ATTACKER DATA ------")
+        end
+
         AppLogger.kill_debug("[Enrichment] Processing attackers data",
           kill_id: killmail.killmail_id,
-          attackers_count: length(attackers),
-          sample_attacker:
-            if(length(attackers) > 0, do: inspect(hd(attackers), limit: 200), else: nil)
+          attackers_count: length(attackers)
         )
 
-        enriched_attackers = Enum.map(attackers, &enrich_entity/1)
+        enriched_attackers =
+          Enum.map(attackers, fn attacker ->
+            enriched = enrich_entity(attacker)
+
+            # Log each enriched attacker
+            if Map.get(attacker, "final_blow") == true do
+              AppLogger.kill_debug("[Enrichment] Final blow attacker after enrichment",
+                ship_type_name: Map.get(enriched, "ship_type_name"),
+                character_name: Map.get(enriched, "character_name"),
+                corporation_name: Map.get(enriched, "corporation_name"),
+                alliance_name: Map.get(enriched, "alliance_name")
+              )
+            end
+
+            enriched
+          end)
+
         Map.put(esi_data, "attackers", enriched_attackers)
       else
         # Log and continue without adding placeholder
@@ -135,9 +182,15 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         esi_data
       end
 
-    AppLogger.kill_debug("[Enrichment] Completed enrichment process",
-      kill_id: killmail.killmail_id,
-      final_esi_data: inspect(esi_data, limit: 500)
+    # Print enrichment completion message
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("\n=====================================================")
+      IO.puts("✅ ENRICHMENT COMPLETED FOR KILLMAIL #{killmail.killmail_id}")
+      IO.puts("=====================================================\n")
+    end
+
+    AppLogger.kill_debug(
+      "[Enrichment] Completed enrichment process for killmail #{killmail.killmail_id}"
     )
 
     # Return updated killmail with enriched ESI data
@@ -148,8 +201,17 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Enrich entity (victim or attacker) with additional information
   defp enrich_entity(entity) when is_map(entity) do
-    AppLogger.kill_debug("[Enrichment] Enriching entity: #{inspect(entity)}")
+    # Log the start of entity enrichment using IO.puts
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      if Map.has_key?(entity, "character_id") do
+        character_id = Map.get(entity, "character_id")
+        IO.puts("\n------ ENTITY ENRICHMENT (ID: #{character_id}) ------")
+      else
+        IO.puts("\n------ ENTITY ENRICHMENT (Unknown ID) ------")
+      end
+    end
 
+    # Directly apply the enrichment steps in sequence
     enriched =
       entity
       |> add_character_name()
@@ -157,7 +219,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       |> add_alliance_name()
       |> add_ship_name()
 
-    AppLogger.kill_debug("[Enrichment] Enriched entity result: #{inspect(enriched)}")
+    # Add a visual separator after the entity enrichment
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("----------------------------------------")
+    end
+
     enriched
   end
 
@@ -200,29 +266,40 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp add_ship_name(entity) do
     if Map.has_key?(entity, "ship_type_id") do
       ship_type_id = Map.get(entity, "ship_type_id")
-      AppLogger.kill_debug("[Enrichment] Fetching ship name for ID: #{ship_type_id}")
+
+      # Log using IO.puts format
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("SHIP_TYPE_ID: #{ship_type_id}")
+      end
 
       case ESIService.get_ship_type_name(ship_type_id) do
         {:ok, %{"name" => name}} ->
-          AppLogger.kill_debug("[Enrichment] Got ship name: #{name}")
+          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+            IO.puts("SHIP_TYPE_NAME: #{name}")
+          end
+
           Map.put(entity, "ship_type_name", name)
 
         {:error, reason} ->
-          AppLogger.kill_warn(
-            "[Enrichment] Failed to get ship name for ID #{ship_type_id}: #{inspect(reason)}"
-          )
+          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+            IO.puts("SHIP_TYPE_NAME: Unknown Ship (ESI error: #{inspect(reason)})")
+          end
 
           Map.put(entity, "ship_type_name", "Unknown Ship")
 
         _ ->
-          AppLogger.kill_warn(
-            "[Enrichment] Unexpected response when fetching ship name for ID #{ship_type_id}"
-          )
+          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+            IO.puts("SHIP_TYPE_NAME: Unknown Ship (unexpected response)")
+          end
 
           Map.put(entity, "ship_type_name", "Unknown Ship")
       end
     else
-      AppLogger.kill_debug("[Enrichment] No ship_type_id found in entity")
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("SHIP_TYPE_ID: unknown (not present in data)")
+        IO.puts("SHIP_TYPE_NAME: Unknown Ship (no type ID available)")
+      end
+
       entity
     end
   end
@@ -231,27 +308,47 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp add_entity_info(entity, id_key, name_key, fetch_fn, default_name) do
     if Map.has_key?(entity, id_key) do
       id = Map.get(entity, id_key)
-      AppLogger.kill_debug("[Enrichment] Fetching #{name_key} for ID: #{id}")
-      name = fetch_entity_name(id, fetch_fn, default_name)
-      AppLogger.kill_debug("[Enrichment] Got name: #{name}")
-      Map.put(entity, name_key, name)
+
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        id_key_upper = String.upcase(id_key)
+        IO.puts("#{id_key_upper}: #{id}")
+      end
+
+      case fetch_fn.(id) do
+        {:ok, info} ->
+          name = Map.get(info, "name", default_name)
+
+          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+            name_key_upper = String.upcase(name_key)
+            IO.puts("#{name_key_upper}: #{name}")
+          end
+
+          Map.put(entity, name_key, name)
+
+        error ->
+          # Add explicit error logging for ESI failures
+          AppLogger.kill_warn("ESI resolution failed for #{id_key}", %{
+            entity_id: id,
+            entity_type: id_key,
+            error: inspect(error)
+          })
+
+          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+            name_key_upper = String.upcase(name_key)
+            IO.puts("#{name_key_upper}: #{default_name} (ESI error: #{inspect(error)})")
+          end
+
+          Map.put(entity, name_key, default_name)
+      end
     else
-      AppLogger.kill_debug("[Enrichment] No #{id_key} found in entity")
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        id_key_upper = String.upcase(id_key)
+        name_key_upper = String.upcase(name_key)
+        IO.puts("#{id_key_upper}: unknown (not present in data)")
+        IO.puts("#{name_key_upper}: #{default_name} (no ID available)")
+      end
+
       entity
-    end
-  end
-
-  # Fetch entity name from ESI API
-  defp fetch_entity_name(id, fetch_fn, default_name) do
-    case fetch_fn.(id) do
-      {:ok, info} ->
-        name = Map.get(info, "name", default_name)
-        AppLogger.kill_debug("[Enrichment] Successfully fetched name: #{name}")
-        name
-
-      error ->
-        AppLogger.kill_warn("[Enrichment] Failed to fetch name: #{inspect(error)}")
-        default_name
     end
   end
 
@@ -259,190 +356,58 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
     # Already has a system name, no need to add it
     if Map.has_key?(esi_data, "solar_system_name") do
+      system_name = Map.get(esi_data, "solar_system_name")
+
+      # Log using IO.puts to match the killmail_tools format
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (already present)")
+      end
+
       esi_data
     else
-      add_system_name_to_data(esi_data)
-    end
-  end
+      system_id = Map.get(esi_data, "solar_system_id")
 
-  defp enrich_with_system_name(data), do: data
+      # Log using IO.puts to match the killmail_tools format
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("SOLAR_SYSTEM_ID: #{system_id}")
+      end
 
-  # Helper to add system name if system_id exists
-  defp add_system_name_to_data(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
+      # No system ID, return original data
+      if is_nil(system_id) do
+        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+          IO.puts("SOLAR_SYSTEM_NAME: Unknown System (no system ID available)")
+        end
 
-    # No system ID, return original data
-    if is_nil(system_id) do
-      AppLogger.kill_warning("[Enrichment] No system ID available in killmail data")
-      esi_data
-    else
-      # Get system name and add it if found
-      system_name = get_system_name(system_id)
-      add_system_name_if_found(esi_data, system_id, system_name)
-    end
-  end
+        Map.put(esi_data, "solar_system_name", "Unknown System")
+      else
+        # Get system name and add it if found
+        case ESIService.get_system_info(system_id) do
+          {:ok, system_info} ->
+            system_name = Map.get(system_info, "name")
 
-  # Add system name to data if found
-  defp add_system_name_if_found(esi_data, system_id, nil) do
-    AppLogger.kill_debug("[Enrichment] No system name found for ID #{system_id}")
-    esi_data
-  end
-
-  defp add_system_name_if_found(esi_data, _system_id, system_name) do
-    Map.put(esi_data, "solar_system_name", system_name)
-  end
-
-  # Helper method to get system name from ESI
-  defp get_system_name(system_id) do
-    case ESIService.get_system_info(system_id) do
-      {:ok, system_info} -> Map.get(system_info, "name")
-      _ -> nil
-    end
-  end
-
-  # Add region information to ESI data if missing
-  defp enrich_with_region_info(esi_data) when is_map(esi_data) do
-    # Skip if already has region information
-    if Map.has_key?(esi_data, "region_name") and Map.has_key?(esi_data, "region_id") do
-      esi_data
-    else
-      add_region_info_to_data(esi_data)
-    end
-  end
-
-  defp enrich_with_region_info(data), do: data
-
-  # Helper to add region info based on system_id
-  defp add_region_info_to_data(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
-
-    # No system ID, return original data
-    if is_nil(system_id) do
-      AppLogger.kill_warning("[Enrichment] No system ID available for region lookup")
-      esi_data
-    else
-      # Try to get system info which includes constellation (which includes region)
-      AppLogger.kill_debug("[Enrichment] Getting system info for region lookup",
-        system_id: system_id
-      )
-
-      case ESIService.get_system_info(system_id) do
-        {:ok, system_info} ->
-          # Log the raw system info for debugging
-          AppLogger.kill_debug("[Enrichment] Got system info for region lookup",
-            system_id: system_id,
-            system_info: inspect(system_info, limit: 1000, pretty: true)
-          )
-
-          # Extract constellation ID from system info
-          constellation_id = Map.get(system_info, "constellation_id")
-
-          if constellation_id do
-            # Get constellation info to find region
-            AppLogger.kill_debug("[Enrichment] Getting constellation info for region lookup",
-              constellation_id: constellation_id
-            )
-
-            case ESIService.get_constellation_info(constellation_id) do
-              {:ok, constellation_info} ->
-                # Log the raw constellation info for debugging
-                AppLogger.kill_debug("[Enrichment] Got constellation info for region lookup",
-                  constellation_id: constellation_id,
-                  constellation_info: inspect(constellation_info, limit: 1000, pretty: true)
-                )
-
-                region_id = Map.get(constellation_info, "region_id")
-
-                if region_id do
-                  # Get region name
-                  AppLogger.kill_debug("[Enrichment] Getting region info",
-                    region_id: region_id
-                  )
-
-                  case ESIService.get_region_name(region_id) do
-                    {:ok, region_info} ->
-                      # Log the raw region info for debugging
-                      AppLogger.kill_debug("[Enrichment] Got region info",
-                        region_id: region_id,
-                        region_info: inspect(region_info, limit: 1000, pretty: true)
-                      )
-
-                      region_name = Map.get(region_info, "name", "Unknown Region")
-
-                      AppLogger.kill_debug("[Enrichment] Successfully added region info",
-                        region_id: region_id,
-                        region_name: region_name
-                      )
-
-                      esi_data
-                      |> Map.put("region_id", region_id)
-                      |> Map.put("region_name", region_name)
-
-                    error ->
-                      AppLogger.kill_warning("[Enrichment] Failed to get region info",
-                        region_id: region_id,
-                        error: inspect(error)
-                      )
-
-                      # Could find region ID but not name
-                      esi_data
-                      |> Map.put("region_id", region_id)
-                      |> Map.put("region_name", handle_wormhole_region(system_id))
-                  end
-                else
-                  AppLogger.kill_warning("[Enrichment] No region ID in constellation info",
-                    constellation_id: constellation_id
-                  )
-
-                  # Fallback for wormhole systems which may not have standard regions
-                  esi_data
-                  |> Map.put("region_name", handle_wormhole_region(system_id))
-                end
-
-              error ->
-                AppLogger.kill_warning("[Enrichment] Failed to get constellation info",
-                  constellation_id: constellation_id,
-                  error: inspect(error)
-                )
-
-                # Could not get constellation info
-                esi_data
-                |> Map.put("region_name", handle_wormhole_region(system_id))
+            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+              IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI)")
             end
-          else
-            AppLogger.kill_warning("[Enrichment] No constellation ID in system info",
-              system_id: system_id
-            )
 
-            # No constellation ID found
-            esi_data
-            |> Map.put("region_name", handle_wormhole_region(system_id))
-          end
+            Map.put(esi_data, "solar_system_name", system_name)
 
-        error ->
-          AppLogger.kill_warning("[Enrichment] Failed to get system info",
-            system_id: system_id,
-            error: inspect(error)
-          )
+          {:error, reason} ->
+            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (ESI API error: #{inspect(reason)})")
+            end
 
-          # Could not get system info
-          esi_data
-          |> Map.put("region_name", handle_wormhole_region(system_id))
+            Map.put(esi_data, "solar_system_name", "Unknown System")
+
+          _ ->
+            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (unexpected ESI response)")
+            end
+
+            Map.put(esi_data, "solar_system_name", "Unknown System")
+        end
       end
     end
   end
 
-  # For wormhole systems that don't have regions in ESI
-  defp handle_wormhole_region(system_id) when is_integer(system_id) do
-    system_id_str = to_string(system_id)
-
-    # Higher ranges are typically wormhole systems
-    if system_id > 31_000_000 do
-      "J-Space"
-    else
-      "Unknown Region"
-    end
-  end
-
-  defp handle_wormhole_region(_), do: "Unknown Region"
+  defp enrich_with_system_name(data), do: data
 end

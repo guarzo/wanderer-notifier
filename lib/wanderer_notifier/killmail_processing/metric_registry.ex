@@ -8,7 +8,7 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # List of processing modes
-  @processing_modes ["realtime", "historical", "manual", "batch"]
+  @processing_modes ["realtime", "historical", "manual", "batch", "unknown"]
 
   # List of metric operations
   @metric_operations [
@@ -20,18 +20,22 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
     "processing.historical.complete",
     "processing.manual.complete",
     "processing.batch.complete",
+    "processing.unknown.complete",
     "processing.realtime.complete.success",
     "processing.historical.complete.success",
     "processing.manual.complete.success",
     "processing.batch.complete.success",
+    "processing.unknown.complete.success",
     "processing.realtime.complete.error",
     "processing.historical.complete.error",
     "processing.manual.complete.error",
     "processing.batch.complete.error",
+    "processing.unknown.complete.error",
     "notification.realtime.sent",
     "notification.historical.sent",
     "notification.manual.sent",
-    "notification.batch.sent"
+    "notification.batch.sent",
+    "notification.unknown.sent"
   ]
 
   @doc """
@@ -63,26 +67,71 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
     build_metric_keys()
   end
 
+  @doc """
+  Helper function to check for metrics synchronization issues between registry and Metrics module.
+  Useful for debugging during development.
+  """
+  def check_registry_synchronization do
+    # Alias the Metrics module
+    alias WandererNotifier.KillmailProcessing.Metrics
+
+    # Get registry metrics as strings
+    registry_metrics = build_metric_keys() |> Enum.map(&Atom.to_string/1)
+
+    # Get metrics module registered metrics using reflection (only in dev/test)
+    metrics_map =
+      try do
+        # Verify module exists
+        apply(Metrics, :__info__, [:module])
+        apply(Metrics, :__registered_metrics_for_debug__, [])
+      rescue
+        UndefinedFunctionError -> %{}
+      end
+
+    # Metrics that are in registry but not in Metrics module
+    missing_in_metrics = Enum.filter(registry_metrics, fn m -> !Map.has_key?(metrics_map, m) end)
+
+    # Return diagnostic information
+    %{
+      registry_metrics_count: length(registry_metrics),
+      metrics_module_count: map_size(metrics_map),
+      missing_in_metrics_count: length(missing_in_metrics),
+      missing_in_metrics_samples: Enum.take(missing_in_metrics, 10)
+    }
+  end
+
   # Private function to build all metric keys
   defp build_metric_keys do
-    # Generate the full set of metric keys
-    # Create a key for the specific combination
-    # Create the atom to ensure it exists
-    # Also register these simplified metrics
-    (for operation <- @metric_operations,
-         mode <- @processing_modes do
-       key = "killmail.processing.#{mode}.#{operation}"
-       String.to_atom(key)
-     end ++
-       for mode <- @processing_modes do
-         [
-           String.to_atom("killmail.processing.#{mode}.start"),
-           String.to_atom("killmail.processing.#{mode}.skipped"),
-           String.to_atom("killmail.processing.#{mode}.error"),
-           String.to_atom("killmail.notification.#{mode}.sent")
-         ]
-       end)
-    |> List.flatten()
-    |> Enum.uniq()
+    # Generate the base set of metric keys that match the format expected in the Metrics module
+    base_metrics =
+      for mode <- @processing_modes do
+        [
+          # Base processing metrics
+          String.to_atom("killmail.processing.#{mode}.start"),
+          String.to_atom("killmail.processing.#{mode}.complete"),
+          String.to_atom("killmail.processing.#{mode}.complete.success"),
+          String.to_atom("killmail.processing.#{mode}.complete.error"),
+          String.to_atom("killmail.processing.#{mode}.skipped"),
+          String.to_atom("killmail.processing.#{mode}.error"),
+
+          # Persistence metrics
+          String.to_atom("killmail.persistence.#{mode}"),
+
+          # Notification metrics
+          String.to_atom("killmail.notification.#{mode}.sent"),
+
+          # Combined metrics directly added rather than generated
+          String.to_atom("killmail.processing.#{mode}.persistence"),
+
+          # Also add the problematic metrics we've seen in logs
+          String.to_atom("killmail.processing.#{mode}.complete.#{mode}")
+        ]
+      end
+      |> List.flatten()
+      |> Enum.uniq()
+
+    # Log the metrics we're registering
+    IO.puts("Registering #{length(base_metrics)} metrics")
+    base_metrics
   end
 end

@@ -249,4 +249,6 @@ If you encounter issues or have questions, please open an issue on the project r
     --volume=$HOME/neo4j/data:/data \
     --volume=$HOME/neo4j/logs:/logs \
     neo4j:latest
+
+      WandererNotifier.Debug.KillmailTools.log_next_killmail()
 ```

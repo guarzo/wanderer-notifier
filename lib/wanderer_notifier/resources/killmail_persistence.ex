@@ -32,7 +32,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Utils.ListUtils
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
@@ -57,7 +56,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Get characters from cache and ensure we return a proper list
     characters = CacheRepo.get(CacheKeys.character_list()) || []
 
-    AppLogger.persistence_info("Retrieved tracked characters from cache",
+    AppLogger.persistence_debug("Retrieved tracked characters from cache",
       character_count: length(ListUtils.ensure_list(characters)),
       characters: ListUtils.ensure_list(characters)
     )
@@ -74,7 +73,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     character_id_str = to_string(character_id)
 
     # Log the tracking check for debugging
-    AppLogger.persistence_info("Checking if character is tracked", %{
+    AppLogger.persistence_debug("Checking if character is tracked", %{
       character_id: character_id,
       tracked_characters_count: length(characters_list)
     })
@@ -216,13 +215,27 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       {:ok, role} ->
         character_name = get_character_name(killmail, character_id, role)
 
-        handle_tracked_character_found(
-          killmail,
-          to_string(killmail.killmail_id),
-          character_id,
-          character_name,
-          role
-        )
+        # Validate character data quality before proceeding
+        case validate_character_data_quality(character_id, character_name) do
+          {:ok, _, validated_name} ->
+            handle_tracked_character_found(
+              killmail,
+              to_string(killmail.killmail_id),
+              character_id,
+              validated_name,
+              role
+            )
+
+          {:error, reason} ->
+            AppLogger.kill_error("Character data quality validation failed",
+              killmail_id: killmail.killmail_id,
+              character_id: character_id,
+              character_name: character_name,
+              reason: reason
+            )
+
+            :ignored
+        end
 
       _ ->
         AppLogger.persistence_info("Could not determine role for character in killmail",
@@ -246,7 +259,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         )
 
       nil ->
-        AppLogger.persistence_info("No tracked character found in killmail",
+        AppLogger.kill_debug("No tracked character found in killmail",
           killmail_id: killmail.killmail_id
         )
 
@@ -256,9 +269,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   @impl true
   def maybe_persist_killmail(%KillmailStruct{} = killmail, character_id \\ nil) do
-    # First do a dry run to log what would be persisted (for debugging)
-    dry_run_persist_killmail(killmail, character_id)
-
     kill_id = killmail.killmail_id
     system_id = KillmailStruct.get_system_id(killmail)
     system_name = KillmailStruct.get(killmail, "solar_system_name") || "Unknown System"
@@ -285,7 +295,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         process_new_killmail(killmail, character_id_validated, kill_id, system_id, system_name)
 
       _ ->
-        AppLogger.kill_info("Killmail already exists", %{
+        AppLogger.kill_debug("Killmail already exists", %{
           kill_id: kill_id,
           system_id: system_id,
           system_name: system_name
@@ -295,109 +305,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @doc """
-  DEBUGGING FUNCTION: Performs a dry run of the killmail persistence process.
-  Logs what would be persisted but doesn't actually write to the database.
-
-  ## Parameters
-    - killmail: The killmail struct to process
-    - character_id: Optional character ID for persistence
-
-  ## Returns
-    - nothing meaningful; this is only for logging
-  """
-  def dry_run_persist_killmail(%KillmailStruct{} = killmail, character_id) do
-    # First log raw killmail debugging data
-    debug_data = KillmailStruct.debug_data(killmail)
-    AppLogger.kill_info("[DEBUG DRY-RUN] Raw killmail debug data:", debug_data)
-
-    # Find the character in the killmail
-    character_result =
-      if character_id do
-        # If character_id is provided, determine role
-        case determine_character_role(killmail, character_id) do
-          {:ok, role} ->
-            # Get character name
-            character_name = get_character_name(killmail, character_id, role)
-            {character_id, character_name, role}
-
-          _ ->
-            nil
-        end
-      else
-        # Find both the character and role at once
-        find_tracked_character_in_killmail(killmail)
-      end
-
-    # If we found a character, log what we would persist
-    case character_result do
-      {id, name, role} ->
-        # Transform the killmail without persisting
-        data_to_persist = transform_killmail_to_resource(killmail, id, name, role)
-
-        # Log the full data that would be persisted
-        AppLogger.kill_info("[DEBUG DRY-RUN] Would persist killmail:", %{
-          killmail_id: killmail.killmail_id,
-          character_id: id,
-          character_name: name,
-          character_role: role,
-          solar_system_id: data_to_persist.solar_system_id,
-          solar_system_name: data_to_persist.solar_system_name,
-          region_id: data_to_persist.region_id,
-          region_name: data_to_persist.region_name,
-          ship_type_id: data_to_persist.ship_type_id,
-          ship_type_name: data_to_persist.ship_type_name,
-          kill_time: data_to_persist.kill_time,
-          total_value: data_to_persist.total_value
-        })
-
-        # Log warnings for missing important data
-        if is_nil(data_to_persist.solar_system_name) || data_to_persist.solar_system_name == "" do
-          AppLogger.kill_warning("[DEBUG DRY-RUN] Missing solar_system_name in killmail", %{
-            killmail_id: killmail.killmail_id,
-            solar_system_id: data_to_persist.solar_system_id
-          })
-        end
-
-        if is_nil(data_to_persist.region_name) || data_to_persist.region_name == "" do
-          AppLogger.kill_warning("[DEBUG DRY-RUN] Missing region_name in killmail", %{
-            killmail_id: killmail.killmail_id,
-            region_id: data_to_persist.region_id
-          })
-        end
-
-        if is_nil(data_to_persist.character_name) || data_to_persist.character_name == "" do
-          AppLogger.kill_warning("[DEBUG DRY-RUN] Missing character_name in killmail", %{
-            killmail_id: killmail.killmail_id,
-            character_id: id
-          })
-        end
-
-      nil ->
-        AppLogger.kill_info("[DEBUG DRY-RUN] No tracked character found in killmail:", %{
-          killmail_id: killmail.killmail_id,
-          esi_data_keys: (killmail.esi_data && Map.keys(killmail.esi_data)) || []
-        })
-    end
-
-    # Return nil since this is just for logging
-    nil
-  end
-
-  defp process_new_killmail(killmail, character_id, kill_id, system_id, system_name) do
-    # Add validation to ensure character_id isn't the same as kill_id - this indicates a data problem
-    character_id_validated =
-      if character_id == kill_id do
-        AppLogger.kill_error("Character ID equals kill ID - likely a data error", %{
-          character_id: character_id,
-          kill_id: kill_id
-        })
-
-        # Treat as if no character ID was provided
-        nil
-      else
-        character_id
-      end
+  defp process_new_killmail(killmail, character_id_validated, kill_id, system_id, system_name) do
+    AppLogger.kill_debug("Processing new killmail", %{
+      kill_id: kill_id,
+      character_id: character_id_validated,
+      system_id: system_id,
+      system_name: system_name
+    })
 
     # Use find_tracked_character_in_killmail directly to get both ID and role
     character_result =
@@ -407,19 +321,57 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
           {:ok, role} ->
             # Get character name
             character_name = get_character_name(killmail, character_id_validated, role)
-            {character_id_validated, character_name, role}
+
+            # Validate character data quality
+            case validate_character_data_quality(character_id_validated, character_name) do
+              {:ok, id, name} ->
+                {id, name, role}
+
+              {:error, reason} ->
+                AppLogger.kill_error(
+                  "Character data validation failed during new killmail processing",
+                  %{
+                    character_id: character_id_validated,
+                    character_name: character_name,
+                    reason: reason
+                  }
+                )
+
+                nil
+            end
 
           _ ->
             nil
         end
       else
         # Find both the character and role at once
-        find_tracked_character_in_killmail(killmail)
+        result = find_tracked_character_in_killmail(killmail)
+
+        # Apply validation if a character was found
+        case result do
+          {id, name, role} ->
+            case validate_character_data_quality(id, name) do
+              {:ok, validated_id, validated_name} ->
+                {validated_id, validated_name, role}
+
+              {:error, reason} ->
+                AppLogger.kill_error("Character data validation failed for found character", %{
+                  character_id: id,
+                  character_name: name,
+                  reason: reason
+                })
+
+                nil
+            end
+
+          nil ->
+            nil
+        end
       end
 
     case character_result do
       {id, name, role} ->
-        AppLogger.kill_info("Processing killmail with identified character", %{
+        AppLogger.kill_debug("Processing killmail with identified character", %{
           kill_id: kill_id,
           character_id: id,
           character_name: name,
@@ -432,11 +384,11 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         handle_tracked_character_found(killmail, to_string(kill_id), id, name, role)
 
       nil ->
-        AppLogger.kill_info("No tracked character found in killmail",
+        AppLogger.kill_debug("No tracked character found in killmail - ignoring", %{
           kill_id: kill_id,
           system_id: system_id,
           system_name: system_name
-        )
+        })
 
         :ignored
     end
@@ -475,9 +427,37 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
+  # Helper function to validate a character's data quality
+  defp validate_character_data_quality(character_id, character_name) do
+    # Check if the name is a known placeholder value
+    invalid_names = ["Unknown Character", "Unknown", "Unknown pilot", "Unknown Pilot"]
+
+    cond do
+      # Check if character id is nil
+      is_nil(character_id) ->
+        {:error, "Missing character ID"}
+
+      # Check if character name is one of the known placeholder values
+      character_name in invalid_names ->
+        {:error, "Invalid character name: #{character_name}"}
+
+      # Check if there's a name pattern that suggests placeholder (starts with "Unknown")
+      is_binary(character_name) && String.starts_with?(character_name, "Unknown") ->
+        {:error, "Suspicious character name: #{character_name}"}
+
+      # Check if the character ID is tracked (critical validation)
+      !tracked_character?(character_id, get_tracked_characters()) ->
+        {:error, "Character ID #{character_id} is not tracked"}
+
+      # All validations passed
+      true ->
+        {:ok, character_id, character_name}
+    end
+  end
+
   # Helper function to log victim and attacker information
   defp log_killmail_characters(killmail_id, victim, victim_id_str, attacker_count) do
-    AppLogger.kill_info(
+    AppLogger.kill_debug(
       "Searching for tracked character in killmail #{killmail_id}: " <>
         "victim=#{victim_id_str || "none"} (#{(victim && Map.get(victim, "character_name")) || "unknown"}), " <>
         "attackers=#{attacker_count}",
@@ -530,9 +510,19 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
        ) do
     # Check if victim is tracked using string comparison
     if victim_id_str && MapSet.member?(tracked_ids, victim_id_str) do
+      # Get proper character name
+      character_name = Map.get(victim, "character_name")
+      resolved_name = resolve_character_name_for_persistence(victim_character_id, character_name)
+
       # Log and return victim information
-      log_found_tracked_victim(victim_character_id, victim, killmail.killmail_id)
-      {victim_character_id, Map.get(victim, "character_name"), :victim}
+      log_found_tracked_victim(
+        victim_character_id,
+        # Replace the character_name in the victim map with the resolved one
+        Map.put(victim, "character_name", resolved_name),
+        killmail.killmail_id
+      )
+
+      {victim_character_id, resolved_name, :victim}
     else
       # Check attackers if victim isn't tracked
       find_tracked_attacker_in_killmail(killmail, tracked_ids)
@@ -541,9 +531,23 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper function to log when a tracked victim is found
   defp log_found_tracked_victim(victim_character_id, victim, killmail_id) do
+    character_name = Map.get(victim, "character_name")
+
+    resolved_name =
+      if character_name == "Unknown Pilot" || character_name == "Unknown" ||
+           is_nil(character_name) do
+        # Try to get a better name - this only affects logging
+        case WandererNotifier.Api.ESI.Service.get_character(victim_character_id) do
+          {:ok, %{"name" => name}} when is_binary(name) and name != "" -> name
+          _ -> character_name || "Unknown Victim"
+        end
+      else
+        character_name
+      end
+
     AppLogger.kill_info("Found tracked character as victim", %{
       character_id: victim_character_id,
-      character_name: Map.get(victim, "character_name"),
+      character_name: resolved_name,
       killmail_id: killmail_id
     })
   end
@@ -601,8 +605,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         character_id_str = character_id && to_string(character_id)
 
         if character_id_str && MapSet.member?(tracked_ids, character_id_str) do
-          log_found_tracked_attacker(character_id, character_name, killmail_id)
-          {character_id, character_name, :attacker}
+          # Resolve the character name properly
+          resolved_name = resolve_character_name_for_persistence(character_id, character_name)
+          log_found_tracked_attacker(character_id, resolved_name, killmail_id)
+          {character_id, resolved_name, :attacker}
         else
           nil
         end
@@ -620,9 +626,21 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper to log when a tracked attacker is found
   defp log_found_tracked_attacker(character_id, character_name, killmail_id) do
+    resolved_name =
+      if character_name == "Unknown Pilot" || character_name == "Unknown" ||
+           is_nil(character_name) do
+        # Try to get a better name - this only affects logging
+        case WandererNotifier.Api.ESI.Service.get_character(character_id) do
+          {:ok, %{"name" => name}} when is_binary(name) and name != "" -> name
+          _ -> character_name || "Unknown Attacker"
+        end
+      else
+        character_name
+      end
+
     AppLogger.kill_info("Found tracked character as attacker", %{
       character_id: character_id,
-      character_name: character_name,
+      character_name: resolved_name,
       killmail_id: killmail_id
     })
   end
@@ -772,8 +790,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   defp get_character_name(killmail, character_id, role) do
-    # Try to get the name from the killmail data first
-    character_name =
+    # First try to get name from the killmail structure
+    name_from_killmail =
       case role do
         :victim ->
           victim = KillmailStruct.get_victim(killmail)
@@ -794,48 +812,67 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
           nil
       end
 
-    # If we don't have a name from the killmail data, try to get it from ESI
-    if character_name == nil || character_name == "" do
-      AppLogger.kill_debug("Character name not found in killmail, fetching from ESI",
-        character_id: character_id,
-        killmail_id: killmail.killmail_id
-      )
-
-      case ESIService.get_character_info(character_id) do
-        {:ok, char_info} ->
-          name = Map.get(char_info, "name")
-
-          AppLogger.kill_debug("Got character name from ESI: #{name}",
-            character_id: character_id,
-            killmail_id: killmail.killmail_id
-          )
-
-          name
-
-        _ ->
-          AppLogger.kill_debug("Failed to get character name from ESI",
-            character_id: character_id,
-            killmail_id: killmail.killmail_id
-          )
-
-          "Unknown Pilot"
-      end
+    # If we have a valid name from the killmail, use it
+    if name_from_killmail && name_from_killmail != "" && name_from_killmail != "Unknown Pilot" do
+      name_from_killmail
     else
-      character_name
+      # Otherwise, try to fetch from ESI or cache
+      resolve_character_name(character_id)
     end
   end
 
-  # Helper functions for persistence
-  defp handle_tracked_character_found(
-         killmail,
-         killmail_id_str,
-         character_id,
-         character_name,
-         {:ok, role}
-       ) do
-    handle_tracked_character_found(killmail, killmail_id_str, character_id, character_name, role)
+  # Helper to resolve character name from cache/ESI
+  defp resolve_character_name(character_id)
+       when is_integer(character_id) or is_binary(character_id) do
+    # Convert to integer if it's a string
+    char_id =
+      if is_binary(character_id) do
+        {id, _} = Integer.parse(character_id)
+        id
+      else
+        character_id
+      end
+
+    # Try to get from repository cache first
+    case WandererNotifier.Data.Repository.get_character_name(char_id) do
+      {:ok, name} when name != nil and name != "" ->
+        AppLogger.kill_debug("Resolved character name from cache", %{
+          character_id: char_id,
+          character_name: name
+        })
+
+        name
+
+      _ ->
+        # Fall back to ESI API
+        case WandererNotifier.Api.ESI.Service.get_character(char_id) do
+          {:ok, character_data} when is_map(character_data) ->
+            name = Map.get(character_data, "name")
+
+            if name && name != "" do
+              AppLogger.kill_debug("Resolved character name from ESI", %{
+                character_id: char_id,
+                character_name: name
+              })
+
+              name
+            else
+              "Unknown Pilot"
+            end
+
+          _ ->
+            AppLogger.kill_debug("Could not resolve character name", %{
+              character_id: char_id
+            })
+
+            "Unknown Pilot"
+        end
+    end
   end
 
+  defp resolve_character_name(_), do: "Unknown Pilot"
+
+  # Helper functions for persistence
   defp handle_tracked_character_found(
          killmail,
          killmail_id_str,
@@ -845,44 +882,133 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
        ) do
     str_character_id = to_string(character_id)
 
-    # Check if this killmail already exists for this character and role
-    if check_killmail_exists_in_database(killmail_id_str, str_character_id, role) do
-      AppLogger.kill_info("Killmail already exists", %{
-        kill_id: killmail_id_str,
-        character_id: str_character_id
-      })
+    # Perform final validation before persistence
+    case validate_character_data_quality(character_id, character_name) do
+      {:ok, _, validated_name} ->
+        # Only proceed if we have a valid character name
+        resolved_name = resolve_character_name_for_persistence(character_id, validated_name)
 
-      {:ok, :already_exists}
-    else
-      # Transform and persist the killmail
-      killmail_attrs =
-        transform_killmail_to_resource(killmail, character_id, character_name, role)
-
-      case create_killmail_record(killmail_attrs) do
-        {:ok, record} ->
-          AppLogger.kill_info("✅ Successfully persisted killmail", %{
+        # Check if this killmail already exists for this character and role
+        if check_killmail_exists_in_database(killmail_id_str, str_character_id, role) do
+          AppLogger.kill_info("Killmail already exists", %{
             kill_id: killmail_id_str,
-            character_id: str_character_id,
-            role: role
+            character_id: str_character_id
           })
 
-          # Update cache with recent killmails for this character
-          update_character_killmails_cache(str_character_id)
-
-          # Also update recent killmails cache
-          update_recent_killmails_cache(killmail)
-
-          {:ok, record}
-
-        {:error, error} ->
-          AppLogger.kill_error("❌ Failed to persist killmail", %{
+          {:ok, :already_exists}
+        else
+          # Log the full killmail struct for inspection before persistence
+          AppLogger.kill_debug("Full killmail structure before persistence", %{
             kill_id: killmail_id_str,
             character_id: str_character_id,
-            error: inspect(error)
+            character_name: resolved_name,
+            role: role,
+            complete_killmail: inspect(killmail, pretty: true, limit: :infinity)
           })
 
-          {:error, error}
-      end
+          # Transform and persist the killmail
+          killmail_attrs =
+            transform_killmail_to_resource(killmail, character_id, resolved_name, role)
+
+          case create_killmail_record(killmail_attrs) do
+            {:ok, record} ->
+              AppLogger.kill_info("✅ Successfully persisted killmail", %{
+                kill_id: killmail_id_str,
+                character_id: str_character_id,
+                role: role
+              })
+
+              # Update cache with recent killmails for this character
+              update_character_killmails_cache(str_character_id)
+
+              # Also update recent killmails cache
+              update_recent_killmails_cache(killmail)
+
+              {:ok, record}
+
+            {:error, error} ->
+              AppLogger.kill_error("❌ Failed to persist killmail", %{
+                kill_id: killmail_id_str,
+                character_id: str_character_id,
+                error: inspect(error)
+              })
+
+              {:error, error}
+          end
+        end
+
+      {:error, reason} ->
+        AppLogger.kill_error("Final character validation failed - rejecting killmail", %{
+          kill_id: killmail_id_str,
+          character_id: str_character_id,
+          character_name: character_name,
+          reason: reason
+        })
+
+        :ignored
+    end
+  end
+
+  # Helper function to properly resolve character name
+  defp resolve_character_name_for_persistence(character_id, character_name) do
+    # First validate the character data
+    case validate_character_data_quality(character_id, character_name) do
+      # If validation succeeds, continue with normal processing
+      {:ok, _, validated_name} ->
+        validated_name
+
+      # If validation specifically found "Unknown Pilot" name, try to resolve it
+      {:error, "Invalid character name: Unknown Pilot"} ->
+        # Use ESI to get the real name
+        case WandererNotifier.Api.ESI.Service.get_character(character_id) do
+          {:ok, character_data} when is_map(character_data) ->
+            name = Map.get(character_data, "name")
+
+            if is_binary(name) && name != "" do
+              # Cache the correct character name for future use
+              WandererNotifier.Data.Cache.Helpers.cache_character_info(%{
+                "character_id" => character_id,
+                "name" => name
+              })
+
+              AppLogger.kill_info("Resolved character name from ESI for persistence", %{
+                character_id: character_id,
+                character_name: name
+              })
+
+              name
+            else
+              # Rejected - don't save with invalid name
+              AppLogger.kill_error("Character validation failed - ESI returned invalid name", %{
+                character_id: character_id,
+                esi_name: inspect(name)
+              })
+
+              # Return the original problematic name to ensure proper error handling upstream
+              character_name
+            end
+
+          _ ->
+            # ESI call failed, validation has failed
+            AppLogger.kill_error("Character validation failed - ESI call unsuccessful", %{
+              character_id: character_id
+            })
+
+            # Return the original problematic name to ensure proper error handling upstream
+            character_name
+        end
+
+      # For any other validation errors, log and return the original name
+      # (this will still be rejected upstream based on the validation results)
+      {:error, reason} ->
+        AppLogger.kill_error("Character validation failed in name resolution", %{
+          character_id: character_id,
+          character_name: character_name,
+          reason: reason
+        })
+
+        # Return the original name so upstream handling can proceed with rejection
+        character_name
     end
   end
 
@@ -892,10 +1018,36 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   Bypasses caching for accuracy.
   """
   def check_killmail_exists_in_database(killmail_id, character_id, role) do
-    case Killmail.exists_with_character(killmail_id, character_id, role) do
-      {:ok, []} -> false
-      {:ok, _} -> true
-      {:error, _} -> false
+    result = Killmail.exists_with_character(killmail_id, character_id, role)
+
+    case result do
+      {:ok, []} ->
+        AppLogger.persistence_debug("Killmail does not exist in database", %{
+          killmail_id: killmail_id,
+          character_id: character_id,
+          role: role
+        })
+
+        false
+
+      {:ok, _records} ->
+        AppLogger.persistence_debug("Killmail exists in database", %{
+          killmail_id: killmail_id,
+          character_id: character_id,
+          role: role
+        })
+
+        true
+
+      {:error, error} ->
+        AppLogger.persistence_error("Error checking if killmail exists in database", %{
+          killmail_id: killmail_id,
+          character_id: character_id,
+          role: role,
+          error: inspect(error)
+        })
+
+        false
     end
   end
 
@@ -919,9 +1071,14 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Extract killmail data
     kill_time = get_kill_time(killmail)
     solar_system_id = KillmailStruct.get_system_id(killmail)
-    solar_system_name = KillmailStruct.get(killmail, "solar_system_name")
-    region_id = KillmailStruct.get(killmail, "region_id")
-    region_name = KillmailStruct.get(killmail, "region_name")
+    solar_system_name = KillmailStruct.get(killmail, "solar_system_name") || "Unknown System"
+
+    # Log current state of the killmail
+    AppLogger.kill_debug("[Persistence] Transforming killmail #{killmail.killmail_id}",
+      character_id: character_id,
+      character_role: role,
+      solar_system_name: solar_system_name
+    )
 
     # Extract victim data
     victim = KillmailStruct.get_victim(killmail) || %{}
@@ -936,7 +1093,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         :victim ->
           {
             Map.get(victim, "ship_type_id"),
-            Map.get(victim, "ship_type_name")
+            Map.get(victim, "ship_type_name") || "Unknown Ship"
           }
 
         :attacker ->
@@ -944,21 +1101,29 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
           {
             Map.get(attacker || %{}, "ship_type_id"),
-            Map.get(attacker || %{}, "ship_type_name")
+            Map.get(attacker || %{}, "ship_type_name") || "Unknown Ship"
           }
       end
+
+    # Log ship information
+    AppLogger.kill_debug("[Persistence] Ship information",
+      ship_type_id: ship_type_id,
+      ship_type_name: ship_type_name
+    )
 
     # Ensure killmail_id is properly parsed
     parsed_killmail_id = parse_integer(killmail.killmail_id)
 
+    # Use character_name or default to Unknown
+    character_name =
+      if character_name && character_name != "", do: character_name, else: "Unknown Pilot"
+
     # Build the resource attributes map with explicit killmail_id
-    %{
+    attrs = %{
       killmail_id: parsed_killmail_id,
       kill_time: kill_time,
       solar_system_id: parse_integer(solar_system_id),
       solar_system_name: solar_system_name,
-      region_id: parse_integer(region_id),
-      region_name: region_name,
       total_value: parse_decimal(total_value),
       character_role: role,
       related_character_id: parse_integer(character_id),
@@ -970,6 +1135,15 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       attacker_data:
         (role == :attacker && find_attacker_by_character_id(killmail, character_id)) || nil
     }
+
+    # Log the final attributes for debugging
+    AppLogger.kill_debug("[Persistence] Final killmail attributes",
+      killmail_id: parsed_killmail_id,
+      solar_system_name: attrs.solar_system_name,
+      ship_type_name: attrs.ship_type_name
+    )
+
+    attrs
   end
 
   # Helper functions for data parsing
@@ -1299,4 +1473,67 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   defp typeof(value) when is_reference(value), do: "reference"
   defp typeof(value) when is_port(value), do: "port"
   defp typeof(_value), do: "unknown"
+
+  @doc """
+  Gets a set of kill IDs already processed for a character.
+  Used to avoid re-processing the same killmails during batch operations.
+
+  ## Parameters
+    - character_id: The character ID to check for
+
+  ## Returns
+    - MapSet of killmail IDs that have already been processed
+  """
+  def get_already_processed_kill_ids(character_id) when is_integer(character_id) do
+    # Cache key for storing processed kill IDs
+    cache_key = CacheKeys.character_processed_kills(character_id)
+
+    # Try to get from cache first
+    case CacheRepo.get(cache_key) do
+      nil ->
+        # Not in cache, fetch from database
+        fetch_and_cache_processed_kill_ids(character_id, cache_key)
+
+      kill_ids when is_list(kill_ids) ->
+        # Convert list to MapSet for efficient lookups
+        MapSet.new(kill_ids)
+
+      mapset = %MapSet{} ->
+        # Already a MapSet, return as is
+        mapset
+    end
+  end
+
+  def get_already_processed_kill_ids(_), do: MapSet.new()
+
+  defp fetch_and_cache_processed_kill_ids(character_id, cache_key) do
+    # Query the database for all killmail IDs associated with this character
+    processed_kills =
+      case Killmail
+           |> Ash.Query.filter(esi_data["character_id"] == ^character_id)
+           |> Ash.Query.select([:killmail_id])
+           |> Api.read() do
+        {:ok, records} ->
+          # Extract killmail_ids from the records
+          Enum.map(records, & &1.killmail_id)
+
+        _ ->
+          []
+      end
+
+    # Log the number of processed kills found
+    AppLogger.kill_debug("Fetched processed kills from database", %{
+      character_id: character_id,
+      processed_count: length(processed_kills)
+    })
+
+    # Create a MapSet for efficient lookups
+    kill_ids_set = MapSet.new(processed_kills)
+
+    # Cache the result for future use
+    CacheRepo.set(cache_key, kill_ids_set, @processed_kills_ttl_seconds)
+
+    # Return the MapSet
+    kill_ids_set
+  end
 end

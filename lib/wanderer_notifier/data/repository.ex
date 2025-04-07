@@ -109,4 +109,20 @@ defmodule WandererNotifier.Data.Repository do
   rescue
     _ -> nil
   end
+
+  @doc """
+  Caches character information for later retrieval.
+  Uses the cache helper to store the character data.
+
+  ## Parameters
+    - character_data: Map containing character data with "character_id" and "name" fields
+
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
+  """
+  @spec cache_character_info(map()) :: :ok | {:error, term()}
+  def cache_character_info(character_data) do
+    CacheHelpers.cache_character_info(character_data)
+  end
 end

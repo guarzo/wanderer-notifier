@@ -10,6 +10,9 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
+  # Module attribute to use when the module might not be loaded yet
+  @debug_module WandererNotifier.Debug.KillmailTools
+
   @doc false
   def init_batch_logging do
     AppLogger.init_batch_logger()
@@ -275,6 +278,40 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         message_type = classify_message_type(json_data)
         AppLogger.count_batch_event(:websocket_message, %{type: message_type})
 
+        # For killmail messages, add explicit detailed logging
+        if message_type == "killmail" do
+          # Log that we received a killmail
+          kill_id = get_killmail_id(json_data)
+          AppLogger.kill_info("Received killmail:#{kill_id} from WebSocket ")
+        end
+
+        # Check if this is a killmail and we need to log it for debugging
+        if message_type == "killmail" &&
+             Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+          # Get the killmail ID for logging
+          kill_id = get_killmail_id(json_data)
+
+          # Log that we're about to analyze the killmail
+          AppLogger.kill_info("Analyzing killmail for persistence debugging",
+            killmail_id: kill_id
+          )
+
+          # Try to call the debug module, but handle the case where it might not be available yet
+          try do
+            if Code.ensure_loaded?(@debug_module) do
+              @debug_module.process_killmail_debug(json_data)
+            else
+              AppLogger.kill_warn("Debug module not available yet", module: @debug_module)
+            end
+          rescue
+            e ->
+              AppLogger.kill_error("Error calling debug module",
+                error: Exception.message(e),
+                killmail_id: kill_id
+              )
+          end
+        end
+
         # Forward to parent process for handling
         if is_pid(state.parent) and Process.alive?(state.parent) do
           send(state.parent, {:zkill_message, raw_msg})
@@ -313,6 +350,22 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   end
 
   defp classify_message_type(_), do: "invalid"
+
+  # Get killmail ID from the message data
+  defp get_killmail_id(json_data) when is_map(json_data) do
+    cond do
+      Map.has_key?(json_data, "killmail_id") ->
+        json_data["killmail_id"]
+
+      Map.has_key?(json_data, "zkb") && Map.has_key?(json_data["zkb"], "killmail_id") ->
+        json_data["zkb"]["killmail_id"]
+
+      true ->
+        "unknown"
+    end
+  end
+
+  defp get_killmail_id(_), do: "invalid"
 
   @impl true
   def handle_disconnect(disconnect_map, state) do

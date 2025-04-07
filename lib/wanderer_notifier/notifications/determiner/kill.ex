@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
+  require Logger
 
   @doc """
   Determines if a notification should be sent for a kill.
@@ -39,8 +40,20 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_tracking(system_id, killmail) do
+    kill_id = get_kill_id(killmail)
     is_tracked_system = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
+
+    # Enhanced logging for debugging
+    Logger.debug("[KillDeterminer] Tracking check results", %{
+      kill_id: kill_id,
+      system_id: system_id,
+      is_tracked_system: is_tracked_system,
+      has_tracked_character: has_tracked_char,
+      killmail_type: inspect(killmail.__struct__),
+      has_esi_data: not is_nil(Map.get(killmail, :esi_data))
+    })
+
     is_tracked_system || has_tracked_char
   end
 
@@ -135,14 +148,36 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def has_tracked_character?(killmail) do
     kill_data = extract_kill_data(killmail)
     all_character_ids = get_all_tracked_character_ids()
+    kill_id = get_kill_id(killmail)
+
+    # Log the extracted data for debugging
+    Logger.debug("[KillDeterminer] Checking for tracked characters", %{
+      kill_id: kill_id,
+      victim_data_keys: kill_data |> Map.get("victim", %{}) |> Map.keys(),
+      attacker_count: kill_data |> Map.get("attackers", []) |> length(),
+      tracked_character_ids: all_character_ids
+    })
 
     # Check if victim is tracked
     victim_tracked = check_victim_tracked(kill_data, all_character_ids)
 
     if victim_tracked do
+      Logger.debug("[KillDeterminer] Found victim is tracked", %{
+        kill_id: kill_id,
+        victim_id: extract_victim_id(kill_data)
+      })
+
       true
     else
-      check_attackers_tracked(kill_data, all_character_ids)
+      attacker_tracked = check_attackers_tracked(kill_data, all_character_ids)
+
+      if attacker_tracked do
+        Logger.debug("[KillDeterminer] Found attacker is tracked", %{
+          kill_id: kill_id
+        })
+      end
+
+      attacker_tracked
     end
   end
 

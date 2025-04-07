@@ -76,3 +76,17 @@
   - Apply the new \`BaseController\` helper functions to all endpoints in controllers (e.g. in \`CharacterController\` and \`ChartController\`).  
   - Remove inline JSON response logic and replace it with calls to \`send_success/2\` and \`send_error/3\` for cleaner, more maintainable code.
 
+Common JSON Response Handling in Controllers:
+Multiple controllers (for example, those under lib/wanderer_notifier/api/character/ and others) seem to implement their own routines for formatting JSON responses and error handling. Instead of repeating similar code in each controller, you can extract these into a base controller or a set of helper functions (e.g. functions like send_json/3, send_success/2, and send_error/3). This will centralize response formatting and make updates easier if the format needs to change.
+
+Cache-then-API Fallback Pattern:
+Several modules implement a similar pattern: attempt to fetch data (e.g., from cache), and if that fails, make an API call while logging errors if the call fails. For instance, in parts of the killmail processing and character activity fetching (such as in lib/wanderer_notifier/api/character/activity.ex and the kill processing functions in kills_service.ex), the code repeatedly checks for data, logs an error on failure, and then returns a tuple. Abstracting this pattern into a single utility function (or even a macro) would reduce duplication and make it easier to tweak the error-handling strategy.
+
+Error Handling and Logging Duplication:
+In several modules you have similar nested case statements to handle errors and log them via the AppLogger. Consolidating these into helper functions or using Elixir’s with construct can both flatten the logic and reduce repetitive logging calls. For example, the nested error handling in the kill processing pipeline (seen in WandererNotifier.Api.Character.KillsService) can be streamlined by abstracting the common logging and error tuple generation.
+
+Chart Configuration Defaults in the Node.js Service:
+The chart service (in chart-service/chart-generator.js) contains duplicated logic for setting default font families and ensuring the chart configuration contains necessary fallback properties. Both the /generate and /save endpoints repeat similar blocks that add font configuration to tooltips, titles, and legends. Extracting this into a dedicated helper function (e.g., a function like applyDefaultFontConfig(chartOptions)) would keep the endpoint logic cleaner and ensure consistency across different endpoints.
+
+Legacy Environment Variable Mapping:
+In your runtime configuration (config/runtime.exs), there is an extensive block for mapping legacy environment variable names to the new names. Although some of this logic is encapsulated in the EnvironmentHelper module, the repeated checks and assignments could be further consolidated. Consider creating a single function that processes a list of mappings and applies them uniformly. This way, if the mapping rules change, you only need to update one place.

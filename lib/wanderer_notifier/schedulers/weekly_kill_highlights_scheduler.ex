@@ -14,9 +14,13 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-
   require Ash.Query, as: Query
+
+  # EVE Online type IDs
+  # Structure category
+  @structure_category_id 65
+  # Capsule (pod) type ID
+  @pod_type_id 670
 
   @impl true
   def enabled? do
@@ -37,10 +41,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         {:ok, _} ->
           AppLogger.scheduler_info("#{inspect(__MODULE__)}: Successfully sent kill highlights")
           {:ok, :completed, state}
-
-        {:error, :feature_disabled} ->
-          AppLogger.scheduler_info("#{inspect(__MODULE__)}: Kill highlights feature disabled")
-          {:ok, :skipped, Map.put(state, :reason, :feature_disabled)}
 
         {:error, reason} ->
           AppLogger.scheduler_error("#{inspect(__MODULE__)}: Failed to send kill highlights",
@@ -67,7 +67,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     }
   end
 
-  @impl true
   def send_test_highlights do
     AppLogger.scheduler_info("Sending test weekly kill highlights")
 
@@ -89,16 +88,18 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       )
 
       # Log total kills and losses in database for test diagnostics
-      # Use simple queries instead of aggregation
+      # Use simple queries with time filter instead of fixed limit
       all_kills_query =
         Killmail
         |> Query.filter(character_role == :attacker)
-        |> Query.limit(1000)
+        |> Query.filter(kill_time >= ^days_ago)
+        |> Query.filter(kill_time <= ^now)
 
       all_losses_query =
         Killmail
         |> Query.filter(character_role == :victim)
-        |> Query.limit(1000)
+        |> Query.filter(kill_time >= ^days_ago)
+        |> Query.filter(kill_time <= ^now)
 
       # Check total database counts for diagnostics
       all_kills_result = Api.read(all_kills_query)
@@ -110,7 +111,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
           losses_count = length(losses)
 
           AppLogger.scheduler_info(
-            "Database diagnostics: Sampled kills: #{kills_count}, Sampled losses: #{losses_count} (limited to 1000 each)"
+            "Database diagnostics: Kills in last 7 days: #{kills_count}, Losses in last 7 days: #{losses_count}"
           )
 
         _ ->
@@ -149,10 +150,6 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       date_range = "#{start_str} to #{end_str}"
 
       AppLogger.scheduler_info("Processing kill highlights for period: #{date_range}")
-
-      # Track if we successfully sent anything
-      kills_sent = 0
-
       # Get best kill - process independently
       best_kill_result = find_best_kill(start_date, end_date)
 
@@ -228,70 +225,177 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       "Searching for best kill between #{DateTime.to_string(start_date)} and #{DateTime.to_string(end_date)}"
     )
 
-    # Get kills in the date range
-    date_query =
-      Killmail
-      |> Query.filter(character_role == :attacker)
-      |> Query.filter(kill_time >= ^start_date)
-      |> Query.filter(kill_time <= ^end_date)
-      |> Query.sort(total_value: :desc)
-      |> Query.limit(50)
+    # Get tracked character IDs from our tracking system
+    all_tracked_character_ids = get_tracked_character_ids()
 
-    case Api.read(date_query) do
-      {:ok, []} ->
-        AppLogger.scheduler_warn("No kills found in the date range")
-        {:error, :no_kills_in_range}
+    AppLogger.scheduler_info(
+      "Retrieved #{length(all_tracked_character_ids)} tracked character IDs"
+    )
 
-      {:ok, kills} ->
-        # Log all the found kills for debugging
-        kills_count = length(kills)
-        AppLogger.scheduler_info("Found #{kills_count} kills in date range")
+    if all_tracked_character_ids == [] do
+      AppLogger.scheduler_warn("No tracked characters found, cannot search for best kill")
+      {:error, :no_tracked_characters}
+    else
+      # Only search for killmails where the character is actually tracked
+      # Query for all killmails in the date range
+      date_query =
+        Killmail
+        |> Query.filter(character_role == :attacker)
+        |> Query.filter(kill_time >= ^start_date)
+        |> Query.filter(kill_time <= ^end_date)
+        |> Query.filter(ship_type_id != ^@pod_type_id)
+        |> Query.filter(ship_type_id != ^@structure_category_id)
+        |> Query.sort(total_value: :desc)
+        |> Query.limit(100)
 
-        # Filter for kills with value
-        kills_with_value = Enum.filter(kills, fn kill -> kill.total_value != nil end)
+      case Api.read(date_query) do
+        {:ok, []} ->
+          AppLogger.scheduler_warn("No kills found in the date range")
+          {:error, :no_kills_in_range}
 
-        if kills_with_value != [] do
-          # Get the kill with the highest value (should already be sorted, but just to be safe)
-          best_kill =
-            Enum.max_by(
-              kills_with_value,
-              fn kill ->
-                case kill.total_value do
-                  nil -> Decimal.new(0)
-                  val when is_struct(val, Decimal) -> val
-                  _ -> Decimal.new(0)
-                end
+        {:ok, kills} ->
+          # Log all the found kills for debugging
+          kills_count = length(kills)
+          AppLogger.scheduler_info("Found #{kills_count} total kills in date range")
+
+          # Filter to keep only kills where the character is actually tracked
+          tracked_kills =
+            Enum.filter(kills, fn kill ->
+              # Convert the related_character_id to integer to match our list
+              character_id = kill.related_character_id
+
+              character_id_int =
+                if is_binary(character_id),
+                  do: String.to_integer(character_id),
+                  else: character_id
+
+              # Character is tracked if their ID is in our tracked IDs list
+              is_tracked = Enum.member?(all_tracked_character_ids, character_id_int)
+
+              # Log which characters aren't tracked for debugging
+              unless is_tracked do
+                AppLogger.scheduler_debug(
+                  "Character #{character_id} is not tracked - ignoring kill #{kill.killmail_id}"
+                )
               end
+
+              is_tracked
+            end)
+
+          # Group by killmail_id to handle multiple tracked characters in same killmail
+          grouped_kills = Enum.group_by(tracked_kills, fn kill -> kill.killmail_id end)
+
+          # Select best character for each killmail (highest damage dealer)
+          deduplicated_kills =
+            Enum.map(grouped_kills, fn {_killmail_id, kills_for_id} ->
+              if length(kills_for_id) > 1 do
+                # Multiple tracked characters were involved, select the one with highest damage
+                AppLogger.scheduler_info(
+                  "Multiple tracked characters involved in killmail #{List.first(kills_for_id).killmail_id}"
+                )
+
+                # Find the character with highest damage
+                best_character_kill =
+                  Enum.max_by(kills_for_id, fn kill ->
+                    # Get damage done by this character
+                    attacker_damage =
+                      cond do
+                        is_nil(kill.attacker_data) ->
+                          0
+
+                        is_map(kill.attacker_data) && !is_struct(kill.attacker_data) ->
+                          Map.get(kill.attacker_data, "damage_done") || 0
+
+                        is_struct(kill.attacker_data) &&
+                            Map.has_key?(kill.attacker_data, :damage_done) ->
+                          Map.get(kill.attacker_data, :damage_done) || 0
+
+                        true ->
+                          0
+                      end
+
+                    # Convert to integer
+                    case attacker_damage do
+                      damage when is_integer(damage) ->
+                        damage
+
+                      damage when is_binary(damage) ->
+                        case Integer.parse(damage) do
+                          {int_damage, _} -> int_damage
+                          _ -> 0
+                        end
+
+                      _ ->
+                        0
+                    end
+                  end)
+
+                AppLogger.scheduler_info(
+                  "Selected character #{best_character_kill.related_character_id} with highest damage"
+                )
+
+                best_character_kill
+              else
+                # Only one tracked character was involved
+                List.first(kills_for_id)
+              end
+            end)
+            |> Enum.filter(fn kill -> not is_nil(kill) end)
+
+          # Log how many kills remain after filtering and deduplication
+          deduped_count = length(deduplicated_kills)
+
+          AppLogger.scheduler_info(
+            "Found #{deduped_count} unique kills with tracked attackers after filtering"
+          )
+
+          # Filter for kills with value
+          kills_with_value =
+            Enum.filter(deduplicated_kills, fn kill -> kill.total_value != nil end)
+
+          if kills_with_value != [] do
+            # Get the kill with the highest value
+            best_kill =
+              Enum.max_by(
+                kills_with_value,
+                fn kill ->
+                  case kill.total_value do
+                    nil -> Decimal.new(0)
+                    val when is_struct(val, Decimal) -> val
+                    _ -> Decimal.new(0)
+                  end
+                end
+              )
+
+            # Log the complete killmail struct for debugging
+            AppLogger.scheduler_debug(
+              "FULL BEST KILLMAIL STRUCT: #{inspect(best_kill, pretty: true, limit: :infinity)}"
             )
 
-          # Log the complete killmail struct for debugging
-          AppLogger.scheduler_info(
-            "FULL BEST KILLMAIL STRUCT: #{inspect(best_kill, pretty: true, limit: :infinity)}"
-          )
+            # Enrich missing data if necessary
+            best_kill = enrich_killmail_data(best_kill)
 
-          # Enrich missing data if necessary
-          best_kill = enrich_killmail_data(best_kill)
+            # Log selected kill details for debugging
+            AppLogger.scheduler_info(
+              "Selected best kill: ID=#{best_kill.killmail_id}, " <>
+                "Character=#{best_kill.related_character_name || "Unknown"}, " <>
+                "Ship=#{best_kill.ship_type_name || "Unknown"}, " <>
+                "System=#{best_kill.solar_system_name || "Unknown"}, " <>
+                "Region=#{best_kill.region_name || "Unknown"}, " <>
+                "Value=#{inspect(best_kill.total_value)}, " <>
+                "Time=#{DateTime.to_string(best_kill.kill_time)}"
+            )
 
-          # Log selected kill details for debugging
-          AppLogger.scheduler_info(
-            "Selected best kill: ID=#{best_kill.killmail_id}, " <>
-              "Character=#{best_kill.related_character_name || "Unknown"}, " <>
-              "Ship=#{best_kill.ship_type_name || "Unknown"}, " <>
-              "System=#{best_kill.solar_system_name || "Unknown"}, " <>
-              "Region=#{best_kill.region_name || "Unknown"}, " <>
-              "Value=#{inspect(best_kill.total_value)}, " <>
-              "Time=#{DateTime.to_string(best_kill.kill_time)}"
-          )
+            {:ok, best_kill}
+          else
+            AppLogger.scheduler_warn("No kills with valid values found")
+            {:error, :no_kills_with_value}
+          end
 
-          {:ok, best_kill}
-        else
-          AppLogger.scheduler_warn("No kills with valid values found")
-          {:error, :no_kills_with_value}
-        end
-
-      error ->
-        AppLogger.scheduler_error("Error querying kills in date range: #{inspect(error)}")
-        {:error, "Failed to find kills in date range"}
+        error ->
+          AppLogger.scheduler_error("Error querying kills in date range: #{inspect(error)}")
+          {:error, "Failed to find kills in date range"}
+      end
     end
   end
 
@@ -302,65 +406,270 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       "Searching for worst loss between #{DateTime.to_string(start_date)} and #{DateTime.to_string(end_date)}"
     )
 
-    # Get losses in the date range
-    date_query =
-      Killmail
-      |> Query.filter(character_role == :victim)
-      |> Query.filter(kill_time >= ^start_date)
-      |> Query.filter(kill_time <= ^end_date)
-      |> Query.sort(total_value: :desc)
-      |> Query.limit(50)
+    # Get tracked character IDs from our tracking system
+    all_tracked_character_ids = get_tracked_character_ids()
 
-    case Api.read(date_query) do
-      {:ok, []} ->
-        AppLogger.scheduler_warn("No losses found in the date range")
-        {:error, :no_losses_in_range}
+    AppLogger.scheduler_info(
+      "Retrieved #{length(all_tracked_character_ids)} tracked character IDs"
+    )
 
-      {:ok, losses} ->
-        # Log all the found losses for debugging
-        losses_count = length(losses)
-        AppLogger.scheduler_info("Found #{losses_count} losses in date range")
+    if all_tracked_character_ids == [] do
+      AppLogger.scheduler_warn("No tracked characters found, cannot search for worst loss")
+      {:error, :no_tracked_characters}
+    else
+      # Query for all losses in the date range
+      date_query =
+        Killmail
+        |> Query.filter(character_role == :victim)
+        |> Query.filter(kill_time >= ^start_date)
+        |> Query.filter(kill_time <= ^end_date)
+        |> Query.filter(ship_type_id != ^@pod_type_id)
+        |> Query.filter(ship_type_id != ^@structure_category_id)
+        |> Query.sort(total_value: :desc)
+        |> Query.limit(100)
 
-        # Filter for losses with value
-        losses_with_value = Enum.filter(losses, fn loss -> loss.total_value != nil end)
+      case Api.read(date_query) do
+        {:ok, []} ->
+          AppLogger.scheduler_warn("No losses found in the date range")
+          {:error, :no_losses_in_range}
 
-        if losses_with_value != [] do
-          # Get the loss with the highest value (should already be sorted, but just to be safe)
-          worst_loss =
-            Enum.max_by(
-              losses_with_value,
-              fn loss ->
-                case loss.total_value do
-                  nil -> Decimal.new(0)
-                  val when is_struct(val, Decimal) -> val
-                  _ -> Decimal.new(0)
-                end
+        {:ok, losses} ->
+          # Log all the found losses for debugging
+          losses_count = length(losses)
+          AppLogger.scheduler_info("Found #{losses_count} total losses in date range")
+
+          # Filter to keep only losses where the character is actually tracked
+          tracked_losses =
+            Enum.filter(losses, fn loss ->
+              # Convert the related_character_id to integer to match our list
+              character_id = loss.related_character_id
+
+              character_id_int =
+                if is_binary(character_id),
+                  do: String.to_integer(character_id),
+                  else: character_id
+
+              # Character is tracked if their ID is in our tracked IDs list
+              is_tracked = Enum.member?(all_tracked_character_ids, character_id_int)
+
+              # Log which characters aren't tracked for debugging
+              unless is_tracked do
+                AppLogger.scheduler_debug(
+                  "Character #{character_id} is not tracked - ignoring loss #{loss.killmail_id}"
+                )
               end
-            )
 
-          # Enrich missing data if necessary
-          worst_loss = enrich_killmail_data(worst_loss)
+              is_tracked
+            end)
 
-          # Log selected loss details for debugging
+          # Group by killmail_id to handle multiple tracked characters in same killmail
+          grouped_losses = Enum.group_by(tracked_losses, fn loss -> loss.killmail_id end)
+
+          # Select one character for each killmail
+          deduplicated_losses =
+            Enum.map(grouped_losses, fn {_killmail_id, losses_for_id} ->
+              if length(losses_for_id) > 1 do
+                # Multiple tracked characters were lost in the same killmail (rare but possible)
+                AppLogger.scheduler_info(
+                  "Multiple tracked characters lost in killmail #{List.first(losses_for_id).killmail_id}"
+                )
+
+                # For losses, we just take the first one, as it's unlikely to matter much
+                # Most situations with multiple victims are in the same group and equally important
+                List.first(losses_for_id)
+              else
+                # Only one tracked character was lost
+                List.first(losses_for_id)
+              end
+            end)
+            |> Enum.filter(fn loss -> not is_nil(loss) end)
+
+          # Log how many losses remain after filtering and deduplication
+          deduped_count = length(deduplicated_losses)
+
           AppLogger.scheduler_info(
-            "Selected worst loss: ID=#{worst_loss.killmail_id}, " <>
-              "Character=#{worst_loss.related_character_name || "Unknown"}, " <>
-              "Ship=#{worst_loss.ship_type_name || "Unknown"}, " <>
-              "System=#{worst_loss.solar_system_name || "Unknown"}, " <>
-              "Region=#{worst_loss.region_name || "Unknown"}, " <>
-              "Value=#{inspect(worst_loss.total_value)}, " <>
-              "Time=#{DateTime.to_string(worst_loss.kill_time)}"
+            "Found #{deduped_count} unique losses with tracked victims after filtering"
           )
 
-          {:ok, worst_loss}
-        else
-          AppLogger.scheduler_warn("No losses with valid values found")
-          {:error, :no_losses_with_value}
+          # Filter for losses with value
+          losses_with_value =
+            Enum.filter(deduplicated_losses, fn loss -> loss.total_value != nil end)
+
+          if losses_with_value != [] do
+            # Get the loss with the highest value
+            worst_loss =
+              Enum.max_by(
+                losses_with_value,
+                fn loss ->
+                  case loss.total_value do
+                    nil -> Decimal.new(0)
+                    val when is_struct(val, Decimal) -> val
+                    _ -> Decimal.new(0)
+                  end
+                end
+              )
+
+            # Log the complete killmail struct for debugging
+            AppLogger.scheduler_debug(
+              "FULL WORST KILLMAIL STRUCT: #{inspect(worst_loss, pretty: true, limit: :infinity)}"
+            )
+
+            # Enrich missing data if necessary
+            worst_loss = enrich_killmail_data(worst_loss)
+
+            # Log selected loss details for debugging
+            AppLogger.scheduler_info(
+              "Selected worst loss: ID=#{worst_loss.killmail_id}, " <>
+                "Character=#{worst_loss.related_character_name || "Unknown"}, " <>
+                "Ship=#{worst_loss.ship_type_name || "Unknown"}, " <>
+                "System=#{worst_loss.solar_system_name || "Unknown"}, " <>
+                "Region=#{worst_loss.region_name || "Unknown"}, " <>
+                "Value=#{inspect(worst_loss.total_value)}, " <>
+                "Time=#{DateTime.to_string(worst_loss.kill_time)}"
+            )
+
+            {:ok, worst_loss}
+          else
+            AppLogger.scheduler_warn("No losses with valid values found")
+            {:error, :no_losses_with_value}
+          end
+
+        error ->
+          AppLogger.scheduler_error("Error querying losses in date range: #{inspect(error)}")
+          {:error, "Failed to find losses in date range"}
+      end
+    end
+  end
+
+  # Get list of tracked character IDs for filtering
+  defp get_tracked_character_ids do
+    # First try getting characters from repository cache
+    tracked_characters = WandererNotifier.Data.Repository.get_tracked_characters()
+
+    # Log the raw data for debugging
+    AppLogger.scheduler_info(
+      "Retrieved #{length(tracked_characters)} tracked characters from repository cache"
+    )
+
+    if tracked_characters != [] do
+      # Log a sample character for format inspection
+      sample = List.first(tracked_characters)
+      AppLogger.scheduler_info("Sample character format: #{inspect(sample)}")
+
+      # Extract character IDs, handling different formats
+      character_ids = extract_character_ids_from_maps(tracked_characters)
+
+      # Log the extracted IDs
+      AppLogger.scheduler_info(
+        "Extracted #{length(character_ids)} valid character IDs from cache"
+      )
+
+      character_ids
+    else
+      # If cache returned empty list, fallback to database query
+      AppLogger.scheduler_info(
+        "Cache returned no tracked characters, falling back to database query"
+      )
+
+      # Query directly from the tracked_characters table
+      case query_tracked_characters_from_database() do
+        {:ok, ids} when ids != [] ->
+          AppLogger.scheduler_info("Found #{length(ids)} tracked characters in database")
+          ids
+
+        _ ->
+          AppLogger.scheduler_warn("No tracked characters found in database either")
+          []
+      end
+    end
+  end
+
+  # Extract character IDs from list of character maps
+  defp extract_character_ids_from_maps(characters) do
+    Enum.map(characters, fn char ->
+      # Try different ways to extract character_id
+      character_id =
+        cond do
+          # String map access
+          is_map(char) && Map.has_key?(char, "character_id") ->
+            Map.get(char, "character_id")
+
+          # Atom map access
+          is_map(char) && Map.has_key?(char, :character_id) ->
+            Map.get(char, :character_id)
+
+          # Character is directly an ID
+          is_binary(char) || is_integer(char) ->
+            char
+
+          true ->
+            nil
         end
 
+      # Convert to integer if possible
+      case character_id do
+        id when is_integer(id) ->
+          id
+
+        id when is_binary(id) ->
+          case Integer.parse(id) do
+            {int_id, _} -> int_id
+            :error -> nil
+          end
+
+        _ ->
+          nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Query tracked characters directly from database
+  defp query_tracked_characters_from_database do
+    # Create query to get all character_ids from tracked_characters table
+    require Ash.Query
+
+    # Log that we're attempting direct database query
+    AppLogger.scheduler_info("Querying tracked_characters table directly")
+
+    # Use the TrackedCharacter resource to query the database
+    character_query =
+      WandererNotifier.Resources.TrackedCharacter
+      |> Ash.Query.select([:character_id])
+
+    # Execute the query and extract character IDs
+    case WandererNotifier.Resources.Api.read(character_query) do
+      {:ok, results} ->
+        # Extract character_id from each result
+        character_ids =
+          Enum.map(results, fn char ->
+            # Get the character_id value (could be integer or string)
+            id = Map.get(char, :character_id)
+
+            # Ensure it's an integer
+            case id do
+              id when is_integer(id) ->
+                id
+
+              id when is_binary(id) ->
+                {parsed, _} = Integer.parse(id)
+                parsed
+
+              _ ->
+                nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        AppLogger.scheduler_info(
+          "Successfully found #{length(character_ids)} character IDs in database"
+        )
+
+        {:ok, character_ids}
+
       error ->
-        AppLogger.scheduler_error("Error querying losses in date range: #{inspect(error)}")
-        {:error, "Failed to find losses in date range"}
+        AppLogger.scheduler_error("Error querying tracked_characters table: #{inspect(error)}")
+        {:error, "Failed to query tracked characters from database"}
     end
   end
 
@@ -375,52 +684,24 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         "System ID=#{killmail.solar_system_id || "nil"}"
     )
 
-    # Try to get character name if it's missing
+    # Try to get character name if it's missing or is "Unknown Character"
     killmail =
       if is_nil(killmail.related_character_name) ||
-           killmail.related_character_name == "Unknown Character" do
-        # If this is a kill, try to get from victim_data
-        if killmail.character_role == :attacker && not is_nil(killmail.victim_data) do
-          char_name = get_in(killmail.victim_data, ["character_name"])
+           String.starts_with?(to_string(killmail.related_character_name), "Unknown Character") do
+        # If we have a character ID, look it up in ESI
+        if not is_nil(killmail.related_character_id) do
+          case lookup_character_name(killmail.related_character_id) do
+            {:ok, name} when is_binary(name) and name != "" ->
+              AppLogger.scheduler_info("Resolved character name from ESI: #{name}")
+              %{killmail | related_character_name: name}
 
-          if not is_nil(char_name) && char_name != "" do
-            AppLogger.scheduler_info("Using character name from victim data: #{char_name}")
-            %{killmail | related_character_name: char_name}
-          else
-            # Try attacker data
-            if not is_nil(killmail.attacker_data) do
-              char_name = get_in(killmail.attacker_data, ["character_name"])
-
-              if not is_nil(char_name) && char_name != "" do
-                AppLogger.scheduler_info("Using character name from attacker data: #{char_name}")
-                %{killmail | related_character_name: char_name}
-              else
-                AppLogger.scheduler_info("No character name found in kill data")
-                # Use "Unknown Pilot" instead of "Unknown Character" for consistency
-                %{killmail | related_character_name: "Unknown Pilot"}
-              end
-            else
-              # Use "Unknown Pilot" instead of "Unknown Character" for consistency
-              %{killmail | related_character_name: "Unknown Pilot"}
-            end
+            _ ->
+              # If ESI lookup fails, try alternative sources
+              try_alternative_character_sources(killmail)
           end
         else
-          # For losses
-          if killmail.character_role == :victim && not is_nil(killmail.victim_data) do
-            char_name = get_in(killmail.victim_data, ["character_name"])
-
-            if not is_nil(char_name) && char_name != "" do
-              AppLogger.scheduler_info("Using character name from victim data: #{char_name}")
-              %{killmail | related_character_name: char_name}
-            else
-              AppLogger.scheduler_info("No character name found in loss data")
-              # Use "Unknown Pilot" instead of "Unknown Character" for consistency
-              %{killmail | related_character_name: "Unknown Pilot"}
-            end
-          else
-            # Use "Unknown Pilot" instead of "Unknown Character" for consistency
-            %{killmail | related_character_name: "Unknown Pilot"}
-          end
+          # No character ID, try alternative sources
+          try_alternative_character_sources(killmail)
         end
       else
         killmail
@@ -431,7 +712,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       if (is_nil(killmail.ship_type_name) || killmail.ship_type_name == "Unknown Ship") &&
            killmail.character_role == :victim &&
            not is_nil(killmail.victim_data) do
-        ship_name = get_in(killmail.victim_data, ["ship_type_name"])
+        ship_name = Map.get(killmail.victim_data, "ship_type_name")
 
         if not is_nil(ship_name) && ship_name != "" do
           AppLogger.scheduler_info("Using ship name from victim data: #{ship_name}")
@@ -459,6 +740,159 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     end
   end
 
+  # Try to get character name from alternative sources (victim_data or attacker_data)
+  defp try_alternative_character_sources(killmail) do
+    # If this is a kill, try to get from victim_data
+    if killmail.character_role == :attacker && not is_nil(killmail.victim_data) do
+      char_name = Map.get(killmail.victim_data, "character_name")
+
+      if not is_nil(char_name) && char_name != "" do
+        AppLogger.scheduler_info("Using character name from victim data: #{char_name}")
+        %{killmail | related_character_name: char_name}
+      else
+        # Try attacker data
+        if not is_nil(killmail.attacker_data) do
+          char_name =
+            if is_map(killmail.attacker_data) do
+              Map.get(killmail.attacker_data, "character_name")
+            else
+              nil
+            end
+
+          if not is_nil(char_name) && char_name != "" do
+            AppLogger.scheduler_info("Using character name from attacker data: #{char_name}")
+            %{killmail | related_character_name: char_name}
+          else
+            AppLogger.scheduler_info("No character name found in kill data")
+            # Fall back to character ID if available
+            if not is_nil(killmail.related_character_id) do
+              # Try to resolve it again
+              case lookup_character_name(killmail.related_character_id) do
+                {:ok, name} when is_binary(name) and name != "" ->
+                  %{killmail | related_character_name: name}
+
+                _ ->
+                  %{killmail | related_character_name: "Unknown Pilot"}
+              end
+            else
+              %{killmail | related_character_name: "Unknown Pilot"}
+            end
+          end
+        else
+          # Fall back to character ID if available
+          if not is_nil(killmail.related_character_id) do
+            # Try to resolve it again
+            case lookup_character_name(killmail.related_character_id) do
+              {:ok, name} when is_binary(name) and name != "" ->
+                %{killmail | related_character_name: name}
+
+              _ ->
+                %{killmail | related_character_name: "Unknown Pilot"}
+            end
+          else
+            %{killmail | related_character_name: "Unknown Pilot"}
+          end
+        end
+      end
+    else
+      # For losses
+      if killmail.character_role == :victim && not is_nil(killmail.victim_data) do
+        char_name = Map.get(killmail.victim_data, "character_name")
+
+        if not is_nil(char_name) && char_name != "" do
+          AppLogger.scheduler_info("Using character name from victim data: #{char_name}")
+          %{killmail | related_character_name: char_name}
+        else
+          AppLogger.scheduler_info("No character name found in loss data")
+          # Fall back to character ID if available
+          if not is_nil(killmail.related_character_id) do
+            # Try to resolve it again
+            case lookup_character_name(killmail.related_character_id) do
+              {:ok, name} when is_binary(name) and name != "" ->
+                %{killmail | related_character_name: name}
+
+              _ ->
+                %{killmail | related_character_name: "Unknown Pilot"}
+            end
+          else
+            %{killmail | related_character_name: "Unknown Pilot"}
+          end
+        end
+      else
+        # Fall back to character ID if available
+        if not is_nil(killmail.related_character_id) do
+          # Try to resolve it again
+          case lookup_character_name(killmail.related_character_id) do
+            {:ok, name} when is_binary(name) and name != "" ->
+              %{killmail | related_character_name: name}
+
+            _ ->
+              %{killmail | related_character_name: "Unknown Pilot"}
+          end
+        else
+          %{killmail | related_character_name: "Unknown Pilot"}
+        end
+      end
+    end
+  end
+
+  # Look up a character name from the ESI API
+  defp lookup_character_name(character_id) when not is_nil(character_id) do
+    # First try repository cache
+    case WandererNotifier.Data.Repository.get_character_name(character_id) do
+      {:ok, name} when is_binary(name) and name != "" and name != "Unknown" ->
+        AppLogger.scheduler_info("Found character name in repository cache", %{
+          character_id: character_id,
+          character_name: name
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Fall back to ESI API
+        AppLogger.scheduler_info("Looking up character name via ESI API", %{
+          character_id: character_id
+        })
+
+        case WandererNotifier.Api.ESI.Service.get_character(character_id) do
+          {:ok, character_data} when is_map(character_data) ->
+            name = Map.get(character_data, "name")
+
+            if is_binary(name) && name != "" do
+              # Cache the name for future use
+              WandererNotifier.Data.Cache.Helpers.cache_character_info(%{
+                "character_id" => character_id,
+                "name" => name
+              })
+
+              AppLogger.scheduler_info("Successfully resolved character name from ESI", %{
+                character_id: character_id,
+                character_name: name
+              })
+
+              {:ok, name}
+            else
+              AppLogger.scheduler_warn("ESI returned invalid character name", %{
+                character_id: character_id,
+                name: inspect(name)
+              })
+
+              {:error, :invalid_name}
+            end
+
+          error ->
+            AppLogger.scheduler_warn("Failed to get character name from ESI", %{
+              character_id: character_id,
+              error: inspect(error)
+            })
+
+            {:error, :esi_failed}
+        end
+    end
+  end
+
+  defp lookup_character_name(_), do: {:error, :nil_character_id}
+
   # Format a kill/loss into a Discord embed
   defp format_kill_embed(killmail, is_kill, date_range) do
     # See if solar_system_name is already in J-format
@@ -484,18 +918,55 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         killmail.region_name || "Unknown Region"
       end
 
-    # Try to get character name from victim_data for losses
+    # Ensure we get the proper character name - try to resolve it if we have the ID
     character_name =
-      if not is_kill &&
-           (killmail.related_character_name == nil ||
-              killmail.related_character_name == "Unknown Character") do
-        if not is_nil(killmail.victim_data) do
-          get_in(killmail.victim_data, ["character_name"]) || "Unknown Pilot"
-        else
-          "Unknown Pilot"
-        end
-      else
-        killmail.related_character_name || "Unknown Pilot"
+      cond do
+        # Try to resolve character ID if name is unknown or has "Unknown Character" prefix
+        (is_binary(killmail.related_character_name) &&
+           String.starts_with?(killmail.related_character_name, "Unknown Character")) ||
+            is_nil(killmail.related_character_name) ->
+          if not is_nil(killmail.related_character_id) do
+            case lookup_character_name(killmail.related_character_id) do
+              {:ok, name} when is_binary(name) and name != "" -> name
+              _ -> "Unknown Pilot"
+            end
+          else
+            # Fallback when no ID is available
+            "Unknown Pilot"
+          end
+
+        # Handle string "Character #ID" format (from previous enrichment)
+        is_binary(killmail.related_character_name) &&
+            String.starts_with?(killmail.related_character_name, "Character #") ->
+          if not is_nil(killmail.related_character_id) do
+            case lookup_character_name(killmail.related_character_id) do
+              {:ok, name} when is_binary(name) and name != "" -> name
+              _ -> "Unknown Pilot"
+            end
+          else
+            "Unknown Pilot"
+          end
+
+        # Special handling for loss notifications without proper name but with victim data
+        not is_kill &&
+            (killmail.related_character_name == nil ||
+               killmail.related_character_name == "Unknown Character") ->
+          if not is_nil(killmail.victim_data) do
+            character_name_from_victim = Map.get(killmail.victim_data, "character_name")
+
+            character_name_from_victim ||
+              if not is_nil(killmail.related_character_id),
+                do: "Unknown Pilot",
+                else: "Unknown Pilot"
+          else
+            if not is_nil(killmail.related_character_id),
+              do: "Unknown Pilot",
+              else: "Unknown Pilot"
+          end
+
+        # Use existing character name
+        true ->
+          killmail.related_character_name
       end
 
     # Try to get ship name from victim_data for losses
@@ -503,7 +974,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
       if not is_kill &&
            (killmail.ship_type_name == nil || killmail.ship_type_name == "Unknown Ship") do
         if not is_nil(killmail.victim_data) do
-          get_in(killmail.victim_data, ["ship_type_name"]) || "Unknown Ship"
+          Map.get(killmail.victim_data, "ship_type_name") || "Unknown Ship"
         else
           "Unknown Ship"
         end
@@ -525,34 +996,103 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     )
 
     # Format ISK value
-    formatted_isk = format_isk(killmail.total_value)
+    formatted_isk = format_isk_compact(killmail.total_value)
+
+    # ZKillboard URL for the kill
+    zkill_url = "https://zkillboard.com/kill/#{killmail.killmail_id}/"
+
+    # Create character link for Discord
+    character_display = character_name
 
     # Determine title, description and color based on whether this is a kill or loss
     {title, description, color} =
       if is_kill do
         {
           "🏆 Best Kill of the Week",
-          "#{character_name} scored our most valuable kill this week!",
+          "#{character_display} scored our most valuable kill this week!",
           # Green
           0x00FF00
         }
       else
         {
           "💀 Worst Loss of the Week",
-          "#{character_name} suffered our most expensive loss this week.",
+          "#{character_display} suffered our most expensive loss this week.",
           # Red
           0xFF0000
         }
       end
 
-    # Victim info (for kills)
-    victim_info =
-      if is_kill && killmail.victim_data do
-        victim_ship = get_in(killmail.victim_data, ["ship_type_name"]) || "Unknown Ship"
-        victim_corp = get_in(killmail.victim_data, ["corporation_name"]) || "Unknown Corporation"
-        "Destroyed a #{victim_ship} belonging to #{victim_corp}"
-      else
-        nil
+    # More detailed victim/attacker info
+    detail_info =
+      cond do
+        # For kills, show destroyed ship, corporation and attackers count
+        is_kill && killmail.victim_data ->
+          victim_ship = Map.get(killmail.victim_data, "ship_type_name") || "Unknown Ship"
+          victim_corp = Map.get(killmail.victim_data, "corporation_name") || "Unknown Corporation"
+
+          # Access attacker_data properly, handling the case where it's a struct
+          attackers_count =
+            cond do
+              is_map(killmail.attacker_data) && !is_struct(killmail.attacker_data) ->
+                Map.get(killmail.attacker_data, "attackers_count") || "Unknown"
+
+              is_struct(killmail.attacker_data) &&
+                  Map.has_key?(killmail.attacker_data, :attackers_count) ->
+                Map.get(killmail.attacker_data, :attackers_count) || "Unknown"
+
+              true ->
+                "Unknown"
+            end
+
+          "Destroyed a #{victim_ship} belonging to #{victim_corp}\nTotal attackers: #{attackers_count}"
+
+        # For losses, show main attacker's ship and total attackers
+        not is_kill && killmail.attacker_data ->
+          # Access attacker_data properly, handling the case where it's a struct
+          main_attacker_ship =
+            cond do
+              is_map(killmail.attacker_data) && !is_struct(killmail.attacker_data) ->
+                Map.get(killmail.attacker_data, "ship_type_name") || "Unknown Ship"
+
+              is_struct(killmail.attacker_data) &&
+                  Map.has_key?(killmail.attacker_data, :ship_type_name) ->
+                Map.get(killmail.attacker_data, :ship_type_name) || "Unknown Ship"
+
+              true ->
+                "Unknown Ship"
+            end
+
+          attackers_count =
+            cond do
+              is_map(killmail.attacker_data) && !is_struct(killmail.attacker_data) ->
+                Map.get(killmail.attacker_data, "attackers_count") || "Unknown"
+
+              is_struct(killmail.attacker_data) &&
+                  Map.has_key?(killmail.attacker_data, :attackers_count) ->
+                Map.get(killmail.attacker_data, :attackers_count) || "Unknown"
+
+              true ->
+                "Unknown"
+            end
+
+          main_attacker_corp =
+            cond do
+              is_map(killmail.attacker_data) && !is_struct(killmail.attacker_data) ->
+                Map.get(killmail.attacker_data, "corporation_name") || "Unknown Corporation"
+
+              is_struct(killmail.attacker_data) &&
+                  Map.has_key?(killmail.attacker_data, :corporation_name) ->
+                Map.get(killmail.attacker_data, :corporation_name) || "Unknown Corporation"
+
+              true ->
+                "Unknown Corporation"
+            end
+
+          "Killed by #{main_attacker_ship} from #{main_attacker_corp}\nTotal attackers: #{attackers_count}"
+
+        # Default case - no details available
+        true ->
+          nil
       end
 
     # Build the embed
@@ -573,25 +1113,31 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         },
         %{
           "name" => "Location",
-          "value" => "#{system_name} (#{region_name})",
+          "value" => system_name,
           "inline" => true
         }
       ],
       "footer" => %{
-        "text" => "Week of #{date_range}"
+        "text" => "Week of #{date_range} • [View on zKillboard](#{zkill_url})"
       },
       "timestamp" => DateTime.to_iso8601(killmail.kill_time)
     }
 
-    # Add victim info field if available
+    # Add zkillboard URL (Discord doesn't support markdown in footers)
+    embed = Map.put(embed, "url", zkill_url)
+
+    # Update footer to not include the markdown link
+    embed = put_in(embed, ["footer", "text"], "Week of #{date_range}")
+
+    # Add details field if available
     embed =
-      if victim_info do
+      if detail_info do
         updated_fields =
           embed["fields"] ++
             [
               %{
                 "name" => "Details",
-                "value" => victim_info,
+                "value" => detail_info,
                 "inline" => false
               }
             ]
@@ -601,11 +1147,29 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
         embed
       end
 
+    # Add view link field
+    updated_fields =
+      embed["fields"] ++
+        [
+          %{
+            "name" => "Links",
+            "value" => "[View on zKillboard](#{zkill_url})",
+            "inline" => false
+          }
+        ]
+
+    embed = %{embed | "fields" => updated_fields}
+
     # Add thumbnail if possible
     embed =
       if is_kill do
         # For kills, try to use victim ship image
-        victim_type_id = get_in(killmail.victim_data, ["ship_type_id"])
+        victim_type_id =
+          if is_nil(killmail.victim_data) do
+            nil
+          else
+            Map.get(killmail.victim_data, "ship_type_id")
+          end
 
         if victim_type_id do
           ship_image_url = "https://images.evetech.net/types/#{victim_type_id}/render?size=128"
@@ -640,7 +1204,33 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     embed
   end
 
-  # Format ISK value for display
+  # Format ISK value for display in a more compact way
+  defp format_isk_compact(value) do
+    # Handle nil value
+    if is_nil(value) do
+      "Unknown"
+    else
+      # Try to convert to float
+      float_value = try_convert_to_float(value)
+
+      # Format based on magnitude
+      cond do
+        float_value >= 1_000_000_000 ->
+          "#{format_float(float_value / 1_000_000_000)}B ISK"
+
+        float_value >= 1_000_000 ->
+          "#{format_float(float_value / 1_000_000)}M ISK"
+
+        float_value >= 1_000 ->
+          "#{format_float(float_value / 1_000)}K ISK"
+
+        true ->
+          "#{format_float(float_value)} ISK"
+      end
+    end
+  end
+
+  # Format ISK value for display (original version, kept for backward compatibility)
   defp format_isk(value) do
     # Log the raw value
     AppLogger.scheduler_info("Formatting ISK value: Raw value = #{inspect(value)}")
@@ -737,24 +1327,8 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     :erlang.float_to_binary(float, [{:decimals, 2}])
   end
 
-  # Helper function to check if a value is a valid integer
-  defp valid_integer?(value) when is_integer(value), do: true
-  defp valid_integer?(_), do: false
-
   # For dependency injection in tests
   defp config do
     Application.get_env(:wanderer_notifier, :config_module, NotificationConfig)
-  end
-
-  @impl true
-  def health_check do
-    # Get channel ID from config
-    channel_id = config().discord_channel_id_for(:kill_charts)
-
-    if is_nil(channel_id) do
-      {:error, "No Discord channel configured for kill charts"}
-    else
-      {:ok, %{channel_id: channel_id}}
-    end
   end
 end

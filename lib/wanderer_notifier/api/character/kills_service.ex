@@ -13,7 +13,6 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.Data.Repository
   alias WandererNotifier.KillmailProcessing.Context
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Processing.Killmail.Processor
   alias WandererNotifier.Resources.KillmailPersistence
 
   # Default implementations
@@ -248,7 +247,60 @@ defmodule WandererNotifier.Api.Character.KillsService do
       |> extract_valid_character_ids()
       |> Task.async_stream(
         fn character_id ->
-          AppLogger.kill_info("[CHARACTER_KILLS] Processing character #{character_id}")
+          # Get character name for logging from the tracked_characters list
+          name_from_tracked =
+            Enum.find_value(tracked_characters, fn char ->
+              if to_string(Map.get(char, "character_id", "")) == to_string(character_id) do
+                Map.get(char, "character_name", nil)
+              end
+            end)
+
+          # If name is unknown or missing, try to resolve before logging
+          character_name =
+            if is_nil(name_from_tracked) || name_from_tracked == "Unknown" do
+              # First try repository
+              case deps.repository.get_character_name(character_id) do
+                {:ok, name} when is_binary(name) and name != "" and name != "Unknown" ->
+                  name
+
+                repo_error ->
+                  # Only if repository fails, try ESI
+                  case deps.esi_service.get_character(character_id) do
+                    {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+                      # Update the cache immediately
+                      deps.cache_helpers.cache_character_info(%{
+                        "character_id" => character_id,
+                        "name" => name
+                      })
+
+                      name
+
+                    esi_error ->
+                      # Log the error but continue processing other characters
+                      AppLogger.kill_error(
+                        "[BATCH] Failed to resolve character name - BOTH tracked data and ESI failed",
+                        %{
+                          character_id: character_id,
+                          from_tracked: name_from_tracked,
+                          repo_error: inspect(repo_error),
+                          esi_error: inspect(esi_error)
+                        }
+                      )
+
+                      # Return error instead of using an unknown name
+                      raise "Failed to resolve character name for ID #{character_id} in batch processing - both repository and ESI lookup failed"
+                  end
+              end
+            else
+              name_from_tracked
+            end
+
+          # Now log with the best name we have
+          AppLogger.kill_info("[CHARACTER_KILLS] Processing character", %{
+            character_id: character_id,
+            character_name: character_name
+          })
+
           result = fetch_and_persist_character_kills(character_id, limit, page, deps)
 
           # Log per-character summary
@@ -295,7 +347,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
         # Reduced concurrency to prevent overload
         max_concurrency: 2,
         # Allow partial success by returning error instead of killing task
-        on_timeout: :exit_task
+        on_timeout: :exit
       )
       |> Enum.to_list()
       |> Enum.map(fn
@@ -328,13 +380,18 @@ defmodule WandererNotifier.Api.Character.KillsService do
       timeouts: 0,
       characters: 0,
       successful_characters: 0,
-      failed_characters: 0
+      failed_characters: 0,
+      # Track character names for better logging
+      character_names: []
     }
 
     # Aggregate results from all characters
     totals =
       Enum.reduce(results, initial_totals, fn
         {:ok, stats}, acc ->
+          # Get character name from stats if available
+          character_name = Map.get(stats, :character_name, "Unknown")
+
           %{
             acc
             | total_kills: acc.total_kills + stats.total,
@@ -342,7 +399,8 @@ defmodule WandererNotifier.Api.Character.KillsService do
               skipped: acc.skipped + stats.skipped,
               errors: acc.errors + stats.errors,
               characters: acc.characters + 1,
-              successful_characters: acc.successful_characters + 1
+              successful_characters: acc.successful_characters + 1,
+              character_names: acc.character_names ++ [{character_name, stats.processed}]
           }
 
         {:error, _}, acc ->
@@ -352,6 +410,14 @@ defmodule WandererNotifier.Api.Character.KillsService do
               failed_characters: acc.failed_characters + 1
           }
       end)
+
+    # Log individual character summaries
+    Enum.each(totals.character_names, fn {character_name, processed_count} ->
+      AppLogger.kill_info("📊 Character processing summary", %{
+        character_name: character_name,
+        processed_kills: processed_count
+      })
+    end)
 
     # Log overall summary
     AppLogger.kill_info("📊 Overall batch processing summary", %{
@@ -391,47 +457,144 @@ defmodule WandererNotifier.Api.Character.KillsService do
         page \\ 1,
         deps \\ @default_deps
       ) do
-    AppLogger.kill_info(
-      "[CHARACTER_KILLS] Starting kill fetch and persist for character #{character_id}",
-      character_id: character_id,
-      limit: limit,
-      page: page
-    )
+    # First check if this character is actually tracked
+    is_tracked = is_character_tracked?(character_id)
 
-    case fetch_character_kills(character_id, limit, page, deps) do
-      {:ok, kills} when is_list(kills) ->
-        kill_count = Enum.count(kills)
+    # Skip processing for untracked characters
+    if not is_tracked do
+      # Don't include character_name in the log for untracked characters
+      AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
+        character_id: character_id
+      })
 
-        AppLogger.kill_info(
-          "[CHARACTER_KILLS] Processing kills batch for character #{character_id}",
-          character_id: character_id,
-          kill_count: kill_count,
-          sample_kill: if(kill_count > 0, do: List.first(kills), else: nil)
-        )
-
-        case process_kills_batch(kills, character_id) do
-          {:ok, stats} ->
-            {:ok, stats}
-
-          {:error, reason} ->
-            AppLogger.kill_error(
-              "[CHARACTER_KILLS] Failed to process kills for character #{character_id}",
+      return_stats = %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}
+      {:ok, return_stats}
+    else
+      # Get the most accurate character name before logging anything
+      # Use direct repository lookup first (which should have cached data)
+      character_name =
+        case deps.repository.get_character_name(character_id) do
+          {:ok, name} when is_binary(name) and name != "" and name != "Unknown" ->
+            AppLogger.kill_debug("[FETCH_PERSIST] Found character name in repository", %{
               character_id: character_id,
-              error: inspect(reason)
-            )
+              character_name: name
+            })
 
-            {:error, reason}
+            name
+
+          repo_error ->
+            # Only if repository lookup fails, try ESI as fallback
+            AppLogger.kill_warn("[FETCH_PERSIST] Repository lookup failed for character name", %{
+              character_id: character_id,
+              repo_error: inspect(repo_error)
+            })
+
+            case deps.esi_service.get_character(character_id) do
+              {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+                # Update the cache immediately
+                deps.cache_helpers.cache_character_info(%{
+                  "character_id" => character_id,
+                  "name" => name
+                })
+
+                name
+
+              esi_error ->
+                AppLogger.kill_error(
+                  "[FETCH_PERSIST] Failed to resolve character name - BOTH repository and ESI failed",
+                  %{
+                    character_id: character_id,
+                    repo_error: inspect(repo_error),
+                    esi_error: inspect(esi_error)
+                  }
+                )
+
+                # Throw a proper error instead of using an unknown name
+                raise "Failed to resolve character name for ID #{character_id} during fetch and persist - both repository and ESI lookup failed"
+            end
         end
 
-      {:error, reason} ->
-        AppLogger.kill_error(
-          "[CHARACTER_KILLS] Failed to fetch kills for character #{character_id}",
+      AppLogger.kill_info(
+        "[CHARACTER_KILLS] Starting kill fetch and persist",
+        %{
           character_id: character_id,
-          error: inspect(reason)
-        )
+          character_name: character_name,
+          limit: limit,
+          page: page
+        }
+      )
 
-        {:error, reason}
+      case fetch_character_kills(character_id, limit, page, deps) do
+        {:ok, kills} when is_list(kills) ->
+          kill_count = Enum.count(kills)
+
+          AppLogger.kill_info(
+            "[CHARACTER_KILLS] Processing kills batch for character",
+            %{
+              character_id: character_id,
+              character_name: character_name,
+              kill_count: kill_count
+            }
+          )
+
+          # Create context with resolved name
+          ctx =
+            Context.new_historical(
+              character_id,
+              character_name,
+              :zkill_api,
+              generate_batch_id(),
+              []
+            )
+
+          case process_kills_batch(kills, ctx) do
+            {:ok, stats} ->
+              # Add character_name to stats for proper logging in calling function
+              stats = Map.put(stats, :character_name, character_name)
+              {:ok, stats}
+
+            {:error, reason} ->
+              AppLogger.kill_error(
+                "[CHARACTER_KILLS] Failed to process kills",
+                %{
+                  character_id: character_id,
+                  character_name: character_name,
+                  error: inspect(reason)
+                }
+              )
+
+              {:error, reason}
+          end
+
+        {:error, reason} ->
+          AppLogger.kill_error(
+            "[CHARACTER_KILLS] Failed to fetch kills",
+            %{
+              character_id: character_id,
+              character_name: character_name || "Unknown",
+              error: inspect(reason)
+            }
+          )
+
+          {:error, reason}
+      end
     end
+  end
+
+  # Helper function to check if a character is tracked
+  defp is_character_tracked?(character_id) do
+    # Get the list of tracked characters
+    tracked_characters = Repository.get_tracked_characters()
+
+    # Check if the character is in the tracked list
+    Enum.any?(tracked_characters, fn char ->
+      char_id =
+        if is_map(char),
+          do: Map.get(char, :character_id) || Map.get(char, "character_id"),
+          else: nil
+
+      to_string(char_id) == to_string(character_id)
+    end)
   end
 
   @doc """
@@ -452,7 +615,8 @@ defmodule WandererNotifier.Api.Character.KillsService do
           process_character_kills(character_id, skip_notification: true)
         end,
         max_concurrency: 5,
-        timeout: 60_000
+        timeout: 60_000,
+        on_timeout: :exit
       )
       |> Enum.reduce({0, 0, []}, fn
         {:ok, {:ok, %{processed: p, persisted: s}}}, {total_proc, total_succ, errs} ->
@@ -484,14 +648,50 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp process_kills_batch(kills, character_id) when is_integer(character_id) do
-    # Get character name for consistent logging
+    # First try to get the character name from the cache, where it should be for tracked characters
     character_name =
       case Repository.get_character_name(character_id) do
-        {:ok, name} -> name
-        _ -> "Unknown"
+        {:ok, name} when is_binary(name) and name != "" and name != "Unknown" ->
+          AppLogger.kill_debug("[PROCESS_BATCH] Found character name in cache", %{
+            character_id: character_id,
+            character_name: name
+          })
+
+          name
+
+        cache_error ->
+          # Only if cache lookup fails, try ESI as fallback
+          AppLogger.kill_warn("[PROCESS_BATCH] Cache miss for character name", %{
+            character_id: character_id,
+            cache_result: inspect(cache_error)
+          })
+
+          case ESIService.get_character(character_id) do
+            {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+              # Update the cache for future use
+              WandererNotifier.Data.Cache.Helpers.cache_character_info(%{
+                "character_id" => character_id,
+                "name" => name
+              })
+
+              name
+
+            esi_error ->
+              AppLogger.kill_error(
+                "[PROCESS_BATCH] Failed to resolve character name - BOTH cache and ESI failed",
+                %{
+                  character_id: character_id,
+                  cache_error: inspect(cache_error),
+                  esi_error: inspect(esi_error)
+                }
+              )
+
+              # Throw a proper error instead of using an unknown name
+              raise "Failed to resolve character name for ID #{character_id} - both cache and ESI lookup failed"
+          end
       end
 
-    # Create a context for processing
+    # Create a context for processing with the properly resolved character name
     ctx =
       Context.new_historical(character_id, character_name, :zkill_api, generate_batch_id(), [])
 
@@ -504,8 +704,36 @@ defmodule WandererNotifier.Api.Character.KillsService do
     # Get concurrency from context options
     concurrency = get_in(ctx.options, [:concurrency]) || 2
 
+    # Create a set of known kill IDs that we've already processed
+    # We'll skip these to avoid duplicate processing
+    known_kill_ids =
+      WandererNotifier.Resources.KillmailPersistence.get_already_processed_kill_ids(
+        ctx.character_id
+      )
+
+    AppLogger.kill_debug("[KillsService] Filtering already processed kills", %{
+      total_kills: length(kills),
+      already_processed: MapSet.size(known_kill_ids),
+      character_id: ctx.character_id
+    })
+
+    # Filter out already processed kills
+    filtered_kills =
+      Enum.reject(kills, fn kill ->
+        kill_id = extract_killmail_id(kill)
+        kill_id_int = parse_kill_id(kill_id)
+        kill_id_int && MapSet.member?(known_kill_ids, kill_id_int)
+      end)
+
+    AppLogger.kill_info("[KillsService] Processing new kills", %{
+      total_kills: length(kills),
+      new_kills: length(filtered_kills),
+      skipped_kills: length(kills) - length(filtered_kills),
+      character_id: ctx.character_id
+    })
+
     stats = %{
-      total: length(kills),
+      total: length(filtered_kills),
       processed: 0,
       skipped: 0,
       duplicates: 0,
@@ -514,7 +742,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     }
 
     result =
-      kills
+      filtered_kills
       |> Task.async_stream(
         fn kill ->
           process_single_kill(kill, ctx)
@@ -595,8 +823,41 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp process_single_kill(kill, ctx) do
-    Processor.process_single_kill(kill, ctx)
+    kill_id = extract_killmail_id(kill)
+
+    AppLogger.kill_debug("[KillsService] Processing single kill", %{
+      kill_id: kill_id,
+      character_id: ctx.character_id,
+      character_name: ctx.character_name,
+      context_mode: ctx.mode && ctx.mode.mode
+    })
+
+    # Directly use the same Pipeline module that the realtime processing uses
+    case WandererNotifier.KillmailProcessing.Pipeline.process_killmail(kill, ctx) do
+      {:ok, _} ->
+        :processed
+
+      error ->
+        AppLogger.kill_error("[KillsService] Pipeline processing failed", %{
+          kill_id: kill_id,
+          character_id: ctx.character_id,
+          error: inspect(error)
+        })
+
+        error
+    end
   end
+
+  # Safely extract killmail ID from various formats
+  defp extract_killmail_id(kill) when is_map(kill) do
+    cond do
+      Map.has_key?(kill, "killmail_id") -> kill["killmail_id"]
+      Map.has_key?(kill, :killmail_id) -> kill.killmail_id
+      true -> "unknown"
+    end
+  end
+
+  defp extract_killmail_id(_), do: "unknown"
 
   defp fetch_character_kills(character_id, _limit, _page, deps) do
     # Store the character ID in process dictionary for the persistence context
@@ -655,24 +916,69 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp transform_kill(kill, deps) do
+    kill_id = kill["killmail_id"]
+
+    AppLogger.kill_debug("[KillsService] Transforming kill", %{
+      kill_id: kill_id,
+      victim_id: get_in(kill, ["victim", "character_id"]),
+      ship_id: get_in(kill, ["victim", "ship_type_id"])
+    })
+
     with victim_id when is_integer(victim_id) <- get_in(kill, ["victim", "character_id"]),
          ship_id when is_integer(ship_id) <- get_in(kill, ["victim", "ship_type_id"]),
          {:ok, victim} <- deps.esi_service.get_character(victim_id),
          {:ok, ship} <- deps.esi_service.get_type(ship_id) do
+      # Log the raw result from ESI API
+      AppLogger.kill_debug("[KillsService] Raw ESI response data", %{
+        kill_id: kill_id,
+        victim_data: victim,
+        ship_data: ship
+      })
+
+      AppLogger.kill_debug("[KillsService] Successfully retrieved victim and ship data", %{
+        kill_id: kill_id,
+        victim_id: victim_id,
+        victim_name: victim["name"],
+        ship_id: ship_id,
+        ship_name: ship["name"]
+      })
+
       {:ok,
        %{
          id: kill["killmail_id"],
          time: kill["killmail_time"],
          victim_name: victim["name"],
-         ship_name: ship["name"]
+         ship_name: ship["name"],
+         # Include IDs for easier debugging
+         victim_id: victim_id,
+         ship_id: ship_id
        }}
     else
       {:error, reason} ->
-        AppLogger.kill_error("[CHARACTER_KILLS] Failed to enrich kill: #{inspect(reason)}")
+        AppLogger.kill_error("[CHARACTER_KILLS] Failed to enrich kill: #{inspect(reason)}", %{
+          kill_id: kill_id,
+          victim_id: get_in(kill, ["victim", "character_id"]),
+          ship_id: get_in(kill, ["victim", "ship_type_id"]),
+          error: inspect(reason)
+        })
+
         {:error, :api_error}
 
+      nil ->
+        AppLogger.kill_error("[CHARACTER_KILLS] Failed to extract victim or ship ID", %{
+          kill_id: kill_id,
+          victim: get_in(kill, ["victim"]),
+          raw_data_sample: inspect(kill, limit: 200)
+        })
+
+        {:error, :invalid_kill_data}
+
       _ ->
-        AppLogger.kill_error("[CHARACTER_KILLS] Failed to extract kill data")
+        AppLogger.kill_error("[CHARACTER_KILLS] Failed to extract kill data", %{
+          kill_id: kill_id,
+          raw_data_sample: inspect(kill, limit: 200)
+        })
+
         {:error, :invalid_kill_data}
     end
   end
@@ -787,4 +1093,16 @@ defmodule WandererNotifier.Api.Character.KillsService do
     |> Base.encode16()
     |> String.downcase()
   end
+
+  # Helper function to convert kill ID to integer for consistency
+  defp parse_kill_id(kill_id) when is_integer(kill_id), do: kill_id
+
+  defp parse_kill_id(kill_id) when is_binary(kill_id) do
+    case Integer.parse(kill_id) do
+      {id, _} -> id
+      :error -> nil
+    end
+  end
+
+  defp parse_kill_id(_), do: nil
 end

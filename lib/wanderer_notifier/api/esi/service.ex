@@ -52,9 +52,32 @@ defmodule WandererNotifier.Api.ESI.Service do
             error
         end
 
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
+      data when is_map(data) ->
+        AppLogger.api_debug("✨ ESI cache hit for character (map data)",
+          character_id: character_id
+        )
+
         {:ok, data}
+
+      name when is_binary(name) ->
+        # The cache contains just the character name as a string
+        # Wrap it in a map to make it compatible with the expected format
+        AppLogger.api_debug("✨ ESI cache hit for character (string name)",
+          character_id: character_id,
+          character_name: name
+        )
+
+        # Convert string name to compatible map format
+        {:ok, %{"name" => name}}
+
+      other ->
+        AppLogger.api_warn("⚠️ Invalid character data in cache",
+          character_id: character_id,
+          data_type: inspect(other)
+        )
+
+        # Default to an error
+        {:error, :invalid_cache_data}
     end
   end
 
@@ -75,9 +98,31 @@ defmodule WandererNotifier.Api.ESI.Service do
             error
         end
 
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for corporation", corporation_id: corporation_id)
+      data when is_map(data) ->
+        AppLogger.api_debug("✨ ESI cache hit for corporation (map data)",
+          corporation_id: corporation_id
+        )
+
         {:ok, data}
+
+      name when is_binary(name) ->
+        # The cache contains just the corporation name as a string
+        AppLogger.api_debug("✨ ESI cache hit for corporation (string name)",
+          corporation_id: corporation_id,
+          corporation_name: name
+        )
+
+        # Convert string name to compatible map format
+        {:ok, %{"name" => name}}
+
+      other ->
+        AppLogger.api_warn("⚠️ Invalid corporation data in cache",
+          corporation_id: corporation_id,
+          data_type: inspect(other)
+        )
+
+        # Default to an error
+        {:error, :invalid_cache_data}
     end
   end
 
@@ -98,9 +143,28 @@ defmodule WandererNotifier.Api.ESI.Service do
             error
         end
 
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for alliance", alliance_id: alliance_id)
+      data when is_map(data) ->
+        AppLogger.api_debug("✨ ESI cache hit for alliance (map data)", alliance_id: alliance_id)
         {:ok, data}
+
+      name when is_binary(name) ->
+        # The cache contains just the alliance name as a string
+        AppLogger.api_debug("✨ ESI cache hit for alliance (string name)",
+          alliance_id: alliance_id,
+          alliance_name: name
+        )
+
+        # Convert string name to compatible map format
+        {:ok, %{"name" => name}}
+
+      other ->
+        AppLogger.api_warn("⚠️ Invalid alliance data in cache",
+          alliance_id: alliance_id,
+          data_type: inspect(other)
+        )
+
+        # Default to an error
+        {:error, :invalid_cache_data}
     end
   end
 
@@ -214,9 +278,28 @@ defmodule WandererNotifier.Api.ESI.Service do
             error
         end
 
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for system", system_id: system_id)
+      data when is_map(data) ->
+        AppLogger.api_debug("✨ ESI cache hit for system (map data)", system_id: system_id)
         {:ok, data}
+
+      name when is_binary(name) ->
+        # The cache contains just the system name as a string
+        AppLogger.api_debug("✨ ESI cache hit for system (string name)",
+          system_id: system_id,
+          system_name: name
+        )
+
+        # Convert string name to compatible map format
+        {:ok, %{"name" => name}}
+
+      other ->
+        AppLogger.api_warn("⚠️ Invalid system data in cache",
+          system_id: system_id,
+          data_type: inspect(other)
+        )
+
+        # Default to an error
+        {:error, :invalid_cache_data}
     end
   end
 
