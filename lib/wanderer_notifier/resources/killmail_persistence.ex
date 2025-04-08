@@ -30,6 +30,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.Killmail, as: KillmailUtil
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Utils.ListUtils
@@ -284,8 +285,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   @impl true
   def maybe_persist_killmail(%KillmailResource{} = killmail, character_id \\ nil) do
     kill_id = killmail.killmail_id
-    system_id = KillmailResource.get_system_id(killmail)
-    system_name = KillmailResource.get(killmail, "solar_system_name") || "Unknown System"
+    system_id = KillmailUtil.get_system_id(killmail)
+    system_name = KillmailUtil.get(killmail, "solar_system_name") || "Unknown System"
 
     # Validate character_id doesn't match kill_id (indicates data error)
     character_id_validated =
@@ -440,10 +441,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   # Find tracked character information in the killmail
   defp find_tracked_character_in_killmail(%KillmailResource{} = killmail) do
     # Get victim and attacker information
-    victim = KillmailResource.get_victim(killmail)
+    victim = KillmailUtil.get_victim(killmail)
     victim_character_id = victim && Map.get(victim, "character_id")
     victim_id_str = victim_character_id && to_string(victim_character_id)
-    attackers = KillmailResource.get_attacker(killmail) || []
+    attackers = KillmailUtil.get_attacker(killmail) || []
 
     # Log victim and attacker information for debugging
     log_killmail_characters(killmail.killmail_id, victim, victim_id_str, length(attackers))
@@ -500,110 +501,82 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Helper function to validate killmail structure completeness
-  defp validate_killmail_structure(killmail, character_id, _character_name, role) do
-    # Log the debug data for easier troubleshooting
-    debug_data = KillmailResource.debug_data(killmail)
+  defp validate_killmail_structure(killmail, character_id, character_name, role) do
+    kill_id = killmail.killmail_id
+    debug_data = KillmailUtil.debug_data(killmail)
 
-    AppLogger.kill_debug("Validating killmail structure", %{
-      killmail_id: killmail.killmail_id,
-      solar_system_name: debug_data.solar_system_name,
-      has_esi_data: debug_data.has_esi_data,
-      esi_data_keys: debug_data.esi_data_keys
-    })
-
-    # Required fields based on the Killmail resource
-    required_fields = [
-      {:killmail_id, killmail.killmail_id, "Killmail ID"},
-      {:kill_time, KillmailResource.get(killmail, "killmail_time"), "Kill time"},
-      {:solar_system_id, KillmailResource.get_system_id(killmail), "Solar system ID"},
-      {:solar_system_name, KillmailResource.get(killmail, "solar_system_name"),
-       "Solar system name"},
-      {:ship_type_id, get_ship_type_id(killmail, character_id, role), "Ship type ID"},
-      {:ship_type_name, get_ship_type_name(killmail, character_id, role), "Ship type name"}
+    # Validate essential killmail components
+    field_validations = [
+      {:kill_id, kill_id, "Kill ID missing or invalid"},
+      {:kill_time, KillmailUtil.get(killmail, "killmail_time"), "Kill time missing"},
+      {:solar_system_id, KillmailUtil.get_system_id(killmail), "Solar system ID missing"},
+      {:solar_system_name, KillmailUtil.get(killmail, "solar_system_name"),
+       "Solar system name missing"},
+      {KillmailUtil.get(killmail, "solar_system_name") != "Unknown System",
+       "Solar system name is unknown (system data lookup failed)"}
     ]
 
-    # Check for missing required fields
-    missing_fields =
-      Enum.filter(required_fields, fn {_field, value, _name} ->
-        is_nil(value) || value == "" || value == 0
-      end)
+    # Validate victim data is present (only strictly necessary for victim role)
+    victim_validations =
+      if role == :victim do
+        case KillmailUtil.get_victim(killmail) do
+          nil ->
+            [
+              {:victim_data, false, "Victim data is missing (required for victim role)"}
+            ]
 
-    if Enum.empty?(missing_fields) do
-      zkb_data = killmail.zkb || %{}
-      total_value = Map.get(zkb_data, "totalValue")
-
-      # Look for solar_system_name in multiple places
-      solar_system_name = get_system_name(killmail)
-
-      # Look for ship type name in multiple places
-      ship_type_name = get_ship_type_name(killmail, character_id, role)
-
-      # Additional quality checks
-      cond do
-        is_nil(total_value) || total_value == 0 ->
-          {:error, "Missing or zero total value"}
-
-        solar_system_name == "Unknown System" || is_nil(solar_system_name) ->
-          {:error, "Solar system name not properly enriched: #{solar_system_name}"}
-
-        ship_type_name == "Unknown Ship" || is_nil(ship_type_name) ->
-          {:error, "Ship type name not properly enriched: #{ship_type_name}"}
-
-        role == :attacker &&
-            is_nil(KillmailResource.get_victim(killmail)) ->
-          {:error, "Victim data missing for attacker role"}
-
-        true ->
-          # All validations passed
-          {:ok, killmail}
-      end
-    else
-      # Report the missing fields
-      fields_msg = Enum.map_join(missing_fields, ", ", fn {_field, _value, name} -> name end)
-      {:error, "Missing required fields: #{fields_msg}"}
-    end
-  end
-
-  # Helper to get the ship type ID based on role
-  defp get_ship_type_id(killmail, character_id, role) do
-    KillmailResource.find_field(killmail, "ship_type_id", character_id, role)
-  end
-
-  # Helper to get the ship type name based on role, checking multiple locations
-  defp get_ship_type_name(killmail, character_id, role) do
-    KillmailResource.find_field(killmail, "ship_type_name", character_id, role)
-  end
-
-  # Helper to get system name, checking in multiple locations
-  defp get_system_name(killmail) do
-    esi_data = killmail.esi_data || %{}
-
-    case Map.get(esi_data, "solar_system_name") do
-      nil ->
-        # Try alternatives
-        system_id = KillmailResource.get_system_id(killmail)
-
-        if system_id do
-          # Try to get from ESI if we have system ID
-          case EsiService.get_system_info(system_id) do
-            {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-              AppLogger.kill_info("[Persistence] Retrieved system name during validation", %{
-                system_id: system_id,
-                system_name: name,
-                killmail_id: killmail.killmail_id
-              })
-
-              name
-
-            _ ->
-              "Unknown System"
-          end
-        else
-          "Unknown System"
+          _ ->
+            []
         end
+      else
+        # Even for attackers, we should have some basic victim data
+        case KillmailUtil.get_victim(killmail) do
+          nil ->
+            AppLogger.kill_warning("Killmail is missing victim data - unusual for valid killmail",
+              killmail_id: kill_id
+            )
 
-      name ->
-        name
+            []
+
+          _ ->
+            []
+        end
+      end
+
+    # Validate ship type information based on role
+    ship_type_validations = [
+      {:ship_type_id, KillmailUtil.find_field(killmail, "ship_type_id", character_id, role),
+       "Ship type ID missing for #{character_name} (role: #{role})"},
+      {:ship_type_name, KillmailUtil.find_field(killmail, "ship_type_name", character_id, role),
+       "Ship type name missing for #{character_name} (role: #{role})"}
+    ]
+
+    # Combine all validations
+    all_validations = field_validations ++ victim_validations ++ ship_type_validations
+
+    # Find the first failed validation
+    case Enum.find(all_validations, fn
+           {key, false, _} when is_atom(key) -> true
+           {false, _} -> true
+           {_, nil, _} -> true
+           _ -> false
+         end) do
+      nil ->
+        # All validations passed
+        {:ok, killmail}
+
+      {_, _, reason} ->
+        # Log detailed debug information
+        AppLogger.kill_error("Killmail structure validation failed", %{
+          killmail_id: kill_id,
+          character_id: character_id,
+          character_name: character_name,
+          role: role,
+          reason: reason,
+          debug_data: debug_data
+        })
+
+        {:error, reason}
     end
   end
 
@@ -706,7 +679,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Find tracked attacker in killmail
   defp find_tracked_attacker_in_killmail(killmail, tracked_ids) do
-    attackers = KillmailResource.get_attacker(killmail) || []
+    attackers = KillmailUtil.get_attacker(killmail) || []
 
     # If no tracked_ids provided or no attackers, return early
     if is_nil(tracked_ids) || Enum.empty?(attackers) do
@@ -818,8 +791,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper functions for character role determination
   defp determine_character_role(killmail, character_id) do
-    victim = KillmailResource.get_victim(killmail)
-    attackers = KillmailResource.get_attacker(killmail) || []
+    victim = KillmailUtil.get_victim(killmail)
+    attackers = KillmailUtil.get_attacker(killmail) || []
 
     # Get character ID as string for consistent comparison
     char_id_str = to_string(character_id)
@@ -936,20 +909,16 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     })
   end
 
-  defp get_character_name(killmail, character_id, {:ok, role}) do
-    get_character_name(killmail, character_id, role)
-  end
-
   defp get_character_name(killmail, character_id, role) do
     # First try to get name from the killmail structure
     name_from_killmail =
       case role do
         :victim ->
-          victim = KillmailResource.get_victim(killmail)
+          victim = KillmailUtil.get_victim(killmail)
           victim && Map.get(victim, "character_name")
 
         :attacker ->
-          attackers = KillmailResource.get_attacker(killmail) || []
+          attackers = KillmailUtil.get_attacker(killmail) || []
 
           attacker =
             Enum.find(attackers, fn a ->
@@ -1227,8 +1196,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
        when role in [:victim, :attacker] do
     # Extract killmail data
     kill_time = get_kill_time(killmail)
-    solar_system_id = KillmailResource.get_system_id(killmail)
-    solar_system_name = KillmailResource.get(killmail, "solar_system_name") || "Unknown System"
+    solar_system_id = KillmailUtil.get_system_id(killmail)
+    solar_system_name = KillmailUtil.get(killmail, "solar_system_name") || "Unknown System"
 
     # Log current state of the killmail
     AppLogger.kill_debug("[Persistence] Transforming killmail #{killmail.killmail_id}",
@@ -1238,7 +1207,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     )
 
     # Extract victim data
-    victim = KillmailResource.get_victim(killmail) || %{}
+    victim = KillmailUtil.get_victim(killmail) || %{}
 
     # Get ZKB data
     zkb_data = killmail.zkb || %{}
@@ -1339,56 +1308,24 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper functions for time handling
   defp get_kill_time(killmail) do
-    kill_time =
-      cond do
-        is_struct(killmail, KillmailResource) && killmail.kill_time ->
-          killmail.kill_time
-
-        Map.has_key?(killmail, :esi_data) ->
-          KillmailResource.get(killmail, "killmail_time")
-
-        Map.has_key?(killmail, "killmail_time") ->
-          Map.get(killmail, "killmail_time")
-
-        Map.has_key?(killmail, :kill_time) ->
-          Map.get(killmail, :kill_time)
-
-        true ->
-          nil
-      end
-
-    case kill_time do
-      nil ->
-        DateTime.utc_now()
-
-      time when is_binary(time) ->
-        case DateTime.from_iso8601(time) do
-          {:ok, datetime, _} -> datetime
-          _ -> DateTime.utc_now()
-        end
-
-      %DateTime{} = dt ->
-        dt
-
-      _ ->
-        DateTime.utc_now()
+    if is_struct(killmail, KillmailResource) && killmail.kill_time do
+      killmail.kill_time
+    else
+      DateTime.utc_now()
     end
   end
 
   # Helper functions for finding attackers
   defp find_attacker_by_character_id(killmail, character_id) do
-    attackers =
-      cond do
-        is_struct(killmail, KillmailResource) && Map.has_key?(killmail, :full_attacker_data) ->
-          killmail.full_attacker_data
+    if is_struct(killmail, KillmailResource) && Map.has_key?(killmail, :full_attacker_data) do
+      attackers = killmail.full_attacker_data || []
 
-        true ->
-          KillmailResource.get_attacker(killmail) || []
-      end
-
-    Enum.find(attackers, fn attacker ->
-      to_string(Map.get(attacker, "character_id")) == to_string(character_id)
-    end)
+      Enum.find(attackers, fn attacker ->
+        to_string(Map.get(attacker, "character_id")) == to_string(character_id)
+      end)
+    else
+      nil
+    end
   end
 
   # Cache update functions

@@ -176,13 +176,11 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   defp safe_send_highlight({:error, _} = _err, _channel_id, _is_kill, _date_range), do: 0
 
   defp safe_send_highlight({:ok, killmail}, channel_id, is_kill, date_range_str) do
-    try do
-      maybe_send_highlight({:ok, killmail}, channel_id, is_kill, date_range_str)
-    rescue
-      e ->
-        AppLogger.scheduler_error("Error sending kill highlight: #{Exception.message(e)}")
-        0
-    end
+    maybe_send_highlight({:ok, killmail}, channel_id, is_kill, date_range_str)
+  rescue
+    e ->
+      AppLogger.scheduler_error("Error sending kill highlight: #{Exception.message(e)}")
+      0
   end
 
   # ----------------------------------------------------------------

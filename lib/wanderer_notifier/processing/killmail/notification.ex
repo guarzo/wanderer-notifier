@@ -258,35 +258,21 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
 
   # Helper to extract kill_id regardless of struct type
   defp extract_kill_id(kill) do
-    cond do
-      is_struct(kill, WandererNotifier.Resources.Killmail) -> kill.killmail_id
-      is_map(kill) -> Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
-      true -> nil
+    if is_struct(kill, WandererNotifier.Resources.Killmail) do
+      kill.killmail_id
+    else
+      nil
     end
   end
 
   # Helper to ensure we have a proper killmail format
   defp ensure_data_killmail(kill) do
-    cond do
-      is_struct(kill, WandererNotifier.Resources.Killmail) ->
-        # Already the right type
-        kill
-
-      is_map(kill) ->
-        # Create a map with the necessary data structure
-        %{
-          killmail_id: Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id),
-          zkb_data: Map.get(kill, "zkb") || Map.get(kill, :zkb) || %{},
-          esi_data: Map.get(kill, "esi_data") || Map.get(kill, :esi_data) || %{}
-        }
-
-      true ->
-        # Default empty killmail as fallback
-        %{
-          killmail_id: nil,
-          zkb_data: %{},
-          esi_data: %{}
-        }
+    if is_struct(kill, WandererNotifier.Resources.Killmail) do
+      # Return the normalized killmail resource
+      kill
+    else
+      # If not a proper killmail resource, return nil to indicate invalid input
+      nil
     end
   end
 
@@ -312,37 +298,8 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
           :ok
       end
     else
-      # For legacy or map-based data
-      victim =
-        Map.get(killmail, :victim_data) ||
-          (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "victim")) ||
-          %{}
-
-      system_name =
-        Map.get(killmail, :solar_system_name) ||
-          (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "solar_system_name"))
-
-      validate_fields(victim, system_name)
-    end
-  end
-
-  # Validate the required fields
-  defp validate_fields(victim, system_name) do
-    cond do
-      victim == nil || victim == %{} ->
-        {:error, "Killmail is missing victim data"}
-
-      Map.get(victim, "character_name") == nil ->
-        {:error, "Victim is missing character name"}
-
-      Map.get(victim, "ship_type_name") == nil ->
-        {:error, "Victim is missing ship type name"}
-
-      system_name == nil ->
-        {:error, "Killmail is missing system name"}
-
-      true ->
-        :ok
+      # Invalid input, not a normalized resource
+      {:error, "Input is not a valid Killmail resource"}
     end
   end
 end

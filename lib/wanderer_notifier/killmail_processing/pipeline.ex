@@ -1,20 +1,21 @@
 defmodule WandererNotifier.KillmailProcessing.Pipeline do
   @moduledoc """
-  Standardized pipeline for processing killmails.
-  Handles both realtime and historical processing modes.
+  Pipeline for processing killmail data from start to finish.
+  Handles tasks like enrichment, validation, persistence, and notifications.
   """
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Killmail
-  alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.Data.KillmailEnrichment, as: Enrichment
   alias WandererNotifier.KillmailProcessing.{Context, Metrics}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
+  alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.Resources.KillmailPersistence
 
   @type killmail :: KillmailResource.t()
-  @type result :: {:ok, killmail()} | {:error, term()}
+  @type result :: {:ok, any()} | {:error, any()}
 
   @doc """
   Process a killmail through the pipeline.
@@ -61,15 +62,16 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = Map.get(zkb_data, "killmail_id")
     hash = get_in(zkb_data, ["zkb", "hash"])
 
-    with {:ok, esi_data} <- ESIService.get_killmail(kill_id, hash) do
-      # Create normalized model directly
-      {:ok,
-       %{
-         killmail_id: kill_id,
-         zkb_data: Map.get(zkb_data, "zkb", %{}),
-         esi_data: esi_data
-       }}
-    else
+    case ESIService.get_killmail(kill_id, hash) do
+      {:ok, esi_data} ->
+        # Create normalized model directly
+        {:ok,
+         %{
+           killmail_id: kill_id,
+           zkb_data: Map.get(zkb_data, "zkb", %{}),
+           esi_data: esi_data
+         }}
+
       error ->
         log_killmail_error(zkb_data, nil, error)
         error
@@ -110,9 +112,9 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       character_id: ctx.character_id
     })
 
-    # Use the new KillmailPersistence.maybe_persist_killmail
+    # Use the new KillmailPersistence.maybe_persist_normalized_killmail
     # that works with the normalized model
-    case KillmailResource.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
+    case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
       {:ok, :persisted} ->
         AppLogger.kill_debug("[Pipeline] Normalized killmail was newly persisted", %{
           kill_id: killmail.killmail_id,
@@ -313,24 +315,24 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
       {:error, reasons} ->
         # Some validations failed - log detailed diagnostics
-        debug_data = Killmail.debug_data(killmail)
+        debug_data = WandererNotifier.Killmail.debug_data(killmail)
 
         AppLogger.kill_error("Enriched killmail failed validation", %{
           killmail_id: killmail.killmail_id,
           failures: reasons,
-          system_name: debug_data.solar_system_name,
-          has_victim: !is_nil(debug_data.victim),
-          victim_name: (debug_data.victim || %{})["character_name"],
-          victim_ship: (debug_data.victim || %{})["ship_type_name"],
-          attackers_count: debug_data.attackers_count,
-          solar_system_id: debug_data.solar_system_id
+          system_name: debug_data.system_name,
+          has_victim: debug_data.has_victim_data,
+          victim_name: (debug_data.has_victim_data && "present") || "missing",
+          victim_ship: (debug_data.has_victim_data && "present") || "missing",
+          attackers_count: debug_data.attacker_count,
+          solar_system_id: debug_data.system_id
         })
 
         # Check if we can recover by applying emergency enrichment
         emergency_fixed = emergency_data_fix(killmail, reasons)
 
-        case Killmail.validate_complete_data(emergency_fixed) do
-          {:ok, _} ->
+        case WandererNotifier.Killmail.validate_complete_data(emergency_fixed) do
+          :ok ->
             # Emergency fix worked
             AppLogger.kill_info("Emergency data fix resolved validation issues", %{
               killmail_id: killmail.killmail_id
@@ -364,7 +366,10 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       if Enum.any?(reasons, &String.contains?(&1, "system name")) do
         system_id = Map.get(esi_data, "solar_system_id")
 
-        if !is_nil(system_id) do
+        if is_nil(system_id) do
+          # If no system ID, use a generic placeholder
+          Map.put(esi_data, "solar_system_name", "Unidentified System")
+        else
           # Try to get system name one last time directly
           case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
             {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
@@ -384,9 +389,6 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
               # Use a different placeholder than "Unknown System" which is explicitly checked
               Map.put(esi_data, "solar_system_name", "System ##{system_id}")
           end
-        else
-          # If no system ID, use a generic placeholder
-          Map.put(esi_data, "solar_system_name", "Unidentified System")
         end
       else
         esi_data

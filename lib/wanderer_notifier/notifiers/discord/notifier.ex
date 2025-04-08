@@ -343,8 +343,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Ensure the killmail has a system name if missing
   defp enrich_with_system_name(%Killmail{} = killmail) do
-    # Get system_id from the esi_data
-    system_id = get_system_id_from_killmail(killmail)
+    # Get system_id from the killmail
+    system_id = WandererNotifier.Killmail.get_system_id(killmail)
 
     # Check if we need to get the system name
     if system_id do
@@ -356,20 +356,18 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         system_name: system_name
       )
 
-      # Add system name to esi_data
-      new_esi_data = Map.put(killmail.esi_data || %{}, "solar_system_name", system_name)
-      %{killmail | esi_data: new_esi_data}
+      # For the Resource.Killmail struct, we need to use a different approach
+      # since the esi_data field might not be directly updateable
+      if Map.has_key?(killmail, :solar_system_name) do
+        # For normalized model - update the direct field
+        Map.put(killmail, :solar_system_name, system_name)
+      else
+        # For the old model - update the esi_data field
+        esi_data = Map.get(killmail, :esi_data, %{})
+        Map.put(killmail, :esi_data, Map.put(esi_data, "solar_system_name", system_name))
+      end
     else
       killmail
-    end
-  end
-
-  # Get system ID from killmail
-  defp get_system_id_from_killmail(%Killmail{} = killmail) do
-    if killmail.esi_data do
-      Map.get(killmail.esi_data, "solar_system_id")
-    else
-      nil
     end
   end
 

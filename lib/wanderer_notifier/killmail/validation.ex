@@ -25,18 +25,18 @@ defmodule WandererNotifier.Killmail.Validation do
 
     # Check for basic required fields
     missing_fields =
-      if !has_required_data?(killmail) do
-        ["Missing required data" | missing_fields]
-      else
+      if has_required_data?(killmail) do
         missing_fields
+      else
+        ["Missing required data" | missing_fields]
       end
 
     # Add ZKB check
     missing_fields =
-      if !has_zkb_data?(killmail) do
-        ["Missing zkb data" | missing_fields]
-      else
+      if has_zkb_data?(killmail) do
         missing_fields
+      else
+        ["Missing zkb data" | missing_fields]
       end
 
     # Check key fields
@@ -49,10 +49,10 @@ defmodule WandererNotifier.Killmail.Validation do
         ]
 
         Enum.reduce(fields_to_check, missing_fields, fn {field, error}, acc ->
-          if !has_field?(killmail, field) do
-            [error | acc]
-          else
+          if has_field?(killmail, field) do
             acc
+          else
+            [error | acc]
           end
         end)
       else
@@ -119,32 +119,31 @@ defmodule WandererNotifier.Killmail.Validation do
   end
 
   @doc """
-  Converts a killmail to a normalized format suitable for database storage.
-  Returns a map with database-compatible keys.
+  Normalizes killmail data from any source (API, webhook) into the proper
+  normalized resource format used by the application.
+
+  ## Parameters
+  - killmail: The raw killmail data from an API or webhook
+
+  ## Returns
+  - Map with normalized killmail data matching the Killmail resource structure
   """
-  def normalize_killmail(%{killmail_id: killmail_id, zkb: zkb, esi_data: esi_data})
-      when not is_nil(killmail_id) do
-    normalize_generic_killmail(killmail_id, zkb || %{}, esi_data || %{})
-  end
-
-  def normalize_killmail(%{killmail_id: killmail_id, zkb_data: zkb_data, esi_data: esi_data})
-      when not is_nil(killmail_id) do
-    normalize_generic_killmail(killmail_id, zkb_data || %{}, esi_data || %{})
-  end
-
   def normalize_killmail(killmail) do
-    # For any other format
+    # Extract basic data
     killmail_id = Map.get(killmail, :killmail_id) || Map.get(killmail, "killmail_id") || 0
 
+    # Get zkb data (always a map)
     zkb_data =
       Map.get(killmail, :zkb_data) || Map.get(killmail, :zkb) || Map.get(killmail, "zkb") || %{}
 
+    # Get ESI data (always a map)
     esi_data = Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
 
+    # Normalize the data using the common implementation
     normalize_generic_killmail(killmail_id, zkb_data, esi_data)
   end
 
-  # Common implementation for all formats
+  # Common implementation for normalization
   defp normalize_generic_killmail(killmail_id, zkb_data, esi_data) do
     # Extract killmail ID
     killmail_id = killmail_id || 0
@@ -248,7 +247,7 @@ defmodule WandererNotifier.Killmail.Validation do
   Extracts character involvement data from a killmail.
 
   ## Parameters
-  - killmail: The killmail map or struct
+  - killmail: The normalized Killmail resource or map
   - character_id: The ID of the character
   - role: The role of the character (attacker/victim)
 
@@ -282,32 +281,22 @@ defmodule WandererNotifier.Killmail.Validation do
 
   # Extract attributes for a victim
   defp extract_victim_attributes(killmail, character_id) do
-    # Handle different killmail formats
+    # Handle normalized killmail resource
     victim =
-      case killmail do
-        %KillmailResource{} ->
-          # For normalized killmail resource
-          if to_string(killmail.victim_id || "") == to_string(character_id) do
-            %{
-              "character_id" => killmail.victim_id,
-              "ship_type_id" => killmail.victim_ship_id,
-              "ship_type_name" => killmail.victim_ship_name
-            }
-          else
-            %{}
-          end
-
-        %{esi_data: esi_data} when not is_nil(esi_data) ->
-          # For legacy format with esi_data
-          Map.get(esi_data, "victim") || %{}
-
-        %{full_victim_data: victim_data} when not is_nil(victim_data) ->
-          # For a map with full_victim_data
-          victim_data
-
-        _ ->
-          # Fallback
-          %{}
+      if is_struct(killmail, KillmailResource) do
+        # For normalized killmail resource
+        if to_string(killmail.victim_id || "") == to_string(character_id) do
+          %{
+            "character_id" => killmail.victim_id,
+            "ship_type_id" => killmail.victim_ship_id,
+            "ship_type_name" => killmail.victim_ship_name
+          }
+        else
+          killmail.full_victim_data || %{}
+        end
+      else
+        # For raw data
+        Map.get(killmail, "victim") || %{}
       end
 
     # Only include if the victim ID matches
@@ -330,35 +319,25 @@ defmodule WandererNotifier.Killmail.Validation do
   defp extract_attacker_attributes(killmail, character_id) do
     # Get attackers based on killmail format
     attackers =
-      case killmail do
-        %KillmailResource{} ->
-          # For normalized killmail resource, check if the final blow attacker matches
-          if killmail.final_blow_attacker_id &&
-               to_string(killmail.final_blow_attacker_id) == to_string(character_id) do
-            [
-              %{
-                "character_id" => killmail.final_blow_attacker_id,
-                "ship_type_id" => killmail.final_blow_ship_id,
-                "ship_type_name" => killmail.final_blow_ship_name,
-                "final_blow" => true
-              }
-            ]
-          else
-            # For non-final blow attackers, we need to check full_attacker_data
-            Map.get(killmail, :full_attacker_data) || []
-          end
-
-        %{esi_data: esi_data} when not is_nil(esi_data) ->
-          # For legacy format with esi_data
-          Map.get(esi_data, "attackers") || []
-
-        %{full_attacker_data: attacker_data} when not is_nil(attacker_data) ->
-          # For a map with full_attacker_data
-          attacker_data
-
-        _ ->
-          # Fallback
-          []
+      if is_struct(killmail, KillmailResource) do
+        # For normalized killmail resource, check if the final blow attacker matches
+        if killmail.final_blow_attacker_id &&
+             to_string(killmail.final_blow_attacker_id) == to_string(character_id) do
+          [
+            %{
+              "character_id" => killmail.final_blow_attacker_id,
+              "ship_type_id" => killmail.final_blow_ship_id,
+              "ship_type_name" => killmail.final_blow_ship_name,
+              "final_blow" => true
+            }
+          ]
+        else
+          # For non-final blow attackers, we need to check full_attacker_data
+          killmail.full_attacker_data || []
+        end
+      else
+        # For raw data
+        Map.get(killmail, "attackers") || []
       end
 
     # Find the attacker in the list

@@ -3,6 +3,8 @@ defmodule WandererNotifier.Debug.KillmailTools do
   Debugging tools for analyzing killmail processing and persistence.
   """
 
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Killmail, as: KillmailStruct
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
   # Required fields for a valid killmail

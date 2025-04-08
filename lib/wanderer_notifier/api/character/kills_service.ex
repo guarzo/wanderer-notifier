@@ -912,15 +912,17 @@ defmodule WandererNotifier.Api.Character.KillsService do
   # Improved date filter that gracefully handles nil `from` and `to`
   defp filter_kills_by_date(kills, from, to) do
     Enum.filter(kills, fn kill ->
-      with {:ok, kill_time, _offset} <- DateTime.from_iso8601(kill["killmail_time"]) do
-        kill_date = DateTime.to_date(kill_time)
+      case DateTime.from_iso8601(kill["killmail_time"]) do
+        {:ok, kill_time, _offset} ->
+          kill_date = DateTime.to_date(kill_time)
 
-        no_lower_bound = is_nil(from) or Date.compare(kill_date, from) != :lt
-        no_upper_bound = is_nil(to) or Date.compare(kill_date, to) != :gt
+          no_lower_bound = is_nil(from) or Date.compare(kill_date, from) != :lt
+          no_upper_bound = is_nil(to) or Date.compare(kill_date, to) != :gt
 
-        no_lower_bound and no_upper_bound
-      else
-        _ -> false
+          no_lower_bound and no_upper_bound
+
+        _ ->
+          false
       end
     end)
   end
@@ -1107,9 +1109,9 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   # Get ship type name from cache or from ESI with caching
   def get_ship_type_name_with_cache(ship_type_id) do
+    alias WandererNotifier.Api.ESI.Service, as: ESIService
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    alias WandererNotifier.Api.ESI.Service, as: ESIService
 
     cache_key = CacheKeys.ship_info(ship_type_id)
 
@@ -1131,7 +1133,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
             if is_binary(name) && name != "" do
               # Cache for 30 days (ship types don't change)
-              CacheRepo.set(cache_key, ship_info, 30 * 86400)
+              CacheRepo.set(cache_key, ship_info, 30 * 86_400)
 
               AppLogger.kill_debug("[KillsService] Retrieved and cached ship name", %{
                 ship_type_id: ship_type_id,
@@ -1156,9 +1158,9 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   # Get system name from cache or from ESI with caching
   defp get_system_name_with_cache(system_id) do
+    alias WandererNotifier.Api.ESI.Service, as: ESIService
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    alias WandererNotifier.Api.ESI.Service, as: ESIService
 
     cache_key = CacheKeys.system_info(system_id)
 
@@ -1180,7 +1182,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
             if is_binary(name) && name != "" do
               # Cache for 30 days (system names don't change)
-              CacheRepo.set(cache_key, system_info, 30 * 86400)
+              CacheRepo.set(cache_key, system_info, 30 * 86_400)
 
               AppLogger.kill_debug("[KillsService] Retrieved and cached system name", %{
                 system_id: system_id,

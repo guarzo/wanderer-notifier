@@ -8,10 +8,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification
+  alias WandererNotifier.Resources.Killmail
 
   @doc """
   Process and notify about a killmail.
@@ -698,7 +698,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
               alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
               alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
               cache_key = CacheKeys.system_info(system_id)
-              CacheRepo.set(cache_key, system_info, 30 * 86400)
+              CacheRepo.set(cache_key, system_info, 30 * 86_400)
 
               {:ok, name}
             else
@@ -864,7 +864,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
               })
 
               # Cache for later use
-              CacheRepo.set(cache_key, character_info, 7 * 86400)
+              CacheRepo.set(cache_key, character_info, 7 * 86_400)
 
               {:ok, name}
             else
@@ -946,7 +946,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
               })
 
               # Cache for later use - ship data doesn't change, so cache for a long time
-              CacheRepo.set(cache_key, ship_info, 90 * 86400)
+              CacheRepo.set(cache_key, ship_info, 90 * 86_400)
 
               {:ok, name}
             else
@@ -1119,7 +1119,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
           alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
           cache_key = CacheKeys.character_info(character_id)
-          CacheRepo.set(cache_key, %{"name" => name}, 86400)
+          CacheRepo.set(cache_key, %{"name" => name}, 86_400)
 
           # Return entity with updated name
           Map.put(entity, "character_name", name)

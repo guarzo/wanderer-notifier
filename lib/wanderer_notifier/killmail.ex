@@ -237,4 +237,195 @@ defmodule WandererNotifier.Killmail do
         error
     end
   end
+
+  @doc """
+  Gets a field from a killmail structure.
+
+  ## Parameters
+  - killmail: The killmail data
+  - field: The field name to retrieve
+  - default: Default value if the field is not found (default: nil)
+
+  ## Returns
+  - The value of the field or the default value
+  """
+  def get(killmail, field, default \\ nil) do
+    cond do
+      # Direct field access for resource model
+      is_struct(killmail, Killmail) && Map.has_key?(killmail, String.to_atom(field)) ->
+        Map.get(killmail, String.to_atom(field))
+
+      # Direct field access for plain maps
+      is_map(killmail) && Map.has_key?(killmail, field) ->
+        Map.get(killmail, field)
+
+      # Try string key for maps
+      is_map(killmail) && Map.has_key?(killmail, String.to_atom(field)) ->
+        Map.get(killmail, String.to_atom(field))
+
+      true ->
+        default
+    end
+  end
+
+  @doc """
+  Gets the system_id from a killmail.
+
+  ## Parameters
+  - killmail: The killmail data
+
+  ## Returns
+  - The system_id or nil if not found
+  """
+  def get_system_id(killmail) do
+    if is_struct(killmail, Killmail) && Map.has_key?(killmail, :solar_system_id) do
+      killmail.solar_system_id
+    else
+      nil
+    end
+  end
+
+  @doc """
+  Gets victim data from a killmail.
+
+  ## Parameters
+  - killmail: The killmail data
+
+  ## Returns
+  - The victim data as a map or empty map if not found
+  """
+  def get_victim(killmail) do
+    cond do
+      # For normalized Killmail resource, construct a victim map
+      is_struct(killmail, Killmail) ->
+        if killmail.victim_id do
+          %{
+            "character_id" => killmail.victim_id,
+            "character_name" => killmail.victim_name,
+            "ship_type_id" => killmail.victim_ship_id,
+            "ship_type_name" => killmail.victim_ship_name,
+            "corporation_id" => killmail.victim_corporation_id,
+            "corporation_name" => killmail.victim_corporation_name,
+            "alliance_id" => killmail.victim_alliance_id,
+            "alliance_name" => killmail.victim_alliance_name
+          }
+        else
+          # Try the full_victim_data if available
+          killmail.full_victim_data || %{}
+        end
+
+      true ->
+        %{}
+    end
+  end
+
+  @doc """
+  Gets attacker data from a killmail.
+
+  ## Parameters
+  - killmail: The killmail data
+
+  ## Returns
+  - The attacker data as a list or empty list if not found
+  """
+  def get_attacker(killmail) do
+    if is_struct(killmail, Killmail) && Map.has_key?(killmail, :full_attacker_data) do
+      killmail.full_attacker_data || []
+    else
+      []
+    end
+  end
+
+  @doc """
+  Finds a specific field in a killmail structure for a character.
+
+  ## Parameters
+  - killmail: The killmail data
+  - field: The field name to retrieve
+  - character_id: The character ID to look for
+  - role: The role of the character (:attacker or :victim)
+
+  ## Returns
+  - The value of the field or nil if not found
+  """
+  def find_field(killmail, field, character_id, role) do
+    case role do
+      :victim ->
+        victim = get_victim(killmail)
+
+        if to_string(Map.get(victim, "character_id", "")) == to_string(character_id) do
+          Map.get(victim, field)
+        else
+          nil
+        end
+
+      :attacker ->
+        attackers = get_attacker(killmail)
+
+        attacker =
+          Enum.find(attackers, fn a ->
+            to_string(Map.get(a, "character_id", "")) == to_string(character_id)
+          end)
+
+        if attacker, do: Map.get(attacker, field), else: nil
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Gets debug data from a killmail structure for troubleshooting.
+
+  ## Parameters
+  - killmail: The killmail data
+
+  ## Returns
+  - A map of useful debug information
+  """
+  def debug_data(killmail) do
+    %{
+      # Basic identification
+      struct_type: if(is_struct(killmail), do: killmail.__struct__, else: :not_struct),
+      killmail_id: if(is_struct(killmail, Killmail), do: killmail.killmail_id, else: nil),
+
+      # Check for key data structures
+      has_victim_data: not is_nil(get_victim(killmail)),
+      has_attacker_data: not Enum.empty?(get_attacker(killmail) || []),
+
+      # System information
+      system_id: get_system_id(killmail),
+      system_name: get(killmail, "solar_system_name"),
+
+      # Attacker count
+      attacker_count: if(is_struct(killmail, Killmail), do: killmail.attacker_count, else: 0)
+    }
+  end
+
+  @doc """
+  Validates that a killmail has complete data for processing.
+
+  ## Parameters
+  - killmail: The killmail data
+
+  ## Returns
+  - :ok if the killmail data is complete
+  - {:error, reason} if data is missing
+  """
+  def validate_complete_data(killmail) do
+    field_checks = [
+      {:killmail_id, debug_data(killmail).killmail_id, "Killmail ID missing"},
+      {:system_id, get_system_id(killmail), "Solar system ID missing"},
+      {:system_name, get(killmail, "solar_system_name"), "Solar system name missing"},
+      {:victim, get_victim(killmail), "Victim data missing"},
+      {:has_valid_victim, not Enum.empty?(get_victim(killmail) || %{}),
+       "Valid victim data missing"}
+    ]
+
+    # Find first failure
+    case Enum.find(field_checks, fn {_, value, _} -> is_nil(value) || value == false end) do
+      nil -> :ok
+      {_, _, reason} -> {:error, reason}
+    end
+  end
 end
