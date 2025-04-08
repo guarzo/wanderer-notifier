@@ -65,27 +65,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
   def enrich_killmail_data(killmail) do
     # Extract data - handle both struct and map formats
-    esi_data =
-      cond do
-        is_struct(killmail, Killmail) ->
-          # For Resources.Killmail, create a compatible esi_data structure
-          %{
-            "solar_system_id" => killmail.solar_system_id,
-            "solar_system_name" => killmail.solar_system_name,
-            "victim" => killmail.full_victim_data,
-            "attackers" => killmail.full_attacker_data,
-            "killmail_time" => killmail.kill_time
-          }
-
-        is_map(killmail) && Map.has_key?(killmail, :esi_data) ->
-          killmail.esi_data || %{}
-
-        is_map(killmail) ->
-          Map.get(killmail, "esi_data") || Map.get(killmail, :esi_data) || %{}
-
-        true ->
-          %{}
-      end
+    esi_data = extract_esi_data(killmail)
 
     # Print killmail enrichment header only when logging is enabled
     if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
@@ -127,214 +107,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     )
 
     # Enrich victim data if available
-    esi_data =
-      if Map.has_key?(esi_data, "victim") do
-        victim = Map.get(esi_data, "victim")
-
-        # Print header for victim data
-        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-          IO.puts("\n------ VICTIM DATA ------")
-        end
-
-        AppLogger.kill_debug("[Enrichment] Processing victim data",
-          kill_id: killmail.killmail_id,
-          victim_data: inspect(victim, limit: 200)
-        )
-
-        enriched_victim = enrich_entity(victim)
-
-        # Log the enriched victim data specifically
-        AppLogger.kill_debug("[Enrichment] Victim after enrichment",
-          ship_type_name: Map.get(enriched_victim, "ship_type_name"),
-          character_name: Map.get(enriched_victim, "character_name"),
-          corporation_name: Map.get(enriched_victim, "corporation_name"),
-          alliance_name: Map.get(enriched_victim, "alliance_name")
-        )
-
-        # Verify victim enrichment
-        enriched_victim =
-          if Map.get(enriched_victim, "ship_type_name") == "Unknown Ship" ||
-               Map.get(enriched_victim, "character_name") in [
-                 "Unknown Pilot",
-                 "Unknown",
-                 "Unknown Character"
-               ] do
-            AppLogger.kill_warning("[Enrichment] Victim data not fully enriched", %{
-              kill_id: killmail.killmail_id,
-              ship_type_name: Map.get(enriched_victim, "ship_type_name"),
-              character_name: Map.get(enriched_victim, "character_name")
-            })
-
-            # Try to re-enrich if data is missing
-            re_enriched = retry_entity_enrichment(enriched_victim)
-
-            # Log success if we managed to get better data
-            if Map.get(enriched_victim, "character_name") in [
-                 "Unknown Pilot",
-                 "Unknown",
-                 "Unknown Character"
-               ] &&
-                 !(Map.get(re_enriched, "character_name") in [
-                     "Unknown Pilot",
-                     "Unknown",
-                     "Unknown Character"
-                   ]) do
-              AppLogger.kill_info(
-                "[Enrichment] Successfully re-enriched victim character name",
-                %{
-                  kill_id: killmail.killmail_id,
-                  character_id: Map.get(enriched_victim, "character_id"),
-                  old_name: Map.get(enriched_victim, "character_name"),
-                  new_name: Map.get(re_enriched, "character_name")
-                }
-              )
-            end
-
-            if Map.get(enriched_victim, "ship_type_name") == "Unknown Ship" &&
-                 Map.get(re_enriched, "ship_type_name") != "Unknown Ship" do
-              AppLogger.kill_info("[Enrichment] Successfully re-enriched victim ship name", %{
-                kill_id: killmail.killmail_id,
-                ship_type_id: Map.get(enriched_victim, "ship_type_id"),
-                old_name: Map.get(enriched_victim, "ship_type_name"),
-                new_name: Map.get(re_enriched, "ship_type_name")
-              })
-            end
-
-            # Return the re-enriched entity
-            re_enriched
-          else
-            enriched_victim
-          end
-
-        Map.put(esi_data, "victim", enriched_victim)
-      else
-        # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing victim data in killmail",
-          kill_id: killmail.killmail_id
-        )
-
-        esi_data
-      end
+    esi_data = enrich_victim_data(esi_data, killmail.killmail_id)
 
     # Enrich attackers if available
-    esi_data =
-      if Map.has_key?(esi_data, "attackers") do
-        attackers = Map.get(esi_data, "attackers", [])
-
-        # Print header for attacker data
-        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-          IO.puts("\n------ ATTACKER DATA ------")
-        end
-
-        AppLogger.kill_info(
-          "[Enrichment] Processing attackers data for kill #{killmail.killmail_id}",
-          kill_id: killmail.killmail_id,
-          attackers_count: length(attackers)
-        )
-
-        # Process each attacker, ensuring proper enrichment
-        enriched_attackers =
-          Enum.map(attackers, fn attacker ->
-            is_final_blow = Map.get(attacker, "final_blow") == true
-            char_id = Map.get(attacker, "character_id")
-
-            # Get original state before enrichment for logging
-            original_char_name = Map.get(attacker, "character_name")
-            original_ship_name = Map.get(attacker, "ship_type_name")
-
-            # Enrich entity - this calls add_character_name, add_ship_name etc.
-            enriched = enrich_entity(attacker)
-
-            # Now check if the final blow attacker needs special handling
-            if is_final_blow do
-              enriched_char_name = Map.get(enriched, "character_name")
-              enriched_ship_name = Map.get(enriched, "ship_type_name")
-
-              # Log the change between original and enriched for debugging
-              if original_char_name != enriched_char_name ||
-                   original_ship_name != enriched_ship_name do
-                AppLogger.kill_info("[Enrichment] Final blow attacker data enriched", %{
-                  kill_id: killmail.killmail_id,
-                  character_id: char_id,
-                  original_name: original_char_name,
-                  enriched_name: enriched_char_name,
-                  original_ship: original_ship_name,
-                  enriched_ship: enriched_ship_name
-                })
-              end
-
-              # Directly apply additional character name resolution if still unknown
-              if enriched_char_name in ["Unknown Pilot", "Unknown", "Unknown Character"] do
-                AppLogger.kill_info(
-                  "[Enrichment] Final blow attacker still has unknown name, applying direct resolution for character_id #{char_id}",
-                  %{
-                    kill_id: killmail.killmail_id,
-                    character_id: char_id,
-                    character_name: enriched_char_name
-                  }
-                )
-
-                # Apply direct character resolution
-                updated_enriched = apply_direct_character_resolution(enriched)
-
-                # Log successful update
-                if updated_enriched["character_name"] != enriched_char_name do
-                  AppLogger.kill_info(
-                    "[Enrichment] Successfully resolved character name for final blow attacker",
-                    %{
-                      kill_id: killmail.killmail_id,
-                      character_id: char_id,
-                      original_name: enriched_char_name,
-                      new_name: updated_enriched["character_name"]
-                    }
-                  )
-
-                  # Return the directly resolved attacker
-                  updated_enriched
-                else
-                  # No change in name - return the enriched version
-                  enriched
-                end
-              else
-                # Return the enriched attacker - name is already known
-                enriched
-              end
-            else
-              # Not final blow, just return the standard enriched data
-              enriched
-            end
-          end)
-
-        # For debugging, count how many attackers still have unknown data
-        unknown_count =
-          enriched_attackers
-          |> Enum.count(fn attacker ->
-            Map.get(attacker, "character_name") in [
-              "Unknown Pilot",
-              "Unknown",
-              "Unknown Character"
-            ]
-          end)
-
-        if unknown_count > 0 do
-          AppLogger.kill_warning(
-            "[Enrichment] #{unknown_count} of #{length(enriched_attackers)} attackers still have unknown character names after enrichment",
-            %{
-              kill_id: killmail.killmail_id
-            }
-          )
-        end
-
-        # Update the ESI data with our properly enriched attackers
-        Map.put(esi_data, "attackers", enriched_attackers)
-      else
-        # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing attackers data in killmail",
-          kill_id: killmail.killmail_id
-        )
-
-        esi_data
-      end
+    esi_data = enrich_attackers_data(esi_data, killmail.killmail_id)
 
     # Print enrichment completion message
     if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
@@ -390,34 +166,6 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       end
 
     # Ensure critical data is available at the top level as well for persistence
-    esi_data =
-      if Map.has_key?(esi_data, "victim") do
-        victim = Map.get(esi_data, "victim")
-
-        # Add ship_type_name to top level for easier access
-        esi_data =
-          if Map.has_key?(victim, "ship_type_name") && !Map.has_key?(esi_data, "ship_type_name") do
-            Map.put(esi_data, "ship_type_name", Map.get(victim, "ship_type_name"))
-          else
-            esi_data
-          end
-
-        # Add related character info at top level
-        esi_data =
-          if Map.has_key?(victim, "character_name") && !Map.has_key?(esi_data, "character_name") do
-            esi_data
-            |> Map.put("character_name", Map.get(victim, "character_name"))
-            |> Map.put("character_id", Map.get(victim, "character_id"))
-          else
-            esi_data
-          end
-
-        esi_data
-      else
-        esi_data
-      end
-
-    # Ensure all enriched data is complete and consistent across the structure
     esi_data = ensure_complete_enrichment(esi_data)
 
     AppLogger.kill_debug(
@@ -438,6 +186,258 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     else
       # For map-based formats
       Map.put(killmail, :esi_data, esi_data)
+    end
+  end
+
+  # Helper function to extract esi_data from killmail
+  defp extract_esi_data(killmail) do
+    cond do
+      is_struct(killmail, Killmail) ->
+        # For Resources.Killmail, create a compatible esi_data structure
+        %{
+          "solar_system_id" => killmail.solar_system_id,
+          "solar_system_name" => killmail.solar_system_name,
+          "victim" => killmail.full_victim_data,
+          "attackers" => killmail.full_attacker_data,
+          "killmail_time" => killmail.kill_time
+        }
+
+      is_map(killmail) && Map.has_key?(killmail, :esi_data) ->
+        killmail.esi_data || %{}
+
+      is_map(killmail) ->
+        Map.get(killmail, "esi_data") || Map.get(killmail, :esi_data) || %{}
+
+      true ->
+        %{}
+    end
+  end
+
+  # Helper function to enrich victim data
+  defp enrich_victim_data(esi_data, killmail_id) do
+    if Map.has_key?(esi_data, "victim") do
+      victim = Map.get(esi_data, "victim")
+
+      # Print header for victim data
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("\n------ VICTIM DATA ------")
+      end
+
+      AppLogger.kill_debug("[Enrichment] Processing victim data",
+        kill_id: killmail_id,
+        victim_data: inspect(victim, limit: 200)
+      )
+
+      enriched_victim = enrich_entity(victim)
+
+      # Log the enriched victim data specifically
+      AppLogger.kill_debug("[Enrichment] Victim after enrichment",
+        ship_type_name: Map.get(enriched_victim, "ship_type_name"),
+        character_name: Map.get(enriched_victim, "character_name"),
+        corporation_name: Map.get(enriched_victim, "corporation_name"),
+        alliance_name: Map.get(enriched_victim, "alliance_name")
+      )
+
+      # Verify victim enrichment
+      enriched_victim = verify_and_reenrich_victim_if_needed(enriched_victim, killmail_id)
+
+      Map.put(esi_data, "victim", enriched_victim)
+    else
+      # Log and continue without adding placeholder
+      AppLogger.kill_warning("[Enrichment] Missing victim data in killmail",
+        kill_id: killmail_id
+      )
+
+      esi_data
+    end
+  end
+
+  # Further extract victim verification to reduce nesting
+  defp verify_and_reenrich_victim_if_needed(enriched_victim, killmail_id) do
+    if needs_reenrichment?(enriched_victim) do
+      AppLogger.kill_warning("[Enrichment] Victim data not fully enriched", %{
+        kill_id: killmail_id,
+        ship_type_name: Map.get(enriched_victim, "ship_type_name"),
+        character_name: Map.get(enriched_victim, "character_name")
+      })
+
+      # Try to re-enrich if data is missing
+      re_enriched = retry_entity_enrichment(enriched_victim)
+
+      # Log success if we managed to get better data
+      log_reenrichment_success(enriched_victim, re_enriched, killmail_id)
+
+      # Return the re-enriched entity
+      re_enriched
+    else
+      enriched_victim
+    end
+  end
+
+  # Check if an entity needs re-enrichment
+  defp needs_reenrichment?(entity) do
+    Map.get(entity, "ship_type_name") == "Unknown Ship" ||
+      Map.get(entity, "character_name") in [
+        "Unknown Pilot",
+        "Unknown",
+        "Unknown Character"
+      ]
+  end
+
+  # Log success of re-enrichment
+  defp log_reenrichment_success(original, re_enriched, killmail_id) do
+    # Log character name improvement
+    if Map.get(original, "character_name") in [
+         "Unknown Pilot",
+         "Unknown",
+         "Unknown Character"
+       ] &&
+         !(Map.get(re_enriched, "character_name") in [
+             "Unknown Pilot",
+             "Unknown",
+             "Unknown Character"
+           ]) do
+      AppLogger.kill_info(
+        "[Enrichment] Successfully re-enriched victim character name",
+        %{
+          kill_id: killmail_id,
+          character_id: Map.get(original, "character_id"),
+          old_name: Map.get(original, "character_name"),
+          new_name: Map.get(re_enriched, "character_name")
+        }
+      )
+    end
+
+    # Log ship name improvement
+    if Map.get(original, "ship_type_name") == "Unknown Ship" &&
+         Map.get(re_enriched, "ship_type_name") != "Unknown Ship" do
+      AppLogger.kill_info("[Enrichment] Successfully re-enriched victim ship name", %{
+        kill_id: killmail_id,
+        ship_type_id: Map.get(original, "ship_type_id"),
+        old_name: Map.get(original, "ship_type_name"),
+        new_name: Map.get(re_enriched, "ship_type_name")
+      })
+    end
+  end
+
+  # Helper function to enrich attackers data
+  defp enrich_attackers_data(esi_data, killmail_id) do
+    if Map.has_key?(esi_data, "attackers") do
+      attackers = Map.get(esi_data, "attackers", [])
+
+      # Print header for attacker data
+      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+        IO.puts("\n------ ATTACKER DATA ------")
+      end
+
+      AppLogger.kill_info(
+        "[Enrichment] Processing attackers data for kill #{killmail_id}",
+        kill_id: killmail_id,
+        attackers_count: length(attackers)
+      )
+
+      # Process each attacker, ensuring proper enrichment
+      enriched_attackers =
+        Enum.map(attackers, fn attacker ->
+          is_final_blow = Map.get(attacker, "final_blow") == true
+          char_id = Map.get(attacker, "character_id")
+
+          # Get original state before enrichment for logging
+          original_char_name = Map.get(attacker, "character_name")
+          original_ship_name = Map.get(attacker, "ship_type_name")
+
+          # Enrich entity - this calls add_character_name, add_ship_name etc.
+          enriched = enrich_entity(attacker)
+
+          # Now check if the final blow attacker needs special handling
+          if is_final_blow do
+            enriched_char_name = Map.get(enriched, "character_name")
+            enriched_ship_name = Map.get(enriched, "ship_type_name")
+
+            # Log the change between original and enriched for debugging
+            if original_char_name != enriched_char_name ||
+                 original_ship_name != enriched_ship_name do
+              AppLogger.kill_info("[Enrichment] Final blow attacker data enriched", %{
+                kill_id: killmail_id,
+                character_id: char_id,
+                original_name: original_char_name,
+                enriched_name: enriched_char_name,
+                original_ship: original_ship_name,
+                enriched_ship: enriched_ship_name
+              })
+            end
+
+            # Directly apply additional character name resolution if still unknown
+            if enriched_char_name in ["Unknown Pilot", "Unknown", "Unknown Character"] do
+              AppLogger.kill_info(
+                "[Enrichment] Final blow attacker still has unknown name, applying direct resolution for character_id #{char_id}",
+                %{
+                  kill_id: killmail_id,
+                  character_id: char_id,
+                  character_name: enriched_char_name
+                }
+              )
+
+              # Apply direct character resolution
+              updated_enriched = apply_direct_character_resolution(enriched)
+
+              # Log successful update
+              if updated_enriched["character_name"] != enriched_char_name do
+                AppLogger.kill_info(
+                  "[Enrichment] Successfully resolved character name for final blow attacker",
+                  %{
+                    kill_id: killmail_id,
+                    character_id: char_id,
+                    original_name: enriched_char_name,
+                    new_name: updated_enriched["character_name"]
+                  }
+                )
+
+                # Return the directly resolved attacker
+                updated_enriched
+              else
+                # No change in name - return the enriched version
+                enriched
+              end
+            else
+              # Return the enriched attacker - name is already known
+              enriched
+            end
+          else
+            # Not final blow, just return the standard enriched data
+            enriched
+          end
+        end)
+
+      # For debugging, count how many attackers still have unknown data
+      unknown_count =
+        enriched_attackers
+        |> Enum.count(fn attacker ->
+          Map.get(attacker, "character_name") in [
+            "Unknown Pilot",
+            "Unknown",
+            "Unknown Character"
+          ]
+        end)
+
+      if unknown_count > 0 do
+        AppLogger.kill_warning(
+          "[Enrichment] #{unknown_count} of #{length(enriched_attackers)} attackers still have unknown character names after enrichment",
+          %{
+            kill_id: killmail_id
+          }
+        )
+      end
+
+      # Update the ESI data with our properly enriched attackers
+      Map.put(esi_data, "attackers", enriched_attackers)
+    else
+      # Log and continue without adding placeholder
+      AppLogger.kill_warning("[Enrichment] Missing attackers data in killmail",
+        kill_id: killmail_id
+      )
+
+      esi_data
     end
   end
 
@@ -550,49 +550,63 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Generic function to add entity information if missing
   defp add_entity_info(entity, id_key, name_key, fetch_fn, default_name) do
-    if Map.has_key?(entity, id_key) do
-      id = Map.get(entity, id_key)
+    # Get the entity ID if it exists
+    id = Map.get(entity, id_key)
 
-      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-        id_key_upper = String.upcase(id_key)
-        IO.puts("#{id_key_upper}: #{id}")
-      end
-
-      case fetch_fn.(id) do
-        {:ok, info} ->
-          name = Map.get(info, "name", default_name)
-
-          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-            name_key_upper = String.upcase(name_key)
-            IO.puts("#{name_key_upper}: #{name}")
-          end
-
-          Map.put(entity, name_key, name)
-
-        error ->
-          # Add explicit error logging for ESI failures
-          AppLogger.kill_warn("ESI resolution failed for #{id_key}", %{
-            entity_id: id,
-            entity_type: id_key,
-            error: inspect(error)
-          })
-
-          if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-            name_key_upper = String.upcase(name_key)
-            IO.puts("#{name_key_upper}: #{default_name} (ESI error: #{inspect(error)})")
-          end
-
-          Map.put(entity, name_key, default_name)
-      end
+    if is_integer(id) || (is_binary(id) && id != "") do
+      # Fetch info for entity
+      fetch_and_add_entity_name(entity, id, id_key, name_key, fetch_fn, default_name)
     else
-      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-        id_key_upper = String.upcase(id_key)
-        name_key_upper = String.upcase(name_key)
-        IO.puts("#{id_key_upper}: unknown (not present in data)")
-        IO.puts("#{name_key_upper}: #{default_name} (no ID available)")
-      end
-
+      # No ID available, add default name and log
+      log_missing_entity_id(id_key, name_key, default_name)
       entity
+    end
+  end
+
+  # Helper function to fetch entity information and add name to entity
+  defp fetch_and_add_entity_name(entity, id, id_key, name_key, fetch_fn, default_name) do
+    case fetch_fn.(id) do
+      {:ok, info} ->
+        name = Map.get(info, "name", default_name)
+        log_successful_name_lookup(name_key, name)
+        Map.put(entity, name_key, name)
+
+      error ->
+        # Add explicit error logging for ESI failures
+        log_failed_name_lookup(id_key, name_key, id, error, default_name)
+        Map.put(entity, name_key, default_name)
+    end
+  end
+
+  # Helper function to log successful name lookup
+  defp log_successful_name_lookup(name_key, name) do
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      name_key_upper = String.upcase(name_key)
+      IO.puts("#{name_key_upper}: #{name}")
+    end
+  end
+
+  # Helper function to log failed name lookup
+  defp log_failed_name_lookup(id_key, name_key, id, error, default_name) do
+    AppLogger.kill_warn("ESI resolution failed for #{id_key}", %{
+      entity_id: id,
+      entity_type: id_key,
+      error: inspect(error)
+    })
+
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      name_key_upper = String.upcase(name_key)
+      IO.puts("#{name_key_upper}: #{default_name} (ESI error: #{inspect(error)})")
+    end
+  end
+
+  # Helper function to log missing entity ID
+  defp log_missing_entity_id(id_key, name_key, default_name) do
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      id_key_upper = String.upcase(id_key)
+      name_key_upper = String.upcase(name_key)
+      IO.puts("#{id_key_upper}: unknown (not present in data)")
+      IO.puts("#{name_key_upper}: #{default_name} (no ID available)")
     end
   end
 
@@ -1104,7 +1118,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp apply_direct_character_resolution(entity) when is_map(entity) do
     if character_id = Map.get(entity, "character_id") do
       # Use direct ESI service call to bypass caching issues
-      case WandererNotifier.Api.ESI.Service.get_character_info(character_id) do
+      case ESIService.get_character_info(character_id) do
         {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
           AppLogger.kill_info(
             "[Enrichment] Direct character resolution succeeded for character_id #{character_id}",

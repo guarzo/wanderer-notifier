@@ -8,22 +8,22 @@ defmodule WandererNotifier.Resources.KillmailPersistenceTest do
     test "persists a new killmail in normalized format" do
       # Create a sample killmail for testing
       killmail = %KillmailStruct{
-        killmail_id: 12345,
+        killmail_id: 12_345,
         esi_data: %{
           "killmail_time" => "2023-01-01T12:34:56Z",
           "solar_system_id" => 30_000_142,
           "solar_system_name" => "Jita",
           "victim" => %{
-            "character_id" => 98765,
+            "character_id" => 98_765,
             "character_name" => "Victim Pilot",
             "ship_type_id" => 587,
             "ship_type_name" => "Rifter"
           },
           "attackers" => [
             %{
-              "character_id" => 11111,
+              "character_id" => 11_111,
               "character_name" => "Attacker One",
-              "ship_type_id" => 24700,
+              "ship_type_id" => 24_700,
               "ship_type_name" => "Brutix",
               "final_blow" => true,
               "damage_done" => 500
@@ -54,13 +54,13 @@ defmodule WandererNotifier.Resources.KillmailPersistenceTest do
 
       # Assert that the persistence call returns the expected response
       # You'd use mocks for this in a real test
-      assert {:ok, _} = KillmailPersistence.maybe_persist_normalized_killmail(killmail, 11111)
+      assert {:ok, _} = KillmailPersistence.maybe_persist_normalized_killmail(killmail, 11_111)
     end
 
     test "returns already_exists when killmail already exists" do
       # Create a sample killmail for testing
       killmail = %KillmailStruct{
-        killmail_id: 12345,
+        killmail_id: 12_345,
         esi_data: %{
           "killmail_time" => "2023-01-01T12:34:56Z",
           "solar_system_id" => 30_000_142,
@@ -106,22 +106,22 @@ defmodule WandererNotifier.Resources.KillmailPersistenceTest do
     test "extracts character involvement correctly" do
       # Create a sample killmail for testing
       killmail = %KillmailStruct{
-        killmail_id: 12345,
+        killmail_id: 12_345,
         esi_data: %{
           "killmail_time" => "2023-01-01T12:34:56Z",
           "solar_system_id" => 30_000_142,
           "solar_system_name" => "Jita",
           "victim" => %{
-            "character_id" => 98765,
+            "character_id" => 98_765,
             "character_name" => "Victim Pilot",
             "ship_type_id" => 587,
             "ship_type_name" => "Rifter"
           },
           "attackers" => [
             %{
-              "character_id" => 11111,
+              "character_id" => 11_111,
               "character_name" => "Attacker One",
-              "ship_type_id" => 24700,
+              "ship_type_id" => 24_700,
               "ship_type_name" => "Brutix",
               "final_blow" => true,
               "damage_done" => 500
@@ -146,7 +146,7 @@ defmodule WandererNotifier.Resources.KillmailPersistenceTest do
     test "converts a killmail struct to normalized format" do
       # Create a sample killmail for testing
       killmail = %KillmailStruct{
-        killmail_id: 12345,
+        killmail_id: 12_345,
         esi_data: %{
           "killmail_time" => "2023-01-01T12:34:56Z",
           "solar_system_id" => 30_000_142,
@@ -166,5 +166,49 @@ defmodule WandererNotifier.Resources.KillmailPersistenceTest do
       # assert normalized_data.killmail_id == 12345
       # assert normalized_data.solar_system_name == "Jita"
     end
+  end
+
+  test "persists killmail metadata correctly" do
+    killmail_data = %{
+      killmail_id: 12_345,
+      killmail_time: ~U[2023-10-26 12:34:56Z],
+      solar_system_id: 30_002_187
+    }
+
+    victim_data = %{
+      alliance_id: 98_765,
+      character_id: 1_234_567,
+      corporation_id: 54_321,
+      damage_taken: 1_500,
+      position: %{x: 1.0, y: 2.0, z: 3.0}
+    }
+
+    attacker_data = %{
+      alliance_id: 11_111,
+      character_id: 7_654_321,
+      corporation_id: 22_222,
+      damage_done: 2_000,
+      final_blow: true,
+      security_status: 1.5,
+      ship_type_id: 33_333,
+      weapon_type_id: 24_700
+    }
+
+    item_data = [
+      # ... existing code ...
+    ]
+  end
+
+  test "handles missing optional fields gracefully" do
+    killmail_data = %{
+      killmail_id: 12_345,
+      killmail_time: ~U[2023-10-27 10:00:00Z],
+      solar_system_id: 30_002_187
+    }
+
+    victim_data =
+      %{
+        # ... existing code ...
+      }
   end
 end

@@ -545,58 +545,63 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   """
   @spec check_characters_endpoint_availability() :: {:ok, boolean()} | {:error, term()}
   def check_characters_endpoint_availability do
-    case UrlBuilder.build_url("map/characters") do
-      {:ok, url} ->
-        headers = UrlBuilder.get_auth_headers()
-
-        case Client.get(url, headers) do
-          {:ok, %{status_code: status}} when status >= 200 and status < 300 ->
-            {:ok, true}
-
-          {:ok, %{status_code: 429, headers: headers}} ->
-            # Handle rate limiting with backoff
-            retry_after = extract_retry_after(headers)
-            # Default to 5 seconds
-            wait_time = retry_after || 5000
-
-            AppLogger.api_warn(
-              "⚠️ Characters endpoint rate limited. Retrying after #{wait_time}ms"
-            )
-
-            Process.sleep(wait_time)
-
-            # Try again after waiting
-            check_characters_endpoint_availability()
-
-          {:ok, %{status_code: status, body: body}} ->
-            error_reason = "Endpoint returned status #{status}: #{body}"
-            AppLogger.api_warn("⚠️ Characters endpoint error", error: error_reason)
-            {:error, error_reason}
-
-          {:error, :rate_limited} ->
-            # API recognized as rate limited from HTTP client
-            AppLogger.api_warn("⚠️ Characters endpoint rate limited. Retrying after 5 seconds")
-            Process.sleep(5000)
-            check_characters_endpoint_availability()
-
-          {:error, {:domain_error, _domain, :rate_limited}} ->
-            # Domain-specific rate limiting from HTTP client
-            AppLogger.api_warn(
-              "⚠️ Characters endpoint domain-specific rate limited. Retrying after 5 seconds"
-            )
-
-            Process.sleep(5000)
-            check_characters_endpoint_availability()
-
-          {:error, reason} ->
-            AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
-            {:error, reason}
-        end
-
+    with {:ok, url} <- UrlBuilder.build_url("map/characters") do
+      do_check_characters_endpoint_availability(url)
+    else
       {:error, reason} ->
         AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
         {:error, reason}
     end
+  end
+
+  # Private function that actually does the availability check
+  defp do_check_characters_endpoint_availability(url) do
+    headers = UrlBuilder.get_auth_headers()
+
+    Client.get(url, headers)
+    |> handle_availability_response()
+  end
+
+  # Handle the HTTP response for endpoint availability
+  defp handle_availability_response({:ok, %{status_code: code}} = _response)
+       when code in 200..299 do
+    {:ok, true}
+  end
+
+  defp handle_availability_response({:ok, %{status_code: 429, headers: headers}} = _response) do
+    # Handle rate limiting with backoff
+    handle_rate_limiting(headers)
+  end
+
+  defp handle_availability_response({:ok, %{status_code: status, body: body}} = _response) do
+    error_reason = "Endpoint returned status #{status}: #{body}"
+    AppLogger.api_warn("⚠️ Characters endpoint error", error: error_reason)
+    {:error, error_reason}
+  end
+
+  defp handle_availability_response({:error, :rate_limited} = _error) do
+    # API recognized as rate-limited from HTTP client
+    handle_rate_limiting()
+  end
+
+  defp handle_availability_response({:error, {:domain_error, _domain, :rate_limited}} = _error) do
+    # Domain-specific rate-limiting from HTTP client
+    handle_rate_limiting()
+  end
+
+  defp handle_availability_response({:error, reason} = _error) do
+    AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
+    {:error, reason}
+  end
+
+  # Helper function to handle the "rate-limited, wait, and retry" logic
+  defp handle_rate_limiting(headers \\ []) do
+    wait_time = extract_retry_after(headers) || 5_000
+
+    AppLogger.api_warn("⚠️ Characters endpoint rate limited. Retrying after #{wait_time}ms")
+
+    Process.sleep(wait_time)
+    check_characters_endpoint_availability()
   end
 
   @doc """

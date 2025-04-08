@@ -295,27 +295,24 @@ defmodule WandererNotifier.Killmail do
   - The victim data as a map or empty map if not found
   """
   def get_victim(killmail) do
-    cond do
-      # For normalized Killmail resource, construct a victim map
-      is_struct(killmail, Killmail) ->
-        if killmail.victim_id do
-          %{
-            "character_id" => killmail.victim_id,
-            "character_name" => killmail.victim_name,
-            "ship_type_id" => killmail.victim_ship_id,
-            "ship_type_name" => killmail.victim_ship_name,
-            "corporation_id" => killmail.victim_corporation_id,
-            "corporation_name" => killmail.victim_corporation_name,
-            "alliance_id" => killmail.victim_alliance_id,
-            "alliance_name" => killmail.victim_alliance_name
-          }
-        else
-          # Try the full_victim_data if available
-          killmail.full_victim_data || %{}
-        end
-
-      true ->
-        %{}
+    if is_struct(killmail, Killmail) do
+      if killmail.victim_id do
+        %{
+          "character_id" => killmail.victim_id,
+          "character_name" => killmail.victim_name,
+          "ship_type_id" => killmail.victim_ship_id,
+          "ship_type_name" => killmail.victim_ship_name,
+          "corporation_id" => killmail.victim_corporation_id,
+          "corporation_name" => killmail.victim_corporation_name,
+          "alliance_id" => killmail.victim_alliance_id,
+          "alliance_name" => killmail.victim_alliance_name
+        }
+      else
+        # Try the full_victim_data if available
+        killmail.full_victim_data || %{}
+      end
+    else
+      %{}
     end
   end
 

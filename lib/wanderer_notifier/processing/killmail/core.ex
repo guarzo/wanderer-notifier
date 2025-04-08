@@ -6,6 +6,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Data.Repository
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Enrichment
@@ -136,7 +137,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
   """
   def process_kill_from_zkb(kill_id, character_id \\ nil) do
     character_name =
-      case WandererNotifier.Data.Repository.get_character_name(character_id) do
+      case Repository.get_character_name(character_id) do
         {:ok, name} -> name
         _ -> "Unknown"
       end

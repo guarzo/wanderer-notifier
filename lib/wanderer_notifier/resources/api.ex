@@ -7,11 +7,13 @@ defmodule WandererNotifier.Resources.Api do
   use Ash.Domain, validate_config_inclusion?: false
 
   resources do
-    resource(WandererNotifier.Resources.TrackedCharacter)
     resource(WandererNotifier.Resources.Killmail)
     resource(WandererNotifier.Resources.KillmailCharacterInvolvement)
     resource(WandererNotifier.Resources.KillmailStatistic)
     resource(WandererNotifier.Resources.KillTrackingHistory)
+    resource(WandererNotifier.Resources.TrackedCharacter)
+    resource(WandererNotifier.Resources.KillmailPersistence)
+    resource(WandererNotifier.Resources.KillmailAggregation)
   end
 
   # Public interface for resource operations

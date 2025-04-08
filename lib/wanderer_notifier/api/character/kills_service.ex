@@ -12,6 +12,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Repository
   alias WandererNotifier.KillmailProcessing.Context
+  alias WandererNotifier.KillmailProcessing.Pipeline, as: KillmailPipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailPersistence
 
@@ -614,9 +615,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     concurrency = ctx.options[:concurrency] || 2
 
     known_kill_ids =
-      WandererNotifier.Resources.KillmailPersistence.get_already_processed_kill_ids(
-        ctx.character_id
-      )
+      KillmailPersistence.get_already_processed_kill_ids(ctx.character_id)
 
     AppLogger.kill_debug("[KillsService] Filtering already processed kills", %{
       total_kills: length(kills),
@@ -789,7 +788,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
       AppLogger.kill_info("[KillsService] Retry attempt #{retry_count} for kill #{kill_id}")
     end
 
-    case WandererNotifier.KillmailProcessing.Pipeline.process_killmail(kill, ctx) do
+    case KillmailPipeline.process_killmail(kill, ctx) do
       {:ok, _} = result ->
         result
 

@@ -5,8 +5,8 @@ defmodule WandererNotifier.Killmail.Validation do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Utils.TypeHelpers
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.Utils.TypeHelpers
   require Logger
 
   @doc """
@@ -20,10 +20,20 @@ defmodule WandererNotifier.Killmail.Validation do
   - {:error, reasons} if invalid with a list of validation failures
   """
   def validate_killmail(killmail) do
-    # Required fields
+    missing_fields = check_required_fields(killmail)
+    placeholder_fields = check_placeholder_values(killmail)
+    all_errors = missing_fields ++ placeholder_fields
+
+    if Enum.empty?(all_errors) do
+      {:ok, killmail}
+    else
+      {:error, all_errors}
+    end
+  end
+
+  defp check_required_fields(killmail) do
     missing_fields = []
 
-    # Check for basic required fields
     missing_fields =
       if has_required_data?(killmail) do
         missing_fields
@@ -31,7 +41,6 @@ defmodule WandererNotifier.Killmail.Validation do
         ["Missing required data" | missing_fields]
       end
 
-    # Add ZKB check
     missing_fields =
       if has_zkb_data?(killmail) do
         missing_fields
@@ -39,44 +48,36 @@ defmodule WandererNotifier.Killmail.Validation do
         ["Missing zkb data" | missing_fields]
       end
 
-    # Check key fields
-    missing_fields =
-      if has_required_data?(killmail) do
-        fields_to_check = [
-          {"solar_system_id", "Missing solar system ID"},
-          {"solar_system_name", "Missing solar system name"},
-          {"kill_time", "Missing killmail time"}
-        ]
+    if has_required_data?(killmail) do
+      check_key_fields(killmail, missing_fields)
+    else
+      missing_fields
+    end
+  end
 
-        Enum.reduce(fields_to_check, missing_fields, fn {field, error}, acc ->
-          if has_field?(killmail, field) do
-            acc
-          else
-            [error | acc]
-          end
-        end)
+  defp check_key_fields(killmail, missing_fields) do
+    fields_to_check = [
+      {"solar_system_id", "Missing solar system ID"},
+      {"solar_system_name", "Missing solar system name"},
+      {"kill_time", "Missing killmail time"}
+    ]
+
+    Enum.reduce(fields_to_check, missing_fields, fn {field, error}, acc ->
+      if has_field?(killmail, field) do
+        acc
       else
-        missing_fields
+        [error | acc]
       end
+    end)
+  end
 
-    # Check for placeholder values
+  defp check_placeholder_values(killmail) do
     placeholder_fields = []
 
-    # Check system name - only fail for exactly "Unknown System"
-    placeholder_fields =
-      if get_field(killmail, "solar_system_name") == "Unknown System" do
-        ["Solar system name is placeholder (Unknown System)" | placeholder_fields]
-      else
-        placeholder_fields
-      end
-
-    # Combine all errors
-    all_errors = missing_fields ++ placeholder_fields
-
-    if Enum.empty?(all_errors) do
-      {:ok, killmail}
+    if get_field(killmail, "solar_system_name") == "Unknown System" do
+      ["Solar system name is placeholder (Unknown System)" | placeholder_fields]
     else
-      {:error, all_errors}
+      placeholder_fields
     end
   end
 
@@ -255,114 +256,107 @@ defmodule WandererNotifier.Killmail.Validation do
   - Map of involvement data
   """
   def extract_character_involvement(killmail, character_id, role) do
-    # Base attributes - these match the KillmailCharacterInvolvement resource
-    attrs = %{
+    base_attrs = build_base_attributes(character_id, role)
+    role_specific_attrs = extract_role_specific_attributes(killmail, character_id, role)
+    Map.merge(base_attrs, role_specific_attrs)
+  end
+
+  defp build_base_attributes(character_id, role) do
+    %{
       character_id: character_id,
-      # Ensure it's a proper atom
       character_role: String.to_atom(to_string(role))
     }
+  end
 
-    # Specific attributes based on role
-    role_specific_attrs =
-      case role do
-        :victim ->
-          extract_victim_attributes(killmail, character_id)
-
-        :attacker ->
-          extract_attacker_attributes(killmail, character_id)
-
-        _ ->
-          %{}
-      end
-
-    # Merge base and role-specific attributes
-    Map.merge(attrs, role_specific_attrs)
+  defp extract_role_specific_attributes(killmail, character_id, role) do
+    case role do
+      :victim -> extract_victim_attributes(killmail, character_id)
+      :attacker -> extract_attacker_attributes(killmail, character_id)
+      _ -> %{}
+    end
   end
 
   # Extract attributes for a victim
   defp extract_victim_attributes(killmail, character_id) do
-    # Handle normalized killmail resource
-    victim =
-      if is_struct(killmail, KillmailResource) do
-        # For normalized killmail resource
-        if to_string(killmail.victim_id || "") == to_string(character_id) do
-          %{
-            "character_id" => killmail.victim_id,
-            "ship_type_id" => killmail.victim_ship_id,
-            "ship_type_name" => killmail.victim_ship_name
-          }
-        else
-          killmail.full_victim_data || %{}
-        end
-      else
-        # For raw data
-        Map.get(killmail, "victim") || %{}
-      end
+    victim = get_victim_data(killmail, character_id)
+    if victim_matches_id?(victim, character_id), do: build_victim_attributes(victim), else: %{}
+  end
 
-    # Only include if the victim ID matches
-    if to_string(Map.get(victim, "character_id", "")) == to_string(character_id) do
-      %{
-        ship_type_id: Map.get(victim, "ship_type_id"),
-        ship_type_name:
-          Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship",
-        damage_done: Map.get(victim, "damage_taken", 0),
-        is_final_blow: false,
-        weapon_type_id: nil,
-        weapon_type_name: nil
-      }
+  defp get_victim_data(killmail, character_id) do
+    if is_struct(killmail, KillmailResource) do
+      if to_string(killmail.victim_id || "") == to_string(character_id) do
+        %{
+          "character_id" => killmail.victim_id,
+          "ship_type_id" => killmail.victim_ship_id,
+          "ship_type_name" => killmail.victim_ship_name
+        }
+      else
+        killmail.full_victim_data || %{}
+      end
     else
-      %{}
+      Map.get(killmail, "victim") || %{}
     end
+  end
+
+  defp victim_matches_id?(victim, character_id) do
+    to_string(Map.get(victim, "character_id", "")) == to_string(character_id)
+  end
+
+  defp build_victim_attributes(victim) do
+    %{
+      ship_type_id: Map.get(victim, "ship_type_id"),
+      ship_type_name: Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship",
+      damage_done: Map.get(victim, "damage_taken", 0),
+      is_final_blow: false,
+      weapon_type_id: nil,
+      weapon_type_name: nil
+    }
   end
 
   # Extract attributes for an attacker
   defp extract_attacker_attributes(killmail, character_id) do
-    # Get attackers based on killmail format
-    attackers =
-      if is_struct(killmail, KillmailResource) do
-        # For normalized killmail resource, check if the final blow attacker matches
-        if killmail.final_blow_attacker_id &&
-             to_string(killmail.final_blow_attacker_id) == to_string(character_id) do
-          [
-            %{
-              "character_id" => killmail.final_blow_attacker_id,
-              "ship_type_id" => killmail.final_blow_ship_id,
-              "ship_type_name" => killmail.final_blow_ship_name,
-              "final_blow" => true
-            }
-          ]
-        else
-          # For non-final blow attackers, we need to check full_attacker_data
-          killmail.full_attacker_data || []
-        end
+    attackers = get_attackers(killmail, character_id)
+    attacker = find_matching_attacker(attackers, character_id)
+    build_attacker_attributes(attacker)
+  end
+
+  defp get_attackers(killmail, character_id) do
+    if is_struct(killmail, KillmailResource) do
+      if killmail.final_blow_attacker_id &&
+           to_string(killmail.final_blow_attacker_id) == to_string(character_id) do
+        [
+          %{
+            "character_id" => killmail.final_blow_attacker_id,
+            "ship_type_id" => killmail.final_blow_ship_id,
+            "ship_type_name" => killmail.final_blow_ship_name,
+            "final_blow" => true
+          }
+        ]
       else
-        # For raw data
-        Map.get(killmail, "attackers") || []
+        killmail.full_attacker_data || []
       end
-
-    # Find the attacker in the list
-    attacker =
-      attackers
-      |> Enum.find(fn a ->
-        to_string(Map.get(a, "character_id", "")) == to_string(character_id)
-      end)
-
-    case attacker do
-      nil ->
-        %{}
-
-      attacker ->
-        %{
-          ship_type_id: Map.get(attacker, "ship_type_id"),
-          ship_type_name:
-            Map.get(attacker, "ship_type_name") || Map.get(attacker, "ship_type") ||
-              "Unknown Ship",
-          damage_done: Map.get(attacker, "damage_done", 0),
-          is_final_blow: Map.get(attacker, "final_blow", false),
-          weapon_type_id: Map.get(attacker, "weapon_type_id"),
-          weapon_type_name: Map.get(attacker, "weapon_type_name")
-        }
+    else
+      Map.get(killmail, "attackers") || []
     end
+  end
+
+  defp find_matching_attacker(attackers, character_id) do
+    Enum.find(attackers, fn a ->
+      to_string(Map.get(a, "character_id", "")) == to_string(character_id)
+    end)
+  end
+
+  defp build_attacker_attributes(nil), do: %{}
+
+  defp build_attacker_attributes(attacker) do
+    %{
+      ship_type_id: Map.get(attacker, "ship_type_id"),
+      ship_type_name: Map.get(attacker, "ship_type_name") || Map.get(attacker, "ship_type") || "Unknown Ship",
+      damage_done: Map.get(attacker, "damage_done", 0),
+      is_final_blow: Map.get(attacker, "final_blow", false),
+      weapon_type_id: Map.get(attacker, "weapon_type_id"),
+      weapon_type_name: Map.get(attacker, "weapon_type_name")
+    }
   end
 
   # Helper functions for data conversion
@@ -396,25 +390,25 @@ defmodule WandererNotifier.Killmail.Validation do
     value |> Float.to_string() |> Decimal.parse() |> elem(0)
   end
 
-  # Maps can't be directly converted to Decimal, so log and return nil
   defp parse_decimal(value) when is_map(value) do
-    AppLogger.kill_warn("Cannot convert map to Decimal", value: inspect(value))
+    log_invalid_decimal_conversion(value, "map")
     nil
   end
 
-  # Lists can't be directly converted to Decimal, so log and return nil
   defp parse_decimal(value) when is_list(value) do
-    AppLogger.kill_warn("Cannot convert list to Decimal", value: inspect(value))
+    log_invalid_decimal_conversion(value, "list")
     nil
   end
 
-  # Catch-all for any other value types that might appear
   defp parse_decimal(value) do
-    AppLogger.kill_warn("Cannot convert value to Decimal",
-      value: inspect(value),
-      type: TypeHelpers.typeof(value)
-    )
-
+    log_invalid_decimal_conversion(value, TypeHelpers.typeof(value))
     nil
+  end
+
+  defp log_invalid_decimal_conversion(value, type) do
+    AppLogger.kill_warn("Cannot convert #{type} to Decimal",
+      value: inspect(value),
+      type: type
+    )
   end
 end

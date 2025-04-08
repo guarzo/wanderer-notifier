@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Resources.KillmailPersistence do
   use Ash.Resource,
-    domain: WandererNotifier.Resources.Domain,
+    domain: WandererNotifier.Resources.Api,
     data_layer: AshPostgres.DataLayer,
     extensions: [AshJsonApi.Resource]
 

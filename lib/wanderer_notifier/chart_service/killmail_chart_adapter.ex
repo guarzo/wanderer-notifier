@@ -257,57 +257,9 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     tracked_characters = get_tracked_characters() |> Enum.take(8)
 
     if length(tracked_characters) > 0 do
-      # Get comparison data for each character in parallel (with a limit of 3 concurrent tasks)
-      validation_data =
-        tracked_characters
-        |> Task.async_stream(
-          &get_character_kill_comparison/1,
-          max_concurrency: 3,
-          timeout: 10_000,
-          ordered: false
-        )
-        |> Enum.map(fn
-          {:ok, result} ->
-            result
-
-          {:exit, reason} ->
-            # Include error details per character when tasks fail
-            character_id = get_in(reason, [:character, :character_id]) || "unknown"
-
-            AppLogger.kill_warn("Failed to get comparison data for character", %{
-              character_id: character_id,
-              reason: inspect(reason)
-            })
-
-            nil
-
-          _ ->
-            nil
-        end)
-        |> Enum.filter(&(&1 != nil))
-
-      if length(validation_data) > 0 do
-        # Extract chart elements
-        {character_labels, zkill_counts, db_counts} = extract_validation_metrics(validation_data)
-
-        # Create chart data structure
-        chart_data = create_kill_validation_chart_data(character_labels, zkill_counts, db_counts)
-        options = create_kill_validation_chart_options()
-
-        {:ok, chart_data, "Killmail Validation", options}
-      else
-        AppLogger.kill_warn("No validation data available for tracked characters")
-        empty_chart_data = create_empty_kills_chart_data("No validation data available")
-        options = create_empty_chart_options()
-
-        {:ok, empty_chart_data, "Killmail Validation", options}
-      end
+      process_validation_data(tracked_characters)
     else
-      AppLogger.kill_warn("No tracked characters available")
-      empty_chart_data = create_empty_kills_chart_data("No tracked characters available")
-      options = create_empty_chart_options()
-
-      {:ok, empty_chart_data, "Killmail Validation", options}
+      handle_no_validation_data("No tracked characters available")
     end
   rescue
     e ->
@@ -319,59 +271,77 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       {:error, "Error preparing kill validation data: #{Exception.message(e)}"}
   end
 
+  # Process validation data for a list of characters
+  defp process_validation_data(tracked_characters) do
+    # Get comparison data for each character in parallel
+    validation_data = fetch_parallel_validation_data(tracked_characters)
+
+    if length(validation_data) > 0 do
+      # Extract chart elements
+      {character_labels, zkill_counts, db_counts} = extract_validation_metrics(validation_data)
+
+      # Create chart data structure
+      chart_data = create_kill_validation_chart_data(character_labels, zkill_counts, db_counts)
+      options = create_kill_validation_chart_options()
+
+      {:ok, chart_data, "Killmail Validation", options}
+    else
+      handle_no_validation_data("No validation data available for tracked characters")
+    end
+  end
+
+  # Fetch validation data in parallel
+  defp fetch_parallel_validation_data(tracked_characters) do
+    tracked_characters
+    |> Task.async_stream(
+      &get_character_kill_comparison/1,
+      max_concurrency: 3,
+      timeout: 10_000,
+      ordered: false
+    )
+    |> Enum.map(fn
+      {:ok, result} ->
+        result
+
+      {:exit, reason} ->
+        # Include error details per character when tasks fail
+        character_id = get_in(reason, [:character, :character_id]) || "unknown"
+
+        AppLogger.kill_warn("Failed to get comparison data for character", %{
+          character_id: character_id,
+          reason: inspect(reason)
+        })
+
+        nil
+
+      _ ->
+        nil
+    end)
+    |> Enum.filter(&(&1 != nil))
+  end
+
+  # Handle cases where no validation data is available
+  defp handle_no_validation_data(log_message) do
+    AppLogger.kill_warn(log_message)
+    empty_chart_data = create_empty_kills_chart_data("No validation data available")
+    options = create_empty_chart_options()
+
+    {:ok, empty_chart_data, "Killmail Validation", options}
+  end
+
   @impl true
   def send_weekly_kills_chart_to_discord(channel_id, date_from, date_to) do
     # Generate both kills and ISK charts
     with {:ok, kills_chart_data} <- generate_weekly_kills_chart(),
          {:ok, isk_chart_data} <- generate_weekly_isk_chart(%{limit: 20}) do
       # Send both charts to Discord
-      kill_title =
-        "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
-
-      isk_title =
-        "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
-
-      # Create embeds with chart URLs
-      kill_embed = %{
-        "title" => kill_title,
-        "color" => 3_447_003
-      }
-
-      isk_embed = %{
-        "title" => isk_title,
-        "color" => 3_447_003
-      }
-
-      # Send kills chart and handle potential errors
-      case DiscordClient.send_file(
-             "weekly_kills.png",
-             kills_chart_data,
-             kill_title,
-             nil,
-             channel_id,
-             kill_embed
-           ) do
-        :ok ->
-          case DiscordClient.send_file(
-                 "weekly_isk.png",
-                 isk_chart_data,
-                 isk_title,
-                 nil,
-                 channel_id,
-                 isk_embed
-               ) do
-            :ok ->
-              {:ok, %{status: :ok, message: "Successfully sent both charts to Discord"}}
-
-            {:error, reason} ->
-              AppLogger.kill_error("Failed to send ISK chart to Discord", error: inspect(reason))
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          AppLogger.kill_error("Failed to send kills chart to Discord", error: inspect(reason))
-          {:error, reason}
-      end
+      send_generated_charts(
+        channel_id,
+        date_from,
+        date_to,
+        kills_chart_data,
+        isk_chart_data
+      )
     else
       {:error, reason} ->
         AppLogger.kill_error("Failed to generate weekly charts", error: inspect(reason))
@@ -385,6 +355,58 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
       )
 
       {:error, "Error sending weekly charts: #{Exception.message(e)}"}
+  end
+
+  # Helper to send generated charts to Discord
+  defp send_generated_charts(channel_id, date_from, date_to, kills_chart_data, isk_chart_data) do
+    kill_title =
+      "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
+    isk_title =
+      "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
+
+    kill_embed = create_chart_embed(kill_title)
+    isk_embed = create_chart_embed(isk_title)
+
+    send_chart_file("weekly_kills.png", kills_chart_data, kill_title, channel_id, kill_embed)
+    |> then(fn
+      :ok ->
+        send_chart_file("weekly_isk.png", isk_chart_data, isk_title, channel_id, isk_embed)
+        |> handle_second_send_result()
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to send kills chart to Discord", error: inspect(reason))
+        {:error, reason}
+    end)
+  end
+
+  # Creates a basic Discord embed for a chart
+  defp create_chart_embed(title) do
+    %{
+      "title" => title,
+      "color" => 3_447_003
+    }
+  end
+
+  # Sends a single chart file to Discord
+  defp send_chart_file(filename, chart_data, title, channel_id, embed) do
+    DiscordClient.send_file(
+      filename,
+      chart_data,
+      title,
+      nil,
+      channel_id,
+      embed
+    )
+  end
+
+  # Handles the result of sending the second chart
+  defp handle_second_send_result(:ok) do
+    {:ok, %{status: :ok, message: "Successfully sent both charts to Discord"}}
+  end
+
+  defp handle_second_send_result({:error, reason}) do
+    AppLogger.kill_error("Failed to send ISK chart to Discord", error: inspect(reason))
+    {:error, reason}
   end
 
   @doc """
@@ -1078,41 +1100,70 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
     max_kills = 100
 
     # Add a task timeout to prevent long-running API calls
-    task =
-      Task.async(fn ->
-        ZKillClient.get_character_kills(character_id, date_range, max_kills)
-      end)
+    task_fn = fn ->
+      ZKillClient.get_character_kills(character_id, date_range, max_kills)
+    end
 
-    # Wait for result with a 5 second timeout
+    task_timeout = 5000
+
+    # Execute task with timeout and handle results
+    execute_zkill_task(task_fn, task_timeout, character_id)
+  end
+
+  # Executes a ZKill API task with timeout and handles results
+  defp execute_zkill_task(task_fn, timeout, character_id) do
+    task = Task.async(task_fn)
+
     try do
-      case Task.yield(task, 5000) || Task.shutdown(task) do
+      case Task.yield(task, timeout) || Task.shutdown(task) do
         {:ok, {:ok, kills}} when is_list(kills) ->
-          AppLogger.kill_debug(
-            "Got #{length(kills)} kills from ZKill API for character #{character_id}"
-          )
-
-          {:ok, length(kills)}
+          handle_zkill_success(kills, character_id)
 
         {:ok, {:error, reason}} ->
-          AppLogger.kill_warn("ZKill API error for character #{character_id}: #{inspect(reason)}")
-          {:ok, 0}
+          handle_zkill_api_error(reason, character_id)
 
         nil ->
-          AppLogger.kill_warn("ZKill API timeout for character #{character_id}")
-          {:ok, 0}
+          handle_zkill_timeout(character_id)
 
         _ ->
-          AppLogger.kill_warn("Unknown ZKill API response for character #{character_id}")
-          {:ok, 0}
+          handle_zkill_unknown_response(character_id)
       end
     rescue
       e ->
-        AppLogger.kill_error("Exception in ZKill API call for character #{character_id}",
-          error: Exception.message(e)
-        )
-
-        {:ok, 0}
+        handle_zkill_exception(e, character_id)
     end
+  end
+
+  # Handlers for ZKill task results
+  defp handle_zkill_success(kills, character_id) do
+    AppLogger.kill_debug(
+      "Got #{length(kills)} kills from ZKill API for character #{character_id}"
+    )
+
+    {:ok, length(kills)}
+  end
+
+  defp handle_zkill_api_error(reason, character_id) do
+    AppLogger.kill_warn("ZKill API error for character #{character_id}: #{inspect(reason)}")
+    {:ok, 0}
+  end
+
+  defp handle_zkill_timeout(character_id) do
+    AppLogger.kill_warn("ZKill API timeout for character #{character_id}")
+    {:ok, 0}
+  end
+
+  defp handle_zkill_unknown_response(character_id) do
+    AppLogger.kill_warn("Unknown ZKill API response for character #{character_id}")
+    {:ok, 0}
+  end
+
+  defp handle_zkill_exception(e, character_id) do
+    AppLogger.kill_error("Exception in ZKill API call for character #{character_id}",
+      error: Exception.message(e)
+    )
+
+    {:ok, 0}
   end
 
   # Extract validation metrics from data

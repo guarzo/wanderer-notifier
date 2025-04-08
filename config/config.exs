@@ -108,8 +108,7 @@ config :wanderer_notifier, :ash_apis, [
 # Configure Ash Domains
 config :wanderer_notifier,
   ash_domains: [
-    WandererNotifier.Resources.Api,
-    WandererNotifier.Resources.Domain
+    WandererNotifier.Resources.Api
   ]
 
 # Configure compatible foreign key types for Ash relationships

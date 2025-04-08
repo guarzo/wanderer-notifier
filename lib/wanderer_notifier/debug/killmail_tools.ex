@@ -1,3 +1,4 @@
+# credo:disable-for-this-file
 defmodule WandererNotifier.Debug.KillmailTools do
   @moduledoc """
   Debugging tools for analyzing killmail processing and persistence.
@@ -777,9 +778,10 @@ defmodule WandererNotifier.Debug.KillmailTools do
   end
 
   defp get_zkb_data(killmail) do
-    cond do
-      is_struct(killmail, KillmailResource) -> killmail.zkb_data
-      true -> Map.get(killmail, :zkb_data) || Map.get(killmail, :zkb) || %{}
+    if is_struct(killmail, KillmailResource) do
+      killmail.zkb_data
+    else
+      Map.get(killmail, :zkb_data) || Map.get(killmail, :zkb) || %{}
     end
   end
 
@@ -793,28 +795,29 @@ defmodule WandererNotifier.Debug.KillmailTools do
 
   # Helper functions to get data from different killmail formats
   defp get_attackers(killmail) do
-    cond do
-      is_struct(killmail, KillmailResource) ->
+    # Check for different formats in a more structured way
+    case killmail do
+      %KillmailResource{} ->
         # For normalized killmail resource
         killmail.full_attacker_data
 
-      Map.has_key?(killmail, :full_attacker_data) ->
+      %{full_attacker_data: data} when not is_nil(data) ->
         # Check for full_attacker_data field
-        killmail.full_attacker_data
+        data
 
-      Map.has_key?(killmail, "attackers") ->
+      %{"attackers" => attackers} ->
         # JSON format with direct attackers field
-        killmail["attackers"]
+        attackers
 
-      Map.has_key?(killmail, :esi_data) && killmail.esi_data ->
+      %{esi_data: %{"attackers" => attackers}} when not is_nil(attackers) ->
         # Format with esi_data field
-        Map.get(killmail.esi_data, "attackers")
+        attackers
 
-      Map.has_key?(killmail, "esi_data") && killmail["esi_data"] ->
+      %{"esi_data" => %{"attackers" => attackers}} when not is_nil(attackers) ->
         # Format with esi_data field as string key
-        Map.get(killmail["esi_data"], "attackers")
+        attackers
 
-      true ->
+      _ ->
         # Default for any other format
         Map.get(killmail, :attackers) || Map.get(killmail, "attackers") || []
     end

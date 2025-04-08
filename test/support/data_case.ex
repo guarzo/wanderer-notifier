@@ -68,7 +68,7 @@ defmodule WandererNotifier.DataCase do
   """
   def create_test_killmail(attrs \\ %{}) do
     default_attrs = %{
-      killmail_id: 12345,
+      killmail_id: 12_345,
       zkb: %{
         "totalValue" => 15_000_000,
         "points" => 10,
@@ -81,16 +81,16 @@ defmodule WandererNotifier.DataCase do
         "solar_system_id" => 30_000_142,
         "solar_system_name" => "Jita",
         "victim" => %{
-          "character_id" => 98765,
+          "character_id" => 98_765,
           "character_name" => "Victim Pilot",
           "ship_type_id" => 587,
           "ship_type_name" => "Rifter"
         },
         "attackers" => [
           %{
-            "character_id" => 11111,
+            "character_id" => 11_111,
             "character_name" => "Attacker One",
-            "ship_type_id" => 24700,
+            "ship_type_id" => 24_700,
             "ship_type_name" => "Brutix",
             "final_blow" => true,
             "damage_done" => 500

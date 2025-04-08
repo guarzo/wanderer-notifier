@@ -7,6 +7,8 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.KillmailEnrichment, as: Enrichment
+  alias WandererNotifier.Killmail
+  alias WandererNotifier.Killmail.Validation, as: KillmailValidation
   alias WandererNotifier.KillmailProcessing.{Context, Metrics}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -302,7 +304,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     killmail = ensure_data_consistency(killmail)
 
     # Use Killmail.Validation module for the new model
-    case WandererNotifier.Killmail.Validation.validate_killmail(killmail) do
+    case KillmailValidation.validate_killmail(killmail) do
       {:ok, _} ->
         # All validations passed
         AppLogger.kill_debug("Enriched killmail passed validation", %{
@@ -315,7 +317,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
       {:error, reasons} ->
         # Some validations failed - log detailed diagnostics
-        debug_data = WandererNotifier.Killmail.debug_data(killmail)
+        debug_data = Killmail.debug_data(killmail)
 
         AppLogger.kill_error("Enriched killmail failed validation", %{
           killmail_id: killmail.killmail_id,
@@ -331,7 +333,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         # Check if we can recover by applying emergency enrichment
         emergency_fixed = emergency_data_fix(killmail, reasons)
 
-        case WandererNotifier.Killmail.validate_complete_data(emergency_fixed) do
+        case Killmail.validate_complete_data(emergency_fixed) do
           :ok ->
             # Emergency fix worked
             AppLogger.kill_info("Emergency data fix resolved validation issues", %{
@@ -371,7 +373,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
           Map.put(esi_data, "solar_system_name", "Unidentified System")
         else
           # Try to get system name one last time directly
-          case WandererNotifier.Api.ESI.Service.get_system_info(system_id) do
+          case ESIService.get_system_info(system_id) do
             {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
               AppLogger.kill_info("Emergency fix: Retrieved system name", %{
                 system_id: system_id,

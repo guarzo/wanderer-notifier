@@ -4,6 +4,8 @@ defmodule WandererNotifier.Notifications.Formatters.Base do
   Provides common formatting functions used across different notification types.
   """
 
+  alias WandererNotifier.Notifiers.StructuredFormatter
+
   @doc """
   Extracts a character ID from different data formats.
   """
@@ -135,10 +137,10 @@ defmodule WandererNotifier.Notifications.Formatters.Base do
   Formats ISK value in a compact way.
   """
   def format_compact_isk_value(value) when is_number(value) do
-    WandererNotifier.Notifiers.StructuredFormatter.format_isk_compact(value)
+    StructuredFormatter.format_isk_compact(value)
   end
 
   def format_compact_isk_value(value) do
-    WandererNotifier.Notifiers.StructuredFormatter.format_isk_compact(value)
+    StructuredFormatter.format_isk_compact(value)
   end
 end

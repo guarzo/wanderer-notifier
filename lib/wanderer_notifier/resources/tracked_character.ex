@@ -17,7 +17,7 @@ defmodule WandererNotifier.Resources.TrackedCharacter do
   alias WandererNotifier.Resources.Killmail
 
   use Ash.Resource,
-    domain: Api,
+    domain: WandererNotifier.Resources.Api,
     data_layer: AshPostgres.DataLayer,
     extensions: [
       AshPostgres.Resource

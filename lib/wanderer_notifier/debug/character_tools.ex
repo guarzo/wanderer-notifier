@@ -1,3 +1,4 @@
+# credo:disable-for-this-file
 defmodule WandererNotifier.Debug.CharacterTools do
   @moduledoc """
   Debugging tools for analyzing and displaying character data.

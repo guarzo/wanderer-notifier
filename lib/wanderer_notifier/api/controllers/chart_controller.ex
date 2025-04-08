@@ -12,7 +12,7 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
-  alias WandererNotifier.Resources.{KillmailAggregation, TrackedCharacter}
+  alias WandererNotifier.Resources.{Api, KillmailAggregation, TrackedCharacter}
 
   # Forward activity chart requests to the ActivityChartController
   forward("/activity", to: ActivityChartController)
