@@ -545,9 +545,10 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   """
   @spec check_characters_endpoint_availability() :: {:ok, boolean()} | {:error, term()}
   def check_characters_endpoint_availability do
-    with {:ok, url} <- UrlBuilder.build_url("map/characters") do
-      do_check_characters_endpoint_availability(url)
-    else
+    case UrlBuilder.build_url("map/characters") do
+      {:ok, url} ->
+        do_check_characters_endpoint_availability(url)
+
       {:error, reason} ->
         AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
         {:error, reason}

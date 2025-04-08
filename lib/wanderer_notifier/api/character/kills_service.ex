@@ -46,54 +46,74 @@ defmodule WandererNotifier.Api.Character.KillsService do
   # 4. caching the result if found via ESI.
   #
   # Raises if it cannot resolve the name at all.
-  defp resolve_character_name(character_id, maybe_tracked_name, deps) do
-    cond do
-      is_binary(maybe_tracked_name) and maybe_tracked_name != "" and
-          maybe_tracked_name != "Unknown" ->
-        # If we already got a valid tracked name, just use it
-        maybe_tracked_name
+  defp resolve_character_name(character_id, maybe_tracked_name, deps)
+       when is_binary(maybe_tracked_name) do
+    if valid_name?(maybe_tracked_name),
+      do: maybe_tracked_name,
+      else: resolve_from_sources(character_id, deps)
+  end
 
-      true ->
-        # If we didn't have a good tracked name, try the repository
-        case deps.repository.get_character_name(character_id) do
-          {:ok, name} when is_binary(name) and name not in ["", "Unknown"] ->
-            AppLogger.kill_debug("[RESOLVE_NAME] Found character name in repository", %{
-              character_id: character_id,
-              character_name: name
-            })
+  defp resolve_character_name(character_id, _maybe_tracked_name, deps),
+    do: resolve_from_sources(character_id, deps)
 
-            name
+  defp valid_name?(name), do: name != "" and name != "Unknown"
 
-          repo_error ->
-            # If repository lookup fails, try ESI
-            AppLogger.kill_warn("[RESOLVE_NAME] Repository lookup failed", %{
-              character_id: character_id,
-              repo_error: inspect(repo_error)
-            })
-
-            case deps.esi_service.get_character(character_id) do
-              {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-                deps.cache_helpers.cache_character_info(%{
-                  "character_id" => character_id,
-                  "name" => name
-                })
-
-                name
-
-              esi_error ->
-                AppLogger.kill_error(
-                  "[RESOLVE_NAME] Failed to resolve character name via ESI and repository",
-                  %{
-                    character_id: character_id,
-                    repo_error: inspect(repo_error),
-                    esi_error: inspect(esi_error)
-                  }
-                )
-
-                raise "Failed to resolve character name for ID #{character_id}"
-            end
-        end
+  defp resolve_from_sources(character_id, deps) do
+    case try_repository_lookup(character_id, deps) do
+      {:ok, name} -> name
+      {:error, repo_error} -> try_esi_lookup(character_id, deps, repo_error)
     end
+  end
+
+  defp try_repository_lookup(character_id, deps) do
+    case deps.repository.get_character_name(character_id) do
+      {:ok, name} when is_binary(name) and name not in ["", "Unknown"] ->
+        AppLogger.kill_debug("[RESOLVE_NAME] Found character name in repository", %{
+          character_id: character_id,
+          character_name: name
+        })
+
+        {:ok, name}
+
+      error ->
+        {:error, error}
+    end
+  end
+
+  defp try_esi_lookup(character_id, deps, repo_error) do
+    AppLogger.kill_warn("[RESOLVE_NAME] Repository lookup failed", %{
+      character_id: character_id,
+      repo_error: inspect(repo_error)
+    })
+
+    case deps.esi_service.get_character(character_id) do
+      {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+        cache_and_return_name(character_id, name, deps)
+
+      esi_error ->
+        log_resolution_failure(character_id, repo_error, esi_error)
+        raise "Failed to resolve character name for ID #{character_id}"
+    end
+  end
+
+  defp cache_and_return_name(character_id, name, deps) do
+    deps.cache_helpers.cache_character_info(%{
+      "character_id" => character_id,
+      "name" => name
+    })
+
+    name
+  end
+
+  defp log_resolution_failure(character_id, repo_error, esi_error) do
+    AppLogger.kill_error(
+      "[RESOLVE_NAME] Failed to resolve character name via ESI and repository",
+      %{
+        character_id: character_id,
+        repo_error: inspect(repo_error),
+        esi_error: inspect(esi_error)
+      }
+    )
   end
 
   # Helper for processing kills with error handling

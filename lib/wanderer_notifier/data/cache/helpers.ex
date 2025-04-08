@@ -168,20 +168,22 @@ defmodule WandererNotifier.Data.Cache.Helpers do
     )
 
     case repo_module().get(key) do
-      nil ->
-        AppLogger.cache_debug(
-          "Character name not found in cache for character ID #{character_id}",
-          key: key
-        )
+      nil -> handle_cache_miss(character_id, key)
+      cached_value -> handle_cached_value(cached_value, character_id, key)
+    end
+  end
 
-        # Attempt to fetch from ESI and cache it
-        case fetch_and_cache_character_name(character_id) do
-          {:ok, name} -> {:ok, name}
-          error -> error
-        end
+  defp handle_cache_miss(character_id, key) do
+    AppLogger.cache_debug("Character name not found in cache for character ID #{character_id}",
+      key: key
+    )
 
-      # Valid name found in cache as a string
-      name when is_binary(name) and name != "" and name != "Unknown" and name != "Unknown Pilot" ->
+    fetch_and_cache_character_name(character_id)
+  end
+
+  defp handle_cached_value(name, character_id, key) when is_binary(name) do
+    cond do
+      valid_character_name?(name) ->
         AppLogger.cache_debug(
           "Retrieved character name '#{name}' from cache for character ID #{character_id}",
           key: key
@@ -189,53 +191,66 @@ defmodule WandererNotifier.Data.Cache.Helpers do
 
         {:ok, name}
 
-      # Return "Unknown" or "Unknown Pilot" without retrying if it was cached recently
-      name when is_binary(name) and name in ["Unknown", "Unknown Pilot"] ->
+      fallback_name?(name) ->
         AppLogger.cache_debug(
           "Retrieved fallback character name '#{name}' from cache for character ID #{character_id}",
           key: key
         )
 
-        # Return the name even though it's a fallback - this prevents constant retries
         {:ok, name}
 
-      # Handle Character struct - extract name from it
-      %WandererNotifier.Data.Character{name: char_name}
-      when is_binary(char_name) and char_name != "" ->
-        AppLogger.cache_debug(
-          "Retrieved character name '#{char_name}' from Character struct for character ID #{character_id}",
-          key: key
-        )
-
-        # Consider updating the cache to store just the name string for future lookups
-        repo_module().set(key, char_name, 86_400)
-        {:ok, char_name}
-
-      # Handle map with name field (in case it's not a proper struct but has the field)
-      %{name: char_name} when is_binary(char_name) and char_name != "" ->
-        AppLogger.cache_debug(
-          "Retrieved character name '#{char_name}' from map for character ID #{character_id}",
-          key: key
-        )
-
-        # Consider updating the cache to store just the name string for future lookups
-        repo_module().set(key, char_name, 86_400)
-        {:ok, char_name}
-
-      invalid ->
-        AppLogger.cache_warn(
-          "Invalid character name data in cache for character ID #{character_id}: #{typeof(invalid)}, value: #{inspect(invalid)}",
-          key: key
-        )
-
-        # Clear the invalid cache entry
-        repo_module().delete(key)
-        # Attempt to fetch from ESI and cache it
-        case fetch_and_cache_character_name(character_id) do
-          {:ok, name} -> {:ok, name}
-          error -> error
-        end
+      true ->
+        handle_invalid_cache(character_id, key)
     end
+  end
+
+  defp handle_cached_value(%WandererNotifier.Data.Character{name: char_name}, character_id, key)
+       when is_binary(char_name) and char_name != "" do
+    AppLogger.cache_debug(
+      "Retrieved character name '#{char_name}' from Character struct for character ID #{character_id}",
+      key: key
+    )
+
+    repo_module().set(key, char_name, 86_400)
+    {:ok, char_name}
+  end
+
+  defp handle_cached_value(%{name: char_name}, character_id, key)
+       when is_binary(char_name) and char_name != "" do
+    AppLogger.cache_debug(
+      "Retrieved character name '#{char_name}' from map for character ID #{character_id}",
+      key: key
+    )
+
+    repo_module().set(key, char_name, 86_400)
+    {:ok, char_name}
+  end
+
+  defp handle_cached_value(invalid, character_id, key) do
+    handle_invalid_cache(character_id, key, invalid)
+  end
+
+  defp valid_character_name?(name) when is_binary(name),
+    do: name != "" and name not in ["Unknown", "Unknown Pilot"]
+
+  defp valid_character_name?(_), do: false
+
+  defp fallback_name?(name) when is_binary(name) do
+    name in ["Unknown", "Unknown Pilot", "Unknown Character", "Unknown Ship", "Unknown System"]
+  end
+
+  defp fallback_name?(_), do: false
+
+  defp handle_invalid_cache(character_id, key, invalid \\ nil) do
+    if invalid do
+      AppLogger.cache_warn(
+        "Invalid character name data in cache for character ID #{character_id}: #{typeof(invalid)}, value: #{inspect(invalid)}",
+        key: key
+      )
+    end
+
+    repo_module().delete(key)
+    fetch_and_cache_character_name(character_id)
   end
 
   # Helper to fetch character name from ESI and cache it
@@ -676,129 +691,9 @@ defmodule WandererNotifier.Data.Cache.Helpers do
     - {:error, reason} on failure
   """
   def cache_character_info(character_data) when is_map(character_data) do
-    character_id = character_data["character_id"] || character_data[:character_id]
-    character_name = character_data["name"] || character_data[:name]
-
-    # Enhanced logging for debugging
-    AppLogger.cache_debug("Character info received for caching", %{
-      character_id: character_id,
-      character_name: character_name,
-      data_keys: Map.keys(character_data)
-    })
-
-    if is_nil(character_id) do
-      AppLogger.cache_warn("Missing character_id in cache_character_info", %{
-        character_data: inspect(character_data, limit: 500)
-      })
-
-      {:error, :missing_character_id}
-    else
-      # Convert character_id to integer if it's a string
-      char_id =
-        if is_binary(character_id) do
-          case Integer.parse(character_id) do
-            {id, _} -> id
-            :error -> nil
-          end
-        else
-          character_id
-        end
-
-      if is_nil(char_id) do
-        AppLogger.cache_warn("Invalid character_id format in cache_character_info", %{
-          character_id: character_id,
-          type: typeof(character_id)
-        })
-
-        {:error, :invalid_character_id}
-      else
-        # Check for valid character name
-        valid_character_name =
-          is_binary(character_name) &&
-            character_name != "" &&
-            character_name != "Unknown" &&
-            character_name != "Unknown Pilot"
-
-        if valid_character_name do
-          # Store character name in character key
-          character_key = CacheKeys.character(char_id)
-
-          AppLogger.cache_debug("Caching valid character name", %{
-            character_id: char_id,
-            character_name: character_name,
-            key: character_key
-          })
-
-          # Cache for 24 hours
-          repo_module().set(character_key, character_name, 86_400)
-          :ok
-        else
-          # If the name is "Unknown" or "Unknown Pilot", still cache it but with shorter TTL
-          # to prevent constant re-fetching
-          if is_binary(character_name) && character_name != "" do
-            character_key = CacheKeys.character(char_id)
-
-            AppLogger.cache_debug("Caching fallback character name with shorter TTL", %{
-              character_id: char_id,
-              character_name: character_name,
-              key: character_key
-            })
-
-            # Cache for 1 hour instead of 24 hours
-            repo_module().set(character_key, character_name, 3600)
-            :ok
-          else
-            # Query the character directly from ESI
-            AppLogger.cache_debug("Fetching character name from ESI", %{
-              character_id: char_id,
-              reason: "Invalid name in provided data"
-            })
-
-            # Get ESI service module from application config
-            esi_module =
-              Application.get_env(
-                :wanderer_notifier,
-                :esi_service,
-                WandererNotifier.Api.ESI.Service
-              )
-
-            case esi_module.get_character(char_id) do
-              {:ok, esi_data} when is_map(esi_data) ->
-                esi_name = Map.get(esi_data, "name")
-
-                if is_binary(esi_name) && esi_name != "" do
-                  # Store valid ESI name
-                  character_key = CacheKeys.character(char_id)
-
-                  AppLogger.cache_info("Caching character name from ESI", %{
-                    character_id: char_id,
-                    character_name: esi_name,
-                    key: character_key
-                  })
-
-                  # Cache for 24 hours
-                  repo_module().set(character_key, esi_name, 86_400)
-                  :ok
-                else
-                  AppLogger.cache_warn("ESI returned invalid character name", %{
-                    character_id: char_id,
-                    esi_name: esi_name
-                  })
-
-                  {:error, :invalid_esi_character_name}
-                end
-
-              error ->
-                AppLogger.cache_warn("Failed to fetch character name from ESI", %{
-                  character_id: char_id,
-                  error: inspect(error)
-                })
-
-                {:error, :esi_fetch_failed}
-            end
-          end
-        end
-      end
+    with {:ok, char_id} <- extract_character_id(character_data),
+         {:ok, character_name} <- extract_character_name(character_data) do
+      cache_character_with_name(char_id, character_name)
     end
   end
 
@@ -809,5 +704,124 @@ defmodule WandererNotifier.Data.Cache.Helpers do
     })
 
     {:error, :invalid_data}
+  end
+
+  defp extract_character_id(character_data) do
+    character_id = character_data["character_id"] || character_data[:character_id]
+
+    if is_nil(character_id) do
+      AppLogger.cache_warn("Missing character_id in cache_character_info", %{
+        character_data: inspect(character_data, limit: 500)
+      })
+
+      {:error, :missing_character_id}
+    else
+      parse_character_id(character_id)
+    end
+  end
+
+  defp parse_character_id(character_id) when is_binary(character_id) do
+    case Integer.parse(character_id) do
+      {id, _} ->
+        {:ok, id}
+
+      :error ->
+        AppLogger.cache_warn("Invalid character_id format in cache_character_info", %{
+          character_id: character_id,
+          type: typeof(character_id)
+        })
+
+        {:error, :invalid_character_id}
+    end
+  end
+
+  defp parse_character_id(character_id) when is_integer(character_id), do: {:ok, character_id}
+
+  defp parse_character_id(character_id) do
+    AppLogger.cache_warn("Invalid character_id format in cache_character_info", %{
+      character_id: character_id,
+      type: typeof(character_id)
+    })
+
+    {:error, :invalid_character_id}
+  end
+
+  defp extract_character_name(character_data) do
+    character_name = character_data["name"] || character_data[:name]
+    {:ok, character_name}
+  end
+
+  defp cache_character_with_name(char_id, character_name) do
+    cond do
+      valid_name?(character_name) ->
+        # 24 hours TTL
+        cache_character_name(char_id, character_name, 86_400)
+
+      fallback_name?(character_name) ->
+        # 1 hour TTL
+        cache_character_name(char_id, character_name, 3600)
+
+      true ->
+        fetch_and_cache_from_esi(char_id)
+    end
+  end
+
+  def valid_name?(name) do
+    is_binary(name) &&
+      name != "" &&
+      name != "Unknown" &&
+      name != "Unknown Pilot"
+  end
+
+  defp cache_character_name(char_id, name, ttl) do
+    character_key = CacheKeys.character(char_id)
+
+    AppLogger.cache_debug("Caching character name", %{
+      character_id: char_id,
+      character_name: name,
+      key: character_key,
+      ttl: ttl
+    })
+
+    repo_module().set(character_key, name, ttl)
+    :ok
+  end
+
+  defp fetch_and_cache_from_esi(char_id) do
+    AppLogger.cache_debug("Fetching character name from ESI", %{
+      character_id: char_id,
+      reason: "Invalid name in provided data"
+    })
+
+    esi_module =
+      Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
+
+    case esi_module.get_character(char_id) do
+      {:ok, esi_data} when is_map(esi_data) ->
+        handle_esi_response(char_id, esi_data)
+
+      error ->
+        AppLogger.cache_warn("Failed to fetch character name from ESI", %{
+          character_id: char_id,
+          error: inspect(error)
+        })
+
+        {:error, :esi_fetch_failed}
+    end
+  end
+
+  defp handle_esi_response(char_id, esi_data) do
+    esi_name = Map.get(esi_data, "name")
+
+    if is_binary(esi_name) && esi_name != "" do
+      cache_character_name(char_id, esi_name, 86_400)
+    else
+      AppLogger.cache_warn("ESI returned invalid character name", %{
+        character_id: char_id,
+        esi_name: esi_name
+      })
+
+      {:error, :invalid_esi_character_name}
+    end
   end
 end

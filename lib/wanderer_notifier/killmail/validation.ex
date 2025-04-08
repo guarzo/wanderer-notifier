@@ -146,101 +146,88 @@ defmodule WandererNotifier.Killmail.Validation do
 
   # Common implementation for normalization
   defp normalize_generic_killmail(killmail_id, zkb_data, esi_data) do
-    # Extract killmail ID
-    killmail_id = killmail_id || 0
-
-    # Extract kill time from esi_data
-    kill_time =
-      case Map.get(esi_data, "killmail_time") do
-        nil -> DateTime.utc_now()
-        time -> parse_datetime(time)
-      end
-
-    # Extract victim data
-    victim = Map.get(esi_data, "victim") || %{}
-    victim_id = Map.get(victim, "character_id")
-    victim_name = Map.get(victim, "character_name")
-    victim_ship_id = Map.get(victim, "ship_type_id")
-
-    victim_ship_name =
-      Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship"
-
-    victim_corporation_id = Map.get(victim, "corporation_id")
-    victim_corporation_name = Map.get(victim, "corporation_name")
-    victim_alliance_id = Map.get(victim, "alliance_id")
-    victim_alliance_name = Map.get(victim, "alliance_name")
-
-    # Extract system data
-    solar_system_id = Map.get(esi_data, "solar_system_id")
-    solar_system_name = Map.get(esi_data, "solar_system_name") || "Unknown System"
-    region_id = Map.get(esi_data, "region_id")
-    region_name = Map.get(esi_data, "region_name")
-
-    # Get attackers
-    attackers = Map.get(esi_data, "attackers") || []
-    attacker_count = length(attackers)
-
-    # Find final blow attacker
-    final_blow_attacker =
-      Enum.find(attackers, fn attacker ->
-        Map.get(attacker, "final_blow", false) == true
-      end)
-
-    # Extract final blow attacker info
-    final_blow_attacker_id = Map.get(final_blow_attacker || %{}, "character_id")
-    final_blow_attacker_name = Map.get(final_blow_attacker || %{}, "character_name")
-    final_blow_ship_id = Map.get(final_blow_attacker || %{}, "ship_type_id")
-
-    final_blow_ship_name =
-      Map.get(final_blow_attacker || %{}, "ship_type_name") ||
-        Map.get(final_blow_attacker || %{}, "ship_type")
-
-    # Extract value data from zkb
-    total_value = parse_decimal(Map.get(zkb_data, "totalValue") || 0)
-    points = Map.get(zkb_data, "points")
-    is_npc = Map.get(zkb_data, "npc", false)
-    is_solo = Map.get(zkb_data, "solo", false)
-    zkb_hash = Map.get(zkb_data, "hash")
-
-    # Return normalized structure - match fields exactly with Killmail resource
     %{
-      killmail_id: killmail_id,
-      kill_time: kill_time,
-      processed_at: DateTime.utc_now(),
+      killmail_id: killmail_id || 0,
+      kill_time: extract_kill_time(esi_data),
+      processed_at: DateTime.utc_now()
+    }
+    |> Map.merge(extract_economic_data(zkb_data))
+    |> Map.merge(extract_system_data(esi_data))
+    |> Map.merge(extract_victim_data(esi_data))
+    |> Map.merge(extract_attacker_data(esi_data))
+    |> Map.merge(preserve_raw_data(zkb_data, esi_data))
+  end
 
-      # Economic data
-      total_value: total_value,
-      points: points,
-      is_npc: is_npc,
-      is_solo: is_solo,
+  defp extract_kill_time(esi_data) do
+    case Map.get(esi_data, "killmail_time") do
+      nil -> DateTime.utc_now()
+      time -> parse_datetime(time)
+    end
+  end
 
-      # System information
-      solar_system_id: solar_system_id,
-      solar_system_name: solar_system_name,
-      region_id: region_id,
-      region_name: region_name,
+  defp extract_economic_data(zkb_data) do
+    %{
+      total_value: parse_decimal(Map.get(zkb_data, "totalValue") || 0),
+      points: Map.get(zkb_data, "points"),
+      is_npc: Map.get(zkb_data, "npc", false),
+      is_solo: Map.get(zkb_data, "solo", false)
+    }
+  end
 
-      # Victim information
-      victim_id: victim_id,
-      victim_name: victim_name,
-      victim_ship_id: victim_ship_id,
-      victim_ship_name: victim_ship_name,
-      victim_corporation_id: victim_corporation_id,
-      victim_corporation_name: victim_corporation_name,
-      victim_alliance_id: victim_alliance_id,
-      victim_alliance_name: victim_alliance_name,
+  defp extract_system_data(esi_data) do
+    %{
+      solar_system_id: Map.get(esi_data, "solar_system_id"),
+      solar_system_name: Map.get(esi_data, "solar_system_name") || "Unknown System",
+      region_id: Map.get(esi_data, "region_id"),
+      region_name: Map.get(esi_data, "region_name")
+    }
+  end
 
-      # Attacker information
-      attacker_count: attacker_count,
-      final_blow_attacker_id: final_blow_attacker_id,
-      final_blow_attacker_name: final_blow_attacker_name,
-      final_blow_ship_id: final_blow_ship_id,
-      final_blow_ship_name: final_blow_ship_name,
+  defp extract_victim_data(esi_data) do
+    victim = Map.get(esi_data, "victim") || %{}
 
-      # Raw data preservation
-      zkb_hash: zkb_hash,
-      full_victim_data: victim,
-      full_attacker_data: attackers
+    %{
+      victim_id: Map.get(victim, "character_id"),
+      victim_name: Map.get(victim, "character_name"),
+      victim_ship_id: Map.get(victim, "ship_type_id"),
+      victim_ship_name:
+        Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship",
+      victim_corporation_id: Map.get(victim, "corporation_id"),
+      victim_corporation_name: Map.get(victim, "corporation_name"),
+      victim_alliance_id: Map.get(victim, "alliance_id"),
+      victim_alliance_name: Map.get(victim, "alliance_name")
+    }
+  end
+
+  defp extract_attacker_data(esi_data) do
+    attackers = Map.get(esi_data, "attackers") || []
+    final_blow_attacker = find_final_blow_attacker(attackers)
+
+    %{
+      attacker_count: length(attackers),
+      final_blow_attacker_id: Map.get(final_blow_attacker || %{}, "character_id"),
+      final_blow_attacker_name: Map.get(final_blow_attacker || %{}, "character_name"),
+      final_blow_ship_id: Map.get(final_blow_attacker || %{}, "ship_type_id"),
+      final_blow_ship_name: get_final_blow_ship_name(final_blow_attacker)
+    }
+  end
+
+  defp find_final_blow_attacker(attackers) do
+    Enum.find(attackers, fn attacker ->
+      Map.get(attacker, "final_blow", false) == true
+    end)
+  end
+
+  defp get_final_blow_ship_name(final_blow_attacker) do
+    Map.get(final_blow_attacker || %{}, "ship_type_name") ||
+      Map.get(final_blow_attacker || %{}, "ship_type")
+  end
+
+  defp preserve_raw_data(zkb_data, esi_data) do
+    %{
+      zkb_hash: Map.get(zkb_data, "hash"),
+      full_victim_data: Map.get(esi_data, "victim") || %{},
+      full_attacker_data: Map.get(esi_data, "attackers") || []
     }
   end
 
@@ -305,7 +292,8 @@ defmodule WandererNotifier.Killmail.Validation do
   defp build_victim_attributes(victim) do
     %{
       ship_type_id: Map.get(victim, "ship_type_id"),
-      ship_type_name: Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship",
+      ship_type_name:
+        Map.get(victim, "ship_type_name") || Map.get(victim, "ship_type") || "Unknown Ship",
       damage_done: Map.get(victim, "damage_taken", 0),
       is_final_blow: false,
       weapon_type_id: nil,
@@ -351,7 +339,8 @@ defmodule WandererNotifier.Killmail.Validation do
   defp build_attacker_attributes(attacker) do
     %{
       ship_type_id: Map.get(attacker, "ship_type_id"),
-      ship_type_name: Map.get(attacker, "ship_type_name") || Map.get(attacker, "ship_type") || "Unknown Ship",
+      ship_type_name:
+        Map.get(attacker, "ship_type_name") || Map.get(attacker, "ship_type") || "Unknown Ship",
       damage_done: Map.get(attacker, "damage_done", 0),
       is_final_blow: Map.get(attacker, "final_blow", false),
       weapon_type_id: Map.get(attacker, "weapon_type_id"),
