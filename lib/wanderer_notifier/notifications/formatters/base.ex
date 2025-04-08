@@ -135,13 +135,10 @@ defmodule WandererNotifier.Notifications.Formatters.Base do
   Formats ISK value in a compact way.
   """
   def format_compact_isk_value(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
-      true -> "#{Float.round(value, 1)} ISK"
-    end
+    WandererNotifier.Notifiers.StructuredFormatter.format_isk_compact(value)
   end
 
-  def format_compact_isk_value(_), do: "Unknown Value"
+  def format_compact_isk_value(value) do
+    WandererNotifier.Notifiers.StructuredFormatter.format_isk_compact(value)
+  end
 end

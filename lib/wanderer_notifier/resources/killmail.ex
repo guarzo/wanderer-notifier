@@ -1,7 +1,7 @@
 defmodule WandererNotifier.Resources.Killmail do
   @moduledoc """
   Ash resource representing a killmail record.
-  Stores killmail data related to tracked characters.
+  Primary storage for core killmail data in the normalized model.
   """
   use Ash.Resource,
     domain: WandererNotifier.Resources.Api,
@@ -10,9 +10,6 @@ defmodule WandererNotifier.Resources.Killmail do
       AshPostgres.Resource
     ]
 
-  # Predefine atoms to ensure they exist at compile time
-  @character_roles [:attacker, :victim]
-
   postgres do
     table("killmails")
     repo(WandererNotifier.Data.Repo)
@@ -20,50 +17,57 @@ defmodule WandererNotifier.Resources.Killmail do
 
   attributes do
     uuid_primary_key(:id)
-
     attribute(:killmail_id, :integer, allow_nil?: false)
     attribute(:kill_time, :utc_datetime_usec)
+
+    # Economic data (from zKB)
+    attribute(:total_value, :decimal)
+    attribute(:points, :integer)
+    attribute(:is_npc, :boolean, default: false)
+    attribute(:is_solo, :boolean, default: false)
+
+    # System information
     attribute(:solar_system_id, :integer)
     attribute(:solar_system_name, :string)
+    attribute(:solar_system_security, :float)
     attribute(:region_id, :integer)
     attribute(:region_name, :string)
-    attribute(:total_value, :decimal)
 
-    # Character was victim or attacker
-    attribute(:character_role, :atom, constraints: [one_of: @character_roles])
+    # Victim information
+    attribute(:victim_id, :integer)
+    attribute(:victim_name, :string)
+    attribute(:victim_ship_id, :integer)
+    attribute(:victim_ship_name, :string)
+    attribute(:victim_corporation_id, :integer)
+    attribute(:victim_corporation_name, :string)
+    attribute(:victim_alliance_id, :integer)
+    attribute(:victim_alliance_name, :string)
 
-    # Character details duplicated for query efficiency
-    attribute(:related_character_id, :integer, allow_nil?: false)
-    attribute(:related_character_name, :string)
+    # Basic attacker information
+    attribute(:attacker_count, :integer)
+    attribute(:final_blow_attacker_id, :integer)
+    attribute(:final_blow_attacker_name, :string)
+    attribute(:final_blow_ship_id, :integer)
+    attribute(:final_blow_ship_name, :string)
 
-    # Ship information
-    attribute(:ship_type_id, :integer)
-    attribute(:ship_type_name, :string)
-
-    # JSON fields for additional data
-    attribute(:zkb_data, :map)
-    attribute(:victim_data, :map)
-    attribute(:attacker_data, :map)
+    # Raw data preservation
+    attribute(:zkb_hash, :string)
+    # Keep this for detailed victim information
+    attribute(:full_victim_data, :map)
+    # Keep this for detailed attacker information
+    attribute(:full_attacker_data, :term)
 
     # Metadata
     attribute(:processed_at, :utc_datetime_usec, default: &DateTime.utc_now/0)
-
     timestamps()
   end
 
   identities do
-    identity(:unique_killmail, [:killmail_id, :character_role, :related_character_id])
+    identity(:unique_killmail, [:killmail_id])
   end
 
   relationships do
-    belongs_to(:character, WandererNotifier.Resources.TrackedCharacter,
-      source_attribute: :related_character_id,
-      destination_attribute: :character_id,
-      define_attribute?: false
-    )
-  end
-
-  aggregates do
+    has_many(:character_involvements, WandererNotifier.Resources.KillmailCharacterInvolvement)
   end
 
   calculations do
@@ -90,23 +94,35 @@ defmodule WandererNotifier.Resources.Killmail do
     create :create do
       primary?(true)
 
-      # Accept all attributes needed for a killmail record
+      # Accept all attributes for the killmail
       accept([
         :killmail_id,
         :kill_time,
+        :total_value,
+        :points,
+        :is_npc,
+        :is_solo,
         :solar_system_id,
         :solar_system_name,
+        :solar_system_security,
         :region_id,
         :region_name,
-        :total_value,
-        :character_role,
-        :related_character_id,
-        :related_character_name,
-        :ship_type_id,
-        :ship_type_name,
-        :zkb_data,
-        :victim_data,
-        :attacker_data
+        :victim_id,
+        :victim_name,
+        :victim_ship_id,
+        :victim_ship_name,
+        :victim_corporation_id,
+        :victim_corporation_name,
+        :victim_alliance_id,
+        :victim_alliance_name,
+        :attacker_count,
+        :final_blow_attacker_id,
+        :final_blow_attacker_name,
+        :final_blow_ship_id,
+        :final_blow_ship_name,
+        :zkb_hash,
+        :full_victim_data,
+        :full_attacker_data
       ])
 
       # Set the processed_at timestamp
@@ -125,37 +141,14 @@ defmodule WandererNotifier.Resources.Killmail do
       filter(expr(killmail_id == ^arg(:killmail_id)))
     end
 
-    read :exists_with_character do
-      argument(:killmail_id, :integer, allow_nil?: false)
-      argument(:character_id, :integer, allow_nil?: false)
-      argument(:character_role, :atom, allow_nil?: false)
-
-      filter(
-        expr(
-          killmail_id == ^arg(:killmail_id) and
-            related_character_id == ^arg(:character_id) and
-            character_role == ^arg(:character_role)
-        )
-      )
-
-      # Just check for existence
-      prepare(fn query, _context ->
-        query
-        |> Ash.Query.select([:id])
-        |> Ash.Query.limit(1)
-      end)
-    end
-
-    read :list_for_character do
-      argument(:character_id, :integer, allow_nil?: false)
+    read :list_by_date_range do
       argument(:from_date, :utc_datetime_usec, allow_nil?: false)
       argument(:to_date, :utc_datetime_usec, allow_nil?: false)
-      argument(:limit, :integer, default: 10)
+      argument(:limit, :integer, default: 100)
 
       filter(
         expr(
-          related_character_id == ^arg(:character_id) and
-            kill_time >= ^arg(:from_date) and
+          kill_time >= ^arg(:from_date) and
             kill_time <= ^arg(:to_date)
         )
       )
@@ -171,17 +164,7 @@ defmodule WandererNotifier.Resources.Killmail do
   code_interface do
     define(:get, action: :read)
     define(:get_by_killmail_id, action: :get_by_killmail_id, args: [:killmail_id])
-
-    define(:exists_with_character,
-      action: :exists_with_character,
-      args: [:killmail_id, :character_id, :character_role]
-    )
-
-    define(:list_for_character,
-      action: :list_for_character,
-      args: [:character_id, :from_date, :to_date, :limit]
-    )
-
+    define(:list_by_date_range, action: :list_by_date_range, args: [:from_date, :to_date, :limit])
     define(:create, action: :create)
     define(:update, action: :update)
     define(:destroy, action: :destroy)
@@ -196,9 +179,8 @@ defmodule WandererNotifier.Resources.Killmail do
       filter(query, killmail_id == ^killmail_id)
     end
 
-    def list_for_character(query, character_id, from_date, to_date, limit) do
+    def list_by_date_range(query, from_date, to_date, limit) do
       query
-      |> filter(related_character_id == ^character_id)
       |> filter(kill_time >= ^from_date)
       |> filter(kill_time <= ^to_date)
       |> sort(kill_time: :desc)

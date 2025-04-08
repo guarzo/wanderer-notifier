@@ -47,7 +47,8 @@ defmodule WandererNotifier.Api.Character.KillsService do
   # Raises if it cannot resolve the name at all.
   defp resolve_character_name(character_id, maybe_tracked_name, deps) do
     cond do
-      is_binary(maybe_tracked_name) and maybe_tracked_name != "" and maybe_tracked_name != "Unknown" ->
+      is_binary(maybe_tracked_name) and maybe_tracked_name != "" and
+          maybe_tracked_name != "Unknown" ->
         # If we already got a valid tracked name, just use it
         maybe_tracked_name
 
@@ -460,7 +461,12 @@ defmodule WandererNotifier.Api.Character.KillsService do
   @spec fetch_and_persist_character_kills(integer(), integer(), integer(), map()) ::
           {:ok, %{processed: integer(), persisted: integer()}}
           | {:error, term()}
-  def fetch_and_persist_character_kills(character_id, limit \\ 25, page \\ 1, deps \\ @default_deps) do
+  def fetch_and_persist_character_kills(
+        character_id,
+        limit \\ 25,
+        page \\ 1,
+        deps \\ @default_deps
+      ) do
     is_tracked = character_tracked?(character_id, deps)
 
     if is_tracked do
@@ -608,7 +614,9 @@ defmodule WandererNotifier.Api.Character.KillsService do
     concurrency = ctx.options[:concurrency] || 2
 
     known_kill_ids =
-      WandererNotifier.Resources.KillmailPersistence.get_already_processed_kill_ids(ctx.character_id)
+      WandererNotifier.Resources.KillmailPersistence.get_already_processed_kill_ids(
+        ctx.character_id
+      )
 
     AppLogger.kill_debug("[KillsService] Filtering already processed kills", %{
       total_kills: length(kills),
@@ -726,9 +734,41 @@ defmodule WandererNotifier.Api.Character.KillsService do
       context_mode: ctx.mode && ctx.mode.mode
     })
 
-    case WandererNotifier.KillmailProcessing.Pipeline.process_killmail(kill, ctx) do
-      {:ok, _} ->
+    # First attempt - standard processing with new normalized model
+    case process_killmail_with_retries(kill, ctx, 0) do
+      {:ok, _} = _result ->
+        AppLogger.kill_debug("[KillsService] Successfully processed kill", %{
+          kill_id: kill_id
+        })
+
         :processed
+
+      {:error, {:enrichment_validation_failed, reasons}} = error ->
+        # Log the specific reasons for enrichment failure
+        AppLogger.kill_warn("[KillsService] Enrichment validation failed - attempting retry", %{
+          kill_id: kill_id,
+          character_id: ctx.character_id,
+          reasons: inspect(reasons)
+        })
+
+        # Retry with pre-enrichment
+        case pre_enrich_and_process(kill, ctx, reasons) do
+          {:ok, _} = _result ->
+            AppLogger.kill_info("[KillsService] Retry with pre-enrichment succeeded", %{
+              kill_id: kill_id
+            })
+
+            :processed
+
+          retry_error ->
+            AppLogger.kill_error("[KillsService] Retry with pre-enrichment failed", %{
+              kill_id: kill_id,
+              character_id: ctx.character_id,
+              error: inspect(retry_error)
+            })
+
+            error
+        end
 
       error ->
         AppLogger.kill_error("[KillsService] Pipeline processing failed", %{
@@ -739,6 +779,84 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
         error
     end
+  end
+
+  # Attempt the killmail processing with retries for transient failures
+  defp process_killmail_with_retries(kill, ctx, retry_count, max_retries \\ 2) do
+    kill_id = extract_killmail_id(kill)
+
+    if retry_count > 0 do
+      AppLogger.kill_info("[KillsService] Retry attempt #{retry_count} for kill #{kill_id}")
+    end
+
+    case WandererNotifier.KillmailProcessing.Pipeline.process_killmail(kill, ctx) do
+      {:ok, _} = result ->
+        result
+
+      {:error, {:enrichment_validation_failed, _}} = error when retry_count >= max_retries ->
+        # Reached max retries for enrichment failures
+        error
+
+      {:error, {:enrichment_validation_failed, reasons}} ->
+        # Only retry for system name validation errors
+        retry_for_validation_error? =
+          Enum.any?(reasons, fn reason ->
+            String.contains?(reason, "system name") ||
+              String.contains?(reason, "Solar system name")
+          end)
+
+        if retry_for_validation_error? do
+          # Add an exponential backoff delay
+          backoff_ms = (:math.pow(2, retry_count) * 500) |> round()
+          :timer.sleep(backoff_ms)
+
+          # Retry the process
+          process_killmail_with_retries(kill, ctx, retry_count + 1)
+        else
+          # Not a retriable validation error
+          {:error, {:enrichment_validation_failed, reasons}}
+        end
+
+      error ->
+        # Other errors are not retried
+        error
+    end
+  end
+
+  # Pre-enrich the killmail data with critical fields before processing
+  defp pre_enrich_and_process(kill, ctx, reasons) do
+    kill_id = extract_killmail_id(kill)
+
+    # Extract the solar system ID to pre-fetch system name
+    system_id = Map.get(kill, "solar_system_id")
+
+    AppLogger.kill_info("[KillsService] Pre-enriching kill data", %{
+      kill_id: kill_id,
+      system_id: system_id
+    })
+
+    # Pre-fetch the system name if that's an issue - this is the only validation we still need
+    enriched_kill =
+      if system_id && Enum.any?(reasons, &String.contains?(&1, "system name")) do
+        case get_system_name_with_cache(system_id) do
+          {:ok, system_name} ->
+            AppLogger.kill_info("[KillsService] Pre-enriched system name", %{
+              kill_id: kill_id,
+              system_id: system_id,
+              system_name: system_name
+            })
+
+            Map.put(kill, "solar_system_name", system_name)
+
+          _error ->
+            kill
+        end
+      else
+        kill
+      end
+
+    # Process the pre-enriched killmail with a fresh attempt
+    process_killmail_with_retries(enriched_kill, ctx, 0)
   end
 
   defp extract_killmail_id(kill) when is_map(kill) do
@@ -986,4 +1104,102 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp parse_kill_id(_), do: nil
+
+  # Get ship type name from cache or from ESI with caching
+  def get_ship_type_name_with_cache(ship_type_id) do
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Api.ESI.Service, as: ESIService
+
+    cache_key = CacheKeys.ship_info(ship_type_id)
+
+    # Try from cache first
+    case CacheRepo.get(cache_key) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        AppLogger.kill_debug("[KillsService] Found ship name in cache", %{
+          ship_type_id: ship_type_id,
+          name: name
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Fetch from ESI and cache
+        case ESIService.get_ship_type_name(ship_type_id) do
+          {:ok, ship_info} ->
+            name = Map.get(ship_info, "name")
+
+            if is_binary(name) && name != "" do
+              # Cache for 30 days (ship types don't change)
+              CacheRepo.set(cache_key, ship_info, 30 * 86400)
+
+              AppLogger.kill_debug("[KillsService] Retrieved and cached ship name", %{
+                ship_type_id: ship_type_id,
+                name: name
+              })
+
+              {:ok, name}
+            else
+              {:error, :invalid_ship_data}
+            end
+
+          error ->
+            AppLogger.kill_error("[KillsService] Failed to get ship name", %{
+              ship_type_id: ship_type_id,
+              error: inspect(error)
+            })
+
+            error
+        end
+    end
+  end
+
+  # Get system name from cache or from ESI with caching
+  defp get_system_name_with_cache(system_id) do
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Api.ESI.Service, as: ESIService
+
+    cache_key = CacheKeys.system_info(system_id)
+
+    # Try from cache first
+    case CacheRepo.get(cache_key) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        AppLogger.kill_debug("[KillsService] Found system name in cache", %{
+          system_id: system_id,
+          name: name
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Fetch from ESI and cache
+        case ESIService.get_system_info(system_id) do
+          {:ok, system_info} ->
+            name = Map.get(system_info, "name")
+
+            if is_binary(name) && name != "" do
+              # Cache for 30 days (system names don't change)
+              CacheRepo.set(cache_key, system_info, 30 * 86400)
+
+              AppLogger.kill_debug("[KillsService] Retrieved and cached system name", %{
+                system_id: system_id,
+                name: name
+              })
+
+              {:ok, name}
+            else
+              {:error, :invalid_system_data}
+            end
+
+          error ->
+            AppLogger.kill_error("[KillsService] Failed to get system name", %{
+              system_id: system_id,
+              error: inspect(error)
+            })
+
+            error
+        end
+    end
+  end
 end

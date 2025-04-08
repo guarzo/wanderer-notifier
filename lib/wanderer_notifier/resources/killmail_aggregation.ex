@@ -427,11 +427,14 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     :ok
   end
 
-  # Filter killmails for a specific time period
-  defp filter_period(killmails, start_time, end_time) do
-    Enum.filter(killmails, fn killmail ->
-      DateTime.compare(killmail.kill_time, start_time) != :lt &&
-        DateTime.compare(killmail.kill_time, end_time) != :gt
+  # Filter kills for a specific time period
+  defp filter_period(killmails, start_date, end_date) do
+    Enum.filter(killmails, fn kill ->
+      kill_time = kill.kill_time
+
+      # Check if the kill is in the date range
+      DateTime.compare(kill_time, start_date) != :lt &&
+        DateTime.compare(kill_time, end_date) != :gt
     end)
   end
 
@@ -465,7 +468,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       kills: stats.kills_count,
       deaths: stats.deaths_count,
       solo_kills: stats.solo_kills_count,
-      final_blows: stats.final_blows_count,
+      final_blows: stats.final_blow_count,
       isk_destroyed: Decimal.to_string(stats.isk_destroyed),
       regions: map_size(stats.region_activity),
       ships: map_size(stats.ship_usage)
@@ -492,12 +495,14 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
       isk_destroyed: stats.isk_destroyed,
       isk_lost: stats.isk_lost,
       solo_kills_count: stats.solo_kills_count,
-      final_blows_count: stats.final_blows_count,
+      final_blow_count: stats.final_blow_count,
       region_activity: stats.region_activity,
       ship_usage: stats.ship_usage,
       top_victim_corps: stats.top_victim_corps,
       top_victim_ships: stats.top_victim_ships,
-      detailed_ship_usage: stats.detailed_ship_usage
+      detailed_ship_usage: stats.detailed_ship_usage,
+      kill_death_ratio: stats.kill_death_ratio,
+      efficiency: stats.efficiency
     }
   end
 
@@ -617,135 +622,130 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     end
   end
 
-  # Calculate statistics from killmails
+  # Calculate aggregate statistics from a list of killmails
   defp calculate_statistics(killmails) do
-    # Initialize empty statistics
-    initial_stats = %{
-      kills_count: 0,
-      deaths_count: 0,
-      isk_destroyed: Decimal.new(0),
-      isk_lost: Decimal.new(0),
-      solo_kills_count: 0,
-      final_blows_count: 0,
-      region_activity: %{},
-      ship_usage: %{},
-      top_victim_corps: %{},
-      top_victim_ships: %{},
-      detailed_ship_usage: %{}
-    }
+    # Split by role (attacker vs victim)
+    {kills, deaths} = split_kills_by_role(killmails)
 
-    # Process each killmail and aggregate statistics
-    Enum.reduce(killmails, initial_stats, fn killmail, acc ->
-      case killmail.character_role do
-        :attacker -> process_kill(killmail, acc)
-        :victim -> process_death(killmail, acc)
+    # Calculate value stats - using total_value from normalized model
+    kills_isk_destroyed = sum_killmail_values(kills)
+    deaths_isk_lost = sum_killmail_values(deaths)
+
+    # Count solo kills (using is_solo flag from normalized model)
+    solo_kills_count = Enum.count(kills, & &1.is_solo)
+
+    # Count final blows (more complex with normalized model - need to check character involvement)
+    final_blow_count = count_final_blows(kills)
+
+    # Prepare statistics structure
+    %{
+      kills_count: length(kills),
+      deaths_count: length(deaths),
+      isk_destroyed: kills_isk_destroyed,
+      isk_lost: deaths_isk_lost,
+      solo_kills_count: solo_kills_count,
+      final_blow_count: final_blow_count,
+      kill_death_ratio: calculate_kd_ratio(length(kills), length(deaths)),
+      efficiency: calculate_efficiency(length(kills), length(deaths))
+    }
+  end
+
+  # Split killmails by role (attacker vs victim)
+  defp split_kills_by_role(killmails) do
+    # With the normalized model, we need to check the character involvement
+    # This needs to be updated to work with either direct killmails or
+    # killmails with associated character involvements loaded
+    Enum.reduce(killmails, {[], []}, fn killmail, {kills, deaths} ->
+      case get_killmail_role(killmail) do
+        :attacker -> {[killmail | kills], deaths}
+        :victim -> {kills, [killmail | deaths]}
+        # Skip if role can't be determined
+        _ -> {kills, deaths}
       end
     end)
   end
 
-  # Process a kill (when character is attacker)
-  defp process_kill(killmail, stats) do
-    # This is a kill
-    kills_count = stats.kills_count + 1
-    isk_destroyed = Decimal.add(stats.isk_destroyed, killmail.total_value || Decimal.new(0))
+  # Determine the role for a killmail
+  # Handle both loaded character involvements or direct killmail records
+  defp get_killmail_role(killmail) do
+    cond do
+      # If character_role is directly available
+      Map.has_key?(killmail, :character_role) ->
+        killmail.character_role
 
-    # Solo kill tracking
-    solo_kills_count = update_solo_kills_count(stats.solo_kills_count, killmail.zkb_data)
+      # If character involvement is loaded
+      Map.has_key?(killmail, :character_involvements) &&
+          not Enum.empty?(killmail.character_involvements) ->
+        hd(killmail.character_involvements).character_role
 
-    # Final blow tracking
-    final_blows_count = update_final_blows_count(stats.final_blows_count, killmail.attacker_data)
+      # Use legacy method if none of the above
+      Map.has_key?(killmail, :related_character_id) &&
+          not is_nil(killmail.related_character_id) ->
+        parse_related_character_role(killmail)
 
-    # Update region and ship stats
-    region_activity = update_region_count(stats.region_activity, killmail.region_name)
-    ship_usage = update_ship_usage(stats.ship_usage, killmail.ship_type_name)
-
-    # Process victim data
-    {top_victim_corps, top_victim_ships, detailed_ship_usage} =
-      process_victim_data(
-        stats.top_victim_corps,
-        stats.top_victim_ships,
-        stats.detailed_ship_usage,
-        killmail
-      )
-
-    # Return updated statistics
-    %{
-      stats
-      | kills_count: kills_count,
-        isk_destroyed: isk_destroyed,
-        solo_kills_count: solo_kills_count,
-        final_blows_count: final_blows_count,
-        region_activity: region_activity,
-        ship_usage: ship_usage,
-        top_victim_corps: top_victim_corps,
-        top_victim_ships: top_victim_ships,
-        detailed_ship_usage: detailed_ship_usage
-    }
+      true ->
+        # Unable to determine role
+        nil
+    end
   end
 
-  # Process a death (when character is victim)
-  defp process_death(killmail, stats) do
-    deaths_count = stats.deaths_count + 1
-    isk_lost = Decimal.add(stats.isk_lost, killmail.total_value || Decimal.new(0))
-
-    %{stats | deaths_count: deaths_count, isk_lost: isk_lost}
+  # Parse role from legacy killmail format
+  defp parse_related_character_role(killmail) do
+    if is_map(killmail.victim_data) &&
+         to_string(Map.get(killmail.victim_data, "character_id", "")) ==
+           to_string(killmail.related_character_id) do
+      :victim
+    else
+      :attacker
+    end
   end
 
-  # Check and update solo kills count
-  defp update_solo_kills_count(current_count, zkb_data) do
-    zkb_data = zkb_data || %{}
-    is_solo = Map.get(zkb_data, "solo", false) == true
+  # Sum the total values for a list of killmails
+  defp sum_killmail_values(killmails) do
+    killmails
+    |> Enum.map(fn km ->
+      value = km.total_value || 0
 
-    if is_solo, do: current_count + 1, else: current_count
+      # Handle various types of values
+      cond do
+        is_struct(value, Decimal) ->
+          value
+
+        is_integer(value) ->
+          Decimal.new(value)
+
+        is_float(value) ->
+          value
+          |> Float.to_string()
+          |> Decimal.new()
+
+        is_binary(value) ->
+          case Decimal.parse(value) do
+            {decimal, ""} -> decimal
+            _ -> Decimal.new(0)
+          end
+
+        true ->
+          Decimal.new(0)
+      end
+    end)
+    |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
   end
 
-  # Check and update final blows count
-  defp update_final_blows_count(current_count, attacker_data) do
-    attacker_data = attacker_data || %{}
-    is_final_blow = Map.get(attacker_data, "final_blow", false) in [true, "true"]
-
-    if is_final_blow, do: current_count + 1, else: current_count
+  # Count final blows in kills
+  defp count_final_blows(kills) do
+    Enum.count(kills, fn kill ->
+      # Check if we have character involvements loaded
+      if Map.has_key?(kill, :character_involvements) &&
+           not Enum.empty?(kill.character_involvements) do
+        # Check if the character's involvement has final_blow = true
+        Enum.any?(kill.character_involvements, & &1.is_final_blow)
+      else
+        # Legacy check - less accurate
+        kill.final_blow_attacker_id == kill.related_character_id
+      end
+    end)
   end
-
-  # Process victim data and update relevant statistics
-  defp process_victim_data(top_victim_corps, top_victim_ships, detailed_ship_usage, killmail) do
-    victim_data = killmail.victim_data || %{}
-
-    # Extract victim corporation
-    victim_corp = Map.get(victim_data, "corporation_name", "Unknown")
-    updated_corps = update_count_map(top_victim_corps, victim_corp)
-
-    # Extract victim ship
-    victim_ship = Map.get(victim_data, "ship_type_name", "Unknown")
-    updated_ships = update_count_map(top_victim_ships, victim_ship)
-
-    # Update detailed ship usage (which ship was used to kill which ship)
-    detailed_usage_key = "#{killmail.ship_type_name || "Unknown"} → #{victim_ship}"
-    updated_detail = update_count_map(detailed_ship_usage, detailed_usage_key)
-
-    {updated_corps, updated_ships, updated_detail}
-  end
-
-  # Update count in a map for a given key
-  defp update_count_map(map, key) when is_binary(key) do
-    Map.update(map, key, 1, &(&1 + 1))
-  end
-
-  defp update_count_map(map, _), do: map
-
-  # Update region count in a map
-  defp update_region_count(region_map, region_name) when is_binary(region_name) do
-    Map.update(region_map, region_name, 1, &(&1 + 1))
-  end
-
-  defp update_region_count(region_map, _), do: region_map
-
-  # Update ship usage count in a map
-  defp update_ship_usage(ship_map, ship_name) when is_binary(ship_name) do
-    Map.update(ship_map, ship_name, 1, &(&1 + 1))
-  end
-
-  defp update_ship_usage(ship_map, _), do: ship_map
 
   # Delete records in batches to avoid memory issues
   defp delete_in_batches(records, batch_size \\ 100) do
@@ -791,6 +791,24 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
     case aggregate_for_period(period_type, date) do
       {:ok, _stats} -> :ok
       error -> error
+    end
+  end
+
+  # Calculate kill/death ratio
+  defp calculate_kd_ratio(kills, deaths) do
+    case deaths do
+      0 -> kills
+      _ -> kills / deaths
+    end
+  end
+
+  # Calculate efficiency percentage
+  defp calculate_efficiency(kills, deaths) do
+    total = kills + deaths
+
+    case total do
+      0 -> 0.0
+      _ -> kills / total * 100.0
     end
   end
 end

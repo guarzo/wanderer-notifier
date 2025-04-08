@@ -430,6 +430,45 @@ defmodule WandererNotifier.Data.Cache.Keys do
     join_parts([@entity_character, to_string(character_id), "processed_kills"])
   end
 
+  @doc """
+  Returns a cache key for system information
+
+  ## Parameters
+  - system_id: The id of the solar system
+
+  ## Returns
+  A cache key for system information
+  """
+  def system_info(system_id) do
+    "eve:system:#{system_id}"
+  end
+
+  @doc """
+  Returns a cache key for character information
+
+  ## Parameters
+  - character_id: The id of the character
+
+  ## Returns
+  A cache key for character information
+  """
+  def character_info(character_id) do
+    "eve:character:#{character_id}"
+  end
+
+  @doc """
+  Returns a cache key for ship information
+
+  ## Parameters
+  - ship_type_id: The id of the ship type
+
+  ## Returns
+  A cache key for ship information
+  """
+  def ship_info(ship_type_id) do
+    "eve:ship:#{ship_type_id}"
+  end
+
   # Helper to join parts with the separator
   defp join_parts(parts) when is_list(parts) do
     Enum.join(parts, @separator)

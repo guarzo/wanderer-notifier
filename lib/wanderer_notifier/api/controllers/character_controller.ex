@@ -15,17 +15,18 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
     end
   end
 
-  # Get character kill stats - direct implementation
+  # Get character kill stats using the normalized model
   get "/stats" do
     AppLogger.api_info("Received request for character kill statistics")
 
-    # Access the data repo directly to ensure we get accurate data
-    alias Ecto.Adapters.SQL
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    alias WandererNotifier.Data.Repo
+    alias WandererNotifier.Resources.Api
+    alias WandererNotifier.Resources.Killmail
+    alias WandererNotifier.Resources.KillmailCharacterInvolvement
+    import Ash.Query
 
-    # Get tracked characters directly from cache
+    # Get tracked characters from cache
     characters = CacheRepo.get(CacheKeys.character_list()) || []
 
     # Log what we got for debugging
@@ -34,40 +35,17 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
       sample: Enum.take(characters, 2)
     )
 
-    # Count total killmails with direct SQL
+    # Count total killmails using Ash aggregate
     total_kills =
-      case SQL.query(Repo, "SELECT COUNT(*) FROM killmails") do
-        {:ok, %{rows: [[count]]}} -> count
+      case Killmail
+           |> Ash.Query.new()
+           |> Ash.Query.aggregate(:count, :id, :total)
+           |> Api.read() do
+        {:ok, [%{total: count}]} -> count
         _ -> 0
       end
 
-    # Debug: Inspect database structure
-    _sample_query_result =
-      case SQL.query(Repo, "SELECT id, esi_data FROM killmails LIMIT 1") do
-        {:ok, %{rows: [[id, esi_data]]}} ->
-          AppLogger.api_info("Sample killmail structure",
-            id: id,
-            esi_data_type: inspect(esi_data.__struct__),
-            esi_data_sample: inspect(String.slice(esi_data, 0, 200))
-          )
-
-          # Also debug attackers structure
-          case SQL.query(
-                 Repo,
-                 "SELECT jsonb_typeof(esi_data->'attackers') as attackers_type FROM killmails LIMIT 1"
-               ) do
-            {:ok, %{rows: [[type]]}} ->
-              AppLogger.api_info("Attackers field type", type: type)
-
-            _ ->
-              AppLogger.api_info("Could not determine attackers field type")
-          end
-
-        _ ->
-          AppLogger.api_info("No killmails found")
-      end
-
-    # Get character stats directly from DB for better performance
+    # Get character stats using the normalized model
     character_stats =
       Enum.map(characters, fn character ->
         # Extract character_id safely
@@ -78,123 +56,38 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
         if is_nil(character_id) do
           nil
         else
-          # Debug: Try to find if this character exists in any killmail
-          character_id_str = to_string(character_id)
+          # Get character involvements from normalized model
+          involvement_query =
+            KillmailCharacterInvolvement
+            |> filter(character_id == ^character_id)
+            |> select([:id, :killmail_id, :character_role, :inserted_at, :updated_at])
 
-          # Check for existence first
-          _character_exists_in_killmail =
-            case SQL.query(
-                   Repo,
-                   "SELECT EXISTS (
-                     SELECT 1 FROM killmails
-                     WHERE esi_data @> '{\"character_id\": \"#{character_id_str}\"}'
-                     OR EXISTS (
-                       SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-                       WHERE att @> '{\"character_id\": \"#{character_id_str}\"}'
-                     )
-                   )",
-                   []
-                 ) do
-              {:ok, %{rows: [[exists]]}} -> exists
-              _ -> false
+          character_involvements =
+            case Api.read(involvement_query) do
+              {:ok, involvements} -> involvements
+              _ -> []
             end
 
-          if character_id == 640_170_087 do
-            # For debugging, get a specific sample killmail for this character
-            case SQL.query(
-                   Repo,
-                   "SELECT id, esi_data FROM killmails
-                    WHERE EXISTS (
-                      SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-                      WHERE att->>'character_id' = $1
-                    ) LIMIT 1",
-                   [character_id_str]
-                 ) do
-              {:ok, %{rows: [[id, esi_data]]}} ->
-                AppLogger.api_info("Found sample killmail with character",
-                  id: id,
-                  character_id: character_id,
-                  esi_data_sample: inspect(String.slice("#{esi_data}", 0, 200))
-                )
+          # Calculate kill count from involvements
+          kill_count = length(character_involvements)
 
-              _ ->
-                AppLogger.api_info("No killmails found with character",
-                  character_id: character_id
-                )
-            end
-          end
-
-          # Try different approaches to find characters in JSON
-          kill_count_approaches = [
-            # Approach 1: Standard JSON path with comparison
-            "SELECT COUNT(*) FROM killmails
-             WHERE esi_data->>'character_id' = $1
-             OR EXISTS (
-               SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-               WHERE att->>'character_id' = $1
-             )",
-
-            # Approach 2: Using contains operator
-            "SELECT COUNT(*) FROM killmails
-             WHERE esi_data @> jsonb_build_object('character_id', $1)
-             OR EXISTS (
-               SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-               WHERE att @> jsonb_build_object('character_id', $1)
-             )",
-
-            # Approach 3: Use LIKE for text search as fallback
-            "SELECT COUNT(*) FROM killmails
-             WHERE esi_data::text LIKE '%\"character_id\":\"' || $1 || '\"%'"
-          ]
-
-          # Try each approach in order until we get a non-zero result
-          kill_count =
-            Enum.reduce_while(kill_count_approaches, 0, fn query, _acc ->
-              case SQL.query(Repo, query, [character_id_str]) do
-                {:ok, %{rows: [[count]]}} when count > 0 ->
-                  # Stop if we get a non-zero count
-                  {:halt, count}
-
-                {:ok, %{rows: [[count]]}} ->
-                  # Continue to next approach
-                  {:cont, count}
-
-                _ ->
-                  # Continue to next approach on error
-                  {:cont, 0}
-              end
-            end)
-
-          # Use the same approach for last_updated
+          # Get last updated timestamp
           last_updated =
-            case SQL.query(
-                   Repo,
-                   "SELECT MAX(updated_at) FROM killmails
-                    WHERE esi_data->>'character_id' = $1
-                    OR EXISTS (
-                      SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-                      WHERE att->>'character_id' = $1
-                    )",
-                   [character_id_str]
-                 ) do
-              {:ok, %{rows: [[timestamp]]}} -> timestamp
-              _ -> nil
+            if Enum.empty?(character_involvements) do
+              nil
+            else
+              character_involvements
+              |> Enum.map(&Map.get(&1, :updated_at))
+              |> Enum.reject(&is_nil/1)
+              |> Enum.sort(DateTime)
+              |> List.last()
             end
 
-          # Add a full data dump for debugging
-          _esi_data_sample =
-            if character_id == 640_170_087 do
-              case SQL.query(
-                     Repo,
-                     "SELECT esi_data::text FROM killmails LIMIT 1",
-                     []
-                   ) do
-                {:ok, %{rows: [[data]]}} -> data
-                _ -> nil
-              end
-            else
-              nil
-            end
+          AppLogger.api_debug("Character involvement stats",
+            character_id: character_id,
+            character_name: character_name,
+            involvement_count: kill_count
+          )
 
           %{
             character_id: character_id,
@@ -304,119 +197,137 @@ defmodule WandererNotifier.Api.Controllers.CharacterController do
 
   # Debug endpoint to dump character data
   get "/dump-character-data" do
-    alias Ecto.Adapters.SQL
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    alias WandererNotifier.Data.Repo
+    alias WandererNotifier.Resources.Api
+    alias WandererNotifier.Resources.Killmail
+    alias WandererNotifier.Resources.KillmailCharacterInvolvement
+    import Ash.Query
 
     # Get tracked characters directly from cache
     characters = CacheRepo.get(CacheKeys.character_list()) || []
 
-    # Get first 10 killmails
+    # Get first 10 killmails using Ash
     sample_killmails =
-      case SQL.query(Repo, "SELECT id, killmail_id, esi_data::text FROM killmails LIMIT 10") do
-        {:ok, %{rows: rows}} -> rows
+      case Api.read(
+             Killmail
+             |> limit(10)
+             |> select([:id, :killmail_id, :processed_at, :victim_name, :solar_system_name])
+           ) do
+        {:ok, killmails} -> killmails
         _ -> []
       end
 
     # Format the result
     formatted_killmails =
-      Enum.map(sample_killmails, fn [id, killmail_id, esi_data] ->
+      Enum.map(sample_killmails, fn killmail ->
         %{
-          id: id,
-          killmail_id: killmail_id,
-          esi_data_preview: String.slice(esi_data, 0, 200) <> "..."
+          id: killmail.id,
+          killmail_id: killmail.killmail_id,
+          victim_name: killmail.victim_name,
+          solar_system_name: killmail.solar_system_name,
+          processed_at: killmail.processed_at
         }
       end)
 
-    # Get information about the structure of esi_data
-    esi_data_structure =
-      case SQL.query(
-             Repo,
-             "SELECT jsonb_typeof(esi_data) as type, jsonb_typeof(esi_data->'attackers') as attackers_type FROM killmails LIMIT 1"
-           ) do
-        {:ok, %{rows: [[type, attackers_type]]}} -> %{type: type, attackers_type: attackers_type}
-        _ -> %{type: "unknown", attackers_type: "unknown"}
-      end
-
-    # Total number of killmails in the database
+    # Count total killmails using Ash
     total_killmails =
-      case SQL.query(Repo, "SELECT COUNT(*) FROM killmails") do
-        {:ok, %{rows: [[count]]}} -> count
+      case Api.read(Killmail |> aggregate(:count, :id, :total)) do
+        {:ok, [%{total: count}]} -> count
         _ -> 0
       end
+
+    # Count total involvements using Ash
+    total_involvements =
+      case Api.read(KillmailCharacterInvolvement |> aggregate(:count, :id, :total)) do
+        {:ok, [%{total: count}]} -> count
+        _ -> 0
+      end
+
+    # Get model statistics
+    model_stats = %{
+      killmail_count: total_killmails,
+      involvement_count: total_involvements,
+      tracked_character_count: length(characters)
+    }
 
     # Send the debug data
     send_success_response(conn, %{
       tracked_character_count: length(characters),
       first_few_characters: Enum.take(characters, 3),
       sample_killmails: formatted_killmails,
-      esi_data_structure: esi_data_structure,
-      total_killmails: total_killmails
+      model_stats: model_stats
     })
   end
 
-  # Debug endpoint to get kill count for a specific character
+  # Debug endpoint to get kill count for a specific character using the normalized model
   get "/kill-count/:character_id" do
-    alias Ecto.Adapters.SQL
-    alias WandererNotifier.Data.Repo
+    alias WandererNotifier.Resources.Api
+    alias WandererNotifier.Resources.Killmail
+    alias WandererNotifier.Resources.KillmailCharacterInvolvement
+    import Ash.Query
 
-    character_id_str = character_id
+    # Parse character_id to integer
+    parsed_id = parse_int(character_id)
 
-    # Try all approaches for finding kills
-    kill_count_approaches = [
-      # Approach 1: Standard JSON path with comparison
-      "SELECT COUNT(*) FROM killmails
-       WHERE esi_data->>'character_id' = $1
-       OR EXISTS (
-         SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-         WHERE att->>'character_id' = $1
-       )",
+    if is_nil(parsed_id) do
+      send_error_response(conn, 400, "Invalid character ID format")
+    else
+      # Get all involvements for this character
+      involvement_query =
+        KillmailCharacterInvolvement
+        |> filter(character_id == ^parsed_id)
+        |> select([:id, :killmail_id, :character_role, :ship_type_name])
 
-      # Approach 2: Using contains operator
-      "SELECT COUNT(*) FROM killmails
-       WHERE esi_data @> jsonb_build_object('character_id', $1)
-       OR EXISTS (
-         SELECT 1 FROM jsonb_array_elements(esi_data->'attackers') att
-         WHERE att @> jsonb_build_object('character_id', $1)
-       )",
-
-      # Approach 3: Use LIKE for text search as fallback
-      "SELECT COUNT(*) FROM killmails
-       WHERE esi_data::text LIKE '%\"character_id\":\"' || $1 || '\"%'"
-    ]
-
-    # Run all approaches and collect results
-    all_results =
-      Enum.map(kill_count_approaches, fn query ->
-        case SQL.query(Repo, query, [character_id_str]) do
-          {:ok, %{rows: [[count]]}} -> count
-          _ -> 0
+      involvements =
+        case Api.read(involvement_query) do
+          {:ok, records} -> records
+          _ -> []
         end
-      end)
 
-    # Find a real kill to analyze
-    sample_killmail =
-      case SQL.query(
-             Repo,
-             "SELECT id, esi_data::text FROM killmails
-              WHERE esi_data::text LIKE '%\"character_id\":\"' || $1 || '\"%' LIMIT 1",
-             [character_id_str]
-           ) do
-        {:ok, %{rows: [[id, esi_data]]}} ->
-          %{id: id, esi_data_preview: String.slice(esi_data, 0, 500)}
+      # Get a sample killmail for this character
+      sample_involvements =
+        involvements |> Enum.take(1) |> Enum.map(fn inv -> inv.killmail_id end)
 
-        _ ->
+      sample_killmail =
+        if Enum.empty?(sample_involvements) do
           nil
-      end
+        else
+          sample_id = List.first(sample_involvements)
 
-    # Send back all the results for comparison
-    send_success_response(conn, %{
-      character_id: character_id_str,
-      approach_results: all_results,
-      best_count: Enum.max(all_results),
-      sample_killmail: sample_killmail
-    })
+          case Api.read(Killmail |> filter(id == ^sample_id) |> load(:character_involvements)) do
+            {:ok, [killmail]} ->
+              %{
+                id: killmail.id,
+                killmail_id: killmail.killmail_id,
+                kill_time: killmail.kill_time,
+                solar_system_name: killmail.solar_system_name,
+                victim_name: killmail.victim_name,
+                victim_ship_name: killmail.victim_ship_name,
+                total_value: killmail.total_value,
+                involvements_count: length(killmail.character_involvements || [])
+              }
+
+            _ ->
+              nil
+          end
+        end
+
+      # Get role breakdown
+      roles_breakdown =
+        Enum.group_by(involvements, & &1.character_role)
+        |> Enum.map(fn {role, invs} -> {role, length(invs)} end)
+        |> Enum.into(%{})
+
+      # Send back all the results
+      send_success_response(conn, %{
+        character_id: parsed_id,
+        total_involvements: length(involvements),
+        as_attacker: Map.get(roles_breakdown, :attacker, 0),
+        as_victim: Map.get(roles_breakdown, :victim, 0),
+        sample_killmail: sample_killmail
+      })
+    end
   end
 
   match _ do

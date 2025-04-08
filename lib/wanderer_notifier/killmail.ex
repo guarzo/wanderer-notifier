@@ -123,10 +123,11 @@ defmodule WandererNotifier.Killmail do
   During the transition period, compatibility functions are provided to work with both models.
   """
 
+  require Ash.Query
+
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
-  alias Ash.Query
 
   @doc """
   Checks if a killmail exists in the database by its ID.
@@ -141,9 +142,9 @@ defmodule WandererNotifier.Killmail do
   def exists?(killmail_id) do
     case Api.read(
            Killmail
-           |> Query.filter(killmail_id == ^killmail_id)
-           |> Query.select([:id])
-           |> Query.limit(1)
+           |> Ash.Query.filter(killmail_id == ^killmail_id)
+           |> Ash.Query.select([:id])
+           |> Ash.Query.limit(1)
          ) do
       {:ok, [_record]} -> true
       _ -> false
@@ -163,8 +164,8 @@ defmodule WandererNotifier.Killmail do
   def get(killmail_id) do
     case Api.read(
            Killmail
-           |> Query.filter(killmail_id == ^killmail_id)
-           |> Query.limit(1)
+           |> Ash.Query.filter(killmail_id == ^killmail_id)
+           |> Ash.Query.limit(1)
          ) do
       {:ok, [killmail]} -> {:ok, killmail}
       _ -> {:error, :not_found}
@@ -186,7 +187,7 @@ defmodule WandererNotifier.Killmail do
       true ->
         Api.read(
           KillmailCharacterInvolvement
-          |> Query.filter(killmail.killmail_id == ^killmail_id)
+          |> Ash.Query.filter(killmail.killmail_id == ^killmail_id)
         )
 
       false ->
@@ -217,15 +218,15 @@ defmodule WandererNotifier.Killmail do
 
     query =
       KillmailCharacterInvolvement
-      |> Query.filter(character_id == ^character_id)
+      |> Ash.Query.filter(character_id == ^character_id)
       |> then(fn q ->
-        if role, do: Query.filter(q, character_role == ^role), else: q
+        if role, do: Ash.Query.filter(q, character_role == ^role), else: q
       end)
-      |> Query.load(:killmail)
-      |> Query.filter(killmail.kill_time >= ^start_date)
-      |> Query.filter(killmail.kill_time <= ^end_date)
-      |> Query.sort(expr(killmail.kill_time), sort_dir)
-      |> Query.limit(limit)
+      |> Ash.Query.load(:killmail)
+      |> Ash.Query.filter(killmail.kill_time >= ^start_date)
+      |> Ash.Query.filter(killmail.kill_time <= ^end_date)
+      |> Ash.Query.sort({:expr, [:killmail, :kill_time]}, sort_dir)
+      |> Ash.Query.limit(limit)
 
     case Api.read(query) do
       {:ok, involvements} ->

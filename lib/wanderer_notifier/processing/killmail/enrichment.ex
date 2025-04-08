@@ -8,7 +8,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification
@@ -63,8 +63,29 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   ## Returns
   - Enriched killmail struct
   """
-  def enrich_killmail_data(%Killmail{} = killmail) do
-    %Killmail{esi_data: esi_data} = killmail
+  def enrich_killmail_data(killmail) do
+    # Extract data - handle both struct and map formats
+    esi_data =
+      cond do
+        is_struct(killmail, Killmail) ->
+          # For Resources.Killmail, create a compatible esi_data structure
+          %{
+            "solar_system_id" => killmail.solar_system_id,
+            "solar_system_name" => killmail.solar_system_name,
+            "victim" => killmail.full_victim_data,
+            "attackers" => killmail.full_attacker_data,
+            "killmail_time" => killmail.kill_time
+          }
+
+        is_map(killmail) && Map.has_key?(killmail, :esi_data) ->
+          killmail.esi_data || %{}
+
+        is_map(killmail) ->
+          Map.get(killmail, "esi_data") || Map.get(killmail, :esi_data) || %{}
+
+        true ->
+          %{}
+      end
 
     # Print killmail enrichment header only when logging is enabled
     if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
@@ -130,6 +151,61 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           alliance_name: Map.get(enriched_victim, "alliance_name")
         )
 
+        # Verify victim enrichment
+        enriched_victim =
+          if Map.get(enriched_victim, "ship_type_name") == "Unknown Ship" ||
+               Map.get(enriched_victim, "character_name") in [
+                 "Unknown Pilot",
+                 "Unknown",
+                 "Unknown Character"
+               ] do
+            AppLogger.kill_warning("[Enrichment] Victim data not fully enriched", %{
+              kill_id: killmail.killmail_id,
+              ship_type_name: Map.get(enriched_victim, "ship_type_name"),
+              character_name: Map.get(enriched_victim, "character_name")
+            })
+
+            # Try to re-enrich if data is missing
+            re_enriched = retry_entity_enrichment(enriched_victim)
+
+            # Log success if we managed to get better data
+            if Map.get(enriched_victim, "character_name") in [
+                 "Unknown Pilot",
+                 "Unknown",
+                 "Unknown Character"
+               ] &&
+                 !(Map.get(re_enriched, "character_name") in [
+                     "Unknown Pilot",
+                     "Unknown",
+                     "Unknown Character"
+                   ]) do
+              AppLogger.kill_info(
+                "[Enrichment] Successfully re-enriched victim character name",
+                %{
+                  kill_id: killmail.killmail_id,
+                  character_id: Map.get(enriched_victim, "character_id"),
+                  old_name: Map.get(enriched_victim, "character_name"),
+                  new_name: Map.get(re_enriched, "character_name")
+                }
+              )
+            end
+
+            if Map.get(enriched_victim, "ship_type_name") == "Unknown Ship" &&
+                 Map.get(re_enriched, "ship_type_name") != "Unknown Ship" do
+              AppLogger.kill_info("[Enrichment] Successfully re-enriched victim ship name", %{
+                kill_id: killmail.killmail_id,
+                ship_type_id: Map.get(enriched_victim, "ship_type_id"),
+                old_name: Map.get(enriched_victim, "ship_type_name"),
+                new_name: Map.get(re_enriched, "ship_type_name")
+              })
+            end
+
+            # Return the re-enriched entity
+            re_enriched
+          else
+            enriched_victim
+          end
+
         Map.put(esi_data, "victim", enriched_victim)
       else
         # Log and continue without adding placeholder
@@ -150,28 +226,106 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           IO.puts("\n------ ATTACKER DATA ------")
         end
 
-        AppLogger.kill_debug("[Enrichment] Processing attackers data",
+        AppLogger.kill_info(
+          "[Enrichment] Processing attackers data for kill #{killmail.killmail_id}",
           kill_id: killmail.killmail_id,
           attackers_count: length(attackers)
         )
 
+        # Process each attacker, ensuring proper enrichment
         enriched_attackers =
           Enum.map(attackers, fn attacker ->
+            is_final_blow = Map.get(attacker, "final_blow") == true
+            char_id = Map.get(attacker, "character_id")
+
+            # Get original state before enrichment for logging
+            original_char_name = Map.get(attacker, "character_name")
+            original_ship_name = Map.get(attacker, "ship_type_name")
+
+            # Enrich entity - this calls add_character_name, add_ship_name etc.
             enriched = enrich_entity(attacker)
 
-            # Log each enriched attacker
-            if Map.get(attacker, "final_blow") == true do
-              AppLogger.kill_debug("[Enrichment] Final blow attacker after enrichment",
-                ship_type_name: Map.get(enriched, "ship_type_name"),
-                character_name: Map.get(enriched, "character_name"),
-                corporation_name: Map.get(enriched, "corporation_name"),
-                alliance_name: Map.get(enriched, "alliance_name")
-              )
-            end
+            # Now check if the final blow attacker needs special handling
+            if is_final_blow do
+              enriched_char_name = Map.get(enriched, "character_name")
+              enriched_ship_name = Map.get(enriched, "ship_type_name")
 
-            enriched
+              # Log the change between original and enriched for debugging
+              if original_char_name != enriched_char_name ||
+                   original_ship_name != enriched_ship_name do
+                AppLogger.kill_info("[Enrichment] Final blow attacker data enriched", %{
+                  kill_id: killmail.killmail_id,
+                  character_id: char_id,
+                  original_name: original_char_name,
+                  enriched_name: enriched_char_name,
+                  original_ship: original_ship_name,
+                  enriched_ship: enriched_ship_name
+                })
+              end
+
+              # Directly apply additional character name resolution if still unknown
+              if enriched_char_name in ["Unknown Pilot", "Unknown", "Unknown Character"] do
+                AppLogger.kill_info(
+                  "[Enrichment] Final blow attacker still has unknown name, applying direct resolution for character_id #{char_id}",
+                  %{
+                    kill_id: killmail.killmail_id,
+                    character_id: char_id,
+                    character_name: enriched_char_name
+                  }
+                )
+
+                # Apply direct character resolution
+                updated_enriched = apply_direct_character_resolution(enriched)
+
+                # Log successful update
+                if updated_enriched["character_name"] != enriched_char_name do
+                  AppLogger.kill_info(
+                    "[Enrichment] Successfully resolved character name for final blow attacker",
+                    %{
+                      kill_id: killmail.killmail_id,
+                      character_id: char_id,
+                      original_name: enriched_char_name,
+                      new_name: updated_enriched["character_name"]
+                    }
+                  )
+
+                  # Return the directly resolved attacker
+                  updated_enriched
+                else
+                  # No change in name - return the enriched version
+                  enriched
+                end
+              else
+                # Return the enriched attacker - name is already known
+                enriched
+              end
+            else
+              # Not final blow, just return the standard enriched data
+              enriched
+            end
           end)
 
+        # For debugging, count how many attackers still have unknown data
+        unknown_count =
+          enriched_attackers
+          |> Enum.count(fn attacker ->
+            Map.get(attacker, "character_name") in [
+              "Unknown Pilot",
+              "Unknown",
+              "Unknown Character"
+            ]
+          end)
+
+        if unknown_count > 0 do
+          AppLogger.kill_warning(
+            "[Enrichment] #{unknown_count} of #{length(enriched_attackers)} attackers still have unknown character names after enrichment",
+            %{
+              kill_id: killmail.killmail_id
+            }
+          )
+        end
+
+        # Update the ESI data with our properly enriched attackers
         Map.put(esi_data, "attackers", enriched_attackers)
       else
         # Log and continue without adding placeholder
@@ -189,12 +343,102 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       IO.puts("=====================================================\n")
     end
 
+    # Verify if system name was enriched properly
+    system_name = Map.get(esi_data, "solar_system_name")
+    system_id = Map.get(esi_data, "solar_system_id")
+
+    esi_data =
+      if system_name == "Unknown System" || is_nil(system_name) do
+        AppLogger.kill_warning(
+          "[Enrichment] System name not properly enriched for system ID #{system_id}",
+          %{
+            kill_id: killmail.killmail_id,
+            system_id: system_id,
+            system_name: system_name
+          }
+        )
+
+        # Try one more time to get the system name with more aggressive retries
+        updated_data = try_system_name_retry(esi_data)
+
+        # Validate the retry was successful
+        updated_system_name = Map.get(updated_data, "solar_system_name")
+
+        if updated_system_name != "Unknown System" && !is_nil(updated_system_name) do
+          AppLogger.kill_info(
+            "[Enrichment] Successfully re-enriched system name on retry: '#{system_name}' → '#{updated_system_name}'",
+            %{
+              kill_id: killmail.killmail_id,
+              system_id: system_id,
+              old_name: system_name,
+              new_name: updated_system_name
+            }
+          )
+        else
+          AppLogger.kill_warning(
+            "[Enrichment] System name still not properly enriched after retry for system ID #{system_id}",
+            %{
+              kill_id: killmail.killmail_id,
+              system_id: system_id
+            }
+          )
+        end
+
+        updated_data
+      else
+        esi_data
+      end
+
+    # Ensure critical data is available at the top level as well for persistence
+    esi_data =
+      if Map.has_key?(esi_data, "victim") do
+        victim = Map.get(esi_data, "victim")
+
+        # Add ship_type_name to top level for easier access
+        esi_data =
+          if Map.has_key?(victim, "ship_type_name") && !Map.has_key?(esi_data, "ship_type_name") do
+            Map.put(esi_data, "ship_type_name", Map.get(victim, "ship_type_name"))
+          else
+            esi_data
+          end
+
+        # Add related character info at top level
+        esi_data =
+          if Map.has_key?(victim, "character_name") && !Map.has_key?(esi_data, "character_name") do
+            esi_data
+            |> Map.put("character_name", Map.get(victim, "character_name"))
+            |> Map.put("character_id", Map.get(victim, "character_id"))
+          else
+            esi_data
+          end
+
+        esi_data
+      else
+        esi_data
+      end
+
+    # Ensure all enriched data is complete and consistent across the structure
+    esi_data = ensure_complete_enrichment(esi_data)
+
     AppLogger.kill_debug(
-      "[Enrichment] Completed enrichment process for killmail #{killmail.killmail_id}"
+      "[Enrichment] Completed enrichment process for killmail #{killmail.killmail_id}",
+      %{
+        system_name: Map.get(esi_data, "solar_system_name", "not set"),
+        has_victim: Map.has_key?(esi_data, "victim"),
+        victim_name: (Map.get(esi_data, "victim") || %{}) |> Map.get("character_name", "not set"),
+        has_attackers: Map.has_key?(esi_data, "attackers"),
+        attacker_count: length(Map.get(esi_data, "attackers", []))
+      }
     )
 
-    # Return updated killmail with enriched ESI data
-    %Killmail{killmail | esi_data: esi_data}
+    # Return updated killmail with consistent ESI data
+    if is_struct(killmail, Killmail) do
+      # If it's a Resource.Killmail struct, just return it
+      killmail
+    else
+      # For map-based formats
+      Map.put(killmail, :esi_data, esi_data)
+    end
   end
 
   # Private functions
@@ -352,10 +596,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     end
   end
 
-  # Add system name to ESI data if missing
+  # Enrich with system name if needed
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
     # Already has a system name, no need to add it
-    if Map.has_key?(esi_data, "solar_system_name") do
+    if Map.has_key?(esi_data, "solar_system_name") &&
+         Map.get(esi_data, "solar_system_name") != "Unknown System" do
       system_name = Map.get(esi_data, "solar_system_name")
 
       # Log using IO.puts to match the killmail_tools format
@@ -380,27 +625,29 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
         Map.put(esi_data, "solar_system_name", "Unknown System")
       else
-        # Get system name and add it if found
-        case ESIService.get_system_info(system_id) do
-          {:ok, system_info} ->
-            system_name = Map.get(system_info, "name")
+        # Get system name using the cached function to ensure we have proper retries and caching
+        case get_system_name_with_retries(system_id) do
+          {:ok, system_name} when is_binary(system_name) and system_name != "" ->
+            # Log success
+            AppLogger.kill_info("[Enrichment] Retrieved system name", %{
+              system_id: system_id,
+              system_name: system_name
+            })
 
             if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-              IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI)")
+              IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI or cache)")
             end
 
+            # Always update the name to avoid using previous placeholder values
             Map.put(esi_data, "solar_system_name", system_name)
 
-          {:error, reason} ->
-            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (ESI API error: #{inspect(reason)})")
-            end
-
-            Map.put(esi_data, "solar_system_name", "Unknown System")
-
           _ ->
+            AppLogger.kill_warn("[Enrichment] Failed to get system name after retries", %{
+              system_id: system_id
+            })
+
             if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (unexpected ESI response)")
+              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (all retrieval attempts failed)")
             end
 
             Map.put(esi_data, "solar_system_name", "Unknown System")
@@ -410,4 +657,485 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   defp enrich_with_system_name(data), do: data
+
+  # Get system name with retries
+  defp get_system_name_with_retries(system_id, max_attempts \\ 3) do
+    get_system_name_with_retry(system_id, 1, max_attempts)
+  end
+
+  # Recursive function to try getting system name with exponential backoff
+  defp get_system_name_with_retry(_system_id, attempt, max_attempts)
+       when attempt > max_attempts do
+    {:error, :max_retries_exceeded}
+  end
+
+  defp get_system_name_with_retry(system_id, attempt, max_attempts) do
+    # Try cache first
+    case try_get_system_name_from_cache(system_id) do
+      name when is_binary(name) and name != "" ->
+        AppLogger.kill_debug("[Enrichment] Found system name in cache", %{
+          system_id: system_id,
+          name: name,
+          attempt: attempt
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Try direct ESI call
+        case ESIService.get_system_info(system_id) do
+          {:ok, system_info} ->
+            name = Map.get(system_info, "name")
+
+            if is_binary(name) && name != "" do
+              AppLogger.kill_debug("[Enrichment] Retrieved system name from ESI", %{
+                system_id: system_id,
+                name: name,
+                attempt: attempt
+              })
+
+              # Cache for later use
+              alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+              alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+              cache_key = CacheKeys.system_info(system_id)
+              CacheRepo.set(cache_key, system_info, 30 * 86400)
+
+              {:ok, name}
+            else
+              # Backoff and retry
+              backoff = (:math.pow(2, attempt) * 100) |> round()
+
+              AppLogger.kill_debug("[Enrichment] Invalid system name, retrying after backoff", %{
+                system_id: system_id,
+                attempt: attempt,
+                backoff_ms: backoff
+              })
+
+              Process.sleep(backoff)
+              get_system_name_with_retry(system_id, attempt + 1, max_attempts)
+            end
+
+          error ->
+            # Backoff and retry
+            backoff = (:math.pow(2, attempt) * 100) |> round()
+
+            AppLogger.kill_debug("[Enrichment] ESI error, retrying after backoff", %{
+              system_id: system_id,
+              attempt: attempt,
+              backoff_ms: backoff,
+              error: inspect(error)
+            })
+
+            Process.sleep(backoff)
+            get_system_name_with_retry(system_id, attempt + 1, max_attempts)
+        end
+    end
+  end
+
+  # Try to get system name from cache
+  defp try_get_system_name_from_cache(system_id) do
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+    # Try to get from cache using a key pattern that might contain system info
+    cache_key = CacheKeys.system_info(system_id)
+
+    case CacheRepo.get(cache_key) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        AppLogger.kill_info("Found system name in cache", %{
+          system_id: system_id,
+          system_name: name
+        })
+
+        name
+
+      _ ->
+        # Try additional cache location patterns if needed
+        nil
+    end
+  end
+
+  # Retry entity enrichment if critical data is missing
+  defp retry_entity_enrichment(entity) when is_map(entity) do
+    # Only retry if we have character_id (critical for lookup)
+    if Map.has_key?(entity, "character_id") do
+      character_id = Map.get(entity, "character_id")
+
+      AppLogger.kill_info(
+        "[Enrichment] Retrying entity enrichment for character_id #{character_id}"
+      )
+
+      # Copy the original entity for modifications
+      updated_entity = entity
+
+      # Try to get a better name if current one is placeholder
+      updated_entity =
+        if Map.get(entity, "character_name") in ["Unknown Pilot", "Unknown", "Unknown Character"] do
+          # Use the get_character_name_with_cache function for better caching
+          case get_character_name_with_cache(character_id) do
+            {:ok, name} when is_binary(name) and name != "" ->
+              AppLogger.kill_info(
+                "[Enrichment] Retrieved better character name on retry: #{name}",
+                %{
+                  character_id: character_id,
+                  old_name: Map.get(entity, "character_name"),
+                  new_name: name
+                }
+              )
+
+              Map.put(updated_entity, "character_name", name)
+
+            _ ->
+              updated_entity
+          end
+        else
+          updated_entity
+        end
+
+      # Try to get better ship name if current one is placeholder
+      updated_entity =
+        if Map.get(updated_entity, "ship_type_name") == "Unknown Ship" &&
+             Map.has_key?(updated_entity, "ship_type_id") do
+          ship_type_id = Map.get(updated_entity, "ship_type_id")
+
+          # Use the get_ship_type_name_with_cache function for better caching
+          case get_ship_type_name_with_cache(ship_type_id) do
+            {:ok, name} when is_binary(name) and name != "" ->
+              AppLogger.kill_info("[Enrichment] Retrieved better ship name on retry: #{name}", %{
+                ship_type_id: ship_type_id,
+                old_name: Map.get(updated_entity, "ship_type_name"),
+                new_name: name
+              })
+
+              Map.put(updated_entity, "ship_type_name", name)
+
+            _ ->
+              updated_entity
+          end
+        else
+          updated_entity
+        end
+
+      updated_entity
+    else
+      entity
+    end
+  end
+
+  # Get character name with caching and retries
+  defp get_character_name_with_cache(character_id, max_attempts \\ 3) do
+    get_character_name_with_retry(character_id, 1, max_attempts)
+  end
+
+  # Recursive function to try getting character name with exponential backoff
+  defp get_character_name_with_retry(_character_id, attempt, max_attempts)
+       when attempt > max_attempts do
+    {:error, :max_retries_exceeded}
+  end
+
+  defp get_character_name_with_retry(character_id, attempt, max_attempts) do
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+    # Try cache first
+    cache_key = CacheKeys.character_info(character_id)
+
+    case CacheRepo.get(cache_key) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        AppLogger.kill_debug("[Enrichment] Found character name in cache", %{
+          character_id: character_id,
+          name: name,
+          attempt: attempt
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Try direct ESI call
+        case ESIService.get_character_info(character_id) do
+          {:ok, character_info} when is_map(character_info) ->
+            name = Map.get(character_info, "name")
+
+            if is_binary(name) && name != "" do
+              AppLogger.kill_debug("[Enrichment] Retrieved character name from ESI", %{
+                character_id: character_id,
+                name: name,
+                attempt: attempt
+              })
+
+              # Cache for later use
+              CacheRepo.set(cache_key, character_info, 7 * 86400)
+
+              {:ok, name}
+            else
+              # Backoff and retry
+              backoff = (:math.pow(2, attempt) * 100) |> round()
+
+              AppLogger.kill_debug(
+                "[Enrichment] Invalid character name, retrying after backoff",
+                %{
+                  character_id: character_id,
+                  attempt: attempt,
+                  backoff_ms: backoff
+                }
+              )
+
+              Process.sleep(backoff)
+              get_character_name_with_retry(character_id, attempt + 1, max_attempts)
+            end
+
+          error ->
+            # Backoff and retry
+            backoff = (:math.pow(2, attempt) * 100) |> round()
+
+            AppLogger.kill_debug(
+              "[Enrichment] ESI error for character, retrying after backoff",
+              %{
+                character_id: character_id,
+                attempt: attempt,
+                backoff_ms: backoff,
+                error: inspect(error)
+              }
+            )
+
+            Process.sleep(backoff)
+            get_character_name_with_retry(character_id, attempt + 1, max_attempts)
+        end
+    end
+  end
+
+  # Get ship type name with caching and retries
+  defp get_ship_type_name_with_cache(ship_type_id, max_attempts \\ 3) do
+    get_ship_type_name_with_retry(ship_type_id, 1, max_attempts)
+  end
+
+  # Recursive function to try getting ship type name with exponential backoff
+  defp get_ship_type_name_with_retry(_ship_type_id, attempt, max_attempts)
+       when attempt > max_attempts do
+    {:error, :max_retries_exceeded}
+  end
+
+  defp get_ship_type_name_with_retry(ship_type_id, attempt, max_attempts) do
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+    # Try cache first
+    cache_key = CacheKeys.ship_info(ship_type_id)
+
+    case CacheRepo.get(cache_key) do
+      %{"name" => name} when is_binary(name) and name != "" ->
+        AppLogger.kill_debug("[Enrichment] Found ship name in cache", %{
+          ship_type_id: ship_type_id,
+          name: name,
+          attempt: attempt
+        })
+
+        {:ok, name}
+
+      _ ->
+        # Try direct ESI call
+        case ESIService.get_ship_type_name(ship_type_id) do
+          {:ok, ship_info} when is_map(ship_info) ->
+            name = Map.get(ship_info, "name")
+
+            if is_binary(name) && name != "" do
+              AppLogger.kill_debug("[Enrichment] Retrieved ship name from ESI", %{
+                ship_type_id: ship_type_id,
+                name: name,
+                attempt: attempt
+              })
+
+              # Cache for later use - ship data doesn't change, so cache for a long time
+              CacheRepo.set(cache_key, ship_info, 90 * 86400)
+
+              {:ok, name}
+            else
+              # Backoff and retry
+              backoff = (:math.pow(2, attempt) * 100) |> round()
+
+              AppLogger.kill_debug("[Enrichment] Invalid ship name, retrying after backoff", %{
+                ship_type_id: ship_type_id,
+                attempt: attempt,
+                backoff_ms: backoff
+              })
+
+              Process.sleep(backoff)
+              get_ship_type_name_with_retry(ship_type_id, attempt + 1, max_attempts)
+            end
+
+          error ->
+            # Backoff and retry
+            backoff = (:math.pow(2, attempt) * 100) |> round()
+
+            AppLogger.kill_debug("[Enrichment] ESI error for ship, retrying after backoff", %{
+              ship_type_id: ship_type_id,
+              attempt: attempt,
+              backoff_ms: backoff,
+              error: inspect(error)
+            })
+
+            Process.sleep(backoff)
+            get_ship_type_name_with_retry(ship_type_id, attempt + 1, max_attempts)
+        end
+    end
+  end
+
+  # Try again to get system name
+  defp try_system_name_retry(esi_data) do
+    if Map.has_key?(esi_data, "solar_system_id") do
+      system_id = Map.get(esi_data, "solar_system_id")
+
+      AppLogger.kill_info(
+        "[Enrichment] Retrying system name enrichment for system_id #{system_id}"
+      )
+
+      # Try with more retries and a different approach
+      # Increase max attempts to 5
+      case get_system_name_with_retries(system_id, 5) do
+        {:ok, system_name} when is_binary(system_name) and system_name != "" ->
+          AppLogger.kill_info(
+            "[Enrichment] Retrieved better system name on retry: #{system_name}",
+            %{
+              system_id: system_id,
+              old_name: Map.get(esi_data, "solar_system_name", "Unknown System"),
+              new_name: system_name
+            }
+          )
+
+          # Update at top level
+          updated_esi_data = Map.put(esi_data, "solar_system_name", system_name)
+
+          # Also ensure it's in victim data if present
+          updated_esi_data =
+            if victim = Map.get(updated_esi_data, "victim") do
+              updated_victim = Map.put(victim, "solar_system_name", system_name)
+              Map.put(updated_esi_data, "victim", updated_victim)
+            else
+              updated_esi_data
+            end
+
+          # Also update attackers if present
+          updated_esi_data =
+            if attackers = Map.get(updated_esi_data, "attackers") do
+              updated_attackers =
+                Enum.map(attackers, fn attacker ->
+                  Map.put(attacker, "solar_system_name", system_name)
+                end)
+
+              Map.put(updated_esi_data, "attackers", updated_attackers)
+            else
+              updated_esi_data
+            end
+
+          updated_esi_data
+
+        _ ->
+          esi_data
+      end
+    else
+      esi_data
+    end
+  end
+
+  # Ensure all enriched data is complete and consistent across the structure
+  defp ensure_complete_enrichment(esi_data) when is_map(esi_data) do
+    # Start with the esi_data as is
+    updated_data = esi_data
+
+    # Ensure solar_system_name is properly set across the structure
+    # If we have a valid system name anywhere, make sure it's used everywhere
+    top_level_system_name = Map.get(updated_data, "solar_system_name")
+    victim = Map.get(updated_data, "victim", %{})
+    victim_system_name = Map.get(victim, "solar_system_name")
+
+    # Determine the best system name to use
+    best_system_name =
+      cond do
+        is_binary(top_level_system_name) and top_level_system_name != "" and
+            top_level_system_name != "Unknown System" ->
+          top_level_system_name
+
+        is_binary(victim_system_name) and victim_system_name != "" and
+            victim_system_name != "Unknown System" ->
+          victim_system_name
+
+        # Try retrieving it one more time from ESI if we have a system ID
+        system_id = Map.get(updated_data, "solar_system_id") ->
+          case get_system_name_with_retries(system_id, 3) do
+            {:ok, name} when is_binary(name) and name != "" ->
+              AppLogger.kill_info(
+                "[Enrichment] Retrieved system name in final consistency check",
+                %{
+                  system_id: system_id,
+                  system_name: name
+                }
+              )
+
+              name
+
+            _ ->
+              top_level_system_name || "Unknown System"
+          end
+
+        true ->
+          top_level_system_name || "Unknown System"
+      end
+
+    # Now update both places with the best system name
+    updated_data = Map.put(updated_data, "solar_system_name", best_system_name)
+
+    # If we have a victim, update its system name too
+    updated_data =
+      if Map.has_key?(updated_data, "victim") do
+        victim = Map.get(updated_data, "victim")
+        updated_victim = Map.put(victim, "solar_system_name", best_system_name)
+        Map.put(updated_data, "victim", updated_victim)
+      else
+        updated_data
+      end
+
+    # Return the updated data with consistent system names
+    updated_data
+  end
+
+  defp ensure_complete_enrichment(data), do: data
+
+  # Direct resolution for character name
+  defp apply_direct_character_resolution(entity) when is_map(entity) do
+    if character_id = Map.get(entity, "character_id") do
+      # Use direct ESI service call to bypass caching issues
+      case WandererNotifier.Api.ESI.Service.get_character_info(character_id) do
+        {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+          AppLogger.kill_info(
+            "[Enrichment] Direct character resolution succeeded for character_id #{character_id}",
+            %{
+              character_id: character_id,
+              old_name: Map.get(entity, "character_name"),
+              new_name: name
+            }
+          )
+
+          # Always update the cache with this fresh data
+          alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+          alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+          cache_key = CacheKeys.character_info(character_id)
+          CacheRepo.set(cache_key, %{"name" => name}, 86400)
+
+          # Return entity with updated name
+          Map.put(entity, "character_name", name)
+
+        error ->
+          AppLogger.kill_error("[Enrichment] Direct character resolution failed", %{
+            character_id: character_id,
+            error: inspect(error)
+          })
+
+          entity
+      end
+    else
+      entity
+    end
+  end
+
+  defp apply_direct_character_resolution(entity), do: entity
 end

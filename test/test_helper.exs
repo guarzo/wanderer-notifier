@@ -145,3 +145,9 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
+
+# Load stubs for killmail testing
+Code.require_file("support/stubs/killmail_struct_stub.ex", __DIR__)
+
+# Load DataCase module
+Code.require_file("support/data_case.ex", __DIR__)

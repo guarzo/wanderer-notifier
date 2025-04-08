@@ -11,7 +11,7 @@
       "type": "uuid"
     },
     {
-      "allow_nil?": false,
+      "allow_nil?": true,
       "default": "nil",
       "generated?": false,
       "primary_key?": false,
@@ -29,6 +29,46 @@
       "size": null,
       "source": "kill_time",
       "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "total_value",
+      "type": "decimal"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "points",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "false",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "is_npc",
+      "type": "boolean"
+    },
+    {
+      "allow_nil?": true,
+      "default": "false",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "is_solo",
+      "type": "boolean"
     },
     {
       "allow_nil?": true,
@@ -57,6 +97,16 @@
       "primary_key?": false,
       "references": null,
       "size": null,
+      "source": "solar_system_security",
+      "type": "float"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
       "source": "region_id",
       "type": "bigint"
     },
@@ -77,46 +127,7 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "total_value",
-      "type": "decimal"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "character_role",
-      "type": "text"
-    },
-    {
-      "allow_nil?": false,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": {
-        "deferrable": false,
-        "destination_attribute": "character_id",
-        "destination_attribute_default": null,
-        "destination_attribute_generated": null,
-        "index?": false,
-        "match_type": null,
-        "match_with": null,
-        "multitenancy": {
-          "attribute": null,
-          "global": null,
-          "strategy": null
-        },
-        "name": "killmails_related_character_id_fkey",
-        "on_delete": null,
-        "on_update": null,
-        "primary_key?": false,
-        "schema": null,
-        "table": "tracked_characters"
-      },
-      "size": null,
-      "source": "related_character_id",
+      "source": "victim_id",
       "type": "bigint"
     },
     {
@@ -126,7 +137,7 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "related_character_name",
+      "source": "victim_name",
       "type": "text"
     },
     {
@@ -136,7 +147,7 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "ship_type_id",
+      "source": "victim_ship_id",
       "type": "bigint"
     },
     {
@@ -146,7 +157,7 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "ship_type_name",
+      "source": "victim_ship_name",
       "type": "text"
     },
     {
@@ -156,7 +167,107 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "zkb_data",
+      "source": "victim_corporation_id",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "victim_corporation_name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "victim_alliance_id",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "victim_alliance_name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "attacker_count",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "final_blow_attacker_id",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "final_blow_attacker_name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "final_blow_ship_id",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "final_blow_ship_name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "zkb_hash",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "full_victim_data",
       "type": "map"
     },
     {
@@ -166,18 +277,8 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "victim_data",
-      "type": "map"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "attacker_data",
-      "type": "map"
+      "source": "full_attacker_data",
+      "type": "binary"
     },
     {
       "allow_nil?": true,
@@ -208,6 +309,26 @@
       "size": null,
       "source": "updated_at",
       "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "zkb_data",
+      "type": "map"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "esi_data",
+      "type": "map"
     }
   ],
   "base_filter": null,
@@ -215,7 +336,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "1B707CD5C62C2090CE0C32D20D6FE5DB12FF49AB90EAC4F055C3059B6D302E33",
+  "hash": "D800B4B324C9C94FAB958853462E2484B126C9CF0226BE5E52F5983006CA9A52",
   "identities": [
     {
       "all_tenants?": false,
@@ -225,14 +346,6 @@
         {
           "type": "atom",
           "value": "killmail_id"
-        },
-        {
-          "type": "atom",
-          "value": "character_role"
-        },
-        {
-          "type": "atom",
-          "value": "related_character_id"
         }
       ],
       "name": "unique_killmail",
@@ -245,7 +358,7 @@
     "global": null,
     "strategy": null
   },
-  "repo": "Elixir.WandererNotifier.Repo",
+  "repo": "Elixir.WandererNotifier.Data.Repo",
   "schema": null,
   "table": "killmails"
 }

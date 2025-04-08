@@ -27,17 +27,27 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "character_name",
-      "type": "text"
+      "source": "timestamp",
+      "type": "utc_datetime"
     },
     {
-      "allow_nil?": true,
+      "allow_nil?": false,
       "default": "nil",
       "generated?": false,
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "corporation_id",
+      "source": "our_kills_count",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": null,
+      "size": null,
+      "source": "zkill_kills_count",
       "type": "bigint"
     },
     {
@@ -47,8 +57,11 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "corporation_name",
-      "type": "text"
+      "source": "missing_kills",
+      "type": [
+        "array",
+        "bigint"
+      ]
     },
     {
       "allow_nil?": true,
@@ -57,8 +70,8 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "alliance_id",
-      "type": "bigint"
+      "source": "analysis_results",
+      "type": "map"
     },
     {
       "allow_nil?": true,
@@ -67,18 +80,18 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "alliance_name",
-      "type": "text"
+      "source": "api_metrics",
+      "type": "map"
     },
     {
-      "allow_nil?": true,
-      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
+      "allow_nil?": false,
+      "default": "nil",
       "generated?": false,
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "tracked_since",
-      "type": "utc_datetime_usec"
+      "source": "time_range_type",
+      "type": "text"
     },
     {
       "allow_nil?": false,
@@ -106,29 +119,14 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "1DF521DE66D01521C66DCF8AE79BAF8C8473AFAAD65C1712224274397AE6BC51",
-  "identities": [
-    {
-      "all_tenants?": false,
-      "base_filter": null,
-      "index_name": "tracked_characters_unique_character_id_index",
-      "keys": [
-        {
-          "type": "atom",
-          "value": "character_id"
-        }
-      ],
-      "name": "unique_character_id",
-      "nils_distinct?": true,
-      "where": null
-    }
-  ],
+  "hash": "069CCBCCDDECAFACE0CC605FF405BD4010FC893118087DCFA311C33841977DE5",
+  "identities": [],
   "multitenancy": {
     "attribute": null,
     "global": null,
     "strategy": null
   },
-  "repo": "Elixir.WandererNotifier.Repo",
+  "repo": "Elixir.WandererNotifier.Data.Repo",
   "schema": null,
-  "table": "tracked_characters"
+  "table": "kill_tracking_history"
 }

@@ -196,7 +196,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "A99A6995CECF16045B15FDFD5A07C7A534548775FE93D78A74C426BEB21CE6AB",
+  "hash": "B85C40E03BC3ACA76CB77CAECACA90F508F7EA53431D5701F4FF70003C1E46FC",
   "identities": [
     {
       "all_tenants?": false,
@@ -226,7 +226,7 @@
     "global": null,
     "strategy": null
   },
-  "repo": "Elixir.WandererNotifier.Repo",
+  "repo": "Elixir.WandererNotifier.Data.Repo",
   "schema": null,
   "table": "killmail_statistics"
 }

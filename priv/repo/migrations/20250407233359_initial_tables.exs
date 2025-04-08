@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
+defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
   @moduledoc """
   Updates resources based on their most recent snapshots.
 
@@ -37,31 +37,33 @@ defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
 
     create table(:killmails, primary_key: false) do
       add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
-      add(:killmail_id, :bigint, null: false)
+      add(:killmail_id, :bigint)
       add(:kill_time, :utc_datetime_usec)
+      add(:total_value, :decimal)
+      add(:points, :bigint)
+      add(:is_npc, :boolean, default: false)
+      add(:is_solo, :boolean, default: false)
       add(:solar_system_id, :bigint)
       add(:solar_system_name, :text)
+      add(:solar_system_security, :float)
       add(:region_id, :bigint)
       add(:region_name, :text)
-      add(:total_value, :decimal)
-      add(:character_role, :text)
-
-      add(
-        :related_character_id,
-        references(:tracked_characters,
-          column: :character_id,
-          name: "killmails_related_character_id_fkey",
-          type: :bigint
-        ),
-        null: false
-      )
-
-      add(:related_character_name, :text)
-      add(:ship_type_id, :bigint)
-      add(:ship_type_name, :text)
-      add(:zkb_data, :map)
-      add(:victim_data, :map)
-      add(:attacker_data, :map)
+      add(:victim_id, :bigint)
+      add(:victim_name, :text)
+      add(:victim_ship_id, :bigint)
+      add(:victim_ship_name, :text)
+      add(:victim_corporation_id, :bigint)
+      add(:victim_corporation_name, :text)
+      add(:victim_alliance_id, :bigint)
+      add(:victim_alliance_name, :text)
+      add(:attacker_count, :bigint)
+      add(:final_blow_attacker_id, :bigint)
+      add(:final_blow_attacker_name, :text)
+      add(:final_blow_ship_id, :bigint)
+      add(:final_blow_ship_name, :text)
+      add(:zkb_hash, :text)
+      add(:full_victim_data, :map)
+      add(:full_attacker_data, :binary)
       add(:processed_at, :utc_datetime_usec, default: fragment("(now() AT TIME ZONE 'utc')"))
 
       add(:inserted_at, :utc_datetime_usec,
@@ -73,13 +75,12 @@ defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
         null: false,
         default: fragment("(now() AT TIME ZONE 'utc')")
       )
+
+      add(:zkb_data, :map)
+      add(:esi_data, :map)
     end
 
-    create(
-      unique_index(:killmails, [:killmail_id, :character_role, :related_character_id],
-        name: "killmails_unique_killmail_index"
-      )
-    )
+    create(unique_index(:killmails, [:killmail_id], name: "killmails_unique_killmail_index"))
 
     create table(:killmail_statistics, primary_key: false) do
       add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
@@ -116,9 +117,89 @@ defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
         name: "killmail_statistics_unique_character_period_index"
       )
     )
+
+    create table(:killmail_character_involvements, primary_key: false) do
+      add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
+      add(:character_role, :text)
+      add(:character_id, :bigint, null: false)
+      add(:ship_type_id, :bigint)
+      add(:ship_type_name, :text)
+      add(:damage_done, :bigint)
+      add(:is_final_blow, :boolean, default: false)
+      add(:weapon_type_id, :bigint)
+      add(:weapon_type_name, :text)
+
+      add(:inserted_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("(now() AT TIME ZONE 'utc')")
+      )
+
+      add(:updated_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("(now() AT TIME ZONE 'utc')")
+      )
+
+      add(
+        :killmail_id,
+        references(:killmails,
+          column: :id,
+          name: "killmail_character_involvements_killmail_id_fkey",
+          type: :uuid
+        )
+      )
+    end
+
+    create(
+      unique_index(
+        :killmail_character_involvements,
+        [:killmail_id, :character_id, :character_role],
+        name: "killmail_character_involvements_unique_involvement_index"
+      )
+    )
+
+    create table(:kill_tracking_history, primary_key: false) do
+      add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
+      add(:character_id, :bigint, null: false)
+      add(:timestamp, :utc_datetime, null: false)
+      add(:our_kills_count, :bigint, null: false)
+      add(:zkill_kills_count, :bigint, null: false)
+      add(:missing_kills, {:array, :bigint})
+      add(:analysis_results, :map)
+      add(:api_metrics, :map)
+      add(:time_range_type, :text, null: false)
+
+      add(:inserted_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("(now() AT TIME ZONE 'utc')")
+      )
+
+      add(:updated_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("(now() AT TIME ZONE 'utc')")
+      )
+    end
   end
 
   def down do
+    drop(table(:kill_tracking_history))
+
+    drop_if_exists(
+      unique_index(
+        :killmail_character_involvements,
+        [:killmail_id, :character_id, :character_role],
+        name: "killmail_character_involvements_unique_involvement_index"
+      )
+    )
+
+    drop(
+      constraint(
+        :killmail_character_involvements,
+        "killmail_character_involvements_killmail_id_fkey"
+      )
+    )
+
+    drop(table(:killmail_character_involvements))
+
     drop_if_exists(
       unique_index(:killmail_statistics, [:character_id, :period_type, :period_start],
         name: "killmail_statistics_unique_character_period_index"
@@ -128,12 +209,8 @@ defmodule WandererNotifier.Repo.Migrations.AddInitialTables do
     drop(table(:killmail_statistics))
 
     drop_if_exists(
-      unique_index(:killmails, [:killmail_id, :character_role, :related_character_id],
-        name: "killmails_unique_killmail_index"
-      )
+      unique_index(:killmails, [:killmail_id], name: "killmails_unique_killmail_index")
     )
-
-    drop(constraint(:killmails, "killmails_related_character_id_fkey"))
 
     drop(table(:killmails))
 

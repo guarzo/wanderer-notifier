@@ -318,8 +318,8 @@ defmodule WandererNotifier.MockCacheHelpers do
   end
 
   @impl true
-  def get_character_name(_character_id) do
-    {:ok, "Test Character"}
+  def get_character_name(character_id) do
+    {:ok, "Test Character #{character_id}"}
   end
 end
 

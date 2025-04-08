@@ -7,7 +7,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Api.ESI.Service, as: ESI
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
@@ -16,6 +15,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
   alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Resources.Killmail
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 

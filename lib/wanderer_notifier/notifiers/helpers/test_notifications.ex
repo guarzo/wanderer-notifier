@@ -9,7 +9,6 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
@@ -102,15 +101,15 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   defp get_enriched_killmail(kill_id, kill_data, hash) do
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
-        # Create a Killmail struct with both ZKill and ESI data
-        killmail = %Killmail{
+        # Create a map with both ZKill and ESI data
+        killmail_data = %{
           killmail_id: kill_id,
-          zkb: kill_data["zkb"],
+          zkb_data: kill_data["zkb"],
           esi_data: esi_data
         }
 
         # Enrich the killmail data
-        enriched_kill = Enrichment.enrich_killmail_data(killmail)
+        enriched_kill = Enrichment.enrich_killmail_data(killmail_data)
 
         AppLogger.kill_debug(
           "TEST NOTIFICATION: Enriched killmail data: #{inspect(enriched_kill)}"
@@ -214,16 +213,22 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
-    # For Data.Killmail struct
-    if is_struct(killmail, WandererNotifier.Data.Killmail) do
-      # Check victim data
-      victim = Map.get(killmail.esi_data || %{}, "victim") || %{}
+    # For Resources.Killmail struct
+    if is_struct(killmail, WandererNotifier.Resources.Killmail) do
+      # Check for required fields directly in the resource
+      cond do
+        is_nil(killmail.victim_name) ->
+          {:error, "Killmail is missing victim name"}
 
-      # Check system name
-      esi_data = killmail.esi_data || %{}
-      system_name = Map.get(esi_data, "solar_system_name")
+        is_nil(killmail.victim_ship_name) ->
+          {:error, "Victim is missing ship type name"}
 
-      validate_fields(victim, system_name)
+        is_nil(killmail.solar_system_name) ->
+          {:error, "Killmail is missing system name"}
+
+        true ->
+          :ok
+      end
     else
       # Fall back to treating it as a generic map
       victim = Map.get(killmail, :victim_data) || %{}

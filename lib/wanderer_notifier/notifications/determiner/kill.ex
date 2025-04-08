@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
   require Logger
 
@@ -54,6 +54,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       has_esi_data: not is_nil(Map.get(killmail, :esi_data))
     })
 
+    # For notifications, we consider both tracked systems and tracked characters
+    # For persistence, we'll check has_tracked_char separately in the persistence module
     is_tracked_system || has_tracked_char
   end
 
@@ -181,12 +183,29 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  # Extract kill data from various killmail formats
+  # Extract kill data to get useful information
   defp extract_kill_data(killmail) do
-    case killmail do
-      %Killmail{esi_data: esi_data} when is_map(esi_data) -> esi_data
-      kill when is_map(kill) -> kill
-      _ -> %{}
+    cond do
+      # For the Killmail resource
+      is_struct(killmail, Killmail) ->
+        # Return a compatible map with the needed information
+        %{
+          "solar_system_id" => killmail.solar_system_id,
+          "solar_system_name" => killmail.solar_system_name,
+          "victim" => killmail.full_victim_data || %{},
+          "attackers" => killmail.full_attacker_data || []
+        }
+
+      # For map-based format
+      is_map(killmail) ->
+        if Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data") do
+          Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
+        else
+          killmail
+        end
+
+      true ->
+        %{}
     end
   end
 

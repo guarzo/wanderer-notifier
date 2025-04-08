@@ -10,7 +10,6 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
   alias WandererNotifier.Resources.{KillmailAggregation, TrackedCharacter}
@@ -393,55 +392,95 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
   get "/killmail/debug" do
     if Config.kill_charts_enabled?() do
       AppLogger.api_info("Debug endpoint called for killmail aggregation")
+      import Ash.Query
+      alias WandererNotifier.Resources.Api
+      alias WandererNotifier.Resources.Killmail
+      alias WandererNotifier.Resources.KillmailCharacterInvolvement
+      alias WandererNotifier.Resources.KillmailStatistic
+      alias WandererNotifier.Resources.TrackedCharacter
 
       # Perform diagnostic queries
       try do
         # First check if database operations are enabled
         if TrackedCharacter.database_enabled?() do
-          # Check total killmail records
-          killmail_query = "SELECT COUNT(*) FROM killmails"
-          {:ok, %{rows: [[total_killmails]]}} = Repo.query(killmail_query)
+          # Check total killmail records using Ash
+          total_killmails =
+            case Api.read(Killmail |> aggregate(:count, :id, :total)) do
+              {:ok, [%{total: count}]} -> count
+              _ -> 0
+            end
 
-          # Check total statistics records
-          stats_query = "SELECT COUNT(*) FROM killmail_statistics"
-          {:ok, %{rows: [[total_stats]]}} = Repo.query(stats_query)
+          # Check total statistics records using Ash
+          total_stats =
+            case Api.read(KillmailStatistic |> aggregate(:count, :id, :total)) do
+              {:ok, [%{total: count}]} -> count
+              _ -> 0
+            end
 
-          # Check stats by period
-          period_query =
-            "SELECT period_type, COUNT(*) FROM killmail_statistics GROUP BY period_type"
+          # Check total involvement records using Ash
+          total_involvements =
+            case Api.read(KillmailCharacterInvolvement |> aggregate(:count, :id, :total)) do
+              {:ok, [%{total: count}]} -> count
+              _ -> 0
+            end
 
-          {:ok, period_results} = Repo.query(period_query)
+          # Check stats by period using Ash - fixed group_by call
+          period_results =
+            case Api.read(
+                   KillmailStatistic
+                   |> Ash.Query.filter(true)
+                   |> Ash.Query.aggregate(:count, :id, group_by: [:period_type])
+                 ) do
+              {:ok, results} ->
+                results
+                |> Enum.map(fn result ->
+                  {Atom.to_string(result.period_type), result.count}
+                end)
+                |> Enum.into(%{})
 
-          # Check recent killmails
-          recent_query =
-            "SELECT killmail_id, related_character_name, character_role, kill_time, solar_system_name FROM killmails ORDER BY kill_time DESC LIMIT 5"
+              _ ->
+                %{}
+            end
 
-          {:ok, recent_results} = Repo.query(recent_query)
-
-          # Format the period results
-          period_counts =
-            period_results.rows
-            |> Enum.map(fn [period, count] ->
-              {period, count}
-            end)
-            |> Enum.into(%{})
-
-          # Format recent killmails
+          # Get recent killmails using Ash
           recent_killmails =
-            recent_results.rows
-            |> Enum.map(fn [killmail_id, character_name, role, kill_time, system_name] ->
-              %{
-                killmail_id: killmail_id,
-                character_name: character_name,
-                role: role,
-                kill_time: kill_time,
-                system_name: system_name
-              }
-            end)
+            case Api.read(
+                   Killmail
+                   |> sort(kill_time: :desc)
+                   |> limit(5)
+                   |> select([
+                     :id,
+                     :killmail_id,
+                     :kill_time,
+                     :solar_system_name,
+                     :victim_name,
+                     :victim_ship_name,
+                     :total_value
+                   ])
+                 ) do
+              {:ok, killmails} ->
+                Enum.map(killmails, fn km ->
+                  %{
+                    id: km.id,
+                    killmail_id: km.killmail_id,
+                    kill_time: km.kill_time,
+                    system_name: km.solar_system_name,
+                    victim_name: km.victim_name,
+                    victim_ship: km.victim_ship_name,
+                    total_value: km.total_value
+                  }
+                end)
 
-          # Count tracked characters in database
-          char_query = "SELECT COUNT(*) FROM tracked_characters"
-          {:ok, %{rows: [[total_chars]]}} = Repo.query(char_query)
+              _ ->
+                []
+            end
+
+          # Count tracked characters using Ash
+          total_chars =
+            case Api.read(TrackedCharacter |> aggregate(:count, :id, :total)) do
+              {:ok, [%{total: count}]} -> count
+              _ -> 0
+            end
 
           # Count characters in cache
           cached_characters = CacheRepo.get("map:characters") || []
@@ -452,10 +491,11 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
             message: "Diagnostic information for killmail aggregation",
             counts: %{
               killmails: total_killmails,
+              character_involvements: total_involvements,
               statistics: total_stats,
               tracked_characters_db: total_chars,
               tracked_characters_cache: length(cached_characters),
-              by_period: period_counts
+              by_period: period_results
             },
             recent_killmails: recent_killmails
           })
@@ -474,7 +514,10 @@ defmodule WandererNotifier.Api.Controllers.ChartController do
         end
       rescue
         e ->
-          AppLogger.api_error("Error in killmail debug endpoint", error: Exception.message(e))
+          AppLogger.api_error("Error in killmail debug endpoint",
+            error: Exception.message(e),
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          )
 
           send_error_response(
             conn,

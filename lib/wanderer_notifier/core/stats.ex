@@ -80,14 +80,17 @@ defmodule WandererNotifier.Core.Stats do
     # Format notification counts
     notifications = stats.notifications
     total_notifications = notifications.total
-    _kills_notified = notifications.kills
+    # Prefix with underscore since it's unused
     systems_notified = notifications.systems
     characters_notified = notifications.characters
 
     # Format processing stats
     processing = stats.processing
     kills_processed = processing.kills_processed
+    # Get persisted count or default to 0
+    kills_persisted = processing.kills_persisted || 0
     kills_notified = processing.kills_notified
+    character_involvements = processing.character_involvement_persisted || 0
 
     # Format websocket status
     websocket = stats.websocket
@@ -103,9 +106,12 @@ defmodule WandererNotifier.Core.Stats do
     AppLogger.kill_info("📊 Stats Summary:
     Uptime: #{uptime}
     Notifications: #{total_notifications} total (#{kills_notified} kills, #{systems_notified} systems, #{characters_notified} characters)
-    Processing: #{kills_processed} kills processed, #{kills_notified} kills notified
+    Processing: #{kills_processed} kills processed, #{kills_persisted} kills persisted, #{character_involvements} character involvements
     WebSocket: #{connected}, last message #{last_message}")
   end
+
+  # Alias for print_summary for backward compatibility
+  def summary, do: print_summary()
 
   # Server Implementation
 
@@ -132,7 +138,9 @@ defmodule WandererNotifier.Core.Stats do
        },
        processing: %{
          kills_processed: 0,
-         kills_notified: 0
+         kills_persisted: 0,
+         kills_notified: 0,
+         character_involvement_persisted: 0
        },
        first_notifications: %{
          kill: true,
@@ -147,6 +155,14 @@ defmodule WandererNotifier.Core.Stats do
     case type do
       :kill_processed ->
         processing = Map.update(state.processing, :kills_processed, 1, &(&1 + 1))
+        {:noreply, %{state | processing: processing}}
+
+      :kill_persisted ->
+        processing = Map.update(state.processing, :kills_persisted, 1, &(&1 + 1))
+        {:noreply, %{state | processing: processing}}
+
+      :character_involvement_persisted ->
+        processing = Map.update(state.processing, :character_involvement_persisted, 1, &(&1 + 1))
         {:noreply, %{state | processing: processing}}
 
       :kill_notified ->

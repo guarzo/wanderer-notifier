@@ -259,56 +259,68 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   # Helper to extract kill_id regardless of struct type
   defp extract_kill_id(kill) do
     cond do
-      is_struct(kill, WandererNotifier.Data.Killmail) -> kill.killmail_id
       is_struct(kill, WandererNotifier.Resources.Killmail) -> kill.killmail_id
       is_map(kill) -> Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
       true -> nil
     end
   end
 
-  # Helper to ensure we have a Data.Killmail struct
+  # Helper to ensure we have a proper killmail format
   defp ensure_data_killmail(kill) do
     cond do
-      is_struct(kill, WandererNotifier.Data.Killmail) ->
+      is_struct(kill, WandererNotifier.Resources.Killmail) ->
         # Already the right type
         kill
 
-      is_struct(kill, WandererNotifier.Resources.Killmail) ->
-        # Convert from Resources.Killmail to Data.Killmail
-        WandererNotifier.Data.Killmail.new(
-          kill.killmail_id,
-          Map.get(kill, :zkb_data) || %{}
-        )
-
       is_map(kill) ->
-        # Convert from map to Data.Killmail
-        WandererNotifier.Data.Killmail.new(
-          Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id),
-          Map.get(kill, "zkb") || Map.get(kill, :zkb) || %{}
-        )
+        # Create a map with the necessary data structure
+        %{
+          killmail_id: Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id),
+          zkb_data: Map.get(kill, "zkb") || Map.get(kill, :zkb) || %{},
+          esi_data: Map.get(kill, "esi_data") || Map.get(kill, :esi_data) || %{}
+        }
 
       true ->
         # Default empty killmail as fallback
-        WandererNotifier.Data.Killmail.new(nil, %{})
+        %{
+          killmail_id: nil,
+          zkb_data: %{},
+          esi_data: %{}
+        }
     end
   end
 
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
-    # For Data.Killmail struct
-    if is_struct(killmail, WandererNotifier.Data.Killmail) do
-      # Check victim data
-      victim = Map.get(killmail, :victim) || %{}
+    if is_struct(killmail, WandererNotifier.Resources.Killmail) do
+      # For normalized Resource.Killmail
+      victim_name = killmail.victim_name
+      ship_type_name = killmail.victim_ship_name
+      system_name = killmail.solar_system_name
 
-      # Check system name
-      esi_data = Map.get(killmail, :esi_data) || %{}
-      system_name = Map.get(esi_data, "solar_system_name")
+      cond do
+        is_nil(victim_name) || victim_name == "" ->
+          {:error, "Killmail is missing victim name"}
 
-      validate_fields(victim, system_name)
+        is_nil(ship_type_name) || ship_type_name == "" ->
+          {:error, "Victim is missing ship type name"}
+
+        is_nil(system_name) || system_name == "" ->
+          {:error, "Killmail is missing system name"}
+
+        true ->
+          :ok
+      end
     else
-      # Fall back to treating it as a generic map
-      victim = Map.get(killmail, :victim_data) || %{}
-      system_name = Map.get(killmail, :solar_system_name)
+      # For legacy or map-based data
+      victim =
+        Map.get(killmail, :victim_data) ||
+          (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "victim")) ||
+          %{}
+
+      system_name =
+        Map.get(killmail, :solar_system_name) ||
+          (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "solar_system_name"))
 
       validate_fields(victim, system_name)
     end
