@@ -74,7 +74,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     case Task.yield(task, 15_000) do
       {:ok, {:ok, characters}} ->
         AppLogger.maintenance_info(
-          "👥 Characters updated: #{length(ensure_list(characters))} characters synchronized"
+          "👥 Characters updated: #{length(ensure_list(characters))} characters tracked"
         )
 
         handle_successful_character_update(state, characters)

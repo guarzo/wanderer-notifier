@@ -364,6 +364,36 @@ defmodule WandererNotifier.Api.ESI.Service do
     get_character_info(character_id)
   end
 
+  @doc """
+  Fetches just the character name from ESI by character_id.
+  """
+  def get_character_name(character_id) do
+    AppLogger.api_debug("ESI: get_character_name(#{character_id})")
+    case get_character_info(character_id) do
+      {:ok, %{"name" => name}} when is_binary(name) ->
+        AppLogger.api_debug("ESI: Found character name: #{name}")
+        {:ok, %{"name" => name}}
+      error ->
+        AppLogger.api_debug("ESI: Character name not found: #{inspect(error)}")
+        error
+    end
+  end
+
+  @doc """
+  Fetches just the type name from ESI by type_id.
+  """
+  def get_type_name(type_id) do
+    AppLogger.api_debug("ESI: get_type_name(#{type_id})")
+    case get_type_info(type_id) do
+      {:ok, %{"name" => name}} when is_binary(name) ->
+        AppLogger.api_debug("ESI: Found type name: #{name}")
+        {:ok, %{"name" => name}}
+      error ->
+        AppLogger.api_debug("ESI: Type name not found: #{inspect(error)}")
+        error
+    end
+  end
+
   @impl WandererNotifier.Api.ESI.ServiceBehaviour
   def get_system(system_id) do
     get_system_info(system_id)

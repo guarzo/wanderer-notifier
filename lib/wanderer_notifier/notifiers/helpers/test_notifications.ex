@@ -109,14 +109,45 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
           esi_data: esi_data
         }
 
-        # Enrich the killmail data
+        # Enrich the killmail data first
         enriched_kill = Enrichment.enrich_killmail_data(killmail_data)
 
-        AppLogger.kill_debug(
-          "TEST NOTIFICATION: Enriched killmail data: #{inspect(enriched_kill)}"
+        # Now normalize the enriched data to ensure all fields are properly populated
+        normalized_kill = Validator.normalize_killmail(enriched_kill)
+
+        # Preserve the original ESI and ZKB data that might be lost during normalization
+        final_kill = Map.merge(
+          normalized_kill,
+          Map.take(enriched_kill, [:esi_data, :zkb_data, :metadata])
         )
 
-        {:ok, enriched_kill}
+        # Extract victim information for additional ESI lookups
+        victim = Map.get(final_kill, :full_victim_data, %{})
+        corporation_id = Map.get(victim, "corporation_id")
+
+        # Add corporation name if available but not already set
+        final_kill_with_corp = case corporation_id do
+          nil ->
+            final_kill
+          _ ->
+            if !Map.get(final_kill, :victim_corporation_name) || Map.get(final_kill, :victim_corporation_name) == "Unknown Corp" do
+              case ESIService.get_corporation_info(corporation_id) do
+                {:ok, corp_info} ->
+                  corp_name = Map.get(corp_info, "name", "Unknown Corp")
+                  Map.put(final_kill, :victim_corporation_name, corp_name)
+                _ ->
+                  final_kill
+              end
+            else
+              final_kill
+            end
+        end
+
+        AppLogger.kill_debug(
+          "TEST NOTIFICATION: Enriched and normalized killmail data: #{inspect(final_kill_with_corp)}"
+        )
+
+        {:ok, final_kill_with_corp}
 
       {:error, reason} ->
         {:error, reason}
@@ -140,6 +171,20 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
   # Format and send the notification
   defp send_formatted_notification(enriched_kill, kill_id) do
+    # Add detailed debugging of killmail fields
+    AppLogger.kill_debug("TEST NOTIFICATION: Killmail fields before formatting:", %{
+      killmail_id: kill_id,
+      victim_name: Map.get(enriched_kill, :victim_name),
+      victim_ship_name: Map.get(enriched_kill, :victim_ship_name),
+      victim_corporation_name: Map.get(enriched_kill, :victim_corporation_name),
+      solar_system_name: Map.get(enriched_kill, :solar_system_name),
+      solar_system_security: Map.get(enriched_kill, :solar_system_security),
+      final_blow_attacker_name: Map.get(enriched_kill, :final_blow_attacker_name),
+      final_blow_ship_name: Map.get(enriched_kill, :final_blow_ship_name),
+      attacker_count: Map.get(enriched_kill, :attacker_count),
+      total_value: Map.get(enriched_kill, :total_value)
+    })
+
     # Format the notification
     generic_notification = StructuredFormatter.format_kill_notification(enriched_kill)
     discord_format = StructuredFormatter.to_discord_format(generic_notification)

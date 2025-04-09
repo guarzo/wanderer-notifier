@@ -230,4 +230,82 @@ defmodule WandererNotifier.KillmailProcessing.Extractor do
       attacker_count: if(is_list(attackers), do: length(attackers), else: 0)
     }
   end
+
+  @doc """
+  Gets a specific field from the killmail using string keys.
+
+  ## Examples
+
+      iex> get(killmail, "solar_system_name")
+      "Jita"
+  """
+  @spec get(killmail_source(), String.t()) :: any()
+  def get(%KillmailData{} = killmail, key) when is_binary(key) do
+    Map.get(killmail, String.to_atom(key))
+  end
+
+  def get(%KillmailResource{} = killmail, key) when is_binary(key) do
+    Map.get(killmail, String.to_atom(key))
+  end
+
+  def get(%{esi_data: esi_data}, key) when is_binary(key) and is_map(esi_data) do
+    Map.get(esi_data, key)
+  end
+
+  def get(data, key) when is_map(data) and is_binary(key) do
+    Map.get(data, key)
+  end
+
+  def get(_data, _key), do: nil
+
+  @doc """
+  Find a field in killmail data based on the character ID and role.
+  Used to locate ship and character data in the appropriate place.
+
+  ## Examples
+
+      iex> find_field(killmail, "ship_type_name", 12345, :victim)
+      "Retriever"
+
+      iex> find_field(killmail, "ship_type_name", 12345, :attacker)
+      "Maller"
+  """
+  @spec find_field(killmail_source(), String.t(), integer() | String.t(), atom()) :: any()
+  def find_field(killmail, field, character_id, :victim) do
+    victim = get_victim(killmail)
+
+    if victim_has_character_id?(victim, character_id) do
+      Map.get(victim, field)
+    else
+      nil
+    end
+  end
+
+  def find_field(killmail, field, character_id, :attacker) do
+    attackers = get_attackers(killmail)
+
+    attacker =
+      Enum.find(attackers, fn a ->
+        attacker_id = Map.get(a, "character_id")
+        to_string(attacker_id) == to_string(character_id)
+      end)
+
+    if attacker, do: Map.get(attacker, field), else: nil
+  end
+
+  def find_field(_killmail, _field, _character_id, _role), do: nil
+
+  # Helper to check if a victim has the given character_id
+  defp victim_has_character_id?(victim, character_id) when is_map(victim) do
+    victim_id = Map.get(victim, "character_id")
+    to_string(victim_id) == to_string(character_id)
+  end
+
+  defp victim_has_character_id?(_, _), do: false
+
+  @doc """
+  Alias for get_attackers to maintain compatibility with legacy code.
+  """
+  @spec get_attacker(killmail_source()) :: list(map())
+  def get_attacker(killmail), do: get_attackers(killmail)
 end

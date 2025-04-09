@@ -11,8 +11,6 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   alias WandererNotifier.KillmailProcessing.{
     Context,
-    Extractor,
-    KillmailData,
     Pipeline
   }
 
@@ -110,7 +108,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       :ok
   catch
     kind, error ->
-      AppLogger.websocket_warn("Stats service not ready for status update", error: {kind, error})
+      AppLogger.websocket_warn("Stats service not ready for status update",
+        error: {kind, error}
+      )
+
       :ok
   end
 
@@ -147,7 +148,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   @impl true
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
-    AppLogger.websocket_info("Subscribing to killstream channel")
+    AppLogger.websocket_debug("Subscribing to killstream channel")
 
     # Send the subscription frame
     {:reply, {:text, msg}, state}
@@ -156,38 +157,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   # Handle heartbeat check message
   @impl true
   def handle_info(:check_heartbeat, state) do
-    # Get last message time from state or Stats
-    stats = Stats.get_stats()
-    last_message_time = stats.websocket.last_message
+    # Get last message time and check for stale connection
+    last_message_time = get_last_message_time()
+    no_messages = check_for_stale_connection(last_message_time)
 
-    # Check if we've received any messages in the last 5 minutes
-    now = DateTime.utc_now()
-
-    no_messages =
-      case last_message_time do
-        nil -> true
-        # 5 minutes
-        time -> DateTime.diff(now, time, :second) > 300
-      end
-
+    # Handle stale connection if needed
     if no_messages && state.connected do
-      # No messages for too long, connection might be stale
-      AppLogger.websocket_warn("No messages received in over 5 minutes",
-        status: "connection_stale"
-      )
-
-      # Send a test ping to verify connection
-      AppLogger.websocket_debug("Sending manual ping to test connection")
-
-      case WebSockex.send_frame(self(), :ping) do
-        :ok ->
-          AppLogger.websocket_debug("Manual ping sent successfully")
-
-        {:error, reason} ->
-          AppLogger.websocket_error("Failed to send manual ping", error: inspect(reason))
-          # Connection is definitely bad, initiate a reconnect
-          Process.send_after(self(), :force_reconnect, 1000)
-      end
+      handle_stale_connection()
     else
       # Use batch logging for routine heartbeat checks
       AppLogger.count_batch_event(:websocket_heartbeat, %{status: "ok"})
@@ -197,6 +173,16 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     # Check every minute
     Process.send_after(self(), :check_heartbeat, 60_000)
     {:ok, state}
+  rescue
+    e ->
+      AppLogger.websocket_error("Error during heartbeat check",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      # Ensure we reschedule the heartbeat check even if there's an error
+      Process.send_after(self(), :check_heartbeat, 60_000)
+      {:ok, state}
   end
 
   # Handle reconnect request
@@ -207,8 +193,63 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     {:close, state}
   end
 
+  # Helper to get the last message time from stats
+  defp get_last_message_time do
+    stats = Stats.get_stats()
+    # Check if websocket key exists and has a last_message field
+    if is_map(stats) && is_map(stats.websocket) &&
+         Map.has_key?(stats.websocket, :last_message) do
+      stats.websocket.last_message
+    else
+      nil
+    end
+  rescue
+    e ->
+      AppLogger.websocket_warn("Stats service not ready during heartbeat check",
+        error: Exception.message(e)
+      )
+
+      nil
+  end
+
+  # Helper to check if the connection is stale
+  defp check_for_stale_connection(last_message_time) do
+    # Check if we've received any messages in the last 5 minutes
+    now = DateTime.utc_now()
+
+    case last_message_time do
+      nil -> true
+      # 5 minutes
+      time -> DateTime.diff(now, time, :second) > 300
+    end
+  end
+
+  # Helper to handle a stale connection
+  defp handle_stale_connection do
+    # No messages for too long, connection might be stale
+    AppLogger.websocket_warn("No messages received in over 5 minutes",
+      status: "connection_stale"
+    )
+
+    # Send a test ping to verify connection
+    AppLogger.websocket_debug("Sending manual ping to test connection")
+
+    case WebSockex.send_frame(self(), :ping) do
+      :ok ->
+        AppLogger.websocket_debug("Manual ping sent successfully")
+
+      {:error, reason} ->
+        AppLogger.websocket_error("Failed to send manual ping", error: inspect(reason))
+        # Connection is definitely bad, initiate a reconnect
+        Process.send_after(self(), :force_reconnect, 1000)
+    end
+  end
+
   @impl true
   def handle_frame(frame, state) do
+    # Ensure state has last_message field
+    state = Map.put_new(state, :last_message, nil)
+
     case frame do
       # Text frames - handle JSON messages
       {:text, raw_msg} ->
@@ -258,6 +299,14 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   # Web socket frame handler
   def process_text_frame(raw_msg, state) do
+    # Ensure state has all required fields to prevent errors
+    state =
+      state
+      |> Map.put_new(:last_message, nil)
+      |> Map.put_new(:startup_time, System.os_time(:second))
+      |> Map.put_new(:reconnects, 0)
+      |> Map.put_new(:url, default_url())
+
     # Track last message time
     now = DateTime.utc_now()
     state = %{state | last_message: now}
@@ -267,11 +316,20 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       # Get current stats to preserve existing values
       current_stats = Stats.get_stats()
 
+      # Make sure we have valid stats with websocket data
+      startup_time =
+        if is_map(current_stats) && is_map(current_stats.websocket) &&
+             Map.has_key?(current_stats.websocket, :startup_time) do
+          current_stats.websocket.startup_time || state.startup_time
+        else
+          state.startup_time
+        end
+
       Stats.update_websocket(%{
         connected: true,
         connecting: false,
         last_message: now,
-        startup_time: current_stats.websocket.startup_time || state.startup_time,
+        startup_time: startup_time,
         reconnects: state.reconnects,
         url: state.url
       })
@@ -316,8 +374,10 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     killmail_id = get_killmail_id(json_data)
 
     if killmail_id do
-      AppLogger.websocket_debug("[ZKill] Processing killmail", %{
-        killmail_id: killmail_id
+      # Log the full structure for debugging
+      AppLogger.websocket_debug("[ZKill] Raw killmail structure", %{
+        killmail_id: killmail_id,
+        raw_data: inspect(json_data, limit: :infinity)
       })
 
       # Processing separately to avoid blocking websocket
@@ -368,33 +428,23 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   # Helper function to process killmail asynchronously
   defp process_killmail_async(json_data, ctx, killmail_id) do
+    # Simple log that we received a killmail from websocket
+    AppLogger.websocket_debug("Received killmail ##{killmail_id}")
+
+    # Just forward to pipeline without any extraction or processing
     case Pipeline.process_killmail(json_data, ctx) do
-      {:ok, %KillmailData{} = killmail} ->
-        # Use the Extractor module to get system name
-        solar_system_name = Extractor.get_system_name(killmail) || "Unknown"
-
-        AppLogger.websocket_debug("[ZKill] Successfully processed killmail", %{
-          killmail_id: killmail_id,
-          solar_system: solar_system_name
-        })
-
       {:ok, _result} ->
-        AppLogger.websocket_debug("[ZKill] Successfully processed killmail", %{
-          killmail_id: killmail_id
-        })
+        # Just log success without extracting data
+        AppLogger.websocket_debug("Processed killmail ##{killmail_id}")
 
       {:error, reason} ->
-        AppLogger.websocket_debug("[ZKill] Pipeline reported error for killmail", %{
-          killmail_id: killmail_id,
-          error: inspect(reason)
-        })
+        # Log error with minimal processing
+        AppLogger.websocket_error("Failed to process killmail ##{killmail_id} - #{inspect(reason)}")
     end
   rescue
     e ->
-      AppLogger.websocket_debug("[ZKill] Exception in pipeline processing", %{
-        killmail_id: killmail_id,
-        error: Exception.message(e)
-      })
+      # Simple error logging
+      AppLogger.websocket_error("Exception processing killmail ##{killmail_id} - #{Exception.message(e)}")
   end
 
   # Helper function to extract killmail ID
@@ -440,7 +490,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       Stats.update_websocket(%{
         connected: false,
         connecting: false,
-        last_message: state.last_message,
+        last_message: Map.get(state, :last_message),
         startup_time: ensure_datetime(state.startup_time),
         reconnects: new_state.reconnects,
         url: state.url,
@@ -462,7 +512,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       Stats.update_websocket(%{
         connected: false,
         connecting: true,
-        last_message: state.last_message,
+        last_message: Map.get(state, :last_message),
         startup_time: ensure_datetime(state.startup_time),
         reconnects: new_state.reconnects,
         url: state.url,

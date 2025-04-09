@@ -155,15 +155,23 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       character_id: Map.get(killmail, :victim_id)
     }
 
+    # Get security status value and ensure proper formatting
+    security_status_value = Map.get(killmail, :solar_system_security)
+    security_status_type = get_system_security_type(security_status_value)
+    security_status = %{
+      value: security_status_value,
+      type: security_status_type
+    }
+
+    # Format security status for display
+    security_formatted = format_security_status(security_status)
+
     # Extract system, value and attackers info
     kill_context = %{
       system_name: Map.get(killmail, :solar_system_name) || "Unknown System",
       system_id: Map.get(killmail, :solar_system_id),
-      security_status: %{
-        value: Map.get(killmail, :solar_system_security),
-        type: get_system_security_type(Map.get(killmail, :solar_system_security))
-      },
-      security_formatted: "Unknown",
+      security_status: security_status,
+      security_formatted: security_formatted || "Unknown",
       formatted_value: format_isk(Map.get(killmail, :total_value) || 0),
       attackers_count: Map.get(killmail, :attacker_count) || 0,
       is_npc_kill: Map.get(killmail, :is_npc, false)
@@ -322,8 +330,15 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     ship_name = killmail.final_blow_ship_name || "Unknown Ship"
     character_id = killmail.final_blow_attacker_id
 
+    # Create a zkillboard link if we have a character ID
+    text = if character_id do
+      "[#{character_name}](https://zkillboard.com/character/#{character_id}/) (#{ship_name})"
+    else
+      "#{character_name} (#{ship_name})"
+    end
+
     %{
-      text: "#{character_name} (#{ship_name})",
+      text: text,
       icon_url: get_character_icon_url(character_id)
     }
   end
@@ -363,11 +378,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         inline: true
       },
       %{
-        name: "Security",
-        value: "#{kill_context.security_formatted || "Unknown"}",
-        inline: true
-      },
-      %{
         name: "Value",
         value: "#{kill_context.formatted_value}",
         inline: true
@@ -399,32 +409,61 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
          kill_time,
          victim_info,
          kill_context,
-         _final_blow_details,
-         fields
+         final_blow_details,
+         _fields
        ) do
     AppLogger.processor_debug("Building kill notification for kill #{kill_id}")
 
-    # Determine author name
-    author_name =
-      if victim_info.name == "Unknown Pilot" and victim_info.corp == "Unknown Corp" do
-        "Kill in #{kill_context.system_name}"
-      else
-        "#{victim_info.name} (#{victim_info.corp})"
-      end
+    # Get corporation text (adding parentheses if there's a corp name)
+    corp_text = if victim_info.corp && victim_info.corp != "Unknown Corp" do
+      "(#{victim_info.corp})"
+    else
+      ""
+    end
 
-    # Determine author icon URL
-    author_icon_url =
-      if victim_info.name == "Unknown Pilot" and victim_info.corp == "Unknown Corp" do
-        "https://images.evetech.net/types/30_371/icon"
-      else
-        if victim_info.character_id do
-          "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
-        else
-          nil
-        end
-      end
+    # Create victim name with zkillboard link if character ID is available
+    victim_name_with_link = if victim_info.character_id do
+      "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/)"
+    else
+      victim_info.name
+    end
 
-    # Determine thumbnail URL
+    # Create ship name with zkillboard link if ship ID is available
+    ship_name_with_link = if victim_info.ship_type_id do
+      "[#{victim_info.ship}](https://zkillboard.com/ship/#{victim_info.ship_type_id}/)"
+    else
+      victim_info.ship
+    end
+
+    # Create system with zkillboard link if system ID is available
+    system_with_link = if kill_context.system_id do
+      "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
+    else
+      kill_context.system_name
+    end
+
+    # Create attacker text with zkillboard link if character ID is available
+    attacker_text = case final_blow_details do
+      %{text: text} when is_binary(text) -> text
+      _ -> "Unknown"
+    end
+
+    # Build a streamlined description with complete attacker information in text
+    description = cond do
+      # No attackers or just one (the final blow attacker)
+      kill_context.attackers_count <= 1 ->
+        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} in #{system_with_link}."
+
+      # 2 attackers (the final blow + one more)
+      kill_context.attackers_count == 2 ->
+        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and 1 other in #{system_with_link}."
+
+      # More than 2 attackers
+      true ->
+        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and #{kill_context.attackers_count - 1} others in #{system_with_link}."
+    end
+
+    # Determine thumbnail URL (ship image)
     thumbnail_url =
       if victim_info.ship_type_id do
         "https://images.evetech.net/types/#{victim_info.ship_type_id}/render"
@@ -432,16 +471,34 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         nil
       end
 
-    # Create system link if system ID is available
-    system_with_link =
-      if kill_context.system_id do
-        "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
-      else
-        kill_context.system_name
-      end
+    # Only keep alliance field if available
+    fields = if victim_info.alliance do
+      [
+        %{
+          name: "Alliance",
+          value: victim_info.alliance,
+          inline: true
+        }
+      ]
+    else
+      []
+    end
 
-    # Enhanced description with linked system name
-    description = "#{victim_info.name} lost a #{victim_info.ship} in #{system_with_link}"
+    # Determine author name and icon for the victim
+    author_name = if victim_info.corp && victim_info.corp != "Unknown Corp" do
+      "#{victim_info.name} (#{victim_info.corp})"
+    else
+      victim_info.name
+    end
+
+    author_icon_url = if victim_info.character_id do
+      "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
+    else
+      nil
+    end
+
+    # Create footer text with value and no kill ID
+    footer_text = "Value: #{kill_context.formatted_value}"
 
     # Build the notification
     %{
@@ -452,7 +509,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       url: "https://zkillboard.com/kill/#{kill_id}/",
       timestamp: kill_time,
       footer: %{
-        text: "Kill ID: #{kill_id}"
+        text: footer_text
       },
       thumbnail: %{
         url: thumbnail_url

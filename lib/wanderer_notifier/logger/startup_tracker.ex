@@ -81,9 +81,6 @@ defmodule WandererNotifier.Logger.StartupTracker do
     # Store in process dictionary
     Process.put(:startup_tracker, state)
 
-    # Log startup beginning
-    AppLogger.startup_info("Starting application (consolidated startup logs enabled)")
-
     state
   end
 

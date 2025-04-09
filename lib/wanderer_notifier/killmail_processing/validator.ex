@@ -89,8 +89,14 @@ defmodule WandererNotifier.KillmailProcessing.Validator do
     zkb_data = Extractor.get_zkb_data(killmail) || %{}
     system_id = Extractor.get_system_id(killmail)
     system_name = Extractor.get_system_name(killmail) || "Unknown System"
+    system_security = get_system_security(killmail)
     victim = Extractor.get_victim(killmail) || %{}
     attackers = Extractor.get_attackers(killmail) || []
+
+    # Find the final blow attacker
+    final_blow_attacker = Enum.find(attackers, fn attacker ->
+      Map.get(attacker, "final_blow", false) == true
+    end) || %{}
 
     # Build the normalized structure
     %{
@@ -105,16 +111,46 @@ defmodule WandererNotifier.KillmailProcessing.Validator do
       # System data
       solar_system_id: system_id,
       solar_system_name: system_name,
+      solar_system_security: system_security,
       # Victim data
       victim_id: Map.get(victim, "character_id"),
       victim_name: Map.get(victim, "character_name"),
       victim_ship_id: Map.get(victim, "ship_type_id"),
       victim_ship_name: Map.get(victim, "ship_type_name") || "Unknown Ship",
+      victim_corporation_id: Map.get(victim, "corporation_id"),
+      victim_corporation_name: Map.get(victim, "corporation_name") || "Unknown Corp",
+      victim_alliance_id: Map.get(victim, "alliance_id"),
+      victim_alliance_name: Map.get(victim, "alliance_name"),
+      # Attacker data
+      attacker_count: length(attackers),
+      final_blow_attacker_id: Map.get(final_blow_attacker, "character_id"),
+      final_blow_attacker_name: Map.get(final_blow_attacker, "character_name") || "Unknown",
+      final_blow_ship_id: Map.get(final_blow_attacker, "ship_type_id"),
+      final_blow_ship_name: Map.get(final_blow_attacker, "ship_type_name") || "Unknown Ship",
       # Raw data preservation
       zkb_hash: Map.get(zkb_data, "hash"),
       full_victim_data: victim,
       full_attacker_data: attackers
     }
+  end
+
+  # Helper function to extract system security from different formats
+  defp get_system_security(killmail) do
+    cond do
+      is_struct(killmail, KillmailResource) && Map.get(killmail, :solar_system_security) ->
+        killmail.solar_system_security
+
+      is_map(killmail) && Map.get(killmail, :solar_system_security) ->
+        Map.get(killmail, :solar_system_security)
+
+      is_map(killmail) && Map.get(killmail, :esi_data) &&
+        is_map(Map.get(killmail, :esi_data)) &&
+        Map.get(killmail.esi_data, "security_status") ->
+        Map.get(killmail.esi_data, "security_status")
+
+      true ->
+        nil
+    end
   end
 
   @doc """

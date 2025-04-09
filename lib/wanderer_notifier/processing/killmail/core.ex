@@ -58,7 +58,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
 
   defp process_enrichment(killmail) do
     case Enrichment.process_and_notify(killmail) do
-      :ok -> {:ok, killmail}
+      {:ok, enriched_killmail = %KillmailData{}} -> {:ok, enriched_killmail}
       {:ok, :skipped} -> {:ok, :skipped}
       error -> error
     end

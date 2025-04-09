@@ -6,8 +6,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.KillmailEnrichment, as: Enrichment
-  alias WandererNotifier.KillmailProcessing.{Context, Extractor, KillmailData, Metrics, Validator}
+  alias WandererNotifier.KillmailProcessing.{Context, Extractor, KillmailData, Metrics, Transformer, Validator}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
@@ -84,10 +83,12 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       # For other errors, log at info level, not error - cut down on noise
       error ->
         Metrics.track_processing_error(ctx)
-        # Use debug logging for these errors to reduce noise
+
+        # Extract available information
         kill_id = get_kill_id(zkb_data)
 
-        AppLogger.kill_info("Killmail processing issue", %{
+        # Create a meaningful error message
+        AppLogger.kill_info("Error processing killmail ##{kill_id}", %{
           error: inspect(error),
           kill_id: kill_id,
           status: "failed"
@@ -98,32 +99,105 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     end
   end
 
+  @doc """
+  Process a pre-created KillmailData struct through the pipeline.
+  Skips the initial creation step and starts from enrichment.
+  Useful for debug tools and testing.
+
+  ## Parameters
+    - killmail: A KillmailData struct to process
+    - ctx: Processing context
+
+  ## Returns
+    - {:ok, result} on success
+    - {:error, reason} on failure
+  """
+  @spec process_killmail_with_data(KillmailData.t(), Context.t()) :: result()
+  def process_killmail_with_data(%KillmailData{} = killmail, ctx) do
+    Metrics.track_processing_start(ctx)
+
+    AppLogger.kill_info("Processing pre-created killmail data", %{
+      kill_id: killmail.killmail_id,
+      source: ctx.source,
+      mode: (ctx.mode && ctx.mode.mode) || :unknown
+    })
+
+    # Check if debug force notification is enabled
+    should_force_notify = ctx.metadata && Map.get(ctx.metadata, :force_notification, false)
+
+    with {:ok, enriched} <- enrich_killmail_data(killmail),
+         {:ok, validated_killmail} <- validate_killmail_data(enriched),
+         {:ok, persisted} <- persist_normalized_killmail(validated_killmail, ctx),
+         {:ok, should_notify, reason} <-
+           check_notification_with_override(persisted, ctx, should_force_notify),
+         {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
+      # Successfully processed killmail
+      Metrics.track_processing_complete(ctx, {:ok, result})
+
+      # Cleanup and get final state
+      final_killmail = Process.get(:last_killmail_update) || result
+      Process.delete(:last_killmail_update)
+
+      # Get persistence status
+      was_persisted =
+        if is_map(final_killmail) && Map.has_key?(final_killmail, :persisted),
+          do: Map.get(final_killmail, :persisted),
+          else: true
+
+      # Log outcome with override info if applicable
+      override_info = if should_force_notify, do: " (notification forced)", else: ""
+
+      log_killmail_outcome(final_killmail, ctx,
+        persisted: was_persisted,
+        notified: should_notify,
+        reason: "#{reason}#{override_info}"
+      )
+
+      {:ok, final_killmail}
+    else
+      # Handle errors same as process_killmail
+      {:error, {:skipped, reason}} ->
+        Metrics.track_processing_skipped(ctx)
+        log_killmail_outcome(killmail, ctx, persisted: false, notified: false, reason: reason)
+        {:ok, :skipped}
+
+      error ->
+        Metrics.track_processing_error(ctx)
+
+        # Get the killmail ID
+        kill_id = get_kill_id(killmail)
+
+        # Extract system and victim information based on type
+        {system_name, victim_name, victim_ship} = extract_killmail_display_info(killmail)
+
+        AppLogger.kill_info(
+          "❌ Error processing killmail ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}",
+          %{
+            kill_id: kill_id,
+            system_name: system_name,
+            victim_name: victim_name,
+            victim_ship: victim_ship,
+            error: inspect(error)
+          }
+        )
+
+        error
+    end
+  end
+
   # Creates a normalized killmail from the zKillboard data
   @spec create_normalized_killmail(map()) :: result()
   defp create_normalized_killmail(zkb_data) do
     kill_id = Map.get(zkb_data, "killmail_id")
     hash = get_in(zkb_data, ["zkb", "hash"])
 
-    AppLogger.kill_info("Fetching ESI data for killmail", %{
-      kill_id: kill_id,
-      hash: hash,
-      zkb_keys: Map.keys(zkb_data)
-    })
-
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
-        # Create normalized model using KillmailData
-        AppLogger.kill_info("ESI data successfully retrieved", %{
-          kill_id: kill_id,
-          esi_data_keys: Map.keys(esi_data)
-        })
-
         # Use KillmailData.from_zkb_and_esi to create structured data
         {:ok, KillmailData.from_zkb_and_esi(zkb_data, esi_data)}
 
       {:error, :not_found} ->
-        # This is common and expected - ESI doesn't have data for this killmail yet
-        # Log and return a specific error for this case (debug level, not error)
+        # Log at debug level to reduce noise - this happens often for new kills
         AppLogger.kill_info("ESI data not found for killmail", %{
           kill_id: kill_id,
           hash: hash
@@ -132,8 +206,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         {:error, {:skipped, "ESI data not available"}}
 
       error ->
-        # Log as debug level rather than error - reduce noise
-        AppLogger.kill_info("Error fetching killmail from ESI", %{
+        AppLogger.kill_error("Error fetching killmail from ESI", %{
           kill_id: kill_id,
           error: inspect(error)
         })
@@ -145,9 +218,15 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   # Enriches the normalized killmail data
   @spec enrich_killmail_data(killmail()) :: result()
   defp enrich_killmail_data(killmail) do
+    # Add detailed logging before enrichment
+    log_enrichment_input(killmail)
+
     # Reuse the existing enrichment logic for now
     # This maintains compatibility during the transition
     enriched = Enrichment.enrich_killmail_data(killmail)
+
+    # Add detailed logging after enrichment
+    log_enrichment_output(enriched)
 
     # Return the enriched killmail with tracking metadata
     metadata = Map.get(enriched, :metadata, %{})
@@ -159,6 +238,41 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       {:error, :enrichment_failed}
   end
 
+  # Log details about the killmail before enrichment
+  defp log_enrichment_input(killmail) do
+    # Get basic identifiers
+    kill_id = Extractor.get_killmail_id(killmail)
+
+    # Get victim data
+    victim = Extractor.get_victim(killmail) || %{}
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+    victim_ship = Map.get(victim, "ship_type_name") || "Unknown Ship"
+
+    # Get system name
+    system_name = Extractor.get_system_name(killmail) || "Unknown System"
+
+    # Use simple string message
+    AppLogger.kill_debug("PRE-ENRICHMENT Kill ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}")
+  end
+
+  # Log details about the killmail after enrichment
+  defp log_enrichment_output(killmail) do
+    # Get basic identifiers
+    kill_id = Extractor.get_killmail_id(killmail)
+
+    # Get victim data
+    victim = Extractor.get_victim(killmail) || %{}
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+    victim_ship = Map.get(victim, "ship_type_name") || "Unknown Ship"
+    victim_id = Map.get(victim, "character_id")
+
+    # Get system name
+    system_name = Extractor.get_system_name(killmail) || "Unknown System"
+
+    # Use simple string message
+    AppLogger.kill_debug("POST-ENRICHMENT Kill ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}, Victim ID: #{victim_id || "unknown"}")
+  end
+
   # Validates the normalized killmail data
   @spec validate_killmail_data(killmail()) :: result()
   defp validate_killmail_data(killmail) do
@@ -168,11 +282,6 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     # Validate without trying to fix issues
     case Validator.validate_complete_data(killmail) do
       :ok ->
-        # Validation passed
-        AppLogger.kill_info("Killmail passed validation", %{
-          killmail_id: killmail.killmail_id
-        })
-
         {:ok, killmail}
 
       {:error, reasons} ->
@@ -197,7 +306,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
         if not_tracked do
           # Don't even attempt to persist if not tracked
-          AppLogger.kill_info("[Pipeline] Skipping persistence - not tracked", %{
+          AppLogger.kill_debug("[Pipeline] Skipping persistence - not tracked", %{
             kill_id: killmail.killmail_id,
             reason: reason
           })
@@ -217,7 +326,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Handle persistence based on database availability
   defp persist_if_database_available(killmail, ctx) do
-    AppLogger.kill_info("[Pipeline] Persisting normalized killmail", %{
+    AppLogger.kill_debug("[Pipeline] Persisting normalized killmail", %{
       kill_id: killmail.killmail_id,
       character_id: ctx.character_id
     })
@@ -228,7 +337,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       do_persist_normalized_killmail(killmail, ctx)
     else
       # Database unavailable, but still allow notifications
-      AppLogger.kill_info("[Pipeline] Database unavailable, skipping persistence", %{
+      AppLogger.kill_debug("[Pipeline] Database unavailable, skipping persistence", %{
         kill_id: killmail.killmail_id
       })
 
@@ -250,55 +359,58 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Actual database persistence function
   defp do_persist_normalized_killmail(killmail, ctx) do
-    case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
+    # Convert to standardized format using Transformer for consistency
+    standardized_killmail = Transformer.to_killmail_data(killmail)
+
+    case KillmailPersistence.maybe_persist_normalized_killmail(standardized_killmail, ctx.character_id) do
       {:ok, :persisted} ->
-        AppLogger.kill_info("[Pipeline] Normalized killmail was newly persisted", %{
-          kill_id: killmail.killmail_id,
+        AppLogger.kill_debug("[Pipeline] Normalized killmail was newly persisted", %{
+          kill_id: standardized_killmail.killmail_id,
           character_id: ctx.character_id
         })
 
         Metrics.track_persistence(ctx)
-        {:ok, killmail}
+        {:ok, standardized_killmail}
 
       {:ok, :already_exists} ->
-        AppLogger.kill_info("[Pipeline] Normalized killmail already existed", %{
-          kill_id: killmail.killmail_id
+        AppLogger.kill_debug("[Pipeline] Normalized killmail already existed", %{
+          kill_id: standardized_killmail.killmail_id
         })
 
-        {:ok, killmail}
+        {:ok, standardized_killmail}
 
       # Successfully saved to database and returned the record
       {:ok, record} when is_struct(record) ->
-        AppLogger.kill_info("[Pipeline] Normalized killmail was persisted to database", %{
-          kill_id: killmail.killmail_id,
+        AppLogger.kill_debug("[Pipeline] Normalized killmail was persisted to database", %{
+          kill_id: standardized_killmail.killmail_id,
           character_id: ctx.character_id,
           record_id: Map.get(record, :id, "unknown")
         })
 
         Metrics.track_persistence(ctx)
-        {:ok, killmail}
+        {:ok, standardized_killmail}
 
       :ignored ->
-        AppLogger.kill_info("[Pipeline] Normalized killmail persistence was ignored", %{
-          kill_id: killmail.killmail_id,
+        AppLogger.kill_debug("[Pipeline] Normalized killmail persistence was ignored", %{
+          kill_id: standardized_killmail.killmail_id,
           reason: "Not tracked by any character"
         })
 
-        {:ok, killmail}
+        {:ok, standardized_killmail}
 
       error ->
         AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
-          kill_id: killmail.killmail_id,
+          kill_id: standardized_killmail.killmail_id,
           error: inspect(error)
         })
 
         # Return original killmail with error so notifications can still process
-        {:ok, killmail}
+        {:ok, standardized_killmail}
     end
   rescue
     e ->
       AppLogger.kill_error("[Pipeline] Exception during killmail persistence", %{
-        kill_id: killmail.killmail_id,
+        kill_id: Extractor.get_killmail_id(killmail),
         error: Exception.message(e)
       })
 
@@ -326,12 +438,28 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Log killmail structure details
   defp log_killmail_structure(killmail, ctx) do
-    AppLogger.kill_info("Checking notification status for killmail", %{
-      kill_id: get_kill_id(killmail),
-      killmail_keys: Map.keys(killmail),
+    kill_id = get_kill_id(killmail)
+
+    struct_type = cond do
+      is_struct(killmail) ->
+        module_name = killmail.__struct__
+        "#{module_name}"
+      true ->
+        "Not a struct"
+    end
+
+    top_level_keys = if is_map(killmail), do: Map.keys(killmail), else: []
+
+    AppLogger.kill_debug("Checking notification status for killmail", %{
+      kill_id: kill_id,
+      struct_type: struct_type,
+      killmail_keys: top_level_keys,
       has_esi_data: Map.has_key?(killmail, :esi_data),
       esi_data_present:
         if(Map.has_key?(killmail, :esi_data), do: !is_nil(killmail.esi_data), else: false),
+      victim_name: if(is_map(killmail), do: Map.get(killmail, :victim_name), else: nil),
+      system_name: if(is_map(killmail), do: Map.get(killmail, :solar_system_name), else: nil),
+      system_security: if(is_map(killmail), do: Map.get(killmail, :solar_system_security), else: nil),
       mode: ctx && ctx.mode && ctx.mode.mode
     })
   end
@@ -344,8 +472,8 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     # Update killmail based on notification decision
     updated_killmail = update_killmail_persistence_flag(killmail, reason)
 
-    # Log the decision
-    AppLogger.kill_info("Notification decision", %{
+    # Log the decision at debug level to reduce duplicate messages
+    AppLogger.kill_debug("Notification decision", %{
       should_notify: real_should_notify,
       reason: reason,
       realtime: Context.realtime?(ctx)
@@ -406,18 +534,30 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   @spec maybe_send_notification(killmail(), boolean(), Context.t()) :: result()
   defp maybe_send_notification(killmail, true, ctx) do
-    case Notification.send_kill_notification(killmail, killmail.killmail_id) do
+    kill_id = get_kill_id(killmail)
+
+    # Add detailed error information
+    case Notification.send_kill_notification(killmail, kill_id) do
       {:ok, _} ->
         Metrics.track_notification_sent(ctx)
         {:ok, killmail}
 
       # Instead of returning the raw error, transform it
       error ->
+        # Extract system and victim information based on type
+        {system_name, victim_name, victim_ship} = extract_killmail_display_info(killmail)
+
         # Log the error but don't let it propagate
-        AppLogger.kill_info("Failed to send notification", %{
-          killmail_id: killmail.killmail_id,
-          error: inspect(error)
-        })
+        AppLogger.kill_error(
+          "❌ Failed to send notification for Kill ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}",
+          %{
+            killmail_id: kill_id,
+            victim_name: victim_name,
+            system_name: system_name,
+            victim_ship: victim_ship,
+            error: inspect(error)
+          }
+        )
 
         # Always return success with the original killmail
         # This prevents errors from notification from breaking the pipeline
@@ -431,112 +571,86 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Logging helpers
 
-  defp log_killmail_outcome(killmail, ctx,
+  defp log_killmail_outcome(killmail, _ctx,
          persisted: persisted,
          notified: notified,
          reason: reason
        ) do
+    # Get basic data
     kill_id = get_kill_id(killmail)
-    kill_time = Map.get(killmail, "killmail_time")
 
-    # Check for persisted flag in killmail that might override the parameter
-    persisted =
-      if is_map(killmail) && Map.has_key?(killmail, :persisted),
-        do: Map.get(killmail, :persisted),
-        else: persisted
+    # Extract display information
+    {victim_name, victim_ship, system_name} = extract_display_info(killmail)
 
-    metadata = %{
-      kill_id: kill_id,
-      kill_time: kill_time,
-      character_id: ctx && ctx.character_id,
-      character_name: ctx && ctx.character_name,
-      batch_id: ctx && ctx.batch_id,
-      reason: reason,
-      processing_mode: ctx && ctx.mode && ctx.mode.mode
-    }
+    # Format the log message components
+    status_emoji = get_status_emoji(notified)
+    persistence_status = get_persistence_status(persisted)
+    short_reason = create_short_reason(reason)
 
-    # Determine status and message based on outcomes
-    {message, status} = get_log_details(persisted, notified, reason)
-
-    # Add status to metadata and log with appropriate level
-    updated_metadata = Map.put(metadata, :status, status)
-
-    # Most individual killmail logs should be debug level
-    # Only keep "saved_and_notified" at info level
-    if status == "saved_and_notified" do
-      AppLogger.kill_info(message, updated_metadata)
-    else
-      # All other statuses (skipped, duplicate, saved without notification) should be debug
-      AppLogger.kill_info(message, updated_metadata)
-    end
+    # Log a simplified, direct string message with emoji
+    AppLogger.kill_info("#{status_emoji} ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}#{persistence_status} - #{short_reason}")
   end
 
-  # Helper function to get log message and status based on outcomes
-  defp get_log_details(persisted, notified, reason) do
+  # Helper to extract display information from the killmail
+  defp extract_display_info(killmail) do
+    # Get values directly from the killmail struct where possible
+    victim_name = Map.get(killmail, :victim_name) || "Unknown Pilot"
+    victim_ship = Map.get(killmail, :victim_ship_name) || "Unknown Ship"
+    system_name = Map.get(killmail, :solar_system_name) || "Unknown System"
+
+    {victim_name, victim_ship, system_name}
+  end
+
+  # Helper to get the status emoji based on notification status
+  defp get_status_emoji(true), do: "✉️"
+  defp get_status_emoji(false), do: "⏭️"
+
+  # Helper to get the persistence status text
+  defp get_persistence_status(true), do: ""
+  defp get_persistence_status(false), do: " (not saved)"
+
+  # Helper to create a shortened reason that's more readable
+  defp create_short_reason(reason) do
     cond do
-      # First check for successful save and notify
-      persisted == true and notified == true ->
-        get_save_notify_details()
-
-      # Check for duplicates
-      persisted == true and notified == false and reason == "Duplicate kill" ->
-        get_duplicate_details()
-
-      # Check for not tracked killmails
-      is_binary(reason) and not_tracked_reason?(reason) ->
-        get_not_tracked_details()
-
-      # Normal saved without notification
-      persisted == true and notified == false ->
-        get_saved_without_notify_details()
-
-      # Everything else is skipped
-      persisted == false and notified == false ->
-        get_skipped_details()
-
-      # Catch-all for unexpected combinations
-      true ->
-        get_unknown_details()
+      String.contains?(reason, "Not tracked") -> "Not tracked"
+      String.contains?(reason, "Duplicate") -> "Duplicate"
+      true -> reason
     end
   end
-
-  # Individual helper functions for each outcome type
-  defp get_save_notify_details, do: {"Killmail saved and notified", "saved_and_notified"}
-  defp get_duplicate_details, do: {"Killmail already exists", "duplicate"}
-  defp get_not_tracked_details, do: {"Killmail processing skipped - not tracked", "skipped"}
-  defp get_saved_without_notify_details, do: {"Killmail saved without notification", "saved"}
-  defp get_skipped_details, do: {"Killmail processing skipped", "skipped"}
-  defp get_unknown_details, do: {"Killmail processing outcome unknown", "unknown"}
 
   defp log_killmail_error(killmail, ctx, error) do
+    # Get the killmail ID
     kill_id = get_kill_id(killmail)
-    kill_time = Map.get(killmail, "killmail_time")
+
+    # Extract system and victim information based on type
+    {system_name, victim_name, victim_ship} = extract_killmail_display_info(killmail)
 
     # Safely extract context values with default fallbacks
     character_id = ctx && ctx.character_id
     character_name = (ctx && ctx.character_name) || "unknown"
-    batch_id = (ctx && ctx.batch_id) || "unknown"
-    processing_mode = ctx && ctx.mode && ctx.mode.mode
 
-    # Create base metadata
-    metadata = %{
-      kill_id: kill_id,
-      kill_time: kill_time,
-      character_id: character_id,
-      character_name: character_name,
-      batch_id: batch_id,
-      status: "error",
-      processing_mode: processing_mode
-    }
-
-    # Format error information based on error type
+    # Format error information
     error_info = format_error_info(error)
 
-    # Log the error with formatted information
-    AppLogger.kill_error(
-      "Killmail processing failed",
-      Map.merge(metadata, error_info)
-    )
+    # Build a clear error message
+    message = "❌ Kill ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name} | Processing error"
+
+    # Create metadata with all relevant information
+    metadata = %{
+      kill_id: kill_id,
+      system_name: system_name,
+      victim_name: victim_name,
+      victim_ship: victim_ship,
+      character_id: character_id,
+      character_name: character_name,
+      status: "error"
+    }
+
+    # Add error details to metadata
+    full_metadata = Map.merge(metadata, error_info)
+
+    # Log at error level
+    AppLogger.kill_error(message, full_metadata)
   end
 
   # Helper to format error information based on error type
@@ -577,15 +691,16 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Ensure data consistency by copying enriched data throughout the struct
   defp ensure_data_consistency(killmail) do
-    # Extract needed data from esi_data
-    esi_data = killmail.esi_data || %{}
+    # Convert to standardized KillmailData format first to ensure consistent access
+    killmail_data = Transformer.to_killmail_data(killmail)
 
-    # Get essential fields with proper type conversion
-    system_id = get_and_convert_system_id(esi_data)
-    system_name = Map.get(esi_data, "solar_system_name")
+    # Extract needed data using Extractor for consistency
+    system_id = Extractor.get_system_id(killmail_data)
+    system_name = Extractor.get_system_name(killmail_data)
+    kill_time = Extractor.get_kill_time(killmail_data)
 
-    # Ensure kill_time is present and properly formatted
-    kill_time = get_and_convert_kill_time(esi_data, killmail)
+    # Get the esi_data field
+    esi_data = Map.get(killmail_data, :esi_data) || %{}
 
     # Create a consistent esi_data map
     updated_esi_data =
@@ -595,54 +710,12 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       |> Map.put("killmail_time", format_kill_time(kill_time))
 
     # Update the killmail with all consistent values
-    Map.merge(killmail, %{
+    Map.merge(killmail_data, %{
       esi_data: updated_esi_data,
       solar_system_id: system_id,
       solar_system_name: system_name,
       kill_time: kill_time
     })
-  end
-
-  # Convert system_id to integer consistently
-  defp get_and_convert_system_id(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
-
-    cond do
-      is_integer(system_id) ->
-        system_id
-
-      is_binary(system_id) ->
-        case Integer.parse(system_id) do
-          {id, _} -> id
-          :error -> nil
-        end
-
-      true ->
-        nil
-    end
-  end
-
-  # Get and convert kill_time to DateTime consistently
-  defp get_and_convert_kill_time(esi_data, killmail) do
-    # Try to get from ESI data first, then killmail directly
-    killmail_time =
-      Map.get(esi_data, "killmail_time") ||
-        Map.get(killmail, :kill_time) ||
-        Map.get(killmail, "kill_time")
-
-    cond do
-      is_struct(killmail_time, DateTime) ->
-        killmail_time
-
-      is_binary(killmail_time) ->
-        case DateTime.from_iso8601(killmail_time) do
-          {:ok, datetime, _} -> datetime
-          _ -> DateTime.utc_now()
-        end
-
-      true ->
-        DateTime.utc_now()
-    end
   end
 
   # Format kill_time for storage in esi_data
@@ -653,4 +726,95 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       true -> DateTime.to_iso8601(DateTime.utc_now())
     end
   end
+
+  # Check notification status with optional override for debug/testing
+  defp check_notification_with_override(killmail, ctx, force_notify) do
+    # First do normal notification check
+    case KillDeterminer.should_notify?(killmail) do
+      {:ok, %{should_notify: should_notify, reason: reason}} ->
+        if force_notify do
+          # Override with forced notification
+          AppLogger.kill_info("FORCED NOTIFICATION: Overriding normal notification decision", %{
+            kill_id: get_kill_id(killmail),
+            original_should_notify: should_notify,
+            original_reason: reason,
+            forced: true
+          })
+
+          # Return forced notification with original reason
+          process_notification_decision(killmail, ctx, true, "#{reason} (forced notification)")
+        else
+          # Normal processing
+          process_notification_decision(killmail, ctx, should_notify, reason)
+        end
+
+      {:error, reason} ->
+        if force_notify do
+          # Force notification despite error
+          AppLogger.kill_info("FORCED NOTIFICATION: Overriding error", %{
+            kill_id: get_kill_id(killmail),
+            original_error: inspect(reason),
+            forced: true
+          })
+
+          # Return forced notification
+          process_notification_decision(killmail, ctx, true, "Forced notification despite error")
+        else
+          # Normal error handling
+          handle_notification_error(killmail, reason)
+        end
+
+      unexpected ->
+        if force_notify do
+          # Force notification despite unexpected result
+          AppLogger.kill_info("FORCED NOTIFICATION: Overriding unexpected result", %{
+            kill_id: get_kill_id(killmail),
+            original_result: inspect(unexpected),
+            forced: true
+          })
+
+          # Return forced notification
+          process_notification_decision(
+            killmail,
+            ctx,
+            true,
+            "Forced notification despite unexpected result"
+          )
+        else
+          # Normal unexpected handling
+          handle_unexpected_result(killmail, unexpected)
+        end
+    end
+  end
+
+  # Extract system and victim information for logging
+  defp extract_killmail_display_info(%WandererNotifier.Resources.Killmail{} = killmail) do
+    # KillmailResource has direct fields for these values
+    {
+      killmail.solar_system_name || "Unknown System",
+      killmail.victim_name || "Unknown Pilot",
+      killmail.victim_ship_name || "Unknown Ship"
+    }
+  end
+
+  defp extract_killmail_display_info(killmail) do
+    # First check if the data is directly in the top-level fields
+    victim_name = Map.get(killmail, :victim_name)
+    victim_ship = Map.get(killmail, :victim_ship_name)
+    system_name = Map.get(killmail, :solar_system_name)
+
+    if victim_name && victim_ship && system_name do
+      # Use top-level fields if they exist
+      {system_name, victim_name, victim_ship}
+    else
+      # Fall back to using the Extractor for older formats
+      victim = Extractor.get_victim(killmail) || %{}
+      {
+        Extractor.get_system_name(killmail) || "Unknown System",
+        Map.get(victim, "character_name") || "Unknown Pilot",
+        Map.get(victim, "ship_type_name") || "Unknown Ship"
+      }
+    end
+  end
+
 end

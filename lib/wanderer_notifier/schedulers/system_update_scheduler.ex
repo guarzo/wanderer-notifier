@@ -32,7 +32,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
       # Wait for the task with a timeout (30 seconds)
       case Task.yield(task, 30_000) do
         {:ok, {:ok, systems}} ->
-          AppLogger.api_info("🌍 Systems updated: #{length(systems)} systems synchronized")
+          AppLogger.api_info("🌍 Systems updated: #{length(systems)} systems tracked")
           {:ok, systems, Map.put(state, :systems_count, length(systems))}
 
         {:ok, {:error, reason}} ->

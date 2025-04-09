@@ -8,8 +8,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData}
-  alias WandererNotifier.Resources.Killmail
+  alias WandererNotifier.KillmailProcessing.Extractor
   require Logger
 
   @doc """
@@ -24,41 +23,74 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def should_notify?(killmail) do
     # First check if killmail is valid and has minimal required data
     if is_nil(killmail) or not is_map(killmail) do
-      Logger.warning("[KillDeterminer] Invalid killmail format", %{
-        killmail_type: if(is_nil(killmail), do: "nil", else: inspect(killmail))
-      })
-
+      Logger.warning("DETERMINER: Invalid killmail format: #{if(is_nil(killmail), do: "nil", else: inspect(killmail))}")
       return_no_notification("Invalid killmail format")
     else
-      try do
-        # Extract key identifiers safely
-        system_id = get_kill_system_id(killmail)
-        kill_id = get_kill_id(killmail)
+      process_killmail(killmail)
+    end
+  end
 
-        Logger.debug("[KillDeterminer] Evaluating killmail", %{
-          kill_id: kill_id,
-          system_id: system_id,
-          killmail_type: if(is_struct(killmail), do: inspect(killmail.__struct__), else: "map"),
-          has_esi_data: has_esi_data?(killmail)
-        })
+  # Process a valid killmail to determine notification status
+  defp process_killmail(killmail) do
+    # Extract and log basic killmail information
+    {kill_id, system_id_str, _victim_info} = extract_killmail_info(killmail)
 
-        # Run through notification checks
-        with true <- check_notifications_enabled(kill_id),
-             true <- check_tracking(system_id, killmail) do
-          check_deduplication_and_decide(kill_id)
-        else
-          false -> return_no_notification("Not tracked by any character or system")
-          _ -> return_no_notification("Notifications disabled")
-        end
-      rescue
-        e ->
-          Logger.warning("[KillDeterminer] Exception determining notification status", %{
-            error: Exception.message(e),
-            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-          })
+    # Run through notification checks with the "with" pipeline
+    notification_result = run_notification_checks(kill_id, system_id_str, killmail)
 
-          return_no_notification("Error processing killmail")
-      end
+    # Log the final notification decision
+    log_notification_decision(kill_id, notification_result)
+
+    # Return the notification result
+    notification_result
+  rescue
+    e ->
+      Logger.warning("DETERMINER: Exception processing killmail: #{Exception.message(e)}")
+      return_no_notification("Error processing killmail")
+  end
+
+  # Extract basic information from the killmail for logging
+  defp extract_killmail_info(killmail) do
+    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
+    system_id = Extractor.get_system_id(killmail)
+    system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
+
+    # Get victim info using Extractor
+    victim = Extractor.get_victim(killmail) || %{}
+    victim_id = Map.get(victim, "character_id")
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+
+    # Log basic information about the killmail
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Checking if #{victim_name} (ID: #{victim_id || "unknown"}) in system #{system_id_str} should trigger notification")
+
+    {kill_id, system_id_str, {victim_id, victim_name}}
+  end
+
+  # Run the notification checks pipeline
+  defp run_notification_checks(kill_id, system_id_str, killmail) do
+    with true <- check_notifications_enabled(kill_id),
+         true <- check_tracking(system_id_str, killmail) do
+      check_deduplication_and_decide(kill_id)
+    else
+      {:notifications_disabled, reason} ->
+        Logger.debug("DETERMINER: Kill ##{kill_id} - Notifications disabled: #{reason}")
+        return_no_notification("Notifications disabled: #{reason}")
+
+      {:not_tracked, details} ->
+        Logger.debug("DETERMINER: Kill ##{kill_id} - Not tracked: #{details}")
+        return_no_notification("Not tracked by any character or system (#{details})")
+    end
+  end
+
+  # Log the notification decision
+  defp log_notification_decision(kill_id, result) do
+    case result do
+      {:ok, %{should_notify: true}} ->
+        Logger.debug("DETERMINER: Kill ##{kill_id} - WILL send notification")
+      {:ok, %{should_notify: false, reason: reason}} ->
+        Logger.debug("DETERMINER: Kill ##{kill_id} - Will NOT send notification: #{reason}")
+      _ ->
+        Logger.debug("DETERMINER: Kill ##{kill_id} - Unexpected result: #{inspect(result)}")
     end
   end
 
@@ -70,27 +102,36 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp check_notifications_enabled(_kill_id) do
     notifications_enabled = Features.notifications_enabled?()
     system_notifications_enabled = Features.system_notifications_enabled?()
-    notifications_enabled && system_notifications_enabled
+
+    cond do
+      !notifications_enabled ->
+        {:notifications_disabled, "global notifications disabled"}
+      !system_notifications_enabled ->
+        {:notifications_disabled, "system notifications disabled"}
+      true ->
+        true
+    end
   end
 
   defp check_tracking(system_id, killmail) do
-    kill_id = get_kill_id(killmail)
+    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
     is_tracked_system = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
 
+    # Get victim info for better logging
+    victim = Extractor.get_victim(killmail) || %{}
+    victim_id = Map.get(victim, "character_id")
+
     # Enhanced logging for debugging
-    Logger.debug("[KillDeterminer] Tracking check results", %{
-      kill_id: kill_id,
-      system_id: system_id,
-      is_tracked_system: is_tracked_system,
-      has_tracked_character: has_tracked_char,
-      killmail_type: if(is_struct(killmail), do: inspect(killmail.__struct__), else: "map"),
-      has_esi_data: has_esi_data?(killmail)
-    })
+    Logger.debug("DETERMINER: Kill ##{kill_id} - System tracked: #{is_tracked_system}, Character tracked: #{has_tracked_char}")
 
     # For notifications, we consider both tracked systems and tracked characters
-    # For persistence, we'll check has_tracked_char separately in the persistence module
-    is_tracked_system || has_tracked_char
+    if is_tracked_system || has_tracked_char do
+      true
+    else
+      details = if is_nil(victim_id), do: "missing victim ID", else: "victim ID #{victim_id}, system ID #{system_id}"
+      {:not_tracked, details}
+    end
   end
 
   defp check_deduplication_and_decide(kill_id) do
@@ -101,13 +142,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  # Get kill ID from killmail
-  defp get_kill_id(killmail) do
-    Extractor.get_killmail_id(killmail) || "unknown"
-  end
-
   @doc """
-  Gets the system ID from a kill.
+  Gets the system ID from a kill as a string.
+  Converts the numeric ID from Extractor to a string format, or returns "unknown".
   """
   def get_kill_system_id(kill) do
     system_id = Extractor.get_system_id(kill)
@@ -148,34 +185,40 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
   def has_tracked_character?(killmail) do
     kill_data = extract_kill_data(killmail)
-    all_character_ids = get_all_tracked_character_ids()
-    kill_id = get_kill_id(killmail)
+    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
 
-    # Log the extracted data for debugging
-    Logger.debug("[KillDeterminer] Checking for tracked characters", %{
-      kill_id: kill_id,
-      victim_data_keys: kill_data |> Map.get("victim", %{}) |> Map.keys(),
-      attacker_count: kill_data |> Map.get("attackers", []) |> length(),
-      tracked_character_ids: all_character_ids
-    })
+    # Get all tracked characters for comparison
+    all_character_ids = get_all_tracked_character_ids()
+
+    # Get victim info for better logs
+    victim = Map.get(kill_data, "victim") || %{}
+    victim_id = Map.get(victim, "character_id")
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+
+    # Log details about our tracked characters
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Checking if victim #{victim_name} (ID: #{victim_id || "unknown"}) is tracked")
+    Logger.debug("DETERMINER: Kill ##{kill_id} - We have #{length(all_character_ids)} tracked characters")
+
+    if length(all_character_ids) > 0 do
+      # Log a sample of tracked characters for debugging
+      sample = Enum.take(all_character_ids, min(5, length(all_character_ids)))
+      Logger.debug("DETERMINER: Kill ##{kill_id} - Sample of tracked IDs: #{inspect(sample)}")
+    end
 
     # Check if victim is tracked
     victim_tracked = check_victim_tracked(kill_data, all_character_ids)
 
     if victim_tracked do
-      Logger.debug("[KillDeterminer] Found victim is tracked", %{
-        kill_id: kill_id,
-        victim_id: extract_victim_id(kill_data)
-      })
-
+      Logger.debug("DETERMINER: Kill ##{kill_id} - Victim #{victim_name} IS tracked")
       true
     else
+      Logger.debug("DETERMINER: Kill ##{kill_id} - Victim #{victim_name} is NOT tracked, checking attackers")
       attacker_tracked = check_attackers_tracked(kill_data, all_character_ids)
 
       if attacker_tracked do
-        Logger.debug("[KillDeterminer] Found attacker is tracked", %{
-          kill_id: kill_id
-        })
+        Logger.debug("DETERMINER: Kill ##{kill_id} - An attacker IS tracked")
+      else
+        Logger.debug("DETERMINER: Kill ##{kill_id} - No tracked characters found")
       end
 
       attacker_tracked
@@ -190,15 +233,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       "victim" => Extractor.get_victim(killmail),
       "attackers" => Extractor.get_attackers(killmail)
     }
-  end
-
-  defp has_esi_data?(killmail) do
-    cond do
-      is_struct(killmail, KillmailData) -> not is_nil(killmail.esi_data)
-      is_struct(killmail, Killmail) -> not is_nil(killmail.esi_data)
-      is_map(killmail) -> Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data")
-      true -> false
-    end
   end
 
   # Get all tracked character IDs
@@ -228,12 +262,27 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # Check if the victim in this kill is being tracked
   defp check_victim_tracked(kill_data, all_character_ids) do
     victim_id_str = extract_victim_id(kill_data)
+
+    # Get victim info for better logging
+    victim = Map.get(kill_data, "victim") || %{}
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
-    if !victim_tracked && victim_id_str do
-      check_direct_victim_tracking(victim_id_str)
+    if victim_tracked do
+      Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is in tracked character list")
+      true
     else
-      victim_tracked
+      # Try direct tracking if not found in the list
+      direct_tracked = victim_id_str && check_direct_victim_tracking(victim_id_str)
+
+      if direct_tracked do
+        Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is directly tracked")
+      else
+        Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str || "unknown"}) is not tracked")
+      end
+
+      direct_tracked
     end
   end
 
@@ -292,8 +341,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - false otherwise
   """
   def tracked_in_system?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    tracked_system?(system_id)
+    system_id = Extractor.get_system_id(killmail)
+    system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
+    tracked_system?(system_id_str)
   end
 
   @doc """

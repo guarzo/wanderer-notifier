@@ -43,7 +43,6 @@ defmodule WandererNotifier.Core.Application.Service do
   Starts the service.
   """
   def start_link(opts \\ []) do
-    AppLogger.startup_debug("Starting WandererNotifier Service")
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
