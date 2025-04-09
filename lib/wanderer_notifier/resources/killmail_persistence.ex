@@ -876,7 +876,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  defp get_name_from_killmail(killmail, character_id, :victim) do
+  defp get_name_from_killmail(killmail, _character_id, :victim) do
     victim = KillmailUtil.get_victim(killmail)
     victim && Map.get(victim, "character_name")
   end

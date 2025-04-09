@@ -9,9 +9,9 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   use WebSockex
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  # Module attribute to use when the module might not be loaded yet
-  @debug_module WandererNotifier.Debug.KillmailTools
+  alias WandererNotifier.Resources.KillmailPersistence
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.KillmailProcessing.Pipeline
 
   @doc false
   def init_batch_logging do
@@ -255,138 +255,168 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   end
 
   # Process text frames containing JSON data
-  defp process_text_frame(raw_msg, state) do
-    # Update timestamp of last received message for monitoring
-    now = DateTime.utc_now()
+  defp process_text_frame(frame, state) do
+    case decode_frame(frame) do
+      {:ok, decoded} -> handle_decoded_frame(decoded, state)
+      {:error, reason} -> handle_decode_error(reason, frame, state)
+    end
+  end
 
-    # Always update status when processing a message
+  defp decode_frame(frame) do
     try do
-      # Get current stats to preserve existing values
-      current_stats = Stats.get_stats()
+      Jason.decode(frame)
+    rescue
+      e -> {:error, {e, frame}}
+    end
+  end
 
-      # Ensure startup_time is a DateTime object, not an integer timestamp
-      startup_time =
-        cond do
-          current_stats && current_stats.websocket && current_stats.websocket.startup_time ->
-            current_stats.websocket.startup_time
+  defp handle_decoded_frame(decoded, state) when is_map(decoded) do
+    case extract_killmail_info(decoded) do
+      {:ok, killmail_info} -> process_killmail(killmail_info, state)
+      {:error, reason} -> handle_killmail_error(reason, decoded, state)
+    end
+  end
 
-          is_integer(state.startup_time) ->
-            DateTime.from_unix!(state.startup_time)
+  defp handle_decoded_frame(decoded, state) do
+    log_unexpected_frame_format(decoded)
+    {:ok, state}
+  end
 
-          true ->
-            DateTime.utc_now()
-        end
+  defp extract_killmail_info(decoded) do
+    with {:ok, killmail_id} <- extract_killmail_id(decoded),
+         {:ok, hash} <- extract_hash(decoded) do
+      {:ok, %{killmail_id: killmail_id, hash: hash}}
+    end
+  end
 
-      Stats.update_websocket(%{
-        connected: true,
-        connecting: false,
-        last_message: now,
-        startup_time: startup_time,
-        reconnects: state.reconnects,
-        url: state.url
-      })
+  defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, id}
+  defp extract_killmail_id(decoded), do: {:error, {:missing_killmail_id, decoded}}
+
+  defp extract_hash(%{"hash" => hash}) when is_binary(hash), do: {:ok, hash}
+  defp extract_hash(decoded), do: {:error, {:missing_hash, decoded}}
+
+  defp process_killmail(%{killmail_id: killmail_id, hash: hash}, state) do
+    case check_killmail_status(killmail_id) do
+      :not_processed -> handle_new_killmail(killmail_id, hash, state)
+      :already_processed -> handle_duplicate_killmail(killmail_id, state)
+      {:error, reason} -> handle_status_check_error(reason, killmail_id, state)
+    end
+  end
+
+  defp check_killmail_status(killmail_id) do
+    try do
+      case KillmailPersistence.check_killmail_exists_in_database(killmail_id, nil, nil) do
+        true -> :already_processed
+        false -> :not_processed
+      end
     rescue
       e ->
-        AppLogger.websocket_error("Failed to update websocket status",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    end
+        AppLogger.websocket_error("[ZKill] Error checking killmail status", %{
+          killmail_id: killmail_id,
+          error: Exception.message(e)
+        })
 
-    case Jason.decode(raw_msg, keys: :strings) do
-      {:ok, json_data} ->
-        # Log the type of message using batch logging to reduce volume
-        message_type = classify_message_type(json_data)
-        AppLogger.count_batch_event(:websocket_message, %{type: message_type})
-
-        # For killmail messages, add explicit detailed logging
-        if message_type == "killmail" do
-          # Log that we received a killmail
-          kill_id = get_killmail_id(json_data)
-          AppLogger.kill_info("Received killmail:#{kill_id} from WebSocket ")
-        end
-
-        # Check if this is a killmail and we need to log it for debugging
-        if message_type == "killmail" &&
-             Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-          # Get the killmail ID for logging
-          kill_id = get_killmail_id(json_data)
-
-          # Log that we're about to analyze the killmail
-          AppLogger.kill_info("Analyzing killmail for persistence debugging",
-            killmail_id: kill_id
-          )
-
-          # Try to call the debug module, but handle the case where it might not be available yet
-          try do
-            if Code.ensure_loaded?(@debug_module) do
-              @debug_module.process_killmail_debug(json_data)
-            else
-              AppLogger.kill_warn("Debug module not available yet", module: @debug_module)
-            end
-          rescue
-            e ->
-              AppLogger.kill_error("Error calling debug module",
-                error: Exception.message(e),
-                killmail_id: kill_id
-              )
-          end
-        end
-
-        # Forward to parent process for handling
-        if is_pid(state.parent) and Process.alive?(state.parent) do
-          send(state.parent, {:zkill_message, raw_msg})
-          {:ok, state}
-        else
-          AppLogger.websocket_warn("Parent process unavailable, message dropped")
-          {:ok, state}
-        end
-
-      {:error, decode_err} ->
-        AppLogger.websocket_error("Error decoding JSON frame",
-          error: inspect(decode_err),
-          # Limit raw message to first 100 chars
-          raw_message: String.slice(raw_msg, 0, 100)
-        )
-
-        {:ok, state}
+        {:error, e}
     end
   end
 
-  # Classify message type for logging
-  defp classify_message_type(json_data) when is_map(json_data) do
-    cond do
-      Map.has_key?(json_data, "action") && json_data["action"] == "tqStatus" ->
-        "tq_status"
+  defp handle_new_killmail(killmail_id, hash, state) do
+    log_new_killmail(killmail_id)
 
-      Map.has_key?(json_data, "zkb") ->
-        "killmail"
-
-      Map.has_key?(json_data, "killmail_id") ->
-        "killmail"
-
-      true ->
-        "unknown"
+    case fetch_and_process_killmail(killmail_id, hash) do
+      :ok -> {:ok, increment_processed_count(state)}
+      {:error, reason} -> handle_processing_error(reason, killmail_id, state)
     end
   end
 
-  defp classify_message_type(_), do: "invalid"
-
-  # Get killmail ID from the message data
-  defp get_killmail_id(json_data) when is_map(json_data) do
-    cond do
-      Map.has_key?(json_data, "killmail_id") ->
-        json_data["killmail_id"]
-
-      Map.has_key?(json_data, "zkb") && Map.has_key?(json_data["zkb"], "killmail_id") ->
-        json_data["zkb"]["killmail_id"]
-
-      true ->
-        "unknown"
+  defp fetch_and_process_killmail(killmail_id, hash) do
+    with {:ok, killmail} <- ESIService.get_killmail(killmail_id, hash),
+         :ok <- Pipeline.process_killmail(killmail, nil) do
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp get_killmail_id(_), do: "invalid"
+  defp handle_duplicate_killmail(killmail_id, state) do
+    log_duplicate_killmail(killmail_id)
+    {:ok, increment_duplicate_count(state)}
+  end
+
+  defp handle_status_check_error(reason, killmail_id, state) do
+    log_status_check_error(reason, killmail_id)
+    {:ok, increment_error_count(state)}
+  end
+
+  defp handle_killmail_error(reason, decoded, state) do
+    log_killmail_error(reason, decoded)
+    {:ok, increment_error_count(state)}
+  end
+
+  defp handle_decode_error(reason, frame, state) do
+    log_decode_error(reason, frame)
+    {:ok, increment_error_count(state)}
+  end
+
+  defp log_unexpected_frame_format(decoded) do
+    AppLogger.websocket_warn("[ZKill] Received unexpected frame format", %{
+      frame: inspect(decoded)
+    })
+  end
+
+  defp log_new_killmail(killmail_id) do
+    AppLogger.websocket_debug("[ZKill] Processing new killmail", %{
+      killmail_id: killmail_id
+    })
+  end
+
+  defp log_duplicate_killmail(killmail_id) do
+    AppLogger.websocket_debug("[ZKill] Skipping duplicate killmail", %{
+      killmail_id: killmail_id
+    })
+  end
+
+  defp log_status_check_error(reason, killmail_id) do
+    AppLogger.websocket_error("[ZKill] Error checking killmail status", %{
+      killmail_id: killmail_id,
+      error: inspect(reason)
+    })
+  end
+
+  defp log_killmail_error(reason, decoded) do
+    AppLogger.websocket_error("[ZKill] Invalid killmail data format", %{
+      error: inspect(reason),
+      data: inspect(decoded)
+    })
+  end
+
+  defp log_decode_error(reason, frame) do
+    AppLogger.websocket_error("[ZKill] Failed to decode websocket frame", %{
+      error: inspect(reason),
+      frame: inspect(frame)
+    })
+  end
+
+  defp increment_processed_count(state) do
+    update_in(state.processed_count, &(&1 + 1))
+  end
+
+  defp increment_duplicate_count(state) do
+    update_in(state.duplicate_count, &(&1 + 1))
+  end
+
+  defp increment_error_count(state) do
+    update_in(state.error_count, &(&1 + 1))
+  end
+
+  defp handle_processing_error(reason, killmail_id, state) do
+    AppLogger.websocket_error("[ZKill] Failed to process killmail", %{
+      killmail_id: killmail_id,
+      error: inspect(reason)
+    })
+
+    {:ok, increment_error_count(state)}
+  end
 
   @impl true
   def handle_disconnect(disconnect_map, state) do
