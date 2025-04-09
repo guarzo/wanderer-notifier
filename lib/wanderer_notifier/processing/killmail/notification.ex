@@ -7,11 +7,18 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+
+  alias WandererNotifier.KillmailProcessing.{
+    Extractor,
+    KillmailData
+  }
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -258,48 +265,83 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
 
   # Helper to extract kill_id regardless of struct type
   defp extract_kill_id(kill) do
-    if is_struct(kill, WandererNotifier.Resources.Killmail) do
-      kill.killmail_id
-    else
-      nil
+    cond do
+      is_struct(kill, KillmailResource) ->
+        kill.killmail_id
+
+      is_struct(kill, KillmailData) ->
+        kill.killmail_id
+
+      true ->
+        nil
     end
   end
 
   # Helper to ensure we have a proper killmail format
   defp ensure_data_killmail(kill) do
-    if is_struct(kill, WandererNotifier.Resources.Killmail) do
-      # Return the normalized killmail resource
-      kill
-    else
-      # If not a proper killmail resource, return nil to indicate invalid input
-      nil
+    cond do
+      is_struct(kill, KillmailResource) ->
+        # Return the normalized killmail resource
+        kill
+
+      is_struct(kill, KillmailData) ->
+        # Convert KillmailData to normalized format if needed
+        kill
+
+      true ->
+        # If not a proper killmail format, return nil to indicate invalid input
+        nil
     end
   end
 
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
-    if is_struct(killmail, WandererNotifier.Resources.Killmail) do
-      # For normalized Resource.Killmail
-      victim_name = killmail.victim_name
-      ship_type_name = killmail.victim_ship_name
-      system_name = killmail.solar_system_name
+    cond do
+      is_struct(killmail, KillmailResource) ->
+        validate_killmail_resource(killmail)
 
-      cond do
-        is_nil(victim_name) || victim_name == "" ->
-          {:error, "Killmail is missing victim name"}
+      is_struct(killmail, KillmailData) ->
+        validate_killmail_data_struct(killmail)
 
-        is_nil(ship_type_name) || ship_type_name == "" ->
-          {:error, "Victim is missing ship type name"}
+      true ->
+        # Invalid input, not a normalized resource
+        {:error, "Input is not a valid Killmail resource"}
+    end
+  end
 
-        is_nil(system_name) || system_name == "" ->
-          {:error, "Killmail is missing system name"}
+  # Validate KillmailResource struct
+  defp validate_killmail_resource(killmail) do
+    victim_name = killmail.victim_name
+    ship_type_name = killmail.victim_ship_name
+    system_name = killmail.solar_system_name
 
-        true ->
-          :ok
-      end
-    else
-      # Invalid input, not a normalized resource
-      {:error, "Input is not a valid Killmail resource"}
+    validate_required_fields(victim_name, ship_type_name, system_name)
+  end
+
+  # Validate KillmailData struct
+  defp validate_killmail_data_struct(killmail) do
+    victim = Extractor.get_victim(killmail)
+    victim_name = victim && Map.get(victim, "character_name")
+    ship_type_name = victim && Map.get(victim, "ship_type_name")
+    system_name = Map.get(killmail, :solar_system_name)
+
+    validate_required_fields(victim_name, ship_type_name, system_name)
+  end
+
+  # Common validation for required fields
+  defp validate_required_fields(victim_name, ship_type_name, system_name) do
+    cond do
+      is_nil(victim_name) || victim_name == "" ->
+        {:error, "Killmail is missing victim name"}
+
+      is_nil(ship_type_name) || ship_type_name == "" ->
+        {:error, "Victim is missing ship type name"}
+
+      is_nil(system_name) || system_name == "" ->
+        {:error, "Killmail is missing system name"}
+
+      true ->
+        :ok
     end
   end
 end

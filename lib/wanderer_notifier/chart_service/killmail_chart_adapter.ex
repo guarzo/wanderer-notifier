@@ -361,6 +361,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   defp send_generated_charts(channel_id, date_from, date_to, kills_chart_data, isk_chart_data) do
     kill_title =
       "Weekly Character Kills (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
+
     isk_title =
       "Weekly ISK Destroyed (#{Date.to_string(date_from)} to #{Date.to_string(date_to)})"
 

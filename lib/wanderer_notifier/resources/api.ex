@@ -5,6 +5,7 @@ defmodule WandererNotifier.Resources.Api do
   """
 
   use Ash.Domain, validate_config_inclusion?: false
+  @behaviour WandererNotifier.Resources.ApiBehaviour
 
   resources do
     resource(WandererNotifier.Resources.Killmail)
@@ -19,6 +20,7 @@ defmodule WandererNotifier.Resources.Api do
   # Public interface for resource operations
   # These delegate to Ash functions
 
+  @impl true
   def read(query, opts \\ []) do
     Ash.read(query, opts)
   end

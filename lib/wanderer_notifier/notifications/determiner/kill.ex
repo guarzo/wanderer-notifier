@@ -8,6 +8,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData}
   alias WandererNotifier.Resources.Killmail
   require Logger
 
@@ -83,8 +84,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       system_id: system_id,
       is_tracked_system: is_tracked_system,
       has_tracked_character: has_tracked_char,
-      killmail_type: inspect(killmail.__struct__),
-      has_esi_data: not is_nil(Map.get(killmail, :esi_data))
+      killmail_type: if(is_struct(killmail), do: inspect(killmail.__struct__), else: "map"),
+      has_esi_data: has_esi_data?(killmail)
     })
 
     # For notifications, we consider both tracked systems and tracked characters
@@ -102,76 +103,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Get kill ID from killmail
   defp get_kill_id(killmail) do
-    case killmail do
-      %Killmail{killmail_id: id} when not is_nil(id) -> id
-      %{killmail_id: id} when not is_nil(id) -> id
-      %{"killmail_id" => id} when not is_nil(id) -> id
-      _ -> "unknown"
-    end
+    Extractor.get_killmail_id(killmail) || "unknown"
   end
 
   @doc """
   Gets the system ID from a kill.
   """
   def get_kill_system_id(kill) do
-    extract_system_id(kill)
-  end
-
-  # Private helper functions to extract system ID from different data structures
-  defp extract_system_id(kill) when is_struct(kill, Killmail) do
-    case kill.esi_data do
-      nil ->
-        "unknown"
-
-      esi_data ->
-        case Map.get(esi_data, "solar_system_id") do
-          nil -> "unknown"
-          id when is_integer(id) -> to_string(id)
-          id when is_binary(id) -> id
-          _ -> "unknown"
-        end
-    end
-  end
-
-  defp extract_system_id(kill) when is_map(kill) do
-    extract_system_id_from_map(kill)
-  end
-
-  defp extract_system_id(_), do: "unknown"
-
-  defp extract_system_id_from_map(kill) do
-    cond do
-      # Check if esi_data exists AND has a solar_system_id
-      esi_data = Map.get(kill, :esi_data) ->
-        system_id = Map.get(esi_data, "solar_system_id")
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      # Check if esi_data exists (different key format) AND has a solar_system_id
-      esi_data = Map.get(kill, "esi_data") ->
-        system_id = Map.get(esi_data, "solar_system_id")
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      # Try to get from system key
-      system = Map.get(kill, "system") ->
-        system_id = Map.get(system, "id")
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      # Try to get from solar_system key
-      solar_system = Map.get(kill, "solar_system") ->
-        system_id = Map.get(solar_system, "id")
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      # Direct keys
-      system_id = Map.get(kill, "solar_system_id") ->
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      system_id = Map.get(kill, :solar_system_id) ->
-        if is_nil(system_id), do: "unknown", else: system_id
-
-      # Default case - no system ID found
-      true ->
-        "unknown"
-    end
+    system_id = Extractor.get_system_id(kill)
+    if is_nil(system_id), do: "unknown", else: to_string(system_id)
   end
 
   @doc """
@@ -244,36 +184,21 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Extract kill data to get useful information
   defp extract_kill_data(killmail) do
-    case killmail do
-      %Killmail{} -> extract_from_killmail_struct(killmail)
-      %{} -> extract_from_map(killmail)
-      _ -> %{}
-    end
-  end
-
-  defp extract_from_killmail_struct(killmail) do
     %{
-      "solar_system_id" => killmail.solar_system_id,
-      "solar_system_name" => killmail.solar_system_name,
-      "victim" => killmail.full_victim_data || %{},
-      "attackers" => killmail.full_attacker_data || []
+      "solar_system_id" => Extractor.get_system_id(killmail),
+      "solar_system_name" => Extractor.get_system_name(killmail),
+      "victim" => Extractor.get_victim(killmail),
+      "attackers" => Extractor.get_attackers(killmail)
     }
   end
 
-  defp extract_from_map(killmail) do
-    if has_esi_data?(killmail) do
-      get_esi_data(killmail)
-    else
-      killmail
-    end
-  end
-
   defp has_esi_data?(killmail) do
-    Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data")
-  end
-
-  defp get_esi_data(killmail) do
-    Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
+    cond do
+      is_struct(killmail, KillmailData) -> not is_nil(killmail.esi_data)
+      is_struct(killmail, Killmail) -> not is_nil(killmail.esi_data)
+      is_map(killmail) -> Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data")
+      true -> false
+    end
   end
 
   # Get all tracked character IDs
@@ -424,15 +349,13 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp get_victim_character_id(killmail) when is_nil(killmail), do: nil
 
   defp get_victim_character_id(killmail) do
-    esi_data = Map.get(killmail, :esi_data, %{})
-    victim = Map.get(esi_data, "victim", %{})
+    victim = Extractor.get_victim(killmail)
     Map.get(victim, "character_id")
   end
 
   # Helper function to get attacker character IDs
   defp get_attacker_character_ids(killmail) do
-    esi_data = Map.get(killmail, :esi_data, %{})
-    attackers = Map.get(esi_data, "attackers", [])
+    attackers = Extractor.get_attackers(killmail)
 
     Enum.map(attackers, fn attacker ->
       Map.get(attacker, "character_id")

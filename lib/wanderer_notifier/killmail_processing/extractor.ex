@@ -128,11 +128,69 @@ defmodule WandererNotifier.KillmailProcessing.Extractor do
   """
   @spec get_attackers(killmail_source()) :: list(map())
   def get_attackers(%KillmailData{attackers: attackers}) when not is_nil(attackers), do: attackers
-  def get_attackers(%KillmailResource{full_attacker_data: attackers}) when not is_nil(attackers), do: attackers
-  def get_attackers(%{esi_data: %{"attackers" => attackers}}) when not is_nil(attackers), do: attackers
+
+  def get_attackers(%KillmailResource{full_attacker_data: attackers}) when not is_nil(attackers),
+    do: attackers
+
+  def get_attackers(%{esi_data: %{"attackers" => attackers}}) when not is_nil(attackers),
+    do: attackers
+
   def get_attackers(%{attackers: attackers}) when not is_nil(attackers), do: attackers
   def get_attackers(%{"attackers" => attackers}) when not is_nil(attackers), do: attackers
   def get_attackers(_), do: []
+
+  @doc """
+  Gets the kill time from various killmail data formats.
+
+  ## Examples
+
+      iex> get_kill_time(%KillmailData{kill_time: ~U[2023-01-01 12:00:00Z]})
+      ~U[2023-01-01 12:00:00Z]
+
+      iex> get_kill_time(%{esi_data: %{"killmail_time" => "2023-01-01T12:00:00Z"}})
+      ~U[2023-01-01 12:00:00Z]
+  """
+  @spec get_kill_time(killmail_source()) :: DateTime.t() | nil
+  def get_kill_time(%KillmailData{kill_time: time}) when not is_nil(time), do: time
+  def get_kill_time(%KillmailResource{kill_time: time}) when not is_nil(time), do: time
+
+  def get_kill_time(%{esi_data: %{"killmail_time" => time}}) when is_binary(time) do
+    case DateTime.from_iso8601(time) do
+      {:ok, datetime, _} -> datetime
+      _ -> nil
+    end
+  end
+
+  def get_kill_time(%{kill_time: time}) when not is_nil(time), do: time
+  def get_kill_time(%{"kill_time" => time}) when not is_nil(time), do: time
+
+  def get_kill_time(%{"killmail_time" => time}) when is_binary(time) do
+    case DateTime.from_iso8601(time) do
+      {:ok, datetime, _} -> datetime
+      _ -> nil
+    end
+  end
+
+  def get_kill_time(_), do: nil
+
+  @doc """
+  Gets the zKillboard data from various killmail data formats.
+
+  ## Examples
+
+      iex> get_zkb_data(%KillmailData{zkb_data: %{"totalValue" => 1000000}})
+      %{"totalValue" => 1000000}
+
+      iex> get_zkb_data(%{zkb: %{"totalValue" => 1000000}})
+      %{"totalValue" => 1000000}
+  """
+  @spec get_zkb_data(killmail_source()) :: map()
+  def get_zkb_data(%KillmailData{zkb_data: zkb}) when not is_nil(zkb), do: zkb
+  def get_zkb_data(%{zkb_data: zkb}) when not is_nil(zkb), do: zkb
+  def get_zkb_data(%{zkb: zkb}) when not is_nil(zkb), do: zkb
+  def get_zkb_data(%{"zkb_data" => zkb}) when not is_nil(zkb), do: zkb
+  def get_zkb_data(%{"zkb" => zkb}) when not is_nil(zkb), do: zkb
+  def get_zkb_data(_), do: %{}
 
   @doc """
   Gets debug data from various killmail data formats for logging and diagnostics.

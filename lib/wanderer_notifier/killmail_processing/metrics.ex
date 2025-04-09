@@ -342,7 +342,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
     update_counter(counter, new_value)
 
     # Log warning if metric is not registered
-    unless is_registered do
+    if !is_registered do
       maybe_log_unregistered_metric_warning(counter, value)
     end
   rescue
@@ -365,7 +365,7 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
     warning_cache_key = {:metric_warning, counter}
     already_warned = Process.get(warning_cache_key, false)
 
-    unless already_warned do
+    if !already_warned do
       log_unregistered_metric_warning(counter, value)
       Process.put(warning_cache_key, true)
     end

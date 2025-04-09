@@ -8,7 +8,14 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   """
   use WebSockex
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+
+  alias WandererNotifier.KillmailProcessing.{
+    Context,
+    Extractor,
+    KillmailData,
+    Pipeline
+  }
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc false
@@ -249,12 +256,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     {:reply, {:text, payload}, state}
   end
 
-  # Process text frames containing JSON data
-  defp process_text_frame(raw_msg, state) do
-    # Update timestamp of last received message for monitoring
+  # Web socket frame handler
+  def process_text_frame(raw_msg, state) do
+    # Track last message time
     now = DateTime.utc_now()
+    state = %{state | last_message: now}
 
-    # Always update status when processing a message
+    # Update status when processing a message
     try do
       # Get current stats to preserve existing values
       current_stats = Stats.get_stats()
@@ -277,84 +285,116 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     case Jason.decode(raw_msg) do
       {:ok, json_data} ->
-        # Log the type of message using batch logging to reduce volume
         message_type = classify_message_type(json_data)
+        # Log the type of message using batch logging to reduce volume
         AppLogger.count_batch_event(:websocket_message, %{type: message_type})
-
-        # If this is a killmail, spawn a process to handle it
-        new_state =
-          if message_type == "killmail" do
-            killmail_id = get_killmail_id(json_data)
-
-            if killmail_id do
-              AppLogger.websocket_debug("[ZKill] Processing killmail", %{
-                killmail_id: killmail_id
-              })
-
-              # Processing separately to avoid blocking websocket
-              spawn(fn ->
-                ctx = Context.new_realtime(nil, nil, :zkill_websocket, %{})
-                process_killmail_async(json_data, ctx, killmail_id)
-              end)
-
-              # Update processed count
-              update_in(state.processed_count, &(&1 + 1))
-            else
-              # No killmail ID but still a killmail type
-              AppLogger.websocket_debug("[ZKill] Missing killmail ID in data", %{
-                data: inspect(json_data)
-              })
-
-              state
-            end
-          else
-            # Not a killmail, no processing needed
-            state
-          end
-
-        # Always forward to parent process for handling
-        if is_pid(new_state.parent) and Process.alive?(new_state.parent) do
-          send(new_state.parent, {:zkill_message, raw_msg})
-          {:ok, new_state}
-        else
-          AppLogger.websocket_warn("Parent process unavailable, message dropped")
-          {:ok, new_state}
-        end
+        handle_parsed_message(message_type, json_data, raw_msg, state)
 
       {:error, decode_err} ->
-        AppLogger.websocket_warn("[ZKill] Failed to decode websocket frame", %{
-          error: inspect(decode_err),
-          # Limit raw message to first 100 chars
-          raw_message: String.slice(raw_msg, 0, 100)
-        })
-
-        # Update error count and continue
-        {:ok, update_in(state.error_count, &(&1 + 1))}
+        handle_decode_error(decode_err, raw_msg, state)
     end
+  end
+
+  # Handle a successfully parsed message
+  defp handle_parsed_message(message_type, json_data, raw_msg, state) do
+    new_state = process_message_by_type(message_type, json_data, state)
+    forward_to_parent(new_state, raw_msg)
+  end
+
+  # Process message based on its type
+  defp process_message_by_type("killmail", json_data, state) do
+    process_killmail_message(json_data, state)
+  end
+
+  defp process_message_by_type(_other_type, _json_data, state) do
+    # Not a killmail, no processing needed
+    state
+  end
+
+  # Process a killmail type message
+  defp process_killmail_message(json_data, state) do
+    killmail_id = get_killmail_id(json_data)
+
+    if killmail_id do
+      AppLogger.websocket_debug("[ZKill] Processing killmail", %{
+        killmail_id: killmail_id
+      })
+
+      # Processing separately to avoid blocking websocket
+      spawn_killmail_processor(json_data, killmail_id)
+
+      # Update processed count
+      update_in(state.processed_count, &(&1 + 1))
+    else
+      # No killmail ID but still a killmail type
+      AppLogger.websocket_debug("[ZKill] Missing killmail ID in data", %{
+        data: inspect(json_data)
+      })
+
+      state
+    end
+  end
+
+  # Spawn a process to handle killmail processing
+  defp spawn_killmail_processor(json_data, killmail_id) do
+    spawn(fn ->
+      ctx = Context.new_realtime(nil, nil, :zkill_websocket, %{})
+      process_killmail_async(json_data, ctx, killmail_id)
+    end)
+  end
+
+  # Forward message to parent process
+  defp forward_to_parent(state, raw_msg) do
+    if is_pid(state.parent) and Process.alive?(state.parent) do
+      send(state.parent, {:zkill_message, raw_msg})
+      {:ok, state}
+    else
+      AppLogger.websocket_warn("Parent process unavailable, message dropped")
+      {:ok, state}
+    end
+  end
+
+  # Handle a JSON decode error
+  defp handle_decode_error(decode_err, raw_msg, state) do
+    AppLogger.websocket_warn("[ZKill] Failed to decode websocket frame", %{
+      error: inspect(decode_err),
+      # Limit raw message to first 100 chars
+      raw_message: String.slice(raw_msg, 0, 100)
+    })
+
+    # Update error count and continue
+    {:ok, update_in(state.error_count, &(&1 + 1))}
   end
 
   # Helper function to process killmail asynchronously
   defp process_killmail_async(json_data, ctx, killmail_id) do
-    try do
-      case Pipeline.process_killmail(json_data, ctx) do
-        {:ok, _result} ->
-          AppLogger.websocket_debug("[ZKill] Successfully processed killmail", %{
-            killmail_id: killmail_id
-          })
+    case Pipeline.process_killmail(json_data, ctx) do
+      {:ok, %KillmailData{} = killmail} ->
+        # Use the Extractor module to get system name
+        solar_system_name = Extractor.get_system_name(killmail) || "Unknown"
 
-        {:error, reason} ->
-          AppLogger.websocket_debug("[ZKill] Pipeline reported error for killmail", %{
-            killmail_id: killmail_id,
-            error: inspect(reason)
-          })
-      end
-    rescue
-      e ->
-        AppLogger.websocket_debug("[ZKill] Exception in pipeline processing", %{
+        AppLogger.websocket_debug("[ZKill] Successfully processed killmail", %{
           killmail_id: killmail_id,
-          error: Exception.message(e)
+          solar_system: solar_system_name
+        })
+
+      {:ok, _result} ->
+        AppLogger.websocket_debug("[ZKill] Successfully processed killmail", %{
+          killmail_id: killmail_id
+        })
+
+      {:error, reason} ->
+        AppLogger.websocket_debug("[ZKill] Pipeline reported error for killmail", %{
+          killmail_id: killmail_id,
+          error: inspect(reason)
         })
     end
+  rescue
+    e ->
+      AppLogger.websocket_debug("[ZKill] Exception in pipeline processing", %{
+        killmail_id: killmail_id,
+        error: Exception.message(e)
+      })
   end
 
   # Helper function to extract killmail ID

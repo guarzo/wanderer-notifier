@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData, Validator}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
@@ -102,7 +103,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
         # Create a map with both ZKill and ESI data
-        killmail_data = %{
+        killmail_data = %KillmailData{
           killmail_id: kill_id,
           zkb_data: kill_data["zkb"],
           esi_data: esi_data
@@ -213,33 +214,18 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
-    # For Resources.Killmail struct
-    if is_struct(killmail, WandererNotifier.Resources.Killmail) do
-      # Check for required fields directly in the resource
-      cond do
-        is_nil(killmail.victim_name) ->
-          {:error, "Killmail is missing victim name"}
-
-        is_nil(killmail.victim_ship_name) ->
-          {:error, "Victim is missing ship type name"}
-
-        is_nil(killmail.solar_system_name) ->
-          {:error, "Killmail is missing system name"}
-
-        true ->
-          :ok
-      end
-    else
-      # Fall back to treating it as a generic map
-      victim = Map.get(killmail, :victim_data) || %{}
-      system_name = Map.get(killmail, :solar_system_name)
-
-      validate_fields(victim, system_name)
+    # First try using the Validator
+    case Validator.validate_complete_data(killmail) do
+      :ok -> :ok
+      {:error, _} -> check_detailed_validation(killmail)
     end
   end
 
-  # Validate the required fields
-  defp validate_fields(victim, system_name) do
+  # More detailed validation for specific field requirements
+  defp check_detailed_validation(killmail) do
+    victim = Extractor.get_victim(killmail)
+    system_name = Extractor.get_system_name(killmail)
+
     cond do
       victim == nil || victim == %{} ->
         {:error, "Killmail is missing victim data"}

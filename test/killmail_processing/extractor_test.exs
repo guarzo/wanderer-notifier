@@ -1,23 +1,22 @@
 defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData}
-  alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
   describe "get_killmail_id/1" do
     test "extracts killmail_id from KillmailData" do
-      killmail = %KillmailData{killmail_id: 12345}
-      assert Extractor.get_killmail_id(killmail) == 12345
+      killmail = %KillmailData{killmail_id: 12_345}
+      assert Extractor.get_killmail_id(killmail) == 12_345
     end
 
     test "extracts killmail_id from plain map with atom key" do
-      killmail = %{killmail_id: 12345}
-      assert Extractor.get_killmail_id(killmail) == 12345
+      killmail = %{killmail_id: 12_345}
+      assert Extractor.get_killmail_id(killmail) == 12_345
     end
 
     test "extracts killmail_id from plain map with string key" do
-      killmail = %{"killmail_id" => 12345}
-      assert Extractor.get_killmail_id(killmail) == 12345
+      killmail = %{"killmail_id" => 12_345}
+      assert Extractor.get_killmail_id(killmail) == 12_345
     end
 
     test "returns nil for missing killmail_id" do
@@ -28,13 +27,13 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
 
   describe "get_system_id/1" do
     test "extracts system_id from KillmailData" do
-      killmail = %KillmailData{solar_system_id: 12345}
-      assert Extractor.get_system_id(killmail) == 12345
+      killmail = %KillmailData{solar_system_id: 12_345}
+      assert Extractor.get_system_id(killmail) == 12_345
     end
 
     test "extracts system_id from esi_data" do
-      killmail = %{esi_data: %{"solar_system_id" => 12345}}
-      assert Extractor.get_system_id(killmail) == 12345
+      killmail = %{esi_data: %{"solar_system_id" => 12_345}}
+      assert Extractor.get_system_id(killmail) == 12_345
     end
 
     test "returns nil for missing system_id" do
@@ -101,8 +100,8 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
   describe "debug_data/1" do
     test "generates debug data from KillmailData" do
       killmail = %KillmailData{
-        killmail_id: 12345,
-        solar_system_id: 67890,
+        killmail_id: 12_345,
+        solar_system_id: 67_890,
         solar_system_name: "Test System",
         victim: %{"character_id" => 123},
         attackers: [%{"character_id" => 456}, %{"character_id" => 789}]
@@ -110,8 +109,8 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
 
       debug_data = Extractor.debug_data(killmail)
 
-      assert debug_data.killmail_id == 12345
-      assert debug_data.system_id == 67890
+      assert debug_data.killmail_id == 12_345
+      assert debug_data.system_id == 67_890
       assert debug_data.system_name == "Test System"
       assert debug_data.has_victim_data == true
       assert debug_data.has_attacker_data == true
@@ -120,8 +119,8 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
 
     test "generates debug data from mixed map" do
       killmail = %{
-        killmail_id: 12345,
-        solar_system_id: 67890,
+        killmail_id: 12_345,
+        solar_system_id: 67_890,
         solar_system_name: "Test System",
         esi_data: %{
           "victim" => %{"character_id" => 123},
@@ -131,8 +130,8 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
 
       debug_data = Extractor.debug_data(killmail)
 
-      assert debug_data.killmail_id == 12345
-      assert debug_data.system_id == 67890
+      assert debug_data.killmail_id == 12_345
+      assert debug_data.system_id == 67_890
       assert debug_data.system_name == "Test System"
       assert debug_data.has_victim_data == true
       assert debug_data.has_attacker_data == true
@@ -140,11 +139,11 @@ defmodule WandererNotifier.KillmailProcessing.ExtractorTest do
     end
 
     test "handles missing data gracefully" do
-      killmail = %{killmail_id: 12345}
+      killmail = %{killmail_id: 12_345}
 
       debug_data = Extractor.debug_data(killmail)
 
-      assert debug_data.killmail_id == 12345
+      assert debug_data.killmail_id == 12_345
       assert debug_data.system_id == nil
       assert debug_data.system_name == nil
       assert debug_data.has_victim_data == false

@@ -8,6 +8,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.KillmailProcessing.Extractor
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
@@ -344,7 +345,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   # Ensure the killmail has a system name if missing
   defp enrich_with_system_name(%Killmail{} = killmail) do
     # Get system_id from the killmail
-    system_id = WandererNotifier.Killmail.get_system_id(killmail)
+    system_id = Extractor.get_system_id(killmail)
 
     # Check if we need to get the system name
     if system_id do
@@ -429,33 +430,19 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Extract system ID from killmail
   defp extract_system_id(killmail) do
-    cond do
-      is_binary(killmail) ->
-        killmail
+    system_id = Extractor.get_system_id(killmail)
+    system_name = Extractor.get_system_name(killmail)
 
-      is_map(killmail) ->
-        system_id =
-          Map.get(killmail, "solar_system_id") ||
-            Map.get(killmail, "esi_data", %{})["solar_system_id"]
+    # Return system_id, but log it with the name if available
+    AppLogger.processor_debug(
+      "Extracted system",
+      %{
+        system_id: system_id,
+        system_name: system_name
+      }
+    )
 
-        system_name =
-          Map.get(killmail, "solar_system_name") ||
-            Map.get(killmail, "esi_data", %{})["solar_system_name"]
-
-        # Return system_id, but log it with the name if available
-        AppLogger.processor_debug(
-          "Extracted system",
-          %{
-            system_id: system_id,
-            system_name: system_name
-          }
-        )
-
-        system_id
-
-      true ->
-        nil
-    end
+    system_id
   end
 
   # Extract system name from system data

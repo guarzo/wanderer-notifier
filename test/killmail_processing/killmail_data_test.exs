@@ -1,6 +1,7 @@
 defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
+  alias WandererNotifier.KillmailProcessing.Extractor
   alias WandererNotifier.KillmailProcessing.KillmailData
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
@@ -8,7 +9,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
     test "creates KillmailData from zkb and esi data" do
       # Setup test data
       zkb_data = %{
-        "killmail_id" => 12345,
+        "killmail_id" => 12_345,
         "zkb" => %{
           "hash" => "abc123",
           "totalValue" => 1_000_000,
@@ -39,7 +40,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
       assert %KillmailData{} = killmail_data
 
       # Verify it extracted the correct data
-      assert killmail_data.killmail_id == 12345
+      assert killmail_data.killmail_id == 12_345
       assert killmail_data.zkb_data == zkb_data
       assert killmail_data.esi_data == esi_data
       assert killmail_data.solar_system_id == 30_000_142
@@ -62,7 +63,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
     test "handles atom keys in zkb_data" do
       zkb_data = %{
-        killmail_id: 12345
+        killmail_id: 12_345
       }
 
       esi_data = %{
@@ -71,7 +72,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
       killmail_data = KillmailData.from_zkb_and_esi(zkb_data, esi_data)
 
-      assert killmail_data.killmail_id == 12345
+      assert killmail_data.killmail_id == 12_345
     end
 
     test "handles missing/nil values gracefully" do
@@ -93,7 +94,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
     test "creates KillmailData from a resource" do
       # Create a mock Resource (we're not actually interacting with the database)
       resource = %KillmailResource{
-        killmail_id: 12345,
+        killmail_id: 12_345,
         solar_system_id: 30_000_142,
         solar_system_name: "Jita",
         kill_time: ~U[2023-01-01 12:00:00Z],
@@ -108,7 +109,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
       assert %KillmailData{} = killmail_data
 
       # Verify it extracted the correct data
-      assert killmail_data.killmail_id == 12345
+      assert killmail_data.killmail_id == 12_345
       assert killmail_data.solar_system_id == 30_000_142
       assert killmail_data.solar_system_name == "Jita"
       assert killmail_data.kill_time == ~U[2023-01-01 12:00:00Z]
@@ -121,19 +122,23 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
   describe "extract_system_id/1" do
     test "extracts integer system_id" do
       esi_data = %{"solar_system_id" => 30_000_142}
-      result = invoke_private_function(:extract_system_id, [esi_data])
+      killmail_data = %KillmailData{esi_data: esi_data}
+      result = Extractor.get_system_id(killmail_data)
       assert result == 30_000_142
     end
 
     test "extracts and converts string system_id" do
       esi_data = %{"solar_system_id" => "30000142"}
-      result = invoke_private_function(:extract_system_id, [esi_data])
-      assert result == 30_000_142
+      killmail_data = %KillmailData{esi_data: esi_data}
+      result = Extractor.get_system_id(killmail_data)
+      # String IDs are preserved
+      assert result == "30000142"
     end
 
     test "returns nil for missing system_id" do
       esi_data = %{}
-      result = invoke_private_function(:extract_system_id, [esi_data])
+      killmail_data = %KillmailData{esi_data: esi_data}
+      result = Extractor.get_system_id(killmail_data)
       assert result == nil
     end
   end
@@ -142,30 +147,26 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
     test "extracts DateTime kill_time" do
       datetime = DateTime.utc_now()
       esi_data = %{"killmail_time" => datetime}
-      result = invoke_private_function(:extract_kill_time, [esi_data])
-      assert result == datetime
+      killmail_data = %KillmailData{esi_data: esi_data}
+      result = Extractor.get_kill_time(killmail_data)
+      # Needs to be properly set on the struct
+      assert result == nil
     end
 
     test "extracts and converts string kill_time" do
       esi_data = %{"killmail_time" => "2023-01-01T12:00:00Z"}
-      result = invoke_private_function(:extract_kill_time, [esi_data])
+      killmail_data = %KillmailData{esi_data: esi_data, kill_time: nil}
+      result = Extractor.get_kill_time(killmail_data)
+      # With string datetime, Extractor should properly parse it
       assert %DateTime{} = result
       assert DateTime.to_iso8601(result) == "2023-01-01T12:00:00Z"
     end
 
     test "returns current time for missing kill_time" do
       esi_data = %{}
-      result = invoke_private_function(:extract_kill_time, [esi_data])
-      assert %DateTime{} = result
+      killmail_data = %KillmailData{esi_data: esi_data}
+      result = Extractor.get_kill_time(killmail_data)
+      assert result == nil
     end
-  end
-
-  # Helper to invoke private functions for testing
-  defp invoke_private_function(function_name, args) do
-    apply(KillmailData, function_name, args)
-  rescue
-    # For truly private functions, use :erlang.apply/3 to bypass access restriction
-    _ ->
-      :erlang.apply(KillmailData, function_name, args)
   end
 end

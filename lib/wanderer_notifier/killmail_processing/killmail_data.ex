@@ -34,17 +34,17 @@ defmodule WandererNotifier.KillmailProcessing.KillmailData do
   """
 
   @type t :: %__MODULE__{
-    killmail_id: integer(),
-    zkb_data: map(),
-    esi_data: map(),
-    solar_system_id: integer() | nil,
-    solar_system_name: String.t() | nil,
-    kill_time: DateTime.t() | nil,
-    victim: map() | nil,
-    attackers: list() | nil,
-    persisted: boolean(),
-    metadata: map()
-  }
+          killmail_id: integer(),
+          zkb_data: map(),
+          esi_data: map(),
+          solar_system_id: integer() | nil,
+          solar_system_name: String.t() | nil,
+          kill_time: DateTime.t() | nil,
+          victim: map() | nil,
+          attackers: list() | nil,
+          persisted: boolean(),
+          metadata: map()
+        }
 
   defstruct [
     :killmail_id,
@@ -150,7 +150,8 @@ defmodule WandererNotifier.KillmailProcessing.KillmailData do
       kill_time: resource.kill_time,
       victim: resource.full_victim_data,
       attackers: resource.full_attacker_data,
-      persisted: true, # Mark as persisted since it came from the database
+      # Mark as persisted since it came from the database
+      persisted: true,
       metadata: %{}
     }
   end
@@ -158,23 +159,15 @@ defmodule WandererNotifier.KillmailProcessing.KillmailData do
   # Private helper functions
 
   # Extract killmail_id from zkb_data with support for both string and atom keys
-  defp extract_killmail_id(zkb_data) do
-    cond do
-      is_map(zkb_data) && Map.has_key?(zkb_data, "killmail_id") ->
-        Map.get(zkb_data, "killmail_id")
+  defp extract_killmail_id(%{"killmail_id" => id}) when not is_nil(id), do: id
+  defp extract_killmail_id(%{killmail_id: id}) when not is_nil(id), do: id
 
-      is_map(zkb_data) && Map.has_key?(zkb_data, :killmail_id) ->
-        Map.get(zkb_data, :killmail_id)
+  defp extract_killmail_id(%{"zkb" => %{"killmail_id" => id}}) when not is_nil(id), do: id
+  defp extract_killmail_id(%{zkb: %{"killmail_id" => id}}) when not is_nil(id), do: id
+  defp extract_killmail_id(%{"zkb" => %{killmail_id: id}}) when not is_nil(id), do: id
+  defp extract_killmail_id(%{zkb: %{killmail_id: id}}) when not is_nil(id), do: id
 
-      is_map(zkb_data) && Map.has_key?(zkb_data, "zkb") &&
-      is_map(Map.get(zkb_data, "zkb")) &&
-      Map.has_key?(Map.get(zkb_data, "zkb"), "killmail_id") ->
-        get_in(zkb_data, ["zkb", "killmail_id"])
-
-      true ->
-        nil
-    end
-  end
+  defp extract_killmail_id(_), do: nil
 
   # Extract system_id from esi_data with type conversion
   defp extract_system_id(esi_data) do

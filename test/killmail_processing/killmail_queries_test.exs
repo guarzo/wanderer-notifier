@@ -1,98 +1,67 @@
 defmodule WandererNotifier.KillmailProcessing.KillmailQueriesTest do
   use ExUnit.Case, async: false
+  import Mox
 
   alias WandererNotifier.KillmailProcessing.KillmailQueries
-  alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
+  alias WandererNotifier.Resources.MockApi
 
-  # Mock module for the Api
-  defmodule MockApi do
-    def read(_query) do
-      # Get the mocked response from the test process
-      case Process.get(:mock_api_response) do
-        {result, value} ->
-          {result, value}
-        nil ->
-          {:error, :not_mocked}
-      end
-    end
-  end
-
-  setup do
-    # Store the original Api module
-    original_api = Api
-
-    # Replace the Api module with our mock for this test
-    # This approach avoids having to modify the actual code
-    :code.unstick_mod(WandererNotifier.Resources.Api)
-    Code.compiler_options(ignore_module_conflict: true)
-    defmodule WandererNotifier.Resources.Api do
-      def read(query) do
-        # Delegate to the mock
-        WandererNotifier.KillmailProcessing.KillmailQueriesTest.MockApi.read(query)
-      end
-    end
-    Code.compiler_options(ignore_module_conflict: false)
-
-    # Cleanup function to restore the original Api module after the test
-    on_exit(fn ->
-      :code.unstick_mod(WandererNotifier.Resources.Api)
-      Code.compiler_options(ignore_module_conflict: true)
-      Code.eval_string("defmodule WandererNotifier.Resources.Api, do: nil")
-      Code.delete_current_time_unit_cache()
-      Code.compiler_options(ignore_module_conflict: false)
-    end)
-
-    :ok
-  end
+  # Make sure mocks are verified when the test exits
+  setup :verify_on_exit!
 
   describe "exists?/1" do
     test "returns true when killmail exists" do
-      # Mock the API to return a result
-      Process.put(:mock_api_response, {:ok, [%{id: "some-uuid"}]})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:ok, [%{id: "some-uuid"}]} end)
 
-      assert KillmailQueries.exists?(12345) == true
+      assert KillmailQueries.exists?(12_345) == true
     end
 
     test "returns false when killmail doesn't exist" do
-      # Mock the API to return an empty list
-      Process.put(:mock_api_response, {:ok, []})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:ok, []} end)
 
-      assert KillmailQueries.exists?(12345) == false
+      assert KillmailQueries.exists?(12_345) == false
     end
 
     test "returns false on API error" do
-      # Mock the API to return an error
-      Process.put(:mock_api_response, {:error, "some error"})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:error, "some error"} end)
 
-      assert KillmailQueries.exists?(12345) == false
+      assert KillmailQueries.exists?(12_345) == false
     end
   end
 
   describe "get/1" do
     test "returns killmail when found" do
       # Mock a killmail resource
-      killmail = %KillmailResource{killmail_id: 12345}
+      killmail = %KillmailResource{killmail_id: 12_345}
 
-      # Mock the API to return the killmail
-      Process.put(:mock_api_response, {:ok, [killmail]})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:ok, [killmail]} end)
 
-      assert KillmailQueries.get(12345) == {:ok, killmail}
+      assert KillmailQueries.get(12_345) == {:ok, killmail}
     end
 
     test "returns error when not found" do
-      # Mock the API to return an empty list
-      Process.put(:mock_api_response, {:ok, []})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:ok, []} end)
 
-      assert KillmailQueries.get(12345) == {:error, :not_found}
+      assert KillmailQueries.get(12_345) == {:error, :not_found}
     end
   end
 
   describe "get_involvements/1" do
     test "returns involvements when found" do
-      # First mock the exists? call to return true
-      Process.put(:mock_api_response, {:ok, [%{id: "some-uuid"}]})
+      # Mock for exists? call
+      MockApi
+      |> expect(:read, fn _query -> {:ok, [%{id: "some-uuid"}]} end)
 
       # Mock some involvements
       involvements = [
@@ -100,47 +69,52 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueriesTest do
         %KillmailCharacterInvolvement{character_id: 456}
       ]
 
-      # Now mock the involvements query
-      Process.put(:mock_api_response, {:ok, involvements})
+      # Mock for involvements query
+      MockApi
+      |> expect(:read, fn _query -> {:ok, involvements} end)
 
-      assert KillmailQueries.get_involvements(12345) == {:ok, involvements}
+      assert KillmailQueries.get_involvements(12_345) == {:ok, involvements}
     end
 
     test "returns error when killmail not found" do
-      # Mock the exists? call to return false
-      Process.put(:mock_api_response, {:ok, []})
+      # Mock exists? to return false
+      MockApi
+      |> expect(:read, fn _query -> {:ok, []} end)
 
-      assert KillmailQueries.get_involvements(12345) == {:error, :not_found}
+      assert KillmailQueries.get_involvements(12_345) == {:error, :not_found}
     end
   end
 
   describe "find_by_character/4" do
     test "returns killmails for character" do
       # Mock killmail resource
-      killmail = %KillmailResource{killmail_id: 12345}
+      killmail = %KillmailResource{killmail_id: 12_345}
 
       # Mock involvements with loaded killmails
       involvements = [
         %KillmailCharacterInvolvement{character_id: 123, killmail: killmail}
       ]
 
-      # Mock the API response
-      Process.put(:mock_api_response, {:ok, involvements})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:ok, involvements} end)
 
-      start_date = DateTime.utc_now() |> DateTime.add(-86400, :second)
+      start_date = DateTime.utc_now() |> DateTime.add(-86_400, :second)
       end_date = DateTime.utc_now()
 
       assert KillmailQueries.find_by_character(123, start_date, end_date) == {:ok, [killmail]}
     end
 
     test "handles API errors" do
-      # Mock an API error
-      Process.put(:mock_api_response, {:error, "some error"})
+      # Set up mock expectations
+      MockApi
+      |> expect(:read, fn _query -> {:error, "some error"} end)
 
-      start_date = DateTime.utc_now() |> DateTime.add(-86400, :second)
+      start_date = DateTime.utc_now() |> DateTime.add(-86_400, :second)
       end_date = DateTime.utc_now()
 
-      assert KillmailQueries.find_by_character(123, start_date, end_date) == {:error, "some error"}
+      assert KillmailQueries.find_by_character(123, start_date, end_date) ==
+               {:error, "some error"}
     end
   end
 end

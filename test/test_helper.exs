@@ -167,11 +167,15 @@ Mox.defmock(WandererNotifier.MockNotifierFactory,
   for: WandererNotifier.Notifiers.FactoryBehaviour
 )
 
+# Define mock for Resources.Api
+Mox.defmock(WandererNotifier.Resources.MockApi, for: WandererNotifier.Resources.ApiBehaviour)
+
 # Set up application environment for testing
 Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockConfig)
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
+Application.put_env(:wanderer_notifier, :resources_api, WandererNotifier.Resources.MockApi)
 
 # Load DataCase module
 Code.require_file("support/data_case.ex", __DIR__)

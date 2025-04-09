@@ -35,9 +35,12 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
 
   require Ash.Query
 
-  alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
+
+  # Get configured API implementation - allows for mocking in tests
+  defp api,
+    do: Application.get_env(:wanderer_notifier, :resources_api, WandererNotifier.Resources.Api)
 
   @doc """
   Checks if a killmail exists in the database by its ID.
@@ -61,7 +64,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   """
   @spec exists?(integer()) :: boolean()
   def exists?(killmail_id) do
-    case Api.read(
+    case api().read(
            KillmailResource
            |> Ash.Query.filter(killmail_id == ^killmail_id)
            |> Ash.Query.select([:id])
@@ -95,7 +98,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   """
   @spec get(integer()) :: {:ok, KillmailResource.t()} | {:error, any()}
   def get(killmail_id) do
-    case Api.read(
+    case api().read(
            KillmailResource
            |> Ash.Query.filter(killmail_id == ^killmail_id)
            |> Ash.Query.limit(1)
@@ -133,7 +136,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
     # First check if the killmail exists
     if exists?(killmail_id) do
       # Then get all involvements for that killmail
-      case Api.read(
+      case api().read(
              KillmailCharacterInvolvement
              |> Ash.Query.filter(killmail.killmail_id == ^killmail_id)
              |> Ash.Query.load(:killmail)
@@ -200,7 +203,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
         query
       end
 
-    case Api.read(query) do
+    case api().read(query) do
       {:ok, involvements} ->
         # Extract the loaded killmails
         killmails = Enum.map(involvements, & &1.killmail)

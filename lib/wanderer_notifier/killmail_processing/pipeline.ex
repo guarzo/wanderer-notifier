@@ -7,9 +7,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.KillmailEnrichment, as: Enrichment
-  alias WandererNotifier.Killmail
-  alias WandererNotifier.Killmail.Validation, as: KillmailValidation
-  alias WandererNotifier.KillmailProcessing.{Context, Extractor, KillmailData, Metrics}
+  alias WandererNotifier.KillmailProcessing.{Context, Extractor, KillmailData, Metrics, Validator}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
@@ -168,8 +166,8 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     killmail = ensure_data_consistency(killmail)
 
     # Validate without trying to fix issues
-    case KillmailValidation.validate_killmail(killmail) do
-      {:ok, _} ->
+    case Validator.validate_complete_data(killmail) do
+      :ok ->
         # Validation passed
         AppLogger.kill_info("Killmail passed validation", %{
           killmail_id: killmail.killmail_id
@@ -241,82 +239,93 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Check if the database is available
   defp database_available? do
-    try do
-      # Check if Repo process exists and is alive
-      case Process.whereis(WandererNotifier.Data.Repo) do
-        pid when is_pid(pid) -> Process.alive?(pid)
-        _ -> false
-      end
-    rescue
+    # Check if Repo process exists and is alive
+    case Process.whereis(WandererNotifier.Data.Repo) do
+      pid when is_pid(pid) -> Process.alive?(pid)
       _ -> false
     end
+  rescue
+    _ -> false
   end
 
   # Actual database persistence function
   defp do_persist_normalized_killmail(killmail, ctx) do
-    try do
-      # Use the new KillmailPersistence.maybe_persist_normalized_killmail
-      # that works with the normalized model
-      case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
-        {:ok, :persisted} ->
-          AppLogger.kill_info("[Pipeline] Normalized killmail was newly persisted", %{
-            kill_id: killmail.killmail_id,
-            character_id: ctx.character_id
-          })
-
-          Metrics.track_persistence(ctx)
-          {:ok, killmail}
-
-        {:ok, :already_exists} ->
-          AppLogger.kill_info("[Pipeline] Normalized killmail already existed", %{
-            kill_id: killmail.killmail_id
-          })
-
-          {:ok, killmail}
-
-        # Successfully saved to database and returned the record
-        {:ok, record} when is_struct(record) ->
-          AppLogger.kill_info("[Pipeline] Normalized killmail was persisted to database", %{
-            kill_id: killmail.killmail_id,
-            character_id: ctx.character_id,
-            record_id: Map.get(record, :id, "unknown")
-          })
-
-          Metrics.track_persistence(ctx)
-          {:ok, killmail}
-
-        :ignored ->
-          AppLogger.kill_info("[Pipeline] Normalized killmail persistence was ignored", %{
-            kill_id: killmail.killmail_id,
-            reason: "Not tracked by any character"
-          })
-
-          {:ok, killmail}
-
-        error ->
-          AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
-            kill_id: killmail.killmail_id,
-            error: inspect(error)
-          })
-
-          # Return original killmail with error so notifications can still process
-          {:ok, killmail}
-      end
-    rescue
-      e ->
-        AppLogger.kill_error("[Pipeline] Exception during killmail persistence", %{
+    case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
+      {:ok, :persisted} ->
+        AppLogger.kill_info("[Pipeline] Normalized killmail was newly persisted", %{
           kill_id: killmail.killmail_id,
-          error: Exception.message(e)
+          character_id: ctx.character_id
         })
 
-        # Continue processing for notifications despite persistence error
+        Metrics.track_persistence(ctx)
+        {:ok, killmail}
+
+      {:ok, :already_exists} ->
+        AppLogger.kill_info("[Pipeline] Normalized killmail already existed", %{
+          kill_id: killmail.killmail_id
+        })
+
+        {:ok, killmail}
+
+      # Successfully saved to database and returned the record
+      {:ok, record} when is_struct(record) ->
+        AppLogger.kill_info("[Pipeline] Normalized killmail was persisted to database", %{
+          kill_id: killmail.killmail_id,
+          character_id: ctx.character_id,
+          record_id: Map.get(record, :id, "unknown")
+        })
+
+        Metrics.track_persistence(ctx)
+        {:ok, killmail}
+
+      :ignored ->
+        AppLogger.kill_info("[Pipeline] Normalized killmail persistence was ignored", %{
+          kill_id: killmail.killmail_id,
+          reason: "Not tracked by any character"
+        })
+
+        {:ok, killmail}
+
+      error ->
+        AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
+          kill_id: killmail.killmail_id,
+          error: inspect(error)
+        })
+
+        # Return original killmail with error so notifications can still process
         {:ok, killmail}
     end
+  rescue
+    e ->
+      AppLogger.kill_error("[Pipeline] Exception during killmail persistence", %{
+        kill_id: killmail.killmail_id,
+        error: Exception.message(e)
+      })
+
+      # Continue processing for notifications despite persistence error
+      {:ok, killmail}
   end
 
   @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
   defp check_notification(killmail, ctx) do
     # Log the killmail structure for debugging
+    log_killmail_structure(killmail, ctx)
+
+    # Only send notifications for realtime processing
+    case KillDeterminer.should_notify?(killmail) do
+      {:ok, %{should_notify: should_notify, reason: reason}} ->
+        process_notification_decision(killmail, ctx, should_notify, reason)
+
+      {:error, reason} ->
+        handle_notification_error(killmail, reason)
+
+      unexpected ->
+        handle_unexpected_result(killmail, unexpected)
+    end
+  end
+
+  # Log killmail structure details
+  defp log_killmail_structure(killmail, ctx) do
     AppLogger.kill_info("Checking notification status for killmail", %{
       kill_id: get_kill_id(killmail),
       killmail_keys: Map.keys(killmail),
@@ -325,61 +334,74 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         if(Map.has_key?(killmail, :esi_data), do: !is_nil(killmail.esi_data), else: false),
       mode: ctx && ctx.mode && ctx.mode.mode
     })
+  end
 
-    # Only send notifications for realtime processing
-    case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: should_notify, reason: reason}} ->
-        should_notify = Context.realtime?(ctx) and should_notify
+  # Process the notification decision
+  defp process_notification_decision(killmail, ctx, should_notify, reason) do
+    # Only notify if in realtime mode
+    real_should_notify = Context.realtime?(ctx) and should_notify
 
-        # Check if this is a "not tracked" case and ensure it's marked as not persisted
-        updated_killmail =
-          if is_binary(reason) do
-            not_tracked =
-              String.contains?(reason, "Not tracked by any character") or
-                reason == "Not tracked by any character or system"
+    # Update killmail based on notification decision
+    updated_killmail = update_killmail_persistence_flag(killmail, reason)
 
-            if not_tracked do
-              # Ensure we mark as not persisted for clear logging
-              Map.put(killmail, :persisted, false)
-            else
-              # Keep existing persisted status
-              killmail
-            end
-          else
-            # Non-string reason, keep existing persisted status
-            killmail
-          end
+    # Log the decision
+    AppLogger.kill_info("Notification decision", %{
+      should_notify: real_should_notify,
+      reason: reason,
+      realtime: Context.realtime?(ctx)
+    })
 
-        AppLogger.kill_info("Notification decision", %{
-          should_notify: should_notify,
-          reason: reason,
-          realtime: Context.realtime?(ctx)
-        })
+    # Return the updated killmail by using process_flag to pass it back to the caller
+    Process.put(:last_killmail_update, updated_killmail)
+    {:ok, real_should_notify, reason}
+  end
 
-        # Return the updated killmail by using process_flag to pass it back to the caller
-        Process.put(:last_killmail_update, updated_killmail)
-        {:ok, should_notify, reason}
+  # Update killmail persistence flag if needed
+  defp update_killmail_persistence_flag(killmail, reason) when is_binary(reason) do
+    not_tracked = not_tracked_reason?(reason)
 
-      {:error, reason} ->
-        # Handle error case by not sending notification and logging the issue
-        AppLogger.kill_error("Error determining notification status", %{
-          killmail_id: killmail.killmail_id,
-          error: inspect(reason)
-        })
-
-        # Return with notification disabled and error as reason
-        {:ok, false, "Error determining notification eligibility"}
-
-      unexpected ->
-        # Catch any unexpected return values and log them
-        AppLogger.kill_error("Unexpected result from notification determiner", %{
-          killmail_id: killmail.killmail_id,
-          result: inspect(unexpected)
-        })
-
-        # Return with notification disabled
-        {:ok, false, "Unexpected notification determination result"}
+    if not_tracked do
+      # Ensure we mark as not persisted for clear logging
+      Map.put(killmail, :persisted, false)
+    else
+      # Keep existing persisted status
+      killmail
     end
+  end
+
+  defp update_killmail_persistence_flag(killmail, _reason) do
+    # Non-string reason, keep existing persisted status
+    killmail
+  end
+
+  # Check if reason indicates not tracked
+  defp not_tracked_reason?(reason) do
+    String.contains?(reason, "Not tracked by any character") or
+      reason == "Not tracked by any character or system"
+  end
+
+  # Handle notification error case
+  defp handle_notification_error(killmail, reason) do
+    # Handle error case by not sending notification and logging the issue
+    AppLogger.kill_error("Error determining notification status", %{
+      killmail_id: killmail.killmail_id,
+      error: inspect(reason)
+    })
+
+    # Return with notification disabled and error as reason
+    {:ok, false, "Error determining notification eligibility"}
+  end
+
+  # Handle unexpected result
+  defp handle_unexpected_result(killmail, unexpected) do
+    # Catch any unexpected return values and log them
+    AppLogger.kill_error("Unexpected result from notification determiner", %{
+      killmail_id: killmail.killmail_id,
+      result: inspect(unexpected)
+    })
+
+    # Return with notification disabled
+    {:ok, false, "Unexpected notification determination result"}
   end
 
   @spec maybe_send_notification(killmail(), boolean(), Context.t()) :: result()
@@ -454,31 +476,37 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     cond do
       # First check for successful save and notify
       persisted == true and notified == true ->
-        {"Killmail saved and notified", "saved_and_notified"}
+        get_save_notify_details()
 
       # Check for duplicates
       persisted == true and notified == false and reason == "Duplicate kill" ->
-        {"Killmail already exists", "duplicate"}
+        get_duplicate_details()
 
-      # Check for not tracked killmails (string operations must be in function body)
-      is_binary(reason) and
-          (String.contains?(reason, "Not tracked by any character") or
-             reason == "Not tracked by any character or system") ->
-        {"Killmail processing skipped - not tracked", "skipped"}
+      # Check for not tracked killmails
+      is_binary(reason) and not_tracked_reason?(reason) ->
+        get_not_tracked_details()
 
       # Normal saved without notification
       persisted == true and notified == false ->
-        {"Killmail saved without notification", "saved"}
+        get_saved_without_notify_details()
 
       # Everything else is skipped
       persisted == false and notified == false ->
-        {"Killmail processing skipped", "skipped"}
+        get_skipped_details()
 
       # Catch-all for unexpected combinations
       true ->
-        {"Killmail processing outcome unknown", "unknown"}
+        get_unknown_details()
     end
   end
+
+  # Individual helper functions for each outcome type
+  defp get_save_notify_details, do: {"Killmail saved and notified", "saved_and_notified"}
+  defp get_duplicate_details, do: {"Killmail already exists", "duplicate"}
+  defp get_not_tracked_details, do: {"Killmail processing skipped - not tracked", "skipped"}
+  defp get_saved_without_notify_details, do: {"Killmail saved without notification", "saved"}
+  defp get_skipped_details, do: {"Killmail processing skipped", "skipped"}
+  defp get_unknown_details, do: {"Killmail processing outcome unknown", "unknown"}
 
   defp log_killmail_error(killmail, ctx, error) do
     kill_id = get_kill_id(killmail)

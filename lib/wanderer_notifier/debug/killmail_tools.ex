@@ -5,8 +5,15 @@ defmodule WandererNotifier.Debug.KillmailTools do
   """
 
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Killmail, as: KillmailStruct
-  alias WandererNotifier.Resources.Killmail, as: KillmailResource
+
+  alias WandererNotifier.KillmailProcessing.{
+    Extractor,
+    KillmailData,
+    KillmailQueries,
+    Validator
+  }
+
+  # alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
   # Required fields for a valid killmail
   @required_fields [
@@ -85,7 +92,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
     validate_character_data(json_data)
 
     # Convert json_data to a format suitable for validation
-    killmail_data = %{
+    killmail_data = %KillmailData{
       killmail_id: kill_id,
       zkb_data: Map.get(json_data, "zkb", %{}),
       esi_data:
@@ -93,9 +100,9 @@ defmodule WandererNotifier.Debug.KillmailTools do
         |> Map.put("solar_system_name", json_data["solar_system_name"] || "Unknown System")
     }
 
-    # Get and display validation results using the Killmail.Validation module
-    case WandererNotifier.Killmail.Validation.validate_killmail(killmail_data) do
-      {:ok, _} ->
+    # Get and display validation results using the Validator module
+    case Validator.validate_complete_data(killmail_data) do
+      :ok ->
         IO.puts("\n------ KILLMAIL VALIDATION PASSED ------")
         IO.puts("✅ All required fields are present")
         IO.puts("✅ No placeholder values detected")
@@ -179,7 +186,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
     IO.puts("------ CHARACTER DATA VALIDATION ------")
 
     # Check victim character
-    victim = get_victim(json_data)
+    victim = Extractor.get_victim(json_data)
     victim_id = victim && Map.get(victim, "character_id")
     victim_name = victim && Map.get(victim, "character_name")
 
@@ -191,7 +198,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
     end
 
     # Check attackers
-    attackers = get_attackers(json_data) || []
+    attackers = Extractor.get_attackers(json_data) || []
 
     if Enum.empty?(attackers) do
       IO.puts("⚠️ No attackers found")
@@ -250,7 +257,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
 
   # Log what would be persisted for the victim
   defp log_victim_persistence_data(json_data, kill_id) do
-    victim = get_victim(json_data) || %{}
+    victim = Extractor.get_victim(json_data) || %{}
     victim_id = Map.get(victim, "character_id", "unknown")
     victim_name = Map.get(victim, "character_name", "Unknown Victim")
 
@@ -286,7 +293,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
 
   # Log what would be persisted for a sample attacker (first one)
   defp log_attacker_persistence_data(json_data, kill_id) do
-    attackers = get_attackers(json_data) || []
+    attackers = Extractor.get_attackers(json_data) || []
 
     if Enum.empty?(attackers) do
       IO.puts("------ ATTACKER PERSISTENCE DATA ------")
@@ -389,13 +396,13 @@ defmodule WandererNotifier.Debug.KillmailTools do
     structure_result = validate_killmail_complete_structure(killmail)
 
     # Check victim character
-    victim = get_victim(killmail)
+    victim = Extractor.get_victim(killmail)
     victim_id = victim && Map.get(victim, "character_id")
     victim_name = victim && Map.get(victim, "character_name")
     victim_result = validate_character(victim_id, victim_name, "victim")
 
     # Check attackers
-    attackers = get_attackers(killmail) || []
+    attackers = Extractor.get_attackers(killmail) || []
 
     attacker_results =
       Enum.map(attackers, fn attacker ->
@@ -454,15 +461,15 @@ defmodule WandererNotifier.Debug.KillmailTools do
     # Required fields for a valid killmail
     required_fields = [
       {:killmail_id, killmail.killmail_id, "Killmail ID missing"},
-      {:kill_time, KillmailStruct.get(killmail, "killmail_time"), "Kill time missing"},
-      {:solar_system_id, KillmailStruct.get_system_id(killmail), "Solar system ID missing"},
-      {:solar_system_name, KillmailStruct.get(killmail, "solar_system_name"),
+      {:kill_time, Map.get(killmail, :kill_time, nil), "Kill time missing"},
+      {:solar_system_id, Extractor.get_system_id(killmail), "Solar system ID missing"},
+      {:solar_system_name, Map.get(killmail, :solar_system_name, nil),
        "Solar system name missing"}
     ]
 
     # Quality checks
     quality_checks = [
-      {KillmailStruct.get(killmail, "solar_system_name") != "Unknown System",
+      {Map.get(killmail, :solar_system_name) != "Unknown System",
        "Solar system name not properly enriched"},
       {killmail.zkb != nil && killmail.zkb != %{}, "ZKB data missing"},
       {is_map(killmail.zkb) && Map.get(killmail.zkb, "totalValue", 0) > 0,
@@ -599,14 +606,14 @@ defmodule WandererNotifier.Debug.KillmailTools do
     str_id = to_string(character_id)
 
     # Check victim
-    victim = get_victim(killmail)
+    victim = Extractor.get_victim(killmail)
     victim_id = victim && to_string(Map.get(victim, "character_id", ""))
 
     if victim_id == str_id do
       Map.get(victim, "character_name")
     else
       # Check attackers
-      attackers = get_attackers(killmail) || []
+      attackers = Extractor.get_attackers(killmail) || []
 
       matching_attacker =
         Enum.find(attackers, fn attacker ->
@@ -628,14 +635,14 @@ defmodule WandererNotifier.Debug.KillmailTools do
     tracked_ids = extract_tracked_character_ids(tracked_characters)
 
     # Check victim first
-    victim = KillmailStruct.get_victim(killmail)
+    victim = Extractor.get_victim(killmail)
     victim_id = victim && to_string(Map.get(victim, "character_id", ""))
 
     if victim_id && MapSet.member?(tracked_ids, victim_id) do
       {victim_id, Map.get(victim, "character_name", "Unknown Character")}
     else
       # Check attackers
-      attackers = KillmailStruct.get_attacker(killmail) || []
+      attackers = Extractor.get_attackers(killmail) || []
 
       tracked_attacker =
         Enum.find(attackers, fn attacker ->
@@ -673,15 +680,15 @@ defmodule WandererNotifier.Debug.KillmailTools do
       killmail_id: killmail.killmail_id,
 
       # ESI fields (if present)
-      solar_system_id: get_system_id(killmail),
-      solar_system_name: get_system_name(killmail),
+      solar_system_id: Extractor.get_system_id(killmail),
+      solar_system_name: Map.get(killmail, :solar_system_name, nil),
       region_id: get_region_id(killmail),
       region_name: get_region_name(killmail),
-      killmail_time: get_killmail_time(killmail),
+      killmail_time: Map.get(killmail, :kill_time, nil),
 
       # Victim and attacker data
-      victim: get_victim(killmail),
-      attackers_count: get_attacker_count(killmail),
+      victim: Extractor.get_victim(killmail),
+      attackers_count: Extractor.get_attackers(killmail) |> length(),
 
       # ZKB data
       zkb_total_value: get_zkb_value(killmail),
@@ -694,16 +701,6 @@ defmodule WandererNotifier.Debug.KillmailTools do
   end
 
   # Helper functions for accessing data in either format
-  defp get_system_id(killmail) do
-    Map.get(killmail, :solar_system_id) ||
-      (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "solar_system_id"))
-  end
-
-  defp get_system_name(killmail) do
-    Map.get(killmail, :solar_system_name) ||
-      (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "solar_system_name"))
-  end
-
   defp get_region_id(killmail) do
     Map.get(killmail, :region_id) ||
       (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "region_id"))
@@ -714,112 +711,99 @@ defmodule WandererNotifier.Debug.KillmailTools do
       (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "region_name"))
   end
 
-  defp get_killmail_time(killmail) do
-    Map.get(killmail, :kill_time) ||
-      (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "killmail_time"))
-  end
-
-  defp get_victim(killmail) do
-    cond do
-      is_struct(killmail, KillmailResource) ->
-        # For normalized killmail resource
-        if killmail.victim_id do
-          %{
-            "character_id" => killmail.victim_id,
-            "character_name" => killmail.victim_name,
-            "ship_type_id" => killmail.victim_ship_id,
-            "ship_type_name" => killmail.victim_ship_name,
-            "corporation_id" => killmail.victim_corporation_id,
-            "corporation_name" => killmail.victim_corporation_name
-          }
-        else
-          nil
-        end
-
-      Map.has_key?(killmail, :full_victim_data) ->
-        # Check for full_victim_data field
-        killmail.full_victim_data
-
-      Map.has_key?(killmail, "victim") ->
-        # JSON format with direct victim field
-        killmail["victim"]
-
-      Map.has_key?(killmail, :esi_data) && killmail.esi_data ->
-        # Format with esi_data field
-        Map.get(killmail.esi_data, "victim")
-
-      Map.has_key?(killmail, "esi_data") && killmail["esi_data"] ->
-        # Format with esi_data field as string key
-        Map.get(killmail["esi_data"], "victim")
-
-      true ->
-        # Default for any other format
-        Map.get(killmail, :victim) || Map.get(killmail, "victim") || %{}
-    end
-  end
-
-  defp get_attacker_count(killmail) do
-    cond do
-      is_struct(killmail, KillmailResource) ->
-        killmail.attacker_count || 0
-
-      Map.get(killmail, :esi_data) ->
-        attackers = Map.get(killmail.esi_data, "attackers", [])
-        length(attackers)
-
-      true ->
-        0
-    end
-  end
-
   defp get_zkb_value(killmail) do
-    zkb_data = get_zkb_data(killmail)
-    Map.get(zkb_data || %{}, "totalValue", 0)
+    if has_zkb_data?(killmail) do
+      zkb_data = get_zkb_data(killmail)
+      Map.get(zkb_data, "totalValue") || Map.get(zkb_data, "total_value")
+    else
+      nil
+    end
   end
 
   defp get_zkb_data(killmail) do
-    if is_struct(killmail, KillmailResource) do
-      killmail.zkb_data
-    else
-      Map.get(killmail, :zkb_data) || Map.get(killmail, :zkb) || %{}
-    end
+    killmail.zkb_data || killmail.zkb || %{}
   end
 
   defp has_esi_data?(killmail) do
-    Map.get(killmail, :esi_data) != nil
+    is_map(killmail.esi_data) && killmail.esi_data != %{}
   end
 
   defp has_zkb_data?(killmail) do
-    get_zkb_data(killmail) != nil
+    (is_map(killmail.zkb_data) && killmail.zkb_data != %{}) ||
+      (is_map(killmail.zkb) && killmail.zkb != %{})
   end
 
-  # Helper functions to get data from different killmail formats
-  defp get_attackers(killmail) do
-    # Check for different formats in a more structured way
-    case killmail do
-      %KillmailResource{} ->
-        # For normalized killmail resource
-        killmail.full_attacker_data
+  @doc """
+  Fetch and diagnose a killmail record by ID.
 
-      %{full_attacker_data: data} when not is_nil(data) ->
-        # Check for full_attacker_data field
-        data
+  This function fetches a killmail record from the database using KillmailQueries
+  and displays diagnostic information about it.
 
-      %{"attackers" => attackers} ->
-        # JSON format with direct attackers field
-        attackers
+  ## Parameters
+  - killmail_id: The ID of the killmail to fetch
 
-      %{esi_data: %{"attackers" => attackers}} when not is_nil(attackers) ->
-        # Format with esi_data field
-        attackers
+  ## Returns
+  - Diagnostic information about the killmail
+  """
+  def diagnose_killmail(killmail_id) when is_integer(killmail_id) do
+    IO.puts("\n=====================================================")
+    IO.puts("🔍 DIAGNOSING KILLMAIL #{killmail_id}")
+    IO.puts("=====================================================\n")
 
-      %{"esi_data" => %{"attackers" => attackers}} when not is_nil(attackers) ->
-        # Format with esi_data field as string key
-        attackers
+    case KillmailQueries.exists?(killmail_id) do
+      true ->
+        IO.puts("✅ Killmail #{killmail_id} exists in database")
 
-      _ ->
-        # Default for any other format
-        Map.get(killmail, :attackers) || Map.get(killmail, "attackers") || []
+        case KillmailQueries.get(killmail_id) do
+          {:ok, killmail} ->
+            IO.puts("✅ Successfully retrieved killmail data")
+
+            # Display basic killmail information
+            solar_system_name = Extractor.get_system_name(killmail) || "Unknown"
+            victim = Extractor.get_victim(killmail) || %{}
+            victim_name = Map.get(victim, "character_name", "Unknown")
+            attackers = Extractor.get_attackers(killmail) || []
+
+            IO.puts("\n------ KILLMAIL INFORMATION ------")
+            IO.puts("Killmail ID: #{killmail.killmail_id}")
+            IO.puts("Solar System: #{solar_system_name}")
+            IO.puts("Victim: #{victim_name}")
+            IO.puts("Attackers: #{length(attackers)}")
+
+            # Validate the killmail data
+            case Validator.validate_complete_data(killmail) do
+              :ok ->
+                IO.puts("\n✅ Killmail data is valid")
+
+              {:error, reasons} ->
+                IO.puts("\n⚠️ Killmail data has validation issues:")
+
+                Enum.each(reasons, fn reason ->
+                  IO.puts("  - #{reason}")
+                end)
+            end
+
+            {:ok, killmail}
+
+          {:error, reason} ->
+            IO.puts("❌ Failed to retrieve killmail: #{inspect(reason)}")
+            {:error, reason}
+        end
+
+      false ->
+        IO.puts("❌ Killmail #{killmail_id} does not exist in database")
+        {:error, :not_found}
+    end
+  end
+
+  def diagnose_killmail(killmail_id) when is_binary(killmail_id) do
+    case Integer.parse(killmail_id) do
+      {id, _} ->
+        diagnose_killmail(id)
+
+      :error ->
+        IO.puts("❌ Invalid killmail ID: #{killmail_id}")
+        {:error, :invalid_id}
     end
   end
 end
