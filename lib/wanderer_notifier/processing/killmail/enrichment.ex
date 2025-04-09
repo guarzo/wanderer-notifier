@@ -8,6 +8,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification
@@ -65,18 +66,19 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   """
   def enrich_killmail_data(killmail) do
     esi_data = extract_esi_data(killmail)
-    log_enrichment_start(killmail.killmail_id, esi_data)
+    kill_id = Extractor.get_killmail_id(killmail)
+    log_enrichment_start(kill_id, esi_data)
 
     esi_data =
       %{}
       |> Map.merge(esi_data || %{})
       |> enrich_with_system_name()
-      |> enrich_victim_data(killmail.killmail_id)
-      |> enrich_attackers_data(killmail.killmail_id)
-      |> verify_system_enrichment(killmail.killmail_id)
+      |> enrich_victim_data(kill_id)
+      |> enrich_attackers_data(kill_id)
+      |> verify_system_enrichment(kill_id)
       |> ensure_complete_enrichment()
 
-    log_enrichment_completion(killmail.killmail_id, esi_data)
+    log_enrichment_completion(kill_id, esi_data)
     update_killmail_with_enriched_data(killmail, esi_data)
   end
 
@@ -178,21 +180,35 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     )
 
     # Update based on struct type
-    if is_struct(killmail, Killmail) do
-      # For Killmail resources, just update the specific fields
-      %{
+    cond do
+      is_struct(killmail, KillmailData) ->
+        # For KillmailData, update specific fields
+        %{
+          killmail
+          | esi_data: esi_data,
+            solar_system_id: system_id,
+            solar_system_name: system_name,
+            kill_time: kill_time,
+            victim: Map.get(esi_data, "victim"),
+            attackers: Map.get(esi_data, "attackers")
+        }
+
+      is_struct(killmail, Killmail) ->
+        # For Killmail resources, just update the specific fields
+        %{
+          killmail
+          | solar_system_id: system_id,
+            solar_system_name: system_name,
+            kill_time: kill_time
+        }
+
+      true ->
+        # For regular maps, add both the esi_data and the key fields
         killmail
-        | solar_system_id: system_id,
-          solar_system_name: system_name,
-          kill_time: kill_time
-      }
-    else
-      # For regular maps, add both the esi_data and the key fields
-      killmail
-      |> Map.put(:esi_data, esi_data)
-      |> Map.put(:solar_system_id, system_id)
-      |> Map.put(:solar_system_name, system_name)
-      |> Map.put(:kill_time, kill_time)
+        |> Map.put(:esi_data, esi_data)
+        |> Map.put(:solar_system_id, system_id)
+        |> Map.put(:solar_system_name, system_name)
+        |> Map.put(:kill_time, kill_time)
     end
   end
 
@@ -234,8 +250,13 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp extract_esi_data(killmail) do
     # Create a standardized esi_data map based on the struct type
     cond do
+      # Use Extractor to reliably get data from various killmail formats
+      is_struct(killmail, KillmailData) ->
+        # For a KillmailData struct, extract its esi_data
+        killmail.esi_data
+
       is_struct(killmail, Killmail) ->
-        # For a Killmail resource, create a simple standardized map from its fields
+        # For a Killmail resource, create a standardized map from its fields
         %{
           "solar_system_id" => killmail.solar_system_id,
           "solar_system_name" => killmail.solar_system_name,

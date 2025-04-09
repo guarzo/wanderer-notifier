@@ -9,14 +9,14 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   alias WandererNotifier.Data.KillmailEnrichment, as: Enrichment
   alias WandererNotifier.Killmail
   alias WandererNotifier.Killmail.Validation, as: KillmailValidation
-  alias WandererNotifier.KillmailProcessing.{Context, Metrics}
+  alias WandererNotifier.KillmailProcessing.{Context, Extractor, KillmailData, Metrics}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
   alias WandererNotifier.Resources.KillmailPersistence
 
-  @type killmail :: KillmailResource.t()
+  @type killmail :: KillmailResource.t() | KillmailData.t() | map()
   @type result :: {:ok, any()} | {:error, any()}
 
   @doc """
@@ -114,18 +114,14 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
-        # Create normalized model directly
+        # Create normalized model using KillmailData
         AppLogger.kill_info("ESI data successfully retrieved", %{
           kill_id: kill_id,
           esi_data_keys: Map.keys(esi_data)
         })
 
-        {:ok,
-         %{
-           killmail_id: kill_id,
-           zkb_data: Map.get(zkb_data, "zkb", %{}),
-           esi_data: esi_data
-         }}
+        # Use KillmailData.from_zkb_and_esi to create structured data
+        {:ok, KillmailData.from_zkb_and_esi(zkb_data, esi_data)}
 
       {:error, :not_found} ->
         # This is common and expected - ESI doesn't have data for this killmail yet
@@ -527,46 +523,20 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     %{error: inspect(error)}
   end
 
-  defp get_kill_id(%{killmail_id: id}) when not is_nil(id), do: id
-
-  defp get_kill_id(data) when is_map(data) do
-    # Try to extract kill_id from different map formats
-    cond do
-      Map.has_key?(data, "killmail_id") ->
-        Map.get(data, "killmail_id")
-
-      Map.has_key?(data, :killmail_id) ->
-        Map.get(data, :killmail_id)
-
-      true ->
-        AppLogger.kill_warn("Could not extract kill_id from data", %{
-          data_keys: Map.keys(data)
-        })
-
-        nil
-    end
-  end
-
-  defp get_kill_id(data) do
-    AppLogger.kill_error("Failed to extract kill_id from non-map data", %{
-      data_type: inspect(data)
-    })
-
-    nil
-  end
+  defp get_kill_id(data), do: Extractor.get_killmail_id(data)
 
   # Validate that the enriched data meets requirements (now used in validate_killmail_data)
   # This comment explains why we removed the duplicate function
 
   defp log_validation_failure(killmail, reasons) do
-    debug_data = Killmail.debug_data(killmail)
+    debug_data = Extractor.debug_data(killmail)
 
     victim_status = if debug_data.has_victim_data, do: "present", else: "missing"
     victim_ship = if debug_data.has_victim_data, do: "present", else: "missing"
 
     AppLogger.kill_error(
       "Enriched killmail failed validation - " <>
-        "killmail_id: #{killmail.killmail_id}, " <>
+        "killmail_id: #{Extractor.get_killmail_id(killmail)}, " <>
         "failures: #{reasons}, " <>
         "system_name: #{debug_data.system_name}, " <>
         "system_id: #{inspect(debug_data.system_id)}, " <>
