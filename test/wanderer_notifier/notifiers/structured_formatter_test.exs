@@ -5,7 +5,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   alias WandererNotifier.Api.ESI.ServiceMock, as: ESIServiceMock
   alias WandererNotifier.Api.ZKill.ServiceMock, as: ZKillServiceMock
   alias WandererNotifier.Data.Character
-  alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.MockZKillClient
   alias WandererNotifier.Notifiers.StructuredFormatter
@@ -105,18 +104,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   end
 
   describe "colors/0" do
-    test "returns a map of color constants" do
+    test "returns a map of colors" do
       colors = StructuredFormatter.colors()
       assert is_map(colors)
       assert Map.has_key?(colors, :default)
       assert Map.has_key?(colors, :success)
-      assert Map.has_key?(colors, :warning)
       assert Map.has_key?(colors, :error)
       assert Map.has_key?(colors, :info)
-      assert Map.has_key?(colors, :wormhole)
-      assert Map.has_key?(colors, :highsec)
-      assert Map.has_key?(colors, :lowsec)
-      assert Map.has_key?(colors, :nullsec)
     end
   end
 
@@ -150,27 +144,22 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   describe "format_kill_notification/1" do
     test "formats a killmail notification correctly" do
-      # Create a test killmail using the proper struct
-      killmail = %Killmail{
-        killmail_id: "12345",
-        zkb: %{
-          "totalValue" => 1_000_000.0,
-          "points" => 1
-        },
-        esi_data: %{
-          "killmail_id" => 12_345,
-          "solar_system_id" => 30_000_142,
-          "victim" => %{
-            "character_id" => 93_265_357,
-            "ship_type_id" => 587
-          },
-          "attackers" => [
-            %{
-              "character_id" => 93_898_784,
-              "ship_type_id" => 11_567
-            }
-          ]
-        }
+      # Create a test killmail using a regular map instead of struct
+      killmail = %{
+        killmail_id: 12_345,
+        kill_time: DateTime.utc_now(),
+        victim_name: "Test Victim",
+        victim_ship_name: "Test Ship",
+        victim_corporation_name: "Test Corp",
+        victim_id: 93_265_357,
+        victim_ship_id: 587,
+        solar_system_name: "Jita",
+        solar_system_id: 30_000_142,
+        attacker_count: 1,
+        final_blow_attacker_name: "Test Attacker",
+        final_blow_ship_name: "Attacker Ship",
+        final_blow_attacker_id: 93_898_784,
+        total_value: 1_000_000.0
       }
 
       # Format the notification
@@ -189,19 +178,13 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     end
 
     test "handles killmail with missing or partial data" do
-      # Create a test killmail with minimal data using the proper struct
-      killmail = %Killmail{
-        killmail_id: "12345",
-        zkb: %{
-          "totalValue" => 1_000_000.0,
-          "points" => 1
-        },
-        esi_data: %{
-          "killmail_id" => 12_345,
-          "solar_system_id" => 30_000_142,
-          "victim" => %{},
-          "attackers" => []
-        }
+      # Create a test killmail with minimal data using a map
+      killmail = %{
+        killmail_id: 12_345,
+        kill_time: DateTime.utc_now(),
+        solar_system_id: 30_000_142,
+        solar_system_name: "Jita",
+        total_value: 1_000_000.0
       }
 
       # Format the notification

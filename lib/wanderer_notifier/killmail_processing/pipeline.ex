@@ -33,17 +33,38 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
          {:ok, persisted} <- persist_normalized_killmail(validated_killmail, ctx),
          {:ok, should_notify, reason} <- check_notification(persisted, ctx),
          {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
+      # Successfully processed killmail
       Metrics.track_processing_complete(ctx, {:ok, result})
-      log_killmail_outcome(result, ctx, persisted: true, notified: should_notify, reason: reason)
-      {:ok, result}
+
+      # Check if the killmail was updated in check_notification
+      final_killmail = Process.get(:last_killmail_update) || result
+      # Clean up after ourselves
+      Process.delete(:last_killmail_update)
+
+      # Check if killmail has a persisted flag set to false
+      was_persisted =
+        if is_map(final_killmail) && Map.has_key?(final_killmail, :persisted),
+          do: Map.get(final_killmail, :persisted),
+          else: true
+
+      log_killmail_outcome(final_killmail, ctx,
+        persisted: was_persisted,
+        notified: should_notify,
+        reason: reason
+      )
+
+      {:ok, final_killmail}
     else
+      # Explicit skipping
       {:error, {:skipped, reason}} ->
         Metrics.track_processing_skipped(ctx)
         log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
         {:ok, :skipped}
 
+      # Validation failures
       {:error, {:enrichment_validation_failed, reasons}} ->
-        AppLogger.kill_error("Killmail enrichment validation failed", %{
+        # Log at error level since these are important issues
+        AppLogger.kill_error("Killmail failed enrichment validation", %{
           reasons: reasons,
           killmail_id: zkb_data["killmail_id"] || "unknown"
         })
@@ -51,9 +72,30 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         Metrics.track_processing_error(ctx)
         {:error, :enrichment_validation_failed}
 
+      {:error, :not_found} ->
+        kill_id = Map.get(zkb_data, "killmail_id", "unknown")
+
+        AppLogger.kill_info("ESI data not found for killmail", %{
+          kill_id: kill_id
+        })
+
+        Metrics.track_processing_skipped(ctx)
+        # Return the error for proper handling, but don't log as error
+        {:error, :not_found}
+
+      # For other errors, log at info level, not error - cut down on noise
       error ->
         Metrics.track_processing_error(ctx)
-        log_killmail_error(zkb_data, ctx, error)
+        # Use debug logging for these errors to reduce noise
+        kill_id = get_kill_id(zkb_data)
+
+        AppLogger.kill_info("Killmail processing issue", %{
+          error: inspect(error),
+          kill_id: kill_id,
+          status: "failed"
+        })
+
+        # Return the error for proper handling
         error
     end
   end
@@ -64,9 +106,20 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = Map.get(zkb_data, "killmail_id")
     hash = get_in(zkb_data, ["zkb", "hash"])
 
+    AppLogger.kill_info("Fetching ESI data for killmail", %{
+      kill_id: kill_id,
+      hash: hash,
+      zkb_keys: Map.keys(zkb_data)
+    })
+
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
         # Create normalized model directly
+        AppLogger.kill_info("ESI data successfully retrieved", %{
+          kill_id: kill_id,
+          esi_data_keys: Map.keys(esi_data)
+        })
+
         {:ok,
          %{
            killmail_id: kill_id,
@@ -74,8 +127,23 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
            esi_data: esi_data
          }}
 
+      {:error, :not_found} ->
+        # This is common and expected - ESI doesn't have data for this killmail yet
+        # Log and return a specific error for this case (debug level, not error)
+        AppLogger.kill_info("ESI data not found for killmail", %{
+          kill_id: kill_id,
+          hash: hash
+        })
+
+        {:error, {:skipped, "ESI data not available"}}
+
       error ->
-        log_killmail_error(zkb_data, nil, error)
+        # Log as debug level rather than error - reduce noise
+        AppLogger.kill_info("Error fetching killmail from ESI", %{
+          kill_id: kill_id,
+          error: inspect(error)
+        })
+
         error
     end
   end
@@ -100,78 +168,221 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   # Validates the normalized killmail data
   @spec validate_killmail_data(killmail()) :: result()
   defp validate_killmail_data(killmail) do
-    # Currently reuse the existing validation logic
-    # This will be updated to use WandererNotifier.Killmail.Validation module
-    # once fully migrated
-    validate_enriched_data(killmail)
+    # Ensure internal data consistency first
+    killmail = ensure_data_consistency(killmail)
+
+    # Validate without trying to fix issues
+    case KillmailValidation.validate_killmail(killmail) do
+      {:ok, _} ->
+        # Validation passed
+        AppLogger.kill_info("Killmail passed validation", %{
+          killmail_id: killmail.killmail_id
+        })
+
+        {:ok, killmail}
+
+      {:error, reasons} ->
+        # Log the validation failure
+        log_validation_failure(killmail, reasons)
+
+        # Return error without trying to fix
+        {:error, {:enrichment_validation_failed, reasons}}
+    end
   end
 
   # Persists the normalized killmail to database
   @spec persist_normalized_killmail(killmail(), Context.t()) :: result()
   defp persist_normalized_killmail(killmail, ctx) do
-    AppLogger.kill_debug("[Pipeline] Persisting normalized killmail", %{
+    # Check if we should even try to persist based on notification rules
+    case KillDeterminer.should_notify?(killmail) do
+      {:ok, %{should_notify: false, reason: reason}} when is_binary(reason) ->
+        # Check if this is a "not tracked" case inside the function body
+        not_tracked =
+          String.contains?(reason, "Not tracked by any character") or
+            reason == "Not tracked by any character or system"
+
+        if not_tracked do
+          # Don't even attempt to persist if not tracked
+          AppLogger.kill_info("[Pipeline] Skipping persistence - not tracked", %{
+            kill_id: killmail.killmail_id,
+            reason: reason
+          })
+
+          # Mark as not persisted
+          {:ok, Map.put(killmail, :persisted, false)}
+        else
+          # Normal persistence path for other reasons
+          persist_if_database_available(killmail, ctx)
+        end
+
+      _ ->
+        # Normal persistence path
+        persist_if_database_available(killmail, ctx)
+    end
+  end
+
+  # Handle persistence based on database availability
+  defp persist_if_database_available(killmail, ctx) do
+    AppLogger.kill_info("[Pipeline] Persisting normalized killmail", %{
       kill_id: killmail.killmail_id,
       character_id: ctx.character_id
     })
 
-    # Use the new KillmailPersistence.maybe_persist_normalized_killmail
-    # that works with the normalized model
-    case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
-      {:ok, :persisted} ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail was newly persisted", %{
+    # Check if database is available first
+    if database_available?() do
+      # Database is available, proceed with persistence
+      do_persist_normalized_killmail(killmail, ctx)
+    else
+      # Database unavailable, but still allow notifications
+      AppLogger.kill_info("[Pipeline] Database unavailable, skipping persistence", %{
+        kill_id: killmail.killmail_id
+      })
+
+      # Return killmail with persisted=false flag
+      {:ok, Map.put(killmail, :persisted, false)}
+    end
+  end
+
+  # Check if the database is available
+  defp database_available? do
+    try do
+      # Check if Repo process exists and is alive
+      case Process.whereis(WandererNotifier.Data.Repo) do
+        pid when is_pid(pid) -> Process.alive?(pid)
+        _ -> false
+      end
+    rescue
+      _ -> false
+    end
+  end
+
+  # Actual database persistence function
+  defp do_persist_normalized_killmail(killmail, ctx) do
+    try do
+      # Use the new KillmailPersistence.maybe_persist_normalized_killmail
+      # that works with the normalized model
+      case KillmailPersistence.maybe_persist_normalized_killmail(killmail, ctx.character_id) do
+        {:ok, :persisted} ->
+          AppLogger.kill_info("[Pipeline] Normalized killmail was newly persisted", %{
+            kill_id: killmail.killmail_id,
+            character_id: ctx.character_id
+          })
+
+          Metrics.track_persistence(ctx)
+          {:ok, killmail}
+
+        {:ok, :already_exists} ->
+          AppLogger.kill_info("[Pipeline] Normalized killmail already existed", %{
+            kill_id: killmail.killmail_id
+          })
+
+          {:ok, killmail}
+
+        # Successfully saved to database and returned the record
+        {:ok, record} when is_struct(record) ->
+          AppLogger.kill_info("[Pipeline] Normalized killmail was persisted to database", %{
+            kill_id: killmail.killmail_id,
+            character_id: ctx.character_id,
+            record_id: Map.get(record, :id, "unknown")
+          })
+
+          Metrics.track_persistence(ctx)
+          {:ok, killmail}
+
+        :ignored ->
+          AppLogger.kill_info("[Pipeline] Normalized killmail persistence was ignored", %{
+            kill_id: killmail.killmail_id,
+            reason: "Not tracked by any character"
+          })
+
+          {:ok, killmail}
+
+        error ->
+          AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
+            kill_id: killmail.killmail_id,
+            error: inspect(error)
+          })
+
+          # Return original killmail with error so notifications can still process
+          {:ok, killmail}
+      end
+    rescue
+      e ->
+        AppLogger.kill_error("[Pipeline] Exception during killmail persistence", %{
           kill_id: killmail.killmail_id,
-          character_id: ctx.character_id
+          error: Exception.message(e)
         })
 
-        Metrics.track_persistence(ctx)
+        # Continue processing for notifications despite persistence error
         {:ok, killmail}
-
-      {:ok, :already_exists} ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail already existed", %{
-          kill_id: killmail.killmail_id
-        })
-
-        {:ok, killmail}
-
-      # Successfully saved to database and returned the record
-      {:ok, record} when is_struct(record) ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail was persisted to database", %{
-          kill_id: killmail.killmail_id,
-          character_id: ctx.character_id,
-          record_id: Map.get(record, :id, "unknown")
-        })
-
-        Metrics.track_persistence(ctx)
-        {:ok, killmail}
-
-      :ignored ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail persistence was ignored", %{
-          kill_id: killmail.killmail_id,
-          reason: "Not tracked by any character"
-        })
-
-        {:ok, killmail}
-
-      error ->
-        AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
-          kill_id: killmail.killmail_id,
-          error: inspect(error)
-        })
-
-        error
     end
   end
 
   @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
   defp check_notification(killmail, ctx) do
+    # Log the killmail structure for debugging
+    AppLogger.kill_info("Checking notification status for killmail", %{
+      kill_id: get_kill_id(killmail),
+      killmail_keys: Map.keys(killmail),
+      has_esi_data: Map.has_key?(killmail, :esi_data),
+      esi_data_present:
+        if(Map.has_key?(killmail, :esi_data), do: !is_nil(killmail.esi_data), else: false),
+      mode: ctx && ctx.mode && ctx.mode.mode
+    })
+
     # Only send notifications for realtime processing
     case KillDeterminer.should_notify?(killmail) do
       {:ok, %{should_notify: should_notify, reason: reason}} ->
         should_notify = Context.realtime?(ctx) and should_notify
+
+        # Check if this is a "not tracked" case and ensure it's marked as not persisted
+        updated_killmail =
+          if is_binary(reason) do
+            not_tracked =
+              String.contains?(reason, "Not tracked by any character") or
+                reason == "Not tracked by any character or system"
+
+            if not_tracked do
+              # Ensure we mark as not persisted for clear logging
+              Map.put(killmail, :persisted, false)
+            else
+              # Keep existing persisted status
+              killmail
+            end
+          else
+            # Non-string reason, keep existing persisted status
+            killmail
+          end
+
+        AppLogger.kill_info("Notification decision", %{
+          should_notify: should_notify,
+          reason: reason,
+          realtime: Context.realtime?(ctx)
+        })
+
+        # Return the updated killmail by using process_flag to pass it back to the caller
+        Process.put(:last_killmail_update, updated_killmail)
         {:ok, should_notify, reason}
 
-      error ->
-        error
+      {:error, reason} ->
+        # Handle error case by not sending notification and logging the issue
+        AppLogger.kill_error("Error determining notification status", %{
+          killmail_id: killmail.killmail_id,
+          error: inspect(reason)
+        })
+
+        # Return with notification disabled and error as reason
+        {:ok, false, "Error determining notification eligibility"}
+
+      unexpected ->
+        # Catch any unexpected return values and log them
+        AppLogger.kill_error("Unexpected result from notification determiner", %{
+          killmail_id: killmail.killmail_id,
+          result: inspect(unexpected)
+        })
+
+        # Return with notification disabled
+        {:ok, false, "Unexpected notification determination result"}
     end
   end
 
@@ -182,9 +393,17 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         Metrics.track_notification_sent(ctx)
         {:ok, killmail}
 
+      # Instead of returning the raw error, transform it
       error ->
-        log_killmail_error(killmail, ctx, error)
-        error
+        # Log the error but don't let it propagate
+        AppLogger.kill_info("Failed to send notification", %{
+          killmail_id: killmail.killmail_id,
+          error: inspect(error)
+        })
+
+        # Always return success with the original killmail
+        # This prevents errors from notification from breaking the pipeline
+        {:ok, killmail}
     end
   end
 
@@ -201,6 +420,12 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
        ) do
     kill_id = get_kill_id(killmail)
     kill_time = Map.get(killmail, "killmail_time")
+
+    # Check for persisted flag in killmail that might override the parameter
+    persisted =
+      if is_map(killmail) && Map.has_key?(killmail, :persisted),
+        do: Map.get(killmail, :persisted),
+        else: persisted
 
     metadata = %{
       kill_id: kill_id,
@@ -224,24 +449,38 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       AppLogger.kill_info(message, updated_metadata)
     else
       # All other statuses (skipped, duplicate, saved without notification) should be debug
-      AppLogger.kill_debug(message, updated_metadata)
+      AppLogger.kill_info(message, updated_metadata)
     end
   end
 
   # Helper function to get log message and status based on outcomes
   defp get_log_details(persisted, notified, reason) do
-    case {persisted, notified, reason} do
-      {true, true, _} ->
+    cond do
+      # First check for successful save and notify
+      persisted == true and notified == true ->
         {"Killmail saved and notified", "saved_and_notified"}
 
-      {true, false, "Duplicate kill"} ->
+      # Check for duplicates
+      persisted == true and notified == false and reason == "Duplicate kill" ->
         {"Killmail already exists", "duplicate"}
 
-      {true, false, _} ->
+      # Check for not tracked killmails (string operations must be in function body)
+      is_binary(reason) and
+          (String.contains?(reason, "Not tracked by any character") or
+             reason == "Not tracked by any character or system") ->
+        {"Killmail processing skipped - not tracked", "skipped"}
+
+      # Normal saved without notification
+      persisted == true and notified == false ->
         {"Killmail saved without notification", "saved"}
 
-      {false, false, _} ->
+      # Everything else is skipped
+      persisted == false and notified == false ->
         {"Killmail processing skipped", "skipped"}
+
+      # Catch-all for unexpected combinations
+      true ->
+        {"Killmail processing outcome unknown", "unknown"}
     end
   end
 
@@ -288,167 +527,132 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     %{error: inspect(error)}
   end
 
-  defp get_kill_id(%{killmail_id: id}), do: id
+  defp get_kill_id(%{killmail_id: id}) when not is_nil(id), do: id
+
+  defp get_kill_id(data) when is_map(data) do
+    # Try to extract kill_id from different map formats
+    cond do
+      Map.has_key?(data, "killmail_id") ->
+        Map.get(data, "killmail_id")
+
+      Map.has_key?(data, :killmail_id) ->
+        Map.get(data, :killmail_id)
+
+      true ->
+        AppLogger.kill_warn("Could not extract kill_id from data", %{
+          data_keys: Map.keys(data)
+        })
+
+        nil
+    end
+  end
 
   defp get_kill_id(data) do
-    AppLogger.kill_error("Failed to extract kill_id", %{
-      data: inspect(data)
+    AppLogger.kill_error("Failed to extract kill_id from non-map data", %{
+      data_type: inspect(data)
     })
 
     nil
   end
 
-  # Validate that the enriched data meets requirements
-  defp validate_enriched_data(killmail) do
-    killmail
-    |> ensure_data_consistency()
-    |> run_validation()
-  end
-
-  defp run_validation(killmail) do
-    case KillmailValidation.validate_killmail(killmail) do
-      {:ok, _} -> handle_successful_validation(killmail)
-      {:error, reasons} -> attempt_data_recovery(killmail, reasons)
-    end
-  end
-
-  defp handle_successful_validation(killmail) do
-    AppLogger.kill_debug("Killmail passed validation", %{
-      killmail_id: killmail.killmail_id
-    })
-
-    {:ok, killmail}
-  end
-
-  defp attempt_data_recovery(killmail, reasons) do
-    log_validation_failure(killmail, reasons)
-    fixed_killmail = emergency_data_fix(killmail, reasons)
-    revalidate_fixed_killmail(fixed_killmail, killmail.killmail_id)
-  end
-
-  defp revalidate_fixed_killmail(fixed_killmail, killmail_id) do
-    case Killmail.validate_complete_data(fixed_killmail) do
-      :ok -> handle_successful_fix(fixed_killmail)
-      {:error, reasons} -> handle_failed_fix(killmail_id, reasons)
-    end
-  end
-
-  defp handle_successful_fix(fixed_killmail) do
-    AppLogger.kill_info("Emergency data fix resolved validation issues", %{
-      killmail_id: fixed_killmail.killmail_id
-    })
-
-    {:ok, fixed_killmail}
-  end
-
-  defp handle_failed_fix(killmail_id, reasons) do
-    AppLogger.kill_error("Killmail still failing validation after emergency fixes", %{
-      killmail_id: killmail_id,
-      remaining_issues: reasons
-    })
-
-    {:error, {:enrichment_validation_failed, reasons}}
-  end
-
-  # Apply emergency fixes for common validation issues
-  defp emergency_data_fix(killmail, reasons) do
-    AppLogger.kill_info("Attempting emergency data fix for killmail", %{
-      killmail_id: killmail.killmail_id,
-      issues: reasons
-    })
-
-    esi_data = Map.get(killmail, :esi_data) || %{}
-    updated_esi_data = fix_system_name_if_needed(esi_data, reasons)
-    Map.put(killmail, :esi_data, updated_esi_data)
-  end
-
-  defp fix_system_name_if_needed(esi_data, reasons) do
-    if needs_system_name_fix?(reasons) do
-      apply_system_name_fix(esi_data)
-    else
-      esi_data
-    end
-  end
-
-  defp needs_system_name_fix?(reasons) do
-    Enum.any?(reasons, &String.contains?(&1, "system name"))
-  end
-
-  defp apply_system_name_fix(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
-
-    if is_nil(system_id) do
-      Map.put(esi_data, "solar_system_name", "Unidentified System")
-    else
-      fetch_or_generate_system_name(esi_data, system_id)
-    end
-  end
-
-  defp fetch_or_generate_system_name(esi_data, system_id) do
-    case ESIService.get_system_info(system_id) do
-      {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-        log_system_name_recovery(system_id, name)
-        Map.put(esi_data, "solar_system_name", name)
-
-      _ ->
-        log_system_name_fallback(system_id)
-        Map.put(esi_data, "solar_system_name", "System ##{system_id}")
-    end
-  end
-
-  defp log_system_name_recovery(system_id, name) do
-    AppLogger.kill_info("Emergency fix: Retrieved system name", %{
-      system_id: system_id,
-      system_name: name
-    })
-  end
-
-  defp log_system_name_fallback(system_id) do
-    AppLogger.kill_info("Emergency fix: Using fallback system name", %{
-      system_id: system_id
-    })
-  end
+  # Validate that the enriched data meets requirements (now used in validate_killmail_data)
+  # This comment explains why we removed the duplicate function
 
   defp log_validation_failure(killmail, reasons) do
     debug_data = Killmail.debug_data(killmail)
 
-    AppLogger.kill_error("Enriched killmail failed validation", %{
-      killmail_id: killmail.killmail_id,
-      failures: reasons,
-      system_name: debug_data.system_name,
-      has_victim: debug_data.has_victim_data,
-      victim_name: (debug_data.has_victim_data && "present") || "missing",
-      victim_ship: (debug_data.has_victim_data && "present") || "missing",
-      attackers_count: debug_data.attacker_count,
-      solar_system_id: debug_data.system_id
-    })
+    victim_status = if debug_data.has_victim_data, do: "present", else: "missing"
+    victim_ship = if debug_data.has_victim_data, do: "present", else: "missing"
+
+    AppLogger.kill_error(
+      "Enriched killmail failed validation - " <>
+        "killmail_id: #{killmail.killmail_id}, " <>
+        "failures: #{reasons}, " <>
+        "system_name: #{debug_data.system_name}, " <>
+        "system_id: #{inspect(debug_data.system_id)}, " <>
+        "has_victim: #{debug_data.has_victim_data}, " <>
+        "victim_name: #{victim_status}, " <>
+        "victim_ship: #{victim_ship}, " <>
+        "attackers_count: #{debug_data.attacker_count}"
+    )
   end
 
   # Ensure data consistency by copying enriched data throughout the struct
   defp ensure_data_consistency(killmail) do
+    # Extract needed data from esi_data
     esi_data = killmail.esi_data || %{}
-    victim = Map.get(esi_data, "victim")
 
-    # Ensure system name is consistent throughout the structure
-    esi_data =
-      case Map.get(esi_data, "solar_system_name") do
-        name when is_binary(name) and name != "" ->
-          # Ensure system name is available if not already set
-          updated_esi_data = Map.put(esi_data, "solar_system_name", name)
+    # Get essential fields with proper type conversion
+    system_id = get_and_convert_system_id(esi_data)
+    system_name = Map.get(esi_data, "solar_system_name")
 
-          # Copy to victim if present and missing
-          if is_map(victim) && !Map.has_key?(victim, "solar_system_name") do
-            updated_victim = Map.put(victim, "solar_system_name", name)
-            Map.put(updated_esi_data, "victim", updated_victim)
-          else
-            updated_esi_data
-          end
+    # Ensure kill_time is present and properly formatted
+    kill_time = get_and_convert_kill_time(esi_data, killmail)
 
-        _ ->
-          esi_data
-      end
+    # Create a consistent esi_data map
+    updated_esi_data =
+      esi_data
+      |> Map.put("solar_system_id", system_id)
+      |> Map.put("solar_system_name", system_name)
+      |> Map.put("killmail_time", format_kill_time(kill_time))
 
-    # Return updated killmail with consistent ESI data
-    Map.put(killmail, :esi_data, esi_data)
+    # Update the killmail with all consistent values
+    Map.merge(killmail, %{
+      esi_data: updated_esi_data,
+      solar_system_id: system_id,
+      solar_system_name: system_name,
+      kill_time: kill_time
+    })
+  end
+
+  # Convert system_id to integer consistently
+  defp get_and_convert_system_id(esi_data) do
+    system_id = Map.get(esi_data, "solar_system_id")
+
+    cond do
+      is_integer(system_id) ->
+        system_id
+
+      is_binary(system_id) ->
+        case Integer.parse(system_id) do
+          {id, _} -> id
+          :error -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  # Get and convert kill_time to DateTime consistently
+  defp get_and_convert_kill_time(esi_data, killmail) do
+    # Try to get from ESI data first, then killmail directly
+    killmail_time =
+      Map.get(esi_data, "killmail_time") ||
+        Map.get(killmail, :kill_time) ||
+        Map.get(killmail, "kill_time")
+
+    cond do
+      is_struct(killmail_time, DateTime) ->
+        killmail_time
+
+      is_binary(killmail_time) ->
+        case DateTime.from_iso8601(killmail_time) do
+          {:ok, datetime, _} -> datetime
+          _ -> DateTime.utc_now()
+        end
+
+      true ->
+        DateTime.utc_now()
+    end
+  end
+
+  # Format kill_time for storage in esi_data
+  defp format_kill_time(kill_time) do
+    cond do
+      is_binary(kill_time) -> kill_time
+      is_struct(kill_time, DateTime) -> DateTime.to_iso8601(kill_time)
+      true -> DateTime.to_iso8601(DateTime.utc_now())
+    end
   end
 end

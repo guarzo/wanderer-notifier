@@ -278,10 +278,27 @@ defmodule WandererNotifier.Killmail do
   - The system_id or nil if not found
   """
   def get_system_id(killmail) do
-    if is_struct(killmail, Killmail) && Map.has_key?(killmail, :solar_system_id) do
-      killmail.solar_system_id
-    else
-      nil
+    cond do
+      # Direct access for Killmail struct
+      is_struct(killmail, Killmail) && Map.has_key?(killmail, :solar_system_id) ->
+        killmail.solar_system_id
+
+      # Check in esi_data if available
+      is_map(killmail) && is_map(Map.get(killmail, :esi_data)) ->
+        esi_data = Map.get(killmail, :esi_data)
+        Map.get(esi_data, "solar_system_id")
+
+      # Try direct access with atom key
+      is_map(killmail) && Map.has_key?(killmail, :solar_system_id) ->
+        Map.get(killmail, :solar_system_id)
+
+      # Try direct access with string key
+      is_map(killmail) && Map.has_key?(killmail, "solar_system_id") ->
+        Map.get(killmail, "solar_system_id")
+
+      # Nothing found
+      true ->
+        nil
     end
   end
 

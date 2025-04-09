@@ -288,6 +288,9 @@ defmodule WandererNotifier.MockConfig do
       activity_charts: true
     }
   end
+
+  @impl true
+  def kill_notifications_enabled?, do: true
 end
 
 defmodule WandererNotifier.MockCacheHelpers do

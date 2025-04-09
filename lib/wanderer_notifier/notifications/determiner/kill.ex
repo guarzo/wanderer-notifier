@@ -21,16 +21,49 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - {:ok, %{should_notify: boolean(), reason: String.t()}} with tracking information
   """
   def should_notify?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    kill_id = get_kill_id(killmail)
+    # First check if killmail is valid and has minimal required data
+    if is_nil(killmail) or not is_map(killmail) do
+      Logger.warning("[KillDeterminer] Invalid killmail format", %{
+        killmail_type: if(is_nil(killmail), do: "nil", else: inspect(killmail))
+      })
 
-    with true <- check_notifications_enabled(kill_id),
-         true <- check_tracking(system_id, killmail) do
-      check_deduplication_and_decide(kill_id)
+      return_no_notification("Invalid killmail format")
     else
-      false -> {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
-      _ -> {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+      try do
+        # Extract key identifiers safely
+        system_id = get_kill_system_id(killmail)
+        kill_id = get_kill_id(killmail)
+
+        Logger.debug("[KillDeterminer] Evaluating killmail", %{
+          kill_id: kill_id,
+          system_id: system_id,
+          killmail_type: if(is_struct(killmail), do: inspect(killmail.__struct__), else: "map"),
+          has_esi_data: has_esi_data?(killmail)
+        })
+
+        # Run through notification checks
+        with true <- check_notifications_enabled(kill_id),
+             true <- check_tracking(system_id, killmail) do
+          check_deduplication_and_decide(kill_id)
+        else
+          false -> return_no_notification("Not tracked by any character or system")
+          _ -> return_no_notification("Notifications disabled")
+        end
+      rescue
+        e ->
+          Logger.warning("[KillDeterminer] Exception determining notification status", %{
+            error: Exception.message(e),
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+          })
+
+          return_no_notification("Error processing killmail")
+      end
     end
+  end
+
+  # Helper to create standard "no notification" response
+  defp return_no_notification(reason) do
+    {:ok, %{should_notify: false, reason: reason}}
   end
 
   defp check_notifications_enabled(_kill_id) do
@@ -108,10 +141,36 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   defp extract_system_id_from_map(kill) do
     cond do
-      esi_data = Map.get(kill, "esi_data") -> Map.get(esi_data, "solar_system_id")
-      system = Map.get(kill, "system") -> Map.get(system, "id")
-      solar_system = Map.get(kill, "solar_system") -> Map.get(solar_system, "id")
-      true -> "unknown"
+      # Check if esi_data exists AND has a solar_system_id
+      esi_data = Map.get(kill, :esi_data) ->
+        system_id = Map.get(esi_data, "solar_system_id")
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      # Check if esi_data exists (different key format) AND has a solar_system_id
+      esi_data = Map.get(kill, "esi_data") ->
+        system_id = Map.get(esi_data, "solar_system_id")
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      # Try to get from system key
+      system = Map.get(kill, "system") ->
+        system_id = Map.get(system, "id")
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      # Try to get from solar_system key
+      solar_system = Map.get(kill, "solar_system") ->
+        system_id = Map.get(solar_system, "id")
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      # Direct keys
+      system_id = Map.get(kill, "solar_system_id") ->
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      system_id = Map.get(kill, :solar_system_id) ->
+        if is_nil(system_id), do: "unknown", else: system_id
+
+      # Default case - no system ID found
+      true ->
+        "unknown"
     end
   end
 
@@ -185,28 +244,36 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Extract kill data to get useful information
   defp extract_kill_data(killmail) do
-    cond do
-      # For the Killmail resource
-      is_struct(killmail, Killmail) ->
-        # Return a compatible map with the needed information
-        %{
-          "solar_system_id" => killmail.solar_system_id,
-          "solar_system_name" => killmail.solar_system_name,
-          "victim" => killmail.full_victim_data || %{},
-          "attackers" => killmail.full_attacker_data || []
-        }
-
-      # For map-based format
-      is_map(killmail) ->
-        if Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data") do
-          Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
-        else
-          killmail
-        end
-
-      true ->
-        %{}
+    case killmail do
+      %Killmail{} -> extract_from_killmail_struct(killmail)
+      %{} -> extract_from_map(killmail)
+      _ -> %{}
     end
+  end
+
+  defp extract_from_killmail_struct(killmail) do
+    %{
+      "solar_system_id" => killmail.solar_system_id,
+      "solar_system_name" => killmail.solar_system_name,
+      "victim" => killmail.full_victim_data || %{},
+      "attackers" => killmail.full_attacker_data || []
+    }
+  end
+
+  defp extract_from_map(killmail) do
+    if has_esi_data?(killmail) do
+      get_esi_data(killmail)
+    else
+      killmail
+    end
+  end
+
+  defp has_esi_data?(killmail) do
+    Map.has_key?(killmail, :esi_data) || Map.has_key?(killmail, "esi_data")
+  end
+
+  defp get_esi_data(killmail) do
+    Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
   end
 
   # Get all tracked character IDs
@@ -270,18 +337,24 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Extract attacker ID from attacker data
-  defp extract_attacker_id(attacker) do
+  defp extract_attacker_id(attacker) when is_map(attacker) do
     attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
     if attacker_id, do: to_string(attacker_id), else: nil
   end
 
-  # Check if any attacker is directly tracked
-  defp attacker_directly_tracked?(attackers) do
+  # Handle non-map attackers safely
+  defp extract_attacker_id(_), do: nil
+
+  # Check if any attacker is directly tracked - handle possible nil values safely
+  defp attacker_directly_tracked?(attackers) when is_list(attackers) do
     attackers
     |> Enum.map(&extract_attacker_id/1)
     |> Enum.reject(&is_nil/1)
     |> Enum.any?(&check_direct_victim_tracking/1)
   end
+
+  # Handle non-list attackers safely
+  defp attacker_directly_tracked?(_), do: false
 
   @doc """
   Determines if a kill is in a tracked system.

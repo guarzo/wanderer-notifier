@@ -49,7 +49,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           {:error, reason}
       end
     else
-      AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
+      AppLogger.kill_info("Skipping notification for killmail: #{killmail.killmail_id}")
       {:ok, :skipped}
     end
   end
@@ -92,11 +92,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       IO.puts("=====================================================\n")
     end
 
-    AppLogger.kill_debug("[Enrichment] Starting enrichment process for killmail #{killmail_id}")
+    AppLogger.kill_info("[Enrichment] Starting enrichment process for killmail #{killmail_id}")
   end
 
   defp log_initial_state(_killmail_id, esi_data) do
-    AppLogger.kill_debug("[Enrichment] Initial state:", %{
+    AppLogger.kill_info("[Enrichment] Initial state:", %{
       has_esi_data: not is_nil(esi_data),
       has_victim: is_map(esi_data) && Map.has_key?(esi_data, "victim"),
       has_attackers: is_map(esi_data) && Map.has_key?(esi_data, "attackers"),
@@ -109,65 +109,40 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     end
   end
 
-  defp verify_system_enrichment(esi_data, killmail_id) do
-    system_name = Map.get(esi_data, "solar_system_name")
+  defp verify_system_enrichment(esi_data, _killmail_id) do
+    # Get system ID from ESI data
     system_id = Map.get(esi_data, "solar_system_id")
 
-    if needs_system_name_retry?(system_name) do
-      log_system_enrichment_retry(system_id, system_name, killmail_id)
-      retry_system_enrichment(esi_data, system_id, system_name, killmail_id)
+    # Verify we have the system ID
+    if system_id do
+      # Format system ID consistently for logging
+      id_value =
+        case system_id do
+          id when is_integer(id) -> id
+          id when is_binary(id) -> id
+          _ -> "unknown"
+        end
+
+      # What type of data is system_id?
+      type_name =
+        cond do
+          is_integer(system_id) -> "integer"
+          is_binary(system_id) -> "string"
+          true -> "unknown"
+        end
+
+      # Log for debugging
+      AppLogger.kill_info(
+        "[Enrichment] Extract ESI data - found system_id: #{id_value} (type: #{type_name})"
+      )
+
+      # Return original ESI data directly, not in a tuple
+      esi_data
     else
+      # System ID is missing - log but still return the data
+      AppLogger.kill_info("[Enrichment] Missing system_id in ESI data")
       esi_data
     end
-  end
-
-  defp needs_system_name_retry?(system_name) do
-    system_name == "Unknown System" || is_nil(system_name)
-  end
-
-  defp log_system_enrichment_retry(system_id, system_name, killmail_id) do
-    AppLogger.kill_warning(
-      "[Enrichment] System name not properly enriched for system ID #{system_id}",
-      %{
-        kill_id: killmail_id,
-        system_id: system_id,
-        system_name: system_name
-      }
-    )
-  end
-
-  defp retry_system_enrichment(esi_data, system_id, system_name, killmail_id) do
-    case get_system_name_with_retries(system_id, 5) do
-      {:ok, new_name} when is_binary(new_name) and new_name != "" ->
-        log_system_enrichment_success(system_id, system_name, new_name, killmail_id)
-        Map.put(esi_data, "solar_system_name", new_name)
-
-      _ ->
-        log_system_enrichment_failure(system_id, killmail_id)
-        Map.put(esi_data, "solar_system_name", system_name)
-    end
-  end
-
-  defp log_system_enrichment_success(system_id, old_name, new_name, killmail_id) do
-    AppLogger.kill_info(
-      "[Enrichment] Successfully re-enriched system name on retry: '#{old_name}' → '#{new_name}'",
-      %{
-        kill_id: killmail_id,
-        system_id: system_id,
-        old_name: old_name,
-        new_name: new_name
-      }
-    )
-  end
-
-  defp log_system_enrichment_failure(system_id, killmail_id) do
-    AppLogger.kill_warning(
-      "[Enrichment] System name still not properly enriched after retry for system ID #{system_id}",
-      %{
-        kill_id: killmail_id,
-        system_id: system_id
-      }
-    )
   end
 
   defp log_enrichment_completion(killmail_id, esi_data) do
@@ -177,7 +152,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       IO.puts("=====================================================\n")
     end
 
-    AppLogger.kill_debug(
+    AppLogger.kill_info(
       "[Enrichment] Completed enrichment process for killmail #{killmail_id}",
       %{
         system_name: Map.get(esi_data, "solar_system_name", "not set"),
@@ -190,18 +165,77 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   defp update_killmail_with_enriched_data(killmail, esi_data) do
+    # Extract key fields from esi_data with consistent conversion
+    system_id = parse_system_id(Map.get(esi_data, "solar_system_id"))
+    system_name = Map.get(esi_data, "solar_system_name")
+    kill_time = parse_timestamp(Map.get(esi_data, "killmail_time"))
+
+    # Log what we're using to update the killmail
+    AppLogger.kill_info("Updating killmail fields",
+      system_id: system_id,
+      system_name: system_name,
+      kill_time: kill_time
+    )
+
+    # Update based on struct type
     if is_struct(killmail, Killmail) do
-      killmail
+      # For Killmail resources, just update the specific fields
+      %{
+        killmail
+        | solar_system_id: system_id,
+          solar_system_name: system_name,
+          kill_time: kill_time
+      }
     else
-      Map.put(killmail, :esi_data, esi_data)
+      # For regular maps, add both the esi_data and the key fields
+      killmail
+      |> Map.put(:esi_data, esi_data)
+      |> Map.put(:solar_system_id, system_id)
+      |> Map.put(:solar_system_name, system_name)
+      |> Map.put(:kill_time, kill_time)
+    end
+  end
+
+  # Parse system_id consistently
+  defp parse_system_id(system_id) do
+    cond do
+      is_integer(system_id) ->
+        system_id
+
+      is_binary(system_id) ->
+        case Integer.parse(system_id) do
+          {id, _} -> id
+          :error -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  # Parse timestamp consistently
+  defp parse_timestamp(timestamp) do
+    cond do
+      is_struct(timestamp, DateTime) ->
+        timestamp
+
+      is_binary(timestamp) ->
+        case DateTime.from_iso8601(timestamp) do
+          {:ok, datetime, _} -> datetime
+          _ -> DateTime.utc_now()
+        end
+
+      true ->
+        DateTime.utc_now()
     end
   end
 
   # Helper function to extract esi_data from killmail
   defp extract_esi_data(killmail) do
+    # Create a standardized esi_data map based on the struct type
     cond do
       is_struct(killmail, Killmail) ->
-        # For Resources.Killmail, create a compatible esi_data structure
+        # For a Killmail resource, create a simple standardized map from its fields
         %{
           "solar_system_id" => killmail.solar_system_id,
           "solar_system_name" => killmail.solar_system_name,
@@ -210,14 +244,53 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           "killmail_time" => killmail.kill_time
         }
 
-      is_map(killmail) && Map.has_key?(killmail, :esi_data) ->
-        killmail.esi_data || %{}
-
       is_map(killmail) ->
-        Map.get(killmail, "esi_data") || Map.get(killmail, :esi_data) || %{}
+        # For any other map, extract the existing esi_data
+        esi_data = Map.get(killmail, :esi_data) || Map.get(killmail, "esi_data") || %{}
 
-      true ->
-        %{}
+        # Ensure required fields exist, using existing data if available
+        esi_data
+        |> ensure_field("solar_system_id", killmail)
+        |> ensure_field("killmail_time", killmail, DateTime.utc_now())
+    end
+  end
+
+  # Ensure a field exists in the esi_data, by checking for it in the killmail, with an optional default
+  defp ensure_field(esi_data, field, killmail, default \\ nil) do
+    atom_key = String.to_atom(field)
+    str_key = field
+
+    # Only add the field if it doesn't already exist
+    if Map.has_key?(esi_data, str_key) do
+      esi_data
+    else
+      # Try to find the value in the killmail
+      value =
+        cond do
+          Map.has_key?(killmail, atom_key) -> Map.get(killmail, atom_key)
+          Map.has_key?(killmail, str_key) -> Map.get(killmail, str_key)
+          true -> default
+        end
+
+      # Special handling for timestamp field
+      value =
+        if field == "killmail_time" && value do
+          format_timestamp(value)
+        else
+          value
+        end
+
+      # Add the field to esi_data
+      Map.put(esi_data, str_key, value)
+    end
+  end
+
+  # Format timestamp consistently
+  defp format_timestamp(timestamp) do
+    cond do
+      is_binary(timestamp) -> timestamp
+      is_struct(timestamp, DateTime) -> DateTime.to_iso8601(timestamp)
+      true -> DateTime.to_iso8601(DateTime.utc_now())
     end
   end
 
@@ -231,7 +304,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         IO.puts("\n------ VICTIM DATA ------")
       end
 
-      AppLogger.kill_debug("[Enrichment] Processing victim data",
+      AppLogger.kill_info("[Enrichment] Processing victim data",
         kill_id: killmail_id,
         victim_data: inspect(victim, limit: 200)
       )
@@ -239,7 +312,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       enriched_victim = enrich_entity(victim)
 
       # Log the enriched victim data specifically
-      AppLogger.kill_debug("[Enrichment] Victim after enrichment",
+      AppLogger.kill_info("[Enrichment] Victim after enrichment",
         ship_type_name: Map.get(enriched_victim, "ship_type_name"),
         character_name: Map.get(enriched_victim, "character_name"),
         corporation_name: Map.get(enriched_victim, "corporation_name"),
@@ -604,206 +677,69 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Enrich with system name if needed
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
-    if has_valid_system_name?(esi_data) do
-      handle_existing_system_name(esi_data)
-    else
-      handle_missing_system_name(esi_data)
-    end
-  end
-
-  defp has_valid_system_name?(esi_data) do
-    Map.has_key?(esi_data, "solar_system_name") &&
-      Map.get(esi_data, "solar_system_name") != "Unknown System"
-  end
-
-  defp handle_existing_system_name(esi_data) do
-    system_name = Map.get(esi_data, "solar_system_name")
-    log_existing_system_name(system_name)
-    esi_data
-  end
-
-  defp handle_missing_system_name(esi_data) do
     system_id = Map.get(esi_data, "solar_system_id")
-    log_system_id(system_id)
+
+    # Log the actual system ID and type for debugging
+    system_type =
+      cond do
+        is_integer(system_id) -> "integer"
+        is_binary(system_id) -> "string"
+        true -> "other: #{inspect(system_id)}"
+      end
+
+    AppLogger.kill_info(
+      "[Enrichment] System ID for enrichment: #{inspect(system_id)} (type: #{system_type})"
+    )
 
     if is_nil(system_id) do
-      handle_missing_system_id(esi_data)
+      # No system ID available, can't enrich
+      esi_data
     else
-      fetch_and_update_system_name(esi_data, system_id)
+      # Ensure system_id is an integer
+      normalized_id =
+        if is_binary(system_id) do
+          case Integer.parse(system_id) do
+            {id, _} -> id
+            :error -> nil
+          end
+        else
+          system_id
+        end
+
+      # Get system name from ESI using the normalized ID
+      case ESIService.get_solar_system_name(normalized_id) do
+        {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+          # Set the system name in ESI data and ensure system_id is stored as integer
+          esi_data
+          |> Map.put("solar_system_name", name)
+          |> Map.put("solar_system_id", normalized_id)
+
+        _ ->
+          # Could not get system name, use a placeholder
+          Map.put(esi_data, "solar_system_name", "Unknown System")
+      end
     end
   end
 
-  defp log_existing_system_name(system_name) do
-    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-      IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (already present)")
-    end
-  end
-
-  defp log_system_id(system_id) do
-    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-      IO.puts("SOLAR_SYSTEM_ID: #{system_id}")
-    end
-  end
-
-  defp handle_missing_system_id(esi_data) do
-    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-      IO.puts("SOLAR_SYSTEM_NAME: Unknown System (no system ID available)")
-    end
-
-    Map.put(esi_data, "solar_system_name", "Unknown System")
-  end
-
-  defp fetch_and_update_system_name(esi_data, system_id) do
-    case get_system_name_with_retries(system_id) do
-      {:ok, system_name} when is_binary(system_name) and system_name != "" ->
-        log_successful_system_name_fetch(system_id, system_name)
-        Map.put(esi_data, "solar_system_name", system_name)
-
-      _ ->
-        log_failed_system_name_fetch(system_id)
-        Map.put(esi_data, "solar_system_name", "Unknown System")
-    end
-  end
-
-  defp log_successful_system_name_fetch(system_id, system_name) do
-    AppLogger.kill_info("[Enrichment] Retrieved system name", %{
-      system_id: system_id,
-      system_name: system_name
-    })
-
-    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-      IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI or cache)")
-    end
-  end
-
-  defp log_failed_system_name_fetch(system_id) do
-    AppLogger.kill_warn("[Enrichment] Failed to get system name after retries", %{
-      system_id: system_id
-    })
-
-    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-      IO.puts("SOLAR_SYSTEM_NAME: Unknown System (all retrieval attempts failed)")
-    end
-  end
-
-  # Get system name with retries
-  defp get_system_name_with_retries(system_id, max_attempts \\ 3) do
-    get_system_name_with_retry(system_id, 1, max_attempts)
-  end
-
-  # Recursive function to try getting system name with exponential backoff
-  defp get_system_name_with_retry(_system_id, attempt, max_attempts)
-       when attempt > max_attempts do
-    {:error, :max_retries_exceeded}
-  end
-
-  defp get_system_name_with_retry(system_id, attempt, max_attempts) do
-    case get_system_name_from_cache_or_esi(system_id) do
-      {:ok, name} -> {:ok, name}
-      {:error, reason} -> handle_system_name_retry(system_id, attempt, max_attempts, reason)
-    end
-  end
-
-  defp get_system_name_from_cache_or_esi(system_id) do
-    case try_get_system_name_from_cache(system_id) do
-      nil -> ESIService.get_solar_system_name(system_id)
-      name -> {:ok, name}
-    end
-  end
-
-  defp handle_system_name_retry(system_id, attempt, max_attempts, reason) do
-    if attempt < max_attempts do
-      backoff_ms = (:math.pow(2, attempt) * 1000) |> trunc()
-      :timer.sleep(backoff_ms)
-      get_system_name_with_retry(system_id, attempt + 1, max_attempts)
-    else
-      {:error, reason}
-    end
-  end
-
-  # Try to get system name from cache
-  defp try_get_system_name_from_cache(system_id) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.system_info(system_id)
-
-    case CacheRepo.get(cache_key) do
-      %{"name" => name} when is_binary(name) and name != "" ->
-        name
-
-      _ ->
-        nil
-    end
-  end
+  defp enrich_with_system_name(data), do: data
 
   # Ensure all enriched data is complete and consistent across the structure
   defp ensure_complete_enrichment(esi_data) when is_map(esi_data) do
-    best_system_name = determine_best_system_name(esi_data)
-    update_system_names(esi_data, best_system_name)
-  end
+    # Copy system info to victim data if needed
+    system_name = Map.get(esi_data, "solar_system_name")
+    victim = Map.get(esi_data, "victim")
 
-  defp ensure_complete_enrichment(data), do: data
-
-  defp determine_best_system_name(esi_data) do
-    top_level_system_name = Map.get(esi_data, "solar_system_name")
-    victim = Map.get(esi_data, "victim", %{})
-    victim_system_name = Map.get(victim, "solar_system_name")
-
-    cond do
-      valid_system_name?(top_level_system_name) ->
-        top_level_system_name
-
-      valid_system_name?(victim_system_name) ->
-        victim_system_name
-
-      system_id = Map.get(esi_data, "solar_system_id") ->
-        fetch_system_name(system_id, top_level_system_name)
-
-      true ->
-        top_level_system_name || "Unknown System"
-    end
-  end
-
-  defp valid_system_name?(name) do
-    is_binary(name) && name != "" && name != "Unknown System"
-  end
-
-  defp fetch_system_name(system_id, fallback_name) do
-    case get_system_name_with_retries(system_id, 3) do
-      {:ok, name} when is_binary(name) and name != "" ->
-        log_system_name_fetch_success(system_id, name)
-        name
-
-      _ ->
-        fallback_name || "Unknown System"
-    end
-  end
-
-  defp log_system_name_fetch_success(system_id, name) do
-    AppLogger.kill_info(
-      "[Enrichment] Retrieved system name in final consistency check",
-      %{
-        system_id: system_id,
-        system_name: name
-      }
-    )
-  end
-
-  defp update_system_names(esi_data, system_name) do
-    esi_data
-    |> Map.put("solar_system_name", system_name)
-    |> update_victim_system_name(system_name)
-  end
-
-  defp update_victim_system_name(esi_data, system_name) do
-    if Map.has_key?(esi_data, "victim") do
-      victim = Map.get(esi_data, "victim")
+    if is_binary(system_name) && is_map(victim) && !Map.has_key?(victim, "solar_system_name") do
+      # Add system name to victim data
       updated_victim = Map.put(victim, "solar_system_name", system_name)
       Map.put(esi_data, "victim", updated_victim)
     else
+      # No changes needed
       esi_data
     end
   end
+
+  defp ensure_complete_enrichment(data), do: data
 
   # Direct resolution for character name
   defp apply_direct_character_resolution(entity) when is_map(entity) do

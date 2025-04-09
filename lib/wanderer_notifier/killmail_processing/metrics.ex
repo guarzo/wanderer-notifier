@@ -323,13 +323,14 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
     increment_counter_impl(key)
   end
 
+  defp increment_counter_impl(key) when is_binary(key) do
+    # For simple string keys, use a default value of 1
+    increment_counter_impl({key, 1})
+  end
+
   defp increment_counter_impl({counter, value}) do
     current_value = Agent.get(@agent_name, fn state -> Map.get(state.counters, counter, 0) end)
     new_value = current_value + value
-
-    # First, check if the counter is already in the warning cache
-    warning_cache_key = {:metric_warning, counter}
-    already_warned = Process.get(warning_cache_key, false)
 
     # Check if metric exists in @registered_metrics or in dynamic extension
     dynamic_metrics = Process.get(:dynamic_metrics_extension, %{})
@@ -337,45 +338,12 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
     is_registered =
       Map.has_key?(@registered_metrics, counter) || Map.has_key?(dynamic_metrics, counter)
 
-    if is_registered do
-      # Valid metric, update the counter
-      Agent.update(@agent_name, fn state ->
-        counters = Map.put(state.counters, counter, new_value)
-        %{state | counters: counters}
-      end)
-    else
-      # Still track the metric even if it's not registered to avoid data loss
-      Agent.update(@agent_name, fn state ->
-        counters = Map.put(state.counters, counter, new_value)
-        %{state | counters: counters}
-      end)
+    # Always update the counter to avoid data loss
+    update_counter(counter, new_value)
 
-      # Only log the warning once per key to reduce log spam
-      if !already_warned do
-        # Print more meaningful warning with detailed counter info
-        IO.puts("\n!!! UNREGISTERED METRIC: '#{counter}' !!!\n")
-
-        # Split the key for better analysis
-        parts = String.split(counter, ".")
-        prefix = Enum.take(parts, 1) |> Enum.join(".")
-        mode = if length(parts) > 2, do: Enum.at(parts, 2)
-        operation = if length(parts) > 1, do: Enum.at(parts, 1)
-
-        AppLogger.processor_warn("Attempted to track metrics with non-registered key", %{
-          counter: counter,
-          counter_parts: %{
-            prefix: prefix,
-            operation: operation,
-            mode: mode
-          },
-          value: value,
-          recommendation:
-            "Add this key to @registered_metrics in WandererNotifier.KillmailProcessing.Metrics"
-        })
-
-        # Mark this key as already warned about
-        Process.put(warning_cache_key, true)
-      end
+    # Log warning if metric is not registered
+    unless is_registered do
+      maybe_log_unregistered_metric_warning(counter, value)
     end
   rescue
     e ->
@@ -386,8 +354,41 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
       })
   end
 
-  defp increment_counter_impl(key) when is_binary(key) do
-    # For simple string keys, use a default value of 1
-    increment_counter_impl({key, 1})
+  defp update_counter(counter, new_value) do
+    Agent.update(@agent_name, fn state ->
+      counters = Map.put(state.counters, counter, new_value)
+      %{state | counters: counters}
+    end)
+  end
+
+  defp maybe_log_unregistered_metric_warning(counter, value) do
+    warning_cache_key = {:metric_warning, counter}
+    already_warned = Process.get(warning_cache_key, false)
+
+    unless already_warned do
+      log_unregistered_metric_warning(counter, value)
+      Process.put(warning_cache_key, true)
+    end
+  end
+
+  defp log_unregistered_metric_warning(counter, value) do
+    IO.puts("\n!!! UNREGISTERED METRIC: '#{counter}' !!!\n")
+
+    parts = String.split(counter, ".")
+    prefix = Enum.take(parts, 1) |> Enum.join(".")
+    mode = if length(parts) > 2, do: Enum.at(parts, 2)
+    operation = if length(parts) > 1, do: Enum.at(parts, 1)
+
+    AppLogger.processor_warn("Attempted to track metrics with non-registered key", %{
+      counter: counter,
+      counter_parts: %{
+        prefix: prefix,
+        operation: operation,
+        mode: mode
+      },
+      value: value,
+      recommendation:
+        "Add this key to @registered_metrics in WandererNotifier.KillmailProcessing.Metrics"
+    })
   end
 end

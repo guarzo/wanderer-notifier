@@ -17,7 +17,7 @@ defmodule WandererNotifier.Killmail.Validation do
 
   ## Returns
   - {:ok, killmail} if valid
-  - {:error, reasons} if invalid with a list of validation failures
+  - {:error, reason} if invalid with a list of validation failures
   """
   def validate_killmail(killmail) do
     missing_fields = check_required_fields(killmail)
@@ -27,7 +27,8 @@ defmodule WandererNotifier.Killmail.Validation do
     if Enum.empty?(all_errors) do
       {:ok, killmail}
     else
-      {:error, all_errors}
+      # Join the errors into a string for better error handling
+      {:error, Enum.join(all_errors, ", ")}
     end
   end
 
@@ -56,10 +57,20 @@ defmodule WandererNotifier.Killmail.Validation do
   end
 
   defp check_key_fields(killmail, missing_fields) do
+    # Special check for kill_time/killmail_time since we know this is failing
+    has_time_field = has_field?(killmail, "kill_time") || has_field?(killmail, "killmail_time")
+
+    missing_fields =
+      if !has_time_field do
+        ["Missing killmail time" | missing_fields]
+      else
+        missing_fields
+      end
+
+    # Check remaining required fields
     fields_to_check = [
       {"solar_system_id", "Missing solar system ID"},
-      {"solar_system_name", "Missing solar system name"},
-      {"kill_time", "Missing killmail time"}
+      {"solar_system_name", "Missing solar system name"}
     ]
 
     Enum.reduce(fields_to_check, missing_fields, fn {field, error}, acc ->
@@ -103,6 +114,7 @@ defmodule WandererNotifier.Killmail.Validation do
 
   # Helper to check if killmail has a specific field
   defp has_field?(killmail, field) do
+    # Simple implementation: just use get_field and check if result is non-nil
     get_field(killmail, field) != nil
   end
 
@@ -111,12 +123,28 @@ defmodule WandererNotifier.Killmail.Validation do
     field_atom = String.to_atom(field)
     field_str = field
 
-    case killmail do
-      %KillmailResource{} -> Map.get(killmail, field_atom)
-      %{esi_data: esi_data} when not is_nil(esi_data) -> Map.get(esi_data, field_str)
-      %{} -> Map.get(killmail, field_atom) || Map.get(killmail, field_str)
-      _ -> nil
-    end
+    # Simple lookup sequence: check direct access first, then ESI data
+    value =
+      cond do
+        # Direct access with atom key
+        is_map(killmail) && Map.has_key?(killmail, field_atom) ->
+          Map.get(killmail, field_atom)
+
+        # Direct access with string key
+        is_map(killmail) && Map.has_key?(killmail, field_str) ->
+          Map.get(killmail, field_str)
+
+        # Check in ESI data
+        is_map(killmail) && is_map(Map.get(killmail, :esi_data)) ->
+          esi_data = Map.get(killmail, :esi_data)
+          Map.get(esi_data, field_str)
+
+        # Nothing found
+        true ->
+          nil
+      end
+
+    value
   end
 
   @doc """
@@ -240,12 +268,34 @@ defmodule WandererNotifier.Killmail.Validation do
   - role: The role of the character (attacker/victim)
 
   ## Returns
-  - Map of involvement data
+  - Map of involvement data or nil if character not found
   """
   def extract_character_involvement(killmail, character_id, role) do
-    base_attrs = build_base_attributes(character_id, role)
-    role_specific_attrs = extract_role_specific_attributes(killmail, character_id, role)
-    Map.merge(base_attrs, role_specific_attrs)
+    case role do
+      :victim ->
+        victim = get_victim_data(killmail, character_id)
+
+        if victim_matches_id?(victim, character_id) do
+          build_base_attributes(character_id, role)
+          |> Map.merge(build_victim_attributes(victim))
+        else
+          nil
+        end
+
+      :attacker ->
+        attackers = get_attackers(killmail, character_id)
+        attacker = find_matching_attacker(attackers, character_id)
+
+        if attacker do
+          build_base_attributes(character_id, role)
+          |> Map.merge(build_attacker_attributes(attacker))
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
   end
 
   defp build_base_attributes(character_id, role) do
@@ -255,20 +305,7 @@ defmodule WandererNotifier.Killmail.Validation do
     }
   end
 
-  defp extract_role_specific_attributes(killmail, character_id, role) do
-    case role do
-      :victim -> extract_victim_attributes(killmail, character_id)
-      :attacker -> extract_attacker_attributes(killmail, character_id)
-      _ -> %{}
-    end
-  end
-
   # Extract attributes for a victim
-  defp extract_victim_attributes(killmail, character_id) do
-    victim = get_victim_data(killmail, character_id)
-    if victim_matches_id?(victim, character_id), do: build_victim_attributes(victim), else: %{}
-  end
-
   defp get_victim_data(killmail, character_id) do
     if is_struct(killmail, KillmailResource) do
       if to_string(killmail.victim_id || "") == to_string(character_id) do
@@ -281,7 +318,7 @@ defmodule WandererNotifier.Killmail.Validation do
         killmail.full_victim_data || %{}
       end
     else
-      Map.get(killmail, "victim") || %{}
+      Map.get(killmail.esi_data || %{}, "victim") || %{}
     end
   end
 
@@ -302,12 +339,6 @@ defmodule WandererNotifier.Killmail.Validation do
   end
 
   # Extract attributes for an attacker
-  defp extract_attacker_attributes(killmail, character_id) do
-    attackers = get_attackers(killmail, character_id)
-    attacker = find_matching_attacker(attackers, character_id)
-    build_attacker_attributes(attacker)
-  end
-
   defp get_attackers(killmail, character_id) do
     if is_struct(killmail, KillmailResource) do
       if killmail.final_blow_attacker_id &&
@@ -324,7 +355,7 @@ defmodule WandererNotifier.Killmail.Validation do
         killmail.full_attacker_data || []
       end
     else
-      Map.get(killmail, "attackers") || []
+      Map.get(killmail.esi_data || %{}, "attackers") || []
     end
   end
 
@@ -333,8 +364,6 @@ defmodule WandererNotifier.Killmail.Validation do
       to_string(Map.get(a, "character_id", "")) == to_string(character_id)
     end)
   end
-
-  defp build_attacker_attributes(nil), do: %{}
 
   defp build_attacker_attributes(attacker) do
     %{

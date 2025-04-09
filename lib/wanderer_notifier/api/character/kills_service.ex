@@ -10,6 +10,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Repository
   alias WandererNotifier.KillmailProcessing.Context
   alias WandererNotifier.KillmailProcessing.Pipeline, as: KillmailPipeline
@@ -921,82 +922,84 @@ defmodule WandererNotifier.Api.Character.KillsService do
         {:ok, name}
 
       _ ->
-        # Fetch from ESI and cache
-        case ESIService.get_ship_type_name(ship_type_id) do
-          {:ok, ship_info} ->
-            name = Map.get(ship_info, "name")
+        fetch_and_cache_ship_name(ship_type_id, cache_key)
+    end
+  end
 
-            if is_binary(name) && name != "" do
-              # Cache for 30 days (ship types don't change)
-              CacheRepo.set(cache_key, ship_info, 30 * 86_400)
+  defp fetch_and_cache_ship_name(ship_type_id, cache_key) do
+    case ESIService.get_ship_type_name(ship_type_id) do
+      {:ok, ship_info} ->
+        name = Map.get(ship_info, "name")
 
-              AppLogger.kill_debug("[KillsService] Retrieved and cached ship name", %{
-                ship_type_id: ship_type_id,
-                name: name
-              })
+        if is_binary(name) && name != "" do
+          # Cache for 30 days (ship types don't change)
+          CacheRepo.set(cache_key, ship_info, 30 * 86_400)
 
-              {:ok, name}
-            else
-              {:error, :invalid_ship_data}
-            end
+          AppLogger.kill_debug("[KillsService] Retrieved and cached ship name", %{
+            ship_type_id: ship_type_id,
+            name: name
+          })
 
-          error ->
-            AppLogger.kill_error("[KillsService] Failed to get ship name", %{
-              ship_type_id: ship_type_id,
-              error: inspect(error)
-            })
-
-            error
+          {:ok, name}
+        else
+          {:error, :invalid_ship_data}
         end
+
+      error ->
+        AppLogger.kill_error("[KillsService] Failed to get ship name", %{
+          ship_type_id: ship_type_id,
+          error: inspect(error)
+        })
+
+        error
     end
   end
 
   # Get system name from cache or from ESI with caching
   defp get_system_name_with_cache(system_id) do
-    alias WandererNotifier.Api.ESI.Service, as: ESIService
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    cache_key = "system_info:#{system_id}"
 
-    cache_key = CacheKeys.system_info(system_id)
-
-    # Try from cache first
     case CacheRepo.get(cache_key) do
-      %{"name" => name} when is_binary(name) and name != "" ->
-        AppLogger.kill_debug("[KillsService] Found system name in cache", %{
-          system_id: system_id,
-          name: name
-        })
-
+      {:ok, system_info} when is_map(system_info) ->
+        name = Map.get(system_info, "name")
         {:ok, name}
 
       _ ->
-        # Fetch from ESI and cache
-        case ESIService.get_system_info(system_id) do
-          {:ok, system_info} ->
-            name = Map.get(system_info, "name")
-
-            if is_binary(name) && name != "" do
-              # Cache for 30 days (system names don't change)
-              CacheRepo.set(cache_key, system_info, 30 * 86_400)
-
-              AppLogger.kill_debug("[KillsService] Retrieved and cached system name", %{
-                system_id: system_id,
-                name: name
-              })
-
-              {:ok, name}
-            else
-              {:error, :invalid_system_data}
-            end
-
-          error ->
-            AppLogger.kill_error("[KillsService] Failed to get system name", %{
-              system_id: system_id,
-              error: inspect(error)
-            })
-
-            error
-        end
+        fetch_and_cache_system_name(system_id, cache_key)
     end
+  end
+
+  defp fetch_and_cache_system_name(system_id, cache_key) do
+    case ESIService.get_system_info(system_id) do
+      {:ok, system_info} -> handle_system_info_response(system_info, system_id, cache_key)
+      error -> handle_system_info_error(error, system_id)
+    end
+  end
+
+  defp handle_system_info_response(system_info, system_id, cache_key) do
+    name = Map.get(system_info, "name")
+
+    if is_binary(name) && name != "" do
+      # Cache for 30 days (system names don't change)
+      CacheRepo.set(cache_key, system_info, 30 * 86_400)
+
+      AppLogger.kill_debug("[KillsService] Retrieved and cached system name", %{
+        system_id: system_id,
+        name: name
+      })
+
+      {:ok, name}
+    else
+      {:error, :invalid_system_data}
+    end
+  end
+
+  defp handle_system_info_error(error, system_id) do
+    AppLogger.kill_error("[KillsService] Failed to get system name", %{
+      system_id: system_id,
+      error: inspect(error)
+    })
+
+    error
   end
 end

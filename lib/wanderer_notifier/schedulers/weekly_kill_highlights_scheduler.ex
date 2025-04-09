@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   use WandererNotifier.Schedulers.IntervalScheduler, name: __MODULE__
   require Logger
 
-  alias WandererNotifier.Api.ESI.Service, as: EsiService
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications, as: NotificationConfig
   alias WandererNotifier.Config.Timings
@@ -19,6 +19,8 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
+  alias WandererNotifier.Resources.TrackedCharacter
+
   alias Ash.Query
 
   import Ash.Query, only: [filter: 2, limit: 2, sort: 2]
@@ -514,7 +516,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
           character_id: character_id
         })
 
-        case EsiService.get_character(character_id) do
+        case ESIService.get_character(character_id) do
           {:ok, %{"name" => resolved}} when is_binary(resolved) and resolved != "" ->
             CacheHelpers.cache_character_info(%{
               "character_id" => character_id,
@@ -611,9 +613,9 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
 
   defp query_tracked_characters_from_database do
     AppLogger.scheduler_info("Querying tracked_characters table directly")
-    character_query = WandererNotifier.Resources.TrackedCharacter |> Query.select([:character_id])
+    character_query = TrackedCharacter |> Query.select([:character_id])
 
-    case WandererNotifier.Resources.Api.read(character_query) do
+    case Api.read(character_query) do
       {:ok, results} ->
         ids =
           results
@@ -661,7 +663,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   end
 
   defp check_and_cache_structure_type(type_id) do
-    case EsiService.get_type_info(type_id) do
+    case ESIService.get_type_info(type_id) do
       {:ok, %{"name" => _name, "group_id" => grp_id} = info} ->
         AppLogger.scheduler_debug(
           "Partial type info for #{type_id} with group_id #{grp_id}: #{inspect(info, limit: 200)}"

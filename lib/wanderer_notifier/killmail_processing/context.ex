@@ -44,7 +44,7 @@ defmodule WandererNotifier.KillmailProcessing.Context do
   @doc """
   Creates a new context for realtime processing.
   """
-  @spec new_realtime(pos_integer(), String.t(), source(), map()) :: t()
+  @spec new_realtime(pos_integer() | nil, String.t() | nil, source(), map()) :: t()
   def new_realtime(character_id, character_name, source, options \\ %{}) do
     %__MODULE__{
       mode: Mode.new(:realtime),

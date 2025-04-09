@@ -1,8 +1,6 @@
 defmodule WandererNotifier.KillmailTest do
   use WandererNotifier.DataCase
 
-  alias WandererNotifier.Killmail
-
   describe "exists?/1" do
     test "returns true when killmail exists" do
       # This would use fixtures or factory functions in a real test

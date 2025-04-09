@@ -646,36 +646,26 @@ defmodule WandererNotifier.Api.Http.Client do
   # Determine if an error is transient and can be retried
   defp transient_error?(reason) do
     cond do
-      # Direct match with atom error codes
-      reason in @transient_errors ->
-        true
-
-      # Handle HTTPoison errors
-      match?(%HTTPoison.Error{}, reason) ->
-        error_reason = reason.reason
-
-        error_reason in @transient_errors or
-          connection_error?(reason) or
-          timeout_error?(reason)
-
-      # Handle domain-specific errors including rate limits
-      is_tuple(reason) and tuple_size(reason) == 3 and elem(reason, 0) == :domain_error ->
-        domain = elem(reason, 1)
-        error_type = elem(reason, 2)
-        # Rate limits are always transient
-        if error_type == :rate_limited do
-          true
-        else
-          # Check if the domain/error combo is in our list
-          error_tuple = {:domain_error, domain, error_type}
-          error_tuple in @transient_errors
-        end
-
-      # Default is not transient
-      true ->
-        false
+      is_atom(reason) -> reason in @transient_errors
+      match?(%HTTPoison.Error{}, reason) -> httpoison_error_transient?(reason)
+      is_tuple(reason) and tuple_size(reason) == 3 -> domain_error_transient?(reason)
+      true -> false
     end
   end
+
+  defp httpoison_error_transient?(%HTTPoison.Error{} = reason) do
+    error_reason = reason.reason
+    error_reason in @transient_errors or connection_error?(reason) or timeout_error?(reason)
+  end
+
+  defp domain_error_transient?(error_tuple) when elem(error_tuple, 0) == :domain_error do
+    _domain = elem(error_tuple, 1)
+    error_type = elem(error_tuple, 2)
+
+    error_type == :rate_limited or error_tuple in @transient_errors
+  end
+
+  defp domain_error_transient?(_), do: false
 
   defp connection_error?(reason) do
     case reason do

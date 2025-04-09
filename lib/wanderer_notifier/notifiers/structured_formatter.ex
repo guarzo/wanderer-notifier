@@ -95,8 +95,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   def convert_color(_color), do: @default_color
 
   @doc """
-  Creates a standard formatted kill notification embed/attachment from a Killmail struct.
-  Returns data in a generic format that can be converted to platform-specific format.
+  Formats a killmail notification into a structured format.
 
   ## Parameters
     - killmail: The normalized Killmail resource
@@ -105,9 +104,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   ## Returns
     - A generic structured map that can be converted to platform-specific format
   """
+  def format_kill_notification(killmail, involvement \\ nil)
+
   def format_kill_notification(
         %WandererNotifier.Resources.Killmail{} = killmail,
-        involvement \\ nil
+        involvement
       ) do
     # Log the structure of the normalized killmail for debugging
     log_normalized_killmail_data(killmail, involvement)
@@ -124,6 +125,56 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     # Final blow details
     final_blow_details = get_normalized_final_blow_details(killmail, involvement)
+
+    # Build notification fields
+    fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
+
+    # Build a platform-agnostic structure
+    build_kill_notification(
+      kill_id,
+      kill_time,
+      victim_info,
+      kill_context,
+      final_blow_details,
+      fields
+    )
+  end
+
+  # Added support for regular maps (for tests)
+  def format_kill_notification(
+        %{killmail_id: kill_id, kill_time: kill_time} = killmail,
+        _involvement
+      ) do
+    # Extract victim information
+    victim_info = %{
+      name: Map.get(killmail, :victim_name) || "Unknown Pilot",
+      ship: Map.get(killmail, :victim_ship_name) || "Unknown Ship",
+      corp: Map.get(killmail, :victim_corporation_name) || "Unknown Corp",
+      alliance: Map.get(killmail, :victim_alliance_name),
+      ship_type_id: Map.get(killmail, :victim_ship_id),
+      character_id: Map.get(killmail, :victim_id)
+    }
+
+    # Extract system, value and attackers info
+    kill_context = %{
+      system_name: Map.get(killmail, :solar_system_name) || "Unknown System",
+      system_id: Map.get(killmail, :solar_system_id),
+      security_status: %{
+        value: Map.get(killmail, :solar_system_security),
+        type: get_system_security_type(Map.get(killmail, :solar_system_security))
+      },
+      security_formatted: "Unknown",
+      formatted_value: format_isk(Map.get(killmail, :total_value) || 0),
+      attackers_count: Map.get(killmail, :attacker_count) || 0,
+      is_npc_kill: Map.get(killmail, :is_npc, false)
+    }
+
+    # Final blow details
+    final_blow_details = %{
+      text:
+        "#{Map.get(killmail, :final_blow_attacker_name) || "Unknown"} (#{Map.get(killmail, :final_blow_ship_name) || "Unknown Ship"})",
+      icon_url: get_character_icon_url(Map.get(killmail, :final_blow_attacker_id))
+    }
 
     # Build notification fields
     fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
@@ -250,41 +301,38 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   # Get final blow details from normalized killmail
   defp get_normalized_final_blow_details(killmail, involvement) do
     cond do
-      # If this is our character with the final blow
-      involvement && involvement.is_final_blow ->
-        _character_name = "You"
-        ship_name = involvement.ship_type_name || "Unknown Ship"
-
-        %{
-          text: "You (#{ship_name})",
-          icon_url:
-            "https://imageserver.eveonline.com/Character/#{involvement.character_id}_64.jpg"
-        }
-
-      # If we have final blow data in the killmail
-      killmail.final_blow_attacker_id ->
-        character_name = killmail.final_blow_attacker_name || "Unknown"
-        ship_name = killmail.final_blow_ship_name || "Unknown Ship"
-        character_id = killmail.final_blow_attacker_id
-
-        %{
-          text: "#{character_name} (#{ship_name})",
-          icon_url:
-            if(character_id,
-              do: "https://imageserver.eveonline.com/Character/#{character_id}_64.jpg",
-              else: nil
-            )
-        }
-
-      # If this is an NPC kill but we don't have final blow data
-      killmail.is_npc ->
-        %{text: "NPC", icon_url: nil}
-
-      # Default case, no final blow info
-      true ->
-        %{text: "Unknown", icon_url: nil}
+      involvement && involvement.is_final_blow -> get_player_final_blow_details(involvement)
+      killmail.final_blow_attacker_id -> get_attacker_final_blow_details(killmail)
+      killmail.is_npc -> %{text: "NPC", icon_url: nil}
+      true -> %{text: "Unknown", icon_url: nil}
     end
   end
+
+  defp get_player_final_blow_details(involvement) do
+    ship_name = involvement.ship_type_name || "Unknown Ship"
+
+    %{
+      text: "You (#{ship_name})",
+      icon_url: "https://imageserver.eveonline.com/Character/#{involvement.character_id}_64.jpg"
+    }
+  end
+
+  defp get_attacker_final_blow_details(killmail) do
+    character_name = killmail.final_blow_attacker_name || "Unknown"
+    ship_name = killmail.final_blow_ship_name || "Unknown Ship"
+    character_id = killmail.final_blow_attacker_id
+
+    %{
+      text: "#{character_name} (#{ship_name})",
+      icon_url: get_character_icon_url(character_id)
+    }
+  end
+
+  defp get_character_icon_url(character_id) when not is_nil(character_id) do
+    "https://imageserver.eveonline.com/Character/#{character_id}_64.jpg"
+  end
+
+  defp get_character_icon_url(_), do: nil
 
   # Build the kill notification fields
   defp build_kill_notification_fields(victim_info, kill_context, final_blow_details) do

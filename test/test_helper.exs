@@ -1,6 +1,26 @@
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 
+# Prevent Nostrum from starting
+Application.put_env(:nostrum, :disabled, true)
+
+# Load environment variables from .env file if it exists
+if File.exists?(".env") do
+  ".env"
+  |> File.read!()
+  |> String.split("\n")
+  |> Enum.filter(&(String.trim(&1) != ""))
+  |> Enum.each(fn line ->
+    case String.split(line, "=") do
+      [key, value] ->
+        System.put_env(String.trim(key), String.trim(value))
+
+      _ ->
+        :ok
+    end
+  end)
+end
+
 # Disable all external services and background processes in test
 Application.put_env(:wanderer_notifier, :discord_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_enabled, false)
@@ -104,6 +124,13 @@ Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
 Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
 
+# Mock Nostrum's API
+defmodule Nostrum.Api do
+  def start_link, do: {:ok, self()}
+  def create_message(_channel_id, _content), do: {:ok, %{}}
+  def create_message(_channel_id, _content, _opts), do: {:ok, %{}}
+end
+
 # Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,
   for: WandererNotifier.Notifiers.StructuredFormatterBehaviour
@@ -145,9 +172,6 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
-
-# Load stubs for killmail testing
-Code.require_file("support/stubs/killmail_struct_stub.ex", __DIR__)
 
 # Load DataCase module
 Code.require_file("support/data_case.ex", __DIR__)

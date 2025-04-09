@@ -62,45 +62,4 @@ defmodule WandererNotifier.DataCase do
       end)
     end)
   end
-
-  @doc """
-  Helper to create a killmail struct for testing.
-  """
-  def create_test_killmail(attrs \\ %{}) do
-    default_attrs = %{
-      killmail_id: 12_345,
-      zkb: %{
-        "totalValue" => 15_000_000,
-        "points" => 10,
-        "npc" => false,
-        "solo" => false,
-        "hash" => "abc123hash"
-      },
-      esi_data: %{
-        "killmail_time" => "2023-01-01T12:34:56Z",
-        "solar_system_id" => 30_000_142,
-        "solar_system_name" => "Jita",
-        "victim" => %{
-          "character_id" => 98_765,
-          "character_name" => "Victim Pilot",
-          "ship_type_id" => 587,
-          "ship_type_name" => "Rifter"
-        },
-        "attackers" => [
-          %{
-            "character_id" => 11_111,
-            "character_name" => "Attacker One",
-            "ship_type_id" => 24_700,
-            "ship_type_name" => "Brutix",
-            "final_blow" => true,
-            "damage_done" => 500
-          }
-        ]
-      }
-    }
-
-    attrs = Map.merge(default_attrs, attrs)
-
-    struct(WandererNotifier.Data.Killmail, attrs)
-  end
 end
