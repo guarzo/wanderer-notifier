@@ -220,162 +220,178 @@ defmodule WandererNotifier.Api.Http.Client do
 
   # Execute the request with retry logic
   # Reduced parameters by using a config map
-  defp do_request_with_retry(
-         method,
-         url,
-         headers,
-         body,
-         config,
-         retry_count
-       ) do
-    # Safety check - avoid infinite retries
+  defp do_request_with_retry(method, url, headers, body, config, retry_count) do
     if retry_count > 10 do
       AppLogger.api_error("Exceeded maximum retry safety limit (10) for #{method} #{url}")
       return_server_error("Too many retries")
     end
 
-    options = [
+    options = build_request_options(config)
+    method_str = to_string(method) |> String.upcase()
+    log_request_attempt(method_str, url, retry_count)
+
+    case make_request(method, url, body, headers, options) do
+      {:ok, response = %{status_code: status}} when status >= 200 and status < 300 ->
+        handle_successful_response(response, method_str, config, status)
+
+      {:ok, response = %{status_code: 429}} ->
+        handle_rate_limit(method_str, url, headers, body, config, retry_count, response)
+
+      {:ok, %{status_code: status}} when status >= 500 and status < 600 ->
+        handle_server_error(method_str, url, headers, body, config, retry_count, status)
+
+      {:ok, response = %{status_code: status, body: resp_body}} ->
+        handle_other_response(
+          method_str,
+          url,
+          headers,
+          body,
+          config,
+          retry_count,
+          response,
+          status,
+          resp_body
+        )
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        handle_network_error(method_str, url, headers, body, config, retry_count, reason)
+    end
+  end
+
+  defp build_request_options(config) do
+    [
       hackney: [
         follow_redirect: true,
         recv_timeout: config.timeout,
         connect_timeout: div(config.timeout, 2)
       ]
     ]
+  end
 
-    method_str = to_string(method) |> String.upcase()
-
+  defp log_request_attempt(method_str, url, retry_count) do
     AppLogger.api_debug(
       "[DEBUG HTTP] About to call HTTPoison.request: #{method_str} #{url}, retry #{retry_count}"
     )
+  end
 
-    case HTTPoison.request(method, url, body, headers, options) do
-      # Handle successful responses (status code 200-299)
-      {:ok, response = %{status_code: status_code}} when status_code >= 200 and status_code < 300 ->
-        AppLogger.api_debug(
-          "[DEBUG HTTP] Request successful: #{method_str} [#{config.label}] => status #{status_code}"
-        )
+  defp make_request(method, url, body, headers, options) do
+    HTTPoison.request(method, url, body, headers, options)
+  end
 
-        # Return the successful response
-        {:ok, response}
+  defp handle_successful_response(response, method_str, config, status) do
+    AppLogger.api_debug(
+      "[DEBUG HTTP] Request successful: #{method_str} [#{config.label}] => status #{status}"
+    )
 
-      # Explicitly handle rate limits (429)
-      {:ok, response = %{status_code: 429, headers: headers}} ->
-        # Handle rate limiting with exponential backoff
-        retry_after = extract_retry_after(response.headers) || 0
-        backoff_ms = calculate_backoff(retry_count, retry_after * 1000, true)
+    {:ok, response}
+  end
 
+  defp handle_rate_limit(method_str, url, headers, body, config, retry_count, response) do
+    retry_after = extract_retry_after(response.headers) || 0
+    backoff_ms = calculate_backoff(retry_count, retry_after * 1000, true)
+
+    AppLogger.api_warn(
+      "⚠️ RATE LIMIT (429) for #{method_str} #{url} - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
+    )
+
+    :timer.sleep(backoff_ms)
+    do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+  end
+
+  defp handle_server_error(method_str, url, headers, body, config, retry_count, status) do
+    if retry_count < config.max_retries do
+      backoff_ms = calculate_backoff(retry_count, 0, false)
+
+      AppLogger.api_warn(
+        "Server error (#{status}) for #{method_str} #{url} - retrying in #{backoff_ms}ms (#{retry_count + 1}/#{config.max_retries})"
+      )
+
+      :timer.sleep(backoff_ms)
+      do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+    else
+      AppLogger.api_error(
+        "Server error (#{status}) persisted after #{config.max_retries} retries for #{method_str} #{url}"
+      )
+
+      {:error, :server_error}
+    end
+  end
+
+  defp handle_other_response(
+         method_str,
+         url,
+         headers,
+         body,
+         config,
+         retry_count,
+         response,
+         status,
+         resp_body
+       ) do
+    case check_for_domain_rate_limit(resp_body) do
+      {:rate_limited, reason} ->
+        handle_domain_rate_limit(method_str, url, headers, body, config, retry_count, reason)
+
+      :no_rate_limit ->
+        handle_non_rate_limited_response(method_str, url, response, status)
+    end
+  end
+
+  defp handle_domain_rate_limit(method_str, url, headers, body, config, retry_count, reason) do
+    backoff_ms = calculate_backoff(retry_count, 0, true)
+
+    AppLogger.api_warn(
+      "Domain rate limit detected for #{method_str} #{url} (#{reason}) - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
+    )
+
+    :timer.sleep(backoff_ms)
+    do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+  end
+
+  defp handle_non_rate_limited_response(method_str, url, response, status) do
+    cond do
+      status == 429 ->
         AppLogger.api_warn(
-          "⚠️ RATE LIMIT (429) for #{method_str} #{url} - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
+          "⚠️ Found 429 status that wasn't pattern-matched earlier - treating as rate limited"
         )
 
-        # Sleep for the backoff period
-        :timer.sleep(backoff_ms)
+        {:error, :rate_limited}
 
-        # Retry the request with incremented retry count
-        do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+      status >= 400 and status < 500 ->
+        AppLogger.api_debug("[DEBUG HTTP] Client error (#{status}) for #{method_str} #{url}")
+        {:error, status_code_to_error(status)}
 
-      # Handle server errors (500-599) with retry
-      {:ok, _response = %{status_code: status_code}} when status_code >= 500 and status_code < 600 ->
-        if retry_count < config.max_retries do
-          # Calculate backoff for server error
-          backoff_ms = calculate_backoff(retry_count, 0, false)
+      true ->
+        AppLogger.api_debug("[DEBUG HTTP] Unexpected status (#{status}) for #{method_str} #{url}")
+        {:ok, response}
+    end
+  end
 
-          AppLogger.api_warn(
-            "Server error (#{status_code}) for #{method_str} #{url} - retrying in #{backoff_ms}ms (#{retry_count + 1}/#{config.max_retries})"
-          )
+  defp handle_network_error(method_str, url, headers, body, config, retry_count, reason) do
+    if retry_count < config.max_retries and transient_error?(reason) do
+      backoff_ms = calculate_backoff(retry_count, 0, false)
 
-          # Sleep for the backoff period
-          :timer.sleep(backoff_ms)
+      AppLogger.api_warn(
+        "Network error (#{inspect(reason)}) for #{method_str} #{url} - retrying in #{backoff_ms}ms (#{retry_count + 1}/#{config.max_retries})"
+      )
 
-          # Retry the request
-          do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
-        else
-          # Max retries reached for server error
-          AppLogger.api_error(
-            "Server error (#{status_code}) persisted after #{config.max_retries} retries for #{method_str} #{url}"
-          )
+      :timer.sleep(backoff_ms)
+      do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+    else
+      log_network_error_final(method_str, url, config.max_retries, retry_count, reason)
+      {:error, reason}
+    end
+  end
 
-          {:error, :server_error}
-        end
-
-      # Handle domain-specific API responses that might indicate rate limiting
-      {:ok, response = %{status_code: status_code, body: body}} ->
-        # Try to parse the response to see if it contains domain-specific rate limit indicators
-        case check_for_domain_rate_limit(body) do
-          {:rate_limited, reason} ->
-            # Handle domain-specific rate limiting
-            backoff_ms = calculate_backoff(retry_count, 0, true)
-
-            AppLogger.api_warn(
-              "Domain rate limit detected for #{method_str} #{url} (#{reason}) - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
-            )
-
-            # Sleep for the backoff period
-            :timer.sleep(backoff_ms)
-
-            # Retry the request
-            do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
-
-          :no_rate_limit ->
-            # It's not a rate limit issue, so return the original response/error
-            cond do
-              # Check again for 429 status code in case it was missed
-              status_code == 429 ->
-                # Double-check for 429 status code that wasn't caught by pattern matching
-                AppLogger.api_warn(
-                  "⚠️ Found 429 status that wasn't pattern-matched earlier - treating as rate limited"
-                )
-
-                # Return proper rate limit error that calling code will know how to handle
-                {:error, :rate_limited}
-
-              # Client errors generally shouldn't be retried
-              status_code >= 400 and status_code < 500 ->
-                AppLogger.api_debug(
-                  "[DEBUG HTTP] Client error (#{status_code}) for #{method_str} #{url}"
-                )
-
-                {:error, status_code_to_error(status_code)}
-
-              # Default - return the unexpected response
-              true ->
-                AppLogger.api_debug(
-                  "[DEBUG HTTP] Unexpected status (#{status_code}) for #{method_str} #{url}"
-                )
-
-                {:ok, response}
-            end
-        end
-
-      # Handle network and connectivity errors
-      {:error, %HTTPoison.Error{reason: reason}} ->
-        if retry_count < config.max_retries and transient_error?(reason) do
-          # Calculate backoff for network error
-          backoff_ms = calculate_backoff(retry_count, 0, false)
-
-          AppLogger.api_warn(
-            "Network error (#{inspect(reason)}) for #{method_str} #{url} - retrying in #{backoff_ms}ms (#{retry_count + 1}/#{config.max_retries})"
-          )
-
-          # Sleep for the backoff period
-          :timer.sleep(backoff_ms)
-
-          # Retry the request
-          do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
-        else
-          # Max retries reached or non-transient error
-          if retry_count >= config.max_retries do
-            AppLogger.api_error(
-              "Network error persisted after #{config.max_retries} retries for #{method_str} #{url}: #{inspect(reason)}"
-            )
-          else
-            AppLogger.api_error(
-              "Non-retryable network error for #{method_str} #{url}: #{inspect(reason)}"
-            )
-          end
-
-          {:error, reason}
-        end
+  defp log_network_error_final(method_str, url, max_retries, retry_count, reason) do
+    if retry_count >= max_retries do
+      AppLogger.api_error(
+        "Network error persisted after #{max_retries} retries for #{method_str} #{url}: #{inspect(reason)}"
+      )
+    else
+      AppLogger.api_error(
+        "Non-retryable network error for #{method_str} #{url}: #{inspect(reason)}"
+      )
     end
   end
 

@@ -1,0 +1,115 @@
+Checking 208 source files (this might take a while) ...
+
+  Software Design                                                                              
+┃ 
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1853:10 #(WandererNotifier.Resources.KillmailPersistence.check_involvement_exists)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1836:13 #(WandererNotifier.Resources.KillmailPersistence.persist_character_involvement)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1826:11 #(WandererNotifier.Resources.KillmailPersistence.persist_character_involvement)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1066:7 #(WandererNotifier.Resources.KillmailPersistence.check_killmail_exists_in_database)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1764:9 #(WandererNotifier.Resources.KillmailPersistence.persist_normalized_killmail)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1755:7 #(WandererNotifier.Resources.KillmailPersistence.persist_normalized_killmail)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1734:11 #(WandererNotifier.Resources.KillmailPersistence.get_character_involvement)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1711:11 #(WandererNotifier.Resources.KillmailPersistence.get_character_involvement)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1689:23 #(WandererNotifier.Resources.KillmailPersistence.convert_to_normalized_format)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1615:10 #(WandererNotifier.Resources.KillmailPersistence.check_normalized_killmail_exists)
+┃ [D] ↘ Nested modules could be aliased at the top of the invoking module.
+┃       lib/wanderer_notifier/schedulers/weekly_kill_highlights_scheduler.ex:615:10 #(WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler.query_tracked_characters_from_database)
+
+  Code Readability                                                                             
+┃ 
+┃ [R] ↘ The alias `WandererNotifier.Resources.Killmail` is not alphabetically ordered among its 
+┃       group.
+┃       lib/wanderer_notifier/schedulers/weekly_kill_highlights_scheduler.ex:18:9 #(WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler)
+┃ [R] ↘ The alias `WandererNotifier.Resources.Killmail` is not alphabetically ordered among its 
+┃       group.
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:32:9 #(WandererNotifier.Resources.KillmailPersistence)
+
+  Refactoring opportunities                                                                    
+┃ 
+┃ [F] ↗ Avoid negated conditions in if-else blocks.
+┃       lib/wanderer_notifier/schedulers/weekly_kill_highlights_scheduler.ex:449:8 #(WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler.try_alternative_name_sources)
+┃ [F] → Function is too complex (cyclomatic complexity is 20, max is 9).
+┃       lib/wanderer_notifier/api/http/client.ex:223:8 #(WandererNotifier.Api.Http.Client.do_request_with_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/http/client.ex:367:11 #(WandererNotifier.Api.Http.Client.do_request_with_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 4).
+┃       lib/wanderer_notifier/schedulers/weekly_kill_highlights_scheduler.ex:302:20 #(WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler.filter_tracked_killmails)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:955:13 #(WandererNotifier.Processing.Killmail.Enrichment.get_ship_type_name_with_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:873:13 #(WandererNotifier.Processing.Killmail.Enrichment.get_character_name_with_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:704:13 #(WandererNotifier.Processing.Killmail.Enrichment.get_system_name_with_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/character/kills_service.ex:523:11 #(WandererNotifier.Api.Character.KillsService.fetch_and_persist_character_kills)
+┃ [F] → Function is too complex (cyclomatic complexity is 11, max is 9).
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:864:8 #(WandererNotifier.Resources.KillmailPersistence.get_character_name)
+┃ [F] → Function body is nested too deep (max depth is 2, was 5).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:385:15 #(WandererNotifier.Processing.Killmail.Enrichment.enrich_attackers_data)
+┃ [F] → Function body is nested too deep (max depth is 2, was 4).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:1035:37 #(WandererNotifier.Processing.Killmail.Enrichment.try_system_name_retry)
+┃ [F] → Function body is nested too deep (max depth is 2, was 4).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:663:13 #(WandererNotifier.Processing.Killmail.Enrichment.enrich_with_system_name)
+┃ [F] → Function is too complex (cyclomatic complexity is 16, max is 9).
+┃       lib/wanderer_notifier/api/zkill/websocket.ex:258:8 #(WandererNotifier.Api.ZKill.Websocket.process_text_frame)
+┃ [F] → Function is too complex (cyclomatic complexity is 15, max is 9).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:1055:8 #(WandererNotifier.Processing.Killmail.Enrichment.ensure_complete_enrichment)
+┃ [F] → Function is too complex (cyclomatic complexity is 15, max is 9).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:66:7 #(WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:1010:13 #(WandererNotifier.Resources.KillmailPersistence.resolve_character_name_for_persistence)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:924:13 #(WandererNotifier.Resources.KillmailPersistence.resolve_character_name)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:224:13 #(WandererNotifier.Resources.KillmailPersistence.process_tracked_character)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/resources/killmail_aggregation.ex:723:11 #(WandererNotifier.Resources.KillmailAggregation.sum_killmail_values)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:816:11 #(WandererNotifier.Processing.Killmail.Enrichment.retry_entity_enrichment)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:535:11 #(WandererNotifier.Processing.Killmail.Enrichment.add_ship_name)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/killmail_processing/pipeline.ex:376:11 #(WandererNotifier.KillmailProcessing.Pipeline.emergency_data_fix)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/killmail_processing/metrics.ex:362:21 #(WandererNotifier.KillmailProcessing.Metrics.increment_counter_impl)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/map/systems_client.ex:44:13 #(WandererNotifier.Api.Map.SystemsClient.update_systems)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/character/kills_service.ex:1202:13 #(WandererNotifier.Api.Character.KillsService.get_system_name_with_cache)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/character/kills_service.ex:1153:13 #(WandererNotifier.Api.Character.KillsService.get_ship_type_name_with_cache)
+┃ [F] → Function body is nested too deep (max depth is 2, was 3).
+┃       lib/wanderer_notifier/api/character/kills_service.ex:329:15 #(WandererNotifier.Api.Character.KillsService.process_tracked_characters)
+┃ [F] → Function is too complex (cyclomatic complexity is 12, max is 9).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:614:8 #(WandererNotifier.Processing.Killmail.Enrichment.enrich_with_system_name)
+┃ [F] → Function is too complex (cyclomatic complexity is 11, max is 9).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:773:8 #(WandererNotifier.Processing.Killmail.Enrichment.retry_entity_enrichment)
+┃ [F] → Function is too complex (cyclomatic complexity is 11, max is 9).
+┃       lib/wanderer_notifier/api/http/client.ex:612:8 #(WandererNotifier.Api.Http.Client.transient_error?)
+┃ [F] → Function is too complex (cyclomatic complexity is 10, max is 9).
+┃       lib/wanderer_notifier/resources/killmail_persistence.ex:897:8 #(WandererNotifier.Resources.KillmailPersistence.resolve_character_name)
+┃ [F] → Function is too complex (cyclomatic complexity is 10, max is 9).
+┃       lib/wanderer_notifier/processing/killmail/enrichment.ex:510:8 #(WandererNotifier.Processing.Killmail.Enrichment.add_ship_name)
+┃ [F] → Function is too complex (cyclomatic complexity is 10, max is 9).
+┃       lib/wanderer_notifier/notifiers/structured_formatter.ex:251:8 #(WandererNotifier.Notifiers.StructuredFormatter.get_normalized_final_blow_details)
+┃ [F] → Function is too complex (cyclomatic complexity is 10, max is 9).
+┃       lib/wanderer_notifier/notifications/determiner/kill.ex:187:8 #(WandererNotifier.Notifications.Determiner.Kill.extract_kill_data)
+┃ [F] → Function is too complex (cyclomatic complexity is 10, max is 9).
+┃       lib/wanderer_notifier/killmail_processing/pipeline.ex:302:8 #(WandererNotifier.KillmailProcessing.Pipeline.validate_enriched_data)
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 2.1 seconds (0.3s to load, 1.7s running 67 checks on 208 files)
+2898 mods/funs, found 35 refactoring opportunities, 2 code readability issues, 11 software design suggestions.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.

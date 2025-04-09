@@ -14,9 +14,9 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   alias WandererNotifier.Data.Repository, as: DataRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
-  alias WandererNotifier.Notifiers.StructuredFormatter
   require Ash.Query, as: Query
 
   # EVE Online constants and IDs
@@ -282,33 +282,35 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   end
 
   defp filter_tracked_killmails(killmails, tracked_ids, character_role) do
-    Enum.filter(killmails, fn km ->
-      # Get the associated character ID from the involvements
-      case find_character_involvement(km.id, character_role) do
-        {:ok, involvement} ->
-          char_id = parse_to_int(involvement.character_id)
-          tracked? = char_id in tracked_ids
-          structure? = structure_or_deployable?(ship_type_for_role(km, character_role))
+    Enum.filter(killmails, &tracked_and_not_structure?(&1, tracked_ids, character_role))
+  end
 
-          if !tracked?,
-            do:
-              AppLogger.scheduler_debug(
-                "Character #{char_id} is not tracked — ignoring killmail #{km.killmail_id}"
-              )
+  defp tracked_and_not_structure?(km, tracked_ids, character_role) do
+    case find_character_involvement(km.id, character_role) do
+      {:ok, involvement} ->
+        char_id = parse_to_int(involvement.character_id)
+        tracked? = char_id in tracked_ids
+        structure? = structure_or_deployable?(ship_type_for_role(km, character_role))
 
-          if structure?,
-            do:
-              AppLogger.scheduler_debug(
-                "#{if character_role == :victim, do: "Lost structure", else: "Structure kill"} — ignoring killmail #{km.killmail_id}"
-              )
+        log_tracking_status(char_id, tracked?, structure?, km.killmail_id, character_role)
+        tracked? and not structure?
 
-          tracked? and not structure?
+      _ ->
+        false
+    end
+  end
 
-        _ ->
-          # No involvement found, skip this killmail
-          false
-      end
-    end)
+  defp log_tracking_status(char_id, tracked?, structure?, killmail_id, character_role) do
+    if !tracked? do
+      AppLogger.scheduler_debug(
+        "Character #{char_id} is not tracked — ignoring killmail #{killmail_id}"
+      )
+    end
+
+    if structure? do
+      structure_type = if character_role == :victim, do: "Lost structure", else: "Structure kill"
+      AppLogger.scheduler_debug("#{structure_type} — ignoring killmail #{killmail_id}")
+    end
   end
 
   # Helper function to find character involvement
@@ -328,37 +330,42 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   defp deduplicate_killmails(killmails, character_role) do
     killmails
     |> Enum.group_by(& &1.killmail_id)
-    |> Enum.map(fn {_, kms} ->
-      if length(kms) > 1 do
-        AppLogger.scheduler_info(
-          "Multiple tracked characters for killmail #{List.first(kms).killmail_id}"
-        )
-
-        if character_role == :attacker do
-          # For attackers, find the one with the most damage
-          # Need to get all involvements for this killmail
-          case get_all_attacker_involvements(List.first(kms).id) do
-            {:ok, involvements} when involvements != [] ->
-              # Find the involvement with the most damage
-              highest_damage =
-                Enum.max_by(involvements, fn inv -> inv.damage_done || 0 end, fn ->
-                  List.first(involvements)
-                end)
-
-              # Find the killmail that matches this involvement
-              Enum.find(kms, List.first(kms), fn km -> km.id == highest_damage.killmail_id end)
-
-            _ ->
-              List.first(kms)
-          end
-        else
-          List.first(kms)
-        end
-      else
-        List.first(kms)
-      end
-    end)
+    |> Enum.map(&select_best_killmail(&1, character_role))
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp select_best_killmail({_, [km]}, _character_role), do: km
+  defp select_best_killmail({_, []}, _character_role), do: nil
+
+  defp select_best_killmail({_, kms}, character_role) do
+    AppLogger.scheduler_info(
+      "Multiple tracked characters for killmail #{List.first(kms).killmail_id}"
+    )
+
+    if character_role == :attacker do
+      select_highest_damage_killmail(kms)
+    else
+      List.first(kms)
+    end
+  end
+
+  defp select_highest_damage_killmail(killmails) do
+    first_km = List.first(killmails)
+
+    case get_all_attacker_involvements(first_km.id) do
+      {:ok, []} -> first_km
+      {:ok, involvements} -> select_killmail_with_highest_damage(killmails, involvements)
+      _ -> first_km
+    end
+  end
+
+  defp select_killmail_with_highest_damage(killmails, involvements) do
+    highest_damage =
+      Enum.max_by(involvements, fn inv -> inv.damage_done || 0 end, fn ->
+        List.first(involvements)
+      end)
+
+    Enum.find(killmails, List.first(killmails), fn km -> km.id == highest_damage.killmail_id end)
   end
 
   # Helper to get all attacker involvements for a killmail
@@ -441,13 +448,9 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   end
 
   defp try_alternative_name_sources(km) do
-    if not is_nil(km.related_character_id) do
-      case lookup_character_name(km.related_character_id) do
-        {:ok, name} -> %{km | related_character_name: name}
-        {:error, _} -> fallback_name_from_killmail_data(km)
-      end
-    else
-      fallback_name_from_killmail_data(km)
+    case {is_nil(km.related_character_id), lookup_character_name(km.related_character_id)} do
+      {false, {:ok, name}} -> %{km | related_character_name: name}
+      _ -> fallback_name_from_killmail_data(km)
     end
   end
 
