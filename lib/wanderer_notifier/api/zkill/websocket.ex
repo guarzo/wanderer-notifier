@@ -7,11 +7,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   - Returns {:reconnect, state} on disconnect to leverage built-in auto-reconnect
   """
   use WebSockex
+  alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
+  alias WandererNotifier.KillmailProcessing.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.KillmailPersistence
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.KillmailProcessing.Pipeline
 
   @doc false
   def init_batch_logging do
@@ -263,11 +263,9 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   end
 
   defp decode_frame(frame) do
-    try do
-      Jason.decode(frame)
-    rescue
-      e -> {:error, {e, frame}}
-    end
+    Jason.decode(frame)
+  rescue
+    e -> {:error, {e, frame}}
   end
 
   defp handle_decoded_frame(decoded, state) when is_map(decoded) do
@@ -304,20 +302,18 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   end
 
   defp check_killmail_status(killmail_id) do
-    try do
-      case KillmailPersistence.check_killmail_exists_in_database(killmail_id, nil, nil) do
-        true -> :already_processed
-        false -> :not_processed
-      end
-    rescue
-      e ->
-        AppLogger.websocket_error("[ZKill] Error checking killmail status", %{
-          killmail_id: killmail_id,
-          error: Exception.message(e)
-        })
-
-        {:error, e}
+    case KillmailPersistence.check_killmail_exists_in_database(killmail_id, nil, nil) do
+      true -> :already_processed
+      false -> :not_processed
     end
+  rescue
+    e ->
+      AppLogger.websocket_error("[ZKill] Error checking killmail status", %{
+        killmail_id: killmail_id,
+        error: Exception.message(e)
+      })
+
+      {:error, e}
   end
 
   defp handle_new_killmail(killmail_id, hash, state) do

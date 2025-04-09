@@ -24,18 +24,23 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
              ]}
 
   require Ash.Query
+  alias WandererNotifier.Api.Character.KillsService
   alias WandererNotifier.Api.ESI.Service, as: EsiService
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Repo
   alias WandererNotifier.Killmail, as: KillmailUtil
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
-  alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
   alias WandererNotifier.Utils.ListUtils
+  alias WandererNotifier.Resources.NormalizedKillmail
+  alias WandererNotifier.Resources.CharacterInvolvement
+  alias WandererNotifier.Resources.KillmailNormalization
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
@@ -44,7 +49,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   postgres do
     table("killmails")
-    repo(WandererNotifier.Data.Repo)
+    repo(Repo)
   end
 
   attributes do
@@ -131,7 +136,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   def count_total_killmails do
-    case KillmailResource
+    case Killmail
          |> Ash.Query.new()
          |> Ash.Query.aggregate(:count, :id, :total)
          |> Api.read() do
@@ -171,17 +176,17 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @impl true
-  def persist_killmail(%KillmailResource{} = killmail, nil) do
+  def persist_killmail(%Killmail{} = killmail, nil) do
     process_killmail_without_character_id(killmail)
   end
 
   @impl true
-  def persist_killmail(%KillmailResource{} = killmail, character_id) do
+  def persist_killmail(%Killmail{} = killmail, character_id) do
     process_provided_character_id(killmail, character_id)
   end
 
   @impl true
-  def persist_killmail(%KillmailResource{} = killmail) do
+  def persist_killmail(%Killmail{} = killmail) do
     # Call the function with nil character_id to perform the default processing
     persist_killmail(killmail, nil)
   end
@@ -285,7 +290,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @impl true
-  def maybe_persist_killmail(%KillmailResource{} = killmail, character_id \\ nil) do
+  def maybe_persist_killmail(%Killmail{} = killmail, character_id \\ nil) do
     kill_id = killmail.killmail_id
     system_id = KillmailUtil.get_system_id(killmail)
     system_name = KillmailUtil.get(killmail, "solar_system_name") || "Unknown System"
@@ -401,7 +406,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Find tracked character information in the killmail
-  defp find_tracked_character_in_killmail(%KillmailResource{} = killmail) do
+  defp find_tracked_character_in_killmail(%Killmail{} = killmail) do
     with victim_data <- extract_victim_data(killmail),
          tracked_characters when not is_nil(tracked_characters) <- get_tracked_characters(),
          tracked_ids <- extract_and_log_tracked_ids(tracked_characters),
@@ -868,7 +873,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     name_from_killmail = get_name_from_killmail(killmail, character_id, role)
 
     # If we have a valid name from the killmail, use it
-    if is_valid_name?(name_from_killmail) do
+    if valid_name?(name_from_killmail) do
       name_from_killmail
     else
       # Otherwise, try to fetch from ESI or cache
@@ -895,10 +900,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   defp get_name_from_killmail(_killmail, _character_id, _role), do: nil
 
-  defp is_valid_name?(name) when is_binary(name),
+  defp valid_name?(name) when is_binary(name),
     do: name != "" && name != "Unknown Pilot"
 
-  defp is_valid_name?(_), do: false
+  defp valid_name?(_), do: false
 
   # Helper to resolve character name from cache/ESI
   defp resolve_character_name(character_id)
@@ -951,6 +956,81 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   defp resolve_character_name(_), do: "Unknown Pilot"
 
+  # Helper function to properly resolve character name
+  defp resolve_character_name_for_persistence(character_id, character_name) do
+    case validate_character_data_quality(character_id, character_name) do
+      {:ok, _, validated_name} ->
+        validated_name
+
+      {:error, "Invalid character name: Unknown Pilot"} ->
+        resolve_unknown_pilot(character_id, character_name)
+
+      {:error, reason} ->
+        handle_validation_error(character_id, character_name, reason)
+    end
+  end
+
+  defp resolve_unknown_pilot(character_id, fallback_name) do
+    case EsiService.get_character(character_id) do
+      {:ok, character_data} when is_map(character_data) ->
+        handle_esi_response(character_id, character_data, fallback_name)
+
+      _ ->
+        handle_esi_failure(character_id, fallback_name)
+    end
+  end
+
+  defp handle_esi_response(character_id, character_data, fallback_name) do
+    name = Map.get(character_data, "name")
+
+    if is_binary(name) && name != "" do
+      cache_and_return_name(character_id, name)
+    else
+      handle_invalid_esi_name(character_id, name, fallback_name)
+    end
+  end
+
+  defp cache_and_return_name(character_id, name) do
+    CacheHelpers.cache_character_info(%{
+      "character_id" => character_id,
+      "name" => name
+    })
+
+    AppLogger.kill_info("Resolved character name from ESI for persistence", %{
+      character_id: character_id,
+      character_name: name
+    })
+
+    name
+  end
+
+  defp handle_invalid_esi_name(character_id, esi_name, fallback_name) do
+    AppLogger.kill_error("Character validation failed - ESI returned invalid name", %{
+      character_id: character_id,
+      esi_name: inspect(esi_name)
+    })
+
+    fallback_name
+  end
+
+  defp handle_esi_failure(character_id, fallback_name) do
+    AppLogger.kill_error("Character validation failed - ESI call unsuccessful", %{
+      character_id: character_id
+    })
+
+    fallback_name
+  end
+
+  defp handle_validation_error(character_id, character_name, reason) do
+    AppLogger.kill_error("Character validation failed in name resolution", %{
+      character_id: character_id,
+      character_name: character_name,
+      reason: reason
+    })
+
+    character_name
+  end
+
   # Helper functions for persistence
   defp handle_tracked_character_found(
          killmail,
@@ -996,69 +1076,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         })
 
         error
-    end
-  end
-
-  # Helper function to properly resolve character name
-  defp resolve_character_name_for_persistence(character_id, character_name) do
-    # First validate the character data
-    case validate_character_data_quality(character_id, character_name) do
-      # If validation succeeds, continue with normal processing
-      {:ok, _, validated_name} ->
-        validated_name
-
-      # If validation specifically found "Unknown Pilot" name, try to resolve it
-      {:error, "Invalid character name: Unknown Pilot"} ->
-        # Use ESI to get the real name
-        case EsiService.get_character(character_id) do
-          {:ok, character_data} when is_map(character_data) ->
-            name = Map.get(character_data, "name")
-
-            if is_binary(name) && name != "" do
-              # Cache the correct character name for future use
-              CacheHelpers.cache_character_info(%{
-                "character_id" => character_id,
-                "name" => name
-              })
-
-              AppLogger.kill_info("Resolved character name from ESI for persistence", %{
-                character_id: character_id,
-                character_name: name
-              })
-
-              name
-            else
-              # Rejected - don't save with invalid name
-              AppLogger.kill_error("Character validation failed - ESI returned invalid name", %{
-                character_id: character_id,
-                esi_name: inspect(name)
-              })
-
-              # Return the original problematic name to ensure proper error handling upstream
-              character_name
-            end
-
-          _ ->
-            # ESI call failed, validation has failed
-            AppLogger.kill_error("Character validation failed - ESI call unsuccessful", %{
-              character_id: character_id
-            })
-
-            # Return the original problematic name to ensure proper error handling upstream
-            character_name
-        end
-
-      # For any other validation errors, log and return the original name
-      # (this will still be rejected upstream based on the validation results)
-      {:error, reason} ->
-        AppLogger.kill_error("Character validation failed in name resolution", %{
-          character_id: character_id,
-          character_name: character_name,
-          reason: reason
-        })
-
-        # Return the original name so upstream handling can proceed with rejection
-        character_name
     end
   end
 
@@ -1226,7 +1243,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper functions for time handling
   defp get_kill_time(killmail) do
-    if is_struct(killmail, KillmailResource) && killmail.kill_time do
+    if is_struct(killmail, Killmail) && killmail.kill_time do
       killmail.kill_time
     else
       DateTime.utc_now()
@@ -1235,7 +1252,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # Helper functions for finding attackers
   defp find_attacker_by_character_id(killmail, character_id) do
-    if is_struct(killmail, KillmailResource) && Map.has_key?(killmail, :full_attacker_data) do
+    if is_struct(killmail, Killmail) && Map.has_key?(killmail, :full_attacker_data) do
       attackers = killmail.full_attacker_data || []
 
       Enum.find(attackers, fn attacker ->
@@ -1292,7 +1309,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     CacheRepo.sync_with_db(cache_key, db_read_fun, 1800)
   end
 
-  defp update_recent_killmails_cache(%KillmailResource{} = killmail) do
+  defp update_recent_killmails_cache(%Killmail{} = killmail) do
     cache_key = "zkill:recent_kills"
 
     # Update the cache of recent killmail IDs
@@ -1588,7 +1605,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   - :ignored - Killmail was ignored (not tracked by any character)
   - {:error, reason} - Failed to persist killmail
   """
-  def maybe_persist_normalized_killmail(%KillmailResource{} = killmail, character_id \\ nil) do
+  def maybe_persist_normalized_killmail(%Killmail{} = killmail, character_id \\ nil) do
     # First check if killmail already exists in the new normalized model
     kill_id = killmail.killmail_id
 
@@ -1691,7 +1708,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Convert the old killmail struct to the normalized format
-  defp convert_to_normalized_format(%KillmailResource{} = killmail) do
+  defp convert_to_normalized_format(%Killmail{} = killmail) do
     # Use the Validation module to convert the killmail to normalized format
     normalized_data = WandererNotifier.Killmail.Validation.normalize_killmail(killmail)
     {:ok, normalized_data}
@@ -1706,7 +1723,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Get character involvement information from a killmail
-  defp get_character_involvement(%KillmailResource{} = killmail, nil) do
+  defp get_character_involvement(%Killmail{} = killmail, nil) do
     # No character ID provided, try to find a tracked character in the killmail
     case find_tracked_character_in_killmail(killmail) do
       {character_id, _character_name, role} ->
@@ -1729,7 +1746,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  defp get_character_involvement(%KillmailResource{} = killmail, character_id) do
+  defp get_character_involvement(%Killmail{} = killmail, character_id) do
     # Character ID provided, determine the role
     case determine_character_role(killmail, character_id) do
       {:ok, role} ->
@@ -1873,7 +1890,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Helper to check if a killmail involves any tracked character
-  defp has_any_tracked_character?(%KillmailResource{} = killmail) do
+  defp has_any_tracked_character?(%Killmail{} = killmail) do
     case find_tracked_character_in_killmail(killmail) do
       {_character_id, _character_name, _role} -> true
       nil -> false

@@ -98,7 +98,6 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
       {:ok, stats} ->
         AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Successfully fetched kills before aggregation",
-          characters: stats.characters,
           processed: stats.processed,
           persisted: stats.persisted
         )
@@ -133,11 +132,8 @@ defmodule WandererNotifier.Schedulers.KillmailAggregationScheduler do
       {:ok, stats} ->
         AppLogger.scheduler_info(
           "#{inspect(@scheduler_name)}: Completed #{period_type} aggregation",
-          %{
-            date: Date.to_string(date),
-            characters: map_size(stats.characters || %{}),
-            killmails: stats.processed || 0
-          }
+          date: Date.to_string(date),
+          processed: stats.processed || 0
         )
 
         {:ok, stats}

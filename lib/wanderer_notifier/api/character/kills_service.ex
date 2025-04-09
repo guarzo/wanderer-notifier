@@ -139,20 +139,6 @@ defmodule WandererNotifier.Api.Character.KillsService do
     end
   end
 
-  # Helper for extracting and validating character IDs
-  defp extract_valid_character_ids(characters) do
-    characters
-    |> Enum.map(&extract_character_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> tap(fn ids ->
-      AppLogger.kill_debug("[CHARACTER_KILLS] Extracted character IDs", %{
-        extracted_count: length(ids),
-        valid_ids: Enum.reject(ids, &is_nil/1),
-        sample_id: List.first(ids)
-      })
-    end)
-  end
-
   @type date_range :: %{start: DateTime.t() | nil, end: DateTime.t() | nil}
   @type batch_stats :: %{
           total: non_neg_integer(),
@@ -285,7 +271,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
       {:error, :no_tracked_characters}
     else
       log_tracked_characters_info(tracked_characters)
-      process_tracked_characters(tracked_characters, limit, page, deps)
+      process_tracked_characters_batch(tracked_characters, deps)
     end
   end
 
@@ -312,265 +298,10 @@ defmodule WandererNotifier.Api.Character.KillsService do
     })
   end
 
-  defp process_tracked_characters(tracked_characters, limit, page, deps) do
-    AppLogger.kill_info("[CHARACTER_KILLS] Processing tracked characters",
-      character_count: length(tracked_characters),
-      sample_character: List.first(tracked_characters)
-    )
-
-    results =
-      tracked_characters
-      |> extract_valid_character_ids()
-      |> Task.async_stream(
-        fn character_id ->
-          # If we have a known name from the tracked_characters list, pick it up
-          name_from_tracked =
-            Enum.find_value(tracked_characters, fn char ->
-              if to_string(Map.get(char, "character_id", "")) == to_string(character_id) do
-                Map.get(char, "character_name", nil)
-              end
-            end)
-
-          # Try to resolve name with fallback
-          character_name = resolve_character_name(character_id, name_from_tracked, deps)
-
-          AppLogger.kill_info("[CHARACTER_KILLS] Processing character", %{
-            character_id: character_id,
-            character_name: character_name
-          })
-
-          result = fetch_and_persist_character_kills(character_id, limit, page, deps)
-
-          # Log per-character summary
-          case result do
-            {:ok, stats} when is_map(stats) ->
-              AppLogger.kill_info("[CHARACTER_KILLS] Character processing complete", %{
-                character_id: character_id,
-                total_kills: stats.total,
-                processed: stats.processed,
-                skipped: stats.skipped,
-                duplicates: stats.duplicates,
-                errors: stats.errors,
-                success_rate: "#{Float.round(stats.processed / max(stats.total, 1) * 100, 2)}%"
-              })
-
-              {:ok, stats}
-
-            {:error, reason} ->
-              AppLogger.kill_error("[CHARACTER_KILLS] Character processing failed", %{
-                character_id: character_id,
-                error: inspect(reason)
-              })
-
-              {:error, reason}
-
-            {:ok, :skipped} ->
-              AppLogger.kill_debug("[CHARACTER_KILLS] Character processing skipped", %{
-                character_id: character_id
-              })
-
-              {:ok, %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}}
-
-            other ->
-              AppLogger.kill_debug("[CHARACTER_KILLS] Unexpected result", %{
-                character_id: character_id,
-                result: inspect(other)
-              })
-
-              {:error, :unexpected_result}
-          end
-        end,
-        timeout: 300_000,
-        max_concurrency: 2,
-        on_timeout: :exit
-      )
-      |> Enum.to_list()
-      |> Enum.map(fn
-        {:ok, result} ->
-          result
-
-        {:exit, :timeout} ->
-          AppLogger.kill_warn("[CHARACTER_KILLS] Character processing timed out")
-          {:error, :timeout}
-
-        {:exit, reason} ->
-          AppLogger.kill_warn("[CHARACTER_KILLS] Character processing exited", %{
-            reason: inspect(reason)
-          })
-
-          {:error, reason}
-      end)
-
-    summarize_batch_results(results)
-  end
-
-  defp summarize_batch_results(results) do
-    initial_totals = %{
-      total_kills: 0,
-      processed: 0,
-      persisted: 0,
-      skipped: 0,
-      errors: 0,
-      timeouts: 0,
-      characters: 0,
-      successful_characters: 0,
-      failed_characters: 0,
-      character_names: []
-    }
-
-    totals =
-      Enum.reduce(results, initial_totals, fn
-        {:ok, stats}, acc ->
-          # Add the character_name from stats if your upstream code includes that in the map
-          character_name = Map.get(stats, :character_name, "Unknown")
-
-          %{
-            acc
-            | total_kills: acc.total_kills + stats.total,
-              processed: acc.processed + stats.processed,
-              skipped: acc.skipped + stats.skipped,
-              errors: acc.errors + stats.errors,
-              characters: acc.characters + 1,
-              successful_characters: acc.successful_characters + 1,
-              character_names: acc.character_names ++ [{character_name, stats.processed}]
-          }
-
-        {:error, _}, acc ->
-          %{
-            acc
-            | characters: acc.characters + 1,
-              failed_characters: acc.failed_characters + 1
-          }
-      end)
-
-    # Log individual character summaries
-    Enum.each(totals.character_names, fn {character_name, processed_count} ->
-      AppLogger.kill_info("📊 Character processing summary", %{
-        character_name: character_name,
-        processed_kills: processed_count
-      })
-    end)
-
-    AppLogger.kill_info("📊 Overall batch processing summary", %{
-      total_characters: totals.characters,
-      successful_characters: totals.successful_characters,
-      failed_characters: totals.failed_characters,
-      total_kills: totals.total_kills,
-      processed_kills: totals.processed,
-      skipped_kills: totals.skipped,
-      errors: totals.errors,
-      success_rate: "#{Float.round(totals.processed / max(totals.total_kills, 1) * 100, 2)}%",
-      character_success_rate:
-        "#{Float.round(totals.successful_characters / max(totals.characters, 1) * 100, 2)}%"
-    })
-
-    if totals.successful_characters > 0 do
-      {:ok,
-       %{
-         processed: totals.processed,
-         persisted: totals.persisted,
-         characters: totals.successful_characters
-       }}
-    else
-      {:error, :no_successful_results}
-    end
-  end
-
   @doc """
-  Fetches and persists kills for a single character.
+  Process tracked characters' kills in batches.
   """
-  @spec fetch_and_persist_character_kills(integer(), integer(), integer(), map()) ::
-          {:ok, %{processed: integer(), persisted: integer()}}
-          | {:error, term()}
-  def fetch_and_persist_character_kills(
-        character_id,
-        limit \\ 25,
-        page \\ 1,
-        deps \\ @default_deps
-      ) do
-    is_tracked = character_tracked?(character_id, deps)
-
-    if is_tracked do
-      # Use helper to get the best name we can
-      character_name = resolve_character_name(character_id, nil, deps)
-
-      AppLogger.kill_info("[CHARACTER_KILLS] Starting kill fetch and persist", %{
-        character_id: character_id,
-        character_name: character_name,
-        limit: limit,
-        page: page
-      })
-
-      case fetch_character_kills(character_id, limit, page, deps) do
-        {:ok, kills} when is_list(kills) ->
-          kill_count = length(kills)
-
-          AppLogger.kill_info("[CHARACTER_KILLS] Processing kills batch for character", %{
-            character_id: character_id,
-            character_name: character_name,
-            kill_count: kill_count
-          })
-
-          ctx =
-            Context.new_historical(
-              character_id,
-              character_name,
-              :zkill_api,
-              generate_batch_id(),
-              []
-            )
-
-          case process_kills_batch(kills, ctx) do
-            {:ok, stats} ->
-              {:ok, Map.put(stats, :character_name, character_name)}
-
-            {:error, reason} ->
-              AppLogger.kill_error("[CHARACTER_KILLS] Failed to process kills", %{
-                character_id: character_id,
-                character_name: character_name,
-                error: inspect(reason)
-              })
-
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          AppLogger.kill_error("[CHARACTER_KILLS] Failed to fetch kills", %{
-            character_id: character_id,
-            character_name: character_name,
-            error: inspect(reason)
-          })
-
-          {:error, reason}
-      end
-    else
-      AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
-        character_id: character_id
-      })
-
-      {:ok, %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}}
-    end
-  end
-
-  defp character_tracked?(character_id, deps) do
-    tracked_characters = deps.repository.get_tracked_characters()
-
-    Enum.any?(tracked_characters, fn char ->
-      char_id =
-        if is_map(char) do
-          Map.get(char, :character_id) || Map.get(char, "character_id")
-        else
-          nil
-        end
-
-      to_string(char_id) == to_string(character_id)
-    end)
-  end
-
-  @doc """
-  Process tracked characters' kills.
-  """
-  def process_tracked_characters(characters, _opts \\ []) do
+  def process_tracked_characters_batch(characters, _opts \\ []) do
     character_count = length(characters)
     AppLogger.kill_info("👥 Processing #{character_count} tracked characters")
 
@@ -613,6 +344,73 @@ defmodule WandererNotifier.Api.Character.KillsService do
     end
 
     {:ok, %{processed: processed, persisted: succeeded}}
+  end
+
+  @doc """
+  Fetches and persists kills for a single character.
+  """
+  @spec fetch_and_persist_character_kills(integer(), String.t(), map()) ::
+          {:ok, %{processed: integer(), persisted: integer()}}
+          | {:error, term()}
+  def fetch_and_persist_character_kills(character_id, character_name, ctx) do
+    if character_tracked?(character_id, @default_deps) do
+      case fetch_character_kills(character_id, 25, 1, @default_deps) do
+        {:ok, kills} -> process_character_kills_result(kills, character_id, character_name, ctx)
+        {:error, reason} -> handle_fetch_error(reason, character_id, character_name)
+      end
+    else
+      handle_untracked_character(character_id)
+    end
+  end
+
+  defp process_character_kills_result(kills, character_id, character_name, ctx) do
+    case process_kills_batch(kills, ctx) do
+      {:ok, stats} -> {:ok, Map.put(stats, :character_name, character_name)}
+      {:error, reason} -> handle_process_error(reason, character_id, character_name)
+    end
+  end
+
+  defp handle_fetch_error(reason, character_id, character_name) do
+    AppLogger.kill_error("[CHARACTER_KILLS] Failed to fetch kills", %{
+      character_id: character_id,
+      character_name: character_name,
+      error: inspect(reason)
+    })
+
+    {:error, reason}
+  end
+
+  defp handle_process_error(reason, character_id, character_name) do
+    AppLogger.kill_error("[CHARACTER_KILLS] Failed to process kills", %{
+      character_id: character_id,
+      character_name: character_name,
+      error: inspect(reason)
+    })
+
+    {:error, reason}
+  end
+
+  defp handle_untracked_character(character_id) do
+    AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
+      character_id: character_id
+    })
+
+    {:ok, %{total: 0, processed: 0, skipped: 1, duplicates: 0, errors: 0}}
+  end
+
+  defp character_tracked?(character_id, deps) do
+    tracked_characters = deps.repository.get_tracked_characters()
+
+    Enum.any?(tracked_characters, fn char ->
+      char_id =
+        if is_map(char) do
+          Map.get(char, :character_id) || Map.get(char, "character_id")
+        else
+          nil
+        end
+
+      to_string(char_id) == to_string(character_id)
+    end)
   end
 
   defp process_kills_batch(kills, character_id) when is_integer(character_id) do
@@ -905,28 +703,6 @@ defmodule WandererNotifier.Api.Character.KillsService do
         result
     end
   end
-
-  defp extract_character_id(%{character_id: character_id}) when is_integer(character_id),
-    do: character_id
-
-  defp extract_character_id(%{character_id: character_id}) when is_binary(character_id) do
-    case Integer.parse(character_id) do
-      {id, _} -> id
-      :error -> nil
-    end
-  end
-
-  defp extract_character_id(%{"character_id" => character_id}) when is_integer(character_id),
-    do: character_id
-
-  defp extract_character_id(%{"character_id" => character_id}) when is_binary(character_id) do
-    case Integer.parse(character_id) do
-      {id, _} -> id
-      :error -> nil
-    end
-  end
-
-  defp extract_character_id(_), do: nil
 
   # Improved date filter that gracefully handles nil `from` and `to`
   defp filter_kills_by_date(kills, from, to) do

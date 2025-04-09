@@ -33,6 +33,13 @@ defmodule WandererNotifier.Api.Http.Client do
   # milliseconds (10 seconds)
   @default_timeout 10_000
 
+  defmodule RequestContext do
+    @moduledoc """
+    Struct to hold request context information to reduce parameter count in functions.
+    """
+    defstruct [:method_str, :url, :headers, :body, :config, :retry_count]
+  end
+
   @doc """
   Makes a GET request to the specified URL.
 
@@ -242,12 +249,14 @@ defmodule WandererNotifier.Api.Http.Client do
 
       {:ok, response = %{status_code: status, body: resp_body}} ->
         handle_other_response(
-          method_str,
-          url,
-          headers,
-          body,
-          config,
-          retry_count,
+          %RequestContext{
+            method_str: method_str,
+            url: url,
+            headers: headers,
+            body: body,
+            config: config,
+            retry_count: retry_count
+          },
           response,
           status,
           resp_body
@@ -318,34 +327,44 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   defp handle_other_response(
-         method_str,
-         url,
-         headers,
-         body,
-         config,
-         retry_count,
+         %RequestContext{
+           method_str: method_str,
+           url: url,
+           headers: _headers,
+           body: _body,
+           config: _config,
+           retry_count: _retry_count
+         } = context,
          response,
          status,
          resp_body
        ) do
     case check_for_domain_rate_limit(resp_body) do
       {:rate_limited, reason} ->
-        handle_domain_rate_limit(method_str, url, headers, body, config, retry_count, reason)
+        handle_domain_rate_limit(context, reason)
 
       :no_rate_limit ->
         handle_non_rate_limited_response(method_str, url, response, status)
     end
   end
 
-  defp handle_domain_rate_limit(method_str, url, headers, body, config, retry_count, reason) do
-    backoff_ms = calculate_backoff(retry_count, 0, true)
+  defp handle_domain_rate_limit(%RequestContext{} = context, reason) do
+    backoff_ms = calculate_backoff(context.retry_count, 0, true)
 
     AppLogger.api_warn(
-      "Domain rate limit detected for #{method_str} #{url} (#{reason}) - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
+      "Domain rate limit detected for #{context.method_str} #{context.url} (#{reason}) - waiting #{backoff_ms}ms before retry #{context.retry_count + 1}"
     )
 
     :timer.sleep(backoff_ms)
-    do_request_with_retry(method_str, url, headers, body, config, retry_count + 1)
+
+    do_request_with_retry(
+      context.method_str,
+      context.url,
+      context.headers,
+      context.body,
+      context.config,
+      context.retry_count + 1
+    )
   end
 
   defp handle_non_rate_limited_response(method_str, url, response, status) do
@@ -626,51 +645,58 @@ defmodule WandererNotifier.Api.Http.Client do
 
   # Determine if an error is transient and can be retried
   defp transient_error?(reason) do
-    result =
-      cond do
-        # Direct match with atom error codes
-        reason in @transient_errors ->
+    cond do
+      # Direct match with atom error codes
+      reason in @transient_errors ->
+        true
+
+      # Handle HTTPoison errors
+      match?(%HTTPoison.Error{}, reason) ->
+        error_reason = reason.reason
+
+        error_reason in @transient_errors or
+          connection_error?(reason) or
+          timeout_error?(reason)
+
+      # Handle domain-specific errors including rate limits
+      is_tuple(reason) and tuple_size(reason) == 3 and elem(reason, 0) == :domain_error ->
+        domain = elem(reason, 1)
+        error_type = elem(reason, 2)
+        # Rate limits are always transient
+        if error_type == :rate_limited do
           true
+        else
+          # Check if the domain/error combo is in our list
+          error_tuple = {:domain_error, domain, error_type}
+          error_tuple in @transient_errors
+        end
 
-        # Handle closures
-        match?({:closed, _}, reason) ->
-          true
-
-        # Handle timeouts
-        match?({:timeout, _}, reason) ->
-          true
-
-        reason == :timeout ->
-          true
-
-        # Handle domain-specific errors including rate limits
-        is_tuple(reason) &&
-          tuple_size(reason) == 3 &&
-            elem(reason, 0) == :domain_error ->
-          domain = elem(reason, 1)
-          error_type = elem(reason, 2)
-          # Rate limits are always transient
-          if error_type == :rate_limited do
-            true
-          else
-            # Check if the domain/error combo is in our list
-            error_tuple = {:domain_error, domain, error_type}
-            error_tuple in @transient_errors
-          end
-
-        # Default is not transient
-        true ->
-          false
-      end
-
-    # Log the classification for debugging
-    if result do
-      AppLogger.api_debug("Error classified as TRANSIENT (retryable): #{inspect(reason)}")
-    else
-      AppLogger.api_debug("Error classified as PERMANENT (non-retryable): #{inspect(reason)}")
+      # Default is not transient
+      true ->
+        false
     end
+  end
 
-    result
+  defp connection_error?(reason) do
+    case reason do
+      %HTTPoison.Error{reason: :closed} -> true
+      %HTTPoison.Error{reason: :connect_timeout} -> true
+      %HTTPoison.Error{reason: :econnrefused} -> true
+      %HTTPoison.Error{reason: :enetdown} -> true
+      %HTTPoison.Error{reason: :enetunreach} -> true
+      %HTTPoison.Error{reason: :enotconn} -> true
+      %HTTPoison.Error{reason: :econnreset} -> true
+      _ -> false
+    end
+  end
+
+  defp timeout_error?(reason) do
+    case reason do
+      %HTTPoison.Error{reason: :timeout} -> true
+      %HTTPoison.Error{reason: :etimedout} -> true
+      %HTTPoison.Error{reason: :ehostunreach} -> true
+      _ -> false
+    end
   end
 
   # Extract Retry-After header value, if present

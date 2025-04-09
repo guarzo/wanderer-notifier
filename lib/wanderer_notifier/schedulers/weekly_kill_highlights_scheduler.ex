@@ -5,6 +5,7 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   """
 
   use WandererNotifier.Schedulers.IntervalScheduler, name: __MODULE__
+  require Logger
 
   alias WandererNotifier.Api.ESI.Service, as: EsiService
   alias WandererNotifier.Config.Features
@@ -17,7 +18,10 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
-  require Ash.Query, as: Query
+  alias WandererNotifier.Resources.KillmailCharacterInvolvement
+  alias Ash.Query
+
+  import Ash.Query, only: [filter: 2, limit: 2, sort: 2]
 
   # EVE Online constants and IDs
   @pod_type_id 670
@@ -250,14 +254,13 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
     # Use the new normalized data model
     # First query for character involvements that match our criteria
     involvement_query =
-      WandererNotifier.Resources.KillmailCharacterInvolvement
-      |> Query.filter(character_role == ^character_role)
-      |> Query.load(:killmail)
-      |> Query.filter(killmail.kill_time >= ^start_date)
-      |> Query.filter(killmail.kill_time <= ^end_date)
-      |> Query.filter(killmail.victim_ship_id != ^@pod_type_id)
-      |> Query.sort({:expr, [:killmail, :total_value]}, :desc)
-      |> Query.limit(100)
+      KillmailCharacterInvolvement
+      |> filter(character_role == ^character_role)
+      |> filter(kill_time >= ^start_date)
+      |> filter(kill_time <= ^end_date)
+      |> filter(victim_ship_id != ^@pod_type_id)
+      |> sort(desc: {:expr, [:killmail, :total_value]})
+      |> limit(100)
 
     case Api.read(involvement_query) do
       {:ok, involvements} ->
@@ -316,10 +319,10 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   # Helper function to find character involvement
   defp find_character_involvement(killmail_id, character_role) do
     query =
-      WandererNotifier.Resources.KillmailCharacterInvolvement
-      |> Query.filter(killmail_id == ^killmail_id)
-      |> Query.filter(character_role == ^character_role)
-      |> Query.limit(1)
+      KillmailCharacterInvolvement
+      |> filter(killmail_id == ^killmail_id)
+      |> filter(character_role == ^character_role)
+      |> limit(1)
 
     case Api.read(query) do
       {:ok, [involvement]} -> {:ok, involvement}
@@ -371,9 +374,9 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   # Helper to get all attacker involvements for a killmail
   defp get_all_attacker_involvements(killmail_id) do
     query =
-      WandererNotifier.Resources.KillmailCharacterInvolvement
-      |> Query.filter(killmail_id == ^killmail_id)
-      |> Query.filter(character_role == :attacker)
+      KillmailCharacterInvolvement
+      |> filter(killmail_id == ^killmail_id)
+      |> filter(character_role == :attacker)
 
     Api.read(query)
   end
@@ -407,9 +410,9 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   # Find character information for a killmail
   defp find_character_in_killmail(km) do
     query =
-      WandererNotifier.Resources.KillmailCharacterInvolvement
-      |> Query.filter(killmail_id == ^km.id)
-      |> Query.limit(1)
+      KillmailCharacterInvolvement
+      |> filter(killmail_id == ^km.id)
+      |> limit(1)
 
     case Api.read(query) do
       {:ok, [involvement]} ->
@@ -695,15 +698,15 @@ defmodule WandererNotifier.Schedulers.WeeklyKillHighlightsScheduler do
   defp log_weekly_diagnostics(start_dt, end_dt) do
     kills_query =
       Killmail
-      |> Query.filter(character_role == :attacker)
-      |> Query.filter(kill_time >= ^start_dt)
-      |> Query.filter(kill_time <= ^end_dt)
+      |> filter(character_role == :attacker)
+      |> filter(kill_time >= ^start_dt)
+      |> filter(kill_time <= ^end_dt)
 
     losses_query =
       Killmail
-      |> Query.filter(character_role == :victim)
-      |> Query.filter(kill_time >= ^start_dt)
-      |> Query.filter(kill_time <= ^end_dt)
+      |> filter(character_role == :victim)
+      |> filter(kill_time >= ^start_dt)
+      |> filter(kill_time <= ^end_dt)
 
     with {:ok, kills} <- Api.read(kills_query),
          {:ok, losses} <- Api.read(losses_query) do

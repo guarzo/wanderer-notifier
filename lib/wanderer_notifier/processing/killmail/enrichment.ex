@@ -137,16 +137,15 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   defp retry_system_enrichment(esi_data, system_id, system_name, killmail_id) do
-    updated_data = try_system_name_retry(esi_data)
-    updated_system_name = Map.get(updated_data, "solar_system_name")
+    case get_system_name_with_retries(system_id, 5) do
+      {:ok, new_name} when is_binary(new_name) and new_name != "" ->
+        log_system_enrichment_success(system_id, system_name, new_name, killmail_id)
+        Map.put(esi_data, "solar_system_name", new_name)
 
-    if updated_system_name != system_name && !needs_system_name_retry?(updated_system_name) do
-      log_system_enrichment_success(system_id, system_name, updated_system_name, killmail_id)
-    else
-      log_system_enrichment_failure(system_id, killmail_id)
+      _ ->
+        log_system_enrichment_failure(system_id, killmail_id)
+        Map.put(esi_data, "solar_system_name", system_name)
     end
-
-    updated_data
   end
 
   defp log_system_enrichment_success(system_id, old_name, new_name, killmail_id) do
@@ -270,8 +269,18 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         character_name: Map.get(enriched_victim, "character_name")
       })
 
-      # Try to re-enrich if data is missing
-      re_enriched = retry_entity_enrichment(enriched_victim)
+      # Try direct character resolution first
+      re_enriched = apply_direct_character_resolution(enriched_victim)
+
+      # Try to get better ship name if needed
+      re_enriched =
+        if Map.get(re_enriched, "ship_type_name") == "Unknown Ship" &&
+             Map.has_key?(re_enriched, "ship_type_id") do
+          ship_type_id = Map.get(re_enriched, "ship_type_id")
+          add_ship_name_from_esi(re_enriched, ship_type_id)
+        else
+          re_enriched
+        end
 
       # Log success if we managed to get better data
       log_reenrichment_success(enriched_victim, re_enriched, killmail_id)
@@ -474,13 +483,13 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Add ship name if missing
   defp add_ship_name(entity) do
-    if not Map.has_key?(entity, "ship_type_id") do
-      log_missing_ship_type_id()
-      entity
-    else
+    if Map.has_key?(entity, "ship_type_id") do
       ship_type_id = Map.get(entity, "ship_type_id")
       log_ship_type_id(ship_type_id)
       add_ship_name_from_esi(entity, ship_type_id)
+    else
+      log_missing_ship_type_id()
+      entity
     end
   end
 
@@ -595,65 +604,87 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Enrich with system name if needed
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
-    # Already has a system name, no need to add it
-    if Map.has_key?(esi_data, "solar_system_name") &&
-         Map.get(esi_data, "solar_system_name") != "Unknown System" do
-      system_name = Map.get(esi_data, "solar_system_name")
-
-      # Log using IO.puts to match the killmail_tools format
-      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-        IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (already present)")
-      end
-
-      esi_data
+    if has_valid_system_name?(esi_data) do
+      handle_existing_system_name(esi_data)
     else
-      system_id = Map.get(esi_data, "solar_system_id")
-
-      # Log using IO.puts to match the killmail_tools format
-      if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-        IO.puts("SOLAR_SYSTEM_ID: #{system_id}")
-      end
-
-      # No system ID, return original data
-      if is_nil(system_id) do
-        if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-          IO.puts("SOLAR_SYSTEM_NAME: Unknown System (no system ID available)")
-        end
-
-        Map.put(esi_data, "solar_system_name", "Unknown System")
-      else
-        # Get system name using the cached function to ensure we have proper retries and caching
-        case get_system_name_with_retries(system_id) do
-          {:ok, system_name} when is_binary(system_name) and system_name != "" ->
-            # Log success
-            AppLogger.kill_info("[Enrichment] Retrieved system name", %{
-              system_id: system_id,
-              system_name: system_name
-            })
-
-            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-              IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI or cache)")
-            end
-
-            # Always update the name to avoid using previous placeholder values
-            Map.put(esi_data, "solar_system_name", system_name)
-
-          _ ->
-            AppLogger.kill_warn("[Enrichment] Failed to get system name after retries", %{
-              system_id: system_id
-            })
-
-            if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
-              IO.puts("SOLAR_SYSTEM_NAME: Unknown System (all retrieval attempts failed)")
-            end
-
-            Map.put(esi_data, "solar_system_name", "Unknown System")
-        end
-      end
+      handle_missing_system_name(esi_data)
     end
   end
 
-  defp enrich_with_system_name(data), do: data
+  defp has_valid_system_name?(esi_data) do
+    Map.has_key?(esi_data, "solar_system_name") &&
+      Map.get(esi_data, "solar_system_name") != "Unknown System"
+  end
+
+  defp handle_existing_system_name(esi_data) do
+    system_name = Map.get(esi_data, "solar_system_name")
+    log_existing_system_name(system_name)
+    esi_data
+  end
+
+  defp handle_missing_system_name(esi_data) do
+    system_id = Map.get(esi_data, "solar_system_id")
+    log_system_id(system_id)
+
+    if is_nil(system_id) do
+      handle_missing_system_id(esi_data)
+    else
+      fetch_and_update_system_name(esi_data, system_id)
+    end
+  end
+
+  defp log_existing_system_name(system_name) do
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (already present)")
+    end
+  end
+
+  defp log_system_id(system_id) do
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("SOLAR_SYSTEM_ID: #{system_id}")
+    end
+  end
+
+  defp handle_missing_system_id(esi_data) do
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("SOLAR_SYSTEM_NAME: Unknown System (no system ID available)")
+    end
+
+    Map.put(esi_data, "solar_system_name", "Unknown System")
+  end
+
+  defp fetch_and_update_system_name(esi_data, system_id) do
+    case get_system_name_with_retries(system_id) do
+      {:ok, system_name} when is_binary(system_name) and system_name != "" ->
+        log_successful_system_name_fetch(system_id, system_name)
+        Map.put(esi_data, "solar_system_name", system_name)
+
+      _ ->
+        log_failed_system_name_fetch(system_id)
+        Map.put(esi_data, "solar_system_name", "Unknown System")
+    end
+  end
+
+  defp log_successful_system_name_fetch(system_id, system_name) do
+    AppLogger.kill_info("[Enrichment] Retrieved system name", %{
+      system_id: system_id,
+      system_name: system_name
+    })
+
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("SOLAR_SYSTEM_NAME: #{system_name} (retrieved from ESI or cache)")
+    end
+  end
+
+  defp log_failed_system_name_fetch(system_id) do
+    AppLogger.kill_warn("[Enrichment] Failed to get system name after retries", %{
+      system_id: system_id
+    })
+
+    if Application.get_env(:wanderer_notifier, :log_next_killmail, false) do
+      IO.puts("SOLAR_SYSTEM_NAME: Unknown System (all retrieval attempts failed)")
+    end
+  end
 
   # Get system name with retries
   defp get_system_name_with_retries(system_id, max_attempts \\ 3) do
@@ -667,396 +698,41 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   defp get_system_name_with_retry(system_id, attempt, max_attempts) do
+    case get_system_name_from_cache_or_esi(system_id) do
+      {:ok, name} -> {:ok, name}
+      {:error, reason} -> handle_system_name_retry(system_id, attempt, max_attempts, reason)
+    end
+  end
+
+  defp get_system_name_from_cache_or_esi(system_id) do
     case try_get_system_name_from_cache(system_id) do
-      name when is_binary(name) and name != "" ->
-        log_system_name_cache_hit(system_id, name, attempt)
-        {:ok, name}
-
-      _ ->
-        try_get_system_name_from_esi(system_id, attempt, max_attempts)
+      nil -> ESIService.get_solar_system_name(system_id)
+      name -> {:ok, name}
     end
   end
 
-  defp try_get_system_name_from_esi(system_id, attempt, max_attempts) do
-    case ESIService.get_system_info(system_id) do
-      {:ok, system_info} ->
-        handle_system_info_response(system_info, system_id, attempt, max_attempts)
-
-      error ->
-        handle_system_error_response(error, system_id, attempt, max_attempts)
+  defp handle_system_name_retry(system_id, attempt, max_attempts, reason) do
+    if attempt < max_attempts do
+      backoff_ms = (:math.pow(2, attempt) * 1000) |> trunc()
+      :timer.sleep(backoff_ms)
+      get_system_name_with_retry(system_id, attempt + 1, max_attempts)
+    else
+      {:error, reason}
     end
   end
 
-  defp handle_system_info_response(system_info, system_id, attempt, max_attempts) do
-    case Map.get(system_info, "name") do
-      name when is_binary(name) and name != "" ->
-        log_system_name_success(system_id, name, attempt)
-        cache_system_info(system_id, system_info)
-        {:ok, name}
-
-      _ ->
-        retry_system_name_lookup(system_id, attempt, max_attempts)
-    end
-  end
-
-  defp handle_system_error_response(error, system_id, attempt, max_attempts) do
-    log_system_name_error(system_id, attempt, error)
-    retry_system_name_lookup(system_id, attempt, max_attempts)
-  end
-
-  defp retry_system_name_lookup(system_id, attempt, max_attempts) do
-    backoff = calculate_backoff_time(attempt)
-    Process.sleep(backoff)
-    get_system_name_with_retry(system_id, attempt + 1, max_attempts)
-  end
-
-  defp log_system_name_cache_hit(system_id, name, attempt) do
-    AppLogger.kill_debug("[Enrichment] Found system name in cache", %{
-      system_id: system_id,
-      name: name,
-      attempt: attempt
-    })
-  end
-
-  defp log_system_name_success(system_id, name, attempt) do
-    AppLogger.kill_debug("[Enrichment] Retrieved system name from ESI", %{
-      system_id: system_id,
-      name: name,
-      attempt: attempt
-    })
-  end
-
-  defp log_system_name_error(system_id, attempt, error) do
-    AppLogger.kill_debug("[Enrichment] ESI error, retrying after backoff", %{
-      system_id: system_id,
-      attempt: attempt,
-      error: inspect(error)
-    })
-  end
-
-  defp cache_system_info(system_id, system_info) do
+  # Try to get system name from cache
+  defp try_get_system_name_from_cache(system_id) do
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
     cache_key = CacheKeys.system_info(system_id)
-    CacheRepo.set(cache_key, system_info, 30 * 86_400)
-  end
-
-  # Retry entity enrichment if critical data is missing
-  defp retry_entity_enrichment(entity) when is_map(entity) do
-    # Only retry if we have character_id (critical for lookup)
-    if Map.has_key?(entity, "character_id") do
-      character_id = Map.get(entity, "character_id")
-
-      AppLogger.kill_info(
-        "[Enrichment] Retrying entity enrichment for character_id #{character_id}"
-      )
-
-      # Copy the original entity for modifications
-      updated_entity = entity
-
-      # Try to get a better name if current one is placeholder
-      updated_entity =
-        if Map.get(entity, "character_name") in ["Unknown Pilot", "Unknown", "Unknown Character"] do
-          # Use the get_character_name_with_cache function for better caching
-          case get_character_name_with_cache(character_id) do
-            {:ok, name} when is_binary(name) and name != "" ->
-              AppLogger.kill_info(
-                "[Enrichment] Retrieved better character name on retry: #{name}",
-                %{
-                  character_id: character_id,
-                  old_name: Map.get(entity, "character_name"),
-                  new_name: name
-                }
-              )
-
-              Map.put(updated_entity, "character_name", name)
-
-            _ ->
-              updated_entity
-          end
-        else
-          updated_entity
-        end
-
-      # Try to get better ship name if current one is placeholder
-      updated_entity =
-        if Map.get(updated_entity, "ship_type_name") == "Unknown Ship" &&
-             Map.has_key?(updated_entity, "ship_type_id") do
-          ship_type_id = Map.get(updated_entity, "ship_type_id")
-
-          # Use the get_ship_type_name_with_cache function for better caching
-          case get_ship_type_name_with_cache(ship_type_id) do
-            {:ok, name} when is_binary(name) and name != "" ->
-              AppLogger.kill_info("[Enrichment] Retrieved better ship name on retry: #{name}", %{
-                ship_type_id: ship_type_id,
-                old_name: Map.get(updated_entity, "ship_type_name"),
-                new_name: name
-              })
-
-              Map.put(updated_entity, "ship_type_name", name)
-
-            _ ->
-              updated_entity
-          end
-        else
-          updated_entity
-        end
-
-      updated_entity
-    else
-      entity
-    end
-  end
-
-  # Get character name with caching and retries
-  defp get_character_name_with_cache(character_id, max_attempts \\ 3) do
-    get_character_name_with_retry(character_id, 1, max_attempts)
-  end
-
-  defp get_character_name_with_retry(_character_id, attempt, max_attempts)
-       when attempt > max_attempts do
-    {:error, :max_retries_exceeded}
-  end
-
-  defp get_character_name_with_retry(character_id, attempt, max_attempts) do
-    case try_get_character_name_from_cache(character_id) do
-      {:ok, name} -> {:ok, name}
-      _ -> try_get_character_name_from_esi(character_id, attempt, max_attempts)
-    end
-  end
-
-  defp try_get_character_name_from_cache(character_id) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.character_info(character_id)
 
     case CacheRepo.get(cache_key) do
       %{"name" => name} when is_binary(name) and name != "" ->
-        log_character_name_cache_hit(character_id, name)
-        {:ok, name}
+        name
 
       _ ->
-        {:error, :not_in_cache}
-    end
-  end
-
-  defp try_get_character_name_from_esi(character_id, attempt, max_attempts) do
-    case ESIService.get_character_info(character_id) do
-      {:ok, character_info} when is_map(character_info) ->
-        handle_character_info_response(character_info, character_id, attempt, max_attempts)
-
-      error ->
-        handle_character_error_response(error, character_id, attempt, max_attempts)
-    end
-  end
-
-  defp handle_character_info_response(character_info, character_id, attempt, max_attempts) do
-    case Map.get(character_info, "name") do
-      name when is_binary(name) and name != "" ->
-        log_character_name_success(character_id, name, attempt)
-        cache_character_info(character_id, character_info)
-        {:ok, name}
-
-      _ ->
-        retry_character_name_lookup(character_id, attempt, max_attempts)
-    end
-  end
-
-  defp handle_character_error_response(error, character_id, attempt, max_attempts) do
-    log_character_name_error(character_id, attempt, error)
-    retry_character_name_lookup(character_id, attempt, max_attempts)
-  end
-
-  defp retry_character_name_lookup(character_id, attempt, max_attempts) do
-    backoff = calculate_backoff_time(attempt)
-    Process.sleep(backoff)
-    get_character_name_with_retry(character_id, attempt + 1, max_attempts)
-  end
-
-  defp log_character_name_cache_hit(character_id, name) do
-    AppLogger.kill_debug("[Enrichment] Found character name in cache", %{
-      character_id: character_id,
-      name: name
-    })
-  end
-
-  defp log_character_name_success(character_id, name, attempt) do
-    AppLogger.kill_debug("[Enrichment] Retrieved character name from ESI", %{
-      character_id: character_id,
-      name: name,
-      attempt: attempt
-    })
-  end
-
-  defp log_character_name_error(character_id, attempt, error) do
-    AppLogger.kill_debug("[Enrichment] ESI error for character, retrying after backoff", %{
-      character_id: character_id,
-      attempt: attempt,
-      error: inspect(error)
-    })
-  end
-
-  defp cache_character_info(character_id, character_info) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.character_info(character_id)
-    CacheRepo.set(cache_key, character_info, 7 * 86_400)
-  end
-
-  # Get ship type name with caching and retries
-  defp get_ship_type_name_with_cache(ship_type_id, max_attempts \\ 3) do
-    get_ship_type_name_with_retry(ship_type_id, 1, max_attempts)
-  end
-
-  # Recursive function to try getting ship type name with exponential backoff
-  defp get_ship_type_name_with_retry(_ship_type_id, attempt, max_attempts)
-       when attempt > max_attempts do
-    {:error, :max_retries_exceeded}
-  end
-
-  defp get_ship_type_name_with_retry(ship_type_id, attempt, max_attempts) do
-    case try_get_ship_name_from_cache(ship_type_id) do
-      {:ok, name} -> {:ok, name}
-      _ -> try_get_ship_name_from_esi(ship_type_id, attempt, max_attempts)
-    end
-  end
-
-  defp try_get_ship_name_from_cache(ship_type_id) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.ship_info(ship_type_id)
-
-    case CacheRepo.get(cache_key) do
-      %{"name" => name} when is_binary(name) and name != "" ->
-        log_ship_name_cache_hit(ship_type_id, name)
-        {:ok, name}
-
-      _ ->
-        {:error, :not_in_cache}
-    end
-  end
-
-  defp try_get_ship_name_from_esi(ship_type_id, attempt, max_attempts) do
-    case ESIService.get_ship_type_name(ship_type_id) do
-      {:ok, ship_info} when is_map(ship_info) ->
-        handle_ship_info_response(ship_info, ship_type_id, attempt, max_attempts)
-
-      error ->
-        handle_ship_error_response(error, ship_type_id, attempt, max_attempts)
-    end
-  end
-
-  defp handle_ship_info_response(ship_info, ship_type_id, attempt, max_attempts) do
-    case Map.get(ship_info, "name") do
-      name when is_binary(name) and name != "" ->
-        log_ship_name_success(ship_type_id, name, attempt)
-        cache_ship_info(ship_type_id, ship_info)
-        {:ok, name}
-
-      _ ->
-        retry_ship_name_lookup(ship_type_id, attempt, max_attempts)
-    end
-  end
-
-  defp handle_ship_error_response(error, ship_type_id, attempt, max_attempts) do
-    log_ship_name_error(ship_type_id, attempt, error)
-    retry_ship_name_lookup(ship_type_id, attempt, max_attempts)
-  end
-
-  defp retry_ship_name_lookup(ship_type_id, attempt, max_attempts) do
-    backoff = calculate_backoff_time(attempt)
-    Process.sleep(backoff)
-    get_ship_type_name_with_retry(ship_type_id, attempt + 1, max_attempts)
-  end
-
-  defp log_ship_name_cache_hit(ship_type_id, name) do
-    AppLogger.kill_debug("[Enrichment] Found ship name in cache", %{
-      ship_type_id: ship_type_id,
-      name: name
-    })
-  end
-
-  defp log_ship_name_success(ship_type_id, name, attempt) do
-    AppLogger.kill_debug("[Enrichment] Retrieved ship name from ESI", %{
-      ship_type_id: ship_type_id,
-      name: name,
-      attempt: attempt
-    })
-  end
-
-  defp log_ship_name_error(ship_type_id, attempt, error) do
-    AppLogger.kill_debug("[Enrichment] ESI error for ship, retrying after backoff", %{
-      ship_type_id: ship_type_id,
-      attempt: attempt,
-      error: inspect(error)
-    })
-  end
-
-  defp cache_ship_info(ship_type_id, ship_info) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.ship_info(ship_type_id)
-    CacheRepo.set(cache_key, ship_info, 90 * 86_400)
-  end
-
-  defp calculate_backoff_time(attempt) do
-    (:math.pow(2, attempt) * 100) |> round()
-  end
-
-  # Try again to get system name
-  defp try_system_name_retry(esi_data) do
-    if Map.has_key?(esi_data, "solar_system_id") do
-      system_id = Map.get(esi_data, "solar_system_id")
-
-      AppLogger.kill_info(
-        "[Enrichment] Retrying system name enrichment for system_id #{system_id}"
-      )
-
-      # Try with more retries and a different approach
-      # Increase max attempts to 5
-      case get_system_name_with_retries(system_id, 5) do
-        {:ok, system_name} when is_binary(system_name) and system_name != "" ->
-          AppLogger.kill_info(
-            "[Enrichment] Retrieved better system name on retry: #{system_name}",
-            %{
-              system_id: system_id,
-              old_name: Map.get(esi_data, "solar_system_name", "Unknown System"),
-              new_name: system_name
-            }
-          )
-
-          # Update at top level
-          updated_esi_data = Map.put(esi_data, "solar_system_name", system_name)
-
-          # Also ensure it's in victim data if present
-          updated_esi_data =
-            if victim = Map.get(updated_esi_data, "victim") do
-              updated_victim = Map.put(victim, "solar_system_name", system_name)
-              Map.put(updated_esi_data, "victim", updated_victim)
-            else
-              updated_esi_data
-            end
-
-          # Also update attackers if present
-          updated_esi_data =
-            if attackers = Map.get(updated_esi_data, "attackers") do
-              updated_attackers =
-                Enum.map(attackers, fn attacker ->
-                  Map.put(attacker, "solar_system_name", system_name)
-                end)
-
-              Map.put(updated_esi_data, "attackers", updated_attackers)
-            else
-              updated_esi_data
-            end
-
-          updated_esi_data
-
-        _ ->
-          esi_data
-      end
-    else
-      esi_data
+        nil
     end
   end
 
@@ -1074,10 +750,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     victim_system_name = Map.get(victim, "solar_system_name")
 
     cond do
-      is_valid_system_name?(top_level_system_name) ->
+      valid_system_name?(top_level_system_name) ->
         top_level_system_name
 
-      is_valid_system_name?(victim_system_name) ->
+      valid_system_name?(victim_system_name) ->
         victim_system_name
 
       system_id = Map.get(esi_data, "solar_system_id") ->
@@ -1088,7 +764,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     end
   end
 
-  defp is_valid_system_name?(name) do
+  defp valid_system_name?(name) do
     is_binary(name) && name != "" && name != "Unknown System"
   end
 
@@ -1167,19 +843,4 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   defp apply_direct_character_resolution(entity), do: entity
-
-  # Try to get system name from cache
-  defp try_get_system_name_from_cache(system_id) do
-    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-    cache_key = CacheKeys.system_info(system_id)
-
-    case CacheRepo.get(cache_key) do
-      %{"name" => name} when is_binary(name) and name != "" ->
-        name
-
-      _ ->
-        nil
-    end
-  end
 end

@@ -701,12 +701,9 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   end
 
   # Sum the total values for a list of killmails
-  defp sum_killmail_values(killmails) do
-    killmails
-    |> Enum.map(fn km ->
-      value = km.total_value || 0
-
-      # Handle various types of values
+  defp sum_killmail_values(values) do
+    values
+    |> Enum.map(fn value ->
       cond do
         is_struct(value, Decimal) ->
           value
@@ -715,9 +712,7 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
           Decimal.new(value)
 
         is_float(value) ->
-          value
-          |> Float.to_string()
-          |> Decimal.new()
+          value |> Float.to_string() |> Decimal.new()
 
         is_binary(value) ->
           case Decimal.parse(value) do

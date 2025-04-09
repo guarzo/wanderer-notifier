@@ -31,11 +31,8 @@ defmodule WandererNotifier.Schedulers.WeeklyKillDataScheduler do
         {:ok, result} ->
           AppLogger.scheduler_info(
             "#{inspect(__MODULE__)}: Successfully fetched character kill data",
-            %{
-              processed: result.processed,
-              persisted: result.persisted,
-              characters: result.characters
-            }
+            processed: result.processed,
+            persisted: result.persisted
           )
 
           {:ok, :completed, state}

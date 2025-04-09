@@ -300,58 +300,54 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   # Validate that the enriched data meets requirements
   defp validate_enriched_data(killmail) do
-    # First ensure consistency by copying enriched data throughout the struct
-    killmail = ensure_data_consistency(killmail)
+    killmail
+    |> ensure_data_consistency()
+    |> run_validation()
+  end
 
-    # Use Killmail.Validation module for the new model
+  defp run_validation(killmail) do
     case KillmailValidation.validate_killmail(killmail) do
-      {:ok, _} ->
-        # All validations passed
-        AppLogger.kill_debug("Enriched killmail passed validation", %{
-          killmail_id: killmail.killmail_id,
-          system_name: (killmail.esi_data || %{}) |> Map.get("solar_system_name", "unknown")
-        })
-
-        # Return the updated killmail with consistent data
-        {:ok, killmail}
-
-      {:error, reasons} ->
-        # Some validations failed - log detailed diagnostics
-        debug_data = Killmail.debug_data(killmail)
-
-        AppLogger.kill_error("Enriched killmail failed validation", %{
-          killmail_id: killmail.killmail_id,
-          failures: reasons,
-          system_name: debug_data.system_name,
-          has_victim: debug_data.has_victim_data,
-          victim_name: (debug_data.has_victim_data && "present") || "missing",
-          victim_ship: (debug_data.has_victim_data && "present") || "missing",
-          attackers_count: debug_data.attacker_count,
-          solar_system_id: debug_data.system_id
-        })
-
-        # Check if we can recover by applying emergency enrichment
-        emergency_fixed = emergency_data_fix(killmail, reasons)
-
-        case Killmail.validate_complete_data(emergency_fixed) do
-          :ok ->
-            # Emergency fix worked
-            AppLogger.kill_info("Emergency data fix resolved validation issues", %{
-              killmail_id: killmail.killmail_id
-            })
-
-            {:ok, emergency_fixed}
-
-          {:error, new_reasons} ->
-            # Still failing validation after emergency fixes
-            AppLogger.kill_error("Killmail still failing validation after emergency fixes", %{
-              killmail_id: killmail.killmail_id,
-              remaining_issues: new_reasons
-            })
-
-            {:error, {:enrichment_validation_failed, new_reasons}}
-        end
+      {:ok, _} -> handle_successful_validation(killmail)
+      {:error, reasons} -> attempt_data_recovery(killmail, reasons)
     end
+  end
+
+  defp handle_successful_validation(killmail) do
+    AppLogger.kill_debug("Killmail passed validation", %{
+      killmail_id: killmail.killmail_id
+    })
+
+    {:ok, killmail}
+  end
+
+  defp attempt_data_recovery(killmail, reasons) do
+    log_validation_failure(killmail, reasons)
+    fixed_killmail = emergency_data_fix(killmail, reasons)
+    revalidate_fixed_killmail(fixed_killmail, killmail.killmail_id)
+  end
+
+  defp revalidate_fixed_killmail(fixed_killmail, killmail_id) do
+    case Killmail.validate_complete_data(fixed_killmail) do
+      :ok -> handle_successful_fix(fixed_killmail)
+      {:error, reasons} -> handle_failed_fix(killmail_id, reasons)
+    end
+  end
+
+  defp handle_successful_fix(fixed_killmail) do
+    AppLogger.kill_info("Emergency data fix resolved validation issues", %{
+      killmail_id: fixed_killmail.killmail_id
+    })
+
+    {:ok, fixed_killmail}
+  end
+
+  defp handle_failed_fix(killmail_id, reasons) do
+    AppLogger.kill_error("Killmail still failing validation after emergency fixes", %{
+      killmail_id: killmail_id,
+      remaining_issues: reasons
+    })
+
+    {:error, {:enrichment_validation_failed, reasons}}
   end
 
   # Apply emergency fixes for common validation issues
@@ -362,42 +358,70 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     })
 
     esi_data = Map.get(killmail, :esi_data) || %{}
+    updated_esi_data = fix_system_name_if_needed(esi_data, reasons)
+    Map.put(killmail, :esi_data, updated_esi_data)
+  end
 
-    # Fix system name issues
-    esi_data =
-      if Enum.any?(reasons, &String.contains?(&1, "system name")) do
-        system_id = Map.get(esi_data, "solar_system_id")
+  defp fix_system_name_if_needed(esi_data, reasons) do
+    if needs_system_name_fix?(reasons) do
+      apply_system_name_fix(esi_data)
+    else
+      esi_data
+    end
+  end
 
-        if is_nil(system_id) do
-          # If no system ID, use a generic placeholder
-          Map.put(esi_data, "solar_system_name", "Unidentified System")
-        else
-          # Try to get system name one last time directly
-          case ESIService.get_system_info(system_id) do
-            {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-              AppLogger.kill_info("Emergency fix: Retrieved system name", %{
-                system_id: system_id,
-                system_name: name
-              })
+  defp needs_system_name_fix?(reasons) do
+    Enum.any?(reasons, &String.contains?(&1, "system name"))
+  end
 
-              Map.put(esi_data, "solar_system_name", name)
+  defp apply_system_name_fix(esi_data) do
+    system_id = Map.get(esi_data, "solar_system_id")
 
-            _ ->
-              # If we still can't get it, use a placeholder that will pass validation
-              AppLogger.kill_info("Emergency fix: Using fallback system name", %{
-                system_id: system_id
-              })
+    if is_nil(system_id) do
+      Map.put(esi_data, "solar_system_name", "Unidentified System")
+    else
+      fetch_or_generate_system_name(esi_data, system_id)
+    end
+  end
 
-              # Use a different placeholder than "Unknown System" which is explicitly checked
-              Map.put(esi_data, "solar_system_name", "System ##{system_id}")
-          end
-        end
-      else
-        esi_data
-      end
+  defp fetch_or_generate_system_name(esi_data, system_id) do
+    case ESIService.get_system_info(system_id) do
+      {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+        log_system_name_recovery(system_id, name)
+        Map.put(esi_data, "solar_system_name", name)
 
-    # Return updated killmail with emergency fixed data
-    Map.put(killmail, :esi_data, esi_data)
+      _ ->
+        log_system_name_fallback(system_id)
+        Map.put(esi_data, "solar_system_name", "System ##{system_id}")
+    end
+  end
+
+  defp log_system_name_recovery(system_id, name) do
+    AppLogger.kill_info("Emergency fix: Retrieved system name", %{
+      system_id: system_id,
+      system_name: name
+    })
+  end
+
+  defp log_system_name_fallback(system_id) do
+    AppLogger.kill_info("Emergency fix: Using fallback system name", %{
+      system_id: system_id
+    })
+  end
+
+  defp log_validation_failure(killmail, reasons) do
+    debug_data = Killmail.debug_data(killmail)
+
+    AppLogger.kill_error("Enriched killmail failed validation", %{
+      killmail_id: killmail.killmail_id,
+      failures: reasons,
+      system_name: debug_data.system_name,
+      has_victim: debug_data.has_victim_data,
+      victim_name: (debug_data.has_victim_data && "present") || "missing",
+      victim_ship: (debug_data.has_victim_data && "present") || "missing",
+      attackers_count: debug_data.attacker_count,
+      solar_system_id: debug_data.system_id
+    })
   end
 
   # Ensure data consistency by copying enriched data throughout the struct
