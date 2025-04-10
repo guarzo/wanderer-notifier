@@ -288,7 +288,7 @@ defmodule WandererNotifier.Api.Http.Client do
     if String.contains?(url, "esi.evetech.net") do
       kill_id = extract_kill_id_from_url(url)
 
-      AppLogger.kill_info("📡 Making ESI HTTP request", %{
+      AppLogger.kill_debug("📡 Making ESI HTTP request", %{
         method: method,
         url: url,
         kill_id: kill_id,
@@ -314,7 +314,7 @@ defmodule WandererNotifier.Api.Http.Client do
           })
 
         {:error, error} ->
-          AppLogger.kill_info("❌ ESI HTTP error", %{
+          AppLogger.kill_debug("❌ ESI HTTP error", %{
             method: method,
             kill_id: kill_id,
             error: inspect(error.reason),

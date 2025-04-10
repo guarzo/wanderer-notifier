@@ -35,12 +35,18 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         {:ok, enriched_killmail}
 
       {:error, reason} ->
-        AppLogger.kill_error("Failed to process notification for killmail ##{kill_id}: #{inspect(reason)}")
+        AppLogger.kill_error(
+          "Failed to process notification for killmail ##{kill_id}: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   rescue
     e ->
-      AppLogger.kill_error("Exception in enrichment processing for killmail ##{Map.get(killmail, :killmail_id, "unknown")}: #{Exception.message(e)}")
+      AppLogger.kill_error(
+        "Exception in enrichment processing for killmail ##{Map.get(killmail, :killmail_id, "unknown")}: #{Exception.message(e)}"
+      )
+
       {:error, Exception.message(e)}
   end
 
@@ -94,9 +100,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     attacker_count = length(attackers)
 
     # Find final blow attacker
-    final_blow_attacker = Enum.find(attackers, fn attacker ->
-      Map.get(attacker, "final_blow", false) == true
-    end) || %{}
+    final_blow_attacker =
+      Enum.find(attackers, fn attacker ->
+        Map.get(attacker, "final_blow", false) == true
+      end) || %{}
 
     final_blow_attacker_id = Map.get(final_blow_attacker, "character_id")
     final_blow_attacker_name = Map.get(final_blow_attacker, "character_name")
@@ -109,7 +116,8 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     is_npc = Map.get(zkb_data, "npc", false)
 
     # Create fully enriched killmail with all data both in esi_data and at top level
-    fully_enriched = enriched_killmail
+    fully_enriched =
+      enriched_killmail
       |> maybe_put(:victim, victim)
       |> maybe_put(:solar_system_id, system_id)
       |> maybe_put(:solar_system_name, system_name)
@@ -131,15 +139,19 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       |> maybe_put(:is_npc, is_npc)
 
     # Log that we've updated top-level data
-    AppLogger.kill_debug("ENRICHMENT: Updated top-level data for Kill ##{kill_id}: " <>
-      "victim=#{victim_name || "nil"}, ship=#{victim_ship || "nil"}, system=#{system_name || "nil"}, " <>
-      "attackers=#{attacker_count}, value=#{total_value || 0}")
+    AppLogger.kill_info(
+      "ENRICHMENT: Updated top-level data for Kill ##{kill_id}: " <>
+        "victim=#{victim_name || "nil"}, ship=#{victim_ship || "nil"}, system=#{system_name || "nil"}, " <>
+        "attackers=#{attacker_count}, value=#{total_value || 0}"
+    )
 
     # Return the fully enriched killmail
     fully_enriched
   rescue
     e ->
-      AppLogger.kill_error("ENRICHMENT ERROR: Kill ##{Map.get(killmail, :killmail_id, "unknown")}: #{Exception.message(e)}")
+      AppLogger.kill_error(
+        "ENRICHMENT ERROR: Kill ##{Map.get(killmail, :killmail_id, "unknown")}: #{Exception.message(e)}"
+      )
 
       # Return original killmail to prevent pipeline failure
       killmail
@@ -157,11 +169,13 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     ship_type_id = Map.get(victim, "ship_type_id")
     ship_type_name = Map.get(victim, "ship_type_name")
 
-    AppLogger.kill_debug("ENRICHMENT: Kill ##{kill_id} - Raw victim data: " <>
-                      "ID: #{victim_id || "missing"}, " <>
-                      "Name: #{victim_name || "missing"}, " <>
-                      "Ship ID: #{ship_type_id || "missing"}, " <>
-                      "Ship Name: #{ship_type_name || "missing"}")
+    AppLogger.kill_debug(
+      "ENRICHMENT: Kill ##{kill_id} - Raw victim data: " <>
+        "ID: #{victim_id || "missing"}, " <>
+        "Name: #{victim_name || "missing"}, " <>
+        "Ship ID: #{ship_type_id || "missing"}, " <>
+        "Ship Name: #{ship_type_name || "missing"}"
+    )
   end
 
   # Log enrichment results
@@ -171,7 +185,9 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     victim_ship = Map.get(victim, "ship_type_name") || "Unknown Ship"
     system_name = Map.get(esi_data, "solar_system_name") || "Unknown System"
 
-    AppLogger.kill_debug("ENRICHMENT: Completed for kill ##{kill_id} - #{victim_name} (#{victim_ship}) in #{system_name}")
+    AppLogger.kill_debug(
+      "ENRICHMENT: Completed for kill ##{kill_id} - #{victim_name} (#{victim_ship}) in #{system_name}"
+    )
   end
 
   # Enrich with system name if needed
@@ -303,7 +319,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         # If we already have an "Unknown" name but we have a character ID, try to enrich
         if has_id do
           character_id = Map.get(character_data, "character_id")
-          AppLogger.kill_debug("ENRICHMENT: Trying to replace placeholder name for ID #{character_id}")
+
+          AppLogger.kill_debug(
+            "ENRICHMENT: Trying to replace placeholder name for ID #{character_id}"
+          )
+
           lookup_and_add_character_name(character_data, character_id)
         else
           character_data
@@ -324,18 +344,28 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       # First try to look up in Repository - this should check cache first
       case WandererNotifier.Data.Repository.get_character_name(character_id) do
         # Direct name from repository
-        {:ok, name} when is_binary(name) and name != "" and name not in ["Unknown", "Unknown Pilot"] ->
-          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in repository for ID #{character_id}")
+        {:ok, name}
+        when is_binary(name) and name != "" and name not in ["Unknown", "Unknown Pilot"] ->
+          AppLogger.kill_debug(
+            "ENRICHMENT: Found character name '#{name}' in repository for ID #{character_id}"
+          )
+
           Map.put(character_data, "character_name", name)
 
         # Handle cached map data case
         {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in cached map for ID #{character_id}")
+          AppLogger.kill_debug(
+            "ENRICHMENT: Found character name '#{name}' in cached map for ID #{character_id}"
+          )
+
           Map.put(character_data, "character_name", name)
 
         # Handle the case where we get a map directly (as seen in logs)
         %{"name" => name} when is_binary(name) and name != "" ->
-          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in direct map for ID #{character_id}")
+          AppLogger.kill_debug(
+            "ENRICHMENT: Found character name '#{name}' in direct map for ID #{character_id}"
+          )
+
           Map.put(character_data, "character_name", name)
 
         _ ->
@@ -343,27 +373,43 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           case get_character_name(character_id) do
             # Standard ESI response
             {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-              AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' via ESI for ID #{character_id}")
+              AppLogger.kill_debug(
+                "ENRICHMENT: Found character name '#{name}' via ESI for ID #{character_id}"
+              )
+
               Map.put(character_data, "character_name", name)
 
             # Handle Character struct case
             {:ok, %{name: name}} when is_binary(name) and name != "" ->
-              AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in Character struct for ID #{character_id}")
+              AppLogger.kill_debug(
+                "ENRICHMENT: Found character name '#{name}' in Character struct for ID #{character_id}"
+              )
+
               Map.put(character_data, "character_name", name)
 
             # Handle direct map with atom keys - can't use map[:name] in guard
             {:ok, map} when is_map(map) ->
               name = Map.get(map, :name)
+
               if is_binary(name) and name != "" do
-                AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in map with atom keys for ID #{character_id}")
+                AppLogger.kill_debug(
+                  "ENRICHMENT: Found character name '#{name}' in map with atom keys for ID #{character_id}"
+                )
+
                 Map.put(character_data, "character_name", name)
               else
-                AppLogger.kill_error("ENRICHMENT: Failed to find valid name in map for ID #{character_id} - #{inspect(map)}")
+                AppLogger.kill_error(
+                  "ENRICHMENT: Failed to find valid name in map for ID #{character_id} - #{inspect(map)}"
+                )
+
                 Map.put(character_data, "character_name", "Unknown Pilot")
               end
 
             error ->
-              AppLogger.kill_error("ENRICHMENT: Failed to find character name for ID #{character_id} - #{inspect(error)}")
+              AppLogger.kill_error(
+                "ENRICHMENT: Failed to find character name for ID #{character_id} - #{inspect(error)}"
+              )
+
               Map.put(character_data, "character_name", "Unknown Pilot")
           end
       end
@@ -406,8 +452,12 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
           AppLogger.kill_debug("ENRICHMENT: Found ship name '#{name}' for ID #{ship_type_id}")
           Map.put(character_data, "ship_type_name", name)
+
         error ->
-          AppLogger.kill_error("ENRICHMENT: Failed to find ship name for ID #{ship_type_id} - #{inspect(error)}")
+          AppLogger.kill_error(
+            "ENRICHMENT: Failed to find ship name for ID #{ship_type_id} - #{inspect(error)}"
+          )
+
           Map.put(character_data, "ship_type_name", "Unknown Ship")
       end
     else
@@ -422,11 +472,12 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
     if is_list(attackers) do
       # Process each attacker to enrich them
-      updated_attackers = Enum.map(attackers, fn attacker ->
-        attacker
-        |> ensure_character_name()
-        |> ensure_ship_name()
-      end)
+      updated_attackers =
+        Enum.map(attackers, fn attacker ->
+          attacker
+          |> ensure_character_name()
+          |> ensure_ship_name()
+        end)
 
       # Update ESI data with enriched attackers
       Map.put(esi_data, "attackers", updated_attackers)

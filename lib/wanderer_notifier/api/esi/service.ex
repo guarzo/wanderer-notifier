@@ -16,13 +16,13 @@ defmodule WandererNotifier.Api.ESI.Service do
   def get_killmail(kill_id, killmail_hash) do
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
 
-    AppLogger.kill_info("⚠️ ESI Get Killmail Cache Check for kill #{kill_id} hash #{killmail_hash}")
+    AppLogger.kill_debug("⚠️ ESI Get Killmail Cache Check for kill #{kill_id} hash #{killmail_hash}")
 
     # Wrap cache operations in try/rescue to catch any errors
     try do
       # First attempt to get from cache with detailed logging
       cache_result = try do
-        AppLogger.kill_info("🔍 Checking cache for killmail #{kill_id}, key: #{cache_key}")
+        AppLogger.kill_debug("🔍 Checking cache for killmail #{kill_id}, key: #{cache_key}")
 
         CacheRepo.get(cache_key)
       rescue
@@ -39,19 +39,19 @@ defmodule WandererNotifier.Api.ESI.Service do
 
       case cache_result do
         nil ->
-          AppLogger.kill_info("🔍 ESI cache MISS for killmail #{kill_id}")
+          AppLogger.kill_debug("🔍 ESI cache MISS for killmail #{kill_id}")
 
           # Cache miss, need to fetch from ESI
           fetch_from_esi(kill_id, killmail_hash, cache_key)
 
         data ->
-          AppLogger.kill_info("""
+          AppLogger.kill_debug("""
           ✨ ESI cache HIT for killmail #{kill_id}
           * Data size: #{byte_size(inspect(data))}
           """)
 
           # Log timing info for tracking
-          AppLogger.kill_info("⏱️ ESI killmail cache hit for kill #{kill_id}")
+          AppLogger.kill_debug("⏱️ ESI killmail cache hit for kill #{kill_id}")
 
           {:ok, data}
       end
@@ -75,12 +75,12 @@ defmodule WandererNotifier.Api.ESI.Service do
   defp fetch_from_esi(kill_id, killmail_hash, cache_key) do
     start_time = System.monotonic_time(:millisecond)
 
-    AppLogger.kill_info("📡 Making ESI request for killmail #{kill_id} with hash #{killmail_hash}")
+    AppLogger.kill_debug("📡 Making ESI request for killmail #{kill_id} with hash #{killmail_hash}")
 
     # Make the API call with detailed logging
     result = case Client.get_killmail(kill_id, killmail_hash, retry_opts()) do
       {:ok, data} ->
-        AppLogger.kill_info("""
+        AppLogger.kill_debug("""
         ✅ ESI fetch successful for kill #{kill_id}
         * Data size: #{byte_size(inspect(data))}
         """)
@@ -119,7 +119,7 @@ defmodule WandererNotifier.Api.ESI.Service do
     duration_ms = end_time - start_time
 
     # Always log timing info at INFO level for better visibility
-    AppLogger.kill_info("""
+    AppLogger.kill_debug("""
     ⏱️ ESI killmail request completed:
     * Kill ID: #{kill_id}
     * Duration: #{duration_ms}ms
@@ -139,7 +139,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for character", character_id: character_id)
+        AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
 
         case Client.get_character_info(character_id, retry_opts()) do
           {:ok, data} = result ->
@@ -151,7 +151,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data when is_map(data) ->
-        AppLogger.api_info("✨ ESI cache hit for character (map data)",
+        AppLogger.api_debug("✨ ESI cache hit for character (map data)",
           character_id: character_id
         )
 
@@ -160,7 +160,7 @@ defmodule WandererNotifier.Api.ESI.Service do
       name when is_binary(name) ->
         # The cache contains just the character name as a string
         # Wrap it in a map to make it compatible with the expected format
-        AppLogger.api_info("✨ ESI cache hit for character (string name)",
+        AppLogger.api_debug("✨ ESI cache hit for character (string name)",
           character_id: character_id,
           character_name: name
         )
@@ -185,7 +185,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for corporation", corporation_id: corporation_id)
+        AppLogger.api_debug("🔍 ESI cache miss for corporation", corporation_id: corporation_id)
 
         case Client.get_corporation_info(corporation_id, retry_opts()) do
           {:ok, data} = result ->
@@ -197,7 +197,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data when is_map(data) ->
-        AppLogger.api_info("✨ ESI cache hit for corporation (map data)",
+        AppLogger.api_debug("✨ ESI cache hit for corporation (map data)",
           corporation_id: corporation_id
         )
 
@@ -205,7 +205,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
       name when is_binary(name) ->
         # The cache contains just the corporation name as a string
-        AppLogger.api_info("✨ ESI cache hit for corporation (string name)",
+        AppLogger.api_debug("✨ ESI cache hit for corporation (string name)",
           corporation_id: corporation_id,
           corporation_name: name
         )
@@ -230,7 +230,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for alliance", alliance_id: alliance_id)
+        AppLogger.api_debug("🔍 ESI cache miss for alliance", alliance_id: alliance_id)
 
         case Client.get_alliance_info(alliance_id, retry_opts()) do
           {:ok, data} = result ->
@@ -242,12 +242,12 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data when is_map(data) ->
-        AppLogger.api_info("✨ ESI cache hit for alliance (map data)", alliance_id: alliance_id)
+        AppLogger.api_debug("✨ ESI cache hit for alliance (map data)", alliance_id: alliance_id)
         {:ok, data}
 
       name when is_binary(name) ->
         # The cache contains just the alliance name as a string
-        AppLogger.api_info("✨ ESI cache hit for alliance (string name)",
+        AppLogger.api_debug("✨ ESI cache hit for alliance (string name)",
           alliance_id: alliance_id,
           alliance_name: name
         )
@@ -277,7 +277,7 @@ defmodule WandererNotifier.Api.ESI.Service do
   end
 
   defp handle_cache_miss(ship_type_id, cache_key) do
-    AppLogger.api_info("🔍 ESI cache miss for ship type", ship_type_id: ship_type_id)
+    AppLogger.api_debug("🔍 ESI cache miss for ship type", ship_type_id: ship_type_id)
 
     case Client.get_universe_type(ship_type_id, retry_opts()) do
       {:ok, type_info} -> process_type_info(type_info, cache_key)
@@ -286,7 +286,7 @@ defmodule WandererNotifier.Api.ESI.Service do
   end
 
   defp handle_cache_hit(ship_type_id, data) do
-    AppLogger.api_info("✨ ESI cache hit for ship type", ship_type_id: ship_type_id)
+    AppLogger.api_debug("✨ ESI cache hit for ship type", ship_type_id: ship_type_id)
     {:ok, data}
   end
 
@@ -308,7 +308,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for type", type_id: type_id)
+        AppLogger.api_debug("🔍 ESI cache miss for type", type_id: type_id)
 
         case Client.get_universe_type(type_id, retry_opts()) do
           {:ok, data} = result ->
@@ -320,7 +320,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data ->
-        AppLogger.api_info("✨ ESI cache hit for type", type_id: type_id)
+        AppLogger.api_debug("✨ ESI cache hit for type", type_id: type_id)
         {:ok, data}
     end
   end
@@ -338,7 +338,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for solar system", system_id: system_id)
+        AppLogger.api_debug("🔍 ESI cache miss for solar system", system_id: system_id)
 
         case Client.get_solar_system(system_id, retry_opts()) do
           {:ok, data} = result ->
@@ -350,7 +350,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data ->
-        AppLogger.api_info("✨ ESI cache hit for solar system", system_id: system_id)
+        AppLogger.api_debug("✨ ESI cache hit for solar system", system_id: system_id)
         {:ok, data}
     end
   end
@@ -365,7 +365,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for system", system_id: system_id)
+        AppLogger.api_debug("🔍 ESI cache miss for system", system_id: system_id)
 
         case Client.get_solar_system(system_id, retry_opts()) do
           {:ok, data} = result ->
@@ -377,12 +377,12 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data when is_map(data) ->
-        AppLogger.api_info("✨ ESI cache hit for system (map data)", system_id: system_id)
+        AppLogger.api_debug("✨ ESI cache hit for system (map data)", system_id: system_id)
         {:ok, data}
 
       name when is_binary(name) ->
         # The cache contains just the system name as a string
-        AppLogger.api_info("✨ ESI cache hit for system (string name)",
+        AppLogger.api_debug("✨ ESI cache hit for system (string name)",
           system_id: system_id,
           system_name: name
         )
@@ -410,7 +410,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for region", region_id: region_id)
+        AppLogger.api_debug("🔍 ESI cache miss for region", region_id: region_id)
 
         case Client.get_region(region_id) do
           {:ok, data} = result ->
@@ -422,7 +422,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data ->
-        AppLogger.api_info("✨ ESI cache hit for region", region_id: region_id)
+        AppLogger.api_debug("✨ ESI cache hit for region", region_id: region_id)
         {:ok, data}
     end
   end
@@ -435,7 +435,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
     case CacheRepo.get(cache_key) do
       nil ->
-        AppLogger.api_info("🔍 ESI cache miss for constellation",
+        AppLogger.api_debug("🔍 ESI cache miss for constellation",
           constellation_id: constellation_id
         )
 
@@ -449,7 +449,7 @@ defmodule WandererNotifier.Api.ESI.Service do
         end
 
       data ->
-        AppLogger.api_info("✨ ESI cache hit for constellation",
+        AppLogger.api_debug("✨ ESI cache hit for constellation",
           constellation_id: constellation_id
         )
 
@@ -466,13 +466,13 @@ defmodule WandererNotifier.Api.ESI.Service do
   Fetches just the character name from ESI by character_id.
   """
   def get_character_name(character_id) do
-    AppLogger.api_info("ESI: get_character_name(#{character_id})")
+    AppLogger.api_debug("ESI: get_character_name(#{character_id})")
     case get_character_info(character_id) do
       {:ok, %{"name" => name}} when is_binary(name) ->
-        AppLogger.api_info("ESI: Found character name: #{name}")
+        AppLogger.api_debug("ESI: Found character name: #{name}")
         {:ok, %{"name" => name}}
       error ->
-        AppLogger.api_info("ESI: Character name not found: #{inspect(error)}")
+        AppLogger.api_debug("ESI: Character name not found: #{inspect(error)}")
         error
     end
   end
@@ -481,13 +481,13 @@ defmodule WandererNotifier.Api.ESI.Service do
   Fetches just the type name from ESI by type_id.
   """
   def get_type_name(type_id) do
-    AppLogger.api_info("ESI: get_type_name(#{type_id})")
+    AppLogger.api_debug("ESI: get_type_name(#{type_id})")
     case get_type_info(type_id) do
       {:ok, %{"name" => name}} when is_binary(name) ->
-        AppLogger.api_info("ESI: Found type name: #{name}")
+        AppLogger.api_debug("ESI: Found type name: #{name}")
         {:ok, %{"name" => name}}
       error ->
-        AppLogger.api_info("ESI: Type name not found: #{inspect(error)}")
+        AppLogger.api_debug("ESI: Type name not found: #{inspect(error)}")
         error
     end
   end
@@ -504,7 +504,7 @@ defmodule WandererNotifier.Api.ESI.Service do
 
   @impl true
   def get_system_kills(system_id, limit) do
-    AppLogger.api_info("[ESI] Fetching system kills", system_id: system_id, limit: limit)
+    AppLogger.api_debug("[ESI] Fetching system kills", system_id: system_id, limit: limit)
     Client.get_system_kills(system_id, limit)
   end
 

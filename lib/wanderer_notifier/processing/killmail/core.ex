@@ -99,8 +99,41 @@ defmodule WandererNotifier.Processing.Killmail.Core do
     })
   end
 
+  @doc """
+  Fetches killmail data from zKillboard.
+
+  ## Parameters
+    - kill_id: The killmail ID to fetch
+
+  ## Returns
+    - {:ok, kill_data} on success where kill_data is the raw API response
+    - {:error, reason} on failure
+  """
+  @spec get_zkill_data(integer()) :: {:ok, map()} | {:error, any()}
+  def get_zkill_data(kill_id) do
+    AppLogger.processor_debug("Fetching kill data from ZKillboard", kill_id: kill_id)
+
+    case ZKillClient.get_single_killmail(kill_id) do
+      {:ok, [kill_data | _]} ->
+        # If it returns a list, take the first item
+        {:ok, kill_data}
+
+      {:ok, kill_data} when is_map(kill_data) ->
+        # If it returns a single map
+        {:ok, kill_data}
+
+      {:error, reason} = error ->
+        AppLogger.processor_error("Failed to fetch kill from ZKillboard", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        error
+    end
+  end
+
   defp fetch_zkb_data(kill_id) do
-    with {:ok, [zkb_data | _]} <- ZKillClient.get_single_killmail(kill_id),
+    with {:ok, zkb_data} <- get_zkill_data(kill_id),
          zkb_map <- Map.get(zkb_data, "zkb", %{}),
          hash <- Map.get(zkb_map, "hash") do
       {:ok, {zkb_data, hash}}
@@ -123,7 +156,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
     - {:error, reason} on failure
   """
   def process_kill(kill_id, hash, character_id, character_name) do
-    with {:ok, [zkb_data | _]} <- ZKillClient.get_single_killmail(kill_id) do
+    with {:ok, zkb_data} <- get_zkill_data(kill_id) do
       process_kill_with_data(kill_id, hash, zkb_data, character_id, character_name)
     end
   end

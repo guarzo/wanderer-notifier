@@ -449,7 +449,7 @@ defmodule WandererNotifier.Logger.Logger do
 
   def kill_debug(message, metadata) do
     # Always log kill debug at info level to ensure visibility
-    log(@level_debug, @category_kill, "DEBUG: #{message}", metadata)
+    log(@level_debug, @category_kill, message, metadata)
   end
 
   @impl true

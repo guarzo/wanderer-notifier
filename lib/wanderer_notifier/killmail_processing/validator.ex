@@ -93,16 +93,21 @@ defmodule WandererNotifier.KillmailProcessing.Validator do
     victim = Extractor.get_victim(killmail) || %{}
     attackers = Extractor.get_attackers(killmail) || []
 
+    # Get time values and ensure they're proper DateTime objects, not just structs
+    kill_time = extract_safe_datetime(Extractor.get_kill_time(killmail))
+    processed_at = DateTime.utc_now()
+
     # Find the final blow attacker
-    final_blow_attacker = Enum.find(attackers, fn attacker ->
-      Map.get(attacker, "final_blow", false) == true
-    end) || %{}
+    final_blow_attacker =
+      Enum.find(attackers, fn attacker ->
+        Map.get(attacker, "final_blow", false) == true
+      end) || %{}
 
     # Build the normalized structure
     %{
       killmail_id: killmail_id,
-      kill_time: Extractor.get_kill_time(killmail) || DateTime.utc_now(),
-      processed_at: DateTime.utc_now(),
+      kill_time: kill_time,
+      processed_at: processed_at,
       # Economic data
       total_value: Map.get(zkb_data, "totalValue", 0),
       points: Map.get(zkb_data, "points"),
@@ -134,6 +139,26 @@ defmodule WandererNotifier.KillmailProcessing.Validator do
     }
   end
 
+  # Helper to safely extract a DateTime value or create a default
+  defp extract_safe_datetime(value) do
+    cond do
+      is_nil(value) ->
+        DateTime.utc_now()
+
+      is_struct(value) && value.__struct__ == DateTime ->
+        value
+
+      is_binary(value) ->
+        case DateTime.from_iso8601(value) do
+          {:ok, datetime, _} -> datetime
+          _ -> DateTime.utc_now()
+        end
+
+      true ->
+        DateTime.utc_now()
+    end
+  end
+
   # Helper function to extract system security from different formats
   defp get_system_security(killmail) do
     cond do
@@ -145,7 +170,7 @@ defmodule WandererNotifier.KillmailProcessing.Validator do
 
       is_map(killmail) && Map.get(killmail, :esi_data) &&
         is_map(Map.get(killmail, :esi_data)) &&
-        Map.get(killmail.esi_data, "security_status") ->
+          Map.get(killmail.esi_data, "security_status") ->
         Map.get(killmail.esi_data, "security_status")
 
       true ->

@@ -17,26 +17,67 @@ config :logger, level: :info
 
 # Configure both console and file logging
 config :logger,
-  backends: [:console, {LoggerFileBackend, :debug_log}]
+  backends: [:console, {LoggerFileBackend, :info_log}, {LoggerFileBackend, :kills_log}]
 
-# Include more metadata in development logs
+# Configure console logging to match file logging level and format
 config :logger, :console,
-  format: "$time [$level] $message\n",
-  metadata: [:trace_id]
+  level: :info,
+  format: "[$level] $message\n",
+  metadata: [
+    :module,
+    :function,
+    :trace_id,
+    :character_id,
+    :kill_id,
+    :killmail_id,
+    :system_id,
+    :system_name
+  ]
 
-# Configure file logging
-config :logger, :debug_log,
+# Configure general debug file logging
+config :logger, :info_log,
   path: "log/debug.log",
-  level: :debug,
+  level: :info,
   format: "$time [$level] $metadata$message\n",
-  metadata: [:trace_id, :character_id, :kill_count, :killmail_id]
+  metadata: [
+    :module,
+    :function,
+    :trace_id,
+    :character_id,
+    :kill_id,
+    :killmail_id,
+    :system_id,
+    :system_name
+  ]
 
-# Set ZKill-specific logs to info level
+# Make sure kill-specific file logging is also configured
+config :logger, :kills_log,
+  path: "log/kills_debug.log",
+  level: :info,
+  format: "$time [$level] $metadata$message\n",
+  metadata: [
+    :module,
+    :function,
+    :trace_id,
+    :character_id,
+    :kill_id,
+    :killmail_id,
+    :system_id,
+    :system_name
+  ]
+
+# Set debug level for kill processing modules to ensure we get all the debugging information
 config :logger, :module_levels, %{
-  "WandererNotifier.Api.ZKill" => :info,
-  "WandererNotifier.Api.ZKill.Client" => :info,
-  "WandererNotifier.Api.ZKill.Service" => :info,
-  "WandererNotifier.Api.ZKill.Websocket" => :info
+  "WandererNotifier.Api.ZKill" => :warn,
+  "WandererNotifier.Api.ZKill.Client" => :warn,
+  "WandererNotifier.Api.ZKill.Service" => :warn,
+  "WandererNotifier.Api.ZKill.Websocket" => :warn,
+  "WandererNotifier.Api.Character.KillsService" => :warn,
+  "WandererNotifier.KillmailProcessing.Pipeline" => :info,
+  "WandererNotifier.Processing.Killmail" => :info,
+  "WandererNotifier.Resources.KillmailPersistence" => :info,
+  "WandererNotifier.Debug.ProcessKillDebug" => :info,
+  "WandererNotifier.Debug.PipelineDebug" => :info
 }
 
 # Configure persistence feature overrides for development

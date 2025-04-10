@@ -23,7 +23,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def should_notify?(killmail) do
     # First check if killmail is valid and has minimal required data
     if is_nil(killmail) or not is_map(killmail) do
-      Logger.warning("DETERMINER: Invalid killmail format: #{if(is_nil(killmail), do: "nil", else: inspect(killmail))}")
+      Logger.warning(
+        "DETERMINER: Invalid killmail format: #{if(is_nil(killmail), do: "nil", else: inspect(killmail))}"
+      )
+
       return_no_notification("Invalid killmail format")
     else
       process_killmail(killmail)
@@ -61,7 +64,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
 
     # Log basic information about the killmail
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Checking if #{victim_name} (ID: #{victim_id || "unknown"}) in system #{system_id_str} should trigger notification")
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - Checking if #{victim_name} (ID: #{victim_id || "unknown"}) in system #{system_id_str} should trigger notification"
+    )
 
     {kill_id, system_id_str, {victim_id, victim_name}}
   end
@@ -87,8 +92,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     case result do
       {:ok, %{should_notify: true}} ->
         Logger.debug("DETERMINER: Kill ##{kill_id} - WILL send notification")
+
       {:ok, %{should_notify: false, reason: reason}} ->
         Logger.debug("DETERMINER: Kill ##{kill_id} - Will NOT send notification: #{reason}")
+
       _ ->
         Logger.debug("DETERMINER: Kill ##{kill_id} - Unexpected result: #{inspect(result)}")
     end
@@ -106,8 +113,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     cond do
       !notifications_enabled ->
         {:notifications_disabled, "global notifications disabled"}
+
       !system_notifications_enabled ->
         {:notifications_disabled, "system notifications disabled"}
+
       true ->
         true
     end
@@ -123,13 +132,19 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_id = Map.get(victim, "character_id")
 
     # Enhanced logging for debugging
-    Logger.debug("DETERMINER: Kill ##{kill_id} - System tracked: #{is_tracked_system}, Character tracked: #{has_tracked_char}")
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - System tracked: #{is_tracked_system}, Character tracked: #{has_tracked_char}"
+    )
 
     # For notifications, we consider both tracked systems and tracked characters
     if is_tracked_system || has_tracked_char do
       true
     else
-      details = if is_nil(victim_id), do: "missing victim ID", else: "victim ID #{victim_id}, system ID #{system_id}"
+      details =
+        if is_nil(victim_id),
+          do: "missing victim ID",
+          else: "victim ID #{victim_id}, system ID #{system_id}"
+
       {:not_tracked, details}
     end
   end
@@ -196,8 +211,32 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
 
     # Log details about our tracked characters
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Checking if victim #{victim_name} (ID: #{victim_id || "unknown"}) is tracked")
-    Logger.debug("DETERMINER: Kill ##{kill_id} - We have #{length(all_character_ids)} tracked characters")
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - Checking if victim #{victim_name} (ID: #{victim_id || "unknown"}) is tracked"
+    )
+
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - We have #{length(all_character_ids)} tracked characters"
+    )
+
+    # DEBUG: Add detailed structure logs
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Victim data: #{inspect(victim)}")
+
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - Kill data structure type: #{killmail.__struct__}"
+    )
+
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Kill data keys: #{inspect(Map.keys(killmail))}")
+
+    # Check attackers too
+    attackers = Map.get(kill_data, "attackers") || []
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Found #{length(attackers)} attackers")
+
+    # Check a sample of attackers
+    if length(attackers) > 0 do
+      sample = Enum.take(attackers, min(3, length(attackers)))
+      Logger.debug("DETERMINER: Kill ##{kill_id} - Sample attackers: #{inspect(sample)}")
+    end
 
     if length(all_character_ids) > 0 do
       # Log a sample of tracked characters for debugging
@@ -212,7 +251,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       Logger.debug("DETERMINER: Kill ##{kill_id} - Victim #{victim_name} IS tracked")
       true
     else
-      Logger.debug("DETERMINER: Kill ##{kill_id} - Victim #{victim_name} is NOT tracked, checking attackers")
+      Logger.debug(
+        "DETERMINER: Kill ##{kill_id} - Victim #{victim_name} is NOT tracked, checking attackers"
+      )
+
       attacker_tracked = check_attackers_tracked(kill_data, all_character_ids)
 
       if attacker_tracked do
@@ -227,11 +269,22 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Extract kill data to get useful information
   defp extract_kill_data(killmail) do
+    # DEBUG: Log what we're extracting
+    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
+    victim = Extractor.get_victim(killmail)
+    attackers = Extractor.get_attackers(killmail)
+    system_id = Extractor.get_system_id(killmail)
+
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Extracting kill data")
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Victim extraction: #{inspect(victim)}")
+    Logger.debug("DETERMINER: Kill ##{kill_id} - Got #{length(attackers || [])} attackers")
+    Logger.debug("DETERMINER: Kill ##{kill_id} - System ID: #{system_id || "unknown"}")
+
     %{
-      "solar_system_id" => Extractor.get_system_id(killmail),
+      "solar_system_id" => system_id,
       "solar_system_name" => Extractor.get_system_name(killmail),
-      "victim" => Extractor.get_victim(killmail),
-      "attackers" => Extractor.get_attackers(killmail)
+      "victim" => victim,
+      "attackers" => attackers
     }
   end
 
@@ -270,16 +323,23 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
     if victim_tracked do
-      Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is in tracked character list")
+      Logger.debug(
+        "DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is in tracked character list"
+      )
+
       true
     else
       # Try direct tracking if not found in the list
       direct_tracked = victim_id_str && check_direct_victim_tracking(victim_id_str)
 
       if direct_tracked do
-        Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is directly tracked")
+        Logger.debug(
+          "DETERMINER: Victim #{victim_name} (ID: #{victim_id_str}) is directly tracked"
+        )
       else
-        Logger.debug("DETERMINER: Victim #{victim_name} (ID: #{victim_id_str || "unknown"}) is not tracked")
+        Logger.debug(
+          "DETERMINER: Victim #{victim_name} (ID: #{victim_id_str || "unknown"}) is not tracked"
+        )
       end
 
       direct_tracked
@@ -304,10 +364,30 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Check if any attacker is in our tracked characters list
   defp attacker_in_tracked_list?(attackers, all_character_ids) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(fn attacker_id -> Enum.member?(all_character_ids, attacker_id) end)
+    # DEBUG: Log attackers being checked
+    attacker_ids =
+      attackers
+      |> Enum.map(&extract_attacker_id/1)
+      |> Enum.reject(&is_nil/1)
+
+    Logger.debug(
+      "DETERMINER: Checking #{length(attacker_ids)} attacker IDs against #{length(all_character_ids)} tracked IDs"
+    )
+
+    if length(attacker_ids) > 0 do
+      Logger.debug("DETERMINER: Attacker IDs: #{inspect(attacker_ids)}")
+    end
+
+    # Check if any attacker is in the tracked list
+    Enum.any?(attacker_ids, fn attacker_id ->
+      is_tracked = Enum.member?(all_character_ids, attacker_id)
+
+      if is_tracked do
+        Logger.debug("DETERMINER: Attacker with ID #{attacker_id} IS in tracked list")
+      end
+
+      is_tracked
+    end)
   end
 
   # Extract attacker ID from attacker data
