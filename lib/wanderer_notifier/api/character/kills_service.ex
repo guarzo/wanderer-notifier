@@ -33,7 +33,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   # Debug logging helper
   defp debug_log(character_id, message, metadata \\ %{}) do
     if character_id == @debug_character_id do
-      AppLogger.kill_info(
+      AppLogger.kill_debug(
         "[DEBUG_KILLS] #{message}",
         Map.put(metadata, :character_id, character_id)
       )
@@ -98,7 +98,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp cache_and_return_name(character_id, name, deps) do
-    deps.cache_helpers.cache_character_info(%{
+    deps.cache_helpers.cache_character_debug(%{
       "character_id" => character_id,
       "name" => name
     })
@@ -171,7 +171,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     start_time = System.monotonic_time()
     batch_id = generate_batch_id()
 
-    AppLogger.kill_info("Starting historical kill processing", %{
+    AppLogger.kill_debug("Starting historical kill processing", %{
       character_id: character_id,
       character_name: character_name,
       date_range: date_range,
@@ -195,7 +195,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
       duration =
         System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
 
-      AppLogger.kill_info("Completed historical kill processing", %{
+      AppLogger.kill_debug("Completed historical kill processing", %{
         character_id: character_id,
         character_name: character_name,
         batch_id: batch_id,
@@ -260,7 +260,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
           {:ok, %{processed: integer(), persisted: integer(), characters: integer()}}
           | {:error, term()}
   def fetch_and_persist_all_tracked_character_kills(limit \\ 25, page \\ 1, deps \\ @default_deps) do
-    AppLogger.kill_info("[CHARACTER_KILLS] Starting batch kill fetch for all tracked characters",
+    AppLogger.kill_debug("[CHARACTER_KILLS] Starting batch kill fetch for all tracked characters",
       limit: limit,
       page: page
     )
@@ -271,16 +271,16 @@ defmodule WandererNotifier.Api.Character.KillsService do
       AppLogger.kill_warn("[CHARACTER_KILLS] No tracked characters found")
       {:error, :no_tracked_characters}
     else
-      log_tracked_characters_info(tracked_characters)
+      log_tracked_characters_debug(tracked_characters)
       process_tracked_characters_batch(tracked_characters, deps)
     end
   end
 
-  defp log_tracked_characters_info(tracked_characters) do
+  defp log_tracked_characters_debug(tracked_characters) do
     debug_char = Enum.find(tracked_characters, &(&1.character_id == @debug_character_id))
 
     if debug_char do
-      AppLogger.kill_info("[DEBUG_KILLS] Debug character found in tracked characters",
+      AppLogger.kill_debug("[DEBUG_KILLS] Debug character found in tracked characters",
         character: debug_char
       )
     else
@@ -291,7 +291,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
       )
     end
 
-    AppLogger.kill_info("[CHARACTER_KILLS] Found tracked characters", %{
+    AppLogger.kill_debug("[CHARACTER_KILLS] Found tracked characters", %{
       character_count: length(tracked_characters),
       sample_characters:
         Enum.take(tracked_characters, 3)
@@ -304,30 +304,113 @@ defmodule WandererNotifier.Api.Character.KillsService do
   """
   def process_tracked_characters_batch(characters, _opts \\ []) do
     character_count = length(characters)
-    AppLogger.kill_info("👥 Processing #{character_count} tracked characters")
+    AppLogger.kill_debug("👥 Processing #{character_count} tracked characters")
 
-    character_ids = Enum.map(characters, & &1["character_id"])
+    # Add timestamp for performance tracking
+    start_time = System.monotonic_time(:millisecond)
+    AppLogger.kill_debug("[TIMING] Starting batch processing at #{start_time}")
+
+    # Extract character IDs and ensure they are properly formatted
+    character_ids = Enum.map(characters, fn char ->
+      cond do
+        # For map with atom keys
+        is_map(char) && Map.has_key?(char, :character_id) ->
+          char.character_id
+        # For map with string keys
+        is_map(char) && Map.has_key?(char, "character_id") ->
+          char["character_id"]
+        # For any other structure, try to get a value that might be a character ID
+        true ->
+          AppLogger.kill_warn("Unexpected character data structure", %{
+            character: inspect(char, limit: 100)
+          })
+          # Return some sensible value or nil
+          nil
+      end
+    end)
+    # Filter out nil values
+    |> Enum.reject(&is_nil/1)
+
+    AppLogger.kill_debug("Extracted character IDs for processing", %{
+      original_count: character_count,
+      extracted_count: length(character_ids),
+      sample_ids: Enum.take(character_ids, 3)
+    })
 
     results =
       character_ids
       |> Task.async_stream(
         fn character_id ->
-          process_character_kills(character_id, skip_notification: true)
+          # Add timestamp for tracking individual character processing
+          char_start_time = System.monotonic_time(:millisecond)
+          AppLogger.kill_debug("[TIMING] Starting processing for character #{character_id} at #{char_start_time}")
+
+          # Wrap each character process in a try/rescue to prevent one failure from breaking all
+          try do
+            result = process_character_kills(character_id, skip_notification: true)
+
+            # Log completion time
+            char_end_time = System.monotonic_time(:millisecond)
+            duration = char_end_time - char_start_time
+            AppLogger.kill_debug("[TIMING] Completed processing for character #{character_id} in #{duration}ms")
+
+            result
+          rescue
+            e ->
+              stacktrace = __STACKTRACE__
+              AppLogger.kill_error("Character processing failed with exception", %{
+                character_id: character_id,
+                error: Exception.message(e),
+                stacktrace: Exception.format_stacktrace(stacktrace)
+              })
+              {:error, {:exception, Exception.message(e)}}
+          catch
+            kind, reason ->
+              AppLogger.kill_error("Character processing failed with #{kind}", %{
+                character_id: character_id,
+                kind: kind,
+                reason: inspect(reason)
+              })
+              {:error, {:uncaught, "#{kind}: #{inspect(reason)}"}}
+          end
         end,
         max_concurrency: 5,
-        timeout: 60_000,
+        timeout: 180_000,  # 3 minutes
         on_timeout: :exit
       )
       |> Enum.reduce({0, 0, []}, fn
+        # Handle the case with processed/persisted fields
         {:ok, {:ok, %{processed: p, persisted: s}}}, {total_proc, total_succ, errs} ->
           {total_proc + p, total_succ + s, errs}
+
+        # Handle the case with just a generic stats map
+        {:ok, {:ok, stats}}, {total_proc, total_succ, errs} ->
+          processed = Map.get(stats, :processed, 0)
+          # Some stats maps might not have persisted, so default to processed
+          persisted = Map.get(stats, :persisted, processed)
+          {total_proc + processed, total_succ + persisted, errs}
 
         {:ok, {:error, reason}}, {total_proc, total_succ, errs} ->
           {total_proc, total_succ, [reason | errs]}
 
         {:exit, reason}, {total_proc, total_succ, errs} ->
+          AppLogger.kill_error("[TIMEOUT] Character processing timed out", %{
+            reason: inspect(reason)
+          })
           {total_proc, total_succ, [reason | errs]}
+
+        unexpected, acc ->
+          # Log any unexpected format to help debug
+          AppLogger.kill_warn("Unexpected result format in process_tracked_characters_batch", %{
+            result: inspect(unexpected)
+          })
+          acc
       end)
+
+    # Log total time
+    end_time = System.monotonic_time(:millisecond)
+    duration = end_time - start_time
+    AppLogger.kill_debug("[TIMING] Completed batch processing in #{duration}ms")
 
     {processed, succeeded, errors} = results
 
@@ -338,7 +421,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
         sample_errors: Enum.take(errors, 3)
       })
     else
-      AppLogger.kill_info("✅ All characters processed successfully", %{
+      AppLogger.kill_debug("✅ All characters processed successfully", %{
         processed: processed,
         succeeded: succeeded
       })
@@ -392,7 +475,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp handle_untracked_character(character_id) do
-    AppLogger.kill_info("[CHARACTER_KILLS] Skipping untracked character", %{
+    AppLogger.kill_debug("[CHARACTER_KILLS] Skipping untracked character", %{
       character_id: character_id
     })
 
@@ -429,114 +512,29 @@ defmodule WandererNotifier.Api.Character.KillsService do
     process_kills_batch(kills, ctx)
   end
 
-  defp process_kills_batch(kills, %Context{} = ctx) do
-    start_time = System.monotonic_time()
-    concurrency = ctx.options[:concurrency] || 2
-
-    known_kill_ids =
-      KillmailPersistence.get_already_processed_kill_ids(ctx.character_id)
-
-    AppLogger.kill_debug("[KillsService] Filtering already processed kills", %{
-      total_kills: length(kills),
-      already_processed: MapSet.size(known_kill_ids),
-      character_id: ctx.character_id
-    })
-
-    filtered_kills =
-      Enum.reject(kills, fn kill ->
-        kill_id = extract_killmail_id(kill)
-        kill_id_int = parse_kill_id(kill_id)
-        kill_id_int && MapSet.member?(known_kill_ids, kill_id_int)
-      end)
-
-    AppLogger.kill_info("[KillsService] Processing new kills", %{
-      total_kills: length(kills),
-      new_kills: length(filtered_kills),
-      skipped_kills: length(kills) - length(filtered_kills),
-      character_id: ctx.character_id
-    })
-
-    stats = %{
-      total: length(filtered_kills),
-      processed: 0,
-      skipped: 0,
-      duplicates: 0,
-      errors: 0,
-      duration: 0
-    }
-
-    result =
-      filtered_kills
-      |> Task.async_stream(
-        fn kill ->
-          process_single_kill(kill, ctx)
-        end,
-        max_concurrency: concurrency,
-        timeout: 120_000,
-        on_timeout: :kill_task
-      )
-      |> Enum.reduce(stats, fn
-        {:ok, {:ok, :skipped}}, acc ->
-          %{acc | skipped: acc.skipped + 1}
-
-        {:ok, {:ok, :processed}}, acc ->
-          %{acc | processed: acc.processed + 1}
-
-        {:ok, :processed}, acc ->
-          %{acc | processed: acc.processed + 1}
-
-        {:ok, {:ok, _}}, acc ->
-          %{acc | processed: acc.processed + 1}
-
-        {:ok, {:error, :duplicate}}, acc ->
-          %{acc | duplicates: acc.duplicates + 1}
-
-        {:ok, {:error, _}}, acc ->
-          %{acc | errors: acc.errors + 1}
-
-        {:error, :timeout}, acc ->
-          AppLogger.kill_error("[KILLS] Kill processing timeout", %{
-            character_id: ctx.character_id,
-            character_name: ctx.character_name,
-            batch_id: ctx.batch_id
-          })
-
-          %{acc | errors: acc.errors + 1}
-
-        {:error, error}, acc ->
-          AppLogger.kill_error("[KILLS] Batch processing error", %{
-            character_id: ctx.character_id,
-            character_name: ctx.character_name,
-            batch_id: ctx.batch_id,
-            error: inspect(error)
-          })
-
-          %{acc | errors: acc.errors + 1}
-      end)
-      |> Map.put(:duration, System.monotonic_time() - start_time)
-      |> then(fn stats ->
-        duration_seconds = System.convert_time_unit(stats.duration, :native, :second)
-        success_rate = if stats.total > 0, do: stats.processed / stats.total * 100, else: 0.0
-        error_rate = if stats.total > 0, do: stats.errors / stats.total * 100, else: 0.0
-        duplicate_rate = if stats.total > 0, do: stats.duplicates / stats.total * 100, else: 0.0
-
-        AppLogger.kill_info("[KILLS] Batch processing complete", %{
-          character_id: ctx.character_id,
-          character_name: ctx.character_name,
-          batch_id: ctx.batch_id,
-          total_kills: stats.total,
-          processed: stats.processed,
-          skipped: stats.skipped,
-          duplicates: stats.duplicates,
-          errors: stats.errors,
-          duration_seconds: duration_seconds,
-          success_rate: success_rate,
-          error_rate: error_rate,
-          duplicate_rate: duplicate_rate
+  # Handle string character IDs by converting to integer
+  defp process_kills_batch(kills, character_id) when is_binary(character_id) do
+    case Integer.parse(character_id) do
+      {int_id, ""} ->
+        # Successfully parsed the string to an integer
+        process_kills_batch(kills, int_id)
+      _ ->
+        # Failed to parse the string as an integer
+        AppLogger.kill_error("[KillsService] Invalid character ID format", %{
+          character_id: character_id
         })
+        {:error, :invalid_character_id}
+    end
+  end
 
-        Stats.print_summary()
-        stats
+  defp process_kills_batch(kills, %Context{} = ctx) do
+    # Process a batch of kills
+    result = kills
+      |> Enum.reduce(%{processed: 0, skipped: 0}, fn kill, acc ->
+        case process_single_kill(kill, ctx) do
+          {:ok, _} -> %{acc | processed: acc.processed + 1}
+          _ -> %{acc | skipped: acc.skipped + 1}
+        end
       end)
 
     {:ok, result}
@@ -544,67 +542,190 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   defp process_single_kill(kill, ctx) do
     kill_id = extract_killmail_id(kill)
+    start_time = System.monotonic_time(:millisecond)
+
+    # Create a standardized killmail data structure
+    standardized_kill = ensure_standardized_killmail(kill)
 
     AppLogger.kill_debug("[KillsService] Processing single kill", %{
       kill_id: kill_id,
       character_id: ctx.character_id,
       character_name: ctx.character_name,
-      context_mode: ctx.mode && ctx.mode.mode
+      context_mode: ctx.mode && ctx.mode.mode,
+      processing_start: start_time
     })
 
     # First attempt - standard processing with new normalized model
-    case process_killmail_with_retries(kill, ctx, 0) do
+    result = case process_killmail_with_retries(standardized_kill, ctx, 0) do
       {:ok, _} = _result ->
+        end_time = System.monotonic_time(:millisecond)
+        duration_ms = end_time - start_time
+
         AppLogger.kill_debug("[KillsService] Successfully processed kill", %{
-          kill_id: kill_id
+          kill_id: kill_id,
+          duration_ms: duration_ms
         })
 
         :processed
 
       {:error, {:enrichment_validation_failed, reasons}} = error ->
         # Log the specific reasons for enrichment failure
+        mid_time = System.monotonic_time(:millisecond)
+        duration_so_far = mid_time - start_time
+
         AppLogger.kill_warn("[KillsService] Enrichment validation failed - attempting retry", %{
           kill_id: kill_id,
           character_id: ctx.character_id,
-          reasons: inspect(reasons)
+          reasons: inspect(reasons),
+          duration_so_far_ms: duration_so_far
         })
 
         # Retry with pre-enrichment
-        case pre_enrich_and_process(kill, ctx, reasons) do
+        case pre_enrich_and_process(standardized_kill, ctx, reasons) do
           {:ok, _} = _result ->
-            AppLogger.kill_info("[KillsService] Retry with pre-enrichment succeeded", %{
-              kill_id: kill_id
+            end_time = System.monotonic_time(:millisecond)
+            duration_ms = end_time - start_time
+
+            AppLogger.kill_debug("[KillsService] Retry with pre-enrichment succeeded", %{
+              kill_id: kill_id,
+              total_duration_ms: duration_ms
             })
 
             :processed
 
           retry_error ->
+            end_time = System.monotonic_time(:millisecond)
+            duration_ms = end_time - start_time
+
             AppLogger.kill_error("[KillsService] Retry with pre-enrichment failed", %{
               kill_id: kill_id,
               character_id: ctx.character_id,
-              error: inspect(retry_error)
+              error: inspect(retry_error),
+              total_duration_ms: duration_ms
             })
 
             error
         end
 
       error ->
+        end_time = System.monotonic_time(:millisecond)
+        duration_ms = end_time - start_time
+
         AppLogger.kill_error("[KillsService] Pipeline processing failed", %{
           kill_id: kill_id,
           character_id: ctx.character_id,
-          error: inspect(error)
+          error: inspect(error),
+          duration_ms: duration_ms
         })
 
         error
     end
+
+    # Return the result
+    result
   end
+
+  # Helper to ensure killmail is in standardized format
+  defp ensure_standardized_killmail(kill) when is_map(kill) do
+    alias WandererNotifier.KillmailProcessing.KillmailData
+    alias WandererNotifier.KillmailProcessing.Transformer
+    alias WandererNotifier.KillmailProcessing.Extractor
+
+    # First extract the kill_id to ensure we don't lose it
+    kill_id = extract_killmail_id(kill)
+
+    # Log the pre-transformation data with direct string interpolation
+    AppLogger.kill_debug("""
+    [KillsService] Pre-transformation killmail data:
+    * Kill ID: #{inspect(kill_id)}
+    * Is struct: #{is_struct(kill)}
+    * Struct type: #{if is_struct(kill), do: kill.__struct__, else: "not a struct"}
+    * Top-level keys: #{inspect(if is_map(kill), do: Map.keys(kill), else: "not a map")}
+    * Has zkb data: #{if is_map(kill), do: Map.has_key?(kill, "zkb") || Map.has_key?(kill, :zkb), else: false}
+    * ZKB data: #{if is_map(kill) && Map.has_key?(kill, "zkb"), do: inspect(kill["zkb"], limit: 200), else: "none"}
+    * Raw data (excerpt): #{inspect(kill, limit: 300)}
+    """)
+
+    # Try to convert to standardized format
+    data = Transformer.to_killmail_data(kill)
+
+    case data do
+      %KillmailData{} = killmail_data ->
+        # Verify the ID was preserved during conversion
+        if killmail_data.killmail_id do
+          # Success - correctly formatted KillmailData
+          # AppLogger.kill_debug("""
+          # [KillsService] Transformation successful:
+          # * Original kill_id: #{inspect(kill_id)}
+          # * Transformed kill_id: #{inspect(killmail_data.killmail_id)}
+          # * Struct type: #{killmail_data.__struct__}
+          # * Has zkb_data: #{not is_nil(killmail_data.zkb_data) && killmail_data.zkb_data != %{}}
+          # """)
+          killmail_data
+        else
+          # ID was lost during conversion
+          AppLogger.kill_warn("""
+          [KillsService] KillmailData conversion lost ID - fixing
+          * Original kill_id: #{inspect(kill_id)}
+          * Transformed data keys: #{inspect(Map.keys(killmail_data))}
+          * Transformed zkb_data: #{inspect(killmail_data.zkb_data, limit: 100)}
+          """)
+
+          # Manually set the killmail_id field
+          %{killmail_data | killmail_id: kill_id}
+        end
+
+      nil ->
+        # If conversion fails, we need to build a minimal valid map
+        # that can be processed by the pipeline
+        AppLogger.kill_warn("""
+        [KillsService] Failed to convert killmail to KillmailData, building compatible format
+        * Original kill_id: #{inspect(kill_id)}
+        * Original keys: #{inspect(Map.keys(kill))}
+        * Original data (excerpt): #{inspect(kill, limit: 200)}
+        """)
+
+        # Extract zkb data if available
+        zkb_data =
+          cond do
+            Map.has_key?(kill, "zkb") -> Map.get(kill, "zkb", %{})
+            Map.has_key?(kill, :zkb) -> Map.get(kill, :zkb, %{})
+            Map.has_key?(kill, "zkb_data") -> Map.get(kill, "zkb_data", %{})
+            Map.has_key?(kill, :zkb_data) -> Map.get(kill, :zkb_data, %{})
+            true -> %{}
+          end
+
+        # Create a minimal map that the pipeline can work with
+        minimal_map = %{
+          "killmail_id" => kill_id,
+          "zkb" => %{
+            "hash" => Map.get(zkb_data, "hash", Map.get(zkb_data, :hash))
+          }
+        }
+
+        AppLogger.kill_debug("[KillsService] Created minimal compatible map: #{inspect(minimal_map)}")
+        minimal_map
+    end
+  end
+
+  defp ensure_standardized_killmail(kill), do: kill
 
   # Attempt the killmail processing with retries for transient failures
   defp process_killmail_with_retries(kill, ctx, retry_count, max_retries \\ 2) do
     kill_id = extract_killmail_id(kill)
 
+    # Log the full structure of the killmail data for debugging
+    # AppLogger.kill_debug("""
+    # [KillsService] Processing killmail data:
+    # * Kill ID from extraction: #{inspect(kill_id)}
+    # * Is struct: #{is_struct(kill)}
+    # * Struct type: #{if is_struct(kill), do: kill.__struct__, else: "not a struct"}
+    # * Top-level keys: #{inspect(if is_map(kill), do: Map.keys(kill), else: [])}
+    # * Raw killmail data sample: #{inspect(kill, limit: 500)}
+    # """)
+
     if retry_count > 0 do
-      AppLogger.kill_info("[KillsService] Retry attempt #{retry_count} for kill #{kill_id}")
+      AppLogger.kill_debug("[KillsService] Retry attempt #{retry_count} for kill #{kill_id}")
     end
 
     case KillmailPipeline.process_killmail(kill, ctx) do
@@ -646,11 +767,33 @@ defmodule WandererNotifier.Api.Character.KillsService do
     kill_id = extract_killmail_id(kill)
 
     # Extract the solar system ID to pre-fetch system name
-    system_id = Map.get(kill, "solar_system_id")
+    system_id =
+      cond do
+        # KillmailData struct
+        is_map(kill) && Map.has_key?(kill, :solar_system_id) && not is_nil(kill.solar_system_id) ->
+          kill.solar_system_id
 
-    AppLogger.kill_info("[KillsService] Pre-enriching kill data", %{
+        # Raw map with string key
+        is_map(kill) && Map.has_key?(kill, "solar_system_id") ->
+          kill["solar_system_id"]
+
+        # Raw map with atom key
+        is_map(kill) && Map.has_key?(kill, :solar_system_id) ->
+          kill.solar_system_id
+
+        # ESI data nested map
+        is_map(kill) && Map.has_key?(kill, :esi_data) &&
+        is_map(kill.esi_data) && Map.has_key?(kill.esi_data, "solar_system_id") ->
+          kill.esi_data["solar_system_id"]
+
+        # Default case
+        true -> nil
+      end
+
+    AppLogger.kill_debug("[KillsService] Pre-enriching kill data", %{
       kill_id: kill_id,
-      system_id: system_id
+      system_id: system_id,
+      kill_type: inspect_kill_type(kill)
     })
 
     # Pre-fetch the system name if that's an issue - this is the only validation we still need
@@ -658,13 +801,14 @@ defmodule WandererNotifier.Api.Character.KillsService do
       if system_id && Enum.any?(reasons, &String.contains?(&1, "system name")) do
         case get_system_name_with_cache(system_id) do
           {:ok, system_name} ->
-            AppLogger.kill_info("[KillsService] Pre-enriched system name", %{
+            AppLogger.kill_debug("[KillsService] Pre-enriched system name", %{
               kill_id: kill_id,
               system_id: system_id,
               system_name: system_name
             })
 
-            Map.put(kill, "solar_system_name", system_name)
+            # Add system name to the appropriate location based on the type of kill data
+            add_system_name_to_kill(kill, system_id, system_name)
 
           _error ->
             kill
@@ -677,24 +821,122 @@ defmodule WandererNotifier.Api.Character.KillsService do
     process_killmail_with_retries(enriched_kill, ctx, 0)
   end
 
-  defp extract_killmail_id(kill) when is_map(kill) do
+  # Helper to get info about the kill data type for logging
+  defp inspect_kill_type(kill) do
     cond do
-      Map.has_key?(kill, "killmail_id") -> kill["killmail_id"]
-      Map.has_key?(kill, :killmail_id) -> kill.killmail_id
-      true -> "unknown"
+      is_struct(kill, WandererNotifier.KillmailProcessing.KillmailData) ->
+        "KillmailData struct"
+      is_struct(kill, WandererNotifier.Resources.Killmail) ->
+        "Killmail resource"
+      is_map(kill) && Map.has_key?(kill, :__struct__) ->
+        "#{inspect(kill.__struct__)} struct"
+      is_map(kill) ->
+        "map with keys: #{inspect(Map.keys(kill))}"
+      true ->
+        "#{typeof(kill)}"
     end
+  end
+
+  # Helper to add system name to the appropriate location in the kill data
+  defp add_system_name_to_kill(kill = %WandererNotifier.KillmailProcessing.KillmailData{}, _system_id, system_name) do
+    # For KillmailData struct, set the solar_system_name field
+    %{kill | solar_system_name: system_name}
+  end
+
+  defp add_system_name_to_kill(kill = %WandererNotifier.Resources.Killmail{}, _system_id, system_name) do
+    # For Killmail resource, set the solar_system_name field
+    %{kill | solar_system_name: system_name}
+  end
+
+  defp add_system_name_to_kill(kill, _system_id, system_name) when is_map(kill) do
+    cond do
+      # For maps with esi_data field, add to both top level and esi_data
+      Map.has_key?(kill, :esi_data) && is_map(kill.esi_data) ->
+        updated_esi = Map.put(kill.esi_data, "solar_system_name", system_name)
+        kill
+        |> Map.put(:esi_data, updated_esi)
+        |> Map.put(:solar_system_name, system_name)
+
+      # For maps with string esi_data key
+      Map.has_key?(kill, "esi_data") && is_map(kill["esi_data"]) ->
+        updated_esi = Map.put(kill["esi_data"], "solar_system_name", system_name)
+        kill
+        |> Map.put("esi_data", updated_esi)
+        |> Map.put("solar_system_name", system_name)
+
+      # For regular maps, just add the top-level solar_system_name
+      true ->
+        Map.put(kill, "solar_system_name", system_name)
+    end
+  end
+
+  defp add_system_name_to_kill(kill, _system_id, _system_name) do
+    # For non-maps, return as is
+    kill
+  end
+
+  # Helper to get type of a value
+  defp typeof(value) when is_binary(value), do: "string"
+  defp typeof(value) when is_integer(value), do: "integer"
+  defp typeof(value) when is_float(value), do: "float"
+  defp typeof(value) when is_list(value), do: "list"
+  defp typeof(value) when is_map(value), do: "map"
+  defp typeof(value) when is_atom(value), do: "atom"
+  defp typeof(_value), do: "unknown"
+
+  defp extract_killmail_id(kill) when is_map(kill) do
+    # Try multiple approaches to extract the ID
+    kill_id = cond do
+      # String key
+      Map.has_key?(kill, "killmail_id") && not is_nil(kill["killmail_id"]) ->
+        extracted_id = kill["killmail_id"]
+        extracted_id
+
+      # Atom key
+      Map.has_key?(kill, :killmail_id) && not is_nil(kill.killmail_id) ->
+        extracted_id = kill.killmail_id
+        extracted_id
+
+      # String ZKB nested
+      Map.has_key?(kill, "zkb") && is_map(kill["zkb"]) && Map.has_key?(kill["zkb"], "killmail_id") ->
+        extracted_id = kill["zkb"]["killmail_id"]
+        extracted_id
+
+      # Atom ZKB nested
+      Map.has_key?(kill, :zkb) && is_map(kill.zkb) && Map.has_key?(kill.zkb, "killmail_id") ->
+        extracted_id = kill.zkb["killmail_id"]
+        extracted_id
+
+      # String ZKB data nested
+      Map.has_key?(kill, "zkb_data") && is_map(kill["zkb_data"]) && Map.has_key?(kill["zkb_data"], "killmail_id") ->
+        extracted_id = kill["zkb_data"]["killmail_id"]
+        extracted_id
+
+      # Atom ZKB data nested
+      Map.has_key?(kill, :zkb_data) && is_map(kill.zkb_data) && Map.has_key?(kill.zkb_data, "killmail_id") ->
+        extracted_id = kill.zkb_data["killmail_id"]
+        extracted_id
+
+      true ->
+        "unknown"
+    end
+
+    kill_id
   end
 
   defp extract_killmail_id(_), do: "unknown"
 
   defp fetch_character_kills(character_id, _limit, _page, deps) do
-    Process.put(:current_character_id, character_id)
+    # Ensure character_id is an integer
+    character_id_int = ensure_integer_id(character_id)
 
-    case deps.zkill_client.get_character_kills(character_id, %{start: nil, end: nil}, @max_kills) do
+    Process.put(:current_character_id, character_id_int)
+
+    case deps.zkill_client.get_character_kills(character_id_int, %{start: nil, end: nil}, @max_kills) do
       {:ok, kills} = result when is_list(kills) ->
         if length(kills) > 0 do
           AppLogger.kill_debug("📥 Retrieved #{length(kills)} kills", %{
-            character_id: character_id
+            character_id: character_id_int
           })
         end
 
@@ -795,91 +1037,193 @@ defmodule WandererNotifier.Api.Character.KillsService do
     - {:ok, processed_kills} on success
     - {:error, reason} on failure
   """
-  def process_character_kills(character_id, _opts \\ []) do
+  def process_character_kills(character_id, opts \\ []) do
     start_time = System.monotonic_time()
 
-    character_name =
-      case Repository.get_character_name(character_id) do
-        {:ok, name} -> name
-        _ -> "Unknown"
-      end
+    # Wrap the entire function in a try/rescue block to catch any uncaught exceptions
+    try do
+      # Ensure character_id is an integer
+      character_id_int = ensure_integer_id(character_id)
 
-    AppLogger.kill_info("👥 Processing character", %{
-      character_id: character_id,
-      character_name: character_name
-    })
-
-    case fetch_kills(character_id, %{start: nil, end: nil}) do
-      {:ok, kills} ->
-        total_kills = length(kills)
-
-        AppLogger.kill_info("📥 Retrieved kills for processing", %{
-          character_id: character_id,
-          character_name: character_name,
-          total_kills: total_kills,
-          sample_kill:
-            if total_kills > 0 do
-              %{
-                id: List.first(kills)["killmail_id"],
-                time: List.first(kills)["killmail_time"]
-              }
-            else
-              nil
-            end
-        })
-
-        {:ok, stats} = process_kills_batch(kills, character_id)
-        end_time = System.monotonic_time()
-        processing_time = System.convert_time_unit(end_time - start_time, :native, :millisecond)
-
-        AppLogger.kill_info("📊 Batch processing metrics", %{
-          character_id: character_id,
-          character_name: character_name,
-          total_kills: total_kills,
-          processed_kills: stats.processed,
-          success_rate: "#{Float.round(stats.processed / max(total_kills, 1) * 100, 2)}%",
-          processing_time_ms: processing_time,
-          average_time_per_kill: Float.round(processing_time / max(total_kills, 1), 2)
-        })
-
-        if stats.errors > 0 do
-          {:error, :batch_processing_failed}
-        else
-          {:ok, stats}
+      character_name =
+        case Repository.get_character_name(character_id_int) do
+          {:ok, name} -> name
+          _ -> "Unknown"
         end
 
-      {:error, reason} ->
-        AppLogger.kill_error("❌ Failed to fetch kills", %{
+      AppLogger.kill_debug("👥 Processing character", %{
+        character_id: character_id_int,
+        character_name: character_name
+      })
+
+      case fetch_kills(character_id_int, %{start: nil, end: nil}) do
+        {:ok, kills} ->
+          total_kills = length(kills)
+
+          AppLogger.kill_debug("📥 Retrieved kills for processing", %{
+            character_id: character_id_int,
+            character_name: character_name,
+            total_kills: total_kills,
+            sample_kill:
+              if total_kills > 0 do
+                %{
+                  id: List.first(kills)["killmail_id"],
+                  time: List.first(kills)["killmail_time"]
+                }
+              else
+                nil
+              end
+          })
+
+          {:ok, stats} = process_kills_batch(kills, character_id_int)
+          end_time = System.monotonic_time()
+          processing_time = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+
+          AppLogger.kill_debug("📊 Batch processing metrics", %{
+            character_id: character_id_int,
+            character_name: character_name,
+            total_kills: total_kills,
+            processed_kills: stats.processed,
+            success_rate: "#{Float.round(stats.processed / max(total_kills, 1) * 100, 2)}%",
+            processing_time_ms: processing_time,
+            average_time_per_kill: Float.round(processing_time / max(total_kills, 1), 2)
+          })
+
+          if stats.errors > 0 do
+            {:error, :batch_processing_failed}
+          else
+            {:ok, stats}
+          end
+
+        {:error, reason} ->
+          AppLogger.kill_error("❌ Failed to fetch kills", %{
+            character_id: character_id_int,
+            character_name: character_name,
+            error: inspect(reason)
+          })
+
+          {:error, reason}
+      end
+    rescue
+      e ->
+        # Catch any uncaught exception
+        stacktrace = __STACKTRACE__
+        AppLogger.kill_error("💥 Unhandled exception in process_character_kills", %{
           character_id: character_id,
-          character_name: character_name,
-          error: inspect(reason)
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(stacktrace)
         })
 
-        {:error, reason}
+        # Return error with exception details
+        {:error, {:exception, Exception.message(e)}}
+    catch
+      kind, value ->
+        # Catch any throws or exits
+        AppLogger.kill_error("💥 Uncaught #{kind} in process_character_kills", %{
+          character_id: character_id,
+          kind: kind,
+          value: inspect(value)
+        })
+
+        # Return error with details
+        {:error, {:uncaught, "#{kind}: #{inspect(value)}"}}
     end
   end
 
-  @spec fetch_kills(pos_integer(), date_range()) :: {:ok, list(map())} | {:error, term()}
+  # Helper function to ensure character_id is an integer
+  defp ensure_integer_id(id) when is_integer(id), do: id
+  defp ensure_integer_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> int_id
+      _ ->
+        AppLogger.kill_warn("[CHARACTER_KILLS] Invalid character ID format", %{
+          character_id: id
+        })
+        # Return the original id to let the downstream functions handle the error
+        id
+    end
+  end
+  defp ensure_integer_id(id), do: id
+
+  @spec fetch_kills(pos_integer() | String.t(), date_range()) :: {:ok, list(map())} | {:error, term()}
   defp fetch_kills(character_id, date_range) do
-    debug_log(character_id, "Fetching kills from ZKill", %{
+    # Start timing
+    fetch_start_time = System.monotonic_time(:millisecond)
+    AppLogger.kill_debug("[TIMING] Starting fetch_kills for character_id=#{character_id}", %{
+      timestamp: fetch_start_time,
+      date_range: date_range
+    })
+
+    # Ensure character_id is an integer
+    character_id_int = ensure_integer_id(character_id)
+
+    debug_log(character_id_int, "Fetching kills from ZKill", %{
       date_range: date_range,
       limit: @max_kills
     })
 
-    case ZKillClient.get_character_kills(character_id, date_range, @max_kills) do
+    # Time the ZKill client call
+    zkill_start_time = System.monotonic_time(:millisecond)
+    AppLogger.kill_debug("[TIMING] Starting ZKillClient.get_character_kills for character_id=#{character_id_int}", %{
+      timestamp: zkill_start_time
+    })
+
+    result = ZKillClient.get_character_kills(character_id_int, date_range, @max_kills)
+
+    # Calculate time spent in ZKill client
+    zkill_end_time = System.monotonic_time(:millisecond)
+    zkill_duration = zkill_end_time - zkill_start_time
+    AppLogger.kill_debug("[TIMING] ZKillClient.get_character_kills completed in #{zkill_duration}ms", %{
+      duration_ms: zkill_duration,
+      character_id: character_id_int
+    })
+
+    case result do
       {:ok, kills} ->
-        debug_log(character_id, "Retrieved #{length(kills)} kills", %{
+        # Log details about retrieved kills
+        kill_count = length(kills)
+
+        # Calculate average kill size if there are kills
+        avg_kill_size = if kill_count > 0 do
+          total_size = Enum.reduce(kills, 0, fn kill, acc ->
+            acc + byte_size(inspect(kill))
+          end)
+          total_size / kill_count
+        else
+          0
+        end
+
+        debug_log(character_id_int, "Retrieved #{kill_count} kills", %{
           date_range: date_range,
-          limit: @max_kills
+          limit: @max_kills,
+          avg_kill_size_bytes: avg_kill_size
+        })
+
+        # Total time spent in fetch_kills
+        fetch_end_time = System.monotonic_time(:millisecond)
+        fetch_duration = fetch_end_time - fetch_start_time
+        AppLogger.kill_debug("[TIMING] fetch_kills completed in #{fetch_duration}ms", %{
+          duration_ms: fetch_duration,
+          kill_count: kill_count,
+          character_id: character_id_int
         })
 
         {:ok, kills}
 
       error ->
-        debug_log(character_id, "Failed to fetch kills", %{
+        debug_log(character_id_int, "Failed to fetch kills", %{
           error: inspect(error),
           date_range: date_range,
           limit: @max_kills
+        })
+
+        # Total time spent in fetch_kills (error case)
+        fetch_end_time = System.monotonic_time(:millisecond)
+        fetch_duration = fetch_end_time - fetch_start_time
+        AppLogger.kill_debug("[TIMING] fetch_kills failed in #{fetch_duration}ms", %{
+          duration_ms: fetch_duration,
+          character_id: character_id_int,
+          error: inspect(error)
         })
 
         error
@@ -928,12 +1272,12 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   defp fetch_and_cache_ship_name(ship_type_id, cache_key) do
     case ESIService.get_ship_type_name(ship_type_id) do
-      {:ok, ship_info} ->
-        name = Map.get(ship_info, "name")
+      {:ok, ship_debug} ->
+        name = Map.get(ship_debug, "name")
 
         if is_binary(name) && name != "" do
           # Cache for 30 days (ship types don't change)
-          CacheRepo.set(cache_key, ship_info, 30 * 86_400)
+          CacheRepo.set(cache_key, ship_debug, 30 * 86_400)
 
           AppLogger.kill_debug("[KillsService] Retrieved and cached ship name", %{
             ship_type_id: ship_type_id,
@@ -957,11 +1301,11 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   # Get system name from cache or from ESI with caching
   defp get_system_name_with_cache(system_id) do
-    cache_key = "system_info:#{system_id}"
+    cache_key = "system_debug:#{system_id}"
 
     case CacheRepo.get(cache_key) do
-      {:ok, system_info} when is_map(system_info) ->
-        name = Map.get(system_info, "name")
+      {:ok, system_debug} when is_map(system_debug) ->
+        name = Map.get(system_debug, "name")
         {:ok, name}
 
       _ ->
@@ -971,17 +1315,17 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
   defp fetch_and_cache_system_name(system_id, cache_key) do
     case ESIService.get_system_info(system_id) do
-      {:ok, system_info} -> handle_system_info_response(system_info, system_id, cache_key)
-      error -> handle_system_info_error(error, system_id)
+      {:ok, system_debug} -> handle_system_debug_response(system_debug, system_id, cache_key)
+      error -> handle_system_debug_error(error, system_id)
     end
   end
 
-  defp handle_system_info_response(system_info, system_id, cache_key) do
-    name = Map.get(system_info, "name")
+  defp handle_system_debug_response(system_debug, system_id, cache_key) do
+    name = Map.get(system_debug, "name")
 
     if is_binary(name) && name != "" do
       # Cache for 30 days (system names don't change)
-      CacheRepo.set(cache_key, system_info, 30 * 86_400)
+      CacheRepo.set(cache_key, system_debug, 30 * 86_400)
 
       AppLogger.kill_debug("[KillsService] Retrieved and cached system name", %{
         system_id: system_id,
@@ -994,7 +1338,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     end
   end
 
-  defp handle_system_info_error(error, system_id) do
+  defp handle_system_debug_error(error, system_id) do
     AppLogger.kill_error("[KillsService] Failed to get system name", %{
       system_id: system_id,
       error: inspect(error)
@@ -1002,4 +1346,69 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
     error
   end
+
+  # Helper to extract hash from killmail data in any format
+  defp extract_hash(killmail) when is_map(killmail) do
+    # Add detailed logging for debugging the hash extraction
+    zkb = get_zkill_data(killmail)
+    AppLogger.kill_debug("🔍 Extracting hash from killmail data", %{
+      kill_id: extract_killmail_id(killmail),
+      zkb_exists: zkb != nil && zkb != %{},
+      zkb_keys: if(is_map(zkb), do: Map.keys(zkb), else: "not a map")
+    })
+
+    hash = cond do
+      # Try to get from zkb data if it exists
+      is_map(zkb) && Map.has_key?(zkb, "hash") ->
+        hash = Map.get(zkb, "hash")
+        AppLogger.kill_debug("✅ Found hash in ZKB data", %{hash: hash})
+        hash
+
+      # Try different hash formats that ZKill might return
+      Map.has_key?(killmail, "hash") ->
+        hash = Map.get(killmail, "hash")
+        AppLogger.kill_debug("✅ Found hash at root level", %{hash: hash})
+        hash
+
+      Map.has_key?(killmail, :hash) ->
+        hash = Map.get(killmail, :hash)
+        AppLogger.kill_debug("✅ Found hash at root level as atom", %{hash: hash})
+        hash
+
+      Map.has_key?(killmail, "zkb_hash") ->
+        hash = Map.get(killmail, "zkb_hash")
+        AppLogger.kill_debug("✅ Found hash as zkb_hash", %{hash: hash})
+        hash
+
+      Map.has_key?(killmail, :zkb_hash) ->
+        hash = Map.get(killmail, :zkb_hash)
+        AppLogger.kill_debug("✅ Found hash as zkb_hash atom", %{hash: hash})
+        hash
+
+      # If we can't find the hash, log the issue and return nil
+      true ->
+        AppLogger.kill_warn("❗ Could not find hash in killmail data", %{
+          kill_id: extract_killmail_id(killmail),
+          data_excerpt: inspect(zkb, limit: 200)
+        })
+        nil
+    end
+
+    hash
+  end
+
+  defp extract_hash(_), do: nil
+
+  # Helper to get zkb data in any format
+  defp get_zkill_data(killmail) when is_map(killmail) do
+    cond do
+      Map.has_key?(killmail, "zkb") -> Map.get(killmail, "zkb")
+      Map.has_key?(killmail, :zkb) -> Map.get(killmail, :zkb)
+      Map.has_key?(killmail, "zkb_data") -> Map.get(killmail, "zkb_data")
+      Map.has_key?(killmail, :zkb_data) -> Map.get(killmail, :zkb_data)
+      true -> %{}
+    end
+  end
+
+  defp get_zkill_data(_), do: %{}
 end

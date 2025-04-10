@@ -284,7 +284,61 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   defp make_request(method, url, body, headers, options) do
-    HTTPoison.request(method, url, body, headers, options)
+    # Add special logging for ESI requests
+    if String.contains?(url, "esi.evetech.net") do
+      kill_id = extract_kill_id_from_url(url)
+
+      AppLogger.kill_info("📡 Making ESI HTTP request", %{
+        method: method,
+        url: url,
+        kill_id: kill_id,
+        headers: headers
+      })
+
+      start_time = System.monotonic_time(:millisecond)
+
+      result = HTTPoison.request(method, url, body, headers, options)
+
+      end_time = System.monotonic_time(:millisecond)
+      duration_ms = end_time - start_time
+
+      # Log the result
+      case result do
+        {:ok, response} ->
+          AppLogger.kill_debug("📥 ESI HTTP response received", %{
+            method: method,
+            status: response.status_code,
+            kill_id: kill_id,
+            duration_ms: duration_ms,
+            size: byte_size(response.body)
+          })
+
+        {:error, error} ->
+          AppLogger.kill_info("❌ ESI HTTP error", %{
+            method: method,
+            kill_id: kill_id,
+            error: inspect(error.reason),
+            duration_ms: duration_ms
+          })
+      end
+
+      result
+    else
+      # Regular non-ESI request
+      HTTPoison.request(method, url, body, headers, options)
+    end
+  end
+
+  # Helper to extract kill_id from URL for better logging
+  defp extract_kill_id_from_url(url) do
+    if String.contains?(url, "/killmails/") do
+      case Regex.run(~r/\/killmails\/(\d+)\//, url) do
+        [_, kill_id] -> kill_id
+        _ -> nil
+      end
+    else
+      nil
+    end
   end
 
   defp handle_successful_response(response, method_str, config, status) do
@@ -296,11 +350,30 @@ defmodule WandererNotifier.Api.Http.Client do
   end
 
   defp handle_rate_limit(method_str, url, headers, body, config, retry_count, response) do
+    # Extract Retry-After header, if provided
     retry_after = extract_retry_after(response.headers) || 0
-    backoff_ms = calculate_backoff(retry_count, retry_after * 1000, true)
 
+    # Check if this is an ESI domain call based on URL or config
+    is_esi = String.contains?(url, "esi.evetech.net") || config.label == "ESI"
+
+    # Calculate backoff - use much more aggressive values for ESI
+    backoff_ms = if is_esi do
+      # Base minimum time is 5 seconds (5000ms) plus random 1-10s additional jitter
+      # Double each retry attempt
+      base_backoff = max(5000 * :math.pow(2, retry_count), retry_after * 1000)
+      jitter = 1000 + :rand.uniform(10000)
+
+      # Cap at 60 seconds maximum to avoid very long waits
+      trunc(min(base_backoff + jitter, 60000))
+    else
+      # For other APIs, use standard backoff calculation
+      calculate_backoff(retry_count, retry_after * 1000, true)
+    end
+
+    # Log the rate limit with domain-specific information
+    domain_info = if is_esi, do: " (ESI domain)", else: ""
     AppLogger.api_warn(
-      "⚠️ RATE LIMIT (429) for #{method_str} #{url} - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
+      "⚠️ RATE LIMIT (429) for #{method_str} #{url}#{domain_info} - waiting #{backoff_ms}ms before retry #{retry_count + 1}"
     )
 
     :timer.sleep(backoff_ms)

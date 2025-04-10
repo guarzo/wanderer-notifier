@@ -281,7 +281,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     end
   end
 
-  # Ensure character_name is present in character data
+  # Ensure character_name is present in data with character_id
   defp ensure_character_name(character_data) do
     # Check if we need to add a character name
     has_id = is_map(character_data) && Map.has_key?(character_data, "character_id")
@@ -298,7 +298,18 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         AppLogger.kill_debug("ENRICHMENT: Adding default character name - no ID available")
         Map.put(character_data, "character_name", "Unknown Pilot")
 
-      # Case 3: Already has a name
+      # Case 3: Already has a name, but let's check if it's valid
+      has_name && Map.get(character_data, "character_name") in ["Unknown", "Unknown Pilot"] ->
+        # If we already have an "Unknown" name but we have a character ID, try to enrich
+        if has_id do
+          character_id = Map.get(character_data, "character_id")
+          AppLogger.kill_debug("ENRICHMENT: Trying to replace placeholder name for ID #{character_id}")
+          lookup_and_add_character_name(character_data, character_id)
+        else
+          character_data
+        end
+
+      # Case 4: Already has a valid name
       true ->
         character_data
     end
@@ -307,16 +318,54 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   # Helper to look up character name by ID
   defp lookup_and_add_character_name(character_data, character_id) do
     if is_integer(character_id) || is_binary(character_id) do
-      # Try to get character name from ESI
+      # Try to get character name from ESI or existing data
       AppLogger.kill_debug("ENRICHMENT: Looking up character name for ID #{character_id}")
 
-      case get_character_name(character_id) do
-        {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
-          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' for ID #{character_id}")
+      # First try to look up in Repository - this should check cache first
+      case WandererNotifier.Data.Repository.get_character_name(character_id) do
+        # Direct name from repository
+        {:ok, name} when is_binary(name) and name != "" and name not in ["Unknown", "Unknown Pilot"] ->
+          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in repository for ID #{character_id}")
           Map.put(character_data, "character_name", name)
-        error ->
-          AppLogger.kill_error("ENRICHMENT: Failed to find character name for ID #{character_id} - #{inspect(error)}")
-          Map.put(character_data, "character_name", "Unknown Pilot")
+
+        # Handle cached map data case
+        {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in cached map for ID #{character_id}")
+          Map.put(character_data, "character_name", name)
+
+        # Handle the case where we get a map directly (as seen in logs)
+        %{"name" => name} when is_binary(name) and name != "" ->
+          AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in direct map for ID #{character_id}")
+          Map.put(character_data, "character_name", name)
+
+        _ ->
+          # No valid name in repository/cache, try direct ESI call
+          case get_character_name(character_id) do
+            # Standard ESI response
+            {:ok, %{"name" => name}} when is_binary(name) and name != "" ->
+              AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' via ESI for ID #{character_id}")
+              Map.put(character_data, "character_name", name)
+
+            # Handle Character struct case
+            {:ok, %{name: name}} when is_binary(name) and name != "" ->
+              AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in Character struct for ID #{character_id}")
+              Map.put(character_data, "character_name", name)
+
+            # Handle direct map with atom keys - can't use map[:name] in guard
+            {:ok, map} when is_map(map) ->
+              name = Map.get(map, :name)
+              if is_binary(name) and name != "" do
+                AppLogger.kill_debug("ENRICHMENT: Found character name '#{name}' in map with atom keys for ID #{character_id}")
+                Map.put(character_data, "character_name", name)
+              else
+                AppLogger.kill_error("ENRICHMENT: Failed to find valid name in map for ID #{character_id} - #{inspect(map)}")
+                Map.put(character_data, "character_name", "Unknown Pilot")
+              end
+
+            error ->
+              AppLogger.kill_error("ENRICHMENT: Failed to find character name for ID #{character_id} - #{inspect(error)}")
+              Map.put(character_data, "character_name", "Unknown Pilot")
+          end
       end
     else
       AppLogger.kill_debug("ENRICHMENT: No valid character_id present - can't lookup name")

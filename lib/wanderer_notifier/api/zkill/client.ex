@@ -268,7 +268,24 @@ defmodule WandererNotifier.Api.ZKill.Client do
     defp decode_kills_response(body) do
       case Jason.decode(body) do
         {:ok, kills} when is_list(kills) ->
-          {:ok, kills}
+          # Add validation to ensure every killmail has a killmail_id
+          {valid_kills, invalid_count} = validate_kill_list(kills)
+
+          if invalid_count > 0 do
+            AppLogger.api_warn("ZKill response contained invalid killmails", %{
+              total_kills: length(kills),
+              invalid_kills: invalid_count,
+              reason: "missing_killmail_id"
+            })
+          end
+
+          if valid_kills == [] do
+            AppLogger.api_warn("ZKill response contained no valid killmails", %{
+              original_count: length(kills)
+            })
+          end
+
+          {:ok, valid_kills}
 
         {:ok, response} ->
           AppLogger.api_error("ZKill invalid kills response format", %{
@@ -287,6 +304,85 @@ defmodule WandererNotifier.Api.ZKill.Client do
           {:error, {:json_decode_error, reason}}
       end
     end
+
+    # Validate that each kill in the list has a killmail_id
+    defp validate_kill_list(kills) do
+      {valid, invalid} =
+        Enum.split_with(kills, fn kill ->
+          # Check that killmail_id exists and is not nil
+          kill_has_id = kill_has_valid_id?(kill)
+
+          unless kill_has_id do
+            # Log the problematic killmail format
+            AppLogger.api_warn("ZKill invalid killmail in response", %{
+              reason: "missing_killmail_id",
+              killmail_keys: Map.keys(kill),
+              sample_data: inspect(kill, limit: 100)
+            })
+          end
+
+          kill_has_id
+        end)
+
+      # Enhance valid kills with defaults and normalization
+      enhanced_kills = Enum.map(valid, &ensure_killmail_format/1)
+
+      {enhanced_kills, length(invalid)}
+    end
+
+    # Check if a killmail has a valid ID
+    defp kill_has_valid_id?(kill) when is_map(kill) do
+      cond do
+        Map.has_key?(kill, "killmail_id") && not is_nil(kill["killmail_id"]) -> true
+        Map.has_key?(kill, :killmail_id) && not is_nil(kill.killmail_id) -> true
+        Map.has_key?(kill, "zkb") && Map.has_key?(kill["zkb"], "killmail_id") && not is_nil(kill["zkb"]["killmail_id"]) -> true
+        true -> false
+      end
+    end
+
+    defp kill_has_valid_id?(_), do: false
+
+    # Ensure the killmail has a standard format with all required fields
+    defp ensure_killmail_format(kill) when is_map(kill) do
+      # Make sure the kill has a killmail_id in the top-level
+      kill_id =
+        cond do
+          Map.has_key?(kill, "killmail_id") -> kill["killmail_id"]
+          Map.has_key?(kill, :killmail_id) -> kill.killmail_id
+          Map.has_key?(kill, "zkb") && Map.has_key?(kill["zkb"], "killmail_id") ->
+            # If ID is in zkb field, move it to top-level
+            kill["zkb"]["killmail_id"]
+          true -> nil # This shouldn't happen due to prior validation
+        end
+
+      # Make sure the zkb field exists
+      zkb_data = Map.get(kill, "zkb", Map.get(kill, :zkb, %{}))
+
+      # Ensure both ID and hash are present
+      Map.merge(kill, %{
+        "killmail_id" => kill_id,
+        "zkb" => ensure_zkb_format(zkb_data, kill_id)
+      })
+    end
+
+    # Ensure zkb data has required fields
+    defp ensure_zkb_format(zkb, kill_id) when is_map(zkb) do
+      # Ensure there's a hash field
+      Map.put_new(zkb, "hash", Map.get(zkb, :hash, Map.get(zkb, "hash", generate_fallback_hash(kill_id))))
+    end
+
+    defp ensure_zkb_format(_, kill_id) do
+      # If zkb is missing or not a map, create a minimal valid one
+      %{"hash" => generate_fallback_hash(kill_id)}
+    end
+
+    # Generate a fallback hash in case it's missing
+    # This will only be used for verification but won't work for ESI
+    defp generate_fallback_hash(kill_id) when is_integer(kill_id) or is_binary(kill_id) do
+      "fallback_#{kill_id}"
+    end
+
+    defp generate_fallback_hash(_), do: "invalid"
 
     defp validate_killmail_format(killmail, kill_id) do
       if Map.has_key?(killmail, "killmail_id") do

@@ -72,7 +72,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       {:error, :not_found} ->
         kill_id = Map.get(zkb_data, "killmail_id", "unknown")
 
-        AppLogger.kill_info("ESI data not found for killmail", %{
+        AppLogger.kill_debug("ESI data not found for killmail", %{
           kill_id: kill_id
         })
 
@@ -88,7 +88,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         kill_id = get_kill_id(zkb_data)
 
         # Create a meaningful error message
-        AppLogger.kill_info("Error processing killmail ##{kill_id}", %{
+        AppLogger.kill_debug("Error processing killmail ##{kill_id}", %{
           error: inspect(error),
           kill_id: kill_id,
           status: "failed"
@@ -116,7 +116,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   def process_killmail_with_data(%KillmailData{} = killmail, ctx) do
     Metrics.track_processing_start(ctx)
 
-    AppLogger.kill_info("Processing pre-created killmail data", %{
+    AppLogger.kill_debug("Processing pre-created killmail data", %{
       kill_id: killmail.killmail_id,
       source: ctx.source,
       mode: (ctx.mode && ctx.mode.mode) || :unknown
@@ -170,7 +170,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
         # Extract system and victim information based on type
         {system_name, victim_name, victim_ship} = extract_killmail_display_info(killmail)
 
-        AppLogger.kill_info(
+        AppLogger.kill_debug(
           "❌ Error processing killmail ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}",
           %{
             kill_id: kill_id,
@@ -188,30 +188,309 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   # Creates a normalized killmail from the zKillboard data
   @spec create_normalized_killmail(map()) :: result()
   defp create_normalized_killmail(zkb_data) do
-    kill_id = Map.get(zkb_data, "killmail_id")
-    hash = get_in(zkb_data, ["zkb", "hash"])
+    # Extract key fields properly based on data type
+    kill_id = extract_killmail_id(zkb_data)
+    hash = extract_hash(zkb_data)
 
-    case ESIService.get_killmail(kill_id, hash) do
-      {:ok, esi_data} ->
-        # Use KillmailData.from_zkb_and_esi to create structured data
-        {:ok, KillmailData.from_zkb_and_esi(zkb_data, esi_data)}
+    # Log using direct string interpolation for better visibility
+    AppLogger.kill_debug("""
+    Creating normalized killmail from ZKB data:
+    * Kill ID: #{inspect(kill_id)}
+    * Hash: #{inspect(hash)}
+    * Data type: #{if is_struct(zkb_data), do: zkb_data.__struct__, else: "map"}
+    * Top-level keys: #{inspect(if is_map(zkb_data), do: Map.keys(zkb_data), else: [])}
+    """)
 
-      {:error, :not_found} ->
-        # Log at debug level to reduce noise - this happens often for new kills
-        AppLogger.kill_info("ESI data not found for killmail", %{
-          kill_id: kill_id,
-          hash: hash
+    # Add detailed debug for hash extraction to diagnose issues
+    if is_map(zkb_data) do
+      zkb_map = if Map.has_key?(zkb_data, "zkb"), do: zkb_data["zkb"], else: nil
+
+      # AppLogger.kill_debug("""
+      # ZKB data analysis:
+      # * Has zkb key: #{Map.has_key?(zkb_data, "zkb")}
+      # * zkb keys: #{if is_map(zkb_map), do: inspect(Map.keys(zkb_map)), else: "N/A"}
+      # * Has direct hash: #{Map.has_key?(zkb_data, "hash")}
+      # * Found hash value: #{hash}
+      # """)
+    end
+
+    # Validate that we have both killmail_id and hash before making ESI call
+    # These are required for the ESI API to work
+    if is_nil(kill_id) || is_nil(hash) do
+      AppLogger.kill_error("🚫 CRITICAL: Missing required killmail data: kill_id=#{inspect(kill_id)}, hash=#{inspect(hash)}")
+
+      # Return a standardized error to be handled upstream
+      {:error, {:skipped, "Incomplete killmail data - missing ID or hash"}}
+    else
+      # Add throttling for bulk operations to avoid ESI rate limits
+      # This adds a small delay between requests to prevent rate limiting
+      # The process dictionary is used to track the last request time
+      throttle_esi_requests()
+
+
+      # Wrap the ESI call in a try/rescue block to catch any unexpected errors
+      try do
+        AppLogger.kill_debug("Calling ESI.get_killmail for kill #{kill_id} with hash #{hash}")
+
+        case ESIService.get_killmail(kill_id, hash) do
+          {:ok, esi_data} ->
+            # If the data is already a KillmailData struct, just update esi_data
+            if is_struct(zkb_data, WandererNotifier.KillmailProcessing.KillmailData) do
+              AppLogger.kill_debug("Updating existing KillmailData with ESI data")
+              {:ok, %{zkb_data | esi_data: esi_data}}
+            else
+              # Use KillmailData.from_zkb_and_esi to create structured data
+              AppLogger.kill_debug("Creating new KillmailData from zkb and esi data")
+              {:ok, KillmailData.from_zkb_and_esi(zkb_data, esi_data)}
+            end
+
+          {:error, :not_found} ->
+            # Log at debug level to reduce noise - this happens often for new kills
+            AppLogger.kill_debug("ESI data not found for killmail", %{
+              kill_id: kill_id,
+              hash: hash
+            })
+
+            {:error, {:skipped, "ESI data not available"}}
+
+          {:error, {:http_error, 420}} ->
+            # Handle ESI rate limiting specifically with a longer backoff
+            AppLogger.kill_warn("ESI rate limit (420) hit for killmail - backing off", %{
+              kill_id: kill_id,
+              hash: hash
+            })
+
+            # Sleep for a longer time when we hit an explicit rate limit
+            :timer.sleep(10_000 + :rand.uniform(5000))
+
+            # Try again after backing off
+            create_normalized_killmail(zkb_data)
+
+          error ->
+            AppLogger.kill_error("Error fetching killmail from ESI", %{
+              kill_id: kill_id,
+              error: inspect(error)
+            })
+
+            error
+        end
+      rescue
+        e ->
+          # Catch any exception that might occur during ESI call or processing
+          stacktrace = __STACKTRACE__
+          AppLogger.kill_error("""
+          Exception in ESI.get_killmail:
+          * Kill ID: #{kill_id}
+          * Hash: #{hash}
+          * Error: #{Exception.message(e)}
+          * Stacktrace: #{Exception.format_stacktrace(stacktrace)}
+          """)
+
+          # Convert to standard error format
+          {:error, {:exception, Exception.message(e)}}
+      end
+    end
+  end
+
+  # Extract the killmail_id from any killmail structure
+  defp extract_killmail_id(data) do
+    id = cond do
+      # KillmailData struct
+      is_struct(data, WandererNotifier.KillmailProcessing.KillmailData) ->
+        data.killmail_id
+
+      # Resources.Killmail struct
+      is_struct(data, WandererNotifier.Resources.Killmail) ->
+        data.killmail_id
+
+      # Raw map with string key
+      is_map(data) && Map.has_key?(data, "killmail_id") && is_integer(data["killmail_id"]) ->
+        data["killmail_id"]
+
+      # Raw map with atom key
+      is_map(data) && Map.has_key?(data, :killmail_id) && is_integer(data.killmail_id) ->
+        data.killmail_id
+
+      # From ZKB REST API format - direct JSON
+      is_map(data) && Map.has_key?(data, "killID") ->
+        data["killID"]
+
+      # Nested in ZKB with string keys
+      is_map(data) && Map.has_key?(data, "zkb") &&
+        is_map(data["zkb"]) && Map.has_key?(data["zkb"], "killmail_id") ->
+        data["zkb"]["killmail_id"]
+
+      # Nested in ZKB with atom keys
+      is_map(data) && Map.has_key?(data, :zkb) &&
+        is_map(data.zkb) && Map.has_key?(data.zkb, "killmail_id") ->
+        data.zkb["killmail_id"]
+
+      # Nested in ZKB with atom keys and atom sub-keys
+      is_map(data) && Map.has_key?(data, :zkb) &&
+        is_map(data.zkb) && Map.has_key?(data.zkb, :killmail_id) ->
+        data.zkb.killmail_id
+
+      # Try using Extractor as fallback
+      true ->
+        try do
+          # Try to use the extractor module if available
+          WandererNotifier.KillmailProcessing.Extractor.get_killmail_id(data)
+        rescue
+          _ -> nil
+        end
+    end
+
+    # Try to ensure we get a valid integer ID
+    case id do
+      id when is_integer(id) -> id
+      id when is_binary(id) ->
+        case Integer.parse(id) do
+          {int_id, _} -> int_id
+          :error -> nil
+        end
+      _ -> nil
+    end
+  end
+
+  # Extract the hash from any killmail structure
+  defp extract_hash(data) do
+    kill_id = extract_killmail_id(data)
+
+    # Log the COMPLETE raw data structure for detailed analysis
+    AppLogger.kill_debug("""
+    FULL ZKB DATA DUMP for kill_id #{kill_id}:
+    #{inspect(data, pretty: true, limit: :infinity)}
+    """)
+
+    # Add detailed logging for hash extraction
+    AppLogger.kill_debug("""
+    Extracting hash for killmail #{kill_id}:
+    * Is struct: #{is_struct(data)}
+    * Type: #{if is_struct(data), do: data.__struct__, else: "not a struct"}
+    * Has zkb_data key: #{is_map(data) && Map.has_key?(data, :zkb_data)}
+    * Has zkb key: #{is_map(data) && (Map.has_key?(data, "zkb") || Map.has_key?(data, :zkb))}
+    """)
+
+    hash = cond do
+      # KillmailData struct with zkb_data
+      is_struct(data, WandererNotifier.KillmailProcessing.KillmailData) &&
+        is_map(data.zkb_data) ->
+        hash = Map.get(data.zkb_data, "hash")
+        AppLogger.kill_debug("Hash from KillmailData.zkb_data: #{inspect(hash)}")
+        hash
+
+      # Resources.Killmail struct with zkb_hash
+      is_struct(data, WandererNotifier.Resources.Killmail) ->
+        AppLogger.kill_debug("Hash from Resources.Killmail.zkb_hash: #{inspect(data.zkb_hash)}")
+        data.zkb_hash
+
+      # Direct hash in standard API response
+      is_map(data) && Map.has_key?(data, "hash") ->
+        hash = Map.get(data, "hash")
+        AppLogger.kill_debug("Hash from direct 'hash' key: #{inspect(hash)}")
+        hash
+
+      # Raw map with string zkb key
+      is_map(data) && Map.has_key?(data, "zkb") && is_map(data["zkb"]) ->
+        hash = Map.get(data["zkb"], "hash")
+
+        # Log the full ZKB data for debugging
+        AppLogger.kill_debug("""
+        ZKB data from 'zkb' key:
+        * Keys: #{inspect(Map.keys(data["zkb"]))}
+        * Hash found: #{inspect(hash)}
+        * Raw data: #{inspect(data["zkb"], limit: 100)}
+        """)
+
+        hash
+
+      # Raw map with atom zkb key
+      is_map(data) && Map.has_key?(data, :zkb) && is_map(data.zkb) ->
+        hash = Map.get(data.zkb, "hash")
+        AppLogger.kill_debug("Hash from :zkb atom key: #{inspect(hash)}")
+        hash
+
+      # Try using Extractor module as fallback
+      true ->
+        AppLogger.kill_warn("No standard hash location found, trying extractor fallback for kill #{kill_id}")
+        try do
+          # Try to get from zkb_data using extractor
+          zkb_data = WandererNotifier.KillmailProcessing.Extractor.get_zkb_data(data)
+          hash = if is_map(zkb_data), do: Map.get(zkb_data, "hash"), else: nil
+          AppLogger.kill_debug("Hash from Extractor.get_zkb_data: #{inspect(hash)}")
+          hash
+        rescue
+          e ->
+            AppLogger.kill_error("Error in hash extraction fallback: #{Exception.message(e)}")
+            nil
+        end
+    end
+
+    # Final log of the hash result
+    if is_nil(hash) do
+      AppLogger.kill_error("""
+      ❌ CRITICAL ERROR: FAILED TO EXTRACT HASH for kill #{kill_id}!
+      * Data type: #{if is_struct(data), do: data.__struct__, else: "not a struct"}
+      * Keys: #{if is_map(data), do: inspect(Map.keys(data)), else: "not a map"}
+      * Kill ID extraction successful: #{!is_nil(kill_id)}
+      * All attempts to find hash have failed.
+      """
+      )
+    else
+      AppLogger.kill_debug("Successfully extracted hash #{hash} for kill #{kill_id}")
+    end
+
+    hash
+  end
+
+  # Throttle ESI requests by adding a small delay between calls
+  # This helps prevent hitting rate limits during bulk processing
+  defp throttle_esi_requests do
+    # Get the last request time from process dictionary
+    last_request_time = Process.get(:last_esi_request_time, 0)
+    request_count = Process.get(:esi_request_count, 0)
+    current_time = System.monotonic_time(:millisecond)
+
+    # Default minimum delay between requests (250ms instead of 500ms)
+    min_delay_ms = Application.get_env(:wanderer_notifier, :esi_min_request_delay_ms, 1)
+
+    # Increase delay when we're making lots of requests
+    # After every 20 requests (instead of 10), add 50ms (instead of 100ms) to the delay
+    adaptive_delay = min_delay_ms + div(request_count, 20) * 1
+
+    # Cap the maximum delay at 1000ms (instead of 2000ms) to prevent too slow operation
+    actual_delay = min(adaptive_delay, 1000)
+
+    # Apply delay if needed
+    if (current_time - last_request_time) < actual_delay do
+      # Calculate how much more time we need to wait
+      sleep_time = actual_delay - (current_time - last_request_time)
+      # Add a small random jitter (±25ms instead of ±50ms)
+      sleep_time_with_jitter = sleep_time + (:rand.uniform(50) - 2)
+
+      # Don't sleep negative time if somehow clock skewed
+      if sleep_time_with_jitter > 0 do
+        AppLogger.kill_debug("ESI throttling applied", %{
+          sleep_time_ms: sleep_time_with_jitter,
+          request_count: request_count
         })
+        :timer.sleep(sleep_time_with_jitter)
+      end
+    end
 
-        {:error, {:skipped, "ESI data not available"}}
+    # Update the counters
+    Process.put(:last_esi_request_time, System.monotonic_time(:millisecond))
 
-      error ->
-        AppLogger.kill_error("Error fetching killmail from ESI", %{
-          kill_id: kill_id,
-          error: inspect(error)
-        })
+    # Increment the request count (wraps around at 100 to avoid growing forever)
+    new_count = rem(request_count + 1, 100)
+    Process.put(:esi_request_count, new_count)
 
-        error
+    # If count wrapped or is divisible by 20, log the throttling status
+    if new_count == 0 || rem(new_count, 20) == 0 do
+      AppLogger.kill_debug("ESI rate throttling status", %{
+        request_count: new_count,
+        current_delay_ms: actual_delay
+      })
     end
   end
 
@@ -364,56 +643,26 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
     case KillmailPersistence.maybe_persist_normalized_killmail(standardized_killmail, ctx.character_id) do
       {:ok, :persisted} ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail was newly persisted", %{
-          kill_id: standardized_killmail.killmail_id,
-          character_id: ctx.character_id
-        })
-
         Metrics.track_persistence(ctx)
         {:ok, standardized_killmail}
 
       {:ok, :already_exists} ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail already existed", %{
-          kill_id: standardized_killmail.killmail_id
-        })
-
         {:ok, standardized_killmail}
 
       # Successfully saved to database and returned the record
       {:ok, record} when is_struct(record) ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail was persisted to database", %{
-          kill_id: standardized_killmail.killmail_id,
-          character_id: ctx.character_id,
-          record_id: Map.get(record, :id, "unknown")
-        })
-
         Metrics.track_persistence(ctx)
         {:ok, standardized_killmail}
 
       :ignored ->
-        AppLogger.kill_debug("[Pipeline] Normalized killmail persistence was ignored", %{
-          kill_id: standardized_killmail.killmail_id,
-          reason: "Not tracked by any character"
-        })
-
         {:ok, standardized_killmail}
 
       error ->
-        AppLogger.kill_error("[Pipeline] Normalized killmail persistence failed", %{
-          kill_id: standardized_killmail.killmail_id,
-          error: inspect(error)
-        })
-
         # Return original killmail with error so notifications can still process
         {:ok, standardized_killmail}
     end
   rescue
     e ->
-      AppLogger.kill_error("[Pipeline] Exception during killmail persistence", %{
-        kill_id: Extractor.get_killmail_id(killmail),
-        error: Exception.message(e)
-      })
-
       # Continue processing for notifications despite persistence error
       {:ok, killmail}
   end
@@ -580,34 +829,27 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = get_kill_id(killmail)
 
     # Extract display information
-    {victim_name, victim_ship, system_name} = extract_display_info(killmail)
+    {system_name, victim_name, victim_ship} = extract_killmail_display_info(killmail)
 
     # Format the log message components
-    status_emoji = get_status_emoji(notified)
-    persistence_status = get_persistence_status(persisted)
+    status_emoji = get_status_emoji(notified, persisted)
     short_reason = create_short_reason(reason)
 
-    # Log a simplified, direct string message with emoji
-    AppLogger.kill_info("#{status_emoji} ##{kill_id}: #{victim_name} (#{victim_ship}) in #{system_name}#{persistence_status} - #{short_reason}")
+    # Log a simplified, direct string message with emoji and colorized elements
+    AppLogger.kill_debug("""
+    #{status_emoji} Kill ##{kill_id}:
+    Victim: #{victim_name} (#{victim_ship})
+    System: #{system_name}
+    Status: #{if persisted, do: "✅ Saved", else: "❌ Not saved"} | #{if notified, do: "✉️ Notified", else: "📭 No notification"}
+    Reason: #{short_reason}
+    """)
   end
 
-  # Helper to extract display information from the killmail
-  defp extract_display_info(killmail) do
-    # Get values directly from the killmail struct where possible
-    victim_name = Map.get(killmail, :victim_name) || "Unknown Pilot"
-    victim_ship = Map.get(killmail, :victim_ship_name) || "Unknown Ship"
-    system_name = Map.get(killmail, :solar_system_name) || "Unknown System"
-
-    {victim_name, victim_ship, system_name}
-  end
-
-  # Helper to get the status emoji based on notification status
-  defp get_status_emoji(true), do: "✉️"
-  defp get_status_emoji(false), do: "⏭️"
-
-  # Helper to get the persistence status text
-  defp get_persistence_status(true), do: ""
-  defp get_persistence_status(false), do: " (not saved)"
+  # Helper to get the status emoji based on notification and persistence status
+  defp get_status_emoji(true, true), do: "✉️" # Notified and persisted
+  defp get_status_emoji(true, false), do: "🔔" # Notified but not persisted
+  defp get_status_emoji(false, true), do: "💾" # Persisted but not notified
+  defp get_status_emoji(false, false), do: "⏭️" # Neither persisted nor notified
 
   # Helper to create a shortened reason that's more readable
   defp create_short_reason(reason) do
@@ -665,7 +907,10 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     %{error: inspect(error)}
   end
 
-  defp get_kill_id(data), do: Extractor.get_killmail_id(data)
+  defp get_kill_id(killmail) do
+    # Use the Extractor module for consistent killmail ID extraction
+    Extractor.get_killmail_id(killmail) || "unknown"
+  end
 
   # Validate that the enriched data meets requirements (now used in validate_killmail_data)
   # This comment explains why we removed the duplicate function
@@ -734,7 +979,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       {:ok, %{should_notify: should_notify, reason: reason}} ->
         if force_notify do
           # Override with forced notification
-          AppLogger.kill_info("FORCED NOTIFICATION: Overriding normal notification decision", %{
+          AppLogger.kill_debug("FORCED NOTIFICATION: Overriding normal notification decision", %{
             kill_id: get_kill_id(killmail),
             original_should_notify: should_notify,
             original_reason: reason,
@@ -751,7 +996,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       {:error, reason} ->
         if force_notify do
           # Force notification despite error
-          AppLogger.kill_info("FORCED NOTIFICATION: Overriding error", %{
+          AppLogger.kill_debug("FORCED NOTIFICATION: Overriding error", %{
             kill_id: get_kill_id(killmail),
             original_error: inspect(reason),
             forced: true
@@ -767,7 +1012,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       unexpected ->
         if force_notify do
           # Force notification despite unexpected result
-          AppLogger.kill_info("FORCED NOTIFICATION: Overriding unexpected result", %{
+          AppLogger.kill_debug("FORCED NOTIFICATION: Overriding unexpected result", %{
             kill_id: get_kill_id(killmail),
             original_result: inspect(unexpected),
             forced: true
@@ -798,23 +1043,52 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   end
 
   defp extract_killmail_display_info(killmail) do
-    # First check if the data is directly in the top-level fields
-    victim_name = Map.get(killmail, :victim_name)
-    victim_ship = Map.get(killmail, :victim_ship_name)
-    system_name = Map.get(killmail, :solar_system_name)
+    # Use Extractor module for consistent data extraction
+    system_name = Extractor.get_system_name(killmail) || "Unknown System"
+    victim = Extractor.get_victim(killmail) || %{}
 
-    if victim_name && victim_ship && system_name do
-      # Use top-level fields if they exist
-      {system_name, victim_name, victim_ship}
-    else
-      # Fall back to using the Extractor for older formats
-      victim = Extractor.get_victim(killmail) || %{}
-      {
-        Extractor.get_system_name(killmail) || "Unknown System",
-        Map.get(victim, "character_name") || "Unknown Pilot",
-        Map.get(victim, "ship_type_name") || "Unknown Ship"
-      }
+    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+    victim_ship = Map.get(victim, "ship_type_name") || "Unknown Ship"
+
+    {system_name, victim_name, victim_ship}
+  end
+
+  # Helper to provide better insights into ZKB data structure
+  defp inspect_zkb_structure(data) when is_map(data) do
+    cond do
+      # String key ZKB format
+      Map.has_key?(data, "zkb") ->
+        "map with string keys, including 'zkb' key"
+
+      # Atom key ZKB format
+      Map.has_key?(data, :zkb) ->
+        "map with atom keys, including :zkb key"
+
+      # String killmail_id but no zkb
+      Map.has_key?(data, "killmail_id") ->
+        "map with string keys, including 'killmail_id' but missing 'zkb'"
+
+      # Atom killmail_id but no zkb
+      Map.has_key?(data, :killmail_id) ->
+        "map with atom keys, including :killmail_id but missing :zkb"
+
+      # Completely different structure
+      true ->
+        "unknown structure with keys: #{inspect(Map.keys(data))}"
     end
   end
+
+  defp inspect_zkb_structure(_), do: "not a map"
+
+  # Helper to get type of value for debugging
+  defp typeof(value) when is_binary(value), do: "string"
+  defp typeof(value) when is_integer(value), do: "integer"
+  defp typeof(value) when is_float(value), do: "float"
+  defp typeof(value) when is_list(value), do: "list"
+  defp typeof(value) when is_map(value), do: "map"
+  defp typeof(value) when is_atom(value), do: "atom"
+  defp typeof(value) when is_nil(value), do: "nil"
+  defp typeof(value) when is_boolean(value), do: "boolean"
+  defp typeof(_value), do: "unknown"
 
 end

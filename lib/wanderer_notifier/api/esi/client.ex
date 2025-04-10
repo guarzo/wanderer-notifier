@@ -19,14 +19,38 @@ defmodule WandererNotifier.Api.ESI.Client do
 
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching killmail", %{
+    start_time = System.monotonic_time(:millisecond)
+
+    AppLogger.kill_debug("ESI Client API request", %{
       kill_id: kill_id,
       hash: hash,
-      method: "get_killmail"
+      method: "get_killmail",
+      url: url
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    result = HttpClient.get(url, headers, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.killmail")
+
+    end_time = System.monotonic_time(:millisecond)
+    duration_ms = end_time - start_time
+
+    # Log the result with timing info
+    case result do
+      {:ok, _data} ->
+        AppLogger.kill_debug("ESI Client API success", %{
+          kill_id: kill_id,
+          duration_ms: duration_ms
+        })
+
+      {:error, reason} ->
+        AppLogger.kill_info("ESI Client API error", %{
+          kill_id: kill_id,
+          error: inspect(reason),
+          duration_ms: duration_ms
+        })
+    end
+
+    result
   end
 
   @doc """

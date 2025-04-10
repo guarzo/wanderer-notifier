@@ -32,18 +32,25 @@ config :wanderer_notifier, :websocket,
 config :logger,
   level: :info,
   format: "$time [$level] $message\n",
-  backends: [:console]
+  backends: [:console, {LoggerFileBackend, :kills_log}]
 
 # Console logger configuration
 config :logger, :console,
   format: "$time [$level] $message\n",
-  metadata: [:trace_id],
+  metadata: [:trace_id, :character_id, :kill_id],
   colors: [
     debug: :cyan,
     info: :green,
     warn: :yellow,
     error: :red
   ]
+
+# File logger for detailed kill service debugging
+config :logger, :kills_log,
+  path: "log/kills_debug.log",
+  level: :debug,
+  format: "$date $time [$level] $metadata$message\n",
+  metadata: [:module, :function, :trace_id, :character_id, :kill_id, :killmail_id, :system_id, :system_name]
 
 # Module-specific log levels
 # This allows fine-grained control over logging
@@ -52,7 +59,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Core.Maintenance.Scheduler" => :info,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
-  "WandererNotifier.Api.ESI.Client" => :warn,
+  "WandererNotifier.Api.ESI.Client" => :debug,
   "WandererNotifier.Api.Map.Client" => :info,
   "WandererNotifier.Api.Map.Systems" => :info,
   "WandererNotifier.Api.Map.Characters" => :info,
@@ -62,12 +69,17 @@ config :logger, :module_levels, %{
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
   "WandererNotifier.Data.Cache.Repository" => :info,
-  "WandererNotifier.Data.Cache.Helpers" => :warn,
-  "WandererNotifier.Data.Cache" => :warn,
+  "WandererNotifier.Data.Cache.Helpers" => :info,
+  "WandererNotifier.Data.Cache" => :info,
+  "WandererNotifier.Data.Repository" => :info,
+  "WandererNotifier.Data.Repo" => :info,
   "WandererNotifier.Core.Application.Service" => :info,
-  "WandererNotifier.Services.KillProcessor" => :debug,
-  "WandererNotifier.Services.NotificationDeterminer" => :debug,
+  "WandererNotifier.Services.KillProcessor" => :info,
+  "WandererNotifier.Services.NotificationDeterminer" => :info,
   "WandererNotifier.Supervisors.Basic" => :info,
+  "WandererNotifier.Resources.KillmailPersistence" => :info,
+  "WandererNotifier.Api.Character.KillsService" => :info,
+  "WandererNotifier.KillmailProcessing.Pipeline" => :info,
   "WandererNotifier" => :info
 }
 
@@ -128,6 +140,17 @@ config :wanderer_notifier,
   zkill_service: WandererNotifier.Api.ZKill.Service,
   esi_service: WandererNotifier.Api.ESI.Service,
   chart_service_dir: "/workspace/chart-service"
+
+# Configure ESI API settings
+config :wanderer_notifier, :esi,
+  # Minimum delay between requests in milliseconds
+  min_request_delay_ms: 500,
+  # Maximum number of retries for rate limited requests
+  max_retries: 5,
+  # Initial backoff time in milliseconds
+  initial_backoff_ms: 3000,
+  # Whether to enable adaptive throttling based on request volume
+  adaptive_throttling: true
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

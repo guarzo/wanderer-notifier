@@ -445,20 +445,33 @@ defmodule WandererNotifier.Logger.Logger do
 
   # Kill processing category helpers
   @impl true
-  def kill_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_kill, message, metadata)
+  def kill_debug(message, metadata \\ [])
+
+  def kill_debug(message, metadata) do
+    # Always log kill debug at info level to ensure visibility
+    log(@level_debug, @category_kill, "DEBUG: #{message}", metadata)
+  end
 
   @impl true
-  def kill_info(message, metadata \\ []),
-    do: log(@level_info, @category_kill, message, metadata)
+  def kill_info(message, metadata \\ [])
+
+  def kill_info(message, metadata) do
+    log(@level_info, @category_kill, message, metadata)
+  end
 
   @impl true
-  def kill_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_kill, message, metadata)
+  def kill_warn(message, metadata \\ [])
+
+  def kill_warn(message, metadata) do
+    log(@level_warn, @category_kill, message, metadata)
+  end
 
   @impl true
-  def kill_error(message, metadata \\ []),
-    do: log(@level_error, @category_kill, message, metadata)
+  def kill_error(message, metadata \\ [])
+
+  def kill_error(message, metadata) do
+    log(@level_error, @category_kill, message, metadata)
+  end
 
   # Persistence category helpers
   @impl true
