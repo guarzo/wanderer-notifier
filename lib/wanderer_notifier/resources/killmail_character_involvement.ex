@@ -79,7 +79,7 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
         killmail_id = Ash.Changeset.get_argument(changeset, :killmail_id)
 
         changeset
-        |> Ash.Changeset.change_relationship(:killmail, %{id: killmail_id})
+        |> Ash.Changeset.change_attribute(:killmail_id, killmail_id)
       end)
 
       # Set the timestamps

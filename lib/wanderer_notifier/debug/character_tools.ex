@@ -388,4 +388,228 @@ defmodule WandererNotifier.Debug.CharacterTools do
 
     issues
   end
+
+  @doc """
+  Analyze a specific killmail ID to check if any attackers are tracked.
+  Shows only the essential information about tracking determination.
+
+  ## Parameters
+    - killmail_id: The ID of the killmail to analyze
+  """
+  def check_killmail_tracking(killmail_id) do
+    alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+    alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
+    alias WandererNotifier.KillmailProcessing.Transformer
+    alias WandererNotifier.KillmailProcessing.Extractor
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+
+    IO.puts("\n=== ANALYZING KILLMAIL #{killmail_id} FOR TRACKED ATTACKERS ===\n")
+
+    # Fetch the killmail
+    case ZKillClient.get_single_killmail(killmail_id) do
+      {:ok, kill} ->
+        # Convert to standard format
+        killmail = Transformer.to_killmail_data(kill)
+
+        # Get attacker data
+        attackers = Extractor.get_attackers(killmail)
+
+        if attackers && length(attackers) > 0 do
+          IO.puts("Found #{length(attackers)} attackers\n")
+
+          # Get tracked characters list for comparison
+          tracked_chars = CacheRepo.get(CacheKeys.character_list()) || []
+
+          tracked_ids =
+            Enum.map(tracked_chars, fn char ->
+              id = Map.get(char, "character_id") || Map.get(char, :character_id)
+              if id, do: to_string(id), else: nil
+            end)
+            |> Enum.reject(&is_nil/1)
+
+          IO.puts("System has #{length(tracked_ids)} tracked character IDs\n")
+
+          # Check each attacker against tracked list
+          Enum.each(attackers, fn attacker ->
+            attacker_id = Map.get(attacker, "character_id")
+            attacker_name = Map.get(attacker, "character_name") || "Unknown"
+
+            if attacker_id do
+              str_id = to_string(attacker_id)
+
+              # Check both methods of tracking
+              in_list = Enum.member?(tracked_ids, str_id)
+              direct_key = CacheKeys.tracked_character(str_id)
+              direct_tracked = CacheRepo.get(direct_key) != nil
+
+              # Final determination from KillDeterminer
+              is_tracked = KillDeterminer.tracked_character?(attacker_id)
+
+              status = if is_tracked, do: "✅ TRACKED", else: "❌ NOT TRACKED"
+
+              IO.puts("Attacker: #{attacker_name} (ID: #{attacker_id}) - #{status}")
+              IO.puts("  In tracked list: #{in_list}")
+              IO.puts("  Direct tracking (#{direct_key}): #{direct_tracked}")
+
+              if !is_tracked && (in_list || direct_tracked) do
+                IO.puts("  ⚠️  INCONSISTENCY: Should be tracked but isn't!")
+              end
+
+              IO.puts("")
+            end
+          end)
+
+          # Final determination
+          has_tracked_char = KillDeterminer.has_tracked_character?(killmail)
+          IO.puts("Final determination: Kill involves tracked character? #{has_tracked_char}")
+
+          # Return a summary
+          %{
+            killmail_id: killmail_id,
+            attacker_count: length(attackers),
+            has_tracked_character: has_tracked_char
+          }
+        else
+          IO.puts("No attackers found in killmail")
+          %{killmail_id: killmail_id, attacker_count: 0, error: "No attackers found"}
+        end
+
+      {:error, reason} ->
+        IO.puts("Error fetching killmail: #{inspect(reason)}")
+        %{killmail_id: killmail_id, error: reason}
+    end
+  end
+
+  @doc """
+  Minimal tracking check for attackers in a killmail - just the essentials.
+
+  ## Parameters
+    - killmail_id: The ID of the killmail to analyze
+  """
+  def check_attackers(killmail_id) do
+    alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+    alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
+    alias WandererNotifier.KillmailProcessing.Transformer
+    alias WandererNotifier.KillmailProcessing.Extractor
+
+    IO.puts("Checking killmail #{killmail_id}")
+
+    # Fetch killmail
+    case ZKillClient.get_single_killmail(killmail_id) do
+      {:ok, kill} ->
+        # Convert and extract attackers
+        killmail = Transformer.to_killmail_data(kill)
+        attackers = Extractor.get_attackers(killmail) || []
+
+        # Show only essential tracking info for attackers with IDs
+        attackers_with_ids =
+          Enum.filter(attackers, fn a ->
+            Map.get(a, "character_id") != nil
+          end)
+
+        IO.puts("Found #{length(attackers_with_ids)} attackers:")
+
+        # Check each attacker's tracking status
+        tracked_count =
+          attackers_with_ids
+          |> Enum.reduce(0, fn attacker, count ->
+            id = Map.get(attacker, "character_id")
+            name = Map.get(attacker, "character_name") || "Unknown"
+
+            is_tracked = KillDeterminer.tracked_character?(id)
+            status = if is_tracked, do: "✅", else: "❌"
+
+            IO.puts("  #{status} #{name} (#{id})")
+
+            if is_tracked, do: count + 1, else: count
+          end)
+
+        IO.puts("\nSummary: #{tracked_count}/#{length(attackers_with_ids)} attackers tracked")
+
+        # Overall determination
+        has_tracked = KillDeterminer.has_tracked_character?(killmail)
+
+        IO.puts("Final result: Kill involves tracked character? #{has_tracked}")
+
+        %{
+          tracked_attackers: tracked_count,
+          total_attackers: length(attackers_with_ids),
+          has_tracked_character: has_tracked
+        }
+
+      {:error, reason} ->
+        IO.puts("Error fetching killmail: #{inspect(reason)}")
+        %{error: reason}
+    end
+  end
+
+  @doc """
+  Check detailed tracking status for a single character ID
+  """
+  def check_character_tracking(character_id) do
+    require WandererNotifier.Data.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+    alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
+
+    # Ensure character_id is a string for consistent handling
+    character_id_str = to_string(character_id)
+
+    IO.puts("\n==== TRACKING STATUS FOR CHARACTER #{character_id_str} ====")
+
+    # Direct tracking check
+    direct_key = CacheKeys.tracked_character(character_id_str)
+    direct_tracking = CacheRepo.get(direct_key) != nil
+
+    IO.puts("Direct tracking (#{direct_key}): #{direct_tracking}")
+
+    if direct_tracking do
+      value = CacheRepo.get(direct_key)
+      IO.puts("  Cache value: #{inspect(value)}")
+    end
+
+    # Character list check
+    character_list = CacheRepo.get(CacheKeys.character_list()) || []
+
+    IO.puts("\nCharacter list check (total characters: #{length(character_list)}):")
+
+    found_character =
+      Enum.find(character_list, fn char ->
+        id = Map.get(char, "character_id") || Map.get(char, :character_id)
+        id && to_string(id) == character_id_str
+      end)
+
+    if found_character do
+      IO.puts("  ✅ Character found in main character list")
+      IO.puts("  Character data: #{inspect(found_character)}")
+    else
+      IO.puts("  ❌ Character NOT found in main character list")
+    end
+
+    # KillDeterminer check
+    determiner_tracked = KillDeterminer.tracked_character?(character_id)
+    IO.puts("\nKillDeterminer.tracked_character?(#{character_id}): #{determiner_tracked}")
+
+    # Character info check
+    info_key = CacheKeys.character(character_id_str)
+    character_info = CacheRepo.get(info_key)
+
+    IO.puts("\nCharacter info check (#{info_key}):")
+
+    if character_info do
+      IO.puts("  ✅ Character info found in cache")
+      IO.puts("  Info: #{inspect(character_info)}")
+    else
+      IO.puts("  ❌ Character info NOT found in cache")
+    end
+
+    # Return a summary
+    %{
+      character_id: character_id,
+      direct_tracking: direct_tracking,
+      in_character_list: found_character != nil,
+      determiner_tracked: determiner_tracked,
+      has_character_info: character_info != nil
+    }
+  end
 end

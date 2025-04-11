@@ -629,8 +629,8 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
   defp check_notification(killmail, ctx) do
-    # Log the killmail structure for debugging
-    log_killmail_structure(killmail, ctx)
+    # Log focused tracking info for debugging
+    log_focused_tracking_info(killmail)
 
     # Only send notifications for realtime processing
     case KillDeterminer.should_notify?(killmail) do
@@ -645,35 +645,39 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     end
   end
 
-  # Log killmail structure details
-  defp log_killmail_structure(killmail, ctx) do
-    kill_id = get_kill_id(killmail)
+  # Focused logging helper that only logs when tracked attackers are found
+  defp log_focused_tracking_info(killmail) do
+    alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
 
-    struct_type =
-      cond do
-        is_struct(killmail) ->
-          module_name = killmail.__struct__
-          "#{module_name}"
+    # Get attackers data
+    attackers = Extractor.get_attackers(killmail) || []
 
-        true ->
-          "Not a struct"
+    # Filter attackers with character IDs
+    attackers_with_ids = Enum.filter(attackers, fn a -> Map.get(a, "character_id") != nil end)
+
+    if length(attackers_with_ids) > 0 do
+      # Get tracked attackers
+      tracked_attackers =
+        Enum.filter(attackers_with_ids, fn attacker ->
+          attacker_id = Map.get(attacker, "character_id")
+          KillDeterminer.tracked_character?(attacker_id)
+        end)
+
+      # Only log when we find tracked attackers
+      if length(tracked_attackers) > 0 do
+        # Format names
+        tracked_names =
+          Enum.map(tracked_attackers, fn a ->
+            "#{Map.get(a, "character_name") || "Unknown"} (#{Map.get(a, "character_id")})"
+          end)
+
+        kill_id = get_kill_id(killmail)
+
+        AppLogger.kill_info(
+          "⚠️ Found #{length(tracked_attackers)} tracked attackers in kill #{kill_id}: #{Enum.join(tracked_names, ", ")}"
+        )
       end
-
-    top_level_keys = if is_map(killmail), do: Map.keys(killmail), else: []
-
-    AppLogger.kill_debug("Checking notification status for killmail", %{
-      kill_id: kill_id,
-      struct_type: struct_type,
-      killmail_keys: top_level_keys,
-      has_esi_data: Map.has_key?(killmail, :esi_data),
-      esi_data_present:
-        if(Map.has_key?(killmail, :esi_data), do: !is_nil(killmail.esi_data), else: false),
-      victim_name: if(is_map(killmail), do: Map.get(killmail, :victim_name), else: nil),
-      system_name: if(is_map(killmail), do: Map.get(killmail, :solar_system_name), else: nil),
-      system_security:
-        if(is_map(killmail), do: Map.get(killmail, :solar_system_security), else: nil),
-      mode: ctx && ctx.mode && ctx.mode.mode
-    })
+    end
   end
 
   # Process the notification decision

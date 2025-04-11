@@ -130,6 +130,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       |> maybe_put(:victim_corporation_name, victim_corp_name)
       |> maybe_put(:victim_alliance_id, victim_alliance_id)
       |> maybe_put(:victim_alliance_name, victim_alliance_name)
+      |> maybe_put(:attackers, attackers)
       |> maybe_put(:attacker_count, attacker_count)
       |> maybe_put(:final_blow_attacker_id, final_blow_attacker_id)
       |> maybe_put(:final_blow_attacker_name, final_blow_attacker_name)

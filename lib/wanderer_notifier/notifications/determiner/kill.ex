@@ -29,6 +29,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
       return_no_notification("Invalid killmail format")
     else
+      Logger.debug("DETERMINER: Processing killmail: #{inspect(killmail)}")
       process_killmail(killmail)
     end
   end
@@ -199,99 +200,30 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - false otherwise
   """
   def has_tracked_character?(killmail) do
-    kill_data = extract_kill_data(killmail)
-    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
+    IO.puts("\n🔍 ENTERING has_tracked_character? for kill: #{killmail.killmail_id}")
 
     # Get all tracked characters for comparison
     all_character_ids = get_all_tracked_character_ids()
-
-    # Get victim info for better logs
-    victim = Map.get(kill_data, "victim") || %{}
-    victim_id = Map.get(victim, "character_id")
-    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
-
-    # Log details about our tracked characters
-    Logger.debug(
-      "DETERMINER: Kill ##{kill_id} - Checking if victim #{victim_name} (ID: #{victim_id || "unknown"}) is tracked"
-    )
-
-    Logger.debug(
-      "DETERMINER: Kill ##{kill_id} - We have #{length(all_character_ids)} tracked characters"
-    )
-
-    # DEBUG: Add detailed structure logs
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Victim data: #{inspect(victim)}")
-
-    Logger.debug(
-      "DETERMINER: Kill ##{kill_id} - Kill data structure type: #{killmail.__struct__}"
-    )
-
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Kill data keys: #{inspect(Map.keys(killmail))}")
-
-    # Check attackers too
-    attackers = Map.get(kill_data, "attackers") || []
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Found #{length(attackers)} attackers")
-
-    # Check a sample of attackers
-    if length(attackers) > 0 do
-      sample = Enum.take(attackers, min(3, length(attackers)))
-      Logger.debug("DETERMINER: Kill ##{kill_id} - Sample attackers: #{inspect(sample)}")
-    end
-
-    if length(all_character_ids) > 0 do
-      # Log a sample of tracked characters for debugging
-      sample = Enum.take(all_character_ids, min(5, length(all_character_ids)))
-      Logger.debug("DETERMINER: Kill ##{kill_id} - Sample of tracked IDs: #{inspect(sample)}")
-    end
+    IO.puts("📋 Tracked character count: #{length(all_character_ids)}")
 
     # Check if victim is tracked
-    victim_tracked = check_victim_tracked(kill_data, all_character_ids)
+    victim_tracked = check_victim_tracked(killmail, all_character_ids)
+    IO.puts("👤 Victim tracked? #{victim_tracked}")
 
     if victim_tracked do
-      Logger.debug("DETERMINER: Kill ##{kill_id} - Victim #{victim_name} IS tracked")
       true
     else
-      Logger.debug(
-        "DETERMINER: Kill ##{kill_id} - Victim #{victim_name} is NOT tracked, checking attackers"
-      )
-
-      attacker_tracked = check_attackers_tracked(kill_data, all_character_ids)
-
-      if attacker_tracked do
-        Logger.debug("DETERMINER: Kill ##{kill_id} - An attacker IS tracked")
-      else
-        Logger.debug("DETERMINER: Kill ##{kill_id} - No tracked characters found")
-      end
-
-      attacker_tracked
+      # Check if any attacker is tracked
+      IO.puts("🔎 Checking attackers...")
+      check_attackers_tracked(killmail, all_character_ids)
     end
   end
 
-  # Extract kill data to get useful information
-  defp extract_kill_data(killmail) do
-    # DEBUG: Log what we're extracting
-    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
-    victim = Extractor.get_victim(killmail)
-    attackers = Extractor.get_attackers(killmail)
-    system_id = Extractor.get_system_id(killmail)
-
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Extracting kill data")
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Victim extraction: #{inspect(victim)}")
-    Logger.debug("DETERMINER: Kill ##{kill_id} - Got #{length(attackers || [])} attackers")
-    Logger.debug("DETERMINER: Kill ##{kill_id} - System ID: #{system_id || "unknown"}")
-
-    %{
-      "solar_system_id" => system_id,
-      "solar_system_name" => Extractor.get_system_name(killmail),
-      "victim" => victim,
-      "attackers" => attackers
-    }
-  end
-
-  # Get all tracked character IDs
+  # Get all tracked character IDs - simplified
   defp get_all_tracked_character_ids do
     all_characters = CacheRepo.get(CacheKeys.character_list()) || []
 
+    # Map to character IDs as strings
     Enum.map(all_characters, fn char ->
       character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
       if character_id, do: to_string(character_id), else: nil
@@ -299,26 +231,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Extract victim ID from kill data
-  defp extract_victim_id(kill_data) do
-    victim = Map.get(kill_data, "victim") || Map.get(kill_data, :victim) || %{}
-    victim_id = Map.get(victim, "character_id") || Map.get(victim, :character_id)
-    if victim_id, do: to_string(victim_id), else: nil
-  end
-
-  # Check if victim is tracked through direct cache lookup
-  defp check_direct_victim_tracking(victim_id_str) do
-    direct_cache_key = CacheKeys.tracked_character(victim_id_str)
-    CacheRepo.get(direct_cache_key) != nil
-  end
-
   # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(kill_data, all_character_ids) do
-    victim_id_str = extract_victim_id(kill_data)
-
-    # Get victim info for better logging
-    victim = Map.get(kill_data, "victim") || %{}
+  defp check_victim_tracked(killmail, all_character_ids) do
+    # Get victim directly from the killmail
+    victim = Extractor.get_victim(killmail) || %{}
+    victim_id = Map.get(victim, "character_id")
     victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+
+    # Convert to string for consistent comparison
+    victim_id_str = if victim_id, do: to_string(victim_id), else: nil
 
     victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
 
@@ -346,69 +267,58 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  # Extract attackers from kill data
-  defp extract_attackers(kill_data) do
-    Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
+  # Check direct tracking through cache lookup
+  defp check_direct_victim_tracking(victim_id_str) do
+    direct_cache_key = CacheKeys.tracked_character(victim_id_str)
+    CacheRepo.get(direct_cache_key) != nil
   end
 
   # Check if any attacker is tracked
-  defp check_attackers_tracked(kill_data, all_character_ids) do
-    attackers = extract_attackers(kill_data)
+  defp check_attackers_tracked(killmail, all_character_ids) do
+    # Get attackers directly from the killmail using Extractor
+    attackers = Extractor.get_attackers(killmail) || []
+    IO.puts("🔎 Checking attackers... ")
+    IO.puts("🔍 CHECKING #{length(attackers)} ATTACKERS")
 
-    if attacker_in_tracked_list?(attackers, all_character_ids) do
-      true
+    if length(attackers) > 0 do
+      # Only get IDs, don't log whole attacker objects
+      attacker_ids =
+        Enum.map(attackers, fn attacker ->
+          Map.get(attacker, "character_id")
+        end)
+
+      # Just log count, not full list
+      IO.puts("🔢 Found #{length(attacker_ids)} attacker IDs")
+      attacker_in_tracked_list?(attacker_ids, all_character_ids)
     else
-      attacker_directly_tracked?(attackers)
+      IO.puts("❌ No attackers found in kill_data")
+      false
     end
   end
 
-  # Check if any attacker is in our tracked characters list
-  defp attacker_in_tracked_list?(attackers, all_character_ids) do
-    # DEBUG: Log attackers being checked
-    attacker_ids =
-      attackers
-      |> Enum.map(&extract_attacker_id/1)
-      |> Enum.reject(&is_nil/1)
+  # Simplified attacker list check with minimal logging
+  defp attacker_in_tracked_list?(attacker_ids, tracked_ids) do
+    IO.puts("🔍 COMPARING ATTACKER IDS TO TRACKED IDS")
+    # Don't log full lists
+    IO.puts("  🔢 Attacker count: #{length(attacker_ids)}")
+    IO.puts("  📋 Tracked IDs count: #{length(tracked_ids)}")
 
-    Logger.debug(
-      "DETERMINER: Checking #{length(attacker_ids)} attacker IDs against #{length(all_character_ids)} tracked IDs"
-    )
+    tracked_attacker =
+      attacker_ids
+      |> Enum.find(fn attacker_id ->
+        is_tracked = tracked_character?(attacker_id)
+        # Only log the result, not detailed comparison
+        if is_tracked do
+          IO.puts("  ✓ Found tracked attacker: #{attacker_id}")
+        end
 
-    if length(attacker_ids) > 0 do
-      Logger.debug("DETERMINER: Attacker IDs: #{inspect(attacker_ids)}")
-    end
+        is_tracked
+      end)
 
-    # Check if any attacker is in the tracked list
-    Enum.any?(attacker_ids, fn attacker_id ->
-      is_tracked = Enum.member?(all_character_ids, attacker_id)
-
-      if is_tracked do
-        Logger.debug("DETERMINER: Attacker with ID #{attacker_id} IS in tracked list")
-      end
-
-      is_tracked
-    end)
+    found = tracked_attacker != nil
+    IO.puts("✅ Found tracked attacker? #{found}")
+    found
   end
-
-  # Extract attacker ID from attacker data
-  defp extract_attacker_id(attacker) when is_map(attacker) do
-    attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-    if attacker_id, do: to_string(attacker_id), else: nil
-  end
-
-  # Handle non-map attackers safely
-  defp extract_attacker_id(_), do: nil
-
-  # Check if any attacker is directly tracked - handle possible nil values safely
-  defp attacker_directly_tracked?(attackers) when is_list(attackers) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(&check_direct_victim_tracking/1)
-  end
-
-  # Handle non-list attackers safely
-  defp attacker_directly_tracked?(_), do: false
 
   @doc """
   Determines if a kill is in a tracked system.
@@ -510,7 +420,27 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
     cache_key = CacheKeys.tracked_character(character_id_str)
-    CacheRepo.get(cache_key) != nil
+    result = CacheRepo.get(cache_key) != nil
+
+    # Log warning for numeric IDs that should be tracked but aren't
+    if !result && character_id_str =~ ~r/^\d+$/ do
+      character_list = CacheRepo.get(CacheKeys.character_list()) || []
+
+      in_list =
+        Enum.any?(character_list, fn char ->
+          id = Map.get(char, "character_id") || Map.get(char, :character_id)
+          id && to_string(id) == character_id_str
+        end)
+
+      if in_list do
+        # We found a potential issue - log this
+        Logger.warn(
+          "🔴 TRACKING ISSUE: Character #{character_id_str} is in character_list but has no direct tracking key"
+        )
+      end
+    end
+
+    result
   end
 
   def tracked_character?(_), do: false

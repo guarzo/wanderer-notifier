@@ -182,59 +182,22 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
           raw_kill = List.first(kills)
           kill_id = Map.get(raw_kill, "killmail_id")
 
-          AppLogger.kill_debug("Processing kill", %{
+          AppLogger.kill_debug("Processing kill using standard pipeline", %{
             kill_id: kill_id,
             character_id: character_id_int,
             character_name: character_name
           })
 
-          # First transform the raw data to a proper KillmailData struct
-          # This is critical to ensure consistent data format
-          killmail_data =
-            WandererNotifier.KillmailProcessing.Transformer.to_killmail_data(raw_kill)
+          # Use the standard debug_kill_notification path for consistent processing
+          result = debug_kill_notification(kill_id)
 
-          if is_nil(killmail_data) do
-            AppLogger.kill_error("Failed to transform kill data to KillmailData", %{
-              kill_id: kill_id,
-              raw_data: inspect(raw_kill, limit: 200)
-            })
+          AppLogger.kill_debug("Kill processing completed via standard pipeline", %{
+            kill_id: kill_id,
+            success: match?(%{success: true}, result)
+          })
 
-            {:error, :invalid_kill_data}
-          else
-            # Process the kill through the pipeline with properly structured data
-            process_result = Pipeline.process_killmail(killmail_data, ctx)
-
-            AppLogger.kill_debug("Kill processing result", %{
-              kill_id: kill_id,
-              success: match?({:ok, _}, process_result),
-              summary: "Process completed"
-            })
-
-            # Return a simplified version of the result
-            case process_result do
-              {:ok, data} ->
-                # Extract key information
-                system_name = extract_system_name(data)
-                victim_name = extract_victim_name(data)
-                ship_name = extract_ship_name(data)
-                persisted = Map.get(data, :persisted, false)
-                notification_status = extract_notification_status(data)
-
-                # Return simplified result
-                {:ok,
-                 %{
-                   kill_id: kill_id,
-                   system: system_name,
-                   victim: victim_name,
-                   ship: ship_name,
-                   persisted: persisted,
-                   notification: notification_status
-                 }}
-
-              error ->
-                error
-            end
-          end
+          # Return the simplified result from debug_kill_notification
+          {:ok, result}
 
         {:ok, []} ->
           AppLogger.kill_warn("No kills found for character", %{
@@ -335,7 +298,17 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
       end
 
     if character_info do
-      process_specific_kill_for_character(character_info, kill_id)
+      # Use the debug_kill_notification flow to ensure it's the same pipeline
+      character_id = character_info.character_id
+      character_name = character_info.character_name
+
+      AppLogger.kill_debug("Processing specific kill with standard pipeline", %{
+        kill_id: kill_id,
+        character_id: character_id,
+        character_name: character_name
+      })
+
+      debug_kill_notification(kill_id)
     else
       {:error, :invalid_character_index}
     end
@@ -1157,96 +1130,254 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
   Debug function that checks why a kill is marked as "not tracked" by running
   through the same determination logic as the pipeline.
   """
-  def debug_kill_notification(killmail_id) do
-    alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-    alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-    alias WandererNotifier.KillmailProcessing.Transformer
+  def debug_kill_notification(kill_id) do
+    # Get the killmail from ESI for the ID
+    kill_data_response = do_get_kill(kill_id)
 
-    # Fetch the kill to debug
-    case ZKillClient.get_single_killmail(killmail_id) do
-      {:ok, kill} ->
-        IO.puts("Successfully fetched killmail #{killmail_id}")
+    # If successful
+    case kill_data_response do
+      {:ok, raw_killmail} ->
+        IO.puts("🧪 Debugging kill #{kill_id}")
 
-        # First convert to standard format for consistent access
-        standardized_kill = Transformer.to_killmail_data(kill)
-        victim = standardized_kill.victim || %{}
-        victim_id = Map.get(victim, "character_id")
-        victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+        # Transform to KillmailData for consistent processing
+        alias WandererNotifier.KillmailProcessing.Transformer
+        alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+        alias WandererNotifier.KillmailProcessing.Extractor
+        alias WandererNotifier.Resources.Killmail
+        alias WandererNotifier.Resources.KillmailCharacterInvolvement
+        alias WandererNotifier.Resources.Api
 
-        IO.puts("\nKill information:")
-        IO.puts("  Victim: #{victim_name} (ID: #{victim_id || "unknown"})")
+        # First log the raw structure
+        IO.puts("\n📦 RAW KILLMAIL STRUCTURE:")
+        # Check for attackers
+        attackers = Map.get(raw_killmail, "attackers") || Map.get(raw_killmail, :attackers) || []
+        IO.puts("  Found #{length(attackers)} attackers in raw killmail")
 
-        IO.puts(
-          "  System: #{standardized_kill.solar_system_name || "unknown"} (ID: #{standardized_kill.solar_system_id || "unknown"})"
-        )
+        # Check for victim
+        has_victim = Map.has_key?(raw_killmail, "victim") || Map.has_key?(raw_killmail, :victim)
+        IO.puts("  Has victim: #{has_victim}")
 
-        # Debug tracking for the victim
-        if victim_id do
-          IO.puts("\nChecking if victim is tracked:")
-          victim_tracked = debug_tracked_characters(victim_id)
-          IO.puts("  Victim tracked: #{victim_tracked.is_tracked}")
+        # Now transform to standard format
+        killmail_data = Transformer.to_killmail_data(raw_killmail)
+
+        if is_nil(killmail_data) do
+          IO.puts("❌ Failed to transform killmail to KillmailData struct!")
+          return_diagnosis_error(kill_id, "Transform failed")
         else
-          IO.puts("\nNo victim ID found to check tracking")
+          # Log structure after transformation
+          IO.puts("\n📦 TRANSFORMED KILLMAIL STRUCTURE:")
+          transformed_attackers = Extractor.get_attackers(killmail_data)
+
+          IO.puts(
+            "  Found #{length(transformed_attackers)} attackers using Extractor.get_attackers"
+          )
+
+          # Create context for processing
+          ctx =
+            Context.new_historical(
+              # Debug character
+              1_406_208_348,
+              "Debug Character",
+              :debug,
+              "debug-pipeline-#{:os.system_time(:millisecond)}",
+              # Don't actually send notifications
+              skip_notification: true,
+              # Don't force notifications
+              force_notification: false
+            )
+
+          # Process through standard pipeline
+          IO.puts("\n🔄 PROCESSING THROUGH PIPELINE:")
+          start_time = :os.system_time(:millisecond)
+          result = Pipeline.process_killmail(killmail_data, ctx)
+          end_time = :os.system_time(:millisecond)
+
+          # After pipeline processing, examine the killmail structure again
+          # to see if attackers were added by enrichment
+          IO.puts("\n📦 EXAMINING RESULT STRUCTURE AFTER PIPELINE:")
+
+          # Check result structure
+          case result do
+            {:ok, processed_data} ->
+              IO.puts("✅ Pipeline processing successful (took #{end_time - start_time}ms)")
+
+              # Check if the data is a struct and what type
+              data_type =
+                if is_struct(processed_data),
+                  do: "#{processed_data.__struct__}",
+                  else: if(is_map(processed_data), do: "map", else: "other")
+
+              IO.puts("  Result type: #{data_type}")
+
+              # Try to get attackers through different methods to debug
+              attackers1 =
+                if is_map(processed_data), do: Map.get(processed_data, :attackers), else: nil
+
+              esi_data =
+                if is_map(processed_data), do: Map.get(processed_data, :esi_data), else: %{}
+
+              attackers2 = if is_map(esi_data), do: Map.get(esi_data, "attackers"), else: nil
+              attackers3 = Extractor.get_attackers(processed_data)
+
+              IO.puts("  direct [:attackers] access: #{length(attackers1 || [])}")
+              IO.puts("  [:esi_data][\"attackers\"] access: #{length(attackers2 || [])}")
+              IO.puts("  Extractor.get_attackers result: #{length(attackers3 || [])}")
+
+              # Check the top-level keys
+              top_keys = if is_map(processed_data), do: Map.keys(processed_data), else: []
+              IO.puts("  Top-level keys: #{inspect(Enum.take(top_keys, 10))}...")
+
+              # Check for attacker_count which should be set during enrichment
+              attacker_count =
+                if is_map(processed_data), do: Map.get(processed_data, :attacker_count), else: nil
+
+              IO.puts("  :attacker_count field: #{inspect(attacker_count)}")
+
+              # Check for :persisted flag
+              persisted = Map.get(processed_data, :persisted, false)
+              IO.puts("  :persisted field: #{inspect(persisted)}")
+
+              # Check for metadata
+              metadata = Map.get(processed_data, :metadata, %{})
+              IO.puts("  :metadata field: #{inspect(metadata, limit: 5)}")
+
+              # Get the reason for non-persistence
+              reason = extract_not_persisted_reason(processed_data)
+              IO.puts("  Not persisted reason: #{inspect(reason)}")
+
+              # Check to see if required fields for persistence were present or missing
+              IO.puts("\n🔍 CHECKING FOR REQUIRED KILLMAIL FIELDS:")
+
+              required_fields = [
+                :killmail_id,
+                :processed_at,
+                :solar_system_security
+              ]
+
+              Enum.each(required_fields, fn field ->
+                value = Map.get(processed_data, field)
+                IO.puts("  #{field}: #{inspect(value)}")
+              end)
+
+              # Now explicitly query the database for the killmail
+              IO.puts("\n🔍 CHECKING DATABASE FOR PERSISTED RECORDS:")
+
+              # Check if the killmail was persisted to the database
+              require Ash.Query
+              alias WandererNotifier.Resources.Killmail
+              alias WandererNotifier.Resources.KillmailCharacterInvolvement
+              alias WandererNotifier.Resources.Api
+
+              # First check if we can even access the Killmail Resource
+              IO.puts("📋 Attempting to access Killmail Resource:")
+
+              killmail_module_exists = Code.ensure_loaded?(Killmail)
+
+              if killmail_module_exists do
+                IO.puts("  ✅ Killmail module exists and is loaded")
+              else
+                IO.puts("  ❌ Killmail module doesn't exist or can't be loaded")
+              end
+
+              killmail_record_query =
+                try do
+                  Killmail
+                  |> Ash.Query.filter(killmail_id == ^kill_id)
+                  |> Ash.Query.limit(1)
+                  |> Api.read()
+                rescue
+                  e ->
+                    IO.puts("  ❌ Error creating database query: #{Exception.message(e)}")
+                    {:error, :query_error}
+                end
+
+              case killmail_record_query do
+                {:ok, [killmail]} ->
+                  IO.puts("  ✅ Killmail record found in database:")
+                  IO.puts("  ID: #{killmail.id}")
+                  IO.puts("  Killmail ID: #{killmail.killmail_id}")
+                  IO.puts("  Victim: #{killmail.victim_name || "unknown"}")
+                  IO.puts("  System: #{killmail.solar_system_name || "unknown"}")
+                  IO.puts("  Attacker count: #{killmail.attacker_count || 0}")
+
+                  # Now look for character involvements
+                  involvement_records =
+                    try do
+                      KillmailCharacterInvolvement
+                      |> Ash.Query.filter(killmail_id == ^killmail.id)
+                      |> Api.read()
+                    rescue
+                      e ->
+                        IO.puts(
+                          "  ❌ Error querying character involvements: #{Exception.message(e)}"
+                        )
+
+                        {:error, :query_error}
+                    end
+
+                  case involvement_records do
+                    {:ok, involvements} when is_list(involvements) and length(involvements) > 0 ->
+                      IO.puts(
+                        "\n  ✅ Found #{length(involvements)} character involvement records:"
+                      )
+
+                      Enum.each(involvements, fn involvement ->
+                        IO.puts(
+                          "    Character ID: #{involvement.character_id} - Role: #{involvement.character_role}"
+                        )
+
+                        IO.puts("      Ship: #{involvement.ship_type_name || "unknown"}")
+                        IO.puts("      Final blow: #{involvement.is_final_blow}")
+                      end)
+
+                    {:ok, []} ->
+                      IO.puts("\n  ❓ No character involvement records found for this killmail")
+
+                    {:error, reason} ->
+                      IO.puts("\n  ❌ Error querying character involvements: #{inspect(reason)}")
+
+                    error ->
+                      IO.puts(
+                        "\n  ❌ Unknown error querying character involvements: #{inspect(error)}"
+                      )
+                  end
+
+                {:ok, []} ->
+                  IO.puts("  ❌ No killmail record found in database - persistence failed")
+                  IO.puts("  This confirms the killmail was not persisted")
+
+                {:error, reason} ->
+                  IO.puts("  ❌ Error querying killmail record: #{inspect(reason)}")
+
+                error ->
+                  IO.puts("  ❌ Unknown error in database query: #{inspect(error)}")
+              end
+
+              # Return simplified result
+              %{
+                killmail_id: kill_id,
+                success: true,
+                persisted: persisted,
+                duration_ms: end_time - start_time,
+                attacker_count: attacker_count,
+                not_persisted_reason: reason
+              }
+
+            error ->
+              IO.puts("❌ Pipeline processing failed (took #{end_time - start_time}ms)")
+              IO.puts("  Error: #{inspect(error)}")
+
+              %{
+                killmail_id: kill_id,
+                success: false,
+                error: inspect(error)
+              }
+          end
         end
-
-        # Get all attackers with character IDs
-        attackers = standardized_kill.attackers || []
-
-        attackers_with_ids =
-          Enum.filter(attackers, fn attacker ->
-            attacker_id = Map.get(attacker, "character_id")
-            attacker_id != nil
-          end)
-
-        IO.puts("\nFound #{length(attackers_with_ids)} attackers with character IDs")
-
-        # Check tracked attackers
-        tracked_attackers =
-          Enum.filter(attackers_with_ids, fn attacker ->
-            attacker_id = Map.get(attacker, "character_id")
-            is_tracked = KillDeterminer.tracked_character?(attacker_id)
-            attacker_name = Map.get(attacker, "character_name") || "Unknown"
-
-            if is_tracked do
-              IO.puts("  Tracked attacker: #{attacker_name} (ID: #{attacker_id})")
-            end
-
-            is_tracked
-          end)
-
-        # Check if the system is tracked
-        system_id = standardized_kill.solar_system_id
-        system_tracked = KillDeterminer.tracked_system?(system_id)
-
-        IO.puts("\nSystem tracking status:")
-        IO.puts("  System ID: #{system_id || "unknown"}")
-        IO.puts("  System tracked: #{system_tracked}")
-
-        # Now run the full notification determination
-        notification_result = KillDeterminer.should_notify?(standardized_kill)
-
-        IO.puts("\nNotification determination result:")
-
-        case notification_result do
-          {true, reason} -> IO.puts("  Will notify: true (#{reason})")
-          {false, reason} -> IO.puts("  Will notify: false (#{reason})")
-          other -> IO.puts("  Unexpected result: #{inspect(other)}")
-        end
-
-        # Return a summary of findings
-        %{
-          victim_id: victim_id,
-          victim_tracked: victim_id && KillDeterminer.tracked_character?(victim_id),
-          attackers_count: length(attackers_with_ids),
-          tracked_attackers_count: length(tracked_attackers),
-          system_id: system_id,
-          system_tracked: system_tracked,
-          notification_result: notification_result
-        }
 
       {:error, reason} ->
-        IO.puts("Failed to fetch killmail #{killmail_id}: #{inspect(reason)}")
-        {:error, reason}
+        IO.puts("Failed to fetch killmail #{kill_id}: #{inspect(reason)}")
+        return_diagnosis_error(kill_id, reason)
     end
   end
 
@@ -1347,7 +1478,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     IO.puts("  Running a test using direct_process to check if tracking is working...")
 
     # Try to process a kill with this function
-    ctx =
+    _ctx =
       WandererNotifier.KillmailProcessing.Context.new_historical(
         character_id,
         "Diagnostic Character",
@@ -1381,7 +1512,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-    alias WandererNotifier.KillmailProcessing.{Extractor, Pipeline, Transformer}
+    alias WandererNotifier.KillmailProcessing.{Pipeline, Transformer}
     alias WandererNotifier.Logger.Logger, as: AppLogger
 
     IO.puts("\n===== KILLMAIL TRACKING DIAGNOSIS =====")
@@ -1483,6 +1614,25 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     }
   end
 
+  # Helper to fetch a killmail by ID
+  defp do_get_kill(kill_id) do
+    alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+
+    # Convert to integer if it's a string
+    kill_id_int =
+      if is_binary(kill_id) do
+        case Integer.parse(kill_id) do
+          {int_id, _} -> int_id
+          _ -> kill_id
+        end
+      else
+        kill_id
+      end
+
+    # Fetch the kill from ZKill API
+    ZKillClient.get_single_killmail(kill_id_int)
+  end
+
   # Set up additional debug logging
   defp setup_debug_logging do
     # Set any required process dictionary flags for detailed logging
@@ -1503,7 +1653,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     AppLogger.kill_debug("Starting debug direct processing of killmail #{killmail_id}")
 
     # Extract KillDeterminer function reference for monkey patching
-    original_has_tracked_character = &KillDeterminer.has_tracked_character?/1
+    _original_has_tracked_character = &KillDeterminer.has_tracked_character?/1
 
     # Create debug context with debug logging flags
     ctx =
@@ -1589,54 +1739,5 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
             Map.has_key?(sample_attacker, :character_id)
       })
     end
-  end
-
-  # Helper to log tracking check
-  defp log_debug_tracking_check(killmail) do
-    alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.KillmailProcessing.Extractor
-
-    kill_id = Extractor.get_killmail_id(killmail)
-
-    # Check for attackers
-    attackers = Extractor.get_attackers(killmail) || []
-    attackers_count = length(attackers)
-
-    # Check for victim
-    victim = Extractor.get_victim(killmail)
-    victim_id = victim && (Map.get(victim, "character_id") || Map.get(victim, :character_id))
-
-    # Log detailed info
-    AppLogger.kill_debug("TRACKING CHECK for kill #{kill_id}", %{
-      victim_id: victim_id,
-      attackers_count: attackers_count,
-      system_id: Extractor.get_system_id(killmail),
-      killmail_data_type: killmail.__struct__,
-      top_level_keys: Map.keys(killmail)
-    })
-
-    if attackers_count > 0 do
-      # Log first few attackers
-      sample_attackers = Enum.take(attackers, min(3, attackers_count))
-
-      Enum.each(sample_attackers, fn attacker ->
-        attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-
-        attacker_name =
-          Map.get(attacker, "character_name") || Map.get(attacker, :character_name) || "Unknown"
-
-        AppLogger.kill_debug("Attacker check", %{
-          id: attacker_id,
-          name: attacker_name
-        })
-      end)
-    else
-      AppLogger.kill_debug("No attackers found in killmail")
-    end
-  end
-
-  # Diagnose a standardized killmail - keeping here but not used directly
-  defp diagnose_standardized_killmail(killmail_id, killmail) do
-    # ... existing code ...
   end
 end
