@@ -29,7 +29,6 @@ defmodule WandererNotifier.Resources.Killmail do
     # System information
     attribute(:solar_system_id, :integer)
     attribute(:solar_system_name, :string)
-    attribute(:solar_system_security, :float)
     attribute(:region_id, :integer)
     attribute(:region_name, :string)
 
@@ -40,8 +39,6 @@ defmodule WandererNotifier.Resources.Killmail do
     attribute(:victim_ship_name, :string)
     attribute(:victim_corporation_id, :integer)
     attribute(:victim_corporation_name, :string)
-    attribute(:victim_alliance_id, :integer)
-    attribute(:victim_alliance_name, :string)
 
     # Basic attacker information
     attribute(:attacker_count, :integer)
@@ -58,7 +55,6 @@ defmodule WandererNotifier.Resources.Killmail do
     attribute(:full_attacker_data, :term)
 
     # Metadata
-    attribute(:processed_at, :utc_datetime_usec, default: &DateTime.utc_now/0)
     timestamps()
   end
 
@@ -104,7 +100,6 @@ defmodule WandererNotifier.Resources.Killmail do
         :is_solo,
         :solar_system_id,
         :solar_system_name,
-        :solar_system_security,
         :region_id,
         :region_name,
         :victim_id,
@@ -113,8 +108,6 @@ defmodule WandererNotifier.Resources.Killmail do
         :victim_ship_name,
         :victim_corporation_id,
         :victim_corporation_name,
-        :victim_alliance_id,
-        :victim_alliance_name,
         :attacker_count,
         :final_blow_attacker_id,
         :final_blow_attacker_name,
@@ -130,7 +123,6 @@ defmodule WandererNotifier.Resources.Killmail do
         now = DateTime.utc_now()
 
         changeset
-        |> Ash.Changeset.change_attribute(:processed_at, now)
         |> Ash.Changeset.force_change_attribute(:inserted_at, now |> DateTime.truncate(:second))
         |> Ash.Changeset.force_change_attribute(:updated_at, now |> DateTime.truncate(:second))
       end)

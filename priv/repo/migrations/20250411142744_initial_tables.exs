@@ -37,7 +37,7 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
 
     create table(:killmails, primary_key: false) do
       add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
-      add(:killmail_id, :bigint)
+      add(:killmail_id, :bigint, null: false)
       add(:kill_time, :utc_datetime_usec)
       add(:total_value, :decimal)
       add(:points, :bigint)
@@ -45,7 +45,6 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
       add(:is_solo, :boolean, default: false)
       add(:solar_system_id, :bigint)
       add(:solar_system_name, :text)
-      add(:solar_system_security, :float)
       add(:region_id, :bigint)
       add(:region_name, :text)
       add(:victim_id, :bigint)
@@ -54,8 +53,6 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
       add(:victim_ship_name, :text)
       add(:victim_corporation_id, :bigint)
       add(:victim_corporation_name, :text)
-      add(:victim_alliance_id, :bigint)
-      add(:victim_alliance_name, :text)
       add(:attacker_count, :bigint)
       add(:final_blow_attacker_id, :bigint)
       add(:final_blow_attacker_name, :text)
@@ -64,7 +61,6 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
       add(:zkb_hash, :text)
       add(:full_victim_data, :map)
       add(:full_attacker_data, :binary)
-      add(:processed_at, :utc_datetime_usec, default: fragment("(now() AT TIME ZONE 'utc')"))
 
       add(:inserted_at, :utc_datetime_usec,
         null: false,
@@ -75,9 +71,6 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
         null: false,
         default: fragment("(now() AT TIME ZONE 'utc')")
       )
-
-      add(:zkb_data, :map)
-      add(:esi_data, :map)
     end
 
     create(unique_index(:killmails, [:killmail_id], name: "killmails_unique_killmail_index"))
@@ -122,6 +115,17 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
       add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
       add(:character_role, :text)
       add(:character_id, :bigint, null: false)
+
+      add(
+        :killmail_id,
+        references(:killmails,
+          column: :killmail_id,
+          name: "killmail_character_involvements_killmail_id_fkey",
+          type: :bigint
+        ),
+        null: false
+      )
+
       add(:ship_type_id, :bigint)
       add(:ship_type_name, :text)
       add(:damage_done, :bigint)
@@ -137,15 +141,6 @@ defmodule WandererNotifier.Data.Repo.Migrations.InitialTables do
       add(:updated_at, :utc_datetime_usec,
         null: false,
         default: fragment("(now() AT TIME ZONE 'utc')")
-      )
-
-      add(
-        :killmail_id,
-        references(:killmails,
-          column: :id,
-          name: "killmail_character_involvements_killmail_id_fkey",
-          type: :uuid
-        )
       )
     end
 

@@ -116,6 +116,83 @@ defmodule WandererNotifier.KillmailProcessing.Extractor do
   def get_victim(_), do: %{}
 
   @doc """
+  Gets the victim character ID from the killmail.
+
+  ## Examples
+
+      iex> get_victim_character_id(%KillmailData{victim: %{"character_id" => 12345}})
+      12345
+
+      iex> get_victim_character_id(%{esi_data: %{"victim" => %{"character_id" => 12345}}})
+      12345
+  """
+  @spec get_victim_character_id(killmail_source()) :: integer() | nil
+  def get_victim_character_id(killmail) do
+    victim = get_victim(killmail)
+    victim_id = Map.get(victim, "character_id")
+
+    if is_binary(victim_id) do
+      case Integer.parse(victim_id) do
+        {id, _} -> id
+        _ -> nil
+      end
+    else
+      victim_id
+    end
+  end
+
+  @doc """
+  Gets the victim character name from the killmail.
+
+  ## Examples
+
+      iex> get_victim_character_name(%KillmailData{victim: %{"character_name" => "John Doe"}})
+      "John Doe"
+
+      iex> get_victim_character_name(%{esi_data: %{"victim" => %{"character_name" => "John Doe"}}})
+      "John Doe"
+  """
+  @spec get_victim_character_name(killmail_source()) :: String.t() | nil
+  def get_victim_character_name(killmail) do
+    victim = get_victim(killmail)
+    Map.get(victim, "character_name")
+  end
+
+  @doc """
+  Gets the victim ship type ID from the killmail.
+
+  ## Examples
+
+      iex> get_victim_ship_type_id(%KillmailData{victim: %{"ship_type_id" => 12345}})
+      12345
+
+      iex> get_victim_ship_type_id(%{esi_data: %{"victim" => %{"ship_type_id" => 12345}}})
+      12345
+  """
+  @spec get_victim_ship_type_id(killmail_source()) :: integer() | nil
+  def get_victim_ship_type_id(killmail) do
+    victim = get_victim(killmail)
+    Map.get(victim, "ship_type_id")
+  end
+
+  @doc """
+  Gets the victim ship type name from the killmail.
+
+  ## Examples
+
+      iex> get_victim_ship_type_name(%KillmailData{victim: %{"ship_type_name" => "Retriever"}})
+      "Retriever"
+
+      iex> get_victim_ship_type_name(%{esi_data: %{"victim" => %{"ship_type_name" => "Retriever"}}})
+      "Retriever"
+  """
+  @spec get_victim_ship_type_name(killmail_source()) :: String.t() | nil
+  def get_victim_ship_type_name(killmail) do
+    victim = get_victim(killmail)
+    Map.get(victim, "ship_type_name")
+  end
+
+  @doc """
   Gets the attackers data from various killmail data formats.
 
   ## Examples

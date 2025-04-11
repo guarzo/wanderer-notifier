@@ -13,7 +13,6 @@ defmodule WandererNotifier.Resources.Api do
     resource(WandererNotifier.Resources.KillmailStatistic)
     resource(WandererNotifier.Resources.KillTrackingHistory)
     resource(WandererNotifier.Resources.TrackedCharacter)
-    resource(WandererNotifier.Resources.KillmailPersistence)
     resource(WandererNotifier.Resources.KillmailAggregation)
   end
 

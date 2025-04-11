@@ -11,7 +11,7 @@
       "type": "uuid"
     },
     {
-      "allow_nil?": true,
+      "allow_nil?": false,
       "default": "nil",
       "generated?": false,
       "primary_key?": false,
@@ -89,16 +89,6 @@
       "size": null,
       "source": "solar_system_name",
       "type": "text"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "solar_system_security",
-      "type": "float"
     },
     {
       "allow_nil?": true,
@@ -187,26 +177,6 @@
       "primary_key?": false,
       "references": null,
       "size": null,
-      "source": "victim_alliance_id",
-      "type": "bigint"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "victim_alliance_name",
-      "type": "text"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
       "source": "attacker_count",
       "type": "bigint"
     },
@@ -281,16 +251,6 @@
       "type": "binary"
     },
     {
-      "allow_nil?": true,
-      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "processed_at",
-      "type": "utc_datetime_usec"
-    },
-    {
       "allow_nil?": false,
       "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
       "generated?": false,
@@ -309,26 +269,6 @@
       "size": null,
       "source": "updated_at",
       "type": "utc_datetime_usec"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "zkb_data",
-      "type": "map"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": null,
-      "size": null,
-      "source": "esi_data",
-      "type": "map"
     }
   ],
   "base_filter": null,
@@ -336,7 +276,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "D800B4B324C9C94FAB958853462E2484B126C9CF0226BE5E52F5983006CA9A52",
+  "hash": "C3D943CD97D2D16406D942505D1F1EE4BAB54B7B4BC2B8739E99303BB320DE75",
   "identities": [
     {
       "all_tenants?": false,

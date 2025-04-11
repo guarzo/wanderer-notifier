@@ -1267,6 +1267,52 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
               alias WandererNotifier.Resources.Killmail
               alias WandererNotifier.Resources.KillmailCharacterInvolvement
               alias WandererNotifier.Resources.Api
+              alias WandererNotifier.KillmailProcessing.KillmailQueries
+
+              # Determine if we have a UUID or integer killmail_id
+              is_uuid =
+                is_binary(kill_id) &&
+                  String.match?(
+                    kill_id,
+                    ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+                  )
+
+              id_type =
+                cond do
+                  is_uuid -> "UUID (record ID)"
+                  is_integer(kill_id) -> "integer (killmail_id)"
+                  is_binary(kill_id) -> "string (probably killmail_id)"
+                  true -> "unknown format"
+                end
+
+              IO.puts("  Killmail ID format: #{kill_id} (#{id_type})")
+
+              # Ensure we have an integer kill_id for database queries
+              kill_id_int =
+                cond do
+                  is_integer(kill_id) ->
+                    kill_id
+
+                  is_binary(kill_id) ->
+                    case Integer.parse(kill_id) do
+                      {int_id, _} ->
+                        int_id
+
+                      :error ->
+                        IO.puts("  ⚠️ Warning: kill_id is not in integer format: #{kill_id}")
+                        # keep original to avoid errors in other places
+                        kill_id
+                    end
+
+                  true ->
+                    IO.puts(
+                      "  ⚠️ Warning: kill_id is not an integer or string: #{inspect(kill_id)}"
+                    )
+
+                    kill_id
+                end
+
+              IO.puts("  Using killmail_id for queries: #{kill_id}")
 
               # First check if we can even access the Killmail Resource
               IO.puts("📋 Attempting to access Killmail Resource:")
@@ -1279,78 +1325,116 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
                 IO.puts("  ❌ Killmail module doesn't exist or can't be loaded")
               end
 
-              killmail_record_query =
+              # Check if the killmail exists in the database
+              killmail_exists =
                 try do
-                  Killmail
-                  |> Ash.Query.filter(killmail_id == ^kill_id)
-                  |> Ash.Query.limit(1)
-                  |> Api.read()
+                  # KillmailQueries.exists? handles both UUID and integer formats now
+                  KillmailQueries.exists?(kill_id)
                 rescue
                   e ->
-                    IO.puts("  ❌ Error creating database query: #{Exception.message(e)}")
-                    {:error, :query_error}
+                    IO.puts("  ❌ Error checking if killmail exists: #{Exception.message(e)}")
+                    false
                 end
 
-              case killmail_record_query do
-                {:ok, [killmail]} ->
-                  IO.puts("  ✅ Killmail record found in database:")
-                  IO.puts("  ID: #{killmail.id}")
-                  IO.puts("  Killmail ID: #{killmail.killmail_id}")
-                  IO.puts("  Victim: #{killmail.victim_name || "unknown"}")
-                  IO.puts("  System: #{killmail.solar_system_name || "unknown"}")
-                  IO.puts("  Attacker count: #{killmail.attacker_count || 0}")
+              IO.puts("  Killmail exists in database: #{killmail_exists}")
 
-                  # Now look for character involvements
-                  involvement_records =
-                    try do
-                      KillmailCharacterInvolvement
-                      |> Ash.Query.filter(killmail_id == ^killmail.id)
-                      |> Api.read()
-                    rescue
-                      e ->
-                        IO.puts(
-                          "  ❌ Error querying character involvements: #{Exception.message(e)}"
-                        )
-
-                        {:error, :query_error}
-                    end
-
-                  case involvement_records do
-                    {:ok, involvements} when is_list(involvements) and length(involvements) > 0 ->
-                      IO.puts(
-                        "\n  ✅ Found #{length(involvements)} character involvement records:"
-                      )
-
-                      Enum.each(involvements, fn involvement ->
-                        IO.puts(
-                          "    Character ID: #{involvement.character_id} - Role: #{involvement.character_role}"
-                        )
-
-                        IO.puts("      Ship: #{involvement.ship_type_name || "unknown"}")
-                        IO.puts("      Final blow: #{involvement.is_final_blow}")
-                      end)
-
-                    {:ok, []} ->
-                      IO.puts("\n  ❓ No character involvement records found for this killmail")
-
-                    {:error, reason} ->
-                      IO.puts("\n  ❌ Error querying character involvements: #{inspect(reason)}")
-
-                    error ->
-                      IO.puts(
-                        "\n  ❌ Unknown error querying character involvements: #{inspect(error)}"
-                      )
+              # Only try to get details if we know it exists
+              if killmail_exists do
+                # Use KillmailQueries.get instead of direct Ash query
+                # The get function now handles both UUID and integer formats
+                killmail_record_query =
+                  try do
+                    KillmailQueries.get(kill_id)
+                  rescue
+                    e ->
+                      IO.puts("  ❌ Error creating database query: #{Exception.message(e)}")
+                      {:error, :query_error}
                   end
 
-                {:ok, []} ->
-                  IO.puts("  ❌ No killmail record found in database - persistence failed")
-                  IO.puts("  This confirms the killmail was not persisted")
+                case killmail_record_query do
+                  {:ok, killmail} ->
+                    IO.puts("  ✅ Killmail record found in database:")
+                    IO.puts("  ID (UUID): #{killmail.id}")
+                    IO.puts("  Killmail ID (integer): #{killmail.killmail_id}")
+                    IO.puts("  Victim: #{killmail.victim_name || "unknown"}")
+                    IO.puts("  System: #{killmail.solar_system_name || "unknown"}")
+                    IO.puts("  Attacker count: #{killmail.attacker_count || 0}")
 
-                {:error, reason} ->
-                  IO.puts("  ❌ Error querying killmail record: #{inspect(reason)}")
+                    # Now look for character involvements
+                    involvement_records =
+                      try do
+                        # Extract the integer killmail_id from the record - NOT the UUID id field
+                        numeric_killmail_id = killmail.killmail_id
 
-                error ->
-                  IO.puts("  ❌ Unknown error in database query: #{inspect(error)}")
+                        IO.puts("\n  ⚠️ Important: Must use the correct ID for involvement query:")
+                        IO.puts("    - ❌ DO NOT USE: Record ID (UUID): #{killmail.id}")
+
+                        IO.puts(
+                          "    - ✅ CORRECTLY USING: Integer killmail_id: #{numeric_killmail_id}"
+                        )
+
+                        # Use the get_involvements function with the integer killmail_id
+                        result = KillmailQueries.get_involvements(numeric_killmail_id)
+
+                        # Log success
+                        IO.puts(
+                          "  ✅ Successfully executed get_involvements query with integer killmail_id"
+                        )
+
+                        # Return the result
+                        result
+                      rescue
+                        e ->
+                          IO.puts(
+                            "  ❌ Error querying character involvements: #{Exception.message(e)}"
+                          )
+
+                          # Print stack trace for better debugging
+                          IO.puts("  Stack trace: #{Exception.format_stacktrace(__STACKTRACE__)}")
+
+                          {:error, :query_error}
+                      end
+
+                    case involvement_records do
+                      {:ok, involvements}
+                      when is_list(involvements) and length(involvements) > 0 ->
+                        IO.puts(
+                          "\n  ✅ Found #{length(involvements)} character involvement records:"
+                        )
+
+                        Enum.each(involvements, fn involvement ->
+                          IO.puts(
+                            "    Character ID: #{involvement.character_id} - Role: #{involvement.character_role}"
+                          )
+
+                          IO.puts("      Ship: #{involvement.ship_type_name || "unknown"}")
+                          IO.puts("      Final blow: #{involvement.is_final_blow}")
+                        end)
+
+                      {:ok, []} ->
+                        IO.puts("\n  ❓ No character involvement records found for this killmail")
+
+                      {:error, reason} ->
+                        IO.puts("\n  ❌ Error querying character involvements: #{inspect(reason)}")
+
+                      error ->
+                        IO.puts(
+                          "\n  ❌ Unknown error querying character involvements: #{inspect(error)}"
+                        )
+                    end
+
+                  {:error, :not_found} ->
+                    IO.puts("  ❌ No killmail record found in database - persistence failed")
+                    IO.puts("  This confirms the killmail was not persisted")
+
+                  {:error, reason} ->
+                    IO.puts("  ❌ Error querying killmail record: #{inspect(reason)}")
+
+                  error ->
+                    IO.puts("  ❌ Unknown error in database query: #{inspect(error)}")
+                end
+              else
+                IO.puts("  ❌ Killmail not found in database - persistence failed")
               end
 
               # Return simplified result
@@ -1617,17 +1701,32 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
   # Helper to fetch a killmail by ID
   defp do_get_kill(kill_id) do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+    alias WandererNotifier.Logger.Logger, as: AppLogger
 
     # Convert to integer if it's a string
     kill_id_int =
-      if is_binary(kill_id) do
-        case Integer.parse(kill_id) do
-          {int_id, _} -> int_id
-          _ -> kill_id
-        end
-      else
-        kill_id
+      cond do
+        is_integer(kill_id) ->
+          kill_id
+
+        is_binary(kill_id) ->
+          case Integer.parse(kill_id) do
+            {int_id, _} ->
+              int_id
+
+            :error ->
+              IO.puts("⚠️ Warning: kill_id is not in integer format: #{kill_id}")
+              # Try to continue with original value
+              kill_id
+          end
+
+        true ->
+          IO.puts("⚠️ Warning: kill_id is not an integer or string: #{inspect(kill_id)}")
+          # Try to continue with original value
+          kill_id
       end
+
+    IO.puts("🔍 Fetching killmail #{kill_id_int} from ZKill API")
 
     # Fetch the kill from ZKill API
     ZKillClient.get_single_killmail(kill_id_int)
@@ -1649,8 +1748,36 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
     alias WandererNotifier.Logger.Logger, as: AppLogger
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
+    alias WandererNotifier.KillmailProcessing.KillmailQueries
 
     AppLogger.kill_debug("Starting debug direct processing of killmail #{killmail_id}")
+
+    # Ensure we have an integer killmail_id
+    killmail_id_int =
+      cond do
+        is_integer(killmail_id) ->
+          killmail_id
+
+        is_binary(killmail_id) ->
+          case Integer.parse(killmail_id) do
+            {int_id, _} ->
+              int_id
+
+            :error ->
+              AppLogger.kill_debug("Warning: killmail_id is not in integer format", %{
+                killmail_id: killmail_id
+              })
+
+              killmail_id
+          end
+
+        true ->
+          AppLogger.kill_debug("Warning: killmail_id is not an integer or string", %{
+            killmail_id: killmail_id
+          })
+
+          killmail_id
+      end
 
     # Extract KillDeterminer function reference for monkey patching
     _original_has_tracked_character = &KillDeterminer.has_tracked_character?/1
@@ -1670,17 +1797,19 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     # Set up a patch for the KillDeterminer.has_tracked_character? function
     # The override will log detailed information about what it's checking
     try do
-      # Monkeypatch the function (doesn't actually work but conceptually here)
-      # Process.put(:has_tracked_character_fn, fn killmail ->
-      #   log_debug_tracking_check(killmail)
-      #   original_has_tracked_character.(killmail)
-      # end)
+      # Check if the killmail exists using KillmailQueries
+      killmail_exists = KillmailQueries.exists?(killmail_id_int)
+
+      AppLogger.kill_debug("Killmail database check", %{
+        killmail_id: killmail_id_int,
+        exists_in_database: killmail_exists
+      })
 
       # Fetch the kill directly from ZKill
-      case ZKillClient.get_single_killmail(killmail_id) do
+      case ZKillClient.get_single_killmail(killmail_id_int) do
         {:ok, kill} ->
           AppLogger.kill_debug("Successfully fetched killmail for debugging", %{
-            kill_id: killmail_id,
+            kill_id: killmail_id_int,
             data_type: typeof(kill),
             top_level_keys: Map.keys(kill)
           })
@@ -1696,7 +1825,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
         {:error, reason} ->
           AppLogger.kill_error("Failed to fetch killmail for debugging", %{
-            kill_id: killmail_id,
+            kill_id: killmail_id_int,
             error: inspect(reason)
           })
 

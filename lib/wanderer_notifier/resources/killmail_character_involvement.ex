@@ -27,6 +27,9 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
     # This fixes type mismatches with TrackedCharacter which uses integer IDs
     attribute(:character_id, :integer, allow_nil?: false)
 
+    # Use integer killmail_id to match the external identifier from EVE Online
+    attribute(:killmail_id, :integer, allow_nil?: false)
+
     # Character-specific data
     attribute(:ship_type_id, :integer)
     attribute(:ship_type_name, :string)
@@ -39,7 +42,13 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
   end
 
   relationships do
-    belongs_to(:killmail, WandererNotifier.Resources.Killmail)
+    # Define the relationship using the numeric killmail_id, not the UUID
+    belongs_to(:killmail, WandererNotifier.Resources.Killmail,
+      source_attribute: :killmail_id,
+      destination_attribute: :killmail_id,
+      primary_key?: false,
+      define_attribute?: false
+    )
 
     # Define a manual belongs_to relationship that doesn't create a foreign key constraint
     # This avoids the type mismatch issue with TrackedCharacter
@@ -73,13 +82,32 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
         :weapon_type_name
       ])
 
-      argument(:killmail_id, :string, allow_nil?: false)
+      argument(:killmail_id, :integer, allow_nil?: false)
 
       change(fn changeset, _ ->
         killmail_id = Ash.Changeset.get_argument(changeset, :killmail_id)
 
+        # Convert killmail_id to integer if it's a string
+        killmail_id_int =
+          case killmail_id do
+            x when is_integer(x) ->
+              x
+
+            x when is_binary(x) ->
+              case Integer.parse(x) do
+                {int, _} -> int
+                :error -> raise "Invalid killmail_id: #{inspect(x)}"
+              end
+
+            nil ->
+              raise "killmail_id cannot be nil"
+
+            _ ->
+              raise "Invalid killmail_id type: #{inspect(killmail_id)}"
+          end
+
         changeset
-        |> Ash.Changeset.change_attribute(:killmail_id, killmail_id)
+        |> Ash.Changeset.change_attribute(:killmail_id, killmail_id_int)
       end)
 
       # Set the timestamps
@@ -93,7 +121,7 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
     end
 
     read :exists_for_character do
-      argument(:killmail_id, :string, allow_nil?: false)
+      argument(:killmail_id, :integer, allow_nil?: false)
       argument(:character_id, :integer, allow_nil?: false)
       argument(:character_role, :atom, allow_nil?: false)
 

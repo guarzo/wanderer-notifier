@@ -31,6 +31,35 @@
       "type": "bigint"
     },
     {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "killmail_id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "killmail_character_involvements_killmail_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": false,
+        "schema": null,
+        "table": "killmails"
+      },
+      "size": null,
+      "source": "killmail_id",
+      "type": "bigint"
+    },
+    {
       "allow_nil?": true,
       "default": "nil",
       "generated?": false,
@@ -109,35 +138,6 @@
       "size": null,
       "source": "updated_at",
       "type": "utc_datetime_usec"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "primary_key?": false,
-      "references": {
-        "deferrable": false,
-        "destination_attribute": "id",
-        "destination_attribute_default": null,
-        "destination_attribute_generated": null,
-        "index?": false,
-        "match_type": null,
-        "match_with": null,
-        "multitenancy": {
-          "attribute": null,
-          "global": null,
-          "strategy": null
-        },
-        "name": "killmail_character_involvements_killmail_id_fkey",
-        "on_delete": null,
-        "on_update": null,
-        "primary_key?": true,
-        "schema": null,
-        "table": "killmails"
-      },
-      "size": null,
-      "source": "killmail_id",
-      "type": "uuid"
     }
   ],
   "base_filter": null,
@@ -145,7 +145,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "FF78C8653B2A42EC36F6F474C6BF23849E284003467D6B738B322BFD0C5A4E34",
+  "hash": "A2B71D2D014932BA9D78348EBE887942A57ABBBB44C1FDF455B13980803984D2",
   "identities": [
     {
       "all_tenants?": false,

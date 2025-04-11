@@ -47,7 +47,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
 
   ## Parameters
 
-  - `killmail_id`: The killmail ID to check
+  - `killmail_id`: The killmail ID to check (can be integer or UUID string)
 
   ## Returns
 
@@ -62,14 +62,51 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> exists?(99999)
       false
   """
-  @spec exists?(integer()) :: boolean()
+  @spec exists?(integer() | String.t()) :: boolean()
   def exists?(killmail_id) do
-    case api().read(
-           KillmailResource
-           |> Ash.Query.filter(killmail_id == ^killmail_id)
-           |> Ash.Query.select([:id])
-           |> Ash.Query.limit(1)
-         ) do
+    # Determine if we're dealing with a UUID or an integer killmail_id
+    is_uuid =
+      is_binary(killmail_id) &&
+        String.match?(
+          killmail_id,
+          ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+
+    # Build appropriate query based on the format of the ID
+    query =
+      if is_uuid do
+        # UUID format - search by record ID
+        KillmailResource
+        |> Ash.Query.filter(id == ^killmail_id)
+        |> Ash.Query.select([:id])
+        |> Ash.Query.limit(1)
+      else
+        # Numeric killmail_id - convert to integer if it's a string
+        killmail_id_int =
+          case killmail_id do
+            id when is_integer(id) ->
+              id
+
+            id when is_binary(id) ->
+              case Integer.parse(id) do
+                {int_id, _} -> int_id
+                # keep as is if we can't parse it
+                _ -> id
+              end
+
+            # any other type, keep as is
+            id ->
+              id
+          end
+
+        KillmailResource
+        |> Ash.Query.filter(killmail_id == ^killmail_id_int)
+        |> Ash.Query.select([:id])
+        |> Ash.Query.limit(1)
+      end
+
+    # Perform the query
+    case api().read(query) do
       {:ok, [_record]} -> true
       _ -> false
     end
@@ -80,7 +117,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
 
   ## Parameters
 
-  - `killmail_id`: The killmail ID to get
+  - `killmail_id`: The killmail ID to get (can be integer or UUID string)
 
   ## Returns
 
@@ -96,13 +133,49 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> get(99999)
       {:error, :not_found}
   """
-  @spec get(integer()) :: {:ok, KillmailResource.t()} | {:error, any()}
+  @spec get(integer() | String.t()) :: {:ok, KillmailResource.t()} | {:error, any()}
   def get(killmail_id) do
-    case api().read(
-           KillmailResource
-           |> Ash.Query.filter(killmail_id == ^killmail_id)
-           |> Ash.Query.limit(1)
-         ) do
+    # Determine if we're dealing with a UUID or an integer killmail_id
+    is_uuid =
+      is_binary(killmail_id) &&
+        String.match?(
+          killmail_id,
+          ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+
+    # Build appropriate query based on the format of the ID
+    query =
+      if is_uuid do
+        # UUID format - search by record ID
+        KillmailResource
+        |> Ash.Query.filter(id == ^killmail_id)
+        |> Ash.Query.limit(1)
+      else
+        # Numeric killmail_id - convert to integer if it's a string
+        killmail_id_int =
+          case killmail_id do
+            id when is_integer(id) ->
+              id
+
+            id when is_binary(id) ->
+              case Integer.parse(id) do
+                {int_id, _} -> int_id
+                # keep as is if we can't parse it
+                _ -> id
+              end
+
+            # any other type, keep as is
+            id ->
+              id
+          end
+
+        KillmailResource
+        |> Ash.Query.filter(killmail_id == ^killmail_id_int)
+        |> Ash.Query.limit(1)
+      end
+
+    # Perform the query
+    case api().read(query) do
       {:ok, [record]} -> {:ok, record}
       {:ok, []} -> {:error, :not_found}
       error -> error
@@ -114,7 +187,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
 
   ## Parameters
 
-  - `killmail_id`: The killmail ID to get involvements for
+  - `killmail_id`: The killmail ID to get involvements for (must be an integer)
 
   ## Returns
 
@@ -132,7 +205,7 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   """
   @spec get_involvements(integer()) ::
           {:ok, list(KillmailCharacterInvolvement.t())} | {:error, any()}
-  def get_involvements(killmail_id) do
+  def get_involvements(killmail_id) when is_integer(killmail_id) do
     # First check if the killmail exists
     if exists?(killmail_id) do
       # Then get all involvements for that killmail
@@ -147,6 +220,24 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
     else
       {:error, :not_found}
     end
+  end
+
+  # Add an overload that handles string input by parsing to integer
+  def get_involvements(killmail_id) when is_binary(killmail_id) do
+    case Integer.parse(killmail_id) do
+      {int_id, ""} ->
+        # Only accept strings that are purely integers
+        get_involvements(int_id)
+
+      _ ->
+        # Reject UUIDs and other non-integer strings
+        {:error, {:invalid_id_format, "Expected integer killmail_id, got: #{killmail_id}"}}
+    end
+  end
+
+  # Catch-all for any other type
+  def get_involvements(killmail_id) do
+    {:error, {:invalid_id_format, "Expected integer killmail_id, got: #{inspect(killmail_id)}"}}
   end
 
   @doc """
