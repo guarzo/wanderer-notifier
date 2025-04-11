@@ -39,8 +39,17 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   alias WandererNotifier.Resources.KillmailCharacterInvolvement
 
   # Get configured API implementation - allows for mocking in tests
-  defp api,
-    do: Application.get_env(:wanderer_notifier, :resources_api, WandererNotifier.Resources.Api)
+  defp api do
+    # Use Application.get_env with a default fallback to ensure API is always available
+    api_module =
+      Application.get_env(:wanderer_notifier, :resources_api, WandererNotifier.Resources.Api)
+
+    # Add extra logging to debug API usage
+    require Logger
+    Logger.debug("Using API module: #{inspect(api_module)}")
+
+    api_module
+  end
 
   @doc """
   Checks if a killmail exists in the database by its ID.
@@ -206,18 +215,72 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   @spec get_involvements(integer()) ::
           {:ok, list(KillmailCharacterInvolvement.t())} | {:error, any()}
   def get_involvements(killmail_id) when is_integer(killmail_id) do
+    require Logger
+
     # First check if the killmail exists
-    if exists?(killmail_id) do
+    exists_result = exists?(killmail_id)
+    Logger.info("Checking if killmail #{killmail_id} exists: #{exists_result}")
+
+    if exists_result do
       # Then get all involvements for that killmail
-      case api().read(
-             KillmailCharacterInvolvement
-             |> Ash.Query.filter(killmail.killmail_id == ^killmail_id)
-             |> Ash.Query.load(:killmail)
-           ) do
-        {:ok, involvements} -> {:ok, involvements}
-        error -> error
+      Logger.info("Querying for character involvements for killmail #{killmail_id}")
+
+      # This is a critical fix - we need to use Ash.Query.filter with the correct relation syntax
+      # Build the query directly against the KillmailCharacterInvolvement table's killmail_id field
+      query =
+        KillmailCharacterInvolvement
+        |> Ash.Query.filter(killmail_id == ^killmail_id)
+        |> Ash.Query.select([
+          :id,
+          :character_id,
+          :character_role,
+          :ship_type_id,
+          :ship_type_name,
+          :killmail_id
+        ])
+
+      # IMPORTANT: Do NOT call Ash.Query.to_string here - it's a private function
+      Logger.info("DETAILED INVOLVEMENT QUERY INFO", %{
+        query_module: KillmailCharacterInvolvement.__info__(:module),
+        filter_field: :killmail_id,
+        filter_value: killmail_id,
+      })
+
+      case api().read(query) do
+        {:ok, involvements} when is_list(involvements) ->
+          Logger.info("INVOLVEMENT QUERY RESULT", %{
+            killmail_id: killmail_id,
+            count: length(involvements),
+            found_ids:
+              Enum.map(involvements, fn inv ->
+                "#{inv.character_id}:#{inv.character_role}"
+              end)
+          })
+
+          if length(involvements) > 0 do
+            character_info =
+              Enum.map(involvements, fn inv ->
+                "#{inv.character_id}:#{inv.character_role}"
+              end)
+
+            Logger.info(
+              "Found #{length(involvements)} character involvements for killmail #{killmail_id}"
+            )
+          else
+            Logger.warn("No character involvements found for existing killmail #{killmail_id}")
+          end
+
+          {:ok, involvements}
+
+        {:error, reason} = error ->
+          Logger.error(
+            "Error fetching involvements for killmail #{killmail_id}: #{inspect(reason)}"
+          )
+
+          error
       end
     else
+      Logger.info("Cannot get involvements, killmail #{killmail_id} not found")
       {:error, :not_found}
     end
   end

@@ -12,7 +12,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Repo
   alias WandererNotifier.KillmailProcessing.Extractor
   alias WandererNotifier.KillmailProcessing.Transformer
   alias WandererNotifier.KillmailProcessing.Validator
@@ -296,7 +295,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   @impl true
   def maybe_persist_killmail(killmail, character_id \\ nil)
 
-  @impl true
   def maybe_persist_killmail(%KillmailData{} = killmail_data, character_id) do
     # Implementation for KillmailData
     kill_id = Extractor.get_killmail_id(killmail_data)
@@ -348,8 +346,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  # Remove this implementation but keep others from the original implementation
-  @impl true
   def maybe_persist_killmail(%Killmail{} = killmail, character_id) do
     # Convert to KillmailData and delegate
     killmail_data = Transformer.to_killmail_data(killmail)
@@ -412,10 +408,21 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   # This function should find ALL tracked characters, not just the first one
   defp find_tracked_character_in_killmail(%KillmailData{} = killmail_data) do
+    kill_id = Extractor.get_killmail_id(killmail_data)
+    AppLogger.kill_info("🔍 SEARCHING FOR TRACKED CHARACTERS IN KILLMAIL #{kill_id}")
+
     with victim_data <- extract_victim_data(killmail_data),
          tracked_characters when not is_nil(tracked_characters) <- get_tracked_characters(),
          tracked_ids <- extract_and_log_tracked_ids(tracked_characters),
          victim_tracking <- check_victim_tracking(killmail_data, victim_data, tracked_ids) do
+      # Log victim tracking status
+      if victim_tracking do
+        {:tracked_victim, {victim_id, victim_name, _}} = victim_tracking
+        AppLogger.kill_info("🔍 VICTIM IS TRACKED: #{victim_name} (#{victim_id})")
+      else
+        AppLogger.kill_info("🔍 VICTIM IS NOT TRACKED")
+      end
+
       # Start with victim if tracked
       victim_result =
         case victim_tracking do
@@ -426,24 +433,42 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         end
 
       # Find ALL tracked attackers, not just the first one
+      AppLogger.kill_info("🔍 SEARCHING FOR TRACKED ATTACKERS")
       attacker_results = find_all_tracked_attackers_in_killmail(killmail_data, tracked_ids)
+
+      if length(attacker_results) > 0 do
+        attacker_names =
+          Enum.map_join(attacker_results, ", ", fn {id, name, _} -> "#{name} (#{id})" end)
+
+        AppLogger.kill_info(
+          "🔍 FOUND #{length(attacker_results)} TRACKED ATTACKERS: #{attacker_names}"
+        )
+      else
+        AppLogger.kill_info("🔍 NO TRACKED ATTACKERS FOUND")
+      end
 
       # Combine victim and attacker results
       all_tracked = victim_result ++ attacker_results
 
       # Log the findings
-      kill_id = Extractor.get_killmail_id(killmail_data)
-
       if length(all_tracked) > 0 do
-        names = Enum.map_join(all_tracked, ", ", fn {id, name, _} -> "#{name} (#{id})" end)
+        names =
+          Enum.map_join(all_tracked, ", ", fn {id, name, role} -> "#{name} (#{id}) as #{role}" end)
 
-        AppLogger.kill_info(
-          "Found #{length(all_tracked)} tracked characters in killmail #{kill_id}: #{names}"
-        )
+        AppLogger.kill_info("🎯 FOUND #{length(all_tracked)} TRACKED CHARACTERS: #{names}", %{
+          kill_id: kill_id
+        })
 
         # Return the first one for backward compatibility, but store all in process dictionary
         # for use by the character involvement creation
         Process.put(:all_tracked_characters, all_tracked)
+
+        # Log the one we're returning for backward compatibility
+        {first_id, first_name, first_role} = List.first(all_tracked)
+
+        AppLogger.kill_info(
+          "🔄 RETURNING FIRST TRACKED CHARACTER: #{first_name} (#{first_id}) as #{first_role}"
+        )
 
         # Return the first one (this maintains backward compatibility)
         List.first(all_tracked)
@@ -453,11 +478,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       end
     else
       nil ->
-        log_no_tracked_characters(Extractor.get_killmail_id(killmail_data))
+        log_no_tracked_characters(kill_id)
         nil
 
       {:tracked_victim, result} ->
         # Legacy path - store as single result for backward compatibility
+        {id, name, role} = result
+        AppLogger.kill_info("🎯 FOUND SINGLE TRACKED VICTIM: #{name} (#{id}) as #{role}")
         Process.put(:all_tracked_characters, [result])
         result
     end
@@ -643,27 +670,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     })
   end
 
-  # Find tracked attacker in killmail
-  defp find_tracked_attacker_in_killmail(%KillmailData{} = killmail_data, tracked_ids) do
-    attackers = Extractor.get_attacker(killmail_data) || []
-
-    # If no tracked_ids provided or no attackers, return early
-    if is_nil(tracked_ids) || Enum.empty?(attackers) do
-      log_no_tracked_ids_or_attackers(Extractor.get_killmail_id(killmail_data))
-      nil
-    else
-      # Log attacker information for debugging
-      log_attacker_info(Extractor.get_killmail_id(killmail_data), attackers, tracked_ids)
-
-      # Find the first tracked attacker
-      find_first_tracked_attacker(
-        attackers,
-        tracked_ids,
-        Extractor.get_killmail_id(killmail_data)
-      )
-    end
-  end
-
   # Helper to log when no tracked IDs or attackers are found
   defp log_no_tracked_ids_or_attackers(killmail_id) do
     AppLogger.kill_info("No tracked IDs or attackers found for killmail",
@@ -688,39 +694,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
           }
         )
     })
-  end
-
-  # Helper to find the first tracked attacker
-  defp find_first_tracked_attacker(attackers, tracked_ids, killmail_id) do
-    result =
-      Enum.find_value(attackers, fn attacker ->
-        character_id = Map.get(attacker, "character_id")
-        character_name = Map.get(attacker, "character_name")
-        character_id_str = character_id && to_string(character_id)
-
-        if character_id_str && MapSet.member?(tracked_ids, character_id_str) do
-          # Normalize the character ID to an integer if possible
-          character_integer_id = normalize_character_id_for_comparison(character_id)
-
-          # Resolve the character name properly
-          resolved_name =
-            resolve_character_name_for_persistence(character_integer_id, character_name)
-
-          log_found_tracked_attacker(character_integer_id, resolved_name, killmail_id)
-          {character_integer_id, resolved_name, :attacker}
-        else
-          nil
-        end
-      end)
-
-    # Log if no tracked attackers were found
-    if is_nil(result) do
-      AppLogger.kill_info("No tracked attackers found in killmail", %{
-        killmail_id: killmail_id
-      })
-    end
-
-    result
   end
 
   # Helper to log when a tracked attacker is found
@@ -1776,7 +1749,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Add debugging log at the entry point
     kill_id = Extractor.get_killmail_id(killmail)
 
-    AppLogger.kill_debug("Starting persistence process", %{
+    AppLogger.kill_info("🔍 STARTING PERSISTENCE PROCESS", %{
       kill_id: kill_id,
       character_id: character_id,
       killmail_type: if(is_struct(killmail), do: killmail.__struct__, else: "not a struct")
@@ -1786,10 +1759,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     killmail_struct = ensure_killmail_struct(killmail)
 
     # Check if the killmail already exists
-    if killmail_exists?(kill_id) do
+    exists = killmail_exists?(kill_id)
+    AppLogger.kill_info("🔍 KILLMAIL EXISTENCE CHECK: #{exists}", %{kill_id: kill_id})
+
+    if exists do
       # Already exists, but we should still create character involvements if needed
-      AppLogger.kill_debug(
-        "Killmail already exists in database - checking character involvements",
+      AppLogger.kill_info(
+        "🔄 KILLMAIL ALREADY EXISTS - CHECKING FOR CHARACTER INVOLVEMENTS",
         %{
           kill_id: kill_id
         }
@@ -1798,7 +1774,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       # Try to get the existing record
       case get_killmail(kill_id) do
         nil ->
-          AppLogger.kill_error("Killmail exists but couldn't be retrieved", %{
+          AppLogger.kill_error("❌ KILLMAIL EXISTS BUT COULDN'T BE RETRIEVED", %{
             kill_id: kill_id
           })
 
@@ -1806,19 +1782,53 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
         record ->
           # Find tracked character(s) in the killmail
-          character_info = get_character_involvement(killmail_struct, character_id)
           all_tracked = find_all_tracked_characters(killmail_struct)
 
-          AppLogger.kill_debug("Found tracked characters for existing killmail", %{
+          AppLogger.kill_info("👥 FINDING ALL TRACKED CHARACTERS", %{
             kill_id: kill_id,
-            character_info: character_info != nil,
-            all_tracked_count: length(all_tracked)
+            found_count: length(all_tracked),
+            tracked_characters:
+              Enum.map(all_tracked, fn {id, name, role} ->
+                "#{name} (#{id}) as #{role}"
+              end)
           })
+
+          # Also check for a specific character_id if provided
+          character_info = get_character_involvement(killmail_struct, character_id)
+
+          # Log the character information
+          if character_info do
+            {char_id, role, _} = character_info
+
+            AppLogger.kill_info("👤 SPECIFIC CHARACTER INVOLVEMENT FOUND", %{
+              kill_id: kill_id,
+              character_id: char_id,
+              role: role
+            })
+          else
+            AppLogger.kill_info("👤 NO SPECIFIC CHARACTER INVOLVEMENT FOUND", %{
+              kill_id: kill_id,
+              character_id: character_id
+            })
+          end
 
           if all_tracked && length(all_tracked) > 0 do
             # Process each tracked character for the existing killmail
+            AppLogger.kill_info(
+              "🔄 ADDING INVOLVEMENTS FOR #{length(all_tracked)} TRACKED CHARACTERS",
+              %{
+                kill_id: kill_id
+              }
+            )
+
             results =
               Enum.map(all_tracked, fn {tracked_id, tracked_name, tracked_role} ->
+                AppLogger.kill_info("👤 PROCESSING CHARACTER: #{tracked_name}", %{
+                  kill_id: kill_id,
+                  character_id: tracked_id,
+                  role: tracked_role
+                })
+
                 # Get involvement data
                 involvement_data =
                   Validator.extract_character_involvement(
@@ -1828,6 +1838,13 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
                   )
 
                 # Try to create involvement record
+                AppLogger.kill_info("📝 PERSISTING CHARACTER INVOLVEMENT", %{
+                  kill_id: kill_id,
+                  character_id: tracked_id,
+                  role: tracked_role,
+                  has_data: involvement_data != nil && map_size(involvement_data || %{}) > 0
+                })
+
                 result =
                   persist_character_involvement(
                     kill_id,
@@ -1835,6 +1852,31 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
                     tracked_role,
                     involvement_data || %{}
                   )
+
+                # Log the result of the persistence attempt
+                case result do
+                  {:ok, :already_exists} ->
+                    AppLogger.kill_info("✅ CHARACTER INVOLVEMENT ALREADY EXISTS", %{
+                      kill_id: kill_id,
+                      character_id: tracked_id,
+                      role: tracked_role
+                    })
+
+                  {:ok, _} ->
+                    AppLogger.kill_info("✅ CREATED NEW CHARACTER INVOLVEMENT", %{
+                      kill_id: kill_id,
+                      character_id: tracked_id,
+                      role: tracked_role
+                    })
+
+                  error ->
+                    AppLogger.kill_error("❌ FAILED TO CREATE CHARACTER INVOLVEMENT", %{
+                      kill_id: kill_id,
+                      character_id: tracked_id,
+                      role: tracked_role,
+                      error: inspect(error)
+                    })
+                end
 
                 # Return for reporting
                 {tracked_id, result}
@@ -1846,18 +1888,21 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
             already_exists_count =
               Enum.count(results, fn {_, result} -> match?({:ok, :already_exists}, result) end)
 
-            AppLogger.kill_info("Processed character involvements for existing killmail", %{
+            error_count = length(results) - success_count
+
+            AppLogger.kill_info("📊 INVOLVEMENT PROCESSING COMPLETE", %{
               kill_id: kill_id,
               total: length(results),
               created: success_count - already_exists_count,
               already_existed: already_exists_count,
-              failed: length(results) - success_count
+              failed: error_count,
+              errors: if(error_count > 0, do: "Some involvements failed to be created", else: nil)
             })
 
             {:ok, record}
           else
             # No tracked characters found - normal case for duplicate killmail
-            AppLogger.kill_debug("No tracked characters found for existing killmail", %{
+            AppLogger.kill_info("⚠️ NO TRACKED CHARACTERS FOUND FOR EXISTING KILLMAIL", %{
               kill_id: kill_id
             })
 
@@ -1866,6 +1911,11 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       end
     else
       # New killmail - process normally
+      AppLogger.kill_info("🆕 NEW KILLMAIL - PROCESSING NORMALLY", %{
+        kill_id: kill_id,
+        character_id: character_id
+      })
+
       process_new_normalized_killmail(killmail_struct, character_id, kill_id)
     end
   end
@@ -2119,16 +2169,15 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   # Legacy format handling
-  defp get_character_involvement(killmail, character_id) when is_map(killmail) do
+  defp get_character_involvement(killmail, character_id)
+       when is_map(killmail) and not is_struct(killmail, KillmailData) do
     # Convert to KillmailData and delegate
+    AppLogger.kill_debug("Converting plain map to KillmailData in get_character_involvement", %{
+      character_id: character_id
+    })
+
     killmail_data = ensure_killmail_struct(killmail)
     get_character_involvement(killmail_data, character_id)
-  end
-
-  defp extract_ship_data(%KillmailData{} = killmail_data, character_id, role) do
-    # This is a duplicate of the function at line 1235 - replacing with delegation
-    # The Validator module can already extract involvement data
-    extract_ship_data(killmail_data, character_id, role)
   end
 
   # Add explicit support for KillmailData struct
@@ -2200,35 +2249,6 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
     # Return nil as a fallback
     nil
-  end
-
-  # Helper to ensure all values in a nested map structure are JSON-serializable
-  defp sanitize_for_json(data) when is_map(data) do
-    cond do
-      # Special case for DateTime structs
-      is_struct(data) && data.__struct__ == DateTime ->
-        data
-
-      # Special case for Decimal structs
-      is_struct(data) && data.__struct__ == Decimal ->
-        Decimal.to_string(data)
-
-      # Regular map processing
-      true ->
-        # Process each key-value pair
-        data
-        |> Enum.map(fn {k, v} -> {k, sanitize_for_json(v)} end)
-        |> Map.new()
-        # Remove fields that were removed from the Killmail resource
-        |> Map.delete(:solar_system_security)
-        |> Map.delete(:victim_alliance_id)
-        |> Map.delete(:victim_alliance_name)
-        |> Map.delete(:processed_at)
-        |> Map.delete("solar_system_security")
-        |> Map.delete("victim_alliance_id")
-        |> Map.delete("victim_alliance_name")
-        |> Map.delete("processed_at")
-    end
   end
 
   # Persist a normalized killmail to the database
@@ -2345,6 +2365,35 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     Enum.map(data, &sanitize_for_json/1)
   end
 
+  # Helper to ensure all values in a nested map structure are JSON-serializable
+  defp sanitize_for_json(data) when is_map(data) do
+    cond do
+      # Special case for DateTime structs
+      is_struct(data) && data.__struct__ == DateTime ->
+        data
+
+      # Special case for Decimal structs
+      is_struct(data) && data.__struct__ == Decimal ->
+        Decimal.to_string(data)
+
+      # Regular map processing
+      true ->
+        # Process each key-value pair
+        data
+        |> Enum.map(fn {k, v} -> {k, sanitize_for_json(v)} end)
+        |> Map.new()
+        # Remove fields that were removed from the Killmail resource
+        |> Map.delete(:solar_system_security)
+        |> Map.delete(:victim_alliance_id)
+        |> Map.delete(:victim_alliance_name)
+        |> Map.delete(:processed_at)
+        |> Map.delete("solar_system_security")
+        |> Map.delete("victim_alliance_id")
+        |> Map.delete("victim_alliance_name")
+        |> Map.delete("processed_at")
+    end
+  end
+
   # This clause is redundant with the cond check above, but kept for clarity
   defp sanitize_for_json(%DateTime{} = dt), do: dt
 
@@ -2376,96 +2425,343 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     # Ensure killmail_id is an integer
     killmail_id_int = ensure_integer_killmail_id(killmail_id)
 
-    # Check if this involvement already exists
-    case check_involvement_exists(killmail_id_int, character_id, character_role) do
-      true ->
-        # Already exists, nothing to do
-        {:ok, :already_exists}
+    # Perform early validation of killmail_id
+    if is_nil(killmail_id_int) do
+      AppLogger.kill_error("❌ CANNOT PERSIST INVOLVEMENT - INVALID KILLMAIL ID", %{
+        killmail_id: inspect(killmail_id),
+        type: typeof(killmail_id)
+      })
 
-      false ->
-        # Ensure we have character data
-        if is_nil(character_id) do
-          AppLogger.kill_error("Cannot persist involvement without character ID", %{
-            killmail_id: killmail_id_int
+      {:error, {:invalid_killmail_id, "Killmail ID is nil or invalid"}}
+    else
+      do_persist_character_involvement(
+        killmail_id_int,
+        character_id,
+        character_role,
+        involvement_data
+      )
+    end
+  end
+
+  # Helper function to handle the actual persistence logic
+  defp do_persist_character_involvement(
+         killmail_id_int,
+         character_id,
+         character_role,
+         involvement_data
+       ) do
+    AppLogger.kill_info("🔍 PERSISTING CHARACTER INVOLVEMENT", %{
+      killmail_id: killmail_id_int,
+      character_id: character_id,
+      role: character_role,
+      involvement_data_size: map_size(involvement_data || %{})
+    })
+
+    # Ensure we have character data
+    if is_nil(character_id) do
+      AppLogger.kill_error("❌ CANNOT PERSIST INVOLVEMENT - MISSING CHARACTER ID", %{
+        killmail_id: killmail_id_int
+      })
+
+      {:error, :missing_character_id}
+    else
+      # Check if this involvement already exists
+      AppLogger.kill_info("🔍 CHECKING IF INVOLVEMENT ALREADY EXISTS")
+      existing = check_involvement_exists(killmail_id_int, character_id, character_role)
+
+      AppLogger.kill_info("🔍 INVOLVEMENT EXISTS CHECK RESULT: #{existing}", %{
+        killmail_id: killmail_id_int,
+        character_id: character_id,
+        role: character_role
+      })
+
+      if existing do
+        # Already exists, nothing to do
+        AppLogger.kill_info("⏭️  SKIPPING - CHARACTER INVOLVEMENT ALREADY EXISTS", %{
+          killmail_id: killmail_id_int,
+          character_id: character_id,
+          role: character_role
+        })
+
+        {:ok, :already_exists}
+      else
+        create_character_involvement(
+          killmail_id_int,
+          character_id,
+          character_role,
+          involvement_data
+        )
+      end
+    end
+  end
+
+  # Helper function to create the involvement record
+  defp create_character_involvement(
+         killmail_id_int,
+         character_id,
+         character_role,
+         involvement_data
+       ) do
+    # Create a new involvement record
+    # Convert map to keyword list if it's a map
+    AppLogger.kill_info("📝 PREPARING ATTRIBUTES FOR NEW INVOLVEMENT", %{
+      killmail_id: killmail_id_int,
+      character_id: character_id,
+      role: character_role,
+      involvement_data_type: typeof(involvement_data)
+    })
+
+    attrs =
+      case involvement_data do
+        data when is_map(data) ->
+          # Ensure we have character_id and role in the data
+          data =
+            data
+            |> Map.put_new(:character_id, character_id)
+            |> Map.put_new(:character_role, character_role)
+
+          # Convert to keyword list for Ash.create/3
+          attrs =
+            data
+            |> Enum.map(fn {k, v} -> {k, v} end)
+            |> Keyword.new()
+
+          AppLogger.kill_info("📝 CONVERTED MAP TO KEYWORD LIST", %{
+            attrs_count: length(attrs),
+            sample_keys: Enum.take(Keyword.keys(attrs), 5)
           })
 
-          {:error, :missing_character_id}
+          attrs
+
+        # If it's already a keyword list, use it as is
+        data when is_list(data) ->
+          AppLogger.kill_info("📝 USING EXISTING KEYWORD LIST", %{
+            attrs_count: length(data),
+            sample_keys: Enum.take(Keyword.keys(data), 5)
+          })
+
+          data
+
+        # If it's empty or nil, create a basic attrs list
+        _ ->
+          AppLogger.kill_info("📝 CREATED BASIC ATTRS LIST", %{
+            involvement_data: inspect(involvement_data)
+          })
+
+          [character_id: character_id, character_role: character_role]
+      end
+
+    # Set or override killmail_id to ensure it's the correct integer
+    # Double check killmail_id_int is valid before setting
+    if is_nil(killmail_id_int) || !is_integer(killmail_id_int) || killmail_id_int <= 0 do
+      AppLogger.kill_error("❌ INVALID KILLMAIL ID FOR CHARACTER INVOLVEMENT", %{
+        killmail_id: killmail_id_int,
+        killmail_id_int: killmail_id_int
+      })
+
+      {:error, {:invalid_killmail_id, "Killmail ID must be a positive integer"}}
+    else
+      attrs = Keyword.put(attrs, :killmail_id, killmail_id_int)
+
+      # For debugging
+      AppLogger.kill_info("🚀 CREATING CHARACTER INVOLVEMENT WITH FINAL ATTRIBUTES", %{
+        killmail_id: killmail_id_int,
+        character_id: character_id,
+        role: character_role,
+        attrs_count: length(attrs),
+        attrs_map: Enum.into(attrs, %{})
+      })
+
+      # Check for required attributes before creating
+      missing_required =
+        []
+        |> add_if_missing(:killmail_id, attrs)
+        |> add_if_missing(:character_id, attrs)
+        |> add_if_missing(:character_role, attrs)
+
+      if length(missing_required) > 0 do
+        AppLogger.kill_error("❌ MISSING REQUIRED ATTRIBUTES FOR CHARACTER INVOLVEMENT", %{
+          killmail_id: killmail_id_int,
+          character_id: character_id,
+          role: character_role,
+          missing: missing_required,
+          attrs: attrs
+        })
+
+        {:error, {:missing_required_attributes, missing_required}}
+      else
+        # Final safety check for killmail_id
+        final_attrs_map = Enum.into(attrs, %{})
+
+        if is_nil(final_attrs_map[:killmail_id]) do
+          AppLogger.kill_error("❌ KILLMAIL ID IS NIL AFTER ATTRS CONVERSION", %{
+            attrs: inspect(attrs, limit: 100),
+            final_map: inspect(final_attrs_map, limit: 100)
+          })
+
+          {:error, {:invalid_killmail_id, "Killmail ID is nil after attribute conversion"}}
         else
-          # Create a new involvement record
-          # Convert map to keyword list if it's a map
-          attrs =
-            case involvement_data do
-              data when is_map(data) ->
-                # Ensure we have character_id and role in the data
-                data =
-                  data
-                  |> Map.put_new(:character_id, character_id)
-                  |> Map.put_new(:character_role, character_role)
+          perform_create_operation(killmail_id_int, character_id, character_role, attrs)
+        end
+      end
+    end
+  end
 
-                # Convert to keyword list for Ash.create/3
-                data
-                |> Enum.map(fn {k, v} -> {k, v} end)
-                |> Keyword.new()
+  # Helper function to actually perform the create operation
+  defp perform_create_operation(killmail_id_int, character_id, character_role, attrs) do
+    # Create with the proper format
+    AppLogger.kill_info("🔄 CALLING Api.create FOR KillmailCharacterInvolvement")
 
-              # If it's already a keyword list, use it as is
-              data when is_list(data) ->
-                data
+    # First, let's ensure the killmail_id is correct and present
+    AppLogger.kill_info("🔍 VALIDATING KILLMAIL ID", %{
+      killmail_id_int: killmail_id_int,
+      killmail_id_type: typeof(killmail_id_int),
+      is_integer: is_integer(killmail_id_int),
+      is_nil: is_nil(killmail_id_int)
+    })
 
-              # If it's empty or nil, create a basic attrs list
-              _ ->
-                [character_id: character_id, character_role: character_role]
+    if !is_integer(killmail_id_int) || is_nil(killmail_id_int) || killmail_id_int <= 0 do
+      AppLogger.kill_error("❌ INVALID KILLMAIL ID, CANNOT PROCEED", %{
+        killmail_id: killmail_id_int
+      })
+
+      {:error, {:invalid_killmail_id, "Invalid killmail_id for create operation"}}
+    else
+      # Create a map for debugging
+      attrs_map = Enum.into(attrs, %{})
+
+      # Add detailed debug log about what we're about to do
+      AppLogger.kill_info("📝 ATTEMPT WITH MULTIPLE KILLMAIL ID APPROACHES", %{
+        killmail_id: killmail_id_int,
+        attrs_contains_killmail_id: Keyword.has_key?(attrs, :killmail_id),
+        attrs_killmail_id_value: Keyword.get(attrs, :killmail_id),
+        attrs_map: inspect(attrs_map, limit: 200)
+      })
+
+      # Setup both approaches: one with killmail_id as attribute, one with it as argument
+      # Try with killmail_id as attribute (against what the code suggests)
+      attrs_with_id = Keyword.put(attrs, :killmail_id, killmail_id_int)
+
+      # Also try with killmail_id as argument (as the code suggests)
+      arguments = %{killmail_id: killmail_id_int}
+
+      # Wrap the create call in a try/rescue block to catch any exceptions
+      result =
+        try do
+          # Try BOTH approaches - include as attribute AND as argument
+          AppLogger.kill_info("👉 ATTEMPTING CREATE WITH BOTH ATTRIBUTE AND ARGUMENT")
+          Api.create(KillmailCharacterInvolvement, attrs_with_id, arguments: arguments)
+        rescue
+          e ->
+            stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+
+            AppLogger.kill_error("❌ EXCEPTION DURING CHARACTER INVOLVEMENT CREATION", %{
+              killmail_id: killmail_id_int,
+              character_id: character_id,
+              role: character_role,
+              exception: Exception.message(e),
+              stacktrace: stacktrace
+            })
+
+            # Try the next approach - explicitly use the code interface
+            try do
+              AppLogger.kill_info("👉 ATTEMPTING VIA DIRECT CODE INTERFACE")
+
+              WandererNotifier.Resources.KillmailCharacterInvolvement.create(
+                attrs_with_id,
+                arguments
+              )
+            rescue
+              e2 ->
+                AppLogger.kill_error("❌ SECOND ATTEMPT ALSO FAILED", %{
+                  exception: Exception.message(e2)
+                })
+
+                {:error, {:exception, Exception.message(e2)}}
             end
+        end
 
-          # Set or override killmail_id to ensure it's the correct integer
-          attrs = Keyword.put(attrs, :killmail_id, killmail_id_int)
+      # Rest of the function is unchanged
+      AppLogger.kill_info("🔄 CREATE COMPLETED")
 
-          # For debugging
-          AppLogger.kill_debug("Creating character involvement with attributes", %{
-            killmail_id: killmail_id,
-            killmail_id_int: killmail_id_int,
+      # Log the raw result for debugging
+      AppLogger.kill_info("📋 RAW CREATE RESULT", %{
+        killmail_id: killmail_id_int,
+        character_id: character_id,
+        role: character_role,
+        result_type: typeof(result),
+        raw_result: inspect(result, limit: 1000)
+      })
+
+      # Track successful character involvement persistence
+      case result do
+        {:ok, record} ->
+          AppLogger.kill_info("✅ SUCCESSFULLY PERSISTED CHARACTER INVOLVEMENT", %{
+            killmail_id: killmail_id_int,
             character_id: character_id,
             role: character_role,
-            attrs: inspect(attrs)
+            record_id: record.id
           })
 
-          # Create with the proper format
-          result = Api.create(KillmailCharacterInvolvement, attrs)
+        {:error, error} ->
+          AppLogger.kill_error("❌ FAILED TO PERSIST CHARACTER INVOLVEMENT", %{
+            killmail_id: killmail_id_int,
+            character_id: character_id,
+            role: character_role,
+            error: inspect(error),
+            error_type: typeof(error)
+          })
 
-          # Track successful character involvement persistence
-          case result do
-            {:ok, _} ->
-              AppLogger.persistence_info("Persisted character involvement", %{
-                killmail_id: killmail_id_int,
-                character_id: character_id,
-                role: character_role
+          # Try to elaborate on specific error types
+          cond do
+            is_map(error) && Map.has_key?(error, :errors) ->
+              AppLogger.kill_error("❌ DETAILED ERROR FIELDS", %{
+                errors: error.errors
               })
 
-            error ->
-              AppLogger.persistence_error("Failed to persist character involvement", %{
-                killmail_id: killmail_id_int,
-                character_id: character_id,
-                role: character_role,
-                error: inspect(error)
+            is_map(error) ->
+              AppLogger.kill_error("❌ ERROR MAP KEYS", %{
+                keys: Map.keys(error)
               })
+
+            true ->
+              :ok
           end
+      end
 
-          result
-        end
+      result
     end
   end
 
   # Helper to ensure killmail_id is an integer
-  defp ensure_integer_killmail_id(killmail_id) when is_integer(killmail_id), do: killmail_id
+  defp ensure_integer_killmail_id(killmail_id) when is_integer(killmail_id) and killmail_id > 0,
+    do: killmail_id
 
   defp ensure_integer_killmail_id(killmail_id) when is_binary(killmail_id) do
     case Integer.parse(killmail_id) do
-      {int_id, _} ->
+      {int_id, ""} when int_id > 0 ->
+        int_id
+
+      {int_id, _} when int_id > 0 ->
+        # Had trailing characters but parsed successfully
+        AppLogger.kill_info(
+          "Converting string killmail_id with trailing characters to integer",
+          %{
+            killmail_id: killmail_id,
+            parsed_id: int_id
+          }
+        )
+
         int_id
 
       _ ->
-        AppLogger.kill_error("Invalid killmail_id format for involvement", %{
-          killmail_id: killmail_id
-        })
+        AppLogger.kill_error(
+          "Invalid killmail_id format for involvement - could not parse as integer",
+          %{
+            killmail_id: killmail_id,
+            type: typeof(killmail_id)
+          }
+        )
 
         nil
     end
@@ -2473,7 +2769,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
   defp ensure_integer_killmail_id(killmail_id) do
     AppLogger.kill_error("Invalid killmail_id type for involvement", %{
-      killmail_id: killmail_id,
+      killmail_id: inspect(killmail_id),
       type: typeof(killmail_id)
     })
 
@@ -2518,63 +2814,72 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
         role: character_role
       })
 
-      import Ash.Query
+      # Use KillmailQueries for consistent API access
+      alias WandererNotifier.KillmailProcessing.KillmailQueries
 
-      case Api.read(
-             KillmailCharacterInvolvement
-             |> filter(
-               killmail_id == ^killmail_id_int and
-                 character_id == ^character_id and
-                 character_role == ^atom_role
-             )
-             |> select([:id])
-             |> limit(1)
-           ) do
-        {:ok, [_existing_record]} ->
-          AppLogger.kill_debug("Character involvement exists", %{
-            killmail_id: killmail_id_int,
-            character_id: character_id,
-            role: character_role
-          })
+      # First check if the killmail exists at all
+      if KillmailQueries.exists?(killmail_id_int) do
+        # Get involvements and check if any match our criteria
+        case KillmailQueries.get_involvements(killmail_id_int) do
+          {:ok, involvements} when is_list(involvements) and length(involvements) > 0 ->
+            # Log all found involvements for debugging
+            AppLogger.kill_debug("Found #{length(involvements)} involvement records", %{
+              killmail_id: killmail_id_int
+            })
 
-          true
+            # Check if any involvement matches our character_id and role
+            has_match =
+              Enum.any?(involvements, fn inv ->
+                inv.character_id == character_id && inv.character_role == atom_role
+              end)
 
-        _ ->
-          false
+            if has_match do
+              AppLogger.kill_debug("Found matching character involvement", %{
+                killmail_id: killmail_id_int,
+                character_id: character_id,
+                role: character_role
+              })
+
+              true
+            else
+              AppLogger.kill_debug("No matching character involvement found", %{
+                killmail_id: killmail_id_int,
+                character_id: character_id,
+                role: character_role,
+                existing_involvements:
+                  Enum.map(involvements, fn inv ->
+                    "#{inv.character_id}:#{inv.character_role}"
+                  end)
+              })
+
+              false
+            end
+
+          {:ok, []} ->
+            AppLogger.kill_debug("No involvement records found for killmail", %{
+              killmail_id: killmail_id_int
+            })
+
+            false
+
+          error ->
+            AppLogger.kill_error("Error checking for character involvements", %{
+              killmail_id: killmail_id_int,
+              error: inspect(error)
+            })
+
+            false
+        end
+      else
+        # Killmail doesn't exist, so involvement can't exist
+        AppLogger.kill_debug("Killmail doesn't exist, so involvement can't exist", %{
+          killmail_id: killmail_id_int
+        })
+
+        false
       end
     end
   end
-
-  # Helper function to get a killmail_id from a Killmail UUID
-  defp get_killmail_id_from_uuid(uuid) do
-    import Ash.Query
-
-    case Api.read(
-           Killmail
-           |> filter(id == ^uuid)
-           |> select([:killmail_id])
-           |> limit(1)
-         ) do
-      {:ok, [record]} -> {:ok, record.killmail_id}
-      _ -> {:error, :not_found}
-    end
-  end
-
-  # Helper function to get the type of a value for logs
-  defp typeof(value) when is_binary(value), do: "string"
-  defp typeof(value) when is_integer(value), do: "integer"
-  defp typeof(value) when is_float(value), do: "float"
-  defp typeof(value) when is_boolean(value), do: "boolean"
-  defp typeof(value) when is_nil(value), do: "nil"
-  defp typeof(value) when is_list(value), do: "list"
-  defp typeof(value) when is_map(value), do: "map"
-  defp typeof(value) when is_atom(value), do: "atom"
-  defp typeof(value) when is_function(value), do: "function"
-  defp typeof(value) when is_pid(value), do: "pid"
-  defp typeof(value) when is_reference(value), do: "reference"
-  defp typeof(value) when is_port(value), do: "port"
-  defp typeof(value) when is_tuple(value), do: "tuple"
-  defp typeof(_value), do: "unknown"
 
   @doc """
   Simple check if a killmail exists in the database by ID only.
@@ -2596,6 +2901,11 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       repo_started?() ->
         # Database is running, use KillmailQueries for consistent API
         alias WandererNotifier.KillmailProcessing.KillmailQueries
+
+        AppLogger.persistence_debug("Checking if killmail exists using KillmailQueries", %{
+          killmail_id: killmail_id
+        })
+
         KillmailQueries.exists?(killmail_id)
 
       true ->
@@ -2755,7 +3065,7 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
 
           # Process each tracked character
           results =
-            Enum.map(all_tracked, fn {tracked_id, tracked_name, tracked_role} ->
+            Enum.map(all_tracked, fn {tracked_id, _tracked_name, tracked_role} ->
               # Extract involvement data for this character using Validator
               char_involvement_data =
                 Validator.extract_character_involvement(killmail, tracked_id, tracked_role)
@@ -2870,5 +3180,14 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       {:ship_type_name, Extractor.find_field(killmail, "ship_type_name", character_id, role),
        "Ship type name missing for #{character_name} (role: #{role})"}
     ]
+  end
+
+  # Helper function to check for required fields
+  defp add_if_missing(missing_list, field, attrs) do
+    if Keyword.has_key?(attrs, field) do
+      missing_list
+    else
+      [field | missing_list]
+    end
   end
 end

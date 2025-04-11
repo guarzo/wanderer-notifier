@@ -542,7 +542,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
         if not_tracked do
           # Don't even attempt to persist if not tracked
-          AppLogger.kill_debug("[Pipeline] Skipping persistence - not tracked", %{
+          AppLogger.kill_info("[Pipeline] Skipping persistence - not tracked", %{
             kill_id: killmail.killmail_id,
             reason: reason
           })
@@ -550,6 +550,11 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
           # Mark as not persisted
           {:ok, Map.put(killmail, :persisted, false)}
         else
+          AppLogger.kill_info("[Pipeline] Trying to persist", %{
+            kill_id: killmail.killmail_id,
+            reason: reason
+          })
+
           # Normal persistence path for other reasons
           persist_if_database_available(killmail, ctx)
         end

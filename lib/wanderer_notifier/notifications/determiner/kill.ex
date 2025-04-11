@@ -434,7 +434,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
       if in_list do
         # We found a potential issue - log this
-        Logger.warn(
+        Logger.warning(
           "🔴 TRACKING ISSUE: Character #{character_id_str} is in character_list but has no direct tracking key"
         )
       end

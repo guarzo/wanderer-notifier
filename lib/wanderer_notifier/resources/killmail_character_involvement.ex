@@ -23,8 +23,6 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
     uuid_primary_key(:id)
     attribute(:character_role, :atom, constraints: [one_of: @character_roles])
 
-    # Store character_id directly as an attribute instead of a relationship
-    # This fixes type mismatches with TrackedCharacter which uses integer IDs
     attribute(:character_id, :integer, allow_nil?: false)
 
     # Use integer killmail_id to match the external identifier from EVE Online
@@ -49,16 +47,6 @@ defmodule WandererNotifier.Resources.KillmailCharacterInvolvement do
       primary_key?: false,
       define_attribute?: false
     )
-
-    # Define a manual belongs_to relationship that doesn't create a foreign key constraint
-    # This avoids the type mismatch issue with TrackedCharacter
-    # belongs_to(:character, WandererNotifier.Resources.TrackedCharacter,
-    #   source_attribute: :character_id,
-    #   destination_attribute: :character_id,
-    #   define_attribute?: false,
-    #   primary_key?: false,
-    #   foreign_key_constraint?: false
-    # )
   end
 
   identities do

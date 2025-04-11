@@ -164,7 +164,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
   end
 
   # Helper function to process kills for a character with proper error handling
-  defp process_character_kills(character_id, character_name, ctx, kill_limit) do
+  defp process_character_kills(character_id, character_name, _ctx, kill_limit) do
     try do
       # Ensure character_id is an integer
       character_id_int = ensure_integer_id(character_id)
@@ -366,117 +366,6 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
       true ->
         "Unknown Character"
     end
-  end
-
-  # Process a specific kill for a character
-  defp process_specific_kill_for_character(character_info, kill_id) do
-    character_id = character_info.character_id
-    character_name = character_info.character_name
-
-    # Ensure we have an integer kill_id
-    kill_id_int =
-      cond do
-        is_integer(kill_id) ->
-          kill_id
-
-        is_binary(kill_id) ->
-          case Integer.parse(kill_id) do
-            {id, _} -> id
-            _ -> nil
-          end
-
-        true ->
-          nil
-      end
-
-    if is_nil(kill_id_int) do
-      AppLogger.kill_error("Invalid kill ID format", %{
-        kill_id: kill_id
-      })
-
-      {:error, :invalid_kill_id}
-    else
-      # Create debug context
-      ctx =
-        Context.new_historical(
-          character_id,
-          character_name,
-          :debug,
-          "debug-specific-#{:os.system_time(:millisecond)}",
-          skip_notification: false,
-          force_notification: true
-        )
-
-      # Fetch the specific kill from ZKill
-      ZKillClient.get_single_killmail(kill_id_int)
-      |> handle_specific_kill_result(ctx)
-    end
-  end
-
-  # Handle the result of fetching a specific kill
-  defp handle_specific_kill_result({:ok, raw_kill}, ctx) do
-    # Extract the killmail ID for logging
-    kill_id = Map.get(raw_kill, "killmail_id")
-
-    AppLogger.kill_debug("Processing specific kill", %{
-      kill_id: kill_id,
-      character_id: ctx.character_id
-    })
-
-    # Transform raw kill data to KillmailData struct to ensure
-    # we're using the same data path as production
-    killmail_data = WandererNotifier.KillmailProcessing.Transformer.to_killmail_data(raw_kill)
-
-    if is_nil(killmail_data) do
-      AppLogger.kill_error("Failed to transform specific kill data to KillmailData", %{
-        kill_id: kill_id,
-        raw_data: inspect(raw_kill, limit: 200)
-      })
-
-      {:error, :invalid_kill_data}
-    else
-      # Process the kill through the same pipeline as production
-      result = Pipeline.process_killmail(killmail_data, ctx)
-
-      AppLogger.kill_debug("Specific kill processing result", %{
-        kill_id: kill_id,
-        success: match?({:ok, _}, result),
-        summary: "Process completed"
-      })
-
-      # Return a simplified version of the result
-      case result do
-        {:ok, data} ->
-          # Extract key information
-          system_name = extract_system_name(data)
-          victim_name = extract_victim_name(data)
-          ship_name = extract_ship_name(data)
-          persisted = Map.get(data, :persisted, false)
-          notification_status = extract_notification_status(data)
-
-          # Return simplified result
-          {:ok,
-           %{
-             kill_id: kill_id,
-             system: system_name,
-             victim: victim_name,
-             ship: ship_name,
-             persisted: persisted,
-             notification: notification_status
-           }}
-
-        error ->
-          error
-      end
-    end
-  end
-
-  defp handle_specific_kill_result({:error, reason}, _ctx) do
-    AppLogger.kill_error("Failed to fetch specific kill", %{
-      error: inspect(reason)
-    })
-
-    {:error, reason}
   end
 
   @doc """
@@ -1144,8 +1033,6 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
         alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
         alias WandererNotifier.KillmailProcessing.Extractor
         alias WandererNotifier.Resources.Killmail
-        alias WandererNotifier.Resources.KillmailCharacterInvolvement
-        alias WandererNotifier.Resources.Api
 
         # First log the raw structure
         IO.puts("\n📦 RAW KILLMAIL STRUCTURE:")
@@ -1265,8 +1152,6 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
               # Check if the killmail was persisted to the database
               require Ash.Query
               alias WandererNotifier.Resources.Killmail
-              alias WandererNotifier.Resources.KillmailCharacterInvolvement
-              alias WandererNotifier.Resources.Api
               alias WandererNotifier.KillmailProcessing.KillmailQueries
 
               # Determine if we have a UUID or integer killmail_id
@@ -1288,7 +1173,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
               IO.puts("  Killmail ID format: #{kill_id} (#{id_type})")
 
               # Ensure we have an integer kill_id for database queries
-              kill_id_int =
+              _kill_id_int =
                 cond do
                   is_integer(kill_id) ->
                     kill_id
@@ -1408,7 +1293,15 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
                           )
 
                           IO.puts("      Ship: #{involvement.ship_type_name || "unknown"}")
-                          IO.puts("      Final blow: #{involvement.is_final_blow}")
+
+                          # Safely print is_final_blow - check if it's an Ash.NotLoaded struct
+                          final_blow_value =
+                            case involvement.is_final_blow do
+                              %Ash.NotLoaded{} -> "not loaded"
+                              value -> "#{value}"
+                            end
+
+                          IO.puts("      Final blow: #{final_blow_value}")
                         end)
 
                       {:ok, []} ->

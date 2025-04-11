@@ -205,7 +205,7 @@ iex> WandererNotifier.Debug.ProcessKillDebug.process_single_kill(0)
 
 ```elixir
 iex> WandererNotifier.Debug.ProcessKillDebug.process_specific_kill(0, 123456789)
-```
+```c
 
 ### Example 3: Analyze all pipeline stages for a killmail
 
