@@ -1,72 +1,22 @@
 defmodule WandererNotifier.KillmailProcessing.Context do
   @moduledoc """
-  Defines the context for killmail processing, containing all necessary information
-  for processing a killmail in either historical or realtime mode.
+  @deprecated Please use WandererNotifier.Killmail.Core.Context instead
+
+  This module is deprecated and will be removed in a future release.
+  All functionality has been moved to WandererNotifier.Killmail.Core.Context.
   """
 
-  alias WandererNotifier.KillmailProcessing.Mode
+  alias WandererNotifier.Killmail.Core.Context
 
-  @type source :: :zkill_websocket | :zkill_api
+  # Re-export the type for backward compatibility
+  @type t :: Context.t()
+  @type source :: Context.source()
 
-  @type t :: %__MODULE__{
-          mode: Mode.t(),
-          character_id: pos_integer() | nil,
-          character_name: String.t() | nil,
-          source: source(),
-          batch_id: String.t() | nil,
-          options: map()
-        }
+  # Delegate all functions to the new module
+  defdelegate new_historical(character_id, character_name, source, batch_id, options \\ %{}),
+    to: Context
 
-  defstruct [
-    :mode,
-    :character_id,
-    :character_name,
-    :source,
-    :batch_id,
-    :options
-  ]
-
-  @doc """
-  Creates a new context for historical processing.
-  """
-  @spec new_historical(pos_integer(), String.t(), source(), String.t(), map()) :: t()
-  def new_historical(character_id, character_name, source, batch_id, options \\ %{}) do
-    %__MODULE__{
-      mode: Mode.new(:historical),
-      character_id: character_id,
-      character_name: character_name,
-      source: source,
-      batch_id: batch_id,
-      options: options
-    }
-  end
-
-  @doc """
-  Creates a new context for realtime processing.
-  """
-  @spec new_realtime(pos_integer() | nil, String.t() | nil, source(), map()) :: t()
-  def new_realtime(character_id, character_name, source, options \\ %{}) do
-    %__MODULE__{
-      mode: Mode.new(:realtime),
-      character_id: character_id,
-      character_name: character_name,
-      source: source,
-      batch_id: nil,
-      options: options
-    }
-  end
-
-  @doc """
-  Returns true if the context is for historical processing.
-  """
-  @spec historical?(t()) :: boolean()
-  def historical?(%__MODULE__{mode: %{mode: :historical}}), do: true
-  def historical?(_), do: false
-
-  @doc """
-  Returns true if the context is for realtime processing.
-  """
-  @spec realtime?(t()) :: boolean()
-  def realtime?(%__MODULE__{mode: %{mode: :realtime}}), do: true
-  def realtime?(_), do: false
+  defdelegate new_realtime(character_id, character_name, source, options \\ %{}), to: Context
+  defdelegate historical?(context), to: Context
+  defdelegate realtime?(context), to: Context
 end
