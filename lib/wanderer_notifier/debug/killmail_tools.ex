@@ -8,7 +8,6 @@ defmodule WandererNotifier.Debug.KillmailTools do
 
   alias WandererNotifier.KillmailProcessing.{
     Context,
-    Extractor,
     KillmailData,
     Pipeline
   }
@@ -90,8 +89,8 @@ defmodule WandererNotifier.Debug.KillmailTools do
     # Convert json_data to a format suitable for validation
     killmail_data = %KillmailData{
       killmail_id: kill_id,
-      zkb_data: Map.get(json_data, "zkb", %{}),
-      esi_data:
+      raw_zkb_data: Map.get(json_data, "zkb", %{}),
+      raw_esi_data:
         Map.drop(json_data, ["zkb", "killmail_id"])
         |> Map.put("solar_system_name", json_data["solar_system_name"] || "Unknown System")
     }
@@ -203,35 +202,44 @@ defmodule WandererNotifier.Debug.KillmailTools do
       killmail_id: killmail.killmail_id,
 
       # ESI fields (if present)
-      solar_system_id: Extractor.get_system_id(killmail),
-      solar_system_name: Map.get(killmail, :solar_system_name, nil),
+      solar_system_id: get_from_esi_data(killmail, "solar_system_id"),
+      solar_system_name: killmail.solar_system_name,
       region_id: get_region_id(killmail),
       region_name: get_region_name(killmail),
-      killmail_time: Map.get(killmail, :kill_time, nil),
+      killmail_time: killmail.kill_time,
 
       # Victim and attacker data
-      victim: Extractor.get_victim(killmail),
-      attackers_count: Extractor.get_attackers(killmail) |> length(),
+      victim: get_from_esi_data(killmail, "victim"),
+      attackers_count: if(is_list(killmail.attackers), do: length(killmail.attackers), else: 0),
 
       # ZKB data
       zkb_total_value: get_zkb_value(killmail),
 
       # Extra info
       has_esi_data: has_esi_data?(killmail),
-      esi_data_keys: if(has_esi_data?(killmail), do: Map.keys(killmail.esi_data), else: []),
+      esi_data_keys: if(has_esi_data?(killmail), do: Map.keys(killmail.raw_esi_data), else: []),
       zkb_keys: if(has_zkb_data?(killmail), do: Map.keys(get_zkb_data(killmail)), else: [])
     }
   end
 
+  # Helper function to get data from raw_esi_data or direct field
+  defp get_from_esi_data(killmail, key) do
+    if is_map(killmail.raw_esi_data) do
+      Map.get(killmail.raw_esi_data, key)
+    else
+      nil
+    end
+  end
+
   # Helper functions for accessing data in either format
   defp get_region_id(killmail) do
-    Map.get(killmail, :region_id) ||
-      (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "region_id"))
+    killmail.region_id ||
+      (is_map(killmail.raw_esi_data) && Map.get(killmail.raw_esi_data, "region_id"))
   end
 
   defp get_region_name(killmail) do
-    Map.get(killmail, :region_name) ||
-      (Map.get(killmail, :esi_data) && Map.get(killmail.esi_data, "region_name"))
+    killmail.region_name ||
+      (is_map(killmail.raw_esi_data) && Map.get(killmail.raw_esi_data, "region_name"))
   end
 
   defp get_zkb_value(killmail) do
@@ -244,15 +252,15 @@ defmodule WandererNotifier.Debug.KillmailTools do
   end
 
   defp get_zkb_data(killmail) do
-    killmail.zkb_data || killmail.zkb || %{}
+    killmail.raw_zkb_data || killmail.zkb || %{}
   end
 
   defp has_esi_data?(killmail) do
-    is_map(killmail.esi_data) && killmail.esi_data != %{}
+    is_map(killmail.raw_esi_data) && killmail.raw_esi_data != %{}
   end
 
   defp has_zkb_data?(killmail) do
-    (is_map(killmail.zkb_data) && killmail.zkb_data != %{}) ||
+    (is_map(killmail.raw_zkb_data) && killmail.raw_zkb_data != %{}) ||
       (is_map(killmail.zkb) && killmail.zkb != %{})
   end
 end

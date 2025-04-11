@@ -9,7 +9,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData, Validator}
+  alias WandererNotifier.KillmailProcessing.{KillmailData, Validator, DataAccess}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
@@ -105,8 +105,8 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         # Create a map with both ZKill and ESI data
         killmail_data = %KillmailData{
           killmail_id: kill_id,
-          zkb_data: kill_data["zkb"],
-          esi_data: esi_data
+          raw_zkb_data: kill_data["zkb"],
+          raw_esi_data: esi_data
         }
 
         # Enrich the killmail data first
@@ -116,32 +116,37 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         normalized_kill = Validator.normalize_killmail(enriched_kill)
 
         # Preserve the original ESI and ZKB data that might be lost during normalization
-        final_kill = Map.merge(
-          normalized_kill,
-          Map.take(enriched_kill, [:esi_data, :zkb_data, :metadata])
-        )
+        final_kill =
+          Map.merge(
+            normalized_kill,
+            Map.take(enriched_kill, [:raw_esi_data, :raw_zkb_data, :metadata])
+          )
 
         # Extract victim information for additional ESI lookups
-        victim = Map.get(final_kill, :full_victim_data, %{})
+        victim = normalized_kill.victim || %{}
         corporation_id = Map.get(victim, "corporation_id")
 
         # Add corporation name if available but not already set
-        final_kill_with_corp = case corporation_id do
-          nil ->
-            final_kill
-          _ ->
-            if !Map.get(final_kill, :victim_corporation_name) || Map.get(final_kill, :victim_corporation_name) == "Unknown Corp" do
-              case ESIService.get_corporation_info(corporation_id) do
-                {:ok, corp_info} ->
-                  corp_name = Map.get(corp_info, "name", "Unknown Corp")
-                  Map.put(final_kill, :victim_corporation_name, corp_name)
-                _ ->
-                  final_kill
-              end
-            else
+        final_kill_with_corp =
+          case corporation_id do
+            nil ->
               final_kill
-            end
-        end
+
+            _ ->
+              if !Map.get(final_kill, :victim_corporation_name) ||
+                   Map.get(final_kill, :victim_corporation_name) == "Unknown Corp" do
+                case ESIService.get_corporation_info(corporation_id) do
+                  {:ok, corp_info} ->
+                    corp_name = Map.get(corp_info, "name", "Unknown Corp")
+                    Map.put(final_kill, :victim_corporation_name, corp_name)
+
+                  _ ->
+                    final_kill
+                end
+              else
+                final_kill
+              end
+          end
 
         AppLogger.kill_debug(
           "TEST NOTIFICATION: Enriched and normalized killmail data: #{inspect(final_kill_with_corp)}"
@@ -268,20 +273,20 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
   # More detailed validation for specific field requirements
   defp check_detailed_validation(killmail) do
-    victim = Extractor.get_victim(killmail)
-    system_name = Extractor.get_system_name(killmail)
+    # Convert to KillmailData first to ensure we can access fields directly
+    killmail_data = WandererNotifier.KillmailProcessing.Transformer.to_killmail_data(killmail)
 
     cond do
-      victim == nil || victim == %{} ->
+      killmail_data.victim_id == nil ->
         {:error, "Killmail is missing victim data"}
 
-      Map.get(victim, "character_name") == nil ->
+      killmail_data.victim_name == nil ->
         {:error, "Victim is missing character name"}
 
-      Map.get(victim, "ship_type_name") == nil ->
+      killmail_data.victim_ship_name == nil ->
         {:error, "Victim is missing ship type name"}
 
-      system_name == nil ->
+      killmail_data.solar_system_name == nil ->
         {:error, "Killmail is missing system name"}
 
       true ->

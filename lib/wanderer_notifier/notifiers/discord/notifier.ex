@@ -8,7 +8,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.KillmailProcessing.Extractor
+  alias WandererNotifier.KillmailProcessing.DataAccess
+  alias WandererNotifier.KillmailProcessing.KillmailData
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
@@ -343,9 +344,33 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   # Ensure the killmail has a system name if missing
+  defp enrich_with_system_name(%KillmailData{} = killmail) do
+    # Get system_id directly from the KillmailData struct
+    system_id = killmail.solar_system_id
+
+    # Check if we need to get the system name
+    if system_id && (is_nil(killmail.solar_system_name) || killmail.solar_system_name == "") do
+      # Get system name using the same approach as in kill_processor
+      system_name = get_system_name(system_id)
+
+      AppLogger.processor_debug("Enriching killmail with system name",
+        system_id: system_id,
+        system_name: system_name
+      )
+
+      # Update the direct field in KillmailData
+      %{killmail | solar_system_name: system_name}
+    else
+      killmail
+    end
+  end
+
+  # Handle Resource.Killmail struct separately
   defp enrich_with_system_name(%Killmail{} = killmail) do
     # Get system_id from the killmail
-    system_id = Extractor.get_system_id(killmail)
+    system_id =
+      killmail.solar_system_id ||
+        (killmail.esi_data && Map.get(killmail.esi_data, "solar_system_id"))
 
     # Check if we need to get the system name
     if system_id do
@@ -364,6 +389,35 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         Map.put(killmail, :solar_system_name, system_name)
       else
         # For the old model - update the esi_data field
+        esi_data = Map.get(killmail, :esi_data, %{})
+        Map.put(killmail, :esi_data, Map.put(esi_data, "solar_system_name", system_name))
+      end
+    else
+      killmail
+    end
+  end
+
+  # Handle other map data for backward compatibility
+  defp enrich_with_system_name(killmail) when is_map(killmail) do
+    # Get system_id using DataAccess for backward compatibility
+    system_id = DataAccess.debug_info(killmail).system_id
+
+    # Check if we need to get the system name
+    if system_id do
+      # Get system name using the same approach as in kill_processor
+      system_name = get_system_name(system_id)
+
+      AppLogger.processor_debug("Enriching killmail with system name",
+        system_id: system_id,
+        system_name: system_name
+      )
+
+      # Update the appropriate field based on the structure
+      if Map.has_key?(killmail, :solar_system_name) do
+        # For normalized model
+        Map.put(killmail, :solar_system_name, system_name)
+      else
+        # For legacy model
         esi_data = Map.get(killmail, :esi_data, %{})
         Map.put(killmail, :esi_data, Map.put(esi_data, "solar_system_name", system_name))
       end
@@ -429,9 +483,29 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   # Extract system ID from killmail
-  defp extract_system_id(killmail) do
-    system_id = Extractor.get_system_id(killmail)
-    system_name = Extractor.get_system_name(killmail)
+  defp extract_system_id(%KillmailData{} = killmail) do
+    # Direct access for KillmailData structs
+    system_id = killmail.solar_system_id
+    system_name = killmail.solar_system_name
+
+    # Return system_id, but log it with the name if available
+    AppLogger.processor_debug(
+      "Extracted system",
+      %{
+        system_id: system_id,
+        system_name: system_name
+      }
+    )
+
+    system_id
+  end
+
+  # Handle other types for backward compatibility
+  defp extract_system_id(killmail) when is_map(killmail) do
+    # Use DataAccess for non-KillmailData structs
+    debug_info = DataAccess.debug_info(killmail)
+    system_id = debug_info.system_id
+    system_name = debug_info.system_name
 
     # Return system_id, but log it with the name if available
     AppLogger.processor_debug(

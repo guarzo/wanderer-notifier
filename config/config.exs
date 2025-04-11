@@ -50,7 +50,16 @@ config :logger, :kills_log,
   path: "log/kills_debug.log",
   level: :debug,
   format: "$date $time [$level] $metadata$message\n",
-  metadata: [:module, :function, :trace_id, :character_id, :kill_id, :killmail_id, :system_id, :system_name]
+  metadata: [
+    :module,
+    :function,
+    :trace_id,
+    :character_id,
+    :kill_id,
+    :killmail_id,
+    :system_id,
+    :system_name
+  ]
 
 # Module-specific log levels
 # This allows fine-grained control over logging
@@ -77,7 +86,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Services.KillProcessor" => :info,
   "WandererNotifier.Services.NotificationDeterminer" => :info,
   "WandererNotifier.Supervisors.Basic" => :info,
-  "WandererNotifier.Resources.KillmailPersistence" => :info,
+  "WandererNotifier.Processing.Killmail.Persistence" => :info,
   "WandererNotifier.Api.Character.KillsService" => :info,
   "WandererNotifier.KillmailProcessing.Pipeline" => :info,
   "WandererNotifier" => :info

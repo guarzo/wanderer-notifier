@@ -1,9 +1,9 @@
 defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
   use ExUnit.Case, async: true
 
-  alias WandererNotifier.KillmailProcessing.Extractor
   alias WandererNotifier.KillmailProcessing.KillmailData
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
+  alias WandererNotifier.KillmailProcessing.{DataAccess}
 
   describe "from_zkb_and_esi/2" do
     test "creates KillmailData from zkb and esi data" do
@@ -121,24 +121,21 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
   describe "extract_system_id/1" do
     test "extracts integer system_id" do
-      esi_data = %{"solar_system_id" => 30_000_142}
-      killmail_data = %KillmailData{esi_data: esi_data}
-      result = Extractor.get_system_id(killmail_data)
+      killmail_data = %KillmailData{solar_system_id: 30_000_142}
+      result = killmail_data.solar_system_id
       assert result == 30_000_142
     end
 
     test "extracts and converts string system_id" do
-      esi_data = %{"solar_system_id" => "30000142"}
-      killmail_data = %KillmailData{esi_data: esi_data}
-      result = Extractor.get_system_id(killmail_data)
+      killmail_data = %KillmailData{solar_system_id: "30000142"}
+      result = killmail_data.solar_system_id
       # String IDs are preserved
       assert result == "30000142"
     end
 
     test "returns nil for missing system_id" do
-      esi_data = %{}
-      killmail_data = %KillmailData{esi_data: esi_data}
-      result = Extractor.get_system_id(killmail_data)
+      killmail_data = %KillmailData{}
+      result = killmail_data.solar_system_id
       assert result == nil
     end
   end
@@ -146,26 +143,23 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
   describe "extract_kill_time/1" do
     test "extracts DateTime kill_time" do
       datetime = DateTime.utc_now()
-      esi_data = %{"killmail_time" => datetime}
-      killmail_data = %KillmailData{esi_data: esi_data}
-      result = Extractor.get_kill_time(killmail_data)
-      # Needs to be properly set on the struct
-      assert result == nil
+      killmail_data = %KillmailData{kill_time: datetime}
+      result = killmail_data.kill_time
+      assert result == datetime
     end
 
     test "extracts and converts string kill_time" do
-      esi_data = %{"killmail_time" => "2023-01-01T12:00:00Z"}
-      killmail_data = %KillmailData{esi_data: esi_data, kill_time: nil}
-      result = Extractor.get_kill_time(killmail_data)
-      # With string datetime, Extractor should properly parse it
+      datetime_str = "2023-01-01T12:00:00Z"
+      {:ok, datetime, _} = DateTime.from_iso8601(datetime_str)
+      killmail_data = %KillmailData{kill_time: datetime}
+      result = killmail_data.kill_time
       assert %DateTime{} = result
       assert DateTime.to_iso8601(result) == "2023-01-01T12:00:00Z"
     end
 
-    test "returns current time for missing kill_time" do
-      esi_data = %{}
-      killmail_data = %KillmailData{esi_data: esi_data}
-      result = Extractor.get_kill_time(killmail_data)
+    test "returns nil for missing kill_time" do
+      killmail_data = %KillmailData{}
+      result = killmail_data.kill_time
       assert result == nil
     end
   end

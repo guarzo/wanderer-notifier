@@ -155,6 +155,11 @@ Mox.defmock(WandererNotifier.MockKillmailPersistence,
   for: WandererNotifier.Resources.KillmailPersistenceBehaviour
 )
 
+# Create a mock for the new Persistence module
+Mox.defmock(WandererNotifier.Processing.Killmail.MockPersistence,
+  for: WandererNotifier.Processing.Killmail.PersistenceBehaviour
+)
+
 # Set Mox to verify on exit
 Application.put_env(:mox, :verify_on_exit, true)
 

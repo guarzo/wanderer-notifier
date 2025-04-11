@@ -10,7 +10,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Data.Repository
-  alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+  alias WandererNotifier.KillmailProcessing.{Context, Pipeline, DataAccess}
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Hardcoded character ID that's known to have killmails
@@ -1030,8 +1030,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
         # Transform to KillmailData for consistent processing
         alias WandererNotifier.KillmailProcessing.Transformer
-        alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
-        alias WandererNotifier.KillmailProcessing.Extractor
+        alias WandererNotifier.KillmailProcessing.{Context, Pipeline, DataAccess}
         alias WandererNotifier.Resources.Killmail
 
         # First log the raw structure
@@ -1053,11 +1052,9 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
         else
           # Log structure after transformation
           IO.puts("\n📦 TRANSFORMED KILLMAIL STRUCTURE:")
-          transformed_attackers = Extractor.get_attackers(killmail_data)
+          transformed_attackers = killmail_data.attackers || []
 
-          IO.puts(
-            "  Found #{length(transformed_attackers)} attackers using Extractor.get_attackers"
-          )
+          IO.puts("  Found #{length(transformed_attackers)} attackers using direct access")
 
           # Create context for processing
           ctx =
@@ -1104,11 +1101,16 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
                 if is_map(processed_data), do: Map.get(processed_data, :esi_data), else: %{}
 
               attackers2 = if is_map(esi_data), do: Map.get(esi_data, "attackers"), else: nil
-              attackers3 = Extractor.get_attackers(processed_data)
+
+              # Use direct access instead of Extractor
+              attackers3 =
+                if is_struct(processed_data, WandererNotifier.KillmailProcessing.KillmailData),
+                  do: processed_data.attackers,
+                  else: nil
 
               IO.puts("  direct [:attackers] access: #{length(attackers1 || [])}")
               IO.puts("  [:esi_data][\"attackers\"] access: #{length(attackers2 || [])}")
-              IO.puts("  Extractor.get_attackers result: #{length(attackers3 || [])}")
+              IO.puts("  Direct struct access result: #{length(attackers3 || [])}")
 
               # Check the top-level keys
               top_keys = if is_map(processed_data), do: Map.keys(processed_data), else: []

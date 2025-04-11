@@ -13,7 +13,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Enrichment
-  alias WandererNotifier.Resources.KillmailPersistence
+  alias WandererNotifier.Processing.Killmail.Persistence
 
   @doc """
   Process a killmail with pre-fetched ZKillboard data.
@@ -50,8 +50,8 @@ defmodule WandererNotifier.Processing.Killmail.Core do
 
     %KillmailData{
       killmail_id: kill_id,
-      zkb_data: zkb_map,
-      esi_data: enriched,
+      raw_zkb_data: zkb_map,
+      raw_esi_data: enriched,
       metadata: %{source: :core_processor}
     }
   end
@@ -76,11 +76,11 @@ defmodule WandererNotifier.Processing.Killmail.Core do
   end
 
   defp persist_killmail(killmail, character_id, character_name) do
-    case KillmailPersistence.maybe_persist_killmail(killmail, character_id) do
-      {:ok, _} = result ->
-        result
+    case Persistence.persist_killmail(killmail, character_id) do
+      {:ok, persisted_killmail, _} ->
+        {:ok, persisted_killmail}
 
-      error ->
+      {:error, reason} = error ->
         log_error(error, killmail.kill_id, character_id, character_name)
         error
     end

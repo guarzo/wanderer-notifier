@@ -400,7 +400,7 @@ defmodule WandererNotifier.Debug.CharacterTools do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
     alias WandererNotifier.KillmailProcessing.Transformer
-    alias WandererNotifier.KillmailProcessing.Extractor
+    alias WandererNotifier.KillmailProcessing.DataAccess
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
     alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
 
@@ -413,7 +413,7 @@ defmodule WandererNotifier.Debug.CharacterTools do
         killmail = Transformer.to_killmail_data(kill)
 
         # Get attacker data
-        attackers = Extractor.get_attackers(killmail)
+        attackers = killmail.attackers || []
 
         if attackers && length(attackers) > 0 do
           IO.puts("Found #{length(attackers)} attackers\n")
@@ -491,7 +491,7 @@ defmodule WandererNotifier.Debug.CharacterTools do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
     alias WandererNotifier.KillmailProcessing.Transformer
-    alias WandererNotifier.KillmailProcessing.Extractor
+    alias WandererNotifier.KillmailProcessing.DataAccess
 
     IO.puts("Checking killmail #{killmail_id}")
 
@@ -500,7 +500,7 @@ defmodule WandererNotifier.Debug.CharacterTools do
       {:ok, kill} ->
         # Convert and extract attackers
         killmail = Transformer.to_killmail_data(kill)
-        attackers = Extractor.get_attackers(killmail) || []
+        attackers = killmail.attackers || []
 
         # Show only essential tracking info for attackers with IDs
         attackers_with_ids =

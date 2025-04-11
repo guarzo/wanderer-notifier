@@ -14,7 +14,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.KillmailProcessing.Context
   alias WandererNotifier.KillmailProcessing.Pipeline, as: KillmailPipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Resources.KillmailPersistence
+  alias WandererNotifier.Processing.Killmail.Persistence
   alias WandererNotifier.Data.Repository
 
   # Default implementations
@@ -22,7 +22,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
     logger: AppLogger,
     repository: Repository,
     esi_service: ESIService,
-    persistence: KillmailPersistence,
+    persistence: Persistence,
     zkill_client: ZKillClient,
     cache_helpers: CacheHelpers
   }
@@ -546,7 +546,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   end
 
   defp process_kills_batch(kills, %Context{} = ctx) do
-   __total_kills = length(kills)
+    __total_kills = length(kills)
     # Get character name for better context in logs
     _character_name =
       case Repository.get_character_name(ctx.character_id) do

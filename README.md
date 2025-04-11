@@ -1,230 +1,82 @@
-# Wanderer Notifier
+# Killmail Pipeline Refactoring
 
-Wanderer Notifier is an Elixir-based application that monitors EVE Online kill data and notifies designated Discord channels about significant events. It integrates with multiple external services to retrieve, enrich, and filter kill information before sending alerts.
+## Project Overview
 
-## Features
+The Wanderer Notifier processes killmail data from EVE Online to track and notify users about important kills. This repository includes the ongoing refactoring of the killmail processing pipeline to improve maintainability, testability, and performance.
 
-- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
-- **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems and process kills originating from systems you care about
-- **Character Tracking:** Monitors specific characters and notifies on their activities
-- **Periodic Maintenance:** Automatically updates system data, processes backup kills, and sends heartbeat notifications
-- **Caching:** Implements efficient caching with Cachex to minimize redundant API calls
-- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for robust, resilient operation
-- **Containerized Deployment:** Easy setup using Docker and docker-compose
+## Refactoring Progress
 
-## Notification System
+### ✅ Completed:
 
-The application provides several types of Discord notifications:
+1. **Architecture Redesign**
 
-1. **Kill Notifications**
+   - Created a unified `KillmailProcessor` module as the central coordinator
+   - Implemented proper error handling with the `with` pattern
+   - Established clear stages in the processing pipeline
 
-   - Real-time alerts for ship destructions in tracked systems
-   - Rich embed format with detailed information:
-     - System location and kill value
-     - Victim details (character, corporation, ship type)
-     - Final blow attacker information
-     - Top damage dealer (if different)
-   - Visual elements including ship thumbnails and corporation icons
-   - Direct links to zKillboard
+2. **Data Structure Improvements**
 
-2. **System Notifications**
+   - Redesigned `KillmailData` struct with flattened field structure
+   - Eliminated nested data for easier access
+   - Standardized field naming and nullability
 
-   - Alerts when new systems are added to tracking
-   - System identification and zKillboard links
-   - Distinctive orange color scheme for easy identification
+3. **Core Components**
 
-3. **Character Notifications**
+   - Created a focused `NotificationDeterminer` module
+   - Implemented a simplified `Persistence` module
+   - Added a clean `Enrichment` module
+   - Created backward-compatible `Pipeline` module
 
-   - Notifications for newly tracked characters
-   - Character portraits and corporation affiliations
-   - Links to character profiles
-   - Green color scheme for visual distinction
+4. **Transitional Tools**
+   - Added `DataAccess` module as a simpler alternative to `Extractor`
+   - Created migration guide for updating code
+   - Implemented test coverage for new components
 
-4. **Service Status Updates**
-   - System startup confirmations
-   - Connection status monitoring
-   - Error reporting and diagnostic information
+### 🔄 In Progress:
 
-## Kill Notifications
+1. **Extractor and Transformer Simplification**
 
-The notifier supports configurable kill notifications based on tracked systems and tracked characters. Notifications can be sent to separate channels:
+   - Transitioning from Extractor module to direct KillmailData access
+   - Simplifying Transformer methods to focus on essential conversions
 
-- **System kill notifications**: Sent to `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID` when a kill happens in a tracked system
-- **Character kill notifications**: Sent to `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID` when tracked characters are involved in a kill
-  - Green color: When tracked characters are attackers (successful kills)
-  - Red color: When tracked characters are victims (losses)
+2. **Comprehensive Testing**
+   - Building test fixtures and helpers
+   - Implementing both unit and integration tests
 
-If a kill involves both tracked systems and tracked characters, notifications will be sent to both channels. This allows for more targeted monitoring of activity.
+### 📋 Next Steps:
 
-## Requirements
+1. **Follow the Migration Guide**
 
-- Elixir (>= 1.14 recommended)
-- Erlang/OTP (compatible version)
-- [Docker](https://www.docker.com/) (recommended for deployment)
-- Discord Bot Token (with proper permissions)
+   - Use the guide in `docs/migration-guide-extractor-to-direct-access.md`
+   - Start with high-impact modules first
+   - Run tests between each module migration
 
-## Quick Start with Docker
+2. **Update Remaining Code**
 
-The simplest way to get started is using Docker and docker-compose:
+   - Search for direct uses of Extractor and replace with direct access
+   - Remove unused or redundant Transformer methods
+   - Ensure consistent error handling
 
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/wanderer-notifier.git
-   cd wanderer-notifier
-   ```
-
-2. **Configure environment:**
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` file with your Discord bot token and other configuration.
-
-3. **Start the application:**
-
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Check logs:**
-   ```bash
-   docker-compose logs -f
-   ```
-
-## Manual Installation
-
-If you prefer to run without Docker:
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/wanderer-notifier.git
-   cd wanderer-notifier
-   ```
-
-2. **Setup Environment Variables:**
-   Create a `.env` file using the provided `.env.example` as a template.
-
-3. **Install Dependencies:**
-
-   ```bash
-   mix deps.get
-   ```
-
-4. **Compile the Project:**
-
-   ```bash
-   mix compile
-   ```
-
-5. **Run the Application:**
-   ```bash
-   mix run --no-halt
-   ```
-
-## Configuration
-
-All configuration is managed through environment variables in the `.env` file. A template is provided as `.env.example`.
-
-### Configuration Validation
-
-On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them.
-
-### Standardized Environment Variables
-
-All environment variables now use a standardized `WANDERER_` prefix.
-
-### Key Configuration Options
-
-1. **Discord Configuration**
-
-   - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
-   - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
-   - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
-   - `WANDERER_DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
-
-2. **License Configuration**
-
-   - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
-   - `WANDERER_LICENSE_MANAGER_URL`: URL for the license manager service (defaults to production service)
-
-3. **Map API Configuration**
-
-   - `WANDERER_MAP_URL`: URL of the map service
-   - `WANDERER_MAP_TOKEN`: Authentication token for map API
-
-4. **Database Configuration**
-
-   - `WANDERER_DB_USERNAME`: Database username (default: postgres)
-   - `WANDERER_DB_PASSWORD`: Database password (default: postgres)
-   - `WANDERER_DB_HOSTNAME`: Database hostname (default: postgres)
-   - `WANDERER_DB_NAME`: Database name (default: wanderer*notifier*[environment])
-   - `WANDERER_DB_PORT`: Database port (default: 5432)
-   - `WANDERER_DB_POOL_SIZE`: Connection pool size (default: 10)
-
-5. **Web Server Configuration**
-
-   - `WANDERER_WEB_PORT`: Port for the web server (default: 4000)
-   - `WANDERER_WEB_HOST`: Host for the web server (default: localhost)
-   - `WANDERER_PUBLIC_URL`: Public URL for the web interface
-
-6. **WebSocket Configuration**
-
-   - `WANDERER_WEBSOCKET_ENABLED`: Enable/disable websocket connection (default: true)
-   - `WANDERER_WEBSOCKET_RECONNECT_DELAY`: Delay between reconnection attempts in ms (default: 5000)
-
-7. **Feature Flags**
-
-   - `WANDERER_FEATURE_KILL_NOTIFICATIONS`: Enable kill notifications (default: true)
-   - `WANDERER_FEATURE_SYSTEM_NOTIFICATIONS`: Enable system notifications (default: true)
-   - `WANDERER_FEATURE_CHARACTER_NOTIFICATIONS`: Enable character notifications (default: true)
-   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: false)
-   - `WANDERER_FEATURE_KILL_CHARTS`: Enable kill charts (default: false)
-   - `WANDERER_FEATURE_MAP_CHARTS`: Enable map charts (default: false)
-   - `WANDERER_FEATURE_ACTIVITY_CHARTS`: Enable activity charts (default: false)
-   - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
-
-8. **Character Configuration**
-
-   - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
+3. **Performance Optimization**
+   - Implement proper batching for database operations
+   - Add caching where appropriate
+   - Profile and optimize bottlenecks
 
 ## Development
 
-### Using the Dev Container
+### Running Tests
 
-This project includes a development container configuration for VS Code:
+```bash
+mix test
+```
 
-1. Install the [Remote - Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-2. Open the repository in VS Code
-3. When prompted, reopen the project in the container
+### Style Guide
 
-### Makefile Commands
+This project follows Elixir's standard style guide with the following additions:
 
-The Makefile provides shortcuts for common tasks:
-
-- **Compile:** `make compile`
-- **Clean:** `make clean`
-- **Test:** `make test`
-- **Format:** `make format`
-- **Interactive Shell:** `make shell`
-- **Run Application:** `make run`
-- **Get Dependencies:** `make deps.get`
-- **Update Dependencies:** `make deps.update`
-
-## Architecture
-
-Wanderer Notifier follows an event-driven, functional, and component-based architecture:
-
-- The application receives real-time data via WebSocket from ZKillboard
-- Data is enriched with information from EVE ESI API
-- Notifications are determined based on configured rules
-- Messages are formatted and sent to Discord channels
-
+- Use the `with` pattern for multi-stage operations
+- Prefer direct struct access over helper functions for simple fields
+- Use DataAccess module for complex data extraction
 
 ## License
 
@@ -238,7 +90,7 @@ If you encounter issues or have questions, please open an issue on the project r
 
 ```
  mix archive.install hex bunt
- 
+
  docker buildx build . \
   --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \

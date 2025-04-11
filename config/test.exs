@@ -20,6 +20,8 @@ config :wanderer_notifier,
   cache_helpers: WandererNotifier.MockCacheHelpers,
   repository: WandererNotifier.MockRepository,
   killmail_persistence: WandererNotifier.MockKillmailPersistence,
+  # Add the new persistence module mock
+  processing_killmail_persistence: WandererNotifier.Processing.Killmail.MockPersistence,
   logger: WandererNotifier.MockLogger,
   notifier_factory: WandererNotifier.MockNotifierFactory,
   discord_notifier: WandererNotifier.MockDiscordNotifier,

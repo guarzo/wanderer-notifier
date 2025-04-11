@@ -8,7 +8,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.KillmailProcessing.Extractor
+  alias WandererNotifier.KillmailProcessing.DataAccess
+  alias WandererNotifier.KillmailProcessing.KillmailData
   require Logger
 
   @doc """
@@ -35,11 +36,28 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Process a valid killmail to determine notification status
-  defp process_killmail(killmail) do
+  defp process_killmail(%KillmailData{} = killmail) do
     # Extract and log basic killmail information
     {kill_id, system_id_str, _victim_info} = extract_killmail_info(killmail)
 
     # Run through notification checks with the "with" pipeline
+    notification_result = run_notification_checks(kill_id, system_id_str, killmail)
+
+    # Log the final notification decision
+    log_notification_decision(kill_id, notification_result)
+
+    # Return the notification result
+    notification_result
+  end
+
+  # Handle non-KillmailData for backward compatibility
+  defp process_killmail(killmail) when is_map(killmail) do
+    # Use the same logic but extract data using DataAccess helpers
+    kill_id = get_killmail_id(killmail) || "unknown"
+    system_id = get_system_id(killmail)
+    system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
+
+    # Run through notification checks
     notification_result = run_notification_checks(kill_id, system_id_str, killmail)
 
     # Log the final notification decision
@@ -54,15 +72,14 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   # Extract basic information from the killmail for logging
-  defp extract_killmail_info(killmail) do
-    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
-    system_id = Extractor.get_system_id(killmail)
+  defp extract_killmail_info(%KillmailData{} = killmail) do
+    kill_id = killmail.killmail_id || "unknown"
+    system_id = killmail.solar_system_id
     system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
 
-    # Get victim info using Extractor
-    victim = Extractor.get_victim(killmail) || %{}
-    victim_id = Map.get(victim, "character_id")
-    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+    # Get victim info directly
+    victim_id = killmail.victim_id
+    victim_name = killmail.victim_name || "Unknown Pilot"
 
     # Log basic information about the killmail
     Logger.debug(
@@ -123,13 +140,40 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  defp check_tracking(system_id, killmail) do
-    kill_id = Extractor.get_killmail_id(killmail) || "unknown"
+  defp check_tracking(system_id, %KillmailData{} = killmail) do
+    kill_id = killmail.killmail_id || "unknown"
     is_tracked_system = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
 
     # Get victim info for better logging
-    victim = Extractor.get_victim(killmail) || %{}
+    victim_id = killmail.victim_id
+
+    # Enhanced logging for debugging
+    Logger.debug(
+      "DETERMINER: Kill ##{kill_id} - System tracked: #{is_tracked_system}, Character tracked: #{has_tracked_char}"
+    )
+
+    # For notifications, we consider both tracked systems and tracked characters
+    if is_tracked_system || has_tracked_char do
+      true
+    else
+      details =
+        if is_nil(victim_id),
+          do: "missing victim ID",
+          else: "victim ID #{victim_id}, system ID #{system_id}"
+
+      {:not_tracked, details}
+    end
+  end
+
+  # Handle non-KillmailData for backward compatibility
+  defp check_tracking(system_id, killmail) when is_map(killmail) do
+    kill_id = get_killmail_id(killmail) || "unknown"
+    is_tracked_system = tracked_system?(system_id)
+    has_tracked_char = has_tracked_character?(killmail)
+
+    # Get victim info for better logging
+    victim = get_victim(killmail) || %{}
     victim_id = Map.get(victim, "character_id")
 
     # Enhanced logging for debugging
@@ -160,10 +204,16 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   @doc """
   Gets the system ID from a kill as a string.
-  Converts the numeric ID from Extractor to a string format, or returns "unknown".
+  Converts the numeric ID from the killmail to a string format, or returns "unknown".
   """
+  def get_kill_system_id(%KillmailData{} = kill) do
+    system_id = kill.solar_system_id
+    if is_nil(system_id), do: "unknown", else: to_string(system_id)
+  end
+
+  # Support older code that doesn't use KillmailData
   def get_kill_system_id(kill) do
-    system_id = Extractor.get_system_id(kill)
+    system_id = get_system_id(kill)
     if is_nil(system_id), do: "unknown", else: to_string(system_id)
   end
 
@@ -199,7 +249,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the killmail involves a tracked character
     - false otherwise
   """
-  def has_tracked_character?(killmail) do
+  def has_tracked_character?(%KillmailData{} = killmail) do
     IO.puts("\n🔍 ENTERING has_tracked_character? for kill: #{killmail.killmail_id}")
 
     # Get all tracked characters for comparison
@@ -219,6 +269,32 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
+  # Support older code that doesn't use KillmailData
+  def has_tracked_character?(killmail) when is_map(killmail) do
+    all_character_ids = get_all_tracked_character_ids()
+
+    # For non-KillmailData, we need to get the victim ID differently
+    victim = get_victim(killmail) || %{}
+    victim_id = Map.get(victim, "character_id")
+    victim_id_str = if victim_id, do: to_string(victim_id), else: nil
+
+    victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
+
+    if victim_tracked do
+      true
+    else
+      # Check if any attacker is tracked
+      attackers = get_attackers(killmail) || []
+
+      attacker_ids =
+        Enum.map(attackers, fn attacker ->
+          Map.get(attacker, "character_id")
+        end)
+
+      attacker_in_tracked_list?(attacker_ids, all_character_ids)
+    end
+  end
+
   # Get all tracked character IDs - simplified
   defp get_all_tracked_character_ids do
     all_characters = CacheRepo.get(CacheKeys.character_list()) || []
@@ -231,12 +307,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(killmail, all_character_ids) do
-    # Get victim directly from the killmail
-    victim = Extractor.get_victim(killmail) || %{}
-    victim_id = Map.get(victim, "character_id")
-    victim_name = Map.get(victim, "character_name") || "Unknown Pilot"
+  # Check if the victim in this kill is being tracked - for KillmailData
+  defp check_victim_tracked(%KillmailData{} = killmail, all_character_ids) do
+    # Get victim directly from KillmailData fields
+    victim_id = killmail.victim_id
+    victim_name = killmail.victim_name || "Unknown Pilot"
 
     # Convert to string for consistent comparison
     victim_id_str = if victim_id, do: to_string(victim_id), else: nil
@@ -273,10 +348,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     CacheRepo.get(direct_cache_key) != nil
   end
 
-  # Check if any attacker is tracked
-  defp check_attackers_tracked(killmail, all_character_ids) do
-    # Get attackers directly from the killmail using Extractor
-    attackers = Extractor.get_attackers(killmail) || []
+  # Check if any attacker is tracked - for KillmailData
+  defp check_attackers_tracked(%KillmailData{} = killmail, all_character_ids) do
+    # Get attackers directly from the KillmailData
+    attackers = killmail.attackers || []
     IO.puts("🔎 Checking attackers... ")
     IO.puts("🔍 CHECKING #{length(attackers)} ATTACKERS")
 
@@ -330,8 +405,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the kill happened in a tracked system
     - false otherwise
   """
+  def tracked_in_system?(%KillmailData{} = killmail) do
+    system_id = killmail.solar_system_id
+    system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
+    tracked_system?(system_id_str)
+  end
+
+  # Support older code that doesn't use KillmailData
   def tracked_in_system?(killmail) do
-    system_id = Extractor.get_system_id(killmail)
+    system_id = get_system_id(killmail)
     system_id_str = if is_nil(system_id), do: "unknown", else: to_string(system_id)
     tracked_system?(system_id_str)
   end
@@ -345,7 +427,16 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   ## Returns
     - List of tracked character IDs involved in the kill
   """
-  def get_tracked_characters(killmail) do
+  def get_tracked_characters(%KillmailData{} = killmail) do
+    # Use DataAccess helper for all character IDs
+    all_character_ids = DataAccess.all_character_ids(killmail)
+
+    # Filter to only include tracked characters
+    Enum.filter(all_character_ids, fn char_id -> tracked_character?(char_id) end)
+  end
+
+  # Support older code that doesn't use KillmailData
+  def get_tracked_characters(killmail) when is_map(killmail) do
     # Extract all character IDs from the killmail
     all_character_ids = extract_all_character_ids(killmail)
 
@@ -364,6 +455,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if any tracked character is a victim
     - false if all tracked characters are attackers
   """
+  def are_tracked_characters_victims?(%KillmailData{} = killmail, tracked_characters) do
+    # Get the victim character ID directly
+    victim_character_id = killmail.victim_id
+
+    # Check if any tracked character is the victim
+    Enum.member?(tracked_characters, victim_character_id)
+  end
+
+  # Support older code that doesn't use KillmailData
   def are_tracked_characters_victims?(killmail, tracked_characters) do
     # Get the victim character ID
     victim_character_id = get_victim_character_id(killmail)
@@ -389,13 +489,13 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp get_victim_character_id(killmail) when is_nil(killmail), do: nil
 
   defp get_victim_character_id(killmail) do
-    victim = Extractor.get_victim(killmail)
+    victim = get_victim(killmail)
     Map.get(victim, "character_id")
   end
 
   # Helper function to get attacker character IDs
   defp get_attacker_character_ids(killmail) do
-    attackers = Extractor.get_attackers(killmail)
+    attackers = get_attackers(killmail)
 
     Enum.map(attackers, fn attacker ->
       Map.get(attacker, "character_id")
@@ -444,4 +544,41 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def tracked_character?(_), do: false
+
+  # Backward compatibility helpers
+
+  defp get_killmail_id(killmail) do
+    if is_struct(killmail, KillmailData) do
+      killmail.killmail_id
+    else
+      DataAccess.debug_info(killmail).killmail_id
+    end
+  end
+
+  defp get_system_id(killmail) do
+    if is_struct(killmail, KillmailData) do
+      killmail.solar_system_id
+    else
+      DataAccess.debug_info(killmail).system_id
+    end
+  end
+
+  defp get_victim(killmail) do
+    if is_struct(killmail, KillmailData) do
+      killmail.victim
+    else
+      case DataAccess.character_involvement(killmail, killmail.victim_id) do
+        {:victim, data} -> data
+        _ -> %{}
+      end
+    end
+  end
+
+  defp get_attackers(killmail) do
+    if is_struct(killmail, KillmailData) do
+      killmail.attackers
+    else
+      killmail.attackers || []
+    end
+  end
 end

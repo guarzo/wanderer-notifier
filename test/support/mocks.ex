@@ -169,6 +169,50 @@ defmodule WandererNotifier.MockKillmailPersistence do
   def persist_killmail(_killmail, _character_id), do: {:ok, %{}}
 end
 
+defmodule WandererNotifier.Processing.Killmail.MockPersistence do
+  @moduledoc """
+  Mock implementation of the new killmail persistence service for testing.
+  """
+
+  @behaviour WandererNotifier.Processing.Killmail.PersistenceBehaviour
+
+  @impl true
+  def persist_killmail(_killmail, _character_id) do
+    # Return a successful persistence result with the killmail marked as persisted
+    {:ok, %WandererNotifier.KillmailProcessing.KillmailData{persisted: true}, true}
+  end
+
+  @impl true
+  def get_killmails_for_character(_character_id) do
+    # Return an empty list of killmails for any character
+    {:ok, []}
+  end
+
+  @impl true
+  def get_killmails_for_system(_system_id) do
+    # Return an empty list of killmails for any system
+    {:ok, []}
+  end
+
+  @impl true
+  def get_character_killmails(_character_id, _from_date, _to_date, _limit \\ 100) do
+    # Return an empty list of killmails for any date range
+    {:ok, []}
+  end
+
+  @impl true
+  def exists?(_killmail_id, _character_id, _role) do
+    # Return that no killmail exists
+    {:ok, false}
+  end
+
+  @impl true
+  def count_total_killmails() do
+    # Return 0 killmails
+    0
+  end
+end
+
 defmodule WandererNotifier.MockLogger do
   @moduledoc """
   Mock implementation of the logger for testing.

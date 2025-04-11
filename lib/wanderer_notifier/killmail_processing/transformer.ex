@@ -8,7 +8,8 @@ defmodule WandererNotifier.KillmailProcessing.Transformer do
   inconsistencies.
   """
 
-  alias WandererNotifier.KillmailProcessing.{Extractor, KillmailData}
+  alias WandererNotifier.KillmailProcessing.DataAccess
+  alias WandererNotifier.KillmailProcessing.KillmailData
   alias WandererNotifier.KillmailProcessing.Validator
   alias WandererNotifier.Resources.Killmail, as: KillmailResource
 
@@ -37,14 +38,20 @@ defmodule WandererNotifier.KillmailProcessing.Transformer do
 
   # Convert raw data to KillmailData
   def to_killmail_data(data) when is_map(data) do
-    # Extract core data using Extractor
-    killmail_id = Extractor.get_killmail_id(data)
-    system_id = Extractor.get_system_id(data)
-    system_name = Extractor.get_system_name(data)
-    kill_time = Extractor.get_kill_time(data)
-    zkb_data = Extractor.get_zkb_data(data)
-    victim = Extractor.get_victim(data)
-    attackers = Extractor.get_attackers(data)
+    # Extract core data directly
+    killmail_id = extract_killmail_id(data)
+    system_id = extract_system_id(data)
+    system_name = extract_system_name(data)
+    kill_time = extract_kill_time(data)
+    zkb_data = extract_zkb_data(data)
+    victim_data = extract_victim(data)
+    attackers = extract_attackers(data)
+
+    # Extract victim data directly
+    victim_id = extract_victim_id(victim_data)
+    victim_name = extract_victim_name(victim_data)
+    victim_ship_id = extract_victim_ship_id(victim_data)
+    victim_ship_name = extract_victim_ship_name(victim_data)
 
     # Build a standardized KillmailData struct
     %KillmailData{
@@ -52,9 +59,15 @@ defmodule WandererNotifier.KillmailProcessing.Transformer do
       solar_system_id: system_id,
       solar_system_name: system_name,
       kill_time: kill_time,
-      zkb_data: zkb_data,
-      esi_data: Map.get(data, :esi_data),
-      victim: victim,
+      raw_zkb_data: zkb_data,
+
+      # Victim data
+      victim_id: victim_id,
+      victim_name: victim_name,
+      victim_ship_id: victim_ship_id,
+      victim_ship_name: victim_ship_name,
+
+      # Attacker information
       attackers: attackers,
       persisted: Map.get(data, :persisted, false),
       metadata: Map.get(data, :metadata, %{})
@@ -85,4 +98,174 @@ defmodule WandererNotifier.KillmailProcessing.Transformer do
     # Then use the validator's normalize function
     Validator.normalize_killmail(killmail_data)
   end
+
+  # Direct extraction functions to replace Extractor calls
+  # These are private and only used within this module
+
+  defp extract_killmail_id(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :killmail_id) ->
+        data.killmail_id
+
+      is_map(data) && Map.has_key?(data, "killmail_id") ->
+        data["killmail_id"]
+
+      is_map(data) && Map.has_key?(data, "zkb") && is_map(data["zkb"]) &&
+          Map.has_key?(data["zkb"], "killmail_id") ->
+        data["zkb"]["killmail_id"]
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_system_id(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :solar_system_id) ->
+        data.solar_system_id
+
+      is_map(data) && Map.has_key?(data, "solar_system_id") ->
+        data["solar_system_id"]
+
+      is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
+          Map.has_key?(data.esi_data, "solar_system_id") ->
+        data.esi_data["solar_system_id"]
+
+      is_map(data) && Map.has_key?(data, "esi_data") && is_map(data["esi_data"]) &&
+          Map.has_key?(data["esi_data"], "solar_system_id") ->
+        data["esi_data"]["solar_system_id"]
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_system_name(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :solar_system_name) ->
+        data.solar_system_name
+
+      is_map(data) && Map.has_key?(data, "solar_system_name") ->
+        data["solar_system_name"]
+
+      is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
+          Map.has_key?(data.esi_data, "solar_system_name") ->
+        data.esi_data["solar_system_name"]
+
+      is_map(data) && Map.has_key?(data, "esi_data") && is_map(data["esi_data"]) &&
+          Map.has_key?(data["esi_data"], "solar_system_name") ->
+        data["esi_data"]["solar_system_name"]
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_kill_time(data) do
+    time =
+      cond do
+        is_map(data) && Map.has_key?(data, :kill_time) ->
+          data.kill_time
+
+        is_map(data) && Map.has_key?(data, "kill_time") ->
+          data["kill_time"]
+
+        is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
+            Map.has_key?(data.esi_data, "killmail_time") ->
+          data.esi_data["killmail_time"]
+
+        is_map(data) && Map.has_key?(data, "esi_data") && is_map(data["esi_data"]) &&
+            Map.has_key?(data["esi_data"], "killmail_time") ->
+          data["esi_data"]["killmail_time"]
+
+        true ->
+          nil
+      end
+
+    # Handle string timestamps
+    if is_binary(time) do
+      case DateTime.from_iso8601(time) do
+        {:ok, datetime, _} -> datetime
+        _ -> nil
+      end
+    else
+      time
+    end
+  end
+
+  defp extract_zkb_data(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :zkb_data) -> data.zkb_data
+      is_map(data) && Map.has_key?(data, "zkb_data") -> data["zkb_data"]
+      is_map(data) && Map.has_key?(data, :zkb) -> data.zkb
+      is_map(data) && Map.has_key?(data, "zkb") -> data["zkb"]
+      true -> %{}
+    end
+  end
+
+  defp extract_victim(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :victim) ->
+        data.victim
+
+      is_map(data) && Map.has_key?(data, "victim") ->
+        data["victim"]
+
+      is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
+          Map.has_key?(data.esi_data, "victim") ->
+        data.esi_data["victim"]
+
+      is_map(data) && Map.has_key?(data, "esi_data") && is_map(data["esi_data"]) &&
+          Map.has_key?(data["esi_data"], "victim") ->
+        data["esi_data"]["victim"]
+
+      true ->
+        %{}
+    end
+  end
+
+  defp extract_attackers(data) do
+    cond do
+      is_map(data) && Map.has_key?(data, :attackers) ->
+        data.attackers
+
+      is_map(data) && Map.has_key?(data, "attackers") ->
+        data["attackers"]
+
+      is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
+          Map.has_key?(data.esi_data, "attackers") ->
+        data.esi_data["attackers"]
+
+      is_map(data) && Map.has_key?(data, "esi_data") && is_map(data["esi_data"]) &&
+          Map.has_key?(data["esi_data"], "attackers") ->
+        data["esi_data"]["attackers"]
+
+      true ->
+        []
+    end
+  end
+
+  defp extract_victim_id(victim) when is_map(victim) do
+    Map.get(victim, "character_id") || Map.get(victim, :character_id)
+  end
+
+  defp extract_victim_id(_), do: nil
+
+  defp extract_victim_name(victim) when is_map(victim) do
+    Map.get(victim, "character_name") || Map.get(victim, :character_name)
+  end
+
+  defp extract_victim_name(_), do: nil
+
+  defp extract_victim_ship_id(victim) when is_map(victim) do
+    Map.get(victim, "ship_type_id") || Map.get(victim, :ship_type_id)
+  end
+
+  defp extract_victim_ship_id(_), do: nil
+
+  defp extract_victim_ship_name(victim) when is_map(victim) do
+    Map.get(victim, "ship_type_name") || Map.get(victim, :ship_type_name)
+  end
+
+  defp extract_victim_ship_name(_), do: nil
 end

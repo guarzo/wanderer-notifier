@@ -70,11 +70,13 @@ Note: Enrichment is separate from initial ESI data fetching because it:
 3. Can be cached separately from the base killmail data
 4. May fail independently of the base killmail fetch
 
-### 3. Persistence (`WandererNotifier.Resources.KillmailPersistence`)
+### 3. Persistence (`WandererNotifier.Processing.Killmail.Persistence`)
 
 - Stores kills in PostgreSQL
 - Uses caching to prevent duplicate processing
 - Tracks kills by character ID and role (attacker/victim)
+- Implements clean transaction handling for atomic operations
+- Provides a unified interface for all persistence operations
 
 Multiple Character Handling:
 

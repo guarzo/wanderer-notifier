@@ -51,23 +51,31 @@ defmodule WandererNotifier.Application do
 
     minimal_test = Application.get_env(:wanderer_notifier, :minimal_test, false)
 
-    if minimal_test do
-      start_minimal_application()
-    else
-      # Check if we're in test mode
-      is_test = Application.get_env(:wanderer_notifier, :env) == :test
-
-      if is_test do
-        # Start with minimal validation for tests
-        start_test_application()
+    result =
+      if minimal_test do
+        start_minimal_application()
       else
-        # Full validation for production
-        AppLogger.begin_startup_phase(:configuration, "Validating configuration")
-        validate_configuration()
-        AppLogger.begin_startup_phase(:services, "Starting main application")
-        start_main_application()
+        # Check if we're in test mode
+        is_test = Application.get_env(:wanderer_notifier, :env) == :test
+
+        if is_test do
+          # Start with minimal validation for tests
+          start_test_application()
+        else
+          # Full validation for production
+          AppLogger.begin_startup_phase(:configuration, "Validating configuration")
+          validate_configuration()
+          AppLogger.begin_startup_phase(:services, "Starting main application")
+          start_main_application()
+        end
       end
-    end
+
+    # Configure all processors to use the new KillmailProcessor
+    # We call this but don't return its result - return the supervisor result instead
+    WandererNotifier.Processing.Killmail.KillmailProcessor.configure()
+
+    # Return the result from starting the application
+    result
   end
 
   @doc """

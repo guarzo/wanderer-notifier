@@ -75,7 +75,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Api.Character.KillsService" => :warn,
   "WandererNotifier.KillmailProcessing.Pipeline" => :info,
   "WandererNotifier.Processing.Killmail" => :info,
-  "WandererNotifier.Resources.KillmailPersistence" => :info,
+  "WandererNotifier.Processing.Killmail.Persistence" => :info,
   "WandererNotifier.Debug.ProcessKillDebug" => :info,
   "WandererNotifier.Debug.PipelineDebug" => :info
 }
