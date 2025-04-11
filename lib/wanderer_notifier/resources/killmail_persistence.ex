@@ -2168,10 +2168,8 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
             # Create a new involvement record with properly structured arguments
             # The killmail_id needs to be passed as an argument named :killmail_id
             result =
-              Api.create(
-                KillmailCharacterInvolvement,
-                updated_data,
-                %{arguments: %{killmail_id: killmail_id}}
+              KillmailCharacterInvolvement.create(
+                Map.merge(updated_data, %{killmail_id: to_string(killmail_id)})
               )
 
             # Track successful character involvement persistence
