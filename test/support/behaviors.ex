@@ -18,6 +18,11 @@ end
 defmodule WandererNotifier.Api.ESI.ServiceBehaviour do
   @callback get_killmail(any()) :: any()
   @callback get_killmail(any(), any()) :: any()
+  @callback get_character_info(any()) :: any()
+  @callback get_corporation_info(any()) :: any()
+  @callback get_ship_type_name(any()) :: any()
+  @callback get_type_info(any()) :: any()
+  @callback get_system_info(any()) :: any()
 end
 
 defmodule WandererNotifier.Api.ZKill.ServiceBehaviour do
@@ -106,4 +111,8 @@ end
 defmodule WandererNotifier.Notifiers.Discord.NotifierBehaviour do
   @callback send_discord_embed(any()) :: any()
   @callback send_notification(any(), any()) :: any()
+end
+
+defmodule WandererNotifier.Config.NotificationsBehaviour do
+  @callback channel_id(atom()) :: String.t() | nil
 end

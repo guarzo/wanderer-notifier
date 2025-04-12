@@ -174,10 +174,22 @@ Application.put_env(
 
 # Define a behavior for Features
 defmodule WandererNotifier.Config.FeaturesBehaviour do
-  @callback persistence_enabled?() :: boolean()
-  @callback cache_enabled?() :: boolean()
   @callback notifications_enabled?() :: boolean()
+  @callback system_tracking_enabled?() :: boolean()
   @callback system_notifications_enabled?() :: boolean()
+  @callback tracked_systems_notifications_enabled?() :: boolean()
+  @callback character_tracking_enabled?() :: boolean()
+  @callback character_notifications_enabled?() :: boolean()
+  @callback tracked_characters_notifications_enabled?() :: boolean()
+  @callback kill_notifications_enabled?() :: boolean()
+  @callback kill_charts_enabled?() :: boolean()
+  @callback activity_charts_enabled?() :: boolean()
+  @callback map_charts_enabled?() :: boolean()
+  @callback cache_enabled?() :: boolean()
+  @callback status_messages_disabled?() :: boolean()
+  @callback get_feature_status() :: map()
+  @callback get_feature(atom(), any()) :: any()
+  @callback get_env(atom(), any()) :: any()
 end
 
 # Define the mock
@@ -333,7 +345,9 @@ System.put_env("WN_DB_PORT", "5432")
 
 # Add mock extension functions
 Code.require_file("test/support/mock_extensions.ex")
+Code.require_file("test/support/mock_feature_extensions.ex")
 WandererNotifier.MockConfigExtensions.add_expectations()
+WandererNotifier.MockFeatureExtensions.add_expectations()
 WandererNotifier.MockZKillClientExtensions.add_expectations()
 WandererNotifier.MockRepositoryExtensions.add_expectations()
 
@@ -357,8 +371,36 @@ defmodule WandererNotifier.Config.FeaturesBehaviour do
   @callback activity_charts_enabled?() :: boolean()
   @callback map_charts_enabled?() :: boolean()
   @callback cache_enabled?() :: boolean()
+  @callback status_messages_disabled?() :: boolean()
   @callback get_feature_status() :: map()
+  @callback get_feature(atom(), any()) :: any()
+  @callback get_env(atom(), any()) :: any()
 end
 
 Mox.defmock(WandererNotifier.MockFeatures, for: WandererNotifier.Config.FeaturesBehaviour)
 Mox.stub(WandererNotifier.MockFeatures, :cache_enabled?, fn -> true end)
+Mox.stub(WandererNotifier.MockFeatures, :get_feature, fn _key, default -> default end)
+
+Mox.stub(WandererNotifier.MockFeatures, :get_env, fn
+  :features, _default -> %{}
+  _key, default -> default
+end)
+
+# Define behaviors for Notifications
+defmodule WandererNotifier.NotificationsBehaviour do
+  @callback send_notification(atom(), map()) :: {:ok, any()} | {:error, any()}
+end
+
+# Fix the mock to use the behavior instead of trying to mock the module directly
+Mox.defmock(WandererNotifier.Notifications.Mock, for: WandererNotifier.NotificationsBehaviour)
+Application.put_env(:wanderer_notifier, :notifications, WandererNotifier.Notifications.Mock)
+
+Mox.defmock(WandererNotifier.Config.NotificationsMock,
+  for: WandererNotifier.Config.NotificationsBehaviour
+)
+
+Application.put_env(
+  :wanderer_notifier,
+  :notifications_config,
+  WandererNotifier.Config.NotificationsMock
+)

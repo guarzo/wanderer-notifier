@@ -89,21 +89,49 @@ defmodule WandererNotifier.Config.Features do
   """
   @spec get_feature(atom() | String.t(), boolean()) :: boolean()
   def get_feature(key, default \\ false) do
-    features_map = get_env(:features, %{})
+    # Special handling for test environment when MockFeatures is used
+    if Application.get_env(:wanderer_notifier, :environment) == :test do
+      # Get the features configuration - could be a module or a map
+      features_config =
+        Application.get_env(:wanderer_notifier, :features, WandererNotifier.Config.MockFeatures)
 
-    # Try both atom and string keys
-    atom_key = if is_atom(key), do: key, else: String.to_atom("#{key}")
-    string_key = if is_binary(key), do: key, else: Atom.to_string(key)
+      # If it's a map, look up the key directly
+      cond do
+        is_map(features_config) and Map.has_key?(features_config, key) ->
+          Map.get(features_config, key)
 
-    # Check if each key exists
-    atom_exists = Map.has_key?(features_map, atom_key)
-    string_exists = Map.has_key?(features_map, string_key)
+        is_map(features_config) and is_binary(key) and
+            Map.has_key?(features_config, String.to_atom(key)) ->
+          Map.get(features_config, String.to_atom(key))
 
-    # Get the value based on which key exists
-    cond do
-      atom_exists -> Map.get(features_map, atom_key)
-      string_exists -> Map.get(features_map, string_key)
-      true -> default
+        is_map(features_config) and is_atom(key) and
+            Map.has_key?(features_config, Atom.to_string(key)) ->
+          Map.get(features_config, Atom.to_string(key))
+
+        is_atom(features_config) ->
+          # If it's a module, call get_feature on it
+          apply(features_config, :get_feature, [key, default])
+
+        true ->
+          default
+      end
+    else
+      features_map = get_env(:features, %{})
+
+      # Try both atom and string keys
+      atom_key = if is_atom(key), do: key, else: String.to_atom("#{key}")
+      string_key = if is_binary(key), do: key, else: Atom.to_string(key)
+
+      # Check if each key exists
+      atom_exists = Map.has_key?(features_map, atom_key)
+      string_exists = Map.has_key?(features_map, string_key)
+
+      # Get the value based on which key exists
+      cond do
+        atom_exists -> Map.get(features_map, atom_key)
+        string_exists -> Map.get(features_map, string_key)
+        true -> default
+      end
     end
   end
 
