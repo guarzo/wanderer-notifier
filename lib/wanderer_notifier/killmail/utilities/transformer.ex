@@ -38,40 +38,72 @@ defmodule WandererNotifier.Killmail.Utilities.Transformer do
 
   # Convert raw data to Data
   def to_killmail_data(data) when is_map(data) do
-    # Extract core data directly
-    killmail_id = extract_killmail_id(data)
-    system_id = extract_system_id(data)
-    system_name = extract_system_name(data)
-    kill_time = extract_kill_time(data)
-    zkb_data = extract_zkb_data(data)
-    victim_data = extract_victim(data)
-    attackers = extract_attackers(data)
+    # For test data containing esi_data, we need to properly handle it
+    # Some test cases provide esi_data as a nested map, so let's check for it
+    esi_data = Map.get(data, "esi_data") || Map.get(data, :esi_data) || %{}
 
-    # Extract victim data directly
-    victim_id = extract_victim_id(victim_data)
-    victim_name = extract_victim_name(victim_data)
-    victim_ship_id = extract_victim_ship_id(victim_data)
-    victim_ship_name = extract_victim_ship_name(victim_data)
+    # If we have esi_data, use zkb_and_esi data constructor which handles fields better
+    if esi_data != %{} do
+      # Extract zkb data
+      zkb_data = Map.get(data, "zkb") || Map.get(data, :zkb) || %{}
+      # Combine data with zkb for proper extraction
+      combined_data = Map.merge(data, %{"zkb" => zkb_data})
 
-    # Build a standardized Data struct using the Data.from_map function
-    Data.from_map(%{
-      killmail_id: killmail_id,
-      solar_system_id: system_id,
-      solar_system_name: system_name,
-      kill_time: kill_time,
-      raw_zkb_data: zkb_data,
+      # Use the specialized constructor
+      Data.from_zkb_and_esi(combined_data, esi_data)
+    else
+      # Extract all fields directly
+      killmail_id = extract_killmail_id(data)
+      system_id = extract_system_id(data)
+      system_name = extract_system_name(data)
+      kill_time = extract_kill_time(data)
+      zkb_data = extract_zkb_data(data)
+      victim_data = extract_victim(data)
+      attackers = extract_attackers(data)
 
-      # Victim data
-      victim_id: victim_id,
-      victim_name: victim_name,
-      victim_ship_id: victim_ship_id,
-      victim_ship_name: victim_ship_name,
+      # Extract victim data directly
+      victim_id = extract_victim_id(victim_data)
+      victim_name = extract_victim_name(victim_data)
+      victim_ship_id = extract_victim_ship_id(victim_data)
+      victim_ship_name = extract_victim_ship_name(victim_data)
 
-      # Attacker information
-      attackers: attackers,
-      persisted: Map.get(data, :persisted, false),
-      metadata: Map.get(data, :metadata, %{})
-    })
+      # Ensure integer solar_system_id
+      system_id =
+        case system_id do
+          id when is_binary(id) ->
+            case Integer.parse(id) do
+              {int_val, _} -> int_val
+              _ -> system_id
+            end
+
+          _ ->
+            system_id
+        end
+
+      # Create a combined map with both string and atom keys
+      # This ensures it works with Data.from_map which may expect either form
+      map_with_both_keys = %{
+        "killmail_id" => killmail_id,
+        "solar_system_id" => system_id,
+        "solar_system_name" => system_name,
+        "kill_time" => kill_time,
+        "zkb" => zkb_data,
+        "victim" => victim_data,
+        "attackers" => attackers,
+        "persisted" => Map.get(data, :persisted, false),
+        killmail_id: killmail_id,
+        solar_system_id: system_id,
+        solar_system_name: system_name,
+        kill_time: kill_time,
+        zkb: zkb_data,
+        victim: victim_data,
+        attackers: attackers,
+        persisted: Map.get(data, :persisted, false)
+      }
+
+      # Use the from_map function
+      Data.from_map(map_with_both_keys)
+    end
   end
 
   # Default for nil or non-map values
@@ -208,6 +240,12 @@ defmodule WandererNotifier.Killmail.Utilities.Transformer do
 
         is_map(data) && Map.has_key?(data, "kill_time") ->
           data["kill_time"]
+
+        is_map(data) && Map.has_key?(data, :killmail_time) ->
+          data.killmail_time
+
+        is_map(data) && Map.has_key?(data, "killmail_time") ->
+          data["killmail_time"]
 
         is_map(data) && Map.has_key?(data, :esi_data) && is_map(data.esi_data) &&
             Map.has_key?(data.esi_data, "killmail_time") ->

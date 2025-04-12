@@ -91,9 +91,10 @@ defmodule WandererNotifier.Killmail.Utilities.DataAccess do
           {:victim, map()} | {:attacker, map()} | nil
   def character_involvement(%Data{} = killmail, character_id) do
     character_id_str = to_string(character_id)
+    victim_id_str = if killmail.victim_id, do: to_string(killmail.victim_id), else: nil
 
     # Check if character is the victim
-    if killmail.victim_id && to_string(killmail.victim_id) == character_id_str do
+    if victim_id_str && victim_id_str == character_id_str do
       victim_data = %{
         "character_id" => killmail.victim_id,
         "character_name" => killmail.victim_name,
@@ -121,13 +122,18 @@ defmodule WandererNotifier.Killmail.Utilities.DataAccess do
   @spec all_character_ids(Data.t()) :: list(integer())
   def all_character_ids(%Data{} = killmail) do
     # Start with victim if present
-    victim_id = killmail.victim_id
+    ids = []
+    ids = if killmail.victim_id, do: [killmail.victim_id | ids], else: ids
 
     # Extract attacker IDs
     attacker_ids =
       if is_list(killmail.attackers) do
-        Enum.map(killmail.attackers, fn attacker ->
-          Map.get(attacker, "character_id")
+        killmail.attackers
+        |> Enum.map(fn attacker ->
+          cond do
+            is_map(attacker) -> Map.get(attacker, "character_id")
+            true -> nil
+          end
         end)
         |> Enum.reject(&is_nil/1)
       else
@@ -135,7 +141,7 @@ defmodule WandererNotifier.Killmail.Utilities.DataAccess do
       end
 
     # Combine and remove duplicates
-    ([victim_id] ++ attacker_ids)
+    (ids ++ attacker_ids)
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
   end
