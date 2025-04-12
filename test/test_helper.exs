@@ -230,7 +230,11 @@ Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :delete, fn _key -> :ok end
 Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :set, fn _key, _value, _ttl -> :ok end)
 Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :clear, fn -> :ok end)
 Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :exists?, fn _key -> false end)
-Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :get_and_update, fn _key, _fun -> {nil, nil} end)
+
+Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :get_and_update, fn _key, _fun ->
+  {nil, nil}
+end)
+
 Mox.stub(WandererNotifier.Data.Cache.RepositoryMock, :get_tracked_characters, fn -> [] end)
 
 # Add stubs for MockStructuredFormatter
@@ -253,3 +257,108 @@ end)
 Mox.stub(WandererNotifier.MockKillmailChartAdapter, :generate_weekly_kills_chart, fn ->
   {:ok, "http://example.com/chart.png"}
 end)
+
+# Setup Mox mocks
+Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.Behaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.Behaviour)
+Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Cache.HelpersBehaviour)
+Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.Behaviour)
+Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
+
+Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
+  for: WandererNotifier.Api.ZKill.ServiceBehaviour
+)
+
+Mox.defmock(WandererNotifier.Api.ESI.ServiceMock, for: WandererNotifier.Api.ESI.ServiceBehaviour)
+Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.LoggerBehaviour)
+Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Data.RepositoryBehaviour)
+Mox.defmock(WandererNotifier.MockDate, for: WandererNotifier.DateBehaviour)
+
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifiers.FactoryBehaviour
+)
+
+Mox.defmock(WandererNotifier.MockStructuredFormatter,
+  for: WandererNotifier.Notifiers.StructuredFormatterBehaviour
+)
+
+Mox.defmock(WandererNotifier.MockDiscordNotifier,
+  for: WandererNotifier.Notifiers.Discord.NotifierBehaviour
+)
+
+# Global test fixtures
+setup_fixtures = fn path ->
+  path
+  |> Path.join("**/*.json")
+  |> Path.wildcard()
+  |> Enum.each(fn file ->
+    fixture_name =
+      file
+      |> Path.basename(".json")
+      |> String.to_atom()
+
+    content = File.read!(file)
+    :persistent_term.put({:test_fixture, fixture_name}, content)
+  end)
+end
+
+# Setup fixtures
+setup_fixtures.("test/fixtures")
+
+# Mock Nostrum modules used in tests
+defmodule Nostrum.Api do
+  defmodule Message do
+    def create(channel_id, content) when is_binary(content) do
+      {:ok, %{channel_id: channel_id, content: content}}
+    end
+
+    def create(channel_id, %{content: _} = payload) do
+      {:ok, Map.put(payload, :channel_id, channel_id)}
+    end
+  end
+
+  def create_message(channel_id, content) do
+    Message.create(channel_id, content)
+  end
+end
+
+# Always provide some default test environment variables
+System.put_env("WN_DISCORD_WEBHOOK_URL", "https://example.com/webhook")
+System.put_env("WN_DISCORD_API_TOKEN", "test_token")
+System.put_env("WN_DB_NAME", "test_db")
+System.put_env("WN_DB_USER", "test_user")
+System.put_env("WN_DB_PASS", "test_pass")
+System.put_env("WN_DB_HOST", "localhost")
+System.put_env("WN_DB_PORT", "5432")
+
+# Add mock extension functions
+Code.require_file("test/support/mock_extensions.ex")
+WandererNotifier.MockConfigExtensions.add_expectations()
+WandererNotifier.MockZKillClientExtensions.add_expectations()
+WandererNotifier.MockRepositoryExtensions.add_expectations()
+
+# Add behaviors
+Code.require_file("test/support/behaviors.ex")
+
+# Add mocks for adapter modules
+Code.require_file("test/support/mock_adapters.exs")
+
+# For FeaturesBehaviour
+defmodule WandererNotifier.Config.FeaturesBehaviour do
+  @callback notifications_enabled?() :: boolean()
+  @callback system_tracking_enabled?() :: boolean()
+  @callback system_notifications_enabled?() :: boolean()
+  @callback tracked_systems_notifications_enabled?() :: boolean()
+  @callback character_tracking_enabled?() :: boolean()
+  @callback character_notifications_enabled?() :: boolean()
+  @callback tracked_characters_notifications_enabled?() :: boolean()
+  @callback kill_notifications_enabled?() :: boolean()
+  @callback kill_charts_enabled?() :: boolean()
+  @callback activity_charts_enabled?() :: boolean()
+  @callback map_charts_enabled?() :: boolean()
+  @callback cache_enabled?() :: boolean()
+  @callback get_feature_status() :: map()
+end
+
+Mox.defmock(WandererNotifier.MockFeatures, for: WandererNotifier.Config.FeaturesBehaviour)
+Mox.stub(WandererNotifier.MockFeatures, :cache_enabled?, fn -> true end)

@@ -1,16 +1,18 @@
 defmodule WandererNotifier.Cache.Behaviour do
-  @callback put(any()) :: any()
   @callback get(any()) :: any()
+  @callback put(any(), any()) :: any()
+  @callback delete(any()) :: any()
   @callback exists?(any()) :: boolean()
 end
 
 defmodule WandererNotifier.Cache.HelpersBehaviour do
-  @callback clear_cache() :: any()
-  @callback clear_for_key(any()) :: any()
+  @callback get_tracked_systems() :: any()
+  @callback get_tracked_characters() :: any()
 end
 
 defmodule WandererNotifier.Api.ESI.Behaviour do
-  @callback fetch_data(any()) :: any()
+  @callback get_killmail(any()) :: any()
+  @callback get_killmail(any(), any()) :: any()
 end
 
 defmodule WandererNotifier.Api.ESI.ServiceBehaviour do
@@ -20,6 +22,8 @@ end
 
 defmodule WandererNotifier.Api.ZKill.ServiceBehaviour do
   @callback fetch_killmail(any()) :: any()
+  @callback get_single_killmail(any()) :: any()
+  @callback get_system_kills(any(), any()) :: any()
 end
 
 defmodule WandererNotifier.Api.ZKill.ClientBehaviour do
@@ -70,6 +74,7 @@ end
 
 defmodule WandererNotifier.Notifiers.FactoryBehaviour do
   @callback create(any()) :: any()
+  @callback notify(atom(), any()) :: any()
 end
 
 defmodule WandererNotifier.Data.Cache.RepositoryBehaviour do
@@ -96,4 +101,9 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterBehaviour do
             ) :: map()
 
   @callback to_discord_format(map()) :: map()
+end
+
+defmodule WandererNotifier.Notifiers.Discord.NotifierBehaviour do
+  @callback send_discord_embed(any()) :: any()
+  @callback send_notification(any(), any()) :: any()
 end

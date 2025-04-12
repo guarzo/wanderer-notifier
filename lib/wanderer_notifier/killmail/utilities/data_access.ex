@@ -69,7 +69,7 @@ defmodule WandererNotifier.Killmail.Utilities.DataAccess do
 
     Enum.find(attackers, fn attacker ->
       attacker_id = Map.get(attacker, "character_id")
-      to_string(attacker_id) == character_id_str
+      attacker_id != nil && to_string(attacker_id) == character_id_str
     end)
   end
 

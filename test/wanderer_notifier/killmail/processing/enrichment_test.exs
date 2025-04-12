@@ -3,7 +3,34 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
 
   alias WandererNotifier.Killmail.Core.Data, as: KillmailData
   alias WandererNotifier.Killmail.Processing.Enrichment
-  alias WandererNotifier.Api.Map.Systems
+
+  # We'll define our own Systems module instead of using the one from mock_extensions.ex
+  # This way we can customize the returned system name
+  defmodule Systems do
+    def get_system_info(30_000_142) do
+      {:ok,
+       %{
+         "system_id" => 30_000_142,
+         "name" => "Jita",
+         "region_id" => 10_000_002,
+         "region_name" => "The Forge",
+         "security_status" => 0.9,
+         "security_class" => "B"
+       }}
+    end
+
+    def get_system_info(system_id) do
+      {:ok,
+       %{
+         "system_id" => system_id,
+         "name" => "Test System",
+         "region_id" => 10_000_001,
+         "region_name" => "Test Region",
+         "security_status" => 0.5,
+         "security_class" => "C1"
+       }}
+    end
+  end
 
   # Sample test data
   @zkb_data %{
@@ -87,7 +114,7 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
     original_kill_determiner = Application.get_env(:wanderer_notifier, :kill_determiner_module)
 
     # Replace with our mocks - using fully qualified module names
-    Application.put_env(:wanderer_notifier, :map_systems_module, Systems)
+    Application.put_env(:wanderer_notifier, :map_systems_module, __MODULE__.Systems)
     Application.put_env(:wanderer_notifier, :esi_service_module, __MODULE__.MockESIService)
 
     Application.put_env(
@@ -182,7 +209,7 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
       assert enriched.solar_system_name == nil
 
       # Reset to our normal system module
-      Application.put_env(:wanderer_notifier, :map_systems_module, Systems)
+      Application.put_env(:wanderer_notifier, :map_systems_module, __MODULE__.Systems)
     end
   end
 
