@@ -8,15 +8,15 @@ defmodule WandererNotifier.Config.MockFeatures do
   def get_env(:features, _default), do: %{}
   def get_env(key, default), do: default
 
-  def cache_enabled?, do: false
-  def notifications_enabled?, do: false
-  def system_tracking_enabled?, do: false
-  def system_notifications_enabled?, do: false
-  def tracked_systems_notifications_enabled?, do: false
-  def character_tracking_enabled?, do: false
-  def character_notifications_enabled?, do: false
-  def tracked_characters_notifications_enabled?, do: false
-  def kill_notifications_enabled?, do: false
+  def cache_enabled?, do: true
+  def notifications_enabled?, do: true
+  def system_tracking_enabled?, do: true
+  def system_notifications_enabled?, do: true
+  def tracked_systems_notifications_enabled?, do: true
+  def character_tracking_enabled?, do: true
+  def character_notifications_enabled?, do: true
+  def tracked_characters_notifications_enabled?, do: true
+  def kill_notifications_enabled?, do: true
   def kill_charts_enabled?, do: false
   def activity_charts_enabled?, do: false
   def map_charts_enabled?, do: false

@@ -61,6 +61,8 @@ defmodule WandererNotifier.Killmail.Processing.ProcessorTest do
   setup do
     # Apply mock expectations from extensions (only the ones we need)
     WandererNotifier.MockConfigExtensions.add_expectations()
+    # Add MockFeatureExtensions expectations specifically for Features
+    WandererNotifier.MockFeatureExtensions.add_expectations()
     # Don't apply ZKillClient extensions as they're causing errors and aren't needed for this test
     # WandererNotifier.MockZKillClientExtensions.add_expectations()
     WandererNotifier.MockRepositoryExtensions.add_expectations()
@@ -74,11 +76,7 @@ defmodule WandererNotifier.Killmail.Processing.ProcessorTest do
     Application.put_env(:wanderer_notifier, :notification_determiner, MockNotificationDeterminer)
     Application.put_env(:wanderer_notifier, :notification, MockNotification)
 
-    # Stub Features to enable persistence by default
-    stub(MockFeatures, :persistence_enabled?, fn -> true end)
-    stub(MockFeatures, :cache_enabled?, fn -> true end)
-    stub(MockFeatures, :notifications_enabled?, fn -> true end)
-    stub(MockFeatures, :system_notifications_enabled?, fn -> true end)
+    # Removed direct stubbing of MockFeatures as we're now using MockFeatureExtensions
 
     :ok
   end
