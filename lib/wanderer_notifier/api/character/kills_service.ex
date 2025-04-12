@@ -12,7 +12,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Repository
   alias WandererNotifier.KillmailProcessing.Context
-  alias WandererNotifier.KillmailProcessing.Pipeline, as: KillmailPipeline
+  alias WandererNotifier.Processing.Killmail.KillmailProcessor
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.Persistence
   alias WandererNotifier.Data.Repository
@@ -584,7 +584,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
 
     # First attempt - standard processing with new normalized model
     result =
-      case process_killmail_with_retries(standardized_kill, ctx, 0) do
+      case KillmailProcessor.process_killmail(standardized_kill, ctx) do
         {:ok, _} = _result ->
           end_time = System.monotonic_time(:millisecond)
           duration_ms = end_time - start_time
@@ -758,7 +758,7 @@ defmodule WandererNotifier.Api.Character.KillsService do
       AppLogger.kill_debug("[KillsService] Retry attempt #{retry_count} for kill #{kill_id}")
     end
 
-    case KillmailPipeline.process_killmail(kill, ctx) do
+    case KillmailProcessor.process_killmail(kill, ctx) do
       {:ok, _} = result ->
         result
 

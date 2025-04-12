@@ -8,11 +8,11 @@ defmodule WandererNotifier.Debug.KillmailTools do
 
   alias WandererNotifier.KillmailProcessing.{
     Context,
-    KillmailData,
-    Pipeline
+    KillmailData
   }
 
   alias WandererNotifier.Processing.Killmail.Core
+  alias WandererNotifier.Processing.Killmail.KillmailProcessor
 
   @doc """
   Enable detailed logging for the next killmail received.
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
     IO.puts("\n")
 
     # Convert json_data to a format suitable for validation
-    killmail_data = %KillmailData{
+    killmail_data = %WandererNotifier.Killmail.Core.Data{
       killmail_id: kill_id,
       raw_zkb_data: Map.get(json_data, "zkb", %{}),
       raw_esi_data:
@@ -138,7 +138,7 @@ defmodule WandererNotifier.Debug.KillmailTools do
     ctx = Context.new_realtime(nil, nil, :debug_force_notify, %{force_notification: true})
 
     # Process through the pipeline with forced notification
-    case Pipeline.process_killmail_with_data(killmail, ctx) do
+    case KillmailProcessor.process_killmail(killmail, ctx) do
       {:ok, result} ->
         IO.puts("✅ Notification processing completed successfully: #{inspect(result)}")
         :ok

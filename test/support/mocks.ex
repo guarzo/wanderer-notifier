@@ -152,23 +152,6 @@ defmodule WandererNotifier.MockRepository do
   def clear, do: :ok
 end
 
-defmodule WandererNotifier.MockKillmailPersistence do
-  @moduledoc """
-  Mock implementation of the killmail persistence service for testing.
-  """
-
-  @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
-
-  @impl true
-  def maybe_persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail, _character_id), do: {:ok, %{}}
-end
-
 defmodule WandererNotifier.Processing.Killmail.MockPersistence do
   @moduledoc """
   Mock implementation of the new killmail persistence service for testing.

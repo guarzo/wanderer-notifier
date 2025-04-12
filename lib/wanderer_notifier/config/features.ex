@@ -323,4 +323,26 @@ defmodule WandererNotifier.Config.Features do
   defp get_env(key, default \\ nil) do
     Application.get_env(:wanderer_notifier, key, default)
   end
+
+  @doc """
+  Checks if persistence is enabled.
+
+  ## Returns
+    - true if persistence is enabled
+    - false if persistence is disabled
+  """
+  def persistence_enabled? do
+    Application.get_env(:wanderer_notifier, :persistence_enabled, true)
+  end
+
+  @doc """
+  Checks if caching is enabled.
+
+  ## Returns
+    - true if caching is enabled
+    - false if caching is disabled
+  """
+  def cache_enabled? do
+    Application.get_env(:wanderer_notifier, :cache_enabled, true)
+  end
 end

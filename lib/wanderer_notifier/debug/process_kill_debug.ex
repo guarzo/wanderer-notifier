@@ -10,7 +10,8 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Data.Repository
-  alias WandererNotifier.KillmailProcessing.{Context, Pipeline, DataAccess}
+  alias WandererNotifier.KillmailProcessing.{Context, DataAccess}
+  alias WandererNotifier.Processing.Killmail.KillmailProcessor
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Hardcoded character ID that's known to have killmails
@@ -469,7 +470,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
                 {kill_id, {:error, :invalid_kill_data}}
               else
                 # Process the kill through the pipeline with properly structured data
-                result = Pipeline.process_killmail(killmail_data, ctx)
+                result = KillmailProcessor.process_killmail(killmail_data, ctx)
 
                 AppLogger.kill_debug("Kill processing result", %{
                   kill_id: kill_id,
@@ -668,10 +669,10 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
         })
 
         # Log that we're about to call the real pipeline
-        AppLogger.kill_debug("Calling REAL Pipeline.process_killmail function")
+        AppLogger.kill_debug("Calling REAL KillmailProcessor.process_killmail function")
 
         # Process through the pipeline
-        result = Pipeline.process_killmail(killmail_data, ctx)
+        result = KillmailProcessor.process_killmail(killmail_data, ctx)
 
         # Log the result
         AppLogger.kill_debug("Pipeline execution completed", %{
@@ -756,7 +757,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
         # Run it through the pipeline with no modification
         t0 = System.monotonic_time(:millisecond)
-        result = Pipeline.process_killmail(kill, ctx)
+        result = KillmailProcessor.process_killmail(kill, ctx)
         t1 = System.monotonic_time(:millisecond)
         duration_ms = t1 - t0
 
@@ -1030,7 +1031,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
 
         # Transform to KillmailData for consistent processing
         alias WandererNotifier.KillmailProcessing.Transformer
-        alias WandererNotifier.KillmailProcessing.{Context, Pipeline, DataAccess}
+        alias WandererNotifier.KillmailProcessing.{Context, DataAccess}
         alias WandererNotifier.Resources.Killmail
 
         # First log the raw structure
@@ -1073,7 +1074,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
           # Process through standard pipeline
           IO.puts("\n🔄 PROCESSING THROUGH PIPELINE:")
           start_time = :os.system_time(:millisecond)
-          result = Pipeline.process_killmail(killmail_data, ctx)
+          result = KillmailProcessor.process_killmail(killmail_data, ctx)
           end_time = :os.system_time(:millisecond)
 
           # After pipeline processing, examine the killmail structure again
@@ -1491,7 +1492,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
     alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-    alias WandererNotifier.KillmailProcessing.{Pipeline, Transformer}
+    alias WandererNotifier.KillmailProcessing.{Transformer}
     alias WandererNotifier.Logger.Logger, as: AppLogger
 
     IO.puts("\n===== KILLMAIL TRACKING DIAGNOSIS =====")
@@ -1640,7 +1641,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
   # Version of direct_process with enhanced debugging
   defp direct_process_with_debug(killmail_id) do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-    alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+    alias WandererNotifier.KillmailProcessing.{Context, DataAccess}
     alias WandererNotifier.Logger.Logger, as: AppLogger
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
     alias WandererNotifier.KillmailProcessing.KillmailQueries
@@ -1713,7 +1714,7 @@ defmodule WandererNotifier.Debug.ProcessKillDebug do
           check_raw_kill_structure(kill)
 
           # Run it through the pipeline with logging
-          result = Pipeline.process_killmail(kill, ctx)
+          result = KillmailProcessor.process_killmail(kill, ctx)
 
           # Return the result
           result

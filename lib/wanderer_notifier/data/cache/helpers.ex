@@ -824,4 +824,76 @@ defmodule WandererNotifier.Data.Cache.Helpers do
       {:error, :invalid_esi_character_name}
     end
   end
+
+  @doc """
+  Checks if a character is tracked.
+
+  ## Parameters
+    - character_id: The character ID to check
+
+  ## Returns
+    - {:ok, true} if the character is tracked
+    - {:ok, false} if the character is not tracked
+    - {:error, reason} on error
+  """
+  @spec is_character_tracked?(integer()) :: {:ok, boolean()} | {:error, any()}
+  def is_character_tracked?(character_id) when is_integer(character_id) do
+    # Get the list of tracked characters
+    tracked_characters = get_tracked_characters()
+
+    # Check if the character is in the list
+    {:ok, Enum.any?(tracked_characters, fn char ->
+      char.character_id == character_id ||
+      to_string(char.character_id) == to_string(character_id)
+    end)}
+  rescue
+    error ->
+      AppLogger.error("Error checking if character #{character_id} is tracked: #{inspect(error)}")
+      {:error, error}
+  end
+
+  def is_character_tracked?(character_id) when is_binary(character_id) do
+    case Integer.parse(character_id) do
+      {id, _} -> is_character_tracked?(id)
+      :error -> {:error, :invalid_character_id}
+    end
+  end
+
+  def is_character_tracked?(_), do: {:error, :invalid_character_id}
+
+  @doc """
+  Checks if a system is tracked.
+
+  ## Parameters
+    - system_id: The system ID to check
+
+  ## Returns
+    - {:ok, true} if the system is tracked
+    - {:ok, false} if the system is not tracked
+    - {:error, reason} on error
+  """
+  @spec is_system_tracked?(integer()) :: {:ok, boolean()} | {:error, any()}
+  def is_system_tracked?(system_id) when is_integer(system_id) do
+    # Get the list of tracked systems
+    tracked_systems = get_tracked_systems()
+
+    # Check if the system is in the list
+    {:ok, Enum.any?(tracked_systems, fn sys ->
+      sys.system_id == system_id ||
+      to_string(sys.system_id) == to_string(system_id)
+    end)}
+  rescue
+    error ->
+      AppLogger.error("Error checking if system #{system_id} is tracked: #{inspect(error)}")
+      {:error, error}
+  end
+
+  def is_system_tracked?(system_id) when is_binary(system_id) do
+    case Integer.parse(system_id) do
+      {id, _} -> is_system_tracked?(id)
+      :error -> {:error, :invalid_system_id}
+    end
+  end
+
+  def is_system_tracked?(_), do: {:error, :invalid_system_id}
 end

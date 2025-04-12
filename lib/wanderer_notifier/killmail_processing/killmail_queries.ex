@@ -1,5 +1,9 @@
 defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   @moduledoc """
+  DEPRECATED: This module is deprecated and will be removed in a future version.
+
+  Please use WandererNotifier.Killmail.Queries.KillmailQueries instead.
+
   Database query functions for killmails.
 
   This module provides a clean interface for retrieving killmails from the database.
@@ -33,26 +37,14 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
   ```
   """
 
-  require Ash.Query
+  @deprecated "Use WandererNotifier.Killmail.Queries.KillmailQueries instead"
 
-  alias WandererNotifier.Resources.Killmail, as: KillmailResource
-  alias WandererNotifier.Resources.KillmailCharacterInvolvement
-
-  # Get configured API implementation - allows for mocking in tests
-  defp api do
-    # Use Application.get_env with a default fallback to ensure API is always available
-    api_module =
-      Application.get_env(:wanderer_notifier, :resources_api, WandererNotifier.Resources.Api)
-
-    # Add extra logging to debug API usage
-    require Logger
-    Logger.debug("Using API module: #{inspect(api_module)}")
-
-    api_module
-  end
+  alias WandererNotifier.Killmail.Queries.KillmailQueries, as: NewKillmailQueries
 
   @doc """
   Checks if a killmail exists in the database by its ID.
+
+  DEPRECATED: Use WandererNotifier.Killmail.Queries.KillmailQueries.exists?/1 instead.
 
   ## Parameters
 
@@ -71,58 +63,16 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> exists?(99999)
       false
   """
+  @deprecated "Use WandererNotifier.Killmail.Queries.KillmailQueries.exists?/1 instead"
   @spec exists?(integer() | String.t()) :: boolean()
   def exists?(killmail_id) do
-    # Determine if we're dealing with a UUID or an integer killmail_id
-    is_uuid =
-      is_binary(killmail_id) &&
-        String.match?(
-          killmail_id,
-          ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        )
-
-    # Build appropriate query based on the format of the ID
-    query =
-      if is_uuid do
-        # UUID format - search by record ID
-        KillmailResource
-        |> Ash.Query.filter(id == ^killmail_id)
-        |> Ash.Query.select([:id])
-        |> Ash.Query.limit(1)
-      else
-        # Numeric killmail_id - convert to integer if it's a string
-        killmail_id_int =
-          case killmail_id do
-            id when is_integer(id) ->
-              id
-
-            id when is_binary(id) ->
-              case Integer.parse(id) do
-                {int_id, _} -> int_id
-                # keep as is if we can't parse it
-                _ -> id
-              end
-
-            # any other type, keep as is
-            id ->
-              id
-          end
-
-        KillmailResource
-        |> Ash.Query.filter(killmail_id == ^killmail_id_int)
-        |> Ash.Query.select([:id])
-        |> Ash.Query.limit(1)
-      end
-
-    # Perform the query
-    case api().read(query) do
-      {:ok, [_record]} -> true
-      _ -> false
-    end
+    NewKillmailQueries.exists?(killmail_id)
   end
 
   @doc """
   Gets a killmail by its ID.
+
+  DEPRECATED: Use WandererNotifier.Killmail.Queries.KillmailQueries.get/1 instead.
 
   ## Parameters
 
@@ -142,57 +92,15 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> get(99999)
       {:error, :not_found}
   """
-  @spec get(integer() | String.t()) :: {:ok, KillmailResource.t()} | {:error, any()}
+  @deprecated "Use WandererNotifier.Killmail.Queries.KillmailQueries.get/1 instead"
   def get(killmail_id) do
-    # Determine if we're dealing with a UUID or an integer killmail_id
-    is_uuid =
-      is_binary(killmail_id) &&
-        String.match?(
-          killmail_id,
-          ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        )
-
-    # Build appropriate query based on the format of the ID
-    query =
-      if is_uuid do
-        # UUID format - search by record ID
-        KillmailResource
-        |> Ash.Query.filter(id == ^killmail_id)
-        |> Ash.Query.limit(1)
-      else
-        # Numeric killmail_id - convert to integer if it's a string
-        killmail_id_int =
-          case killmail_id do
-            id when is_integer(id) ->
-              id
-
-            id when is_binary(id) ->
-              case Integer.parse(id) do
-                {int_id, _} -> int_id
-                # keep as is if we can't parse it
-                _ -> id
-              end
-
-            # any other type, keep as is
-            id ->
-              id
-          end
-
-        KillmailResource
-        |> Ash.Query.filter(killmail_id == ^killmail_id_int)
-        |> Ash.Query.limit(1)
-      end
-
-    # Perform the query
-    case api().read(query) do
-      {:ok, [record]} -> {:ok, record}
-      {:ok, []} -> {:error, :not_found}
-      error -> error
-    end
+    NewKillmailQueries.get(killmail_id)
   end
 
   @doc """
   Gets character involvements for a killmail.
+
+  DEPRECATED: Use WandererNotifier.Killmail.Queries.KillmailQueries.get_involvements/1 instead.
 
   ## Parameters
 
@@ -212,99 +120,25 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> get_involvements(99999)
       {:error, :not_found}
   """
-  @spec get_involvements(integer()) ::
-          {:ok, list(KillmailCharacterInvolvement.t())} | {:error, any()}
+  @deprecated "Use WandererNotifier.Killmail.Queries.KillmailQueries.get_involvements/1 instead"
   def get_involvements(killmail_id) when is_integer(killmail_id) do
-    require Logger
-
-    # First check if the killmail exists
-    exists_result = exists?(killmail_id)
-    Logger.info("Checking if killmail #{killmail_id} exists: #{exists_result}")
-
-    if exists_result do
-      # Then get all involvements for that killmail
-      Logger.info("Querying for character involvements for killmail #{killmail_id}")
-
-      # This is a critical fix - we need to use Ash.Query.filter with the correct relation syntax
-      # Build the query directly against the KillmailCharacterInvolvement table's killmail_id field
-      query =
-        KillmailCharacterInvolvement
-        |> Ash.Query.filter(killmail_id == ^killmail_id)
-        |> Ash.Query.select([
-          :id,
-          :character_id,
-          :character_role,
-          :ship_type_id,
-          :ship_type_name,
-          :killmail_id
-        ])
-
-      # IMPORTANT: Do NOT call Ash.Query.to_string here - it's a private function
-      Logger.info("DETAILED INVOLVEMENT QUERY INFO", %{
-        query_module: KillmailCharacterInvolvement.__info__(:module),
-        filter_field: :killmail_id,
-        filter_value: killmail_id,
-      })
-
-      case api().read(query) do
-        {:ok, involvements} when is_list(involvements) ->
-          Logger.info("INVOLVEMENT QUERY RESULT", %{
-            killmail_id: killmail_id,
-            count: length(involvements),
-            found_ids:
-              Enum.map(involvements, fn inv ->
-                "#{inv.character_id}:#{inv.character_role}"
-              end)
-          })
-
-          if length(involvements) > 0 do
-            character_info =
-              Enum.map(involvements, fn inv ->
-                "#{inv.character_id}:#{inv.character_role}"
-              end)
-
-            Logger.info(
-              "Found #{length(involvements)} character involvements for killmail #{killmail_id}"
-            )
-          else
-            Logger.warn("No character involvements found for existing killmail #{killmail_id}")
-          end
-
-          {:ok, involvements}
-
-        {:error, reason} = error ->
-          Logger.error(
-            "Error fetching involvements for killmail #{killmail_id}: #{inspect(reason)}"
-          )
-
-          error
-      end
-    else
-      Logger.info("Cannot get involvements, killmail #{killmail_id} not found")
-      {:error, :not_found}
-    end
+    NewKillmailQueries.get_involvements(killmail_id)
   end
 
   # Add an overload that handles string input by parsing to integer
   def get_involvements(killmail_id) when is_binary(killmail_id) do
-    case Integer.parse(killmail_id) do
-      {int_id, ""} ->
-        # Only accept strings that are purely integers
-        get_involvements(int_id)
-
-      _ ->
-        # Reject UUIDs and other non-integer strings
-        {:error, {:invalid_id_format, "Expected integer killmail_id, got: #{killmail_id}"}}
-    end
+    NewKillmailQueries.get_involvements(killmail_id)
   end
 
   # Catch-all for any other type
   def get_involvements(killmail_id) do
-    {:error, {:invalid_id_format, "Expected integer killmail_id, got: #{inspect(killmail_id)}"}}
+    NewKillmailQueries.get_involvements(killmail_id)
   end
 
   @doc """
   Finds killmails involving a specific character in a date range.
+
+  DEPRECATED: Use WandererNotifier.Killmail.Queries.KillmailQueries.find_by_character/4 instead.
 
   ## Parameters
 
@@ -331,42 +165,8 @@ defmodule WandererNotifier.KillmailProcessing.KillmailQueries do
       iex> find_by_character(12345, start_date, end_date, limit: 10, role: "victim")
       {:ok, [%KillmailResource{...}, ...]}
   """
-  @spec find_by_character(integer(), DateTime.t(), DateTime.t(), keyword()) ::
-          {:ok, list(KillmailResource.t())} | {:error, any()}
+  @deprecated "Use WandererNotifier.Killmail.Queries.KillmailQueries.find_by_character/4 instead"
   def find_by_character(character_id, start_date, end_date, opts \\ []) do
-    # Set default options
-    limit = Keyword.get(opts, :limit, 100)
-    offset = Keyword.get(opts, :offset, 0)
-    role = Keyword.get(opts, :role, nil)
-
-    # Build query
-    query =
-      KillmailCharacterInvolvement
-      |> Ash.Query.filter(character_id == ^character_id)
-      |> Ash.Query.filter(killmail.kill_time >= ^start_date)
-      |> Ash.Query.filter(killmail.kill_time <= ^end_date)
-      |> Ash.Query.limit(limit)
-      |> Ash.Query.offset(offset)
-      |> Ash.Query.load(:killmail)
-
-    # Add role filter if specified
-    query =
-      if role do
-        Ash.Query.filter(query, character_role == ^role)
-      else
-        query
-      end
-
-    case api().read(query) do
-      {:ok, involvements} ->
-        # Extract the loaded killmails
-        killmails = Enum.map(involvements, & &1.killmail)
-        # Filter out nil values (shouldn't happen, but just in case)
-        killmails = Enum.reject(killmails, &is_nil/1)
-        {:ok, killmails}
-
-      error ->
-        error
-    end
+    NewKillmailQueries.find_by_character(character_id, start_date, end_date, opts)
   end
 end

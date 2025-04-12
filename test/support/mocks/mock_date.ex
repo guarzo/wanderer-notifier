@@ -5,6 +5,11 @@ defmodule WandererNotifier.MockDate do
   @behaviour WandererNotifier.DateBehaviour
 
   @impl true
+  def now do
+    DateTime.utc_now()
+  end
+
+  @impl true
   def utc_today do
     Date.utc_today()
   end

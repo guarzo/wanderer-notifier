@@ -125,4 +125,29 @@ defmodule WandererNotifier.Data.Repository do
   def cache_character_info(character_data) do
     CacheHelpers.cache_character_info(character_data)
   end
+
+  @doc """
+  Checks if a killmail exists in the database.
+
+  ## Parameters
+    - killmail_id: The killmail ID to check
+
+  ## Returns
+    - true if the killmail exists
+    - false if the killmail doesn't exist
+    - {:error, reason} on error
+  """
+  def check_killmail_exists_in_database(killmail_id) do
+    # Delegate to the appropriate module
+    persistence_module = Application.get_env(
+      :wanderer_notifier,
+      :persistence_module,
+      WandererNotifier.Killmail.Processing.Persistence
+    )
+
+    case persistence_module.check_killmail_exists(killmail_id) do
+      {:ok, exists} -> exists
+      {:error, reason} -> {:error, reason}
+    end
+  end
 end

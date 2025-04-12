@@ -209,6 +209,11 @@ defmodule WandererNotifier.Config.Application do
     Config.get_feature_status()
   end
 
+  @impl WandererNotifier.Config.Behaviour
+  def get(key) do
+    Application.get_env(:wanderer_notifier, key)
+  end
+
   # Private Helpers
 
   defp get_wanderer_env(key, default \\ nil) do

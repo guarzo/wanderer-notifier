@@ -6,4 +6,5 @@ defmodule WandererNotifier.Resources.ApiBehaviour do
   """
 
   @callback read(query :: any()) :: {:ok, list()} | {:error, any()}
+  @callback query(query :: any()) :: {:ok, list()} | {:error, any()}
 end

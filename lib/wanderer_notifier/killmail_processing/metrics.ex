@@ -1,10 +1,19 @@
 defmodule WandererNotifier.KillmailProcessing.Metrics do
   @moduledoc """
   Metrics collection and reporting for killmail processing.
+
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics instead
+
+  This module is deprecated and will be removed in a future release.
+  All functionality has been moved to WandererNotifier.Killmail.Metrics.Metrics.
   """
+
+  require Logger
 
   alias WandererNotifier.KillmailProcessing.Context
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Killmail.Metrics.Metrics, as: NewMetrics
+  alias WandererNotifier.Killmail.Core.Context, as: NewContext
 
   # Agent name for metrics storage
   @agent_name :killmail_metrics_agent
@@ -102,293 +111,166 @@ defmodule WandererNotifier.KillmailProcessing.Metrics do
 
   @doc """
   Required child_spec implementation for supervisor integration.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.child_spec/1 instead
   """
   def child_spec(opts) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]},
-      type: :worker,
-      restart: :permanent,
-      shutdown: 500
-    }
+    Logger.warning("Using deprecated Metrics.child_spec/1, please update your code")
+    NewMetrics.child_spec(opts)
   end
 
   @doc """
   Initializes the metrics agent.
   Call this during application startup before using any metrics functions.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.start_link/1 instead
   """
-  def start_link(_opts \\ []) do
-    # Initialize the agent with the initial state
-    initial_state = %{
-      counters: %{},
-      timestamp: DateTime.utc_now()
-    }
-
-    # Start the agent with a name
-    result = Agent.start_link(fn -> initial_state end, name: @agent_name)
-
-    # Synchronize with metric registry
-    synchronize_registry()
-
-    result
+  def start_link(opts \\ []) do
+    Logger.warning("Using deprecated Metrics.start_link/1, please update your code")
+    NewMetrics.start_link(opts)
   end
 
   @doc """
   Synchronizes the registered metrics with the metric registry to avoid errors.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.synchronize_registry/0 instead
   """
   def synchronize_registry do
-    alias WandererNotifier.KillmailProcessing.MetricRegistry
-
-    # Get all registered metrics from the registry
-    registry_metrics = MetricRegistry.registered_metrics()
-
-    # Convert atom metrics to strings
-    registry_metric_strings = Enum.map(registry_metrics, &Atom.to_string/1)
-
-    # Find metrics that are in the registry but not in @registered_metrics
-    missing_metrics =
-      Enum.filter(registry_metric_strings, fn metric_string ->
-        !Map.has_key?(@registered_metrics, metric_string)
-      end)
-
-    # Log any discrepancies
-    if !Enum.empty?(missing_metrics) do
-      # More detailed logging with categorized missing metrics
-      sample_metrics = Enum.take(missing_metrics, 10)
-
-      # Dump all missing metrics to a file for easier debugging
-      File.write!("missing_metrics.txt", Enum.join(missing_metrics, "\n"))
-
-      AppLogger.startup_warn(
-        "Found metrics in registry that aren't in @registered_metrics map",
-        %{
-          count: length(missing_metrics),
-          samples: sample_metrics,
-          recommendation: "Check missing_metrics.txt file for all missing metrics"
-        }
-      )
-
-      # Create a dynamic map of missing metrics to complement @registered_metrics
-      # This is a runtime workaround since we can't modify @registered_metrics at runtime
-      missing_metrics_map = Map.new(missing_metrics, fn key -> {key, :counter} end)
-
-      # Store this in the process dictionary so increment_counter_impl can check it
-      Process.put(:dynamic_metrics_extension, missing_metrics_map)
-    end
-
-    :ok
+    Logger.warning("Using deprecated Metrics.synchronize_registry/0, please update your code")
+    NewMetrics.synchronize_registry()
   end
 
   @doc """
   Resets all counters to zero.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.reset_counters/0 instead
   """
   def reset_counters do
-    Agent.update(@agent_name, fn state ->
-      %{state | counters: %{}, timestamp: DateTime.utc_now()}
-    end)
+    Logger.warning("Using deprecated Metrics.reset_counters/0, please update your code")
+    NewMetrics.reset_counters()
   end
 
   @doc """
   Gets the current counter values.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.get_counters/0 instead
   """
   def get_counters do
-    Agent.get(@agent_name, fn state -> state.counters end)
+    Logger.warning("Using deprecated Metrics.get_counters/0, please update your code")
+    NewMetrics.get_counters()
   end
 
   @doc false
   def __registered_metrics_for_debug__ do
-    @registered_metrics
+    Logger.warning("Using deprecated Metrics.__registered_metrics_for_debug__/0, please update your code")
+    NewMetrics.__registered_metrics_for_debug__()
   end
 
   @doc """
   Tracks the start of killmail processing.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_processing_start/1 instead
   """
   @spec track_processing_start(Context.t()) :: :ok
   def track_processing_start(%Context{} = ctx) do
-    metric_key = "killmail.processing.#{mode_name(ctx)}.start"
-    increment_counter(metric_key)
-    :ok
+    Logger.warning("Using deprecated Metrics.track_processing_start/1, please update your code")
+
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
+
+    # Delegate to new implementation
+    NewMetrics.track_processing_start(new_ctx)
   end
 
   @doc """
   Tracks the completion of killmail processing.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_processing_complete/2 instead
   """
   @spec track_processing_complete(Context.t(), {:ok, term()} | {:error, term()}) :: :ok
   def track_processing_complete(%Context{} = ctx, result) do
-    mode = mode_name(ctx)
-    # Directly use the metric key format that matches our registry
-    metric_key = "killmail.processing.#{mode}.complete"
+    Logger.warning("Using deprecated Metrics.track_processing_complete/2, please update your code")
 
-    # # Add more detailed debugging
-    # if Mix.env() == :dev do
-    #   IO.puts("\nDEBUG: In track_processing_complete with mode='#{mode}'")
-    #   IO.puts("DEBUG: Using metric_key='#{metric_key}'")
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
 
-    #   # Inspect the context for more clues
-    #   IO.inspect(ctx, label: "Context")
-    #   IO.inspect(result, label: "Result")
-    # end
-
-    increment_counter(metric_key)
-
-    case result do
-      {:ok, _} ->
-        success_key = "killmail.processing.#{mode}.complete.success"
-        # if Mix.env() == :dev, do: IO.puts("DEBUG: Success metric='#{success_key}'")
-        increment_counter(success_key)
-
-      {:error, _} ->
-        error_key = "killmail.processing.#{mode}.complete.error"
-        # if Mix.env() == :dev, do: IO.puts("DEBUG: Error metric='#{error_key}'")
-        increment_counter(error_key)
-    end
-
-    :ok
+    # Delegate to new implementation
+    NewMetrics.track_processing_complete(new_ctx, result)
   end
 
   @doc """
   Tracks when a killmail is skipped.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_processing_skipped/1 instead
   """
   @spec track_processing_skipped(Context.t()) :: :ok
   def track_processing_skipped(%Context{} = ctx) do
-    metric_key = "killmail.processing.#{mode_name(ctx)}.skipped"
-    increment_counter(metric_key)
-    :ok
+    Logger.warning("Using deprecated Metrics.track_processing_skipped/1, please update your code")
+
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
+
+    # Delegate to new implementation
+    NewMetrics.track_processing_skipped(new_ctx)
   end
 
   @doc """
   Tracks when a killmail processing fails.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_processing_error/1 instead
   """
   @spec track_processing_error(Context.t()) :: :ok
   def track_processing_error(%Context{} = ctx) do
-    metric_key = "killmail.processing.#{mode_name(ctx)}.error"
-    increment_counter(metric_key)
-    :ok
+    Logger.warning("Using deprecated Metrics.track_processing_error/1, please update your code")
+
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
+
+    # Delegate to new implementation
+    NewMetrics.track_processing_error(new_ctx)
   end
 
   @doc """
   Tracks when a killmail is persisted.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_persistence/1 instead
   """
   @spec track_persistence(Context.t()) :: :ok
-  def track_persistence(%Context{} = ctx), do: track_metric(ctx, "persistence")
+  def track_persistence(%Context{} = ctx) do
+    Logger.warning("Using deprecated Metrics.track_persistence/1, please update your code")
+
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
+
+    # Delegate to new implementation
+    NewMetrics.track_persistence(new_ctx)
+  end
 
   @doc """
   Tracks a notification being sent.
+  @deprecated Please use WandererNotifier.Killmail.Metrics.Metrics.track_notification_sent/1 instead
   """
   @spec track_notification_sent(Context.t()) :: :ok
   def track_notification_sent(%Context{} = ctx) do
-    metric_key = "killmail.notification.#{mode_name(ctx)}.sent"
-    increment_counter(metric_key)
-    :ok
+    Logger.warning("Using deprecated Metrics.track_notification_sent/1, please update your code")
+
+    # Convert Context to new format if needed
+    new_ctx = convert_context(ctx)
+
+    # Delegate to new implementation
+    NewMetrics.track_notification_sent(new_ctx)
   end
 
-  # Private functions
+  # Helper function to convert a Context to the new format
+  defp convert_context(%Context{} = old_ctx) do
+    # Check if it's already the new Context format
+    if Map.has_key?(old_ctx, :__struct__) and old_ctx.__struct__ == NewContext do
+      old_ctx
+    else
+      # Extract required fields from old Context
+      mode = Map.get(old_ctx, :mode)
 
-  # Generic function to track metrics with a specific key pattern
-  defp track_metric(%Context{} = ctx, operation) do
-    # The operation already includes the mode name for operations that have "processing.MODE.complete"
-    # Let's special case the processing complete metrics to avoid double mode names
-    metric_key =
-      if String.contains?(operation, "processing.") do
-        # Directly use the operation name since it already has the mode embedded
-        "killmail.#{operation}"
-      else
-        # Normal case - append the mode name
-        "killmail.#{operation}.#{mode_name(ctx)}"
-      end
-
-    # Debug: Print what we're about to track
-    # if Mix.env() == :dev do
-    #   IO.puts("TRACKING METRIC: #{metric_key}")
-    # end
-
-    increment_counter(metric_key)
-    :ok
-  end
-
-  defp mode_name(%Context{mode: %{mode: mode}}) when not is_nil(mode), do: Atom.to_string(mode)
-  defp mode_name(%Context{mode: mode}) when is_atom(mode), do: Atom.to_string(mode)
-  defp mode_name(%Context{mode: mode}) when is_binary(mode), do: mode
-
-  defp mode_name(%Context{}) do
-    # Default to batch mode if no mode is specified
-    IO.puts("WARNING: No mode specified in Context, defaulting to 'batch'")
-    "batch"
-  end
-
-  defp mode_name(_), do: "unknown"
-
-  defp increment_counter(key) do
-    # Track metrics using Core Stats
-    increment_counter_impl(key)
-  end
-
-  defp increment_counter_impl(key) when is_binary(key) do
-    # For simple string keys, use a default value of 1
-    increment_counter_impl({key, 1})
-  end
-
-  defp increment_counter_impl({counter, value}) do
-    current_value = Agent.get(@agent_name, fn state -> Map.get(state.counters, counter, 0) end)
-    new_value = current_value + value
-
-    # Check if metric exists in @registered_metrics or in dynamic extension
-    dynamic_metrics = Process.get(:dynamic_metrics_extension, %{})
-
-    is_registered =
-      Map.has_key?(@registered_metrics, counter) || Map.has_key?(dynamic_metrics, counter)
-
-    # Always update the counter to avoid data loss
-    update_counter(counter, new_value)
-
-    # Log warning if metric is not registered
-    if !is_registered do
-      maybe_log_unregistered_metric_warning(counter, value)
+      # Create a new Context struct
+      %NewContext{
+        mode: mode,
+        metadata: Map.get(old_ctx, :metadata, %{})
+      }
     end
   rescue
     e ->
-      AppLogger.processor_error("Error tracking metric", %{
-        counter: counter,
-        value: value,
-        error: Exception.message(e)
-      })
-  end
+      Logger.error("Error converting Context: #{inspect(e)}")
 
-  defp update_counter(counter, new_value) do
-    Agent.update(@agent_name, fn state ->
-      counters = Map.put(state.counters, counter, new_value)
-      %{state | counters: counters}
-    end)
-  end
-
-  defp maybe_log_unregistered_metric_warning(counter, value) do
-    warning_cache_key = {:metric_warning, counter}
-    already_warned = Process.get(warning_cache_key, false)
-
-    if !already_warned do
-      log_unregistered_metric_warning(counter, value)
-      Process.put(warning_cache_key, true)
-    end
-  end
-
-  defp log_unregistered_metric_warning(counter, value) do
-    IO.puts("\n!!! UNREGISTERED METRIC: '#{counter}' !!!\n")
-
-    parts = String.split(counter, ".")
-    prefix = Enum.take(parts, 1) |> Enum.join(".")
-    mode = if length(parts) > 2, do: Enum.at(parts, 2)
-    operation = if length(parts) > 1, do: Enum.at(parts, 1)
-
-    AppLogger.processor_warn("Attempted to track metrics with non-registered key", %{
-      counter: counter,
-      counter_parts: %{
-        prefix: prefix,
-        operation: operation,
-        mode: mode
-      },
-      value: value,
-      recommendation:
-        "Add this key to @registered_metrics in WandererNotifier.KillmailProcessing.Metrics"
-    })
+      # Create a basic fallback context to avoid errors
+      %NewContext{mode: :unknown}
   end
 end

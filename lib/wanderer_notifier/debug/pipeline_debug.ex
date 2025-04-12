@@ -7,7 +7,8 @@ defmodule WandererNotifier.Debug.PipelineDebug do
   """
 
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+  alias WandererNotifier.KillmailProcessing.{Context, KillmailData}
+  alias WandererNotifier.Processing.Killmail.KillmailProcessor
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Hardcoded debug character ID
@@ -53,14 +54,14 @@ defmodule WandererNotifier.Debug.PipelineDebug do
     case ZKillClient.get_single_killmail(killmail_id) do
       {:ok, kill} ->
         AppLogger.kill_debug("""
-        🔄 Passing raw ZKill data directly to the REAL Pipeline.process_killmail function
+        🔄 Passing raw ZKill data directly to the REAL KillmailProcessor function
         * Kill ID: #{killmail_id}
         * Using production code path with no special handling
         """)
 
         # Run the kill through the real pipeline
         t0 = System.monotonic_time(:millisecond)
-        result = Pipeline.process_killmail(kill, ctx)
+        result = KillmailProcessor.process_killmail(kill, ctx)
         t1 = System.monotonic_time(:millisecond)
         duration_ms = t1 - t0
 

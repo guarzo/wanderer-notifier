@@ -1,17 +1,19 @@
 defmodule WandererNotifier.Processing.Killmail.Notification do
   @moduledoc """
-  Handles sending notifications for killmails.
+  @deprecated Please use WandererNotifier.Killmail.Processing.Notification instead
 
-  This module provides a clean interface for sending notifications for killmails
-  to various notification channels.
+  This module is deprecated and will be removed in a future release.
+  All functionality has been moved to WandererNotifier.Killmail.Processing.Notification.
   """
 
-  alias WandererNotifier.KillmailProcessing.KillmailData
+  alias WandererNotifier.Killmail.Core.Data
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Killmail.Processing.Notification, as: NewNotification
 
   @doc """
   Sends a notification for a killmail.
+  @deprecated Please use WandererNotifier.Killmail.Processing.Notification.notify/1 instead
 
   ## Parameters
     - killmail: The KillmailData struct to notify about
@@ -21,22 +23,21 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
     - {:ok, result} if notification is sent successfully
     - {:error, reason} if an error occurs
   """
-  @spec send_kill_notification(KillmailData.t(), integer()) :: {:ok, any()} | {:error, any()}
-  def send_kill_notification(%KillmailData{} = killmail, kill_id) do
-    AppLogger.kill_debug("Sending notification for killmail ##{kill_id}")
+  @spec send_kill_notification(Data.t(), integer()) :: {:ok, any()} | {:error, any()}
+  def send_kill_notification(%Data{} = killmail, kill_id) do
+    AppLogger.kill_debug(
+      "Sending notification for killmail ##{kill_id} (using deprecated module)"
+    )
 
-    # Delegate to the Discord notifier which handles rich formatting and delivery
-    try do
-      DiscordNotifier.send_enriched_kill_embed(killmail, kill_id)
-    rescue
-      e ->
-        AppLogger.kill_error("Error sending notification: #{Exception.message(e)}")
-        {:error, :notification_error}
+    # Delegate to the new notification module
+    case NewNotification.notify(killmail) do
+      :ok -> {:ok, :sent}
+      error -> error
     end
   end
 
-  def send_kill_notification(other, kill_id) do
-    AppLogger.kill_error("Cannot send notification for non-KillmailData: #{inspect(other)}")
+  def send_kill_notification(other, _kill_id) do
+    AppLogger.kill_error("Cannot send notification for non-Data: #{inspect(other)}")
     {:error, :invalid_data_type}
   end
 end

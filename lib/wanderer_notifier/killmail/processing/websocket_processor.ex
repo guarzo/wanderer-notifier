@@ -1,322 +1,426 @@
 defmodule WandererNotifier.Killmail.Processing.WebsocketProcessor do
   @moduledoc """
-  Processes killmail data from the zKillboard websocket.
-  This module is responsible for analyzing killmail data from the websocket,
-  determining what actions to take, and orchestrating notifications as needed.
+  Processes killmails from the ZKillboard websocket.
 
-  This is the main entry point for websocket killmail processing and coordinates between specialized modules:
-  - Stats: Tracks and reports statistics about processed kills
-  - Enrichment: Adds additional data to killmails
-  - Notification: Handles notification decisions and dispatch
-  - Cache: Manages caching of killmail data
+  This module handles the processing of killmail data received from the ZKillboard websocket.
+  It is separate from the actual WebSocket connection handling, which is managed by the
+  WandererNotifier.Api.ZKill.Websocket module.
+
+  The processor is responsible for:
+  - Extracting killmail data from the WebSocket messages
+  - Processing killmails through the standard pipeline
+  - Handling errors and tracking metrics
   """
+
+  require Logger
 
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
-  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Core.Context
+  alias WandererNotifier.Killmail.Processing.Processor
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Killmail.Processing.{Cache, Notification, Processor}
 
-  @behaviour WandererNotifier.Killmail.Processing.ProcessorBehaviour
-  @max_retries 3
-  @retry_backoff_ms 1000
+  # Add dependency injection for Processor and ZKillClient
+  defp zkill_client, do: Application.get_env(:wanderer_notifier, :zkill_client, ZKillClient)
+  defp processor, do: Application.get_env(:wanderer_notifier, :processor, Processor)
 
-  @impl WandererNotifier.Killmail.Processing.ProcessorBehaviour
-  def init do
-    # Core Stats is started by the application supervisor
-    Cache.init()
-  end
+  # API
 
   @doc """
-  Schedules periodic tasks such as stats logging.
+  Initializes the websocket processor module.
+  Called during application startup.
   """
-  def schedule_tasks do
-    # Core Stats handles its own scheduling
+  @spec init() :: :ok
+  def init do
+    AppLogger.startup_info("Initializing ZKillboard WebsocketProcessor")
+    schedule_tasks()
     :ok
   end
 
   @doc """
-  Logs kill statistics.
-  Called periodically to report stats about processed kills.
+  Schedules periodic tasks for the websocket processor.
   """
-  def log_stats do
-    Stats.print_summary()
+  @spec schedule_tasks() :: :ok
+  def schedule_tasks do
+    # Schedule statistics logging every 15 minutes
+    schedule_log_stats()
+    :ok
   end
 
   @doc """
-  Processes a websocket message from zKillboard.
-  Returns an updated state that tracks processed kills.
+  Logs processor statistics.
   """
+  @spec log_stats() :: :ok
+  def log_stats do
+    # Get current statistics
+    stats = get_stats()
+
+    # Log the statistics
+    AppLogger.processor_info("ZKillboard Processor Statistics", stats)
+
+    # Schedule the next log
+    schedule_log_stats()
+
+    :ok
+  end
+
+  @doc """
+  Processes a message from the ZKillboard websocket.
+
+  ## Parameters
+    - message: The message received from the websocket
+    - state: Current state of processing metrics (processed count, errors)
+
+  ## Returns
+    - {:ok, updated_state} with the updated state including updated metrics
+    - {:error, reason} on failure
+  """
+  @spec process_zkill_message(map(), map()) :: {:ok, map()} | {:error, any()}
   def process_zkill_message(message, state) do
-    case Jason.decode(message) do
-      {:ok, %{"killmail_id" => _} = killmail} ->
-        _kill_id = get_killmail_id(killmail)
-        handle_killmail(killmail, state)
+    # Extract the package data from the message
+    case extract_package(message) do
+      {:ok, package} ->
+        # Process the package
+        process_package(package, state)
 
-      {:ok, payload} ->
-        # Log when we receive a message without a killmail_id
-        AppLogger.websocket_debug("Received message without killmail_id", %{
-          message_type: "unknown",
-          payload_keys: Map.keys(payload)
-        })
-
-        state
+      {:error, :no_package} ->
+        # Not a killmail package, might be a heartbeat or other message
+        {:ok, state}
 
       {:error, reason} ->
-        AppLogger.websocket_error("Failed to decode WebSocket message", %{
-          error: inspect(reason),
-          message_sample: String.slice(message, 0, 100)
+        # Log the error
+        AppLogger.processor_error("Failed to extract package from message", %{
+          message: inspect(message),
+          error: inspect(reason)
         })
 
-        state
-    end
-  rescue
-    error ->
-      stacktrace = __STACKTRACE__
-
-      AppLogger.websocket_error("Exception while processing WebSocket message", %{
-        error: Exception.message(error),
-        stacktrace: Exception.format_stacktrace(stacktrace),
-        message_sample: String.slice(message, 0, 100)
-      })
-
-      state
-  end
-
-  # Handle a killmail from the websocket
-  defp handle_killmail(
-         %{"killmail_id" => kill_id} = killmail,
-         %{processed_kill_ids: processed_kills} = state
-       ) do
-    if Map.has_key?(processed_kills, kill_id) do
-      state
-    else
-      process_new_killmail(killmail, kill_id, state)
+        # Return updated state with incremented error count
+        {:ok, update_errors(state)}
     end
   end
 
-  defp handle_killmail(_killmail, :processed) do
-    # If the state is :processed, we can just return it
-    :processed
-  end
+  @doc """
+  Handles any message received by the websocket.
 
-  defp process_new_killmail(_unused_killmail, kill_id, state) do
-    # Check cache first
-    case Cache.get_kill(kill_id) do
-      {:ok, zkb_data} ->
-        # Use cached data
-        AppLogger.processor_debug("Using cached killmail data", %{
-          kill_id: kill_id,
-          source: :cache
+  ## Parameters
+    - message: The message received (can be JSON string or already decoded map)
+    - state: Current state of processing metrics
+
+  ## Returns
+    - {:ok, updated_state} with the updated state
+    - {:error, reason} on failure
+  """
+  @spec handle_message(map() | String.t(), map()) :: {:ok, map()} | {:error, any()}
+  def handle_message(message, state) when is_binary(message) do
+    # Parse the message from JSON
+    case Jason.decode(message) do
+      {:ok, decoded} ->
+        # Process the decoded message
+        process_zkill_message(decoded, state)
+
+      {:error, reason} ->
+        # Log the error
+        AppLogger.processor_error("Failed to decode message", %{
+          # Limit to avoid huge logs
+          message: String.slice(message, 0, 100),
+          error: inspect(reason)
         })
 
-        process_zkill_data(zkb_data, kill_id, state)
-
-      _ ->
-        # Fetch from ZKillboard with retry logic
-        fetch_and_process_zkill_data(kill_id, state)
+        # Return updated state with incremented error count
+        {:ok, update_errors(state)}
     end
   end
 
-  defp fetch_and_process_zkill_data(kill_id, state, retry_count \\ 0) do
-    case ZKillClient.get_single_killmail(kill_id) do
-      {:ok, zkb_data} ->
-        # Cache the result
-        Cache.cache_kill(kill_id, zkb_data)
-        process_zkill_data(zkb_data, kill_id, state)
-
-      error when retry_count < @max_retries ->
-        # Log and retry
-        AppLogger.processor_warn("Retrying killmail fetch", %{
-          kill_id: kill_id,
-          retry: retry_count + 1,
-          max_retries: @max_retries,
-          error: inspect(error),
-          backoff_ms: (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
-        })
-
-        # Exponential backoff
-        backoff = (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
-        :timer.sleep(backoff)
-        fetch_and_process_zkill_data(kill_id, state, retry_count + 1)
-
-      error ->
-        # Max retries reached, log error and return unchanged state
-        log_zkill_error(kill_id, error)
-        state
-    end
+  def handle_message(message, state) when is_map(message) do
+    # Already decoded, process it directly
+    process_zkill_message(message, state)
   end
 
-  defp process_zkill_data(kill_data, kill_id, state) do
-    # Check if the kill_id from parameters matches the one in data for validation
-    kill_id_from_data = Map.get(kill_data, "killmail_id")
+  def handle_message(message, state) do
+    # Unexpected message type
+    AppLogger.processor_error("Unexpected message type", %{
+      message: inspect(message),
+      type: type_of(message)
+    })
 
-    # Log if there's a mismatch between the provided kill_id and the one in the data
-    if kill_id_from_data && kill_id_from_data != kill_id do
-      AppLogger.processor_warn("Kill ID mismatch", %{
-        parameter_kill_id: kill_id,
-        data_kill_id: kill_id_from_data
-      })
-    end
+    # Return updated state with incremented error count
+    {:ok, update_errors(state)}
+  end
 
-    # Check if we've already processed this kill
-    if Map.get(state.processed_kill_ids, kill_id) do
-      AppLogger.processor_debug("Skipping already processed kill", %{
-        kill_id: kill_id
-      })
+  @doc """
+  Processes a single killmail package.
 
-      # Return state unchanged
-      state
-    else
-      # Create context for processing
-      # Don't use kill_id as character_id as that causes errors
-      # Instead, set character_id to nil for websocket kills
-      ctx = create_realtime_context(nil, "Websocket kill #{kill_id}")
+  ## Parameters
+    - package: The killmail package to process
+    - state: The current state with processing metrics
+
+  ## Returns
+    - {:ok, updated_state} with the updated state
+    - {:error, reason} on failure
+  """
+  @spec process_package(map(), map()) :: {:ok, map()} | {:error, any()}
+  def process_package(package, state) do
+    # Extract the killmail data (support both "killID" and "killmail_id" formats)
+    killmail_id = get_killmail_id(package)
+    hash = get_hash(package)
+
+    # Check if we have the required data
+    if killmail_id && hash do
+      # Create a context for processing
+      context = Context.new_realtime(nil, nil, :websocket)
 
       # Process the kill
-      case Processor.process_killmail(kill_data, ctx) do
+      case process_kill(killmail_id, hash, context, package) do
         {:ok, _result} ->
-          # Update state with processed kill
-          Map.update!(state, :processed_kill_ids, &Map.put(&1, kill_id, true))
+          # Update state with incremented processed count
+          {:ok, update_processed(state)}
 
-        _ ->
-          # Just return state on any error
-          state
+        {:error, reason} ->
+          # Log error
+          AppLogger.processor_error("Failed to process killmail", %{
+            kill_id: killmail_id,
+            hash: hash,
+            error: inspect(reason)
+          })
+
+          # Update state with incremented error count
+          {:ok, update_errors(state)}
+      end
+    else
+      # Log the error
+      AppLogger.processor_error("Invalid package data", %{
+        package: inspect(package),
+        missing: if(!killmail_id, do: "killmail_id", else: "hash")
+      })
+
+      # Update state with incremented error count
+      {:ok, update_errors(state)}
+    end
+  end
+
+  @doc """
+  Processes a single kill identified by ID and hash.
+
+  ## Parameters
+    - kill_id: The killmail ID
+    - hash: The killmail hash
+    - context: The processing context
+    - package: Optional pre-loaded package data
+
+  ## Returns
+    - {:ok, result} with the processing result
+    - {:error, reason} on failure
+  """
+  @spec process_kill(integer() | String.t(), String.t(), Context.t(), map() | nil) ::
+          {:ok, term()} | {:error, any()}
+  def process_kill(kill_id, hash, context, package \\ nil) do
+    # If we already have the package data, use it directly
+    if package && is_valid_killmail_data(package) do
+      # Log processing
+      AppLogger.processor_debug("Processing killmail ##{kill_id} from websocket data")
+
+      # Process the killmail through the standard pipeline
+      processor().process_killmail(package, context)
+    else
+      # Fetch the killmail data from ZKillboard
+      case zkill_client().get_single_killmail(kill_id) do
+        {:ok, zkill_data} ->
+          # Log successful fetch
+          AppLogger.processor_debug("Processing killmail ##{kill_id} from fresh fetch")
+
+          # Process the killmail through the standard pipeline
+          processor().process_killmail(zkill_data, context)
+
+        {:error, reason} ->
+          # Log the error
+          AppLogger.processor_error("Failed to fetch killmail from ZKillboard", %{
+            kill_id: kill_id,
+            hash: hash,
+            error: inspect(reason)
+          })
+
+          # Return the error
+          {:error, reason}
       end
     end
   end
 
-  defp create_realtime_context(character_id, character_name) do
-    # Use the proper Context.new_realtime function to ensure a valid mode
-    Context.new_realtime(character_id, character_name, :zkill_websocket, %{})
+  @doc """
+  Gets recent kills from the cache.
+
+  ## Returns
+    - List of recent kills
+  """
+  @spec get_recent_kills() :: list()
+  def get_recent_kills do
+    # This will be implemented to fetch from our cache
+    []
   end
 
-  defp log_zkill_error(kill_id, error) do
-    AppLogger.websocket_error("Failed to fetch killmail from ZKill", %{
-      kill_id: kill_id,
-      error: inspect(error),
-      max_retries_reached: true
-    })
+  @doc """
+  Sends a test kill notification for debugging purposes.
+
+  ## Returns
+    - :ok
+  """
+  @spec send_test_kill_notification() :: :ok
+  def send_test_kill_notification do
+    AppLogger.processor_info("Sending test kill notification")
+
+    # Use a hardcoded kill ID for testing
+    test_kill_id = 107_688_756
+
+    # Create a test context
+    context = Context.new_realtime(nil, "Test", :test, %{force_notification: true})
+
+    # Process the test kill
+    case zkill_client().get_single_killmail(test_kill_id) do
+      {:ok, zkill_data} ->
+        # Process the test killmail with notification forced
+        processor().process_killmail(zkill_data, context)
+
+      {:error, reason} ->
+        # Log the error
+        AppLogger.processor_error("Failed to fetch test killmail", %{
+          kill_id: test_kill_id,
+          error: inspect(reason)
+        })
+    end
+
+    :ok
   end
 
-  # Helper functions
+  @doc """
+  Processes a single kill from a websocket message.
 
-  defp get_killmail_id(killmail) do
-    case Map.get(killmail, "killmail_id") do
-      id when is_integer(id) -> id
-      id when is_binary(id) -> String.to_integer(id)
-      _ -> nil
+  ## Parameters
+    - kill: The kill data
+    - ctx: The processing context
+
+  ## Returns
+    - {:ok, result} with the processing result
+    - {:error, reason} on failure
+  """
+  @spec process_single_kill(map(), Context.t()) :: {:ok, term()} | {:error, any()}
+  def process_single_kill(kill, ctx) do
+    # Process the kill through the standard pipeline
+    processor().process_killmail(kill, ctx)
+  end
+
+  # Private helper functions
+
+  # Safe update helpers that handle nil values
+  defp update_processed(state) do
+    Map.update(state, :processed, 1, &(&1 + 1))
+  end
+
+  defp update_errors(state) do
+    Map.update(state, :errors, 1, &(&1 + 1))
+  end
+
+  # Extracts the package data from a message
+  defp extract_package(message) when is_map(message) do
+    cond do
+      # Check if it's a killmail package
+      Map.has_key?(message, "package") && is_map(message["package"]) ->
+        {:ok, message["package"]}
+
+      # Check if it's already a killmail
+      is_valid_killmail_data(message) ->
+        {:ok, message}
+
+      # Not a killmail package
+      true ->
+        {:error, :no_package}
     end
   end
 
-  @impl WandererNotifier.Killmail.Processing.ProcessorBehaviour
-  def get_recent_kills do
-    Cache.get_recent_kills()
+  defp extract_package(_), do: {:error, :invalid_message}
+
+  # Check if the data is a valid killmail
+  defp is_valid_killmail_data(data) when is_map(data) do
+    # Check for typical killmail fields
+    has_killmail_id =
+      Map.has_key?(data, "killmail_id") ||
+        Map.has_key?(data, "killID") ||
+        (Map.has_key?(data, "zkb") && is_map(data["zkb"]))
+
+    has_hash =
+      Map.has_key?(data, "hash") ||
+        (Map.has_key?(data, "zkb") && is_map(data["zkb"]) && Map.has_key?(data["zkb"], "hash"))
+
+    has_killmail_id && has_hash
   end
 
-  @doc """
-  Sends a test kill notification using recent data.
-  """
-  def send_test_kill_notification do
-    Notification.send_test()
+  defp is_valid_killmail_data(_), do: false
+
+  # Helper to get killmail ID from various formats
+  defp get_killmail_id(data) when is_map(data) do
+    cond do
+      Map.has_key?(data, "killmail_id") ->
+        data["killmail_id"]
+
+      Map.has_key?(data, "killID") ->
+        data["killID"]
+
+      Map.has_key?(data, "zkb") && is_map(data["zkb"]) && Map.has_key?(data["zkb"], "killmail_id") ->
+        data["zkb"]["killmail_id"]
+
+      true ->
+        nil
+    end
   end
 
-  # Private functions
+  defp get_killmail_id(_), do: nil
 
-  defp handle_tq_status(%{"tqStatus" => %{"players" => player_count, "vip" => vip}}) do
-    # Store in process dictionary for now, we could use the state or a separate GenServer later
-    timestamp = :os.system_time(:second)
+  # Helper to get hash from various formats
+  defp get_hash(data) when is_map(data) do
+    cond do
+      Map.has_key?(data, "hash") ->
+        data["hash"]
 
-    AppLogger.websocket_debug("Received TQ status update", %{
-      player_count: player_count,
-      vip: vip,
-      timestamp: timestamp
-    })
+      Map.has_key?(data, "zkb") && is_map(data["zkb"]) && Map.has_key?(data["zkb"], "hash") ->
+        data["zkb"]["hash"]
 
-    Process.put(:tq_status, %{
-      player_count: player_count,
-      vip: vip,
-      timestamp: timestamp
-    })
+      true ->
+        nil
+    end
   end
 
-  defp handle_tq_status(status) do
-    AppLogger.websocket_error("Received malformed TQ status message", %{
-      status_keys: Map.keys(status),
-      status_type: inspect(status)
-    })
+  defp get_hash(_), do: nil
+
+  # Gets processor statistics
+  defp get_stats do
+    %{
+      processed: get_stat(:processed),
+      errors: get_stat(:errors)
+    }
   end
 
-  @doc """
-  Handles an incoming WebSocket message.
-  """
-  def handle_message(%{"action" => "killmail"} = message, state) do
-    {:ok, process_zkill_message(message, state)}
+  # Gets a specific statistic value
+  defp get_stat(_key) do
+    # This would normally use persistent storage or ETS
+    # For now we'll just return 0
+    0
   end
 
-  def handle_message(%{"action" => "tqStatus"} = message, state) do
-    handle_tq_status(message)
-    {:ok, state}
+  # Schedules the next statistics logging
+  defp schedule_log_stats do
+    # Log stats every 15 minutes
+    :timer.apply_after(15 * 60 * 1000, __MODULE__, :log_stats, [])
   end
 
-  def handle_message(message, state) do
-    AppLogger.websocket_error("Received unknown message type", %{
-      message_keys: Map.keys(message),
-      sample_data: inspect(message) |> String.slice(0, 100)
-    })
-
-    {:ok, state}
-  end
-
-  @doc """
-  Process a single killmail using the provided context.
-
-  Returns:
-  - :processed - when the kill was successfully processed
-  - :skipped - when the kill was skipped (e.g., already exists)
-  - {:error, reason} - when an error occurred during processing
-  """
-  def process_single_kill(kill, ctx) do
-    kill_id = kill["killmail_id"]
-    hash = get_in(kill, ["zkb", "hash"])
-
-    AppLogger.kill_debug("Processing kill", %{
-      kill_id: kill_id,
-      hash: hash,
-      character_id: ctx.character_id,
-      character_name: ctx.character_name,
-      batch_id: ctx.batch_id,
-      processing_mode: ctx.mode && ctx.mode.mode
-    })
-
-    case Processor.process_killmail(kill, ctx) do
-      {:ok, _} ->
-        AppLogger.kill_debug("Kill successfully processed", %{
-          kill_id: kill_id,
-          character_id: ctx.character_id,
-          batch_id: ctx.batch_id
-        })
-
-        :processed
-
-      {:error, :skipped} ->
-        AppLogger.kill_debug("Kill processing skipped", %{
-          kill_id: kill_id,
-          character_id: ctx.character_id,
-          batch_id: ctx.batch_id
-        })
-
-        :skipped
-
-      error ->
-        AppLogger.kill_error("Kill processing failed", %{
-          kill_id: kill_id,
-          character_id: ctx.character_id,
-          batch_id: ctx.batch_id,
-          error: inspect(error)
-        })
-
-        error
+  # Gets the type of a value for error reporting
+  defp type_of(value) do
+    cond do
+      is_binary(value) -> :string
+      is_map(value) -> :map
+      is_list(value) -> :list
+      is_integer(value) -> :integer
+      is_float(value) -> :float
+      is_boolean(value) -> :boolean
+      is_nil(value) -> nil
+      is_atom(value) -> :atom
+      true -> :unknown
     end
   end
 end

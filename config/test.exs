@@ -19,7 +19,7 @@ config :wanderer_notifier,
   esi_service: WandererNotifier.Api.ESI.ServiceMock,
   cache_helpers: WandererNotifier.MockCacheHelpers,
   repository: WandererNotifier.MockRepository,
-  killmail_persistence: WandererNotifier.MockKillmailPersistence,
+  # killmail_persistence: WandererNotifier.MockKillmailPersistence, # Removed deprecated module
   # Add the new persistence module mock
   processing_killmail_persistence: WandererNotifier.Processing.Killmail.MockPersistence,
   logger: WandererNotifier.MockLogger,

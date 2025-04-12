@@ -491,7 +491,6 @@ defmodule WandererNotifier.Debug.CharacterTools do
     alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
     alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
     alias WandererNotifier.KillmailProcessing.Transformer
-    alias WandererNotifier.KillmailProcessing.DataAccess
 
     IO.puts("Checking killmail #{killmail_id}")
 

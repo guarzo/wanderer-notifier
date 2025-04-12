@@ -158,6 +158,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     # Get security status value and ensure proper formatting
     security_status_value = Map.get(killmail, :solar_system_security)
     security_status_type = get_system_security_type(security_status_value)
+
     security_status = %{
       value: security_status_value,
       type: security_status_type
@@ -331,11 +332,12 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
     character_id = killmail.final_blow_attacker_id
 
     # Create a zkillboard link if we have a character ID
-    text = if character_id do
-      "[#{character_name}](https://zkillboard.com/character/#{character_id}/) (#{ship_name})"
-    else
-      "#{character_name} (#{ship_name})"
-    end
+    text =
+      if character_id do
+        "[#{character_name}](https://zkillboard.com/character/#{character_id}/) (#{ship_name})"
+      else
+        "#{character_name} (#{ship_name})"
+      end
 
     %{
       text: text,
@@ -410,58 +412,64 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
          victim_info,
          kill_context,
          final_blow_details,
-         _fields
+         fields
        ) do
     AppLogger.processor_debug("Building kill notification for kill #{kill_id}")
 
     # Get corporation text (adding parentheses if there's a corp name)
-    corp_text = if victim_info.corp && victim_info.corp != "Unknown Corp" do
-      "(#{victim_info.corp})"
-    else
-      ""
-    end
+    corp_text =
+      if victim_info.corp && victim_info.corp != "Unknown Corp" do
+        "(#{victim_info.corp})"
+      else
+        ""
+      end
 
     # Create victim name with zkillboard link if character ID is available
-    victim_name_with_link = if victim_info.character_id do
-      "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/)"
-    else
-      victim_info.name
-    end
+    victim_name_with_link =
+      if victim_info.character_id do
+        "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/)"
+      else
+        victim_info.name
+      end
 
     # Create ship name with zkillboard link if ship ID is available
-    ship_name_with_link = if victim_info.ship_type_id do
-      "[#{victim_info.ship}](https://zkillboard.com/ship/#{victim_info.ship_type_id}/)"
-    else
-      victim_info.ship
-    end
+    ship_name_with_link =
+      if victim_info.ship_type_id do
+        "[#{victim_info.ship}](https://zkillboard.com/ship/#{victim_info.ship_type_id}/)"
+      else
+        victim_info.ship
+      end
 
     # Create system with zkillboard link if system ID is available
-    system_with_link = if kill_context.system_id do
-      "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
-    else
-      kill_context.system_name
-    end
+    system_with_link =
+      if kill_context.system_id do
+        "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
+      else
+        kill_context.system_name
+      end
 
     # Create attacker text with zkillboard link if character ID is available
-    attacker_text = case final_blow_details do
-      %{text: text} when is_binary(text) -> text
-      _ -> "Unknown"
-    end
+    attacker_text =
+      case final_blow_details do
+        %{text: text} when is_binary(text) -> text
+        _ -> "Unknown"
+      end
 
     # Build a streamlined description with complete attacker information in text
-    description = cond do
-      # No attackers or just one (the final blow attacker)
-      kill_context.attackers_count <= 1 ->
-        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} in #{system_with_link}."
+    description =
+      cond do
+        # No attackers or just one (the final blow attacker)
+        kill_context.attackers_count <= 1 ->
+          "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} in #{system_with_link}."
 
-      # 2 attackers (the final blow + one more)
-      kill_context.attackers_count == 2 ->
-        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and 1 other in #{system_with_link}."
+        # 2 attackers (the final blow + one more)
+        kill_context.attackers_count == 2 ->
+          "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and 1 other in #{system_with_link}."
 
-      # More than 2 attackers
-      true ->
-        "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and #{kill_context.attackers_count - 1} others in #{system_with_link}."
-    end
+        # More than 2 attackers
+        true ->
+          "#{victim_name_with_link} #{corp_text} lost their #{ship_name_with_link} to #{attacker_text} and #{kill_context.attackers_count - 1} others in #{system_with_link}."
+      end
 
     # Determine thumbnail URL (ship image)
     thumbnail_url =
@@ -471,31 +479,40 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         nil
       end
 
-    # Only keep alliance field if available
-    fields = if victim_info.alliance do
-      [
-        %{
-          name: "Alliance",
-          value: victim_info.alliance,
-          inline: true
-        }
-      ]
-    else
-      []
-    end
+    # Use the fields passed to the function directly instead of creating new ones
+    # Only fall back to alliance-only fields if the original fields list is empty
+    final_fields =
+      if fields && length(fields) > 0 do
+        fields
+      else
+        # Legacy fallback behavior - only include alliance field if available
+        if victim_info.alliance do
+          [
+            %{
+              name: "Alliance",
+              value: victim_info.alliance,
+              inline: true
+            }
+          ]
+        else
+          []
+        end
+      end
 
     # Determine author name and icon for the victim
-    author_name = if victim_info.corp && victim_info.corp != "Unknown Corp" do
-      "#{victim_info.name} (#{victim_info.corp})"
-    else
-      victim_info.name
-    end
+    author_name =
+      if victim_info.corp && victim_info.corp != "Unknown Corp" do
+        "#{victim_info.name} (#{victim_info.corp})"
+      else
+        victim_info.name
+      end
 
-    author_icon_url = if victim_info.character_id do
-      "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
-    else
-      nil
-    end
+    author_icon_url =
+      if victim_info.character_id do
+        "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
+      else
+        nil
+      end
 
     # Create footer text with value and no kill ID
     footer_text = "Value: #{kill_context.formatted_value}"
@@ -518,7 +535,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
         name: author_name,
         icon_url: author_icon_url
       },
-      fields: fields
+      fields: final_fields
     }
   end
 

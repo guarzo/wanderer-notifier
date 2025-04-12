@@ -26,7 +26,7 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Config.Web
   alias WandererNotifier.Config.Websocket
   alias WandererNotifier.Data.Cache.CachexImpl
-  alias WandererNotifier.KillmailProcessing.MetricRegistry
+  alias WandererNotifier.Killmail.Metrics.MetricRegistry
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -280,8 +280,8 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Stats, []},
       %{
-        id: WandererNotifier.KillmailProcessing.Metrics,
-        start: {WandererNotifier.KillmailProcessing.Metrics, :start_link, [[]]}
+        id: WandererNotifier.Killmail.Metrics.Metrics,
+        start: {WandererNotifier.Killmail.Metrics.Metrics, :start_link, [[]]}
       },
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},

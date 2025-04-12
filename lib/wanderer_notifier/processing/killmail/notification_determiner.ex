@@ -4,7 +4,11 @@ defmodule WandererNotifier.Processing.Killmail.NotificationDeterminer do
 
   This module provides a clean interface for determining if a notification should
   be sent for a killmail, based on tracking rules and deduplication.
+
+  @deprecated Use WandererNotifier.Killmail.Processing.NotificationDeterminer instead.
   """
+
+  require Logger
 
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
@@ -12,6 +16,8 @@ defmodule WandererNotifier.Processing.Killmail.NotificationDeterminer do
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.KillmailProcessing.KillmailData
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Killmail.Processing.NotificationDeterminer, as: NewNotificationDeterminer
+  alias WandererNotifier.Killmail.Core.Data, as: NewKillmailData
 
   @type notification_result :: {boolean(), String.t()}
 
@@ -24,25 +30,34 @@ defmodule WandererNotifier.Processing.Killmail.NotificationDeterminer do
   ## Returns
     - {:ok, {should_notify, reason}} with boolean notification decision and reason
     - {:error, reason} on failure
+
+  @deprecated Use WandererNotifier.Killmail.Processing.NotificationDeterminer.should_notify?/1 instead.
   """
   @spec should_notify?(KillmailData.t()) :: {:ok, notification_result()} | {:error, any()}
   def should_notify?(%KillmailData{} = killmail) do
-    with true <- check_notifications_enabled(),
-         {tracked, tracking_reason} <- check_tracking(killmail),
-         {not_duplicate, dedup_reason} <- check_deduplication(killmail.killmail_id) do
-      # Determine final notification decision
-      should_notify = tracked and not_duplicate
+    # Log deprecation warning
+    Logger.warning(
+      "DEPRECATED: WandererNotifier.Processing.Killmail.NotificationDeterminer is deprecated. " <>
+        "Use WandererNotifier.Killmail.Processing.NotificationDeterminer instead."
+    )
 
-      # Determine the reason
-      reason = determine_reason(tracked, tracking_reason, not_duplicate, dedup_reason)
+    # Convert old KillmailData to new KillmailData format
+    case convert_to_new_format(killmail) do
+      {:ok, new_killmail} ->
+        # Delegate to the new module
+        new_result = NewNotificationDeterminer.should_notify?(new_killmail)
 
-      # Log the decision
-      log_notification_decision(killmail, should_notify, reason)
+        # Convert the new result format to the old format if needed
+        case new_result do
+          {:ok, %{should_notify: should_notify, reason: reason}} ->
+            {:ok, {should_notify, reason}}
 
-      {:ok, {should_notify, reason}}
-    else
-      {:notifications_disabled, reason} ->
-        {:ok, {false, reason}}
+          {:ok, {should_notify, reason}} ->
+            {:ok, {should_notify, reason}}
+
+          other ->
+            other
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -50,8 +65,44 @@ defmodule WandererNotifier.Processing.Killmail.NotificationDeterminer do
   end
 
   def should_notify?(other) do
-    AppLogger.kill_error("Cannot determine notification for non-KillmailData: #{inspect(other)}")
-    {:error, :invalid_data_type}
+    # Log deprecation warning
+    Logger.warning(
+      "DEPRECATED: WandererNotifier.Processing.Killmail.NotificationDeterminer is deprecated. " <>
+        "Use WandererNotifier.Killmail.Processing.NotificationDeterminer instead."
+    )
+
+    # Delegate to the new module
+    case NewNotificationDeterminer.should_notify?(other) do
+      {:ok, %{should_notify: should_notify, reason: reason}} ->
+        {:ok, {should_notify, reason}}
+
+      {:ok, {should_notify, reason}} ->
+        {:ok, {should_notify, reason}}
+
+      other ->
+        other
+    end
+  end
+
+  # Helper function to convert old KillmailData to new KillmailData format
+  defp convert_to_new_format(%KillmailData{} = old_killmail) do
+    # Check if it's already the new format
+    if Map.has_key?(old_killmail, :__struct__) and old_killmail.__struct__ == NewKillmailData do
+      {:ok, old_killmail}
+    else
+      # Extract all fields from the old format to create a new one
+      # This assumes the field names are roughly similar
+      attrs = Map.from_struct(old_killmail)
+
+      case NewKillmailData.from_map(attrs) do
+        {:ok, new_killmail} -> {:ok, new_killmail}
+        error -> error
+      end
+    end
+  rescue
+    e ->
+      Logger.error("Error converting KillmailData: #{inspect(e)}")
+      {:error, :conversion_error}
   end
 
   # Check if notifications are enabled globally

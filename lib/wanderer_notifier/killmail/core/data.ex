@@ -1,29 +1,28 @@
 defmodule WandererNotifier.Killmail.Core.Data do
   @moduledoc """
-  Defines the in-memory structure for killmail data during processing.
+  Standardized struct for killmail data.
 
-  This struct provides a standardized representation of killmail data as it moves
-  through various processing stages, regardless of its source. It ensures all
-  components in the pipeline have a consistent view of the data.
-
-  All data is stored at the top level for direct access, with minimal nesting.
+  This module provides a consistent structure for representing killmail data
+  throughout the application. It defines a struct with all necessary fields and
+  functions to convert between different data formats.
   """
 
-  @type t :: %__MODULE__{
-          # Core identification
-          killmail_id: integer(),
-          zkb_hash: String.t() | nil,
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
-          # Timestamps
+  @typedoc """
+  Core killmail data structure with all required fields.
+  """
+  @type t :: %__MODULE__{
+          # Core identifiers
+          killmail_id: integer() | nil,
+          zkb_hash: String.t() | nil,
           kill_time: DateTime.t() | nil,
-          processed_at: DateTime.t() | nil,
 
           # System information
           solar_system_id: integer() | nil,
           solar_system_name: String.t() | nil,
           region_id: integer() | nil,
           region_name: String.t() | nil,
-          solar_system_security: float() | nil,
 
           # Victim information
           victim_id: integer() | nil,
@@ -32,10 +31,8 @@ defmodule WandererNotifier.Killmail.Core.Data do
           victim_ship_name: String.t() | nil,
           victim_corporation_id: integer() | nil,
           victim_corporation_name: String.t() | nil,
-          victim_alliance_id: integer() | nil,
-          victim_alliance_name: String.t() | nil,
 
-          # Attacker information
+          # Attack information
           attackers: list(map()) | nil,
           attacker_count: integer() | nil,
           final_blow_attacker_id: integer() | nil,
@@ -46,352 +43,324 @@ defmodule WandererNotifier.Killmail.Core.Data do
           # Economic data
           total_value: float() | nil,
           points: integer() | nil,
-          is_npc: boolean(),
-          is_solo: boolean(),
+          is_npc: boolean() | nil,
+          is_solo: boolean() | nil,
 
-          # Status flags
-          persisted: boolean(),
-
-          # Raw data for reference (only used when needed)
+          # Raw data for debugging and special cases
           raw_zkb_data: map() | nil,
           raw_esi_data: map() | nil,
+          raw_data: map() | nil,
 
           # Processing metadata
-          metadata: map()
+          metadata: map(),
+          persisted: boolean()
         }
 
-  defstruct [
-    # Core identification
-    :killmail_id,
-    :zkb_hash,
-
-    # Timestamps
-    :kill_time,
-    :processed_at,
-
-    # System information
-    :solar_system_id,
-    :solar_system_name,
-    :region_id,
-    :region_name,
-    :solar_system_security,
-
-    # Victim information
-    :victim_id,
-    :victim_name,
-    :victim_ship_id,
-    :victim_ship_name,
-    :victim_corporation_id,
-    :victim_corporation_name,
-    :victim_alliance_id,
-    :victim_alliance_name,
-
-    # Attacker information
-    :attackers,
-    :attacker_count,
-    :final_blow_attacker_id,
-    :final_blow_attacker_name,
-    :final_blow_ship_id,
-    :final_blow_ship_name,
-
-    # Economic data
-    :total_value,
-    :points,
-
-    # Raw data for reference
-    :raw_zkb_data,
-    :raw_esi_data,
-
-    # Default values must come last as keyword pairs
-    is_npc: false,
-    is_solo: false,
-    persisted: false,
-    metadata: %{}
-  ]
+  # Default values for struct fields
+  defstruct killmail_id: nil,
+            zkb_hash: nil,
+            kill_time: nil,
+            solar_system_id: nil,
+            solar_system_name: nil,
+            region_id: nil,
+            region_name: nil,
+            victim_id: nil,
+            victim_name: nil,
+            victim_ship_id: nil,
+            victim_ship_name: nil,
+            victim_corporation_id: nil,
+            victim_corporation_name: nil,
+            attackers: [],
+            attacker_count: 0,
+            final_blow_attacker_id: nil,
+            final_blow_attacker_name: nil,
+            final_blow_ship_id: nil,
+            final_blow_ship_name: nil,
+            total_value: nil,
+            points: nil,
+            is_npc: false,
+            is_solo: false,
+            raw_zkb_data: %{},
+            raw_esi_data: %{},
+            raw_data: %{},
+            metadata: %{},
+            persisted: false
 
   @doc """
-  Creates a Data struct from zKillboard data and ESI API data.
+  Creates a Data struct from ZKillboard and ESI data.
 
-  Extracts all relevant fields from both sources and places them at the top level
-  for direct access, while preserving the raw data for reference if needed.
+  This function takes raw data from ZKillboard and ESI and converts it into
+  a standardized Data struct with all fields extracted to the top level.
 
   ## Parameters
-
-  - `zkb_data`: Raw data from zKillboard API
-  - `esi_data`: Data from EVE Swagger Interface (ESI) API
+    - zkb_data: Raw data from ZKillboard API
+    - esi_data: Raw data from ESI API
 
   ## Returns
-
-  A new Data struct with data extracted from both sources
-
-  ## Examples
-
-      iex> zkb_data = %{"killmail_id" => 12345, "zkb" => %{"hash" => "abc123"}}
-      iex> esi_data = %{"solar_system_id" => 30000142, "solar_system_name" => "Jita"}
-      iex> Data.from_zkb_and_esi(zkb_data, esi_data)
-      %Data{
-        killmail_id: 12345,
-        zkb_hash: "abc123",
-        solar_system_id: 30000142,
-        solar_system_name: "Jita",
-        ...
-      }
+    - {:ok, data} with the created Data struct
+    - {:error, reason} if conversion fails
   """
-  @spec from_zkb_and_esi(map(), map()) :: t() | {:error, String.t()}
+  @spec from_zkb_and_esi(map(), map()) :: {:ok, t()} | {:error, any()}
   def from_zkb_and_esi(zkb_data, esi_data) do
-    # Extract core identification
-    with {:ok, killmail_id} <- extract_killmail_id(zkb_data),
-         {:ok, zkb_hash} <- extract_zkb_hash(zkb_data) do
-      # Extract system information
-      system_id = extract_system_id(esi_data)
-      system_name = Map.get(esi_data, "solar_system_name")
+    try do
+      # Extract ZKB-specific fields
+      zkb_map = Map.get(zkb_data, "zkb", Map.get(zkb_data, :zkb, zkb_data))
+      zkb_hash = Map.get(zkb_map, "hash", Map.get(zkb_map, :hash))
+      total_value = Map.get(zkb_map, "totalValue", Map.get(zkb_map, :totalValue))
+      points = Map.get(zkb_map, "points", Map.get(zkb_map, :points))
+      is_npc = Map.get(zkb_map, "npc", Map.get(zkb_map, :npc, false))
+      is_solo = Map.get(zkb_map, "solo", Map.get(zkb_map, :solo, false))
 
-      # Extract timestamp
-      kill_time = extract_kill_time(esi_data)
-      processed_at = DateTime.utc_now()
+      # Extract killmail ID and time from ESI data
+      killmail_id =
+        Map.get(zkb_data, "killmail_id") ||
+          Map.get(zkb_data, :killmail_id) ||
+          Map.get(esi_data, "killmail_id") ||
+          Map.get(esi_data, :killmail_id) ||
+          Map.get(zkb_map, "killmail_id") ||
+          Map.get(zkb_map, :killmail_id)
 
-      # Extract victim data
-      victim = Map.get(esi_data, "victim") || %{}
-      victim_id = Map.get(victim, "character_id")
-      victim_name = Map.get(victim, "character_name")
-      victim_ship_id = Map.get(victim, "ship_type_id")
-      victim_ship_name = Map.get(victim, "ship_type_name")
-      victim_corp_id = Map.get(victim, "corporation_id")
-      victim_corp_name = Map.get(victim, "corporation_name")
-      victim_alliance_id = Map.get(victim, "alliance_id")
-      victim_alliance_name = Map.get(victim, "alliance_name")
+      kill_time =
+        case Map.get(esi_data, "killmail_time", Map.get(esi_data, :killmail_time)) do
+          nil -> nil
+          time when is_binary(time) -> parse_datetime(time)
+          time -> time
+        end
 
-      # Extract attacker data
-      attackers = Map.get(esi_data, "attackers") || []
-      attacker_count = length(attackers)
+      # Extract solar system information
+      solar_system_id = Map.get(esi_data, "solar_system_id", Map.get(esi_data, :solar_system_id))
+
+      solar_system_name =
+        Map.get(esi_data, "solar_system_name", Map.get(esi_data, :solar_system_name))
+
+      # Extract victim information
+      victim_data = Map.get(esi_data, "victim", Map.get(esi_data, :victim, %{}))
+      victim_id = Map.get(victim_data, "character_id", Map.get(victim_data, :character_id))
+      victim_name = Map.get(victim_data, "character_name", Map.get(victim_data, :character_name))
+      victim_ship_id = Map.get(victim_data, "ship_type_id", Map.get(victim_data, :ship_type_id))
+
+      victim_corporation_id =
+        Map.get(victim_data, "corporation_id", Map.get(victim_data, :corporation_id))
+
+      # Extract attackers information
+      attackers = Map.get(esi_data, "attackers", Map.get(esi_data, :attackers, []))
 
       # Find final blow attacker
       final_blow_attacker =
         Enum.find(attackers, fn attacker ->
-          Map.get(attacker, "final_blow", false) == true
+          Map.get(attacker, "final_blow", Map.get(attacker, :final_blow, false)) == true
         end) || %{}
 
-      final_blow_attacker_id = Map.get(final_blow_attacker, "character_id")
-      final_blow_attacker_name = Map.get(final_blow_attacker, "character_name")
-      final_blow_ship_id = Map.get(final_blow_attacker, "ship_type_id")
-      final_blow_ship_name = Map.get(final_blow_attacker, "ship_type_name")
-
-      # Extract economic data
-      zkb = extract_zkb_section(zkb_data)
-      total_value = Map.get(zkb, "totalValue")
-      points = Map.get(zkb, "points")
-      is_npc = Map.get(zkb, "npc", false)
-      is_solo = Map.get(zkb, "solo", false)
-
-      # Create the struct with all data at top level
-      %__MODULE__{
-        # Core identification
+      # Create the Data struct
+      data = %__MODULE__{
         killmail_id: killmail_id,
         zkb_hash: zkb_hash,
-
-        # Timestamps
         kill_time: kill_time,
-        processed_at: processed_at,
-
-        # System information
-        solar_system_id: system_id,
-        solar_system_name: system_name,
-
-        # Victim information
+        solar_system_id: solar_system_id,
+        solar_system_name: solar_system_name,
+        region_id: Map.get(esi_data, "region_id", Map.get(esi_data, :region_id)),
+        region_name: Map.get(esi_data, "region_name", Map.get(esi_data, :region_name)),
         victim_id: victim_id,
         victim_name: victim_name,
         victim_ship_id: victim_ship_id,
-        victim_ship_name: victim_ship_name,
-        victim_corporation_id: victim_corp_id,
-        victim_corporation_name: victim_corp_name,
-        victim_alliance_id: victim_alliance_id,
-        victim_alliance_name: victim_alliance_name,
-
-        # Attacker information
+        victim_ship_name: Map.get(victim_data, "ship_name", Map.get(victim_data, :ship_name)),
+        victim_corporation_id: victim_corporation_id,
+        victim_corporation_name:
+          Map.get(victim_data, "corporation_name", Map.get(victim_data, :corporation_name)),
         attackers: attackers,
-        attacker_count: attacker_count,
-        final_blow_attacker_id: final_blow_attacker_id,
-        final_blow_attacker_name: final_blow_attacker_name,
-        final_blow_ship_id: final_blow_ship_id,
-        final_blow_ship_name: final_blow_ship_name,
-
-        # Economic data
+        attacker_count: length(attackers),
+        final_blow_attacker_id:
+          Map.get(
+            final_blow_attacker,
+            "character_id",
+            Map.get(final_blow_attacker, :character_id)
+          ),
+        final_blow_attacker_name:
+          Map.get(final_blow_attacker, "name", Map.get(final_blow_attacker, :name)),
+        final_blow_ship_id:
+          Map.get(
+            final_blow_attacker,
+            "ship_type_id",
+            Map.get(final_blow_attacker, :ship_type_id)
+          ),
+        final_blow_ship_name:
+          Map.get(final_blow_attacker, "ship_name", Map.get(final_blow_attacker, :ship_name)),
         total_value: total_value,
         points: points,
-
-        # Raw data for reference only
-        raw_zkb_data: zkb_data,
-        raw_esi_data: esi_data,
-
-        # Flags and metadata
         is_npc: is_npc,
         is_solo: is_solo,
-        persisted: false,
-        metadata: %{}
+        raw_zkb_data: zkb_map,
+        raw_esi_data: esi_data
       }
-    else
-      {:error, reason} -> {:error, reason}
+
+      {:ok, data}
+    rescue
+      e ->
+        AppLogger.kill_error("Error creating Data struct: #{Exception.message(e)}")
+        {:error, {:data_conversion_error, Exception.message(e)}}
     end
   end
 
   @doc """
-  Creates a Data struct from a KillmailResource entity.
+  Creates a Data struct from a database resource.
+
+  This function takes a killmail database record and converts it into
+  a standardized Data struct with all fields extracted to the top level.
 
   ## Parameters
-
-  - `resource`: KillmailResource entity from the database
+    - resource: Database resource (KillmailResource struct or compatible map)
 
   ## Returns
-
-  A Data struct populated from the resource's fields
-
-  ## Examples
-
-      iex> resource = %KillmailResource{
-      ...>   killmail_id: 12345,
-      ...>   solar_system_id: 30000142,
-      ...>   solar_system_name: "Jita"
-      ...> }
-      iex> Data.from_resource(resource)
-      %Data{
-        killmail_id: 12345,
-        solar_system_id: 30000142,
-        solar_system_name: "Jita",
+    - {:ok, data} with the created Data struct
+    - {:error, reason} if conversion fails
+  """
+  @spec from_resource(struct() | map()) :: {:ok, t()} | {:error, any()}
+  def from_resource(resource) do
+    try do
+      # Extract fields from resource
+      data = %__MODULE__{
+        killmail_id: Map.get(resource, :killmail_id),
+        zkb_hash: Map.get(resource, :zkb_hash),
+        kill_time: Map.get(resource, :kill_time),
+        solar_system_id: Map.get(resource, :solar_system_id),
+        solar_system_name: Map.get(resource, :solar_system_name),
+        region_id: Map.get(resource, :region_id),
+        region_name: Map.get(resource, :region_name),
+        victim_id: Map.get(resource, :victim_id),
+        victim_name: Map.get(resource, :victim_name),
+        victim_ship_id: Map.get(resource, :victim_ship_id),
+        victim_ship_name: Map.get(resource, :victim_ship_name),
+        victim_corporation_id: Map.get(resource, :victim_corporation_id),
+        victim_corporation_name: Map.get(resource, :victim_corporation_name),
+        attackers: Map.get(resource, :full_attacker_data, []),
+        attacker_count: Map.get(resource, :attacker_count, 0),
+        final_blow_attacker_id: Map.get(resource, :final_blow_attacker_id),
+        final_blow_attacker_name: Map.get(resource, :final_blow_attacker_name),
+        final_blow_ship_id: Map.get(resource, :final_blow_ship_id),
+        final_blow_ship_name: Map.get(resource, :final_blow_ship_name),
+        total_value: Map.get(resource, :total_value),
+        points: Map.get(resource, :points),
+        is_npc: Map.get(resource, :is_npc, false),
+        is_solo: Map.get(resource, :is_solo, false),
         persisted: true
       }
+
+      {:ok, data}
+    rescue
+      e ->
+        AppLogger.kill_error("Error creating Data struct from resource: #{Exception.message(e)}")
+        {:error, {:resource_conversion_error, Exception.message(e)}}
+    end
+  end
+
+  @doc """
+  Creates a Data struct from a generic map.
+
+  This function takes a map with killmail data in any format and attempts
+  to convert it into a standardized Data struct.
+
+  ## Parameters
+    - map: Map with killmail data
+
+  ## Returns
+    - {:ok, data} with the created Data struct
+    - {:error, reason} if conversion fails
   """
-  @spec from_resource(struct()) :: t()
-  def from_resource(resource) do
-    %__MODULE__{
-      # Core identification
-      killmail_id: resource.killmail_id,
-      zkb_hash: resource.zkb_hash,
+  @spec from_map(map()) :: {:ok, t()} | {:error, any()}
+  def from_map(map) when is_map(map) do
+    try do
+      # Check if the map has nested zkb and esi_data
+      if Map.has_key?(map, "zkb") || Map.has_key?(map, :zkb_data) || Map.has_key?(map, "zkb_data") do
+        # Extract zkb data
+        zkb_data =
+          map
+          |> Map.get("zkb", Map.get(map, :zkb_data, Map.get(map, "zkb_data", %{})))
 
-      # Timestamps
-      kill_time: resource.kill_time,
-      processed_at: resource.inserted_at || DateTime.utc_now(),
+        # Extract esi data if available, otherwise use the map itself
+        esi_data =
+          map
+          |> Map.get(:esi_data, Map.get(map, "esi_data", map))
 
-      # System information
-      solar_system_id: resource.solar_system_id,
-      solar_system_name: resource.solar_system_name,
-      region_id: resource.region_id,
-      region_name: resource.region_name,
-      solar_system_security: Map.get(resource, :solar_system_security),
+        # Use from_zkb_and_esi
+        from_zkb_and_esi(zkb_data, esi_data)
+      else
+        # Try to create directly from the map
+        data = %__MODULE__{
+          killmail_id:
+            Map.get(map, :killmail_id) || Map.get(map, "killmail_id") ||
+              Map.get(map, "killID") || Map.get(map, :killID),
+          raw_data: map
+        }
 
-      # Victim information
-      victim_id: resource.victim_id,
-      victim_name: resource.victim_name,
-      victim_ship_id: resource.victim_ship_id,
-      victim_ship_name: resource.victim_ship_name,
-      victim_corporation_id: resource.victim_corporation_id,
-      victim_corporation_name: resource.victim_corporation_name,
-
-      # Attacker information
-      attackers: resource.full_attacker_data,
-      attacker_count: resource.attacker_count,
-      final_blow_attacker_id: resource.final_blow_attacker_id,
-      final_blow_attacker_name: resource.final_blow_attacker_name,
-      final_blow_ship_id: resource.final_blow_ship_id,
-      final_blow_ship_name: resource.final_blow_ship_name,
-
-      # Economic data
-      total_value: resource.total_value,
-      points: resource.points,
-
-      # Raw data
-      # Not stored in database
-      raw_zkb_data: nil,
-      raw_esi_data: nil,
-
-      # Status flags and metadata - keyword items at the end
-      is_npc: resource.is_npc,
-      is_solo: resource.is_solo,
-      persisted: true,
-      metadata: %{}
-    }
-  end
-
-  # Extract helpers
-
-  defp extract_killmail_id(zkb_data) do
-    killmail_id =
-      cond do
-        is_map(zkb_data) && Map.has_key?(zkb_data, "killmail_id") ->
-          zkb_data["killmail_id"]
-
-        is_map(zkb_data) && Map.has_key?(zkb_data, :killmail_id) ->
-          zkb_data.killmail_id
-
-        is_map(zkb_data) && Map.has_key?(zkb_data, "zkb") && is_map(zkb_data["zkb"]) &&
-            Map.has_key?(zkb_data["zkb"], "killmail_id") ->
-          zkb_data["zkb"]["killmail_id"]
-
-        true ->
-          nil
+        {:ok, data}
       end
-
-    if killmail_id, do: {:ok, killmail_id}, else: {:error, "Missing killmail_id"}
-  end
-
-  defp extract_zkb_hash(zkb_data) do
-    zkb = extract_zkb_section(zkb_data)
-    hash = Map.get(zkb, "hash") || Map.get(zkb, :hash)
-
-    if hash, do: {:ok, hash}, else: {:error, "Missing zkb hash"}
-  end
-
-  defp extract_zkb_section(zkb_data) do
-    cond do
-      is_map(zkb_data) && Map.has_key?(zkb_data, "zkb") ->
-        zkb_data["zkb"]
-
-      is_map(zkb_data) && Map.has_key?(zkb_data, :zkb) ->
-        zkb_data.zkb
-
-      is_map(zkb_data) && (Map.has_key?(zkb_data, "totalValue") || Map.has_key?(zkb_data, "hash")) ->
-        zkb_data
-
-      true ->
-        %{}
+    rescue
+      e ->
+        AppLogger.kill_error("Error creating Data struct from map: #{Exception.message(e)}")
+        {:error, {:map_conversion_error, Exception.message(e)}}
     end
   end
 
-  defp extract_system_id(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
+  def from_map(other) do
+    {:error, {:invalid_data_type, "Expected map, got: #{inspect(other)}"}}
+  end
 
-    cond do
-      is_integer(system_id) ->
-        system_id
+  @doc """
+  Merges data from two Data structs, preferring values from the second struct when they exist.
 
-      is_binary(system_id) ->
-        case Integer.parse(system_id) do
-          {id, _} -> id
-          :error -> nil
-        end
+  ## Parameters
+    - data: The base Data struct
+    - other_data: The Data struct with values to merge in
 
-      true ->
-        nil
+  ## Returns
+    - {:ok, data} with the merged Data struct
+    - {:error, reason} if merging fails
+  """
+  @spec merge(t(), t()) :: {:ok, t()} | {:error, any()}
+  def merge(%__MODULE__{} = data, %__MODULE__{} = other_data) do
+    try do
+      # Convert both structs to maps
+      data_map = Map.from_struct(data)
+      other_map = Map.from_struct(other_data)
+
+      # Merge the maps, with other_data taking precedence
+      merged_map =
+        Enum.reduce(other_map, data_map, fn {key, value}, acc ->
+          # Only update if the value is not nil and not an empty map/list
+          case value do
+            nil -> acc
+            [] when is_list(value) -> acc
+            %{} when value == %{} -> acc
+            _ -> Map.put(acc, key, value)
+          end
+        end)
+
+      # Create a new struct from the merged map
+      {:ok, struct(__MODULE__, merged_map)}
+    rescue
+      e ->
+        AppLogger.kill_error("Error merging Data structs: #{Exception.message(e)}")
+        {:error, {:merge_error, Exception.message(e)}}
     end
   end
 
-  defp extract_kill_time(esi_data) do
-    kill_time = Map.get(esi_data, "killmail_time")
+  def merge(%__MODULE__{} = data, other) do
+    AppLogger.kill_error("Cannot merge Data with non-Data: #{inspect(other)}")
+    {:error, {:invalid_merge_type, "Expected Data struct for merging"}}
+  end
 
-    cond do
-      is_nil(kill_time) ->
-        DateTime.utc_now()
+  def merge(other, _) do
+    AppLogger.kill_error("Cannot merge non-Data with anything: #{inspect(other)}")
+    {:error, {:invalid_merge_type, "Expected Data struct as base for merging"}}
+  end
 
-      is_struct(kill_time, DateTime) ->
-        kill_time
-
-      is_binary(kill_time) ->
-        case DateTime.from_iso8601(kill_time) do
-          {:ok, datetime, _} -> datetime
-          _ -> DateTime.utc_now()
-        end
-
-      true ->
-        DateTime.utc_now()
+  # Parse datetime string to DateTime
+  defp parse_datetime(datetime_str) when is_binary(datetime_str) do
+    case DateTime.from_iso8601(datetime_str) do
+      {:ok, datetime, _} -> datetime
+      _ -> nil
     end
   end
+
+  defp parse_datetime(datetime), do: datetime
 end

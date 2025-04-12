@@ -9,11 +9,7 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
   use WebSockex
   alias WandererNotifier.Core.Stats
 
-  alias WandererNotifier.KillmailProcessing.{
-    Context,
-    Pipeline
-  }
-
+  alias WandererNotifier.Killmail.Processing.WebsocketProcessor
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc false
@@ -355,36 +351,50 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
   # Handle a successfully parsed message
   defp handle_parsed_message(message_type, json_data, raw_msg, state) do
-    new_state = process_message_by_type(message_type, json_data, state)
-    forward_to_parent(new_state, raw_msg)
+    new_state =
+      if message_type == "killmail" do
+        # Process killmail using the WebsocketProcessor
+        process_killmail_message(json_data, state)
+      else
+        # Not a killmail, no processing needed
+        state
+      end
+
+    # Forward message to parent if configured
+    if is_pid(state.parent) and Process.alive?(state.parent) do
+      send(state.parent, {:zkill_message, raw_msg})
+    end
+
+    {:ok, new_state}
   end
 
-  # Process message based on its type
-  defp process_message_by_type("killmail", json_data, state) do
-    process_killmail_message(json_data, state)
-  end
-
-  defp process_message_by_type(_other_type, _json_data, state) do
-    # Not a killmail, no processing needed
-    state
-  end
-
-  # Process a killmail type message
+  # Process a killmail type message - now delegates to WebsocketProcessor
   defp process_killmail_message(json_data, state) do
     killmail_id = get_killmail_id(json_data)
 
     if killmail_id do
-      # Log the full structure for debugging
-      AppLogger.websocket_debug("[ZKill] Raw killmail structure", %{
-        killmail_id: killmail_id,
-        raw_data: inspect(json_data, limit: :infinity)
+      # Log the killmail reception
+      AppLogger.websocket_debug("[ZKill] Received killmail", %{
+        killmail_id: killmail_id
       })
 
-      # Processing separately to avoid blocking websocket
-      spawn_killmail_processor(json_data, killmail_id)
+      # Use the dedicated WebsocketProcessor to handle the message
+      # This creates a proper state object for the processor to use
+      processor_state = %{processed: state.processed_count, errors: state.error_count}
 
-      # Update processed count
-      update_in(state.processed_count, &(&1 + 1))
+      case WebsocketProcessor.process_zkill_message(json_data, processor_state) do
+        {:ok, new_processor_state} ->
+          # Extract updated counters from processor state
+          %{
+            state
+            | processed_count: Map.get(new_processor_state, :processed, state.processed_count),
+              error_count: Map.get(new_processor_state, :errors, state.error_count)
+          }
+
+        {:error, _reason} ->
+          # Increment error count if processing failed
+          update_in(state.error_count, &(&1 + 1))
+      end
     else
       # No killmail ID but still a killmail type
       AppLogger.websocket_debug("[ZKill] Missing killmail ID in data", %{
@@ -392,25 +402,6 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
       })
 
       state
-    end
-  end
-
-  # Spawn a process to handle killmail processing
-  defp spawn_killmail_processor(json_data, killmail_id) do
-    spawn(fn ->
-      ctx = Context.new_realtime(nil, nil, :zkill_websocket, %{})
-      process_killmail_async(json_data, ctx, killmail_id)
-    end)
-  end
-
-  # Forward message to parent process
-  defp forward_to_parent(state, raw_msg) do
-    if is_pid(state.parent) and Process.alive?(state.parent) do
-      send(state.parent, {:zkill_message, raw_msg})
-      {:ok, state}
-    else
-      AppLogger.websocket_warn("Parent process unavailable, message dropped")
-      {:ok, state}
     end
   end
 
@@ -426,30 +417,18 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
     {:ok, update_in(state.error_count, &(&1 + 1))}
   end
 
-  # Helper function to process killmail asynchronously
-  defp process_killmail_async(json_data, ctx, killmail_id) do
-    # Simple log that we received a killmail from websocket
-    AppLogger.websocket_debug("Received killmail ##{killmail_id}")
-
-    # Just forward to pipeline without any extraction or processing
-    case Pipeline.process_killmail(json_data, ctx) do
-      {:ok, _result} ->
-        # Just log success without extracting data
-        AppLogger.websocket_debug("Processed killmail ##{killmail_id}")
-
-      {:error, reason} ->
-        # Log error with minimal processing
-        AppLogger.websocket_error("Failed to process killmail ##{killmail_id} - #{inspect(reason)}")
-    end
-  rescue
-    e ->
-      # Simple error logging
-      AppLogger.websocket_error("Exception processing killmail ##{killmail_id} - #{Exception.message(e)}")
-  end
-
   # Helper function to extract killmail ID
   defp get_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: id
   defp get_killmail_id(%{"zkb" => %{"killmail_id" => id}}) when is_integer(id), do: id
+
+  defp get_killmail_id(%{"package" => package}) when is_map(package) do
+    cond do
+      Map.has_key?(package, "killID") -> package["killID"]
+      Map.has_key?(package, "killmail_id") -> package["killmail_id"]
+      true -> nil
+    end
+  end
+
   defp get_killmail_id(_), do: nil
 
   # Classify message type for logging
@@ -462,6 +441,11 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
         "killmail"
 
       Map.has_key?(json_data, "killmail_id") ->
+        "killmail"
+
+      Map.has_key?(json_data, "package") && is_map(json_data["package"]) &&
+          (Map.has_key?(json_data["package"], "killID") ||
+             Map.has_key?(json_data["package"], "killmail_id")) ->
         "killmail"
 
       true ->

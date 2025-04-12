@@ -41,15 +41,22 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
       # Verify it extracted the correct data
       assert killmail_data.killmail_id == 12_345
-      assert killmail_data.zkb_data == zkb_data
-      assert killmail_data.esi_data == esi_data
+
+      # Since the new implementation stores raw_zkb_data differently (it takes just the zkb portion)
+      # We need to check the correct fields individually instead
+      assert killmail_data.zkb_hash == "abc123"
+      assert killmail_data.total_value == 1_000_000
+      assert killmail_data.points == 10
+
+      # Check raw_esi_data is preserved
+      assert Map.get(killmail_data.raw_esi_data, "solar_system_id") == 30_000_142
+      assert Map.get(killmail_data.raw_esi_data, "solar_system_name") == "Jita"
+
       assert killmail_data.solar_system_id == 30_000_142
       assert killmail_data.solar_system_name == "Jita"
 
-      assert killmail_data.victim == %{
-               "character_id" => 123_456,
-               "character_name" => "Test Victim"
-             }
+      assert killmail_data.victim_id == 123_456
+      assert killmail_data.victim_name == "Test Victim"
 
       assert killmail_data.attackers == [
                %{
@@ -63,7 +70,11 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
     test "handles atom keys in zkb_data" do
       zkb_data = %{
-        killmail_id: 12_345
+        killmail_id: 12_345,
+        zkb: %{
+          hash: "abc123",
+          totalValue: 1_000_000
+        }
       }
 
       esi_data = %{
@@ -72,21 +83,24 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
 
       killmail_data = KillmailData.from_zkb_and_esi(zkb_data, esi_data)
 
+      assert %KillmailData{} = killmail_data
       assert killmail_data.killmail_id == 12_345
+      assert killmail_data.zkb_hash == "abc123"
     end
 
     test "handles missing/nil values gracefully" do
-      zkb_data = %{}
+      # Both ZKB and ESI data need minimal fields
+      zkb_data = %{"killmail_id" => 12345, "zkb" => %{"hash" => "abc123"}}
       esi_data = %{}
 
       killmail_data = KillmailData.from_zkb_and_esi(zkb_data, esi_data)
 
       assert %KillmailData{} = killmail_data
-      assert killmail_data.killmail_id == nil
+      assert killmail_data.killmail_id == 12345
       assert killmail_data.solar_system_id == nil
       assert killmail_data.solar_system_name == nil
-      assert killmail_data.victim == nil
-      assert killmail_data.attackers == nil
+      assert killmail_data.victim_id == nil
+      assert killmail_data.victim_name == nil
     end
   end
 
@@ -98,6 +112,8 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
         solar_system_id: 30_000_142,
         solar_system_name: "Jita",
         kill_time: ~U[2023-01-01 12:00:00Z],
+        victim_id: 123_456,
+        victim_name: "Test Victim",
         full_victim_data: %{"character_id" => 123_456},
         full_attacker_data: [%{"character_id" => 789_012}]
       }
@@ -113,7 +129,8 @@ defmodule WandererNotifier.KillmailProcessing.KillmailDataTest do
       assert killmail_data.solar_system_id == 30_000_142
       assert killmail_data.solar_system_name == "Jita"
       assert killmail_data.kill_time == ~U[2023-01-01 12:00:00Z]
-      assert killmail_data.victim == %{"character_id" => 123_456}
+      assert killmail_data.victim_id == 123_456
+      assert killmail_data.victim_name == "Test Victim"
       assert killmail_data.attackers == [%{"character_id" => 789_012}]
       assert killmail_data.persisted
     end

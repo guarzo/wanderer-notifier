@@ -1,5 +1,8 @@
 defmodule WandererNotifier.KillmailProcessing.Pipeline do
   @moduledoc """
+  DEPRECATED: This module is deprecated and will be removed in a future release.
+  Please use WandererNotifier.Processing.Killmail.KillmailProcessor instead.
+
   Pipeline for processing killmail data from start to finish.
   Handles tasks like enrichment, validation, persistence, and notifications.
 
@@ -17,11 +20,14 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   @type result :: {:ok, any()} | {:error, any()}
 
   @doc """
+  DEPRECATED: Please use WandererNotifier.Processing.Killmail.KillmailProcessor.process_killmail/2 instead.
+
   Process a killmail through the pipeline.
 
   This function delegates to the new KillmailProcessor while maintaining
   the existing interface for backward compatibility.
   """
+  @deprecated "Use WandererNotifier.Processing.Killmail.KillmailProcessor.process_killmail/2 instead"
   @spec process_killmail(map(), Context.t()) :: result()
   def process_killmail(zkb_data, ctx) do
     Metrics.track_processing_start(ctx)
@@ -74,11 +80,14 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   end
 
   @doc """
+  DEPRECATED: Please use WandererNotifier.Processing.Killmail.KillmailProcessor.process_killmail/2 instead.
+
   Process a pre-created KillmailData struct through the pipeline.
 
   This function delegates to the new KillmailProcessor while maintaining
   the existing interface for backward compatibility.
   """
+  @deprecated "Use WandererNotifier.Processing.Killmail.KillmailProcessor.process_killmail/2 instead"
   @spec process_killmail_with_data(KillmailData.t(), Context.t()) :: result()
   def process_killmail_with_data(%KillmailData{} = killmail, ctx) do
     Metrics.track_processing_start(ctx)

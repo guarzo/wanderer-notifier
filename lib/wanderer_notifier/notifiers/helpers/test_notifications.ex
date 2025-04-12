@@ -9,7 +9,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.KillmailProcessing.{KillmailData, Validator, DataAccess}
+  alias WandererNotifier.KillmailProcessing.{KillmailData, Validator}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} ->
         # Create a map with both ZKill and ESI data
-        killmail_data = %KillmailData{
+        killmail_data = %WandererNotifier.Killmail.Core.Data{
           killmail_id: kill_id,
           raw_zkb_data: kill_data["zkb"],
           raw_esi_data: esi_data

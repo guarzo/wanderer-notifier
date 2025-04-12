@@ -1,11 +1,15 @@
 defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   @moduledoc """
   Registers metrics-related atoms to prevent 'non-existing atom' errors.
-  This module ensures that all metric keys used by the Metrics module
-  are pre-registered as atoms during application startup.
+
+  @deprecated Please use WandererNotifier.Killmail.Metrics.MetricRegistry instead
+
+  This module is deprecated and will be removed in a future release.
+  All functionality has been moved to WandererNotifier.Killmail.Metrics.MetricRegistry.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  require Logger
+  alias WandererNotifier.Killmail.Metrics.MetricRegistry, as: NewMetricRegistry
 
   # List of processing modes
   @processing_modes ["realtime", "historical", "manual", "batch", "unknown"]
@@ -13,56 +17,33 @@ defmodule WandererNotifier.KillmailProcessing.MetricRegistry do
   @doc """
   Initializes all atom keys used for metrics.
   Call this function during application startup.
+
+  @deprecated Please use WandererNotifier.Killmail.Metrics.MetricRegistry.initialize/0 instead
   """
   def initialize do
-    AppLogger.startup_info("Initializing metric registry...")
-
-    # Create all combinations of metric keys
-    metric_atoms = build_metric_keys()
-
-    # Count the number of registered atoms
-    count = length(metric_atoms)
-
-    AppLogger.startup_info("Registered metric atoms", %{
-      count: count,
-      category: "killmail_metrics"
-    })
-
-    # Return the list of registered atoms
-    {:ok, metric_atoms}
+    Logger.warning("Using deprecated MetricRegistry.initialize/0, please update your code")
+    NewMetricRegistry.initialize()
   end
 
   @doc """
   Returns a list of all registered metric atom keys.
+
+  @deprecated Please use WandererNotifier.Killmail.Metrics.MetricRegistry.registered_metrics/0 instead
   """
   def registered_metrics do
-    build_metric_keys()
+    Logger.warning("Using deprecated MetricRegistry.registered_metrics/0, please update your code")
+    NewMetricRegistry.registered_metrics()
   end
 
   @doc """
   Helper function to check for metrics synchronization issues between registry and Metrics module.
   Useful for debugging during development.
+
+  @deprecated Please use WandererNotifier.Killmail.Metrics.MetricRegistry.check_registry_synchronization/0 instead
   """
   def check_registry_synchronization do
-    # Alias the Metrics module
-    alias WandererNotifier.KillmailProcessing.Metrics
-
-    # Get registry metrics as strings
-    registry_metrics = build_metric_keys() |> Enum.map(&Atom.to_string/1)
-
-    # Get metrics module registered metrics using reflection (only in dev/test)
-    metrics_map = get_registered_metrics_safely()
-
-    # Metrics that are in registry but not in Metrics module
-    missing_in_metrics = Enum.filter(registry_metrics, fn m -> !Map.has_key?(metrics_map, m) end)
-
-    # Return diagnostic information
-    %{
-      registry_metrics_count: length(registry_metrics),
-      metrics_module_count: map_size(metrics_map),
-      missing_in_metrics_count: length(missing_in_metrics),
-      missing_in_metrics_samples: Enum.take(missing_in_metrics, 10)
-    }
+    Logger.warning("Using deprecated MetricRegistry.check_registry_synchronization/0, please update your code")
+    NewMetricRegistry.check_registry_synchronization()
   end
 
   # Safely gets registered metrics from the Metrics module

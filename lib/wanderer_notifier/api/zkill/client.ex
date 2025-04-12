@@ -5,18 +5,51 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
   @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
 
+  @base_url "https://zkillboard.com/api"
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Gets a single killmail by its ID.
   """
-  def get_single_killmail(kill_id) do
-    client_module().get_single_killmail(kill_id)
+  @impl true
+  @spec get_single_killmail(integer() | binary()) :: {:ok, map() | list(map())} | {:error, any()}
+  def get_single_killmail(kill_id) when is_integer(kill_id) do
+    url = "#{@base_url}/killID/#{kill_id}/"
+
+    case HTTPoison.get(url) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} when is_binary(body) ->
+        case Jason.decode(body) do
+          {:ok, []} ->
+            AppLogger.api_debug("No killmail found for ID #{kill_id}")
+            {:error, :not_found}
+
+          {:ok, data} when is_list(data) or is_map(data) ->
+            AppLogger.api_debug("Successfully fetched killmail #{kill_id}")
+            {:ok, data}
+
+          {:error, reason} ->
+            AppLogger.api_error("Failed to decode zKillboard response: #{inspect(reason)}")
+            {:error, {:decode_error, reason}}
+        end
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to fetch killmail #{kill_id}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  def get_single_killmail(kill_id) when is_binary(kill_id) do
+    case Integer.parse(kill_id) do
+      {id, _} -> get_single_killmail(id)
+      :error -> {:error, :invalid_kill_id}
+    end
   end
 
   @doc """
   Gets recent kills with an optional limit.
   """
+  @impl true
   def get_recent_kills(limit \\ 10) do
     client_module().get_recent_kills(limit)
   end
@@ -24,6 +57,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
   @doc """
   Gets kills for a specific system with an optional limit.
   """
+  @impl true
   def get_system_kills(system_id, limit \\ 5) do
     client_module().get_system_kills(system_id, limit)
   end
@@ -36,6 +70,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     - date_range: Map with :start and :end DateTime (optional)
     - limit: Maximum number of kills to fetch (default: 100)
   """
+  @impl true
   def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
     client_module().get_character_kills(character_id, date_range, limit)
   end
@@ -49,6 +84,8 @@ defmodule WandererNotifier.Api.ZKill.Client do
     HTTP client implementation for ZKillboard API.
     """
 
+    @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+
     alias WandererNotifier.Logger.Logger, as: AppLogger
 
     @base_url "https://zkillboard.com/api"
@@ -60,6 +97,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     @doc """
     Gets a single killmail by its ID.
     """
+    @impl true
     def get_single_killmail(kill_id) do
       AppLogger.api_debug("ZKill requesting single killmail", %{
         kill_id: kill_id,
@@ -82,6 +120,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     @doc """
     Gets recent kills with an optional limit.
     """
+    @impl true
     def get_recent_kills(limit \\ 10) do
       url = "#{@base_url}/recent/"
       headers = build_headers()
@@ -102,6 +141,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     @doc """
     Gets kills for a specific system with an optional limit.
     """
+    @impl true
     def get_system_kills(system_id, limit \\ 5) do
       url = "#{@base_url}/systemID/#{system_id}/"
       headers = build_headers()
@@ -123,6 +163,7 @@ defmodule WandererNotifier.Api.ZKill.Client do
     @doc """
     Gets kills for a specific character.
     """
+    @impl true
     def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
       url = build_character_kills_url(character_id, date_range)
       headers = build_headers()
@@ -333,10 +374,18 @@ defmodule WandererNotifier.Api.ZKill.Client do
     # Check if a killmail has a valid ID
     defp kill_has_valid_id?(kill) when is_map(kill) do
       cond do
-        Map.has_key?(kill, "killmail_id") && not is_nil(kill["killmail_id"]) -> true
-        Map.has_key?(kill, :killmail_id) && not is_nil(kill.killmail_id) -> true
-        Map.has_key?(kill, "zkb") && Map.has_key?(kill["zkb"], "killmail_id") && not is_nil(kill["zkb"]["killmail_id"]) -> true
-        true -> false
+        Map.has_key?(kill, "killmail_id") && not is_nil(kill["killmail_id"]) ->
+          true
+
+        Map.has_key?(kill, :killmail_id) && not is_nil(kill.killmail_id) ->
+          true
+
+        Map.has_key?(kill, "zkb") && Map.has_key?(kill["zkb"], "killmail_id") &&
+            not is_nil(kill["zkb"]["killmail_id"]) ->
+          true
+
+        true ->
+          false
       end
     end
 
@@ -347,12 +396,19 @@ defmodule WandererNotifier.Api.ZKill.Client do
       # Make sure the kill has a killmail_id in the top-level
       kill_id =
         cond do
-          Map.has_key?(kill, "killmail_id") -> kill["killmail_id"]
-          Map.has_key?(kill, :killmail_id) -> kill.killmail_id
+          Map.has_key?(kill, "killmail_id") ->
+            kill["killmail_id"]
+
+          Map.has_key?(kill, :killmail_id) ->
+            kill.killmail_id
+
           Map.has_key?(kill, "zkb") && Map.has_key?(kill["zkb"], "killmail_id") ->
             # If ID is in zkb field, move it to top-level
             kill["zkb"]["killmail_id"]
-          true -> nil # This shouldn't happen due to prior validation
+
+          # This shouldn't happen due to prior validation
+          true ->
+            nil
         end
 
       # Make sure the zkb field exists
@@ -368,7 +424,11 @@ defmodule WandererNotifier.Api.ZKill.Client do
     # Ensure zkb data has required fields
     defp ensure_zkb_format(zkb, kill_id) when is_map(zkb) do
       # Ensure there's a hash field
-      Map.put_new(zkb, "hash", Map.get(zkb, :hash, Map.get(zkb, "hash", generate_fallback_hash(kill_id))))
+      Map.put_new(
+        zkb,
+        "hash",
+        Map.get(zkb, :hash, Map.get(zkb, "hash", generate_fallback_hash(kill_id)))
+      )
     end
 
     defp ensure_zkb_format(_, kill_id) do

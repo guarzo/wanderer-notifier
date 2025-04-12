@@ -189,9 +189,9 @@ To safely remove the deprecated modules from the codebase, follow these steps:
    - [x] Update test files to use the new Persistence module
    - [x] Update configuration files to remove old module references
    - [x] Create migration guide for transitioning to the new module
-   - [ ] Create a migration PR with all these changes
-   - [ ] After merging, wait for at least one release cycle to ensure stability
-   - [ ] Finally, remove the `KillmailPersistence` module in a separate PR
+   - [x] Create a migration PR with all these changes
+   - [x] After merging, wait for at least one release cycle to ensure stability
+   - [x] Finally, remove the `KillmailPersistence` module in a separate PR
 
 2. **Extractor Removal**
 

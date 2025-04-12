@@ -1,39 +1,54 @@
 defmodule WandererNotifier.KillmailProcessing.Validator do
   @moduledoc """
-  @deprecated Please use WandererNotifier.Killmail.Core.Validator instead
-
-  This module is deprecated and will be removed in a future release.
-  All functionality has been moved to WandererNotifier.Killmail.Core.Validator.
+  DEPRECATED: This module is a compatibility layer for the Killmail Validator.
+  Please use WandererNotifier.Killmail.Core.Validator instead.
   """
 
-  alias WandererNotifier.Killmail.Core.{Data, Validator}
-  alias WandererNotifier.KillmailProcessing.KillmailData
+  alias WandererNotifier.Killmail.Core.Validator, as: NewValidator
 
   @doc """
-  Validates that a killmail has complete data for processing.
-  @deprecated Please use WandererNotifier.Killmail.Core.Validator.validate/1 instead
+  Validates a killmail Data struct to ensure it has all required fields.
+  Delegates to the new validator implementation.
   """
-  @spec validate(KillmailData.t()) :: :ok | {:error, list({atom(), String.t()})}
-  def validate(%KillmailData{} = killmail) do
-    # Convert to new Data struct if needed - but in reality they're the same struct
-    # since KillmailData now delegates to Data
-    Validator.validate(killmail)
+  def validate(killmail) do
+    NewValidator.validate(killmail)
   end
-
-  def validate(other), do: Validator.validate(other)
 
   @doc """
   Checks if a killmail has the minimum required data to be processed.
-  @deprecated Please use WandererNotifier.Killmail.Core.Validator.has_minimum_required_data?/1 instead
+  Delegates to the new validator implementation.
   """
-  @spec has_minimum_required_data?(KillmailData.t()) :: boolean()
-  def has_minimum_required_data?(killmail), do: Validator.has_minimum_required_data?(killmail)
+  def has_minimum_required_data?(killmail) do
+    NewValidator.has_minimum_required_data?(killmail)
+  end
 
   @doc """
   Logs validation errors with helpful context.
-  @deprecated Please use WandererNotifier.Killmail.Core.Validator.log_validation_errors/2 instead
+  Delegates to the new validator implementation.
   """
-  @spec log_validation_errors(KillmailData.t(), list({atom(), String.t()})) :: :ok
-  def log_validation_errors(killmail, errors),
-    do: Validator.log_validation_errors(killmail, errors)
+  def log_validation_errors(killmail, errors) do
+    NewValidator.log_validation_errors(killmail, errors)
+  end
+
+  # For backward compatibility with code using normalize_killmail
+  @doc """
+  DEPRECATED: This function is deprecated and may not behave as expected.
+  Please use the new validator interface instead.
+  """
+  def normalize_killmail(killmail) do
+    # In the new model, validation doesn't modify the data
+    # This is a compatibility function that returns the original data
+    case validate(killmail) do
+      :ok -> killmail
+      {:error, _} -> killmail
+    end
+  end
+
+  # For backward compatibility with code using validate_complete_data
+  @doc """
+  DEPRECATED: This function is deprecated, use validate/1 instead.
+  """
+  def validate_complete_data(killmail) do
+    validate(killmail)
+  end
 end

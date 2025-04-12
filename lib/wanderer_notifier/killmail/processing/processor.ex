@@ -1,319 +1,193 @@
 defmodule WandererNotifier.Killmail.Processing.Processor do
   @moduledoc """
-  A unified processor for killmail events that coordinates the entire lifecycle:
-  validation, enrichment, persistence, and notification.
+  Main entry point for killmail processing.
 
-  This module serves as the primary entry point for killmail processing,
-  consolidating logic that was previously scattered across multiple modules.
+  This module orchestrates the entire killmail processing pipeline, including:
+  - Data validation
+  - Enrichment with additional information
+  - Caching processed killmails
+  - Persistence to database
+  - Notification determination and delivery
+
+  It provides a clean, unified interface for processing killmails from various sources.
   """
 
-  require Logger
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Killmail.Core.Data
-  alias WandererNotifier.Killmail.Core.Validator
-  alias WandererNotifier.Killmail.Processing.Enrichment
-  alias WandererNotifier.Killmail.Processing.NotificationDeterminer
-  alias WandererNotifier.Killmail.Processing.Notification
-  alias WandererNotifier.Killmail.Processing.Persistence
+  @behaviour WandererNotifier.Killmail.Processing.ProcessorBehaviour
+
+  alias WandererNotifier.Killmail.Core.{Data, Validator}
+
+  alias WandererNotifier.Killmail.Processing.{
+    Cache,
+    Enrichment,
+    NotificationDeterminer,
+    Notification,
+    Persistence
+  }
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @doc """
-  Process a killmail through the complete pipeline.
+  # Use runtime dependency injection for easier testing
+  defp validator, do: Application.get_env(:wanderer_notifier, :validator, Validator)
+  defp enrichment, do: Application.get_env(:wanderer_notifier, :enrichment, Enrichment)
+  defp cache, do: Application.get_env(:wanderer_notifier, :cache, Cache)
 
-  This function orchestrates the entire lifecycle of killmail processing:
-  1. Normalizes the input data to Data format
-  2. Validates the killmail data
-  3. Enriches it with additional information
-  4. Persists it to the database if appropriate
-  5. Sends notifications if needed
+  defp persistence_module,
+    do: Application.get_env(:wanderer_notifier, :persistence_module, Persistence)
+
+  defp notification_determiner,
+    do: Application.get_env(:wanderer_notifier, :notification_determiner, NotificationDeterminer)
+
+  defp notification, do: Application.get_env(:wanderer_notifier, :notification, Notification)
+
+  @doc """
+  Processes a killmail through the complete pipeline.
 
   ## Parameters
-    - killmail: Raw killmail data from zKillboard or ESI
-    - context: Processing context with metadata about the source and mode
+    - killmail: The killmail data to process (Data struct or compatible map)
+    - context: Optional processing context with metadata
 
   ## Returns
-    - {:ok, result} on success with the processed killmail
-    - {:ok, :skipped} if explicitly skipped
-    - {:error, reason} on failure
+    - {:ok, processed_killmail} on successful processing
+    - {:ok, :skipped} if the killmail was skipped
+    - {:error, reason} on processing failure
   """
-  def process_killmail(killmail, context) do
-    with {:ok, normalized} <- normalize_killmail(killmail),
-         {:ok, validated} <- validate_killmail(normalized),
-         {:ok, enriched} <- enrich_killmail(validated),
-         {:ok, persisted, should_notify} <- persist_killmail(enriched, context),
-         {:ok, result} <- notify_if_needed(persisted, should_notify, context) do
-      AppLogger.kill_info("Successfully processed killmail ##{normalized.killmail_id}")
-      {:ok, result}
+  @impl true
+  @spec process_killmail(Data.t() | map(), map()) ::
+          {:ok, Data.t()} | {:ok, :skipped} | {:error, any()}
+  def process_killmail(killmail, context \\ %{}) do
+    # Convert to Data struct if it's not already
+    killmail_data = ensure_data_struct(killmail)
+
+    # Log processing start
+    AppLogger.kill_info("Processing killmail ##{killmail_data.killmail_id}")
+
+    # Execute the processing pipeline
+    with {:ok, valid_killmail} <- validate_killmail(killmail_data),
+         {:ok, enriched_killmail} <- enrich_killmail(valid_killmail),
+         {:ok, cached_killmail} <- cache_killmail(enriched_killmail),
+         {:ok, persisted_killmail} <- persist_killmail(cached_killmail),
+         {:ok, notification_result} <- determine_notification(persisted_killmail, context),
+         :ok <- maybe_send_notification(notification_result, persisted_killmail) do
+      # Log successful processing
+      AppLogger.kill_info("Successfully processed killmail ##{persisted_killmail.killmail_id}")
+
+      # Return the fully processed killmail
+      {:ok, persisted_killmail}
     else
-      # Handle explicit skipping
-      {:error, {:skipped, reason}} ->
-        AppLogger.kill_info("Killmail processing skipped: #{reason}")
+      # Special case for skipped killmails
+      {:skip, reason} ->
+        AppLogger.kill_debug("Skipped killmail processing: #{reason}")
         {:ok, :skipped}
 
-      # Handle validation errors
-      {:error, {:validation, errors}} ->
-        kill_id = extract_killmail_id(killmail)
-
-        AppLogger.kill_error("Validation failed for killmail ##{kill_id}", %{
-          errors: inspect(errors)
-        })
-
-        {:error, {:validation, errors}}
-
-      # Handle enrichment errors
-      {:error, {:enrichment, reason}} ->
-        kill_id = extract_killmail_id(killmail)
-        AppLogger.kill_error("Enrichment failed for killmail ##{kill_id}: #{inspect(reason)}")
-        {:error, {:enrichment, reason}}
-
-      # Handle persistence errors
-      {:error, {:persistence, reason}} ->
-        kill_id = extract_killmail_id(killmail)
-        AppLogger.kill_error("Persistence failed for killmail ##{kill_id}: #{inspect(reason)}")
-        {:error, {:persistence, reason}}
-
-      # Handle other errors
-      error ->
-        kill_id = extract_killmail_id(killmail)
-        AppLogger.kill_error("Error processing killmail ##{kill_id}: #{inspect(error)}")
-        error
-    end
-  end
-
-  # Normalizes any killmail format to the standard Data struct
-  defp normalize_killmail(killmail) do
-    # Extract killmail_id and hash from the raw data if possible
-    kill_id = extract_killmail_id(killmail)
-    hash = extract_hash(killmail)
-
-    AppLogger.kill_debug("Normalizing killmail ##{kill_id}")
-
-    # Determine if we need to fetch ESI data or already have it
-    cond do
-      # Already a Data struct, return as is
-      is_struct(killmail, Data) ->
-        {:ok, killmail}
-
-      # Has both killmail_id and hash, fetch from ESI and create Data
-      kill_id != nil && hash != nil ->
-        fetch_esi_data_and_create_killmail(kill_id, hash, killmail)
-
-      # Missing required data
-      true ->
-        {:error, {:skipped, "Missing killmail_id or hash"}}
-    end
-  end
-
-  # Extract killmail_id from any format
-  defp extract_killmail_id(killmail) do
-    # Simple extraction initially - will be enhanced
-    cond do
-      is_struct(killmail, Data) -> killmail.killmail_id
-      is_map(killmail) && Map.has_key?(killmail, :killmail_id) -> killmail.killmail_id
-      is_map(killmail) && Map.has_key?(killmail, "killmail_id") -> killmail["killmail_id"]
-      true -> nil
-    end
-  end
-
-  # Extract hash from any format
-  defp extract_hash(killmail) do
-    # Simple extraction initially - will be enhanced
-    cond do
-      is_struct(killmail, Data) && is_binary(killmail.zkb_hash) ->
-        killmail.zkb_hash
-
-      is_struct(killmail, Data) && is_map(killmail.raw_zkb_data) ->
-        Map.get(killmail.raw_zkb_data, "hash")
-
-      is_map(killmail) && Map.has_key?(killmail, :zkb_data) ->
-        Map.get(killmail.zkb_data, "hash")
-
-      is_map(killmail) && Map.has_key?(killmail, "zkb") ->
-        Map.get(killmail["zkb"], "hash")
-
-      is_map(killmail) && Map.has_key?(killmail, :zkb) ->
-        Map.get(killmail.zkb, "hash")
-
-      true ->
-        nil
-    end
-  end
-
-  # Fetch ESI data and create a Data struct
-  defp fetch_esi_data_and_create_killmail(kill_id, hash, zkb_data) do
-    AppLogger.kill_debug("Fetching ESI data for killmail ##{kill_id} with hash #{hash}")
-
-    case ESIService.get_killmail(kill_id, hash) do
-      {:ok, esi_data} ->
-        # Create a Data struct from the zkb and ESI data
-        Data.from_zkb_and_esi(zkb_data, esi_data)
-
-      {:error, :not_found} ->
-        AppLogger.kill_debug("ESI data not found for killmail ##{kill_id}")
-        {:error, {:skipped, "ESI data not available"}}
+      # Handle errors
+      {:error, stage, reason} ->
+        AppLogger.kill_error("Failed at #{stage} stage: #{inspect(reason)}")
+        {:error, {stage, reason}}
 
       {:error, reason} ->
-        AppLogger.kill_error(
-          "Error fetching ESI data for killmail ##{kill_id}: #{inspect(reason)}"
-        )
-
-        {:error, {:esi_error, reason}}
+        AppLogger.kill_error("Failed to process killmail: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
-  # Validates the killmail data
-  defp validate_killmail(killmail) do
-    AppLogger.kill_debug("Validating killmail ##{killmail.killmail_id}")
+  @doc """
+  Initializes the processor during application startup.
+  """
+  @spec configure() :: :ok
+  def configure do
+    AppLogger.startup_info("Configuring killmail processor")
+    :ok
+  end
 
-    case Validator.validate(killmail) do
+  # Private helper functions
+
+  # Ensure we're working with a Data struct
+  defp ensure_data_struct(%Data{} = killmail), do: killmail
+
+  defp ensure_data_struct(killmail) when is_map(killmail) do
+    # Convert map to Data struct
+    case Data.from_map(killmail) do
+      {:ok, data} ->
+        data
+
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to convert to Data struct: #{inspect(reason)}")
+        # Create a minimal struct to continue processing
+        %Data{
+          killmail_id: Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id),
+          raw_data: killmail
+        }
+    end
+  end
+
+  # Validate the killmail data
+  defp validate_killmail(killmail) do
+    case validator().validate(killmail) do
       :ok ->
         {:ok, killmail}
 
+      # This case won't actually happen with the current validator implementation,
+      # but we keep it for future compatibility
+      {:skip, reason} when is_binary(reason) ->
+        {:skip, reason}
+
       {:error, errors} ->
-        # Log the validation errors
-        Validator.log_validation_errors(killmail, errors)
-
-        # Check if we have minimum required data to continue
-        if Validator.has_minimum_required_data?(killmail) do
-          # We can continue with warnings
-          AppLogger.kill_warn(
-            "Continuing with incomplete killmail ##{killmail.killmail_id} (has minimum data)"
-          )
-
-          {:ok, killmail}
-        else
-          # We don't have enough data to continue
-          {:error, {:validation, errors}}
-        end
+        validator().log_validation_errors(killmail, errors)
+        {:error, :validation, errors}
     end
   end
 
-  # Enriches the killmail with additional data
+  # Enrich the killmail with additional data
   defp enrich_killmail(killmail) do
-    AppLogger.kill_debug("Enriching killmail ##{killmail.killmail_id}")
-
-    # Call the dedicated Enrichment module
-    case Enrichment.enrich(killmail) do
-      {:ok, enriched} ->
-        {:ok, enriched}
-
-      {:error, reason} ->
-        {:error, {:enrichment, reason}}
+    case enrichment().enrich(killmail) do
+      {:ok, enriched} -> {:ok, enriched}
+      error -> error
     end
   end
 
-  # Persists the killmail to the database if appropriate
-  defp persist_killmail(killmail, context) do
-    AppLogger.kill_debug("Checking if killmail ##{killmail.killmail_id} should be persisted")
-
-    # Check if we should even try to persist based on tracking rules
-    case should_process_kill?(killmail) do
-      {true, reason} ->
-        # This is a tracked kill, try to persist
-        AppLogger.kill_debug("Persisting tracked killmail ##{killmail.killmail_id}: #{reason}")
-        do_persist_killmail(killmail, context)
-
-      {false, reason} ->
-        # Not tracked, skip persistence
-        AppLogger.kill_info(
-          "Skipping persistence for killmail ##{killmail.killmail_id}: #{reason}"
-        )
-
-        # Return killmail with persisted=false but forward for notification check
-        case NotificationDeterminer.should_notify?(killmail) do
-          {:ok, {should_notify, _reason}} ->
-            # Return the unpersisted killmail with notification decision
-            {:ok, %{killmail | persisted: false}, should_notify}
-
-          {:error, _reason} ->
-            # On error, assume we shouldn't notify
-            {:ok, %{killmail | persisted: false}, false}
-        end
+  # Cache the killmail in memory
+  defp cache_killmail(killmail) do
+    # Check if already in cache first
+    if cache().in_cache?(killmail.killmail_id) do
+      AppLogger.kill_debug("Killmail ##{killmail.killmail_id} already in cache")
+      {:ok, killmail}
+    else
+      cache().cache(killmail)
     end
   end
 
-  # Determines if a killmail should be processed based on tracking rules
-  defp should_process_kill?(killmail) do
-    # Use the NotificationDeterminer to check if it should be processed
-    case NotificationDeterminer.should_notify?(killmail) do
-      {:ok, {true, reason}} ->
-        # Should be processed
-        {true, reason}
+  # Persist the killmail to storage
+  defp persist_killmail(killmail) do
+    persistence_module().persist(killmail)
+  end
 
-      {:ok, {false, reason}} ->
-        # Should not be processed
-        {false, reason}
+  # Determine if a notification should be sent
+  defp determine_notification(killmail, context) do
+    # Check if we should force notifications from context
+    force_notify = Map.get(context, :force_notification, false)
 
-      {:error, _reason} ->
-        # On error, assume we should process it to be safe
-        {true, "Error determining if kill should be processed"}
+    if force_notify do
+      AppLogger.kill_debug("Forcing notification for killmail ##{killmail.killmail_id}")
+      {:ok, {true, "Notification forced"}}
+    else
+      notification_determiner().should_notify?(killmail)
     end
   end
 
-  # Actually persists the killmail to the database
-  defp do_persist_killmail(killmail, context) do
-    # Get the character_id from context if available
-    character_id = Map.get(context, :character_id)
+  # Send notification if needed
+  defp maybe_send_notification({should_notify, reason}, killmail) do
+    if should_notify do
+      AppLogger.kill_debug(
+        "Sending notification for killmail ##{killmail.killmail_id}: #{reason}"
+      )
 
-    # Use the dedicated Persistence module
-    case Persistence.persist_killmail(killmail, character_id) do
-      {:ok, persisted_killmail, _created} ->
-        # Persistence successful, check if we should notify
-        case NotificationDeterminer.should_notify?(persisted_killmail) do
-          {:ok, {should_notify, _reason}} ->
-            # Return the persisted killmail and notification decision
-            {:ok, persisted_killmail, should_notify}
+      notification().notify(killmail)
+    else
+      AppLogger.kill_debug(
+        "Not sending notification for killmail ##{killmail.killmail_id}: #{reason}"
+      )
 
-          {:error, reason} ->
-            # Error determining notification, log but don't fail the process
-            AppLogger.kill_error(
-              "Error determining notification for killmail ##{killmail.killmail_id}: #{inspect(reason)}"
-            )
-
-            # Assume we shouldn't notify
-            {:ok, persisted_killmail, false}
-        end
-
-      {:error, reason} ->
-        # Persistence failed
-        {:error, {:persistence, reason}}
+      :ok
     end
-  end
-
-  # Sends notification if needed
-  defp notify_if_needed(killmail, false, _context) do
-    # Skip notification
-    {:ok, killmail}
-  end
-
-  defp notify_if_needed(killmail, true, _context) do
-    AppLogger.kill_debug("Sending notification for killmail ##{killmail.killmail_id}")
-
-    # Use the dedicated Notification module
-    case Notification.send_kill_notification(killmail, killmail.killmail_id) do
-      {:ok, _notification} ->
-        # Notification sent successfully
-        AppLogger.kill_info("Notification sent for killmail ##{killmail.killmail_id}")
-        {:ok, killmail}
-
-      {:error, reason} ->
-        # Error sending notification, but don't fail the processing
-        AppLogger.kill_error(
-          "Error sending notification for killmail ##{killmail.killmail_id}: #{inspect(reason)}"
-        )
-
-        # Still return success since notification is non-critical
-        {:ok, killmail}
-    end
-  end
-
-  @doc """
-  Configure the Processor module during application startup.
-  This function is called by the Application module during startup.
-  """
-  def configure do
-    AppLogger.info("Configuring Processor module")
-    # Add any required configuration here
-    :ok
   end
 end
