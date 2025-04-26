@@ -17,7 +17,6 @@ defmodule WandererNotifier.Application do
   use Application
 
   alias WandererNotifier.Config.API
-  alias WandererNotifier.Config.Database
   alias WandererNotifier.Config.Debug
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Notifications
@@ -98,7 +97,6 @@ defmodule WandererNotifier.Application do
   defp validate_configuration do
     # Define all configuration modules to validate with their display names and extra info
     config_modules = [
-      {Database, "Database", []},
       {Web, "Web", [port: Web.port(), host: Web.host()]},
       {Websocket, "Websocket", [url: Websocket.url(), enabled: Websocket.enabled()]},
       {API, "API", []},
@@ -283,27 +281,11 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Application.Service, []},
       {Cachex, name: :wanderer_cache},
       {WandererNotifier.Data.Cache.Repository, []},
-      {WandererNotifier.Data.Repo, []},
       {WandererNotifier.Web.Server, []}
     ]
 
-    # Add ChartServiceManager only if charts are enabled
-    charts_enabled = Features.kill_charts_enabled?() or Features.map_charts_enabled?()
-
-    AppLogger.log_startup_state_change(:feature_status, "Charts enabled", %{
-      feature: "charts",
-      value: charts_enabled
-    })
-
-    children =
-      if charts_enabled do
-        base_children ++ [{WandererNotifier.ChartService.ChartServiceManager, []}]
-      else
-        base_children
-      end
-
     # Add schedulers last
-    children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
+    base_children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
   end
 
   # Helper to get the current environment in a robust way

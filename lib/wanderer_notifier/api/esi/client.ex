@@ -3,10 +3,11 @@ defmodule WandererNotifier.Api.ESI.Client do
   Client for interacting with EVE Online's ESI (Swagger Interface) API.
   Provides low-level functions for making requests to ESI endpoints.
   """
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.HttpClient
   alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
+  @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"
 
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_killmail"
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.killmail")
   end
 
@@ -43,7 +44,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_character_info"
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.character")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "character_id", character_id)}
@@ -65,7 +66,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_corporation_info"
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.corporation")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "corporation_id", corporation_id)}
@@ -87,7 +88,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_alliance_info"
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.alliance")
     |> case do
       {:ok, data} -> {:ok, Map.put(data, "alliance_id", alliance_id)}
@@ -109,7 +110,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_universe_type"
     })
 
-    HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.universe_type")
   end
 
@@ -135,7 +136,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "search_inventory_type"
     })
 
-    HttpClient.get(url, headers, label: label)
+    @http_client.request(:get, url, headers, nil, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.search")
   end
 
@@ -153,7 +154,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_solar_system"
     })
 
-    result = HttpClient.get(url, headers, Keyword.merge([label: label], opts))
+    result = @http_client.request(:get, url, headers, nil, Keyword.merge([label: label], opts))
 
     case result do
       {:ok, %{status: 404}} ->
@@ -196,7 +197,7 @@ defmodule WandererNotifier.Api.ESI.Client do
       method: "get_region"
     })
 
-    HttpClient.get(url, headers, label: label)
+    @http_client.request(:get, url, headers, nil, label: label)
     |> ErrorHandler.handle_http_response(domain: :esi, tag: "ESI.region")
   end
 

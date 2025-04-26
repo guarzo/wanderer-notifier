@@ -3,6 +3,9 @@ import Config
 # Set environment based on MIX_ENV at compile time
 config :wanderer_notifier, env: config_env()
 
+# Configure HTTP client
+config :wanderer_notifier, http_client: WandererNotifier.HttpClient.HTTPoison
+
 # Configure MIME types
 config :mime, :types, %{
   "text/html" => ["html", "htm"],
@@ -61,7 +64,6 @@ config :logger, :module_levels, %{
   "WandererNotifier.Application" => :info,
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
-  "WandererNotifier.Data.Cache.Repository" => :info,
   "WandererNotifier.Data.Cache.Helpers" => :warn,
   "WandererNotifier.Data.Cache" => :warn,
   "WandererNotifier.Core.Application.Service" => :info,
@@ -89,46 +91,13 @@ config :nostrum, :gateway,
     max: 120_000
   ]
 
-# Configure Ecto timestamps
-config :wanderer_notifier, WandererNotifier.Data.Repo,
-  migration_timestamps: [type: :utc_datetime_usec]
-
-# Configure persistence feature defaults
-config :wanderer_notifier, :persistence,
-  enabled: true,
-  retention_period_days: 180,
-  # Daily at midnight (minute 0, hour 0, any day, any month, any day of week)
-  aggregation_schedule: "0 0 * * *"
-
-# Configure Ash APIs
-config :wanderer_notifier, :ash_apis, [
-  WandererNotifier.Resources.Api
-]
-
-# Configure Ash Domains
-config :wanderer_notifier,
-  ash_domains: [
-    WandererNotifier.Resources.Api,
-    WandererNotifier.Resources.Domain
-  ]
-
-# Configure compatible foreign key types for Ash relationships
-# This must be set at compile time
-config :ash, :compatible_foreign_key_types, [
-  {Ash.Type.UUID, Ash.Type.Integer}
-]
-
-# Configure Ecto repositories
-config :wanderer_notifier, ecto_repos: [WandererNotifier.Data.Repo]
-
 # Configure cache
 config :wanderer_notifier, cache_name: :wanderer_cache
 
 # Configure service modules
 config :wanderer_notifier,
   zkill_service: WandererNotifier.Api.ZKill.Service,
-  esi_service: WandererNotifier.Api.ESI.Service,
-  chart_service_dir: "/workspace/chart-service"
+  esi_service: WandererNotifier.Api.ESI.Service
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

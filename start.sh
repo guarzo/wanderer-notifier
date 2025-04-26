@@ -13,7 +13,6 @@ fi
 
 # Show configured ports
 echo "Web server port: ${WANDERER_PORT:-4000}"
-echo "Chart service port: ${WANDERER_CHART_SERVICE_PORT:-3001}"
 
 # Set default cache directory if not specified
 WANDERER_CACHE_DIR=${WANDERER_CACHE_DIR:-${CACHE_DIR:-"/app/data/cache"}}
@@ -30,12 +29,6 @@ if [ -f .env ]; then
   source .env
   set +a
 fi
-
-# Start the chart service
-echo "Starting chart service on port ${WANDERER_CHART_SERVICE_PORT:-3001}..."
-cd /app/chart-service && PORT=${WANDERER_CHART_SERVICE_PORT:-3001} npm start &
-CHART_PID=$!
-echo "Chart service started with PID: $CHART_PID"
 
 # Start the main application
 echo "Starting Elixir application on port ${WANDERER_PORT:-4000}..."

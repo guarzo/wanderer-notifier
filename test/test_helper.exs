@@ -6,8 +6,6 @@ Application.put_env(:wanderer_notifier, :discord_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_enabled, false)
 Application.put_env(:wanderer_notifier, :character_tracking_enabled, false)
 Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
-Application.put_env(:wanderer_notifier, :kill_charts_enabled, false)
-Application.put_env(:wanderer_notifier, :map_charts_enabled, false)
 
 # Configure Mox
 Application.ensure_all_started(:mox)
@@ -80,24 +78,6 @@ Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.S
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
-  for: WandererNotifier.ChartService.KillmailChartAdapterBehaviour
-)
-
-# Set up application environment for testing
-Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
-Application.put_env(:wanderer_notifier, :cache_helpers, WandererNotifier.MockCacheHelpers)
-Application.put_env(:wanderer_notifier, :repository, WandererNotifier.MockRepository)
-Application.put_env(:wanderer_notifier, :logger, WandererNotifier.MockLogger)
-
-Application.put_env(
-  :wanderer_notifier,
-  :killmail_chart_adapter,
-  WandererNotifier.MockKillmailChartAdapter
-)
-
-# Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
@@ -123,10 +103,6 @@ Mox.stub_with(WandererNotifier.MockDiscordNotifier, WandererNotifier.Test.Stubs.
 Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Data.Cache.HelpersBehaviour)
 
 Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Data.Cache.RepositoryBehaviour)
-
-Mox.defmock(WandererNotifier.MockKillmailPersistence,
-  for: WandererNotifier.Resources.KillmailPersistenceBehaviour
-)
 
 # Set Mox to verify on exit
 Application.put_env(:mox, :verify_on_exit, true)

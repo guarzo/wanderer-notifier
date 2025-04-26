@@ -1,16 +1,13 @@
 defmodule WandererNotifier.Data.Repository do
   @moduledoc """
   Repository for data operations. Acts as the single source of truth for data access,
-  coordinating between cache and external data sources.
+  coordinating cache operations.
   """
 
   alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.AppLogger, as: Logger
-  alias WandererNotifier.Resources.Api
-  alias WandererNotifier.Resources.Killmail
-  require Ash.Query
 
   @doc """
   Gets tracked characters from the data store.
@@ -53,60 +50,5 @@ defmodule WandererNotifier.Data.Repository do
   @spec get_cached_kills(integer()) :: [map()]
   def get_cached_kills(system_id) do
     CacheHelpers.get_cached_kills(system_id)
-  end
-
-  @doc """
-  Counts the number of kills for a specific character.
-  Returns 0 if no kills are found.
-  """
-  @spec count_kills_for_character(integer()) :: integer()
-  def count_kills_for_character(character_id) do
-    # Use Ash.Query to count kills for this character
-    query =
-      Killmail
-      |> Ash.Query.new()
-      |> Ash.Query.filter(
-        fragment(
-          "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
-          ^to_string(character_id),
-          ^to_string(character_id)
-        )
-      )
-      |> Ash.Query.aggregate(:count, :id, :total)
-
-    case Api.read(query) do
-      {:ok, [%{total: count}]} -> count
-      _ -> 0
-    end
-  rescue
-    _ -> 0
-  end
-
-  @doc """
-  Gets the timestamp of the last kill for a specific character.
-  Returns nil if no kills are found.
-  """
-  @spec get_last_kill_timestamp_for_character(integer()) :: DateTime.t() | nil
-  def get_last_kill_timestamp_for_character(character_id) do
-    # Use Ash.Query to get the most recent kill for this character
-    query =
-      Killmail
-      |> Ash.Query.new()
-      |> Ash.Query.filter(
-        fragment(
-          "(esi_data->>'character_id' = ? OR esi_data->'attackers'->>'character_id' = ?)",
-          ^to_string(character_id),
-          ^to_string(character_id)
-        )
-      )
-      |> Ash.Query.sort(updated_at: :desc)
-      |> Ash.Query.limit(1)
-
-    case Api.read(query) do
-      {:ok, [kill]} -> kill.updated_at
-      _ -> nil
-    end
-  rescue
-    _ -> nil
   end
 end

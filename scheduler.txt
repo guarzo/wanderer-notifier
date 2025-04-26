@@ -1,0 +1,183 @@
+A. Goals
+One Scheduler Behaviour for both cron-style and interval jobs.
+
+Auto-Discovery of all schedulers—no manual registry updates.
+
+Telemetry around job executions (success/failure, duration).
+
+Simpler Supervision using a single supervisor tree.
+
+B. Define a Unified Behaviour
+File: lib/wanderer_notifier/scheduler.ex
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Scheduler do
+  @moduledoc """
+  Behaviour for all background jobs.
+
+  Each scheduler implements:
+    - `config/0` returning %{type: :cron | :interval, spec: String.t()}
+    - `run/0` which executes the job.
+  """
+
+  @type config :: %{type: :cron | :interval, spec: String.t()}
+
+  @callback config() :: config()
+  @callback run() :: :ok | {:error, term()}
+end
+C. Refactor Existing Schedulers
+Remove lib/wanderer_notifier/schedulers/behaviour.ex and base_scheduler.ex.
+
+Update each scheduler (e.g. interval_scheduler.ex, time_scheduler.ex) to:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Schedulers.IntervalScheduler do
+  use WandererNotifier.Scheduler
+
+  @impl true
+  def config, do: %{type: :interval, spec: :timer.minutes(5)}
+
+  @impl true
+  def run do
+    # existing logic, e.g. CharacterUpdate.run()
+    WandererNotifier.CharacterUpdateScheduler.execute()
+  end
+end
+And similarly for TimeScheduler or ServiceStatusScheduler—just change type: :cron with your cron expression spec ​
+.
+
+D. Auto-Discovery via Registry
+Replace manual registry.ex with:
+
+File: lib/wanderer_notifier/schedulers/registry.ex
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Schedulers.Registry do
+  @moduledoc "Finds all modules under WandererNotifier.Schedulers that implement the behaviour."
+
+  def all_schedulers do
+    :application.get_key(:wanderer_notifier, :modules)
+    |> elem(1)
+    |> Enum.filter(&String.starts_with?(Atom.to_string(&1), "Elixir.WandererNotifier.Schedulers."))
+    |> Enum.filter(& implements_scheduler?/1)
+  end
+
+  defp implements_scheduler?(mod) do
+    behaviours = mod.module_info(:attributes)[:behaviour] || []
+    WandererNotifier.Scheduler in behaviours
+  end
+end
+Now anytime you add a new use WandererNotifier.Scheduler module under Schedulers, it’s picked up automatically ​
+.
+
+E. Supervisor for Dynamic Scheduling
+File: lib/wanderer_notifier/schedulers/supervisor.ex
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Schedulers.Supervisor do
+  use Supervisor
+
+  alias WandererNotifier.Schedulers.Registry
+
+  def start_link(_), do: Supervisor.start_link(__MODULE__, [], name: __MODULE__)
+
+  @impl true
+  def init(_) do
+    children =
+      Registry.all_schedulers()
+      |> Enum.map(&child_spec/1)
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp child_spec(mod) do
+    %{id: mod, start: {__MODULE__, :start_scheduler, [mod]}, restart: :transient}
+  end
+
+  def start_scheduler(mod) do
+    %{type: type, spec: spec} = mod.config()
+
+    case type do
+      :interval ->
+        :timer.send_interval(spec, {:run, mod})
+        loop(mod)
+
+      :cron ->
+        # You can use Crontab library or custom logic here
+        CrontabScheduler.schedule(spec, fn -> execute(mod) end)
+        :ignore
+    end
+  end
+
+  defp loop(mod) do
+    receive do
+      {:run, ^mod} ->
+        execute(mod)
+        loop(mod)
+    end
+  end
+
+  defp execute(mod) do
+    start = System.monotonic_time()
+    case mod.run() do
+      :ok ->
+        :telemetry.execute([:wanderer_notifier, :scheduler, :success], %{}, %{module: mod})
+      {:error, reason} ->
+        :telemetry.execute([:wanderer_notifier, :scheduler, :failure], %{}, %{module: mod, error: inspect(reason)})
+    end
+    duration = System.monotonic_time() - start
+    :telemetry.execute([:wanderer_notifier, :scheduler, :duration], %{duration: duration}, %{module: mod})
+  end
+end
+Interval jobs use :timer.send_interval/2.
+
+Cron jobs can leverage a library like Crontab (not shown) or a custom dispatcher.
+
+Telemetry events for success, failure, and duration.
+
+F. Hook into Your Application
+In lib/wanderer_notifier/application.ex, add the supervisor:
+
+elixir
+Copy
+Edit
+children = [
+  # ... existing children ...
+  WandererNotifier.Schedulers.Supervisor
+]
+Now on app start, all schedulers launch automatically.
+
+Milestones & Checklist
+
+Task	Done
+[ ] Remove old behaviour.ex, base_scheduler.ex, factory.ex
+[ ] Add lib/wanderer_notifier/scheduler.ex behaviour
+[ ] Refactor each scheduler to use WandererNotifier.Scheduler
+[ ] Implement Registry.all_schedulers/0 for auto-discovery
+[ ] Build Schedulers.Supervisor to dynamically start jobs
+[ ] Instrument Telemetry for success, failure, and duration
+[ ] Add tests mocking a fast interval (e.g. 10ms) to verify loop
+[ ] Document scheduling patterns in lib/wanderer_notifier/schedulers/README.md
+With this Unified Scheduler approach, adding a new background job is as simple as:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Schedulers.MyJob do
+  use WandererNotifier.Scheduler
+
+  @impl true
+  def config,  do: %{type: :cron, spec: "0 * * * *"}  # every hour
+
+  @impl true
+  def run,     do: MyContext.do_hourly_work()
+end
+—and it’s live on the next deploy.

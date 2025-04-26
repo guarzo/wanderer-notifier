@@ -38,10 +38,3 @@ config :logger, :module_levels, %{
   "WandererNotifier.Api.ZKill.Service" => :info,
   "WandererNotifier.Api.ZKill.Websocket" => :info
 }
-
-# Configure persistence feature overrides for development
-config :wanderer_notifier, :persistence,
-  enabled: true,
-  retention_period_days: 180,
-  # Run aggregation every 5 minutes in development for testing
-  aggregation_schedule: "*/5 * * * *"

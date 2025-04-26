@@ -1,0 +1,176 @@
+1. Centralize ENV Lookups in a Config Module
+Why
+Avoids scattered System.get_env/1 calls.
+
+Provides a single place to handle defaults, required vars, and deprecation warnings.
+
+Implementation
+Create lib/wanderer_notifier/config.ex:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Config do
+  @moduledoc """
+  Centralized environment-variable access:
+   - fetch!/1 raises if missing
+   - fetch/2 returns default
+   - fetch_int/2 parses integers
+  """
+
+  @doc "Fetch required ENV var or raise."
+  def fetch!(var) when is_binary(var) do
+    System.get_env(var) ||
+      raise "Environment variable #{var} is required but not set"
+  end
+
+  @doc "Fetch ENV var or return default."
+  def fetch(var, default \\ nil) when is_binary(var) do
+    System.get_env(var) || default
+  end
+
+  @doc "Fetch ENV var and parse to integer, or default."
+  def fetch_int(var, default) when is_binary(var) do
+    case System.get_env(var) do
+      nil -> default
+      val -> parse_int(val, default)
+    end
+  end
+
+  defp parse_int(str, default) do
+    case Integer.parse(str) do
+      {i,_} -> i
+      :error -> default
+    end
+  end
+end
+After
+Anywhere you need your Discord token:
+
+elixir
+Copy
+Edit
+token = Config.fetch!("DISCORD_BOT_TOKEN")
+Anywhere you need a port:
+
+elixir
+Copy
+Edit
+port = Config.fetch_int("PORT", 4000)
+2. Simplify config/runtime.exs
+The current runtime.exs has sprawling legacy-to-new mappings and manual System.put_env calls ​
+. Let’s trim it:
+
+Before (excerpt)
+elixir
+Copy
+Edit
+# Lots of log_deprecation and System.put_env calls
+env_vars = source!(…)
+…
+System.put_env("MIX_ENV", mix_env)
+Enum.each(legacy_to_new_mapping, fn {legacy, new} -> … end)
+…
+After
+elixir
+Copy
+Edit
+import Config
+
+# Directly load required vars via our Config module
+config :nostrum, token: WandererNotifier.Config.fetch!("DISCORD_BOT_TOKEN")
+config :wanderer_notifier,
+  map_url:  WandererNotifier.Config.fetch!("WANDERER_MAP_URL"),
+  map_token: WandererNotifier.Config.fetch!("WANDERER_MAP_TOKEN"),
+  api_token: WandererNotifier.Config.fetch!("WANDERER_NOTIFIER_API_TOKEN")
+
+# Simple integer parse for port
+config :wanderer_notifier,
+  port: WandererNotifier.Config.fetch_int("PORT", 4000)
+Remove all System.put_env and deprecation-logging blocks.
+
+Rely on explicit fetch!/fetch calls to crash fast if something’s missing.
+
+3. Move All System.get_env Out of Business Code
+Why
+Keeps side effects in config, not deep in modules.
+
+Makes modules pure and easier to test.
+
+How
+Scan for all uses:
+
+bash
+Copy
+Edit
+grep -R "System.get_env" lib/
+Replace each with a module attribute set in application.ex or config:
+
+elixir
+Copy
+Edit
+# instead of inside lib/foo.ex:
+@api_key System.get_env("API_KEY")
+
+# do this in config/config.exs:
+config :my_app, :api_key, WandererNotifier.Config.fetch!("API_KEY")
+
+# then in code:
+@api_key Application.fetch_env!(:my_app, :api_key)
+4. Migrate Legacy ENV Names
+If you must support old names during a transition, do it once in application.ex:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Application do
+  use Application
+
+  def start(_type, _args) do
+    # Map old → new for a short period
+    migrate_env("OLD_VAR", "NEW_VAR")
+    …
+
+    children = [ … ]
+    Supervisor.start_link(children, strategy: :one_for_one)
+  end
+
+  defp migrate_env(old, new) do
+    case System.get_env(new) || System.get_env(old) do
+      nil -> :ok
+      val -> System.put_env(new, val)
+    end
+  end
+end
+Then remove migrate_env/2 calls after a deprecation window.
+
+5. Update All Config Files to Use WandererNotifier.Config
+Examples
+config/config.exs:
+
+elixir
+Copy
+Edit
+import Config
+
+# Database URL
+config :wanderer_notifier, :db_url,
+  WandererNotifier.Config.fetch!("DATABASE_URL")
+
+# Feature flags
+config :wanderer_notifier, :features, %{
+  notifications_enabled:
+    WandererNotifier.Config.fetch("ENABLE_NOTIFICATIONS", "false") == "true"
+}
+config/dev.exs, test.exs, prod.exs similarly drop System.get_env/1 in favor of Config.fetch!/fetch.
+
+Milestones & Checklist
+
+Task	Done?
+[ ] Add lib/wanderer_notifier/config.ex and cover with tests
+[ ] Refactor all ENV lookups out of lib/ into either config/*.exs or application.ex migration
+[ ] Simplify runtime.exs to < 30 lines, no System.put_env blocks
+[ ] Scan & replace all System.get_env in source code
+[ ] Remove legacy ENV-mapping code after deprecation period
+[ ] CI builds fail if any required ENV (via fetch!) is missing
+By centralizing environment handling, you’ll gain predictability, testability, and clarity around how your application is configured in dev, test, and prod.

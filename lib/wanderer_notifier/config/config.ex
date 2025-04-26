@@ -53,21 +53,6 @@ defmodule WandererNotifier.Config.Config do
   end
 
   @impl true
-  def discord_channel_id_for_activity_charts do
-    discord_channel_id_for(:activity_charts)
-  end
-
-  @impl true
-  def kill_charts_enabled? do
-    Features.kill_charts_enabled?()
-  end
-
-  @impl true
-  def map_charts_enabled? do
-    Features.map_charts_enabled?()
-  end
-
-  @impl true
   def character_tracking_enabled? do
     Features.character_tracking_enabled?()
   end
@@ -100,10 +85,8 @@ defmodule WandererNotifier.Config.Config do
   @impl true
   def get_feature_status do
     %{
-      kill_notifications_enabled: kill_charts_enabled?(),
       system_tracking_enabled: system_notifications_enabled?(),
       character_tracking_enabled: character_tracking_enabled?(),
-      activity_charts: map_charts_enabled?()
     }
   end
 

@@ -18,15 +18,10 @@ services:
       - NODE_OPTIONS=--max-old-space-size=4096
       - CLAUDE_CONFIG_DIR=/home/elixir/.claude
       - POWERLEVEL9K_DISABLE_GITSTATUS=true
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wanderer_notifier_dev
     command: sleep infinity
     user: elixir
     ports:
       - "4001:4000" # Main application
-      - "3002:3001" # Chart service
     # This allows the container to access host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -34,27 +29,7 @@ services:
       postgres:
         condition: service_healthy
 
-  postgres:
-    image: postgres:16
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=wanderer_notifier_dev
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    # Make sure postgres keeps running
-    restart: unless-stopped
-    # Add healthcheck to ensure PostgreSQL is actually ready
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
 volumes:
   claude-code-bashhistory:
   claude-code-config:
   elixir-ls-cache:
-  postgres_data:

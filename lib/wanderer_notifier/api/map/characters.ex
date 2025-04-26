@@ -11,7 +11,6 @@ defmodule WandererNotifier.Api.Map.Characters do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-  alias WandererNotifier.Resources.TrackedCharacter
 
   def update_tracked_characters(cached_characters \\ nil) do
     AppLogger.api_info(
@@ -331,10 +330,6 @@ defmodule WandererNotifier.Api.Map.Characters do
 
     # Update the cache with a long TTL (24 hours) for persistence
     update_characters_cache(merged_characters)
-
-    # Sync with TrackedCharacter Ash resource
-    sync_with_ash_resource()
-
     # Return the merged characters
     {:ok, merged_characters}
   rescue
@@ -429,21 +424,6 @@ defmodule WandererNotifier.Api.Map.Characters do
       final_count: post_update_count,
       expected_count: length(merged_characters)
     )
-  end
-
-  # Sync character data with the Ash resource
-  defp sync_with_ash_resource do
-    AppLogger.api_info("Starting synchronization with Ash resource")
-
-    case TrackedCharacter.sync_from_cache() do
-      {:ok, stats} ->
-        AppLogger.api_info("Successfully synced characters to Ash resource",
-          stats: inspect(stats)
-        )
-
-      {:error, reason} ->
-        AppLogger.api_error("Failed to sync characters to Ash resource", error: inspect(reason))
-    end
   end
 
   defp notify_new_tracked_characters(new_characters, cached_characters) do

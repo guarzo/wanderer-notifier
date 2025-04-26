@@ -1,15 +1,13 @@
 alias WandererNotifier.Api.Http.Client
 alias WandererNotifier.Api.Map.UrlBuilder
-alias WandererNotifier.Config.{Application, Cache}
+alias WandererNotifier.Config.Cache
 alias WandererNotifier.Config.Config
 alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
 alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
 alias WandererNotifier.Data.Character
-alias WandererNotifier.Data.Repo
 alias WandererNotifier.Logger.Logger, as: AppLogger
 alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
 alias WandererNotifier.Notifiers.StructuredFormatter
-alias WandererNotifier.Resources.TrackedCharacter
 
 defmodule WandererNotifier.Api.Map.CharactersClient do
   @moduledoc """
@@ -251,7 +249,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       AppLogger.api_debug("[CharactersClient] Updated map:characters cache for compatibility")
 
       # Handle persistence and notifications
-      handle_character_persistence(tracked_characters_list)
       handle_character_notifications(tracked_characters_list, cached_characters)
     rescue
       e ->
@@ -280,202 +277,6 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       [char | acc]
     else
       acc
-    end
-  end
-
-  # Separate function to handle character persistence with isolated error handling
-  defp handle_character_persistence(tracked_characters) do
-    persistence_config = Application.get_env(:wanderer_notifier, :persistence, [])
-    kill_charts_enabled = Keyword.get(persistence_config, :enabled)
-    map_charts_enabled = Application.get_env(:wanderer_notifier, :wanderer_feature_map_charts)
-
-    # Only continue if either kill charts or map charts are enabled
-    if kill_charts_enabled || map_charts_enabled do
-      # Check if the repo is started, and if not, try waiting for it
-      ensure_database_available_and_persist(tracked_characters)
-    else
-      AppLogger.api_debug(
-        "[CharactersClient] Database features disabled, skipping character persistence"
-      )
-
-      # Return empty result
-      return_empty_sync_result()
-    end
-  rescue
-    e ->
-      # Log detailed error but don't propagate it
-      AppLogger.api_error(
-        "[CharactersClient] Exception persisting characters: #{Exception.message(e)}"
-      )
-
-      # Log the exact error location for debugging
-      AppLogger.api_error("[CharactersClient] Stacktrace: #{Exception.format_stacktrace()}")
-  end
-
-  # Ensure database is available and persist characters if so
-  defp ensure_database_available_and_persist(tracked_characters) do
-    # Check if the repo is started, wait if needed
-    if !repo_started?() do
-      wait_for_database_connection()
-    end
-
-    # After waiting, verify the repo is started
-    if repo_started?() do
-      persist_characters_to_database(tracked_characters)
-    else
-      AppLogger.api_warn(
-        "[CharactersClient] Database repository not started, character persistence skipped"
-      )
-
-      return_empty_sync_result()
-    end
-  end
-
-  # Wait for the database to become available
-  defp wait_for_database_connection do
-    # Wait up to 3 seconds for database to become available
-    wait_result =
-      Enum.reduce_while(1..3, false, fn attempt, _ ->
-        Process.sleep(500)
-
-        if repo_started?() do
-          {:halt, true}
-        else
-          handle_failed_connection_attempt(attempt)
-        end
-      end)
-
-    AppLogger.api_debug("🔄 Database connection wait result: #{inspect(wait_result)}")
-  end
-
-  # Handle a failed connection attempt
-  defp handle_failed_connection_attempt(attempt) do
-    if attempt == 3 do
-      # Final attempt failed
-      AppLogger.api_warn("⚠️ Database connection not available after waiting")
-      {:halt, false}
-    else
-      # Continue trying
-      {:cont, false}
-    end
-  end
-
-  # Persist characters to the database
-  defp persist_characters_to_database(tracked_characters) do
-    case TrackedCharacter.sync_from_characters(%{characters: tracked_characters}) do
-      {:ok, _stats} ->
-        :ok
-
-      {:error, reason} ->
-        AppLogger.api_error("⚠️ Failed to persist characters", error: inspect(reason))
-    end
-  end
-
-  # Return an empty sync result for when database operations are disabled
-  defp return_empty_sync_result do
-    empty_stats = %{
-      stats: %{total: 0, created: 0, updated: 0, unchanged: 0, errors: 0},
-      errors: []
-    }
-
-    AppLogger.api_debug(
-      "[CharactersClient] Returning empty sync result due to disabled database operations"
-    )
-
-    {:ok, empty_stats}
-  end
-
-  # Helper function to check if the repo is started and provide diagnostics
-  defp repo_started? do
-    # Check if the repo process exists
-    pid = Process.whereis(Repo)
-
-    cond do
-      is_pid(pid) && Process.alive?(pid) ->
-        # Repo process exists and is alive, perform a simple query test
-        check_database_connectivity(pid)
-
-      is_pid(pid) ->
-        AppLogger.api_warn("[CharactersClient] Database repo process exists but is not alive")
-        false
-
-      true ->
-        log_repo_missing_diagnostics()
-        false
-    end
-  rescue
-    e ->
-      AppLogger.api_error(
-        "[CharactersClient] Error checking database connection: #{Exception.message(e)}"
-      )
-
-      false
-  catch
-    type, value ->
-      AppLogger.api_error(
-        "[CharactersClient] Caught #{inspect(type)} while checking database: #{inspect(value)}"
-      )
-
-      false
-  end
-
-  # Check if database is actually connectable
-  defp check_database_connectivity(_pid) do
-    case Repo.health_check() do
-      {:ok, ping_time} ->
-        AppLogger.api_debug(
-          "[CharactersClient] Database connection is healthy (ping: #{ping_time}ms)"
-        )
-
-        true
-
-      {:error, reason} ->
-        AppLogger.api_warn(
-          "[CharactersClient] Database connection exists but health check failed: #{inspect(reason)}"
-        )
-
-        false
-    end
-  end
-
-  # Log detailed diagnostics when the repo is missing
-  defp log_repo_missing_diagnostics do
-    # Check if repo module is defined
-    if Code.ensure_loaded?(Repo) do
-      AppLogger.api_warn(
-        "[CharactersClient] Database repo module exists but process not started. " <>
-          "This often indicates the repo failed to connect during startup."
-      )
-    else
-      AppLogger.api_warn("[CharactersClient] Database repo module is not available.")
-    end
-
-    # Log database configuration for diagnostics
-    log_database_config()
-  end
-
-  # Log database configuration details to help with troubleshooting
-  defp log_database_config do
-    db_config = get_db_config()
-
-    if is_nil(db_config) do
-      AppLogger.api_error("[CharactersClient] Database configuration is missing")
-    else
-      host = db_config[:hostname] || "unknown"
-      port = db_config[:port] || "unknown"
-      db = db_config[:database] || "unknown"
-      user = db_config[:username] || "unknown"
-
-      AppLogger.api_debug(
-        "[CharactersClient] Database configuration: #{user}@#{host}:#{port}/#{db}"
-      )
-    end
-  end
-
-  defp get_db_config do
-    case Application.get_repo_config() do
-      {:ok, config} -> config
-      _ -> %{}
     end
   end
 

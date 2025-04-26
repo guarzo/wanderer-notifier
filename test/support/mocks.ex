@@ -152,23 +152,6 @@ defmodule WandererNotifier.MockRepository do
   def clear, do: :ok
 end
 
-defmodule WandererNotifier.MockKillmailPersistence do
-  @moduledoc """
-  Mock implementation of the killmail persistence service for testing.
-  """
-
-  @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
-
-  @impl true
-  def maybe_persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail, _character_id), do: {:ok, %{}}
-end
-
 defmodule WandererNotifier.MockLogger do
   @moduledoc """
   Mock implementation of the logger for testing.
@@ -188,106 +171,99 @@ end
 
 defmodule WandererNotifier.MockConfig do
   @moduledoc """
-  Mock implementation of the config for testing.
+  Mock for the config module.
   """
 
   @behaviour WandererNotifier.Config.Behaviour
-
-  def start_link do
-    Agent.start_link(
-      fn ->
-        %{
-          kill_charts_enabled: true,
-          map_charts_enabled: true,
-          character_notifications_enabled: true,
-          character_tracking_enabled: true,
-          system_notifications_enabled: true,
-          track_kspace_systems: true,
-          env: :test
-        }
-      end,
-      name: __MODULE__
-    )
-  end
-
-  def set_kill_charts_enabled(value) do
-    Agent.update(__MODULE__, &Map.put(&1, :kill_charts_enabled, value))
-  end
-
-  @impl true
-  def get_env(key, default \\ nil) do
-    case key do
-      :features -> %{track_kspace_systems: true}
-      _ -> default
-    end
-  end
-
-  @impl true
-  def get_map_config, do: %{}
-
-  @impl true
-  def map_charts_enabled?, do: true
-
-  @impl true
-  def kill_charts_enabled? do
-    Agent.get(__MODULE__, & &1.kill_charts_enabled)
-  end
-
-  @impl true
-  def character_notifications_enabled?, do: true
 
   @impl true
   def character_tracking_enabled?, do: true
 
   @impl true
+  def character_notifications_enabled?, do: true
+
+  @impl true
   def system_notifications_enabled?, do: true
 
   @impl true
-  def track_kspace_systems?, do: true
+  def get_feature_status do
+    %{
+      notifications_enabled: true,
+      character_notifications_enabled: true,
+      system_notifications_enabled: true,
+      kill_notifications_enabled: true,
+      character_tracking_enabled: true,
+      system_tracking_enabled: true,
+      tracked_systems_notifications_enabled: true,
+      tracked_characters_notifications_enabled: true,
+      status_messages_disabled: true,
+      track_kspace_systems: true
+    }
+  end
 
   @impl true
-  def license_key, do: "test-license-key"
+  def discord_channel_id_for(channel) do
+    case channel do
+      :main -> "123456789"
+      :system_kill -> "123456789"
+      :character_kill -> "123456789"
+      :system -> "123456789"
+      :character -> "123456789"
+      _ -> "123456789"
+    end
+  end
 
   @impl true
-  def license_manager_api_key, do: "test-api-key"
+  def get_map_config do
+    %{
+      url: "https://wanderer.ltd",
+      name: "TestMap",
+      token: "test-token",
+      csrf_token: "test-csrf-token"
+    }
+  end
 
   @impl true
-  def license_manager_api_url, do: "https://test-license-api.example.com"
-
-  @impl true
-  def map_csrf_token, do: "test-csrf-token"
-
-  @impl true
-  def map_name, do: "Test Map"
-
-  @impl true
-  def map_token, do: "test-map-token"
-
-  @impl true
-  def map_url, do: "https://test-map.example.com"
-
-  @impl true
-  def notifier_api_token, do: "test-notifier-token"
+  def get_env(key, default) do
+    case key do
+      :webhook_url -> "https://discord.com/api/webhooks/123/abc"
+      :map_url -> "https://wanderer.ltd"
+      :map_name -> "TestMap"
+      :map_token -> "test-token"
+      :test_mode -> true
+      _ -> default
+    end
+  end
 
   @impl true
   def static_info_cache_ttl, do: 3600
 
   @impl true
-  def discord_channel_id_for_activity_charts, do: "123456789"
+  def map_url, do: "https://wanderer.ltd"
 
   @impl true
-  def discord_channel_id_for(:kill_charts), do: "123456789"
-  def discord_channel_id_for(_), do: nil
+  def map_name, do: "TestMap"
 
   @impl true
-  def get_feature_status do
-    %{
-      kill_notifications_enabled: true,
-      system_tracking_enabled: true,
-      character_tracking_enabled: true,
-      activity_charts: true
-    }
-  end
+  def map_token, do: "test-token"
+
+  @impl true
+  def map_csrf_token, do: "test-csrf-token"
+
+  @impl true
+  def license_key, do: "test-license-key"
+
+  @impl true
+  def license_manager_api_url, do: "https://license.example.com"
+
+  @impl true
+  def license_manager_api_key, do: "test-api-key"
+
+  @impl true
+  def notifier_api_token, do: "test-api-token"
+
+  @impl true
+  def track_kspace_systems?, do: true
 end
 
 defmodule WandererNotifier.MockCacheHelpers do

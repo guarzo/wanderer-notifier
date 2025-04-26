@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Data.Cache.Repository do
+defmodule WandererNotifier.Cache.Repository do
   @moduledoc """
   GenServer implementation for the cache repository.
   Provides a centralized interface for cache operations.

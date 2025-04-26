@@ -2,74 +2,29 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
   @moduledoc """
   Controller for debug-related endpoints.
   """
-  use WandererNotifier.Api.Controllers.BaseController
+  use WandererNotifier.Api.Controller
 
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Repo
   alias WandererNotifier.License.Service, as: License
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Resources.TrackedCharacter
 
   # Get service status
   get "/status" do
     case get_service_status(conn) do
       {:ok, response} ->
-        send_success_response(conn, response)
+        send_success(conn, response)
 
       {:error, reason} ->
         AppLogger.api_error("Error getting debug status", reason)
-        send_error_response(conn, 500, "Internal server error")
-    end
-  end
-
-  # Get database stats
-  get "/db-stats" do
-    if TrackedCharacter.database_enabled?() do
-      try do
-        # Check total killmail records
-        killmail_query = "SELECT COUNT(*) FROM killmails"
-        {:ok, %{rows: [[total_killmails]]}} = Repo.query(killmail_query)
-
-        # Count tracked characters in database
-        char_query = "SELECT COUNT(*) FROM tracked_characters"
-        {:ok, %{rows: [[total_chars]]}} = Repo.query(char_query)
-
-        # Get database health
-        {:ok, ping_ms} = Repo.health_check()
-
-        send_success_response(conn, %{
-          killmail: %{
-            total_kills: total_killmails,
-            tracked_characters: total_chars
-          },
-          db_health: %{
-            status: "connected",
-            ping_ms: ping_ms
-          }
-        })
-      rescue
-        e ->
-          AppLogger.api_error("Error getting database stats", error: Exception.message(e))
-          send_error_response(conn, 500, "Error retrieving database statistics")
-      end
-    else
-      send_success_response(conn, %{
-        killmail: %{
-          total_kills: 0,
-          tracked_characters: 0
-        },
-        db_health: %{
-          status: "disabled"
-        }
-      })
+        send_error(conn, 500, "Internal server error")
     end
   end
 
   # Get service stats
   get "/stats" do
     stats = get_stats_safely()
-    send_success_response(conn, stats)
+    send_success(conn, stats)
   end
 
   # Get scheduler stats
@@ -106,7 +61,7 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
         }
       end)
 
-    send_success_response(conn, %{
+    send_success(conn, %{
       schedulers: formatted_schedulers,
       summary: %{
         total: length(formatted_schedulers),
@@ -135,24 +90,20 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
       %{module: module, enabled: true} ->
         # Execute the scheduler
         module.execute_now()
-        send_success_response(conn, %{message: "Scheduler execution triggered"})
+        send_success(conn, %{message: "Scheduler execution triggered"})
 
       %{enabled: false} ->
-        send_error_response(conn, 400, "Scheduler is disabled")
+        send_error(conn, 400, "Scheduler is disabled")
 
       nil ->
-        send_error_response(conn, 404, "Scheduler not found")
+        send_error(conn, 404, "Scheduler not found")
     end
   end
 
   # Execute all schedulers
   post "/schedulers/execute" do
     WandererNotifier.Schedulers.Registry.execute_all()
-    send_success_response(conn, %{message: "All schedulers execution triggered"})
-  end
-
-  match _ do
-    send_error_response(conn, 404, "Not found")
+    send_success(conn, %{message: "All schedulers execution triggered"})
   end
 
   # Private functions
@@ -192,7 +143,13 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
        limits: limits
      }}
   rescue
-    error -> handle_error(conn, error, __MODULE__)
+    error ->
+      AppLogger.api_error("Error in debug status", %{
+        error: inspect(error),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      })
+
+      send_error(conn, 500, "An unexpected error occurred")
   end
 
   defp get_stats_safely do
@@ -242,10 +199,7 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
       },
       websocket: %{
         connected: false,
-        last_message: nil,
-        messages_received: 0,
-        messages_processed: 0,
-        errors: 0
+        last_message: nil
       }
     }
   end

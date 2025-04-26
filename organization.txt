@@ -1,0 +1,213 @@
+A. Extract a Shared API‐Controller Behaviour
+1. Create lib/wanderer_notifier/api/controller.ex
+elixir
+Copy
+Edit
+defmodule WandererNotifier.Api.Controller do
+  @moduledoc """
+  Shared functionality for all API controllers:
+  - JSON parsing plugs
+  - Route matching/dispatch
+  - Standardized success/error responses
+  """
+
+  defmacro __using__(_opts) do
+    quote do
+      use Plug.Router
+      import Plug.Conn
+
+      # --- Common plugs ---
+      plug Plug.Parsers,
+        parsers: [:json],
+        pass:    ["application/json"],
+        json_decoder: Jason
+
+      plug :match
+      plug :dispatch
+
+      # --- Standard responses ---
+      def send_success(conn, data) do
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(%{status: "ok", data: data}))
+      end
+
+      def send_error(conn, status, message) do
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(status, Jason.encode!(%{error: message}))
+      end
+
+      # Fallback for unmatched routes
+      match _ do
+        send_error(conn, 404, "not_found")
+      end
+    end
+  end
+end
+2. Update each existing controller
+In every file under lib/wanderer_notifier/api/controllers/*.ex, replace:
+
+elixir
+Copy
+Edit
+use WandererNotifier.Api.Controllers.BaseController
+import Plug.Conn
+plug Plug.Parsers, …
+plug :match; plug :dispatch
+
+def send_success_response(conn, …), …
+def send_error_response(conn, …), …
+def handle_error(conn, …), …
+with:
+
+elixir
+Copy
+Edit
+use WandererNotifier.Api.Controller
+and then update all calls to:
+
+elixir
+Copy
+Edit
+send_success_response(conn, data)
+# ↓
+send_success(conn, data)
+
+send_error_response(conn, 500, "oops")
+# ↓
+send_error(conn, 500, "oops")
+B. Consolidate HTTP‐Client Logic
+1. Define a client behaviour
+Create lib/wanderer_notifier/http_client.ex:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.HttpClient do
+  @moduledoc """
+  Behaviour for HTTP requests; used by ESI, ZKill, map clients, and mocks.
+  """
+
+  @type method :: :get | :post | :patch | :delete
+  @callback request(method, url :: String.t(), headers :: list(), body :: term(), opts :: Keyword.t()) ::
+    {:ok, %{status: integer(), body: term()}}
+    | {:error, term()}
+end
+2. Provide a real implementation
+lib/wanderer_notifier/http_client/httpoison.ex:
+
+elixir
+Copy
+Edit
+defmodule WandererNotifier.HttpClient.HTTPoison do
+  @behaviour WandererNotifier.HttpClient
+
+  def request(method, url, headers, body, opts) do
+    # Convert body to JSON if needed
+    payload = if body, do: Jason.encode!(body), else: ""
+    HTTPoison.request(method, url, payload, headers, opts)
+    |> case do
+      {:ok, %HTTPoison.Response{status_code: s, body: b}} ->
+        {:ok, %{status: s, body: Jason.decode!(b)}}
+      error ->
+        error
+    end
+  end
+end
+3. Wire it up in clients
+In every client (e.g. WandererNotifier.Api.ESI.Client), replace direct HttpClient.get/… calls with:
+
+elixir
+Copy
+Edit
+alias WandererNotifier.HttpClient
+@http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
+
+@impl true
+def get_killmail(id, hash, opts) do
+  url = "#{@base_url}/killmails/#{id}/#{hash}/"
+  @http_client.request(:get, url, default_headers(), nil, opts)
+  |> handle_response(domain: :esi, tag: "killmail")
+end
+And in config/config.exs add:
+
+elixir
+Copy
+Edit
+config :wanderer_notifier, http_client: WandererNotifier.HttpClient.HTTPoison
+C. Group & Namespace Domain Logic
+1. Consolidate “contexts”
+Rather than files scattered under lib/wanderer_notifier/api/map/... and lib/wanderer_notifier/data/..., reorganize into contexts:
+
+arduino
+Copy
+Edit
+lib/wanderer_notifier/
+  ├── api/
+  │   ├── controllers/
+  │   └── clients/
+  ├── cache/
+  ├── character/
+  ├── killmail/
+  ├── map/
+  └── schedulers/
+Move, for example:
+
+lib/wanderer_notifier/api/map/systems_client.ex → lib/wanderer_notifier/api/clients/map_systems.ex
+
+lib/wanderer_notifier/data/cache/repository.ex → lib/wanderer_notifier/cache/repository.ex
+
+2. Update module namespaces
+After moving files, update their defmodule names and alias references. E.g.:
+
+elixir
+Copy
+Edit
+# old
+defmodule WandererNotifier.Data.Cache.Repository do
+
+# new path & name
+defmodule WandererNotifier.Cache.Repository do
+D. Remove Remaining Duplication
+Find all plug(Plug.Parsers…) usages:
+
+bash
+Copy
+Edit
+grep -R "Plug\.Parsers" lib/wanderer_notifier/api/controllers
+— confirm they’ve all been replaced by use WandererNotifier.Api.Controller.
+
+Unify error‐handling calls:
+Replace handle_error(conn, error, __MODULE__) with a single send_error/3 inside rescue blocks.
+
+Eliminate duplicated types:
+If you have identical schema definitions in multiple OpenApi controllers, move them into lib/wanderer_notifier/api/schemas/ and alias them.
+
+E. Suggested Commit Workflow
+
+Commit 1: Add lib/wanderer_notifier/api/controller.ex and update mix.exs if needed.
+
+Commit 2: Switch one controller (DebugController) to use Api.Controller and adjust calls. Run tests.
+
+Commit 3: Repeat for all controllers.
+
+Commit 4: Introduce HttpClient behaviour and one implementation.
+
+Commit 5: Wire up one client (e.g. ESI); update config and tests.
+
+Commit 6: Move a small context (e.g. one api/map client) into new folder, adjust module names.
+
+Commit 7: Clean up duplicates, remove old modules, fix remaining aliases.
+
+Checklist Before Merging
+ All controllers compile and pass existing tests.
+
+ No references remain to the old BaseController or duplicate response functions.
+
+ HTTP clients use the new HttpClient behaviour.
+
+ Context folders reflect the new structure, and all defmodule names match their paths.
+
+
+By following these steps, you’ll eliminate the bulk of copy-paste boilerplate, centralize critical cross-cutting concerns (routing, plumbing, HTTP), and create a solid foundation for safely adding new controllers and clients.
