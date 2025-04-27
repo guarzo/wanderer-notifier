@@ -9,9 +9,11 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   """
 
   alias WandererNotifier.Api.Map.SystemStaticInfo
-  alias WandererNotifier.Data.{Character, MapSystem}
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Character.Character
+  alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.{Keys, Repository}
 
   # Get configured services
   defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)
@@ -1140,7 +1142,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Helper function to check if a character is in our tracked characters
   defp check_tracked_character(victim_id) do
-    alias WandererNotifier.Data.Cache.{Keys, Repository}
+    alias WandererNotifier.Cache.Keys
+    alias WandererNotifier.Cache.Repository
     alias WandererNotifier.Data.Repository, as: DataRepository
 
     # First check if character is in tracking list
@@ -1164,7 +1167,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Helper to try getting character name from the character list cache
   defp get_name_from_character_list(victim_id) do
-    alias WandererNotifier.Data.Cache.{Keys, Repository}
+    alias WandererNotifier.Cache.Keys
+    alias WandererNotifier.Cache.Repository
 
     # Get the full character list
     character_list =

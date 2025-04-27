@@ -109,6 +109,12 @@ defmodule WandererNotifier.Logger.Behaviour do
   @callback chart_warn(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
   @callback chart_error(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
 
+  # Notification
+  @callback notification_debug(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
+  @callback notification_info(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
+  @callback notification_warn(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
+  @callback notification_error(message :: String.t(), metadata :: Keyword.t() | map()) :: :ok
+
   # Advanced logging
   @callback log_full_data(
               level :: atom(),
@@ -124,6 +130,14 @@ defmodule WandererNotifier.Logger.Behaviour do
               exception :: Exception.t(),
               metadata :: Keyword.t() | map()
             ) :: :ok
+
+  # Performance timing
+  @callback log_with_timing(
+              level :: atom(),
+              category :: String.t(),
+              metadata :: Keyword.t() | map(),
+              fun :: (-> any())
+            ) :: any()
 
   # Trace context
   @callback with_trace_id(metadata :: Keyword.t() | map()) :: String.t()

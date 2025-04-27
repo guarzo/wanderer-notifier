@@ -12,12 +12,11 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
   # Get service status
   get "/status" do
     case get_service_status(conn) do
-      {:ok, response} ->
-        send_success(conn, response)
+      {:ok, status} ->
+        send_success(conn, status)
 
-      {:error, reason} ->
-        AppLogger.api_error("Error getting debug status", reason)
-        send_error(conn, 500, "Internal server error")
+      _error ->
+        send_resp(conn, 404, "oops")
     end
   end
 

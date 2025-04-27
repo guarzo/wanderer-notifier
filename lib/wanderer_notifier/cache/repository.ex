@@ -7,12 +7,13 @@ defmodule WandererNotifier.Cache.Repository do
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
+  # Pick one behavior to implement properly - the repository behavior is a superset of cache behavior
+  @behaviour WandererNotifier.Cache.RepositoryBehaviour
 
   @cache_impl Application.compile_env(
                 :wanderer_notifier,
-                :cache_implementation,
-                WandererNotifier.Data.Cache.CachexImpl
+                :cache_impl,
+                WandererNotifier.Cache.CachexImpl
               )
 
   # -- PUBLIC API --
@@ -25,40 +26,32 @@ defmodule WandererNotifier.Cache.Repository do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def get(key), do: @cache_impl.get(key)
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def set(key, value, ttl), do: @cache_impl.set(key, value, ttl)
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def put(key, value), do: @cache_impl.put(key, value)
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def delete(key), do: @cache_impl.delete(key)
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def clear, do: @cache_impl.clear()
 
-  @impl WandererNotifier.Data.Cache.CacheBehaviour
-  def get_and_update(key, update_fun, ttl \\ nil)
-
-  def get_and_update(key, update_fun, nil) do
+  @impl WandererNotifier.Cache.RepositoryBehaviour
+  def get_and_update(key, update_fun, ttl \\ nil) do
     @cache_impl.get_and_update(key, update_fun)
-  end
-
-  def get_and_update(key, update_fun, ttl) when is_integer(ttl) do
-    current = get(key)
-    {old_value, new_value} = update_fun.(current)
-    set(key, new_value, ttl)
-    {old_value, new_value}
   end
 
   @doc """
   Gets recent kills from cache
   """
+  @impl WandererNotifier.Cache.RepositoryBehaviour
   def get_recent_kills do
-    get("zkill:recent_kills") || []
+    get(WandererNotifier.Cache.Keys.zkill_recent_kills()) || []
   end
 
   # -- GENSERVER CALLBACKS --

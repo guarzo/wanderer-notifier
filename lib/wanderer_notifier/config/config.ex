@@ -86,12 +86,19 @@ defmodule WandererNotifier.Config.Config do
   def get_feature_status do
     %{
       system_tracking_enabled: system_notifications_enabled?(),
-      character_tracking_enabled: character_tracking_enabled?(),
+      character_tracking_enabled: character_tracking_enabled?()
     }
   end
 
   @impl true
   def get_env(key, default \\ nil) do
     Application.get_env(:wanderer_notifier, key, default)
+  end
+
+  @doc """
+  Get the map API key from configuration
+  """
+  def map_api_key do
+    Application.get_env(:wanderer_notifier, :map_api_key, "")
   end
 end

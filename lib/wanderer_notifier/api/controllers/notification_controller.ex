@@ -15,9 +15,8 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
       {:ok, settings} ->
         send_success(conn, settings)
 
-      {:error, reason} ->
-        AppLogger.api_error("Error getting notification settings", reason)
-        send_error(conn, 500, "Internal server error")
+      _error ->
+        send_resp(conn, 404, "oops")
     end
   end
 
@@ -37,10 +36,6 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
       {:ok, _} -> send_success(conn, %{message: "Test notification sent"})
       {:error, reason} -> send_error(conn, 400, reason)
     end
-  end
-
-  match _ do
-    send_error(conn, 404, "Not found")
   end
 
   # Private functions

@@ -11,8 +11,8 @@ Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
 Application.ensure_all_started(:mox)
 
 # Define single mock for repository
-Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
-  for: WandererNotifier.Data.Cache.RepositoryBehaviour
+Mox.defmock(WandererNotifier.Cache.RepositoryMock,
+  for: WandererNotifier.Cache.RepositoryBehaviour
 )
 
 # Configure cache implementation
@@ -21,7 +21,7 @@ Application.put_env(:wanderer_notifier, :cache_impl, WandererNotifier.ETSCache)
 Application.put_env(
   :wanderer_notifier,
   :cache_repository,
-  WandererNotifier.Data.Cache.RepositoryMock
+  WandererNotifier.Cache.RepositoryMock
 )
 
 # Start ExUnit with global mode disabled
@@ -75,7 +75,7 @@ Application.put_env(:wanderer_notifier, :zkill_service, WandererNotifier.Api.ZKi
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
 # Cache-related mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.CacheBehaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
@@ -100,9 +100,9 @@ Application.put_env(:wanderer_notifier, :discord_notifier, WandererNotifier.Mock
 Mox.stub_with(WandererNotifier.MockDiscordNotifier, WandererNotifier.Test.Stubs.DiscordNotifier)
 
 # Define mocks for cache helpers
-Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Data.Cache.HelpersBehaviour)
+Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Cache.HelpersBehaviour)
 
-Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Data.Cache.RepositoryBehaviour)
+Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Cache.RepositoryBehaviour)
 
 # Set Mox to verify on exit
 Application.put_env(:mox, :verify_on_exit, true)

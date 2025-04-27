@@ -4,12 +4,13 @@ defmodule WandererNotifier.Processing.Killmail.Core do
   Provides a standardized pipeline for processing killmails from any source.
   """
 
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Data.{Killmail, Repository}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Killmail.Killmail
 
   @doc """
   Process a killmail with pre-fetched ZKillboard data.

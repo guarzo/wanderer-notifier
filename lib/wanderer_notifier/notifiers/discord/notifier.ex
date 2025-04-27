@@ -4,10 +4,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   Handles sending notifications to Discord using the Nostrum client.
   """
   require Logger
-  alias WandererNotifier.Api.ESI.Service, as: ESI
+  alias WandererNotifier.ESI.Service, as: ESI
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
@@ -16,6 +15,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
   alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Killmail.Killmail
 
   @behaviour WandererNotifier.Notifiers.Behaviour
 
@@ -187,7 +187,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character)
-      when is_struct(character, WandererNotifier.Data.Character) do
+      when is_struct(character, WandererNotifier.Character.Character) do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: Character ID #{character.character_id}")
     else

@@ -2,15 +2,19 @@ defmodule WandererNotifier.Api.Map.Characters do
   @moduledoc """
   Tracked characters API calls.
   """
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config.Config
-  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Character.Character
+  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
+
+  @moduledoc deprecated:
+               "This module is deprecated. Use WandererNotifier.Map.CharactersClient instead."
 
   def update_tracked_characters(cached_characters \\ nil) do
     AppLogger.api_info(
@@ -449,7 +453,7 @@ defmodule WandererNotifier.Api.Map.Characters do
 
   defp send_character_notification(character_info) do
     AppLogger.api_info("Sending notification for new character: #{character_info.name}")
-    NotifierFactory.notify(:send_new_tracked_character_notification, [character_info])
+    NotificationInterface.send_message(character_info)
   end
 
   defp find_new_characters(_new_chars, []) do

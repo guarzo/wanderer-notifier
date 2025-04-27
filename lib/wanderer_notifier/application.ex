@@ -24,7 +24,7 @@ defmodule WandererNotifier.Application do
   alias WandererNotifier.Config.Version
   alias WandererNotifier.Config.Web
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Data.Cache.CachexImpl
+  alias WandererNotifier.Cache.CachexImpl
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -243,7 +243,7 @@ defmodule WandererNotifier.Application do
 
   # Initialize metric registry
   defp initialize_metric_registry do
-    alias WandererNotifier.KillmailProcessing.MetricRegistry
+    alias WandererNotifier.Killmail.MetricRegistry
 
     # Register the metric atoms
     case MetricRegistry.initialize() do
@@ -274,13 +274,13 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Stats, []},
       %{
-        id: WandererNotifier.KillmailProcessing.Metrics,
-        start: {WandererNotifier.KillmailProcessing.Metrics, :start_link, [[]]}
+        id: WandererNotifier.Killmail.Metrics,
+        start: {WandererNotifier.Killmail.Metrics, :start_link, [[]]}
       },
       {WandererNotifier.Helpers.DeduplicationHelper, []},
       {WandererNotifier.Core.Application.Service, []},
       {Cachex, name: :wanderer_cache},
-      {WandererNotifier.Data.Cache.Repository, []},
+      {WandererNotifier.Cache.Repository, []},
       {WandererNotifier.Web.Server, []}
     ]
 

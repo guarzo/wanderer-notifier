@@ -11,8 +11,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @impl true

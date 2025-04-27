@@ -5,13 +5,14 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   """
 
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Killmail.Killmail
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -217,7 +218,7 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
       # Log what we're using for testing
       AppLogger.kill_debug("Using kill data for test notification with kill_id: #{kill_id}")
 
-      # Create a Data.Killmail struct if needed
+      # Create a Killmail struct if needed
       killmail = ensure_data_killmail(recent_kill)
 
       # Make sure to enrich the killmail data before sending notification
@@ -251,44 +252,44 @@ defmodule WandererNotifier.Processing.Killmail.Notification do
   # Helper to extract kill_id regardless of struct type
   defp extract_kill_id(kill) do
     cond do
-      is_struct(kill, WandererNotifier.Data.Killmail) -> kill.killmail_id
+      is_struct(kill, WandererNotifier.Killmail.Killmail) -> kill.killmail_id
       is_struct(kill, WandererNotifier.Resources.Killmail) -> kill.killmail_id
       is_map(kill) -> Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
       true -> nil
     end
   end
 
-  # Helper to ensure we have a Data.Killmail struct
+  # Helper to ensure we have a Killmail struct
   defp ensure_data_killmail(kill) do
     cond do
-      is_struct(kill, WandererNotifier.Data.Killmail) ->
+      is_struct(kill, WandererNotifier.Killmail.Killmail) ->
         # Already the right type
         kill
 
       is_struct(kill, WandererNotifier.Resources.Killmail) ->
-        # Convert from Resources.Killmail to Data.Killmail
-        WandererNotifier.Data.Killmail.new(
+        # Convert from Resources.Killmail to Killmail
+        Killmail.new(
           kill.killmail_id,
           Map.get(kill, :zkb_data) || %{}
         )
 
       is_map(kill) ->
-        # Convert from map to Data.Killmail
-        WandererNotifier.Data.Killmail.new(
+        # Convert from map to Killmail
+        Killmail.new(
           Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id),
           Map.get(kill, "zkb") || Map.get(kill, :zkb) || %{}
         )
 
       true ->
         # Default empty killmail as fallback
-        WandererNotifier.Data.Killmail.new(nil, %{})
+        Killmail.new(nil, %{})
     end
   end
 
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
-    # For Data.Killmail struct
-    if is_struct(killmail, WandererNotifier.Data.Killmail) do
+    # For Killmail struct
+    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
       # Check victim data
       victim = Map.get(killmail, :victim) || %{}
 

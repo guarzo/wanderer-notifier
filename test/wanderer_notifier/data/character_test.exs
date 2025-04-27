@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Data.CharacterTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Character.Character
 
   describe "new/1" do
     test "creates a character from map with standard fields" do

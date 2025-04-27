@@ -4,7 +4,7 @@ defmodule WandererNotifier.Data.CharacterUtils do
   Provides helper functions for extracting and formatting character information.
   """
 
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Character.Character
 
   @doc """
   Extracts a character ID from a Character struct.

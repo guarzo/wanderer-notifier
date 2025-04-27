@@ -1,6 +1,6 @@
-defmodule WandererNotifier.Data.KillmailTest do
+defmodule WandererNotifier.Killmail.KillmailTest do
   use ExUnit.Case, async: true
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Killmail.Killmail
 
   describe "new/2" do
     test "creates a valid killmail struct with two arguments" do

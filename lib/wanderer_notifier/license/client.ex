@@ -4,7 +4,7 @@ defmodule WandererNotifier.License.Client do
   Provides functions for validating licenses and bots.
   """
   require Logger
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
 

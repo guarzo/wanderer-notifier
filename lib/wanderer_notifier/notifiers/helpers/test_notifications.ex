@@ -3,17 +3,17 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   Helper module for sending test notifications.
   """
 
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
+  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Api.ZKill.Service, as: ZKillService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
+  alias WandererNotifier.Killmail.ZKill.Client, as: ZKillClient
 
   @doc """
   Sends a test system notification.
@@ -29,16 +29,11 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
         # Send notification
-        case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
-          :ok ->
+        case NotificationInterface.send_message(discord_format) do
+          {:ok, _result} ->
             AppLogger.info("Test system notification sent successfully")
             Stats.increment(:systems)
             {:ok, "Test system notification sent successfully"}
-
-          {:ok, result} ->
-            AppLogger.info("Test system notification sent successfully")
-            Stats.increment(:systems)
-            {:ok, result}
 
           {:error, reason} ->
             AppLogger.error("Failed to send test system notification: #{inspect(reason)}")
@@ -72,7 +67,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
 
   # Get the most recent kill from ZKill
   defp get_recent_kill do
-    case ZKillService.get_recent_kills(1) do
+    case ZKillClient.get_recent_kills(1) do
       {:ok, [kill | _]} ->
         kill_id = kill["killmail_id"]
         hash = get_in(kill, ["zkb", "hash"])
@@ -142,16 +137,11 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
     # Send notification
-    case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
-      :ok ->
+    case NotificationInterface.send_message(discord_format) do
+      {:ok, _result} ->
         AppLogger.kill_info("Test kill notification sent successfully")
         Stats.increment(:kills)
         {:ok, kill_id}
-
-      {:ok, result} ->
-        AppLogger.kill_info("Test kill notification sent successfully")
-        Stats.increment(:kills)
-        {:ok, result}
 
       {:error, reason} ->
         handle_error("Failed to send kill notification", reason)
@@ -162,7 +152,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   defp handle_error(message, reason) do
     error_message = "#{message}: #{inspect(reason)}"
     AppLogger.kill_error(error_message)
-    NotifierFactory.notify(:send_message, [error_message])
+    NotificationInterface.send_message(error_message)
     {:error, error_message}
   end
 
@@ -180,16 +170,11 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
         # Send notification using a real character from cache
-        case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
-          :ok ->
+        case NotificationInterface.send_message(discord_format) do
+          {:ok, _result} ->
             AppLogger.info("Test character notification sent successfully")
             Stats.increment(:characters)
             {:ok, "Test character notification sent successfully"}
-
-          {:ok, result} ->
-            AppLogger.info("Test character notification sent successfully")
-            Stats.increment(:characters)
-            {:ok, result}
 
           {:error, reason} ->
             AppLogger.error("Failed to send test character notification: #{inspect(reason)}")
@@ -206,7 +191,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   # Validate killmail has all required data for notification
   defp validate_killmail_data(killmail) do
     # For Data.Killmail struct
-    if is_struct(killmail, WandererNotifier.Data.Killmail) do
+    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
       # Check victim data
       victim = Map.get(killmail.esi_data || %{}, "victim") || %{}
 

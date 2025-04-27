@@ -1,17 +1,20 @@
-alias WandererNotifier.Api.Http.Client
 alias WandererNotifier.Api.Map.UrlBuilder
 alias WandererNotifier.Config.Cache
 alias WandererNotifier.Config.Config
-alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-alias WandererNotifier.Data.Character
+alias WandererNotifier.Cache.Keys, as: CacheKeys
+alias WandererNotifier.Cache.Repository, as: CacheRepo
+alias WandererNotifier.Character.Character
 alias WandererNotifier.Logger.Logger, as: AppLogger
-alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+alias WandererNotifier.Notifications.Factory, as: NotifierFactory
 alias WandererNotifier.Notifiers.StructuredFormatter
+alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
+alias WandererNotifier.Map.CharactersClient, as: NewCharactersClient
 
 defmodule WandererNotifier.Api.Map.CharactersClient do
   @moduledoc """
   Client for retrieving and processing character data from the map API.
+
+  @deprecated Use WandererNotifier.Map.CharactersClient instead
 
   This module follows the API Data Standardization principles:
   1. Single Source of Truth: Uses Character struct as the canonical representation
@@ -24,48 +27,94 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
   """
 
   @doc """
-  Updates the tracked characters information in the cache.
-
-  If cached_characters is provided, it will also identify and notify about new characters.
+  Updates tracked character information from the map API.
 
   ## Parameters
-    - cached_characters: Optional list of cached characters for comparison
+    - cached_characters: List of cached characters for comparison
 
   ## Returns
-    - {:ok, [Character.t()]} on success with a list of Character structs
-    - {:error, {:json_parse_error, reason}} if JSON parsing fails
-    - {:error, {:http_error, reason}} if HTTP request fails
-    - {:error, {:domain_error, :map, reason}} for domain-specific errors
+    - {:ok, characters} on success
+    - {:error, reason} on failure
   """
-  @spec update_tracked_characters([Character.t()] | nil) ::
-          {:ok, [Character.t()]} | {:error, term()}
-  def update_tracked_characters(cached_characters \\ nil) do
-    # Ensure cached_characters is a list using our helper function
-    cached_characters_safe = Character.ensure_list(cached_characters)
-
-    with {:ok, _} <- check_characters_endpoint_availability(),
-         {:ok, url} <- UrlBuilder.build_url("map/characters"),
-         {:ok, body} <- fetch_characters_data(url) do
-      handle_character_response(body, cached_characters_safe)
-    else
-      {:error, {:http_error, _}} = error ->
-        error
-
-      {:error, reason} = error ->
-        if is_tuple(reason) and tuple_size(reason) == 3 and elem(reason, 0) == :domain_error do
-          error
-        else
-          AppLogger.api_error("⚠️ Failed to update characters", error: inspect(reason))
-          error
-        end
-    end
+  def update_tracked_characters(cached_characters) do
+    # Delegate to the new implementation
+    NewCharactersClient.update_tracked_characters(cached_characters)
   end
 
+  @doc """
+  Retrieves character activity data from the map API (delegating to new implementation).
+
+  ## Deprecation Notice
+  This function is deprecated and will be removed in a future version.
+  Please use WandererNotifier.Map.CharactersClient directly.
+
+  ## Parameters
+    - slug: Optional map slug override
+
+  ## Returns
+    - {:ok, activity_data} on success
+    - {:error, reason} on failure
+  """
+  def get_character_activity_delegated(slug \\ nil) do
+    # Delegate to the new implementation
+    NewCharactersClient.get_character_activity(slug)
+  end
+
+  @doc """
+  Retrieves character activity data from the map API.
+
+  ## Deprecation Notice
+  This function is deprecated and will be removed in a future version.
+  Please use the version that accepts a days parameter.
+
+  ## Parameters
+    - slug: Optional map slug override
+
+  ## Returns
+    - {:ok, activity_data} on success
+    - {:error, {:json_parse_error, reason}} if JSON parsing fails
+    - {:error, {error_type, {:http_error, reason}}} if HTTP request fails
+    - {:error, {:unexpected_error, message}} for unexpected errors
+  """
+  @spec get_character_activity_legacy(String.t() | nil) :: {:ok, list(map())} | {:error, term()}
+  def get_character_activity_legacy(slug \\ nil) do
+    # Call the 2-parameter version with default days=1
+    get_character_activity(slug, 1)
+  end
+
+  @doc """
+  Gets character activity data from the map API.
+
+  ## Parameters
+    - slug: Optional map slug
+    - days: Number of days of data to get (default 1)
+
+  ## Returns
+    - {:ok, data} on success
+    - {:error, reason} on failure
+  """
+  @spec get_character_activity(String.t() | nil, integer()) ::
+          {:ok, list(map())} | {:error, term()}
+  def get_character_activity(slug \\ nil, days \\ 1) do
+    # Delegate to new implementation
+    NewCharactersClient.get_character_activity(slug, days)
+  end
+
+  @doc """
+  Fetch character data from the API.
+
+  ## Parameters
+    - url: The URL to fetch character data from
+
+  ## Returns
+    - {:ok, data} on success
+    - {:error, reason} on failure
+  """
   # Fetch character data from the API
   defp fetch_characters_data(url) do
     headers = UrlBuilder.get_auth_headers()
 
-    case Client.get(url, headers) do
+    case HttpClient.get(url, headers) do
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
         {:ok, body}
 
@@ -304,136 +353,24 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
       {:ok, url} ->
         headers = UrlBuilder.get_auth_headers()
 
-        case Client.get(url, headers) do
+        case HttpClient.get(url, headers) do
           {:ok, %{status_code: status}} when status >= 200 and status < 300 ->
             {:ok, true}
 
-          %{status_code: status, body: body} ->
+          {:ok, %{status_code: status, body: body}} ->
             error_reason = "Endpoint returned status #{status}: #{body}"
             AppLogger.api_warn("⚠️ Characters endpoint error", error: error_reason)
             {:error, error_reason}
+
+          {:error, reason} ->
+            AppLogger.api_warn("⚠️ Characters endpoint error", error: inspect(reason))
+            {:error, reason}
         end
 
       {:error, reason} ->
         AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
         {:error, reason}
     end
-  end
-
-  @doc """
-  Retrieves character activity data from the map API.
-
-  ## Parameters
-    - slug: Optional map slug override
-
-  ## Returns
-    - {:ok, activity_data} on success
-    - {:error, {:json_parse_error, reason}} if JSON parsing fails
-    - {:error, {error_type, {:http_error, reason}}} if HTTP request fails
-    - {:error, {:unexpected_error, message}} for unexpected errors
-  """
-  @spec get_character_activity(String.t() | nil) :: {:ok, list(map())} | {:error, term()}
-  def get_character_activity(slug \\ nil) do
-    # Call the 2-parameter version with default days=1
-    get_character_activity(slug, 1)
-  end
-
-  @doc """
-  Gets character activity data for the specified number of days.
-
-  ## Parameters
-    - slug: Optional map slug to override the default one
-    - days: Number of days of activity to retrieve (default is 1)
-
-  ## Returns
-    - {:ok, activity_data} on success
-    - {:error, reason} on failure
-  """
-  def get_character_activity(slug, days) when is_integer(days) do
-    AppLogger.api_debug("[CharactersClient] Getting character activity for #{days} days")
-
-    # Build URL for activity endpoint with days parameter
-    case UrlBuilder.build_url("map/character-activity", %{days: days}, slug) do
-      {:ok, url} ->
-        AppLogger.api_debug("[CharactersClient] Activity URL: #{url}")
-
-        case fetch_activity_data(url) do
-          {:ok, body} -> parse_activity_data(body)
-          error -> error
-        end
-
-      {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] Failed to build activity URL: #{inspect(reason)}")
-        {:error, reason}
-    end
-  end
-
-  # Fetch activity data from API
-  defp fetch_activity_data(url) do
-    headers = UrlBuilder.get_auth_headers()
-
-    case Client.get(url, headers) do
-      {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
-        {:ok, body}
-
-      {:ok, %{status_code: status_code}} ->
-        AppLogger.api_error("[CharactersClient] API returned non-200 status: #{status_code}")
-        # Determine if this error is retryable
-        error_type = if status_code >= 500, do: :retriable, else: :permanent
-        {:error, {error_type, {:http_error, status_code}}}
-
-      {:error, reason} ->
-        AppLogger.api_error("[CharactersClient] HTTP request failed: #{inspect(reason)}")
-        # Network errors are generally retryable
-        {:error, {:retriable, {:http_error, reason}}}
-    end
-  end
-
-  # Parse activity data from response body
-  defp parse_activity_data(body) do
-    case Jason.decode(body) do
-      {:ok, parsed_json} ->
-        # Log the raw parsed JSON for debugging
-        AppLogger.api_debug(
-          "[CharactersClient] Raw parsed JSON structure: #{inspect(parsed_json, pretty: true, limit: 5000)}"
-        )
-
-        # Extract and format activity data
-        activity_data = extract_activity_data(parsed_json)
-
-        AppLogger.api_debug(
-          "[CharactersClient] Extracted activity data structure: #{inspect(activity_data, pretty: true, limit: 5000)}"
-        )
-
-        AppLogger.api_debug(
-          "[CharactersClient] Parsed #{length(activity_data)} activity entries from API response"
-        )
-
-        {:ok, activity_data}
-
-      {:error, reason} ->
-        log_json_parse_error(body, reason)
-        {:error, {:json_parse_error, reason}}
-    end
-  end
-
-  # Extract activity data from parsed JSON with fallbacks for different formats
-  defp extract_activity_data(parsed_json) do
-    case parsed_json do
-      %{"data" => data} when is_list(data) -> data
-      %{"activity" => activity} when is_list(activity) -> activity
-      data when is_list(data) -> data
-      _ -> []
-    end
-  end
-
-  # Log JSON parse error with sample of body
-  defp log_json_parse_error(body, reason) do
-    AppLogger.api_error("[CharactersClient] Failed to parse JSON: #{inspect(reason)}")
-
-    AppLogger.api_debug(
-      "[CharactersClient] Raw response body sample: #{String.slice(body, 0, 100)}..."
-    )
   end
 
   @doc """
@@ -517,11 +454,8 @@ defmodule WandererNotifier.Api.Map.CharactersClient do
     discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
     case NotifierFactory.notify(:send_discord_embed, [discord_format]) do
-      :ok ->
-        :ok
-
-      {:ok, _} ->
-        :ok
+      {:ok, _} = result ->
+        result
 
       {:error, reason} ->
         AppLogger.api_error("⚠️ Failed to send character notification", error: inspect(reason))

@@ -1,16 +1,27 @@
 defmodule WandererNotifier.HttpClient do
   @moduledoc """
-  Behaviour for HTTP requests; used by ESI, ZKill, map clients, and mocks.
+  Behaviour for HTTP clients
   """
 
-  @type method :: :get | :post | :patch | :delete
+  @type headers :: [{String.t(), String.t()}]
+  @type url :: String.t()
+  @type body :: String.t() | map()
+  @type options :: keyword()
+  @type response :: {:ok, map()} | {:error, term()}
+  @type method :: :get | :post | :put | :delete | :head | :options
+
+  @callback get(url :: url, headers :: headers) :: response
+  @callback get(url :: url) :: response
+  @callback post(url :: url, body :: body, headers :: headers) :: response
+  @callback post_json(url :: url, body :: body, headers :: headers, options :: options) ::
+              response
   @callback request(
-              method,
-              url :: String.t(),
-              headers :: list(),
-              body :: term(),
-              opts :: Keyword.t()
+              method :: method,
+              url :: url,
+              headers :: headers,
+              body :: body,
+              options :: options
             ) ::
-              {:ok, %{status: integer(), body: term()}}
-              | {:error, term()}
+              response
+  @callback handle_response(response :: term()) :: response
 end

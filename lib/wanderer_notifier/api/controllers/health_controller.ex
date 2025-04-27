@@ -15,6 +15,6 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   end
 
   match _ do
-    send_error_response(conn, 404, "Not found")
+    send_error(conn, 404, "Not found")
   end
 end

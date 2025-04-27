@@ -4,7 +4,7 @@ import Config
 config :wanderer_notifier, env: config_env()
 
 # Configure HTTP client
-config :wanderer_notifier, http_client: WandererNotifier.HttpClient.HTTPoison
+config :wanderer_notifier, http_client: WandererNotifier.HttpClient.Httpoison
 
 # Configure MIME types
 config :mime, :types, %{
@@ -55,7 +55,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Core.Maintenance.Scheduler" => :info,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
-  "WandererNotifier.Api.ESI.Client" => :warn,
+  "WandererNotifier.ESI.Client" => :warn,
   "WandererNotifier.Api.Map.Client" => :info,
   "WandererNotifier.Api.Map.Systems" => :info,
   "WandererNotifier.Api.Map.Characters" => :info,
@@ -70,7 +70,9 @@ config :logger, :module_levels, %{
   "WandererNotifier.Services.KillProcessor" => :debug,
   "WandererNotifier.Services.NotificationDeterminer" => :debug,
   "WandererNotifier.Supervisors.Basic" => :info,
-  "WandererNotifier" => :info
+  "WandererNotifier" => :info,
+  "WandererNotifier.Cache.Helpers" => :warn,
+  "WandererNotifier.Cache" => :warn
 }
 
 # Nostrum compile-time configuration
@@ -97,7 +99,8 @@ config :wanderer_notifier, cache_name: :wanderer_cache
 # Configure service modules
 config :wanderer_notifier,
   zkill_service: WandererNotifier.Api.ZKill.Service,
-  esi_service: WandererNotifier.Api.ESI.Service
+  esi_service: WandererNotifier.ESI.Service,
+  cache_impl: WandererNotifier.Cache.CachexImpl
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

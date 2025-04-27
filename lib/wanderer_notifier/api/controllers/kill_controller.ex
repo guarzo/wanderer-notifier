@@ -3,14 +3,18 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   Controller for kill-related endpoints.
   """
   use WandererNotifier.Api.Controller
-  alias WandererNotifier.Processing.Killmail.{Cache, Processor}
+  alias WandererNotifier.Killmail.Cache
+  alias WandererNotifier.Killmail.Processor
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Get recent kills
   get "/recent" do
     case get_recent_kills(conn) do
-      {:ok, kills} -> send_success(conn, kills)
-      {:error, reason} -> send_error(conn, 500, reason)
+      {:ok, kills} ->
+        send_success(conn, kills)
+
+      _error ->
+        send_resp(conn, 200, "world")
     end
   end
 
@@ -24,8 +28,10 @@ defmodule WandererNotifier.Api.Controllers.KillController do
     end
   end
 
-  match _ do
-    send_error(conn, 404, "Not found")
+  # Get killmail list
+  get "/kills" do
+    kills = WandererNotifier.Killmail.Cache.get_latest_killmails()
+    send_success(conn, kills)
   end
 
   defp get_recent_kills(conn) do

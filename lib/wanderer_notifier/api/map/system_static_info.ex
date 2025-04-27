@@ -66,11 +66,10 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   }
   """
 
-  alias WandererNotifier.Api.Http.Client
-  alias WandererNotifier.Api.Http.ErrorHandler
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
 
   @doc """
   Fetches static information for a specific solar system.
@@ -154,21 +153,23 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
 
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
-    case Client.get(url, headers) do
-      {:ok, response} ->
-        # Process the response with proper validation
-        case process_api_response(response) do
-          {:ok, parsed_response} ->
-            AppLogger.api_debug("[SystemStaticInfo] Parsed response",
-              parsed_response: parsed_response
-            )
+    case HttpClient.get(url, headers) do
+      {:ok, %{status_code: status, body: body}} when status in 200..299 ->
+        # Successfully got a response
+        AppLogger.api_debug("[SystemStaticInfo] Successful API response",
+          status: status
+        )
 
-            # Validate the static info format
-            validate_static_info(parsed_response)
+        # Validate the static info format
+        validate_static_info(body)
 
-          error ->
-            error
-        end
+      {:ok, %{status_code: status}} ->
+        # Non-success status code
+        AppLogger.api_error("[SystemStaticInfo] Failed API response",
+          status: status
+        )
+
+        {:error, {:http_error, status}}
 
       {:error, reason} ->
         AppLogger.api_error("[SystemStaticInfo] Request failed",
@@ -176,24 +177,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         )
 
         {:error, reason}
-    end
-  end
-
-  defp process_api_response(response) do
-    case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
-      {:ok, parsed_response} = success ->
-        AppLogger.api_debug("[SystemStaticInfo] Parsed response",
-          response_keys: Map.keys(parsed_response)
-        )
-
-        success
-
-      {:error, reason} = error ->
-        AppLogger.api_error("[SystemStaticInfo] HTTP error",
-          error: inspect(reason)
-        )
-
-        error
     end
   end
 
@@ -227,7 +210,7 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:ok, system} on failure but returns the original system
   """
   def enrich_system(system) do
-    alias WandererNotifier.Data.MapSystem
+    alias WandererNotifier.Map.MapSystem
 
     AppLogger.api_debug("[SystemStaticInfo] Starting system enrichment",
       system_name: system.name,
@@ -263,12 +246,11 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     else
       # Invalid system ID - log and return original
       AppLogger.api_warn(
-        "[SystemStaticInfo] Cannot enrich system with invalid ID",
+        "[SystemStaticInfo] System has invalid ID",
         system_name: system.name,
         system_id: system.solar_system_id
       )
 
-      # Still return original system
       {:ok, system}
     end
   end

@@ -5,9 +5,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
 
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
 
   @doc """

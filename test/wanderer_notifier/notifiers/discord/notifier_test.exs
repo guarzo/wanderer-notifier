@@ -4,7 +4,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   require Logger
 
   alias WandererNotifier.Config.Application
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifiers.Discord.Notifier
 
   setup do

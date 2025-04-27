@@ -6,8 +6,8 @@ defmodule WandererNotifier.Notifications.Determiner.System do
 
   require Logger
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
 

@@ -13,7 +13,8 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
 
   alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.KillmailProcessing.{Context, Pipeline}
+  alias WandererNotifier.Killmail.Context
+  alias WandererNotifier.Killmail.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Notification}
 

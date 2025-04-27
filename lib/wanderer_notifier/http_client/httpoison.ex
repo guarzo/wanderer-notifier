@@ -1,17 +1,68 @@
-defmodule WandererNotifier.HttpClient.HTTPoison do
+defmodule WandererNotifier.HttpClient.Httpoison do
+  @moduledoc """
+  HTTPoison implementation of the HTTP client behavior
+  """
   @behaviour WandererNotifier.HttpClient
 
-  def request(method, url, headers, body, opts) do
-    # Convert body to JSON if needed
-    payload = if body, do: Jason.encode!(body), else: ""
+  require Logger
+
+  @default_headers [{"Content-Type", "application/json"}]
+
+  @impl true
+  def get(url, headers \\ @default_headers) do
+    HTTPoison.get(url, headers)
+    |> handle_response()
+  end
+
+  @impl true
+  def post(url, body, headers \\ @default_headers) do
+    HTTPoison.post(url, body, headers)
+    |> handle_response()
+  end
+
+  @impl true
+  def post_json(url, body, headers \\ @default_headers, options \\ []) do
+    encoded_body = Jason.encode!(body)
+
+    HTTPoison.post(url, encoded_body, headers, options)
+    |> handle_response()
+  end
+
+  @doc """
+  Makes a generic HTTP request
+  """
+  @impl true
+  def request(method, url, headers \\ [], body \\ nil, opts \\ []) do
+    # Convert body to JSON if it's a map and not nil
+    payload =
+      cond do
+        is_nil(body) -> ""
+        is_map(body) -> Jason.encode!(body)
+        true -> body
+      end
 
     HTTPoison.request(method, url, payload, headers, opts)
-    |> case do
-      {:ok, %HTTPoison.Response{status_code: s, body: b}} ->
-        {:ok, %{status: s, body: Jason.decode!(b)}}
+    |> handle_response()
+  end
 
-      error ->
-        error
+  @impl true
+  def handle_response({:ok, %HTTPoison.Response{status_code: status, body: body}})
+      when status in 200..299 do
+    case Jason.decode(body) do
+      {:ok, decoded} ->
+        {:ok, %{status_code: status, body: decoded}}
+
+      {:error, _reason} ->
+        {:ok, %{status_code: status, body: body}}
     end
+  end
+
+  def handle_response({:ok, %HTTPoison.Response{status_code: status, body: body}}) do
+    {:error, %{status_code: status, body: body}}
+  end
+
+  def handle_response({:error, %HTTPoison.Error{reason: reason}}) do
+    Logger.error("HTTP request failed: #{inspect(reason)}")
+    {:error, reason}
   end
 end

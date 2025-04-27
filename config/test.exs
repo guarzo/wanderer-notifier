@@ -30,7 +30,7 @@ config :wanderer_notifier,
   },
   cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
   zkill_service: WandererNotifier.Api.ZKill.ServiceMock,
-  esi_service: WandererNotifier.Api.ESI.ServiceMock
+  esi_service: WandererNotifier.ESI.ServiceMock
 
 # Configure cache
 config :wanderer_notifier, :cache_dir, "test/cache"

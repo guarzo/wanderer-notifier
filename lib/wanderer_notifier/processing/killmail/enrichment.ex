@@ -1,14 +1,14 @@
 defmodule WandererNotifier.Processing.Killmail.Enrichment do
   @moduledoc """
-  Handles enrichment of killmail data.
+  Module for enriching killmail data with additional information from ESI API.
 
   - Adds additional information from external APIs
   - Processes victim and attacker information
   - Adds system information to kills
   """
 
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.ESI.Service, as: ESIService
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification

@@ -4,8 +4,8 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   alias WandererNotifier.Api.ESI.ServiceMock, as: ESIServiceMock
   alias WandererNotifier.Api.ZKill.ServiceMock, as: ZKillServiceMock
-  alias WandererNotifier.Data.Character
-  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Character.Character
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.MockZKillClient
   alias WandererNotifier.Notifiers.StructuredFormatter

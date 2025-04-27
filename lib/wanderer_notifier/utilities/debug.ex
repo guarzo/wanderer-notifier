@@ -3,8 +3,8 @@ defmodule WandererNotifier.Utilities.Debug do
   Debug utilities for WandererNotifier. Only for development use.
   """
 
-  alias WandererNotifier.Api.Http.Client
-  alias WandererNotifier.Api.Map.Client, as: MapClient
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
+  alias WandererNotifier.Map.Client, as: MapClient
   alias WandererNotifier.Api.Map.UrlBuilder
   # Updated to new path
   alias WandererNotifier.Config.Config, as: AppConfig
@@ -90,7 +90,7 @@ defmodule WandererNotifier.Utilities.Debug do
     ]
 
     # Make request
-    result = Client.get(url, headers)
+    result = HttpClient.get(url, headers)
 
     %{
       url: url,
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Utilities.Debug do
   Directly test characters API endpoint with full debug information.
   """
   def direct_test_characters_api do
-    alias WandererNotifier.Api.Http.Client
+    alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
     alias WandererNotifier.Api.Map.UrlBuilder
     # Updated to new path
     alias WandererNotifier.Config.Config, as: AppConfig
@@ -120,7 +120,7 @@ defmodule WandererNotifier.Utilities.Debug do
         {:ok, url} ->
           IO.puts("Making request to URL: #{url}")
           IO.puts("With headers: #{inspect(headers)}")
-          Client.get(url, headers)
+          HttpClient.get(url, headers)
 
         {:error, reason} ->
           IO.puts("URL builder error: #{inspect(reason)}")

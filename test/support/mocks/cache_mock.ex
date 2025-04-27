@@ -2,7 +2,7 @@ defmodule WandererNotifier.MockCache do
   @moduledoc """
   Mock implementation of cache for testing
   """
-  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
+  @behaviour WandererNotifier.Cache.CacheBehaviour
 
   @impl true
   def get(_key), do: nil

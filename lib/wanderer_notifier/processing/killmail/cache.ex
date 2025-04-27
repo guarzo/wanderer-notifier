@@ -6,8 +6,8 @@ defmodule WandererNotifier.Processing.Killmail.Cache do
   - Provides retrieval methods for cached kills
   - Maintains a list of kill IDs for quick access
   """
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Cache TTL values (in seconds)

@@ -4,9 +4,9 @@ defmodule WandererNotifier.Data.Repository do
   coordinating cache operations.
   """
 
-  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.AppLogger, as: Logger
 
   @doc """

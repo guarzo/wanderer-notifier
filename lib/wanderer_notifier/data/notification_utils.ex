@@ -2,7 +2,7 @@ defmodule WandererNotifier.Data.NotificationUtils do
   @moduledoc """
   Utility functions for notification formatting and data extraction.
   """
-  alias WandererNotifier.Data.Character
+  alias WandererNotifier.Character.Character
 
   @doc """
   Extracts a character ID from a Character struct.

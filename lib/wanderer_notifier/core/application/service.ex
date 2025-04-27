@@ -5,13 +5,13 @@ defmodule WandererNotifier.Core.Application.Service do
   """
 
   use GenServer
-  alias WandererNotifier.Api.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.ESI.Service, as: ESIService
+  alias WandererNotifier.ZKill
   alias WandererNotifier.Config.Notifications
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Data.Cache.Helpers, as: CacheHelpers
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Helpers, as: CacheHelpers
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
@@ -19,6 +19,10 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
+  alias WandererNotifier.Config.Debug
+  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
+  alias WandererNotifier.Map.SystemsClient
 
   @default_interval :timer.minutes(5)
 
@@ -429,7 +433,7 @@ defmodule WandererNotifier.Core.Application.Service do
         AppLogger.startup_warn("No main channel ID available, skipping startup notification")
         :ok
       else
-        NotifierFactory.notify(:send_discord_embed_to_channel, [main_channel_id, discord_embed])
+        NotificationInterface.send_message(discord_embed)
       end
 
     case result do
@@ -487,7 +491,7 @@ defmodule WandererNotifier.Core.Application.Service do
     if Websocket.enabled() do
       AppLogger.websocket_debug("Starting zKill websocket")
 
-      case ZKillWebsocket.start_link(self()) do
+      case ZKill.start_websocket(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("🔌 zKill websocket ready")
           %{state | ws_pid: pid}
@@ -496,7 +500,7 @@ defmodule WandererNotifier.Core.Application.Service do
           AppLogger.websocket_error("❌ Failed to start websocket", error: inspect(reason))
 
           # Notify about the failure
-          NotifierFactory.notify(:send_message, ["Failed to start websocket: #{inspect(reason)}"])
+          NotificationInterface.send_message("Failed to start websocket: #{inspect(reason)}")
 
           # Return state without websocket
           state
@@ -510,7 +514,7 @@ defmodule WandererNotifier.Core.Application.Service do
   defp reconnect_zkill_ws(state) do
     # Check if the websocket is enabled in config
     if Websocket.enabled() do
-      case ZKillWebsocket.start_link(self()) do
+      case ZKill.start_websocket(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("Reconnected to zKill websocket", pid: inspect(pid))
           %{state | ws_pid: pid}
@@ -702,5 +706,29 @@ defmodule WandererNotifier.Core.Application.Service do
       AppLogger.api_info("WebSocket is disabled via configuration")
       :ok
     end
+  end
+
+  defp send_discord_notification(discord_embed) do
+    # Get main channel ID
+    main_channel_id = Notifications.channel_id(:main)
+
+    AppLogger.processor_debug("Sending Discord notification", %{
+      channel_id: main_channel_id,
+      embed_length: String.length(inspect(discord_embed))
+    })
+
+    # Send notification via Discord
+    NotificationInterface.send_message(discord_embed)
+  end
+
+  defp handle_websocket_error(reason) do
+    AppLogger.processor_error("Failed to start websocket", %{
+      error: inspect(reason)
+    })
+
+    # Notify via Discord
+    NotificationInterface.send_message("Failed to start websocket: #{inspect(reason)}")
+
+    # ... any additional error handling ...
   end
 end

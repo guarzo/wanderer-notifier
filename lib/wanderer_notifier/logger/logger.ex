@@ -90,6 +90,7 @@ defmodule WandererNotifier.Logger.Logger do
   @category_maintenance "MAINTENANCE"
   @category_scheduler "SCHEDULER"
   @category_chart "CHART"
+  @category_notification "NOTIFICATION"
 
   # Log levels mapped to their appropriate use cases
   # Detailed troubleshooting information
@@ -152,6 +153,30 @@ defmodule WandererNotifier.Logger.Logger do
 
   def processor_error(message, metadata),
     do: log(@level_error, @category_processor, message, metadata)
+
+  @impl true
+  def notification_debug(message, metadata \\ [])
+
+  def notification_debug(message, metadata),
+    do: log(@level_debug, @category_notification, message, metadata)
+
+  @impl true
+  def notification_info(message, metadata \\ [])
+
+  def notification_info(message, metadata),
+    do: log(@level_info, @category_notification, message, metadata)
+
+  @impl true
+  def notification_warn(message, metadata \\ [])
+
+  def notification_warn(message, metadata),
+    do: log(@level_warn, @category_notification, message, metadata)
+
+  @impl true
+  def notification_error(message, metadata \\ [])
+
+  def notification_error(message, metadata),
+    do: log(@level_error, @category_notification, message, metadata)
 
   @impl true
   def log(level, category, message, metadata \\ []) do
@@ -836,4 +861,22 @@ defmodule WandererNotifier.Logger.Logger do
   @impl true
   def chart_error(message, metadata \\ []),
     do: log(@level_error, @category_chart, message, metadata)
+
+  @impl true
+  def log_with_timing(level, category, metadata \\ [], fun) do
+    start_time = :os.system_time(:microsecond)
+    result = fun.()
+    end_time = :os.system_time(:microsecond)
+    duration_us = end_time - start_time
+
+    # Add timing information to metadata
+    metadata_with_timing =
+      Keyword.put(convert_metadata_to_keyword_list(metadata), :duration_us, duration_us)
+
+    # Log the operation with timing information
+    log(level, category, "Operation completed", metadata_with_timing)
+
+    # Return the original result
+    result
+  end
 end

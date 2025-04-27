@@ -4,7 +4,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   """
 
   use GenServer
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
 
   # Default TTL for deduplication entries (24 hours)
   @dedup_ttl 86_400
