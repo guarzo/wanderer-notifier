@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.ESI.Service, as: ESI
   alias WandererNotifier.Config.Application
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer

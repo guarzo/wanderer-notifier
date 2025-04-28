@@ -410,7 +410,7 @@ defmodule WandererNotifier.Map.SystemsClient do
     notification_results =
       Enum.map(added_systems, fn system ->
         case send_system_notification(system) do
-          :ok -> {:ok, system}
+          {:ok, _} = success -> success
           {:error, reason} -> {:error, {system, reason}}
         end
       end)
@@ -474,7 +474,7 @@ defmodule WandererNotifier.Map.SystemsClient do
 
   # Convert from Map.MapSystem to Data.MapSystem for compatibility with formatter
   defp convert_to_data_map_system(system) do
-    %WandererNotifier.Data.MapSystem{
+    %WandererNotifier.Map.MapSystem{
       id: system.id,
       name: system.name,
       region_name: system.region_name,
@@ -530,86 +530,30 @@ defmodule WandererNotifier.Map.SystemsClient do
   end
 
   @doc """
-  Returns a system for testing notifications.
-  Attempts to enrich a wormhole system, but only for notification tests.
+  Gets a system suitable for sending a test notification.
 
   ## Returns
-    - {:ok, system} on success
-    - {:error, reason} on failure
+    - {:ok, system} with a system suitable for notification
+    - {:error, :no_systems_in_cache} if no systems are available
   """
   def get_system_for_notification do
-    # Try to get systems from cache first
-    systems = get_systems()
+    case CacheRepo.get(CacheKeys.tracked_systems_list()) do
+      systems when is_list(systems) and length(systems) > 0 ->
+        # Pick a random system from the tracked systems
+        system = Enum.random(systems)
+        {:ok, system}
 
-    # Check if we have systems in cache
-    if is_list(systems) and length(systems) > 0 do
-      # Select just one random system for notification
-      selected_system = Enum.random(systems)
+      _ ->
+        # Fall back to map systems if no tracked systems
+        case CacheRepo.get(CacheKeys.map_systems()) do
+          systems when is_list(systems) and length(systems) > 0 ->
+            system = Enum.random(systems)
+            {:ok, system}
 
-      # Log selection
-      AppLogger.api_info(
-        "[SystemsClient] Selected system #{selected_system.name} for notification test"
-      )
-
-      # Handle wormhole systems differently
-      if MapSystem.is_wormhole?(selected_system) do
-        # Try to enrich with a timeout using Task
-        AppLogger.api_info(
-          "[SystemsClient] Attempting to enrich wormhole system #{selected_system.name} for test notification"
-        )
-
-        # Try to enrich the wormhole system
-        enrich_system_with_timeout(selected_system)
-      else
-        # Non-wormhole systems don't need enrichment
-        {:ok, selected_system}
-      end
-    else
-      # No systems in cache, return error
-      AppLogger.api_error("[SystemsClient] No systems found in cache for notification")
-      {:error, :no_systems_in_cache}
-    end
-  end
-
-  # Helper to enrich a system with a timeout
-  defp enrich_system_with_timeout(system) do
-    # Create a task for the enrichment to add timeout handling
-    task =
-      Task.async(fn ->
-        try do
-          SystemStaticInfo.enrich_system(system)
-        rescue
-          e ->
-            AppLogger.api_error(
-              "[SystemsClient] Enrichment failed with exception: #{Exception.message(e)}"
-            )
-
-            {:error, :exception}
+          _ ->
+            AppLogger.api_error("[SystemsClient] No systems found in cache for test notification")
+            {:error, :no_systems_in_cache}
         end
-      end)
-
-    # Wait for enrichment with a timeout (5 seconds maximum)
-    case Task.yield(task, 5_000) do
-      {:ok, {:ok, enriched_system}} ->
-        AppLogger.api_info("[SystemsClient] Successfully enriched system for test notification")
-        {:ok, enriched_system}
-
-      {:ok, {:error, reason}} ->
-        AppLogger.api_warn(
-          "[SystemsClient] Enrichment failed: #{inspect(reason)}. Using basic system."
-        )
-
-        {:ok, system}
-
-      nil ->
-        # Enrichment took too long, kill the task
-        Task.shutdown(task, :brutal_kill)
-
-        AppLogger.api_warn(
-          "[SystemsClient] Enrichment timed out after 5 seconds. Using basic system."
-        )
-
-        {:ok, system}
     end
   end
 

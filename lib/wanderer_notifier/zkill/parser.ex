@@ -4,8 +4,6 @@ defmodule WandererNotifier.ZKill.Parser do
   Handles transforming the raw API data into structured, normalized formats.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
   @doc """
   Parses a killmail from ZKillboard API.
 
@@ -25,7 +23,7 @@ defmodule WandererNotifier.ZKill.Parser do
     end
   end
 
-  def parse_killmail(data) do
+  def parse_killmail(_data) do
     {:error, {:invalid_format, :not_a_map}}
   end
 
@@ -53,7 +51,7 @@ defmodule WandererNotifier.ZKill.Parser do
     {:ok, parsed}
   end
 
-  def parse_killmails(data) do
+  def parse_killmails(_data) do
     {:error, {:invalid_format, :not_a_list}}
   end
 
@@ -83,21 +81,21 @@ defmodule WandererNotifier.ZKill.Parser do
     end
   end
 
-  def parse_websocket_message(message) do
+  def parse_websocket_message(_message) do
     {:error, {:invalid_format, :websocket_message}}
   end
 
   # Private helper functions
 
-  defp validate_killmail(data, nil, _) do
+  defp validate_killmail(_data, nil, _) do
     {:error, {:invalid_format, :missing_kill_id}}
   end
 
-  defp validate_killmail(data, _, nil) do
+  defp validate_killmail(_data, _, nil) do
     {:error, {:invalid_format, :missing_zkb_data}}
   end
 
-  defp validate_killmail(data, kill_id, zkb_data) do
+  defp validate_killmail(data, _kill_id, _zkb_data) do
     {:ok, data}
   end
 

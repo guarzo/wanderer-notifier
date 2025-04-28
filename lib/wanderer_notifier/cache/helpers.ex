@@ -77,6 +77,28 @@ defmodule WandererNotifier.Cache.Helpers do
   end
 
   @doc """
+  Gets the list of tracked characters.
+  """
+  def get_tracked_characters() do
+    AppLogger.log_with_timing(:debug, "cache-helpers-get-tracked-characters", %{}, fn ->
+      case get(CacheKeys.tracked_characters_list()) do
+        {:ok, tracked_characters} when is_list(tracked_characters) ->
+          {:ok, tracked_characters}
+
+        {:ok, tracked_characters} ->
+          AppLogger.log(:error, "cache-helpers-get-tracked-characters-invalid-type", %{
+            type: typeof(tracked_characters)
+          })
+
+          {:error, :invalid_type}
+
+        {:error, _} = error ->
+          error
+      end
+    end)
+  end
+
+  @doc """
   Adds a character to the tracked characters list.
   """
   def add_character_to_tracked(character_id, character_data) when is_binary(character_id) do
@@ -183,4 +205,93 @@ defmodule WandererNotifier.Cache.Helpers do
   defp typeof(term) when is_port(term), do: "port"
   defp typeof(term) when is_reference(term), do: "reference"
   defp typeof(_term), do: "unknown"
+
+  @doc """
+  Get ship name from ship type ID.
+  """
+  @spec get_ship_name(integer() | String.t()) :: {:ok, String.t()} | {:error, atom()}
+  def get_ship_name(ship_type_id) do
+    AppLogger.log_with_timing(
+      :debug,
+      "cache-helpers-get-ship-name",
+      %{ship_type_id: ship_type_id},
+      fn ->
+        ship_key = CacheKeys.ship_type(ship_type_id)
+
+        case get(ship_key) do
+          {:ok, ship_data} when is_map(ship_data) ->
+            name = Map.get(ship_data, "name") || Map.get(ship_data, :name) || "Unknown Ship"
+            {:ok, name}
+
+          {:ok, name} when is_binary(name) ->
+            {:ok, name}
+
+          {:error, _} = error ->
+            error
+
+          _ ->
+            {:error, :invalid_ship_data}
+        end
+      end
+    )
+  end
+
+  @doc """
+  Get character name from character ID.
+  """
+  @spec get_character_name(integer() | String.t()) :: {:ok, String.t()} | {:error, atom()}
+  def get_character_name(character_id) do
+    AppLogger.log_with_timing(
+      :debug,
+      "cache-helpers-get-character-name",
+      %{character_id: character_id},
+      fn ->
+        character_key = CacheKeys.character(character_id)
+
+        case get(character_key) do
+          {:ok, character_data} when is_map(character_data) ->
+            name =
+              Map.get(character_data, "name") || Map.get(character_data, :name) ||
+                "Unknown Character"
+
+            {:ok, name}
+
+          {:ok, name} when is_binary(name) ->
+            {:ok, name}
+
+          {:error, _} = error ->
+            error
+
+          _ ->
+            {:error, :invalid_character_data}
+        end
+      end
+    )
+  end
+
+  @doc """
+  Get cached kills for a system.
+  """
+  @spec get_cached_kills(integer() | String.t()) :: {:ok, list()} | {:error, atom()}
+  def get_cached_kills(system_id) do
+    AppLogger.log_with_timing(
+      :debug,
+      "cache-helpers-get-cached-kills",
+      %{system_id: system_id},
+      fn ->
+        system_kills_key = "#{CacheKeys.system(system_id)}:kills"
+
+        case get(system_kills_key) do
+          {:ok, kills} when is_list(kills) ->
+            {:ok, kills}
+
+          {:ok, _} ->
+            {:ok, []}
+
+          {:error, _} ->
+            {:ok, []}
+        end
+      end
+    )
+  end
 end

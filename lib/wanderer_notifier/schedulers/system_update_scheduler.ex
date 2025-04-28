@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   # Interval is now configured via the Timings module
 
-  alias WandererNotifier.Api.Map.SystemsClient
+  alias WandererNotifier.Map.SystemsClient
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger

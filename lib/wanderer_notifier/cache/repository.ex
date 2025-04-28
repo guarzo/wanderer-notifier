@@ -42,7 +42,7 @@ defmodule WandererNotifier.Cache.Repository do
   def clear, do: @cache_impl.clear()
 
   @impl WandererNotifier.Cache.RepositoryBehaviour
-  def get_and_update(key, update_fun, ttl \\ nil) do
+  def get_and_update(key, update_fun, _ttl \\ nil) do
     @cache_impl.get_and_update(key, update_fun)
   end
 

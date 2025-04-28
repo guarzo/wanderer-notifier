@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
   # Interval is now configured via the Timings module
 
-  alias WandererNotifier.Api.Map.Client
+  alias WandererNotifier.Map.Client
   alias WandererNotifier.Config.Cache, as: CacheConfig
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Config.Timings

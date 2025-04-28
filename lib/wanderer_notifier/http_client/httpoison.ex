@@ -2,7 +2,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   @moduledoc """
   HTTPoison implementation of the HTTP client behavior
   """
-  @behaviour WandererNotifier.HttpClient
+  @behaviour WandererNotifier.HttpClient.Behaviour
 
   require Logger
 

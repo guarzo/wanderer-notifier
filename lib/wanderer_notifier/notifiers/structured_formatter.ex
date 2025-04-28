@@ -11,7 +11,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Character.Character
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Cache.{Keys, Repository}
 
@@ -459,12 +459,12 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   ## Returns
     - A generic structured map that can be converted to platform-specific format
   """
-  def format_system_notification(%MapSystem{} = system) do
+  def format_system_notification(%WandererNotifier.Map.MapSystem{} = system) do
     # Validate required fields
     validate_system_fields(system)
 
     # Generate basic notification elements
-    is_wormhole = MapSystem.wormhole?(system)
+    is_wormhole = MapSystem.is_wormhole?(system)
     display_name = MapSystem.format_display_name(system)
 
     # Generate notification elements
@@ -1141,25 +1141,17 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   end
 
   # Helper function to check if a character is in our tracked characters
-  defp check_tracked_character(victim_id) do
+  defp check_tracked_character(victim_id) when is_binary(victim_id) or is_integer(victim_id) do
     alias WandererNotifier.Cache.Keys
     alias WandererNotifier.Cache.Repository
-    alias WandererNotifier.Data.Repository, as: DataRepository
 
     # First check if character is in tracking list
     cache_key = Keys.tracked_character(to_string(victim_id))
     is_tracked = Repository.get(cache_key) != nil
 
     if is_tracked do
-      # If character is tracked, get full character data from appropriate repository
-      case DataRepository.get_character_name(victim_id) do
-        {:ok, name} when is_binary(name) and name != "" ->
-          {:ok, name}
-
-        _ ->
-          # Fall back to character list cache
-          get_name_from_character_list(victim_id)
-      end
+      # Try to get character name from character list cache
+      get_name_from_character_list(victim_id)
     else
       {:error, :not_tracked}
     end
@@ -1204,6 +1196,133 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   defp format_compact_isk_value(_), do: "Unknown Value"
 
   @doc """
+  Creates a standard formatted system activity notification.
+
+  ## Parameters
+    - system: The system to format
+    - activity_data: Activity data for the system
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  """
+  def format_system_activity_notification(system, activity_data) do
+    # Extract basic system information
+    system_name = Map.get(system, :name, "Unknown System")
+    system_id = Map.get(system, :solar_system_id)
+
+    # Extract activity metrics
+    kills_24h = Map.get(activity_data, "kills_24h", 0)
+    jumps_24h = Map.get(activity_data, "jumps_24h", 0)
+    ships_destroyed = Map.get(activity_data, "ships_destroyed", 0)
+    pods_destroyed = Map.get(activity_data, "pods_destroyed", 0)
+
+    # Format fields
+    fields = [
+      %{
+        name: "Activity (Last 24 Hours)",
+        value: "Kills: #{kills_24h}\nJumps: #{jumps_24h}",
+        inline: true
+      },
+      %{
+        name: "Destruction Stats",
+        value: "Ships Destroyed: #{ships_destroyed}\nPods Destroyed: #{pods_destroyed}",
+        inline: true
+      }
+    ]
+
+    # Determine appropriate color based on system security
+    color = determine_system_color(system)
+
+    # Build notification
+    %{
+      type: :system_activity,
+      title: "#{system_name} - Activity Report",
+      description: "Current activity metrics for system #{system_name}",
+      color: color,
+      thumbnail: get_system_icon(system),
+      fields: fields,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      footer: %{
+        text: "System ID: #{system_id}"
+      },
+      url: "https://evemaps.dotlan.net/system/#{URI.encode(system_name)}"
+    }
+  end
+
+  @doc """
+  Creates a standard formatted character activity notification.
+
+  ## Parameters
+    - character: The character to format
+    - activity_data: Activity data for the character
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  """
+  def format_character_activity_notification(character, activity_data) do
+    # Extract basic character information
+    character_name =
+      if is_map(character) do
+        Map.get(character, :name, Map.get(character, "name", "Unknown Character"))
+      else
+        "Unknown Character"
+      end
+
+    character_id =
+      if is_map(character) do
+        Map.get(character, :id, Map.get(character, "id"))
+      else
+        nil
+      end
+
+    # Extract activity metrics
+    kills_7d = Map.get(activity_data, "kills_7d", 0)
+    kills_30d = Map.get(activity_data, "kills_30d", 0)
+    last_kill = Map.get(activity_data, "last_kill_date")
+    last_location = Map.get(activity_data, "last_location", "Unknown")
+
+    # Format last kill date
+    formatted_last_kill =
+      if last_kill do
+        {:ok, dt, _} = DateTime.from_iso8601(last_kill)
+        Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+      else
+        "Unknown"
+      end
+
+    # Format fields
+    fields = [
+      %{
+        name: "Kill Statistics",
+        value: "Last 7 Days: #{kills_7d}\nLast 30 Days: #{kills_30d}",
+        inline: true
+      },
+      %{
+        name: "Activity",
+        value: "Last Kill: #{formatted_last_kill}\nLast Known Location: #{last_location}",
+        inline: true
+      }
+    ]
+
+    # Build notification
+    %{
+      type: :character_activity,
+      title: "#{character_name} - Activity Report",
+      description: "Current activity metrics for #{character_name}",
+      color: @info_color,
+      thumbnail: %{
+        url: "https://images.evetech.net/characters/#{character_id}/portrait?size=128"
+      },
+      fields: fields,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      footer: %{
+        text: "Character ID: #{character_id}"
+      },
+      url: "https://zkillboard.com/character/#{character_id}/"
+    }
+  end
+
+  @doc """
   Creates a standard formatted kill notification specifically for character channel.
   Similar to format_kill_notification but uses green color for kills where tracked characters are attackers,
   and red for when tracked characters are victims.
@@ -1225,5 +1344,131 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
     # Update the notification with the new color
     Map.put(standard_notification, :color, color)
+  end
+
+  @doc """
+  Determines appropriate icon for a system based on security status and type.
+
+  ## Parameters
+    - system: The system to get an icon for
+
+  ## Returns
+    - Icon URL as a map with url key
+  """
+  def get_system_icon(system) do
+    # Build the icon data structure
+    %{
+      url: determine_system_icon_url(system)
+    }
+  end
+
+  @doc """
+  Determines appropriate color for a system based on security status and type.
+
+  ## Parameters
+    - system: The system to get a color for
+
+  ## Returns
+    - Color code as integer
+  """
+  def determine_system_color(system) do
+    cond do
+      is_wormhole_system?(system) -> @wormhole_color
+      is_highsec_system?(system) -> @highsec_color
+      is_lowsec_system?(system) -> @lowsec_color
+      is_nullsec_system?(system) -> @nullsec_color
+      true -> @default_color
+    end
+  end
+
+  # Helper functions for system type determination
+
+  defp determine_system_icon_url(system) do
+    cond do
+      is_wormhole_system?(system) -> @wormhole_icon
+      is_highsec_system?(system) -> @highsec_icon
+      is_lowsec_system?(system) -> @lowsec_icon
+      is_nullsec_system?(system) -> @nullsec_icon
+      true -> @default_icon
+    end
+  end
+
+  defp is_wormhole_system?(system) do
+    security = get_system_security(system)
+    system_type = get_system_type(system)
+
+    (is_binary(security) && String.starts_with?(security, "C")) ||
+      system_type == "wormhole" || system_type == :wormhole
+  end
+
+  defp is_highsec_system?(system) do
+    security = get_system_security(system)
+
+    cond do
+      is_binary(security) && security =~ ~r/^[0-9]/ ->
+        case Float.parse(security) do
+          {value, _} -> value >= 0.5
+          _ -> false
+        end
+
+      is_float(security) ->
+        security >= 0.5
+
+      true ->
+        false
+    end
+  end
+
+  defp is_lowsec_system?(system) do
+    security = get_system_security(system)
+
+    cond do
+      is_binary(security) && security =~ ~r/^[0-9]/ ->
+        case Float.parse(security) do
+          {value, _} -> value > 0.0 && value < 0.5
+          _ -> false
+        end
+
+      is_float(security) ->
+        security > 0.0 && security < 0.5
+
+      true ->
+        false
+    end
+  end
+
+  defp is_nullsec_system?(system) do
+    security = get_system_security(system)
+
+    cond do
+      is_binary(security) && security =~ ~r/^[0-9]/ ->
+        case Float.parse(security) do
+          {value, _} -> value <= 0.0
+          _ -> false
+        end
+
+      is_float(security) ->
+        security <= 0.0
+
+      is_binary(security) && security =~ ~r/^-/ ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp get_system_security(system) do
+    Map.get(system, :security_status) ||
+      Map.get(system, "security_status") ||
+      Map.get(system, :security) ||
+      Map.get(system, "security")
+  end
+
+  defp get_system_type(system) do
+    Map.get(system, :system_type) ||
+      Map.get(system, "system_type") ||
+      Map.get(system, :type) ||
+      Map.get(system, "type")
   end
 end

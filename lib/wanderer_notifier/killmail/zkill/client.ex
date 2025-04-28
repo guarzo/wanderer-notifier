@@ -177,17 +177,17 @@ defmodule WandererNotifier.Killmail.ZKill.Client do
 
     defp make_http_request(url, headers) do
       case @http_client.request(:get, url, headers, nil, follow_redirect: true) do
-        {:ok, %{status: 200, body: body}} ->
+        {:ok, %{status_code: 200, body: body}} ->
           {:ok, body}
 
-        {:ok, %{status: status, body: body}} ->
+        {:ok, %{status_code: status_code, body: body}} ->
           AppLogger.api_error("ZKill HTTP error", %{
-            status: status,
+            status: status_code,
             body_sample: String.slice(inspect(body) || "", 0, 200),
             url: url
           })
 
-          {:error, {:http_error, status}}
+          {:error, {:http_error, status_code}}
 
         {:error, reason} ->
           AppLogger.api_error("ZKill HTTP request failed", %{

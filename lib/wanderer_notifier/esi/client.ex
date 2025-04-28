@@ -6,16 +6,15 @@ defmodule WandererNotifier.ESI.Client do
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
   @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"
 
   @doc """
   Fetches a killmail from ESI.
   """
-  def get_killmail(kill_id, hash, opts \\ []) do
+  def get_killmail(kill_id, hash, _opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
-    label = "ESI.killmail-#{kill_id}"
+    _label = "ESI.killmail-#{kill_id}"
 
     headers = default_headers()
 
@@ -55,7 +54,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Fetches character info from ESI.
   """
-  def get_character_info(character_id, opts \\ []) do
+  def get_character_info(character_id, _opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
 
     headers = default_headers()
@@ -91,7 +90,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Fetches corporation info from ESI.
   """
-  def get_corporation_info(corporation_id, opts \\ []) do
+  def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
 
     headers = default_headers()
@@ -127,9 +126,9 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Fetches alliance info from ESI.
   """
-  def get_alliance_info(alliance_id, opts \\ []) do
+  def get_alliance_info(alliance_id, _opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
-    label = "ESI.alliance-#{alliance_id}"
+    _label = "ESI.alliance-#{alliance_id}"
 
     headers = default_headers()
 
@@ -164,9 +163,9 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Fetches universe type info (e.g. ship type) from ESI.
   """
-  def get_universe_type(ship_type_id, opts \\ []) do
+  def get_universe_type(ship_type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{ship_type_id}/"
-    label = "ESI.universe_type-#{ship_type_id}"
+    _label = "ESI.universe_type-#{ship_type_id}"
 
     headers = default_headers()
 
@@ -209,7 +208,7 @@ defmodule WandererNotifier.ESI.Client do
     }
 
     url = "#{@base_url}/search/?#{URI.encode_query(query_params)}"
-    label = "ESI.search-#{query}"
+    _label = "ESI.search-#{query}"
 
     headers = default_headers()
 
@@ -244,9 +243,9 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Fetches solar system info from ESI.
   """
-  def get_solar_system(system_id, opts \\ []) do
+  def get_solar_system(system_id, _opts \\ []) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
-    label = "ESI.solar_system-#{system_id}"
+    _label = "ESI.solar_system-#{system_id}"
 
     headers = default_headers()
 
@@ -290,9 +289,9 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets kills for a specific system.
   """
-  def get_system_kills(system_id, limit \\ 50, opts \\ []) do
-    url = "#{@base_url}/universe/system_kills/"
-    label = "ESI.system_kills-#{system_id}"
+  def get_system_kills(system_id, limit \\ 50, _opts \\ []) do
+    url = "#{@base_url}/universe/system_kills/?datasource=tranquility"
+    _label = "ESI.system_kills-#{system_id}"
 
     headers = default_headers()
 
@@ -334,15 +333,6 @@ defmodule WandererNotifier.ESI.Client do
     [
       {"Accept", "application/json"},
       {"User-Agent", @user_agent}
-    ]
-  end
-
-  # Get retry options with default values
-  defp retry_opts do
-    [
-      max_attempts: 3,
-      base_timeout: 1000,
-      max_timeout: 5000
     ]
   end
 end

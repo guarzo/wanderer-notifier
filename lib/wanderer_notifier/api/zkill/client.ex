@@ -9,14 +9,6 @@ defmodule WandererNotifier.Api.ZKill.Client do
 
   alias WandererNotifier.ZKill.Client, as: NewZKillClient
 
-  @http_client Application.compile_env(
-                 :wanderer_notifier,
-                 :http_client,
-                 WandererNotifier.HttpClient.Httpoison
-               )
-
-  @base_url "https://zkillboard.com/api/"
-
   @doc """
   Get a single killmail by ID
 

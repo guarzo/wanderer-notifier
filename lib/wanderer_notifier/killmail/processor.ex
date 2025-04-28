@@ -14,10 +14,8 @@ defmodule WandererNotifier.Killmail.Processor do
   alias WandererNotifier.ZKill
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Context
-  alias WandererNotifier.Killmail.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Cache, as: KillCache
-  alias WandererNotifier.Notifications.KillmailNotification
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
   @max_retries 3

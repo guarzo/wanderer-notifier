@@ -1,4 +1,4 @@
-defmodule WandererNotifier.HttpClient do
+defmodule WandererNotifier.HttpClient.Behaviour do
   @moduledoc """
   Behaviour for HTTP clients
   """

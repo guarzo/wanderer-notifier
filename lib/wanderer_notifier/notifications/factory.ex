@@ -124,4 +124,18 @@ defmodule WandererNotifier.Notifications.Factory do
   def send_message(message) do
     notify(:send_message, [message])
   end
+
+  @doc """
+  Sends a system notification.
+
+  ## Parameters
+  - embed: The formatted embed to send
+
+  ## Returns
+  - {:ok, result} on success
+  - {:error, reason} on failure
+  """
+  def send_system_notification(embed) do
+    notify(:send_system_discord_embed, [embed])
+  end
 end

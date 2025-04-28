@@ -4,7 +4,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   """
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.Map.SystemsClient
+  alias WandererNotifier.Map.SystemsClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo

@@ -14,15 +14,11 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
-  alias WandererNotifier.Config.Debug
-  alias WandererNotifier.Config.Features
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface
-  alias WandererNotifier.Map.SystemsClient
 
   @default_interval :timer.minutes(5)
 
@@ -706,29 +702,5 @@ defmodule WandererNotifier.Core.Application.Service do
       AppLogger.api_info("WebSocket is disabled via configuration")
       :ok
     end
-  end
-
-  defp send_discord_notification(discord_embed) do
-    # Get main channel ID
-    main_channel_id = Notifications.channel_id(:main)
-
-    AppLogger.processor_debug("Sending Discord notification", %{
-      channel_id: main_channel_id,
-      embed_length: String.length(inspect(discord_embed))
-    })
-
-    # Send notification via Discord
-    NotificationInterface.send_message(discord_embed)
-  end
-
-  defp handle_websocket_error(reason) do
-    AppLogger.processor_error("Failed to start websocket", %{
-      error: inspect(reason)
-    })
-
-    # Notify via Discord
-    NotificationInterface.send_message("Failed to start websocket: #{inspect(reason)}")
-
-    # ... any additional error handling ...
   end
 end

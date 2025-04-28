@@ -5,7 +5,6 @@ defmodule WandererNotifier.Map.CharactersClient do
 
   require Logger
   alias WandererNotifier.Api.Map.Characters
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Config.Config
 
@@ -48,7 +47,12 @@ defmodule WandererNotifier.Map.CharactersClient do
   @doc """
   Gets character activity
 
-  Returns {:ok, activity_data} on success, {:error, reason} on failure
+  ## Parameters
+    - slug: The character slug to fetch activity for
+
+  ## Returns
+    - {:ok, activity_data} on success
+    - {:error, reason} on failure
   """
   def get_character_activity(slug) do
     Logger.info("Getting character activity", %{slug: slug})
@@ -70,14 +74,52 @@ defmodule WandererNotifier.Map.CharactersClient do
     end
   end
 
+  @doc """
+  Gets character activity with a specific timeframe
+
+  ## Parameters
+    - slug: The character slug to fetch activity for
+    - days: Number of days to fetch activity for
+
+  ## Returns
+    - {:ok, activity_data} on success
+    - {:error, reason} on failure
+  """
+  def get_character_activity(slug, days) do
+    Logger.info("Getting character activity", %{slug: slug, days: days})
+
+    # Build the URL for the activity endpoint with days parameter
+    activity_url = build_activity_url(slug, days)
+    headers = build_headers()
+
+    # Make the request
+    case HttpClient.get(activity_url, headers) do
+      {:ok, %{status_code: 200, body: body}} ->
+        {:ok, Jason.decode!(body)}
+
+      {:ok, %{status_code: status_code}} ->
+        {:error, "Failed to get character activity: HTTP #{status_code}"}
+
+      {:error, reason} ->
+        {:error, "Failed to get character activity: #{inspect(reason)}"}
+    end
+  end
+
   # Private helper functions
 
-  defp build_activity_url(slug) do
+  defp build_activity_url(slug, days \\ nil) do
     base_url = Config.map_url()
     uri = URI.parse(base_url)
     base_host = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
 
-    "#{base_host}/api/map/character_activity?slug=#{URI.encode_www_form(slug)}"
+    url = "#{base_host}/api/map/character_activity?slug=#{URI.encode_www_form(slug)}"
+
+    # Add days parameter if provided
+    if days do
+      "#{url}&days=#{days}"
+    else
+      url
+    end
   end
 
   defp build_headers do

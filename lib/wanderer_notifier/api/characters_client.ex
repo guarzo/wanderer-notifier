@@ -383,22 +383,4 @@ defmodule WandererNotifier.Api.CharactersClient do
         {:error, reason}
     end
   end
-
-  # Fetch character data from the API
-  defp fetch_characters_data(url) do
-    headers = UrlBuilder.get_auth_headers()
-
-    case HttpClient.get(url, headers) do
-      {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
-        {:ok, body}
-
-      {:ok, %{status_code: status_code}} ->
-        AppLogger.api_error("⚠️ API returned non-200 status: #{status_code}")
-        {:error, {:http_error, status_code}}
-
-      {:error, reason} ->
-        AppLogger.api_error("⚠️ HTTP request failed", error: inspect(reason))
-        {:error, {:http_error, reason}}
-    end
-  end
 end

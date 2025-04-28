@@ -48,16 +48,12 @@ run:
 # FRONTEND DEVELOPMENT TASKS
 # ============================
 # Build tasks for NPM components
-build.npm: build.frontend build.chart-service
+build.npm: build.frontend
 
 build.frontend:
 	@echo "Building frontend assets..."
 	@cd renderer && npm run build
 
-build.chart-service:
-	@echo "Installing chart-service dependencies if needed..."
-	@cd chart-service && npm install --silent
-	@echo "Chart service dependencies installed"
 
 # Development commands with automatic asset rebuilding
 dev: build.npm

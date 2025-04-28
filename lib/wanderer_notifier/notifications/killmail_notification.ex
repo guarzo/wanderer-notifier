@@ -12,7 +12,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
-  alias WandererNotifier.Killmail.Killmail
 
   @doc """
   Determines if a kill notification should be sent and sends it.

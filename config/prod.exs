@@ -25,9 +25,9 @@ config :logger, :module_levels, %{
   "WandererNotifier.Core.Maintenance.Scheduler" => :warning,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
-  "WandererNotifier.Api.Map.Client" => :warn,
-  "WandererNotifier.Api.Map.Systems" => :warn,
-  "WandererNotifier.Api.Map.Characters" => :warn,
+  "WandererNotifier.Map.Client" => :warn,
+  "WandererNotifier.Map.SystemsClient" => :warn,
+  "WandererNotifier.Map.CharactersClient" => :warn,
   "WandererNotifier.Notifiers.Discord" => :warn,
   "WandererNotifier.Api.ZKill.Websocket" => :warning
 }

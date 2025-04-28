@@ -8,7 +8,6 @@ defmodule WandererNotifier.Api.Map.Characters do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Character.Character
-  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface

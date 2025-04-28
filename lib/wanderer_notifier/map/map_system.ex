@@ -22,6 +22,18 @@ defmodule WandererNotifier.Map.MapSystem do
     :constellation_name,
     :updated_at,
     :status,
+    :system_type,
+    :type_description,
+    :is_shattered,
+    :class_title,
+    :effect_name,
+    :statics,
+    :static_details,
+    :sun_type_id,
+    :solar_system_id,
+    :original_name,
+    :temporary_name,
+    :locked,
     jumps: 0,
     npc_kills: 0,
     pod_kills: 0,
@@ -39,6 +51,18 @@ defmodule WandererNotifier.Map.MapSystem do
           constellation_name: String.t() | nil,
           updated_at: DateTime.t() | nil,
           status: atom() | nil,
+          system_type: atom() | nil,
+          type_description: String.t() | nil,
+          is_shattered: boolean() | nil,
+          class_title: String.t() | nil,
+          effect_name: String.t() | nil,
+          statics: list() | nil,
+          static_details: list() | nil,
+          sun_type_id: integer() | nil,
+          solar_system_id: integer() | nil,
+          original_name: String.t() | nil,
+          temporary_name: String.t() | nil,
+          locked: boolean() | nil,
           jumps: integer(),
           npc_kills: integer(),
           pod_kills: integer(),
@@ -420,6 +444,113 @@ defmodule WandererNotifier.Map.MapSystem do
 
       _ ->
         nil
+    end
+  end
+
+  @doc """
+  Updates a MapSystem with static information from the API.
+
+  ## Parameters
+    - system: The MapSystem struct to update
+    - static_info: Static information from the API
+
+  ## Returns
+    - An updated MapSystem struct
+  """
+  @spec update_with_static_info(t(), map()) :: t()
+  def update_with_static_info(system, static_info) when is_map(static_info) do
+    # Extract the data section if present
+    data = Map.get(static_info, "data", %{})
+
+    # Extract useful fields
+    statics = Map.get(data, "statics", [])
+    effect = Map.get(data, "effect", %{})
+
+    # Update the system struct with the static info
+    %{
+      system
+      | system_type: determine_system_type(data),
+        type_description: Map.get(data, "type_description"),
+        is_shattered: Map.get(data, "is_shattered", false),
+        class_title: Map.get(data, "class"),
+        effect_name: Map.get(effect, "name"),
+        statics: statics,
+        static_details: extract_static_details(statics, data),
+        sun_type_id: Map.get(data, "sun_type_id")
+    }
+  end
+
+  # If no static info provided, return the system unchanged
+  def update_with_static_info(system, _), do: system
+
+  # Helper to determine system type from static info
+  defp determine_system_type(data) do
+    type = Map.get(data, "type")
+
+    cond do
+      type == "wormhole" -> :wormhole
+      Map.get(data, "security", 0) >= 0.5 -> :highsec
+      Map.get(data, "security", 0) > 0.0 -> :lowsec
+      Map.get(data, "security", 0) <= 0.0 -> :nullsec
+      Map.get(data, "is_triglavian", false) -> :pochven
+      Map.get(data, "is_abyssal", false) -> :abyssal
+      true -> :unknown
+    end
+  end
+
+  # Helper to extract and format static wormhole details
+  defp extract_static_details(statics, _data) do
+    if is_list(statics) do
+      Enum.map(statics, fn static ->
+        static_type = Map.get(static, "type")
+
+        # Determine destination from wormhole type
+        destination =
+          case static_type do
+            # K162 is the incoming side
+            "K162" -> "Unknown"
+            "Z142" -> "Nullsec"
+            "E545" -> "Nullsec"
+            "N766" -> "Nullsec"
+            "S199" -> "Nullsec"
+            "R474" -> "Highsec"
+            "U210" -> "Lowsec"
+            "L031" -> "Lowsec"
+            "B449" -> "Highsec"
+            "M267" -> "C3 Wormhole"
+            "E175" -> "C4 Wormhole"
+            "X877" -> "C4 Wormhole"
+            "N110" -> "Highsec"
+            "D845" -> "Highsec"
+            "C247" -> "C3 Wormhole"
+            "O477" -> "C3 Wormhole"
+            "Y683" -> "C4 Wormhole"
+            "N062" -> "C5 Wormhole"
+            "R943" -> "C2 Wormhole"
+            "V301" -> "C1 Wormhole"
+            "I184" -> "C2 Wormhole"
+            "T405" -> "C4 Wormhole"
+            "N432" -> "C5 Wormhole"
+            "C248" -> "C5 Wormhole"
+            "Q317" -> "C1 Wormhole"
+            "J244" -> "Lowsec"
+            "H121" -> "C1 Wormhole"
+            "Z060" -> "Nullsec"
+            "Z457" -> "Nullsec"
+            "A982" -> "C6 Wormhole"
+            "W237" -> "C6 Wormhole"
+            "H900" -> "C5 Wormhole"
+            "U574" -> "C6 Wormhole"
+            "V928" -> "Nullsec"
+            "C140" -> "Lowsec"
+            _ -> "Unknown"
+          end
+
+        # Merge destination info with the original static data
+        Map.merge(static, %{"destination" => destination})
+      end)
+    else
+      []
     end
   end
 end

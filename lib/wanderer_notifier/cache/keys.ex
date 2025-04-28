@@ -46,7 +46,6 @@ defmodule WandererNotifier.Cache.Keys do
   @entity_kills "kills"
   @entity_corporation "corporation"
   @entity_alliance "alliance"
-  @entity_region "region"
 
   # Separator
   @separator ":"
@@ -350,52 +349,201 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   @doc """
-  Validates if a key follows the correct pattern.
+  Validates if a key follows the standard pattern.
+
+  ## Parameters
+    - key: The cache key to validate
+
+  ## Returns
+    - true if key is valid
+    - false if key is not valid
 
   ## Examples
       iex> WandererNotifier.Cache.Keys.valid?("map:system:12345")
       true
+
       iex> WandererNotifier.Cache.Keys.valid?("invalid-key")
       false
   """
   @spec valid?(String.t()) :: boolean()
   def valid?(key) when is_binary(key) do
-    key =~ ~r/^[a-z_]+:[a-z0-9_]+(?::[a-z0-9_]+)*$/
+    # Pattern: at least one segment with a separator
+    # Must have at least two parts
+    String.contains?(key, @separator) &&
+      length(String.split(key, @separator)) >= 2
   end
 
+  def valid?(_), do: false
+
   @doc """
-  Extracts the pattern parts from a key.
+  Extracts components from a key based on a pattern.
+
+  ## Parameters
+    - key: The cache key to extract from
+    - pattern: The pattern to match against
+
+  ## Returns
+    - List of extracted components if successful
+    - Empty list if no match
 
   ## Examples
-      iex> WandererNotifier.Cache.Keys.extract_pattern("map:system:12345")
-      ["map", "system", "12345"]
+      iex> WandererNotifier.Cache.Keys.extract_pattern("map:system:12345", "map:system:*")
+      ["12345"]
+
+      iex> WandererNotifier.Cache.Keys.extract_pattern("map:character:98765", "map:*:*")
+      ["character", "98765"]
   """
-  @spec extract_pattern(String.t()) :: [String.t()]
-  def extract_pattern(key) when is_binary(key) do
-    String.split(key, @separator)
+  @spec extract_pattern(String.t(), String.t()) :: list(String.t())
+  def extract_pattern(key, pattern) when is_binary(key) and is_binary(pattern) do
+    key_parts = String.split(key, @separator)
+    pattern_parts = String.split(pattern, @separator)
+
+    # Only continue if the parts match in length
+    if length(key_parts) == length(pattern_parts) do
+      extract_matching_parts(key_parts, pattern_parts, [])
+    else
+      []
+    end
+  end
+
+  def extract_pattern(_, _), do: []
+
+  # Helper function to extract matching parts
+  defp extract_matching_parts([], [], acc), do: Enum.reverse(acc)
+
+  defp extract_matching_parts([key_part | key_rest], ["*" | pattern_rest], acc) do
+    # Wildcard matches any value, so add the key part to accumulator
+    extract_matching_parts(key_rest, pattern_rest, [key_part | acc])
+  end
+
+  defp extract_matching_parts([key_part | key_rest], [pattern_part | pattern_rest], acc) do
+    # Check if the parts match exactly
+    if key_part == pattern_part do
+      extract_matching_parts(key_rest, pattern_rest, acc)
+    else
+      # Pattern doesn't match
+      []
+    end
   end
 
   @doc """
-  Extracts a map key prefix and entity type from a key.
+  Returns detailed information about a cache key.
+
+  ## Parameters
+    - key: The cache key to analyze
+
+  ## Returns
+    - Map with key details if valid
+    - {:error, :invalid_key} if invalid
 
   ## Examples
       iex> WandererNotifier.Cache.Keys.map_key_info("map:system:12345")
-      {:ok, "system", "12345"}
-      iex> WandererNotifier.Cache.Keys.map_key_info("invalid-key")
-      {:error, :invalid_key}
+      %{
+        prefix: "map",
+        entity_type: "system",
+        id: "12345",
+        parts: ["map", "system", "12345"]
+      }
   """
-  @spec map_key_info(String.t()) :: {:ok, String.t(), String.t()} | {:error, :invalid_key}
+  @spec map_key_info(String.t()) :: map() | {:error, :invalid_key}
   def map_key_info(key) when is_binary(key) do
-    parts = extract_pattern(key)
+    if valid?(key) do
+      parts = String.split(key, @separator)
 
-    case parts do
-      [@prefix_map, entity_type, id] -> {:ok, entity_type, id}
-      _ -> {:error, :invalid_key}
+      case parts do
+        # Standard format: prefix:entity_type:id
+        [prefix, entity_type, id | rest] ->
+          %{
+            prefix: prefix,
+            entity_type: entity_type,
+            id: id,
+            parts: parts,
+            extra: rest
+          }
+
+        # Simple format: prefix:name
+        [prefix, name] ->
+          %{
+            prefix: prefix,
+            name: name,
+            parts: parts
+          }
+
+        _ ->
+          %{
+            parts: parts
+          }
+      end
+    else
+      {:error, :invalid_key}
     end
   end
+
+  def map_key_info(_), do: {:error, :invalid_key}
 
   # Private helper function to join parts with separator
   defp join_parts(parts) when is_list(parts) do
     Enum.join(parts, @separator)
+  end
+
+  @doc """
+  Generates a cache key for tracked systems.
+
+  ## Examples
+      iex> WandererNotifier.Cache.Keys.tracked_systems()
+      "tracked:systems"
+  """
+  @spec tracked_systems() :: String.t()
+  def tracked_systems do
+    tracked_systems_list()
+  end
+
+  @doc """
+  Generates a cache key for a killmail.
+
+  ## Examples
+      iex> WandererNotifier.Cache.Keys.killmail(12345, "abc123")
+      "esi:killmail:12345:abc123"
+  """
+  @spec killmail(integer() | String.t(), String.t()) :: String.t()
+  def killmail(kill_id, killmail_hash)
+      when (is_integer(kill_id) or is_binary(kill_id)) and is_binary(killmail_hash) do
+    join_parts([@prefix_esi, @entity_killmail, to_string(kill_id), killmail_hash])
+  end
+
+  @doc """
+  Generates a cache key for a corporation.
+
+  ## Examples
+      iex> WandererNotifier.Cache.Keys.corporation(12345)
+      "esi:corporation:12345"
+  """
+  @spec corporation(integer() | String.t()) :: String.t()
+  def corporation(corporation_id) when is_integer(corporation_id) or is_binary(corporation_id) do
+    join_parts([@prefix_esi, @entity_corporation, to_string(corporation_id)])
+  end
+
+  @doc """
+  Generates a cache key for an alliance.
+
+  ## Examples
+      iex> WandererNotifier.Cache.Keys.alliance(12345)
+      "esi:alliance:12345"
+  """
+  @spec alliance(integer() | String.t()) :: String.t()
+  def alliance(alliance_id) when is_integer(alliance_id) or is_binary(alliance_id) do
+    join_parts([@prefix_esi, @entity_alliance, to_string(alliance_id)])
+  end
+
+  @doc """
+  Generates a cache key for a ship type.
+
+  ## Examples
+      iex> WandererNotifier.Cache.Keys.ship_type(12345)
+      "esi:ship_type:12345"
+  """
+  @spec ship_type(integer() | String.t()) :: String.t()
+  def ship_type(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
+    join_parts([@prefix_esi, "ship_type", to_string(ship_type_id)])
   end
 end

@@ -224,7 +224,7 @@ defmodule WandererNotifier.ZKill.Client do
       end
     end
 
-    defp validate_killmail_format(killmail, kill_id) do
+    defp validate_killmail_format(killmail, _kill_id) do
       cond do
         not is_map(killmail) ->
           {:error, {:invalid_killmail_format, :not_a_map}}

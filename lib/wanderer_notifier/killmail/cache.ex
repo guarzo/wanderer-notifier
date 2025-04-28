@@ -6,9 +6,6 @@ defmodule WandererNotifier.Killmail.Cache do
   - Provides retrieval methods for cached kills
   - Maintains a list of kill IDs for quick access
   """
-  alias __MODULE__
-  alias WandererNotifier.Killmail
-  alias WandererNotifier.Killmail.Character
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -91,6 +88,31 @@ defmodule WandererNotifier.Killmail.Cache do
       |> Enum.into(%{})
 
     {:ok, kills}
+  end
+
+  @doc """
+  Gets all recent cached kills as a list for API consumption.
+
+  ## Returns
+  - List of killmails with their IDs
+  """
+  def get_latest_killmails do
+    # Get the list of cached kill IDs
+    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+
+    # Map through and get each kill
+    kill_ids
+    |> Enum.map(fn id ->
+      key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+      kill = CacheRepo.get(key)
+
+      if kill do
+        Map.put(kill, "id", id)
+      else
+        nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """
