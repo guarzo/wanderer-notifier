@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Api.Map.SystemStaticInfo do
+defmodule WandererNotifier.Api.Clients.MapSystemStaticInfo do
   @moduledoc """
   Client for fetching static information about EVE systems from the map API.
   Provides clean access to detailed system information for wormholes and other systems.
@@ -196,62 +196,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
         )
 
         error
-    end
-  end
-
-  @doc """
-  Enriches a MapSystem with static information.
-
-  ## Parameters
-    - system: A WandererNotifier.Data.MapSystem struct
-
-  ## Returns
-    - {:ok, enhanced_system} on success with enriched data
-    - {:ok, system} on failure but returns the original system
-  """
-  def enrich_system(system) do
-    alias WandererNotifier.Map.MapSystem
-
-    AppLogger.api_debug("[SystemStaticInfo] Starting system enrichment",
-      system_name: system.name,
-      system_id: system.solar_system_id
-    )
-
-    # Only try to enrich if the system has a valid ID
-    if system.solar_system_id && system.solar_system_id > 0 do
-      # Try to get static info with proper error handling
-      case get_system_static_info(system.solar_system_id) do
-        {:ok, static_info} ->
-          AppLogger.api_debug("[SystemStaticInfo] Got static info for enrichment",
-            system_name: system.name,
-            static_info_keys: Map.keys(static_info)
-          )
-
-          # Update the map system with static information
-          enhanced_system = MapSystem.update_with_static_info(system, static_info)
-
-          {:ok, enhanced_system}
-
-        {:error, reason} ->
-          # Log error but continue with original system
-          AppLogger.api_warn(
-            "[SystemStaticInfo] Could not enrich system",
-            system_name: system.name,
-            error: inspect(reason)
-          )
-
-          # Return original system - IMPORTANT: Don't error out!
-          {:ok, system}
-      end
-    else
-      # Invalid system ID - log and return original
-      AppLogger.api_warn(
-        "[SystemStaticInfo] System has invalid ID",
-        system_name: system.name,
-        system_id: system.solar_system_id
-      )
-
-      {:ok, system}
     end
   end
 end

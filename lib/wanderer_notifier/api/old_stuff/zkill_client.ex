@@ -1,9 +1,9 @@
-defmodule WandererNotifier.Killmail.ZKill.Client do
+defmodule WandererNotifier.Api.ZKill.Client do
   @moduledoc """
   Client for interacting with the ZKillboard API.
   """
 
-  @behaviour WandererNotifier.Killmail.ZKill.ClientBehaviour
+  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -50,9 +50,7 @@ defmodule WandererNotifier.Killmail.ZKill.Client do
     """
 
     alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.HttpClient
 
-    @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
     @base_url "https://zkillboard.com/api"
     @user_agent "WandererNotifier/1.0"
     @rate_limit_ms 1000
@@ -176,18 +174,18 @@ defmodule WandererNotifier.Killmail.ZKill.Client do
     end
 
     defp make_http_request(url, headers) do
-      case @http_client.request(:get, url, headers, nil, follow_redirect: true) do
-        {:ok, %{status_code: 200, body: body}} ->
+      case HTTPoison.get(url, headers, follow_redirect: true) do
+        {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
           {:ok, body}
 
-        {:ok, %{status_code: status_code, body: body}} ->
+        {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
           AppLogger.api_error("ZKill HTTP error", %{
-            status: status_code,
-            body_sample: String.slice(inspect(body) || "", 0, 200),
+            status: status,
+            body_sample: String.slice(body || "", 0, 200),
             url: url
           })
 
-          {:error, {:http_error, status_code}}
+          {:error, {:http_error, status}}
 
         {:error, reason} ->
           AppLogger.api_error("ZKill HTTP request failed", %{
@@ -201,28 +199,70 @@ defmodule WandererNotifier.Killmail.ZKill.Client do
 
     defp decode_killmail_response(body, kill_id) do
       case Jason.decode(body) do
-        {:ok, [killmail | _]} when is_map(killmail) ->
+        {:ok, response} ->
+          handle_decoded_response(response, kill_id)
+
+        {:error, reason} ->
+          handle_decode_error(reason, body, kill_id)
+      end
+    end
+
+    # Handle different types of successful response formats
+    defp handle_decoded_response(response, kill_id) do
+      cond do
+        # Single killmail map
+        is_map(response) ->
+          {:ok, response}
+
+        # Single killmail in a list
+        is_list(response) && length(response) == 1 ->
+          [killmail] = response
           {:ok, killmail}
 
-        {:ok, []} ->
-          AppLogger.api_error("ZKill empty response for kill_id", %{kill_id: kill_id})
-          {:error, :killmail_not_found}
+        # Empty list - no killmail found
+        is_list(response) && response == [] ->
+          log_zkill_warning(kill_id, "empty_response", "No killmail found")
+          {:error, {:domain_error, :zkill, {:not_found, kill_id}}}
 
-        {:ok, non_list_response} ->
-          AppLogger.api_error("ZKill unexpected response format", %{
-            response: inspect(non_list_response)
+        # Multiple killmails - unexpected but we can take the first one
+        is_list(response) ->
+          log_zkill_warning(
+            kill_id,
+            "multiple_killmails",
+            "Multiple killmails returned for single ID",
+            %{count: length(response)}
+          )
+
+          [killmail | _] = response
+          {:ok, killmail}
+
+        # Boolean or other unexpected formats
+        true ->
+          format_type = typeof(response)
+
+          log_zkill_warning(kill_id, "unexpected_format", "Unexpected response format", %{
+            format_type: format_type
           })
 
-          {:error, :invalid_response_format}
-
-        {:error, %Jason.DecodeError{} = error} ->
-          AppLogger.api_error("ZKill JSON decode error", %{
-            error: inspect(error),
-            body_sample: String.slice(body || "", 0, 200)
-          })
-
-          {:error, {:json_decode_error, error}}
+          {:error, {:domain_error, :zkill, {:unexpected_format, format_type}}}
       end
+    end
+
+    # Handle JSON decode errors
+    defp handle_decode_error(reason, body, kill_id) do
+      AppLogger.api_error("ZKill JSON decode error", %{
+        kill_id: kill_id,
+        error: inspect(reason),
+        body_sample: String.slice(body || "", 0, 200)
+      })
+
+      {:error, {:domain_error, :zkill, {:json_decode_error, reason}}}
+    end
+
+    # Helper to log ZKill warnings consistently
+    defp log_zkill_warning(kill_id, reason, message, extra_metadata \\ %{}) do
+      metadata = Map.merge(%{kill_id: kill_id, reason: reason}, extra_metadata)
+      AppLogger.api_warn("ZKill #{message}", metadata)
     end
 
     defp decode_kills_response(body) do
@@ -230,116 +270,95 @@ defmodule WandererNotifier.Killmail.ZKill.Client do
         {:ok, kills} when is_list(kills) ->
           {:ok, kills}
 
-        {:ok, data} ->
-          AppLogger.api_error("ZKill unexpected response format", %{
-            type: inspect(data),
-            sample: String.slice(inspect(data), 0, 100)
+        {:ok, response} ->
+          AppLogger.api_error("ZKill invalid kills response format", %{
+            response_type: typeof(response),
+            response_sample: inspect(response, limit: 50)
           })
 
           {:error, :invalid_response_format}
 
-        {:error, %Jason.DecodeError{} = error} ->
-          AppLogger.api_error("ZKill JSON decode error", %{
-            error: inspect(error),
+        {:error, reason} ->
+          AppLogger.api_error("ZKill JSON decode error for kills", %{
+            error: inspect(reason),
             body_sample: String.slice(body || "", 0, 200)
           })
 
-          {:error, {:json_decode_error, error}}
+          {:error, {:json_decode_error, reason}}
       end
     end
 
     defp validate_killmail_format(killmail, kill_id) do
-      with true <- is_map(killmail),
-           true <- Map.has_key?(killmail, "killmail_id"),
-           true <- validate_zkb_section(killmail) do
-        # Successful validation
+      if Map.has_key?(killmail, "killmail_id") do
         {:ok, killmail}
       else
-        false ->
-          # Validation failed
-          AppLogger.api_error("ZKill invalid killmail format", %{
-            kill_id: kill_id,
-            killmail_keys: Map.keys(killmail),
-            has_zkb: Map.has_key?(killmail, "zkb")
-          })
+        AppLogger.api_warn("ZKill invalid killmail format", %{
+          kill_id: kill_id,
+          reason: "missing_killmail_id",
+          response_keys: Map.keys(killmail)
+        })
 
-          {:error, :invalid_killmail_format}
-
-        error ->
-          # Other error
-          AppLogger.api_error("ZKill killmail validation failed", %{
-            kill_id: kill_id,
-            error: inspect(error)
-          })
-
-          {:error, error}
+        {:error, {:domain_error, :zkill, {:invalid_format, :missing_killmail_id}}}
       end
     end
 
-    defp validate_zkb_section(killmail) do
-      Map.has_key?(killmail, "zkb") and is_map(killmail["zkb"])
+    defp build_character_kills_url(character_id, date_range) do
+      base_url = "#{@base_url}/characterID/#{character_id}/"
+
+      if date_range do
+        params = build_date_range_params(date_range)
+        if params != "", do: base_url <> "?#{params}", else: base_url
+      else
+        base_url
+      end
     end
 
-    defp make_request_with_retry(request_fun, retries \\ 0)
+    defp build_date_range_params(date_range) do
+      start_param =
+        if date_range.start,
+          do: "startTime=#{DateTime.to_iso8601(date_range.start)}",
+          else: ""
 
-    defp make_request_with_retry(request_fun, retries) when retries < @max_retries do
-      case request_fun.() do
-        {:error, reason} ->
-          AppLogger.api_debug("ZKill request failed, attempting retry", %{
-            retry: retries + 1,
+      end_param =
+        if date_range.end,
+          do: "endTime=#{DateTime.to_iso8601(date_range.end)}",
+          else: ""
+
+      Enum.join([start_param, end_param], "&")
+    end
+
+    defp make_request_with_retry(request_fn, retry_count \\ 0) do
+      case request_fn.() do
+        {:error, {:http_error, status}}
+        when status in [429, 500, 502, 503, 504] and retry_count < @max_retries ->
+          backoff_time = (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
+
+          AppLogger.api_warn("ZKill retrying request after error", %{
+            status_code: status,
+            retry_count: retry_count + 1,
             max_retries: @max_retries,
-            reason: inspect(reason)
+            backoff_ms: backoff_time
           })
 
-          # Exponential backoff
-          :timer.sleep(@retry_backoff_ms * 2 ** retries)
-          make_request_with_retry(request_fun, retries + 1)
+          :timer.sleep(backoff_time)
+          make_request_with_retry(request_fn, retry_count + 1)
 
         result ->
           result
       end
     end
 
-    defp make_request_with_retry(_request_fun, retries) do
-      AppLogger.api_error("ZKill max retries exceeded", %{retries: retries})
-      {:error, :max_retries_exceeded}
-    end
-
-    defp build_character_kills_url(character_id, date_range) do
-      base = "#{@base_url}/characterID/#{character_id}/"
-
-      if date_range do
-        # Add date parameters if a range was provided
-        params = []
-
-        params =
-          if date_range.start do
-            [
-              "startTime=#{date_range.start |> Calendar.strftime("%Y%m%d%H%M")}"
-              | params
-            ]
-          else
-            params
-          end
-
-        params =
-          if date_range.end do
-            [
-              "endTime=#{date_range.end |> Calendar.strftime("%Y%m%d%H%M")}"
-              | params
-            ]
-          else
-            params
-          end
-
-        if Enum.empty?(params) do
-          base
-        else
-          base <> "?" <> Enum.join(params, "&")
-        end
-      else
-        base
-      end
-    end
+    defp typeof(term) when is_boolean(term), do: "boolean"
+    defp typeof(term) when is_binary(term), do: "string"
+    defp typeof(term) when is_number(term), do: "number"
+    defp typeof(term) when is_list(term), do: "list"
+    defp typeof(term) when is_map(term), do: "map"
+    defp typeof(term) when is_atom(term), do: "atom"
+    defp typeof(term) when is_function(term), do: "function"
+    defp typeof(term) when is_pid(term), do: "pid"
+    defp typeof(term) when is_reference(term), do: "reference"
+    defp typeof(term) when is_tuple(term), do: "tuple"
+    defp typeof(term) when is_struct(term), do: "struct:#{term.__struct__}"
+    defp typeof(_), do: "unknown"
   end
 end

@@ -5,7 +5,7 @@ defmodule WandererNotifier.Processing.Killmail.Core do
   """
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Killmail.ZKillClient
   alias WandererNotifier.Data.{Killmail, Repository}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer

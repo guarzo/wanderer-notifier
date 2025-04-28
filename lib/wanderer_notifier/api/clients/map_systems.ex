@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Api.Map.Systems do
+defmodule WandererNotifier.Api.Clients.MapSystems do
   @moduledoc """
   Retrieves and processes system data from the map API, filtering for wormhole systems.
 

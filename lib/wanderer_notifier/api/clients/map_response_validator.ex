@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Api.Map.ResponseValidator do
+defmodule WandererNotifier.Api.Clients.MapResponseValidator do
   @moduledoc """
   Validates Map API responses against expected schemas.
 

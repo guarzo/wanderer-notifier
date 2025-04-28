@@ -1,14 +1,14 @@
-defmodule WandererNotifier.Map.Client do
+defmodule WandererNotifier.Api.Map.Client do
   @moduledoc """
   Client for interacting with the Wanderer map API.
 
   This module provides a simplified facade over the specific client modules
   for different map API endpoints, handling feature checks and error management.
   """
-  alias WandererNotifier.Map.CharactersClient
-  alias WandererNotifier.Map.SystemsClient
+  alias WandererNotifier.Api.Map.CharactersClient
+  alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """

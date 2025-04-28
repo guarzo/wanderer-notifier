@@ -64,25 +64,18 @@ end
 {:ok, _pid} = WandererNotifier.TestSupervisor.start_link([])
 
 # Define mocks for external services
-Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
-  for: WandererNotifier.Api.ZKill.ServiceBehaviour
-)
-
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 
 # Configure application to use mocks
-Application.put_env(:wanderer_notifier, :zkill_service, WandererNotifier.Api.ZKill.ServiceMock)
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
 # Cache-related mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
-Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
 
 # Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,

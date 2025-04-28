@@ -32,9 +32,11 @@ config :logger, :debug_log,
   metadata: [:trace_id, :character_id, :kill_count, :killmail_id]
 
 # Set ZKill-specific logs to info level
-config :logger, :module_levels, %{
-  "WandererNotifier.Api.ZKill" => :info,
-  "WandererNotifier.Api.ZKill.Client" => :info,
-  "WandererNotifier.Api.ZKill.Service" => :info,
-  "WandererNotifier.Api.ZKill.Websocket" => :info
-}
+config :logger,
+       :module_levels,
+       %{
+         # "WandererNotifier.Api.ZKill" => :info,
+         # "WandererNotifier.Api.ZKill.Client" => :info,
+         # "WandererNotifier.Api.ZKill.Service" => :info,
+         # "WandererNotifier.Api.ZKill.Websocket" => :info
+       }

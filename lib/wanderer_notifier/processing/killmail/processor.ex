@@ -11,12 +11,12 @@ defmodule WandererNotifier.Processing.Killmail.Processor do
   - Cache: Manages caching of killmail data
   """
 
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Killmail.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Notification}
+  alias WandererNotifier.Killmail.ZKillClient
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
   @max_retries 3

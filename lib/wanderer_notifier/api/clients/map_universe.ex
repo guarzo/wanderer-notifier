@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Api.Map.Universe do
+defmodule WandererNotifier.Api.Clients.MapUniverse do
   @moduledoc """
   Handles universe-related functionality.
   """

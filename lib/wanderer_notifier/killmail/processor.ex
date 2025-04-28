@@ -11,11 +11,11 @@ defmodule WandererNotifier.Killmail.Processor do
   - Cache: Manages caching of killmail data
   """
 
-  alias WandererNotifier.ZKill
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Cache, as: KillCache
+  alias WandererNotifier.Killmail.ZKillClient
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
   @max_retries 3
@@ -124,7 +124,7 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp fetch_and_process_zkill_data(kill_id, state, retry_count \\ 0) do
-    case ZKill.get_killmail(kill_id) do
+    case ZKillClient.get_killmail(kill_id) do
       {:ok, zkb_data} ->
         # Cache the result - we need to convert the struct to a map
         zkb_data_map = Map.from_struct(zkb_data)

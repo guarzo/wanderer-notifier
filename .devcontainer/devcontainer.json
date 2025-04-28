@@ -81,5 +81,5 @@
     }
   },
 
-  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install && chmod +x /workspace/.devcontainer/db-init.sh"
+  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install"
 }

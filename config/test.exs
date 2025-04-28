@@ -29,7 +29,6 @@ config :wanderer_notifier,
     track_kspace_systems: true
   },
   cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
-  zkill_service: WandererNotifier.Api.ZKill.ServiceMock,
   esi_service: WandererNotifier.ESI.ServiceMock
 
 # Configure cache

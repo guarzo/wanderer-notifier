@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Api.Map.UrlBuilder do
+defmodule WandererNotifier.Api.Clients.MapUrlBuilder do
   @moduledoc """
   Builds URLs for the map API endpoints.
   """

@@ -60,7 +60,6 @@ config :logger, :module_levels, %{
   "WandererNotifier.Map.SystemsClient" => :info,
   "WandererNotifier.Map.CharactersClient" => :info,
   "WandererNotifier.Notifiers.Discord" => :info,
-  "WandererNotifier.Api.ZKill.Websocket" => :info,
   "WandererNotifier.Application" => :info,
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
@@ -98,7 +97,6 @@ config :wanderer_notifier, cache_name: :wanderer_cache
 
 # Configure service modules
 config :wanderer_notifier,
-  zkill_service: WandererNotifier.Api.ZKill.Service,
   esi_service: WandererNotifier.ESI.Service,
   cache_impl: WandererNotifier.Cache.CachexImpl
 
