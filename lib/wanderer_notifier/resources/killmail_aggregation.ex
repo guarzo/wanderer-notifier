@@ -20,10 +20,11 @@ defmodule WandererNotifier.Resources.KillmailAggregation do
   def get_recent_killmails(limit \\ 100) do
     AppLogger.persistence_info("Fetching recent killmails", %{limit: limit})
 
-    case Killmail
-         |> Query.sort(kill_time: :desc)
-         |> Query.limit(limit)
-         |> Api.read() do
+    case Killmail.read_safely(
+           Killmail
+           |> Query.sort(kill_time: :desc)
+           |> Query.limit(limit)
+         ) do
       {:ok, killmails} ->
         AppLogger.persistence_info("Retrieved recent killmails", %{
           count: length(killmails)

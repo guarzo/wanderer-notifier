@@ -10,6 +10,12 @@ defmodule WandererNotifier.Resources.Killmail do
       AshPostgres.Resource
     ]
 
+  @behaviour WandererNotifier.Resources.KillmailBehaviour
+
+  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Resources.Api
+
   # Predefine atoms to ensure they exist at compile time
   @character_roles [:attacker, :victim]
 
@@ -187,22 +193,33 @@ defmodule WandererNotifier.Resources.Killmail do
     define(:destroy, action: :destroy)
   end
 
-  # Custom queries for the code interface
-  defmodule Queries do
-    @moduledoc false
-    import Ash.Query
+  @doc """
+  Checks if database operations are enabled based on feature flags.
+  Returns true if either map_charts or kill_charts is enabled.
+  """
+  def database_enabled? do
+    # Use the Config module functions to determine if features are enabled
+    map_charts_enabled = Config.map_charts_enabled?()
+    kill_charts_enabled = Config.kill_charts_enabled?()
 
-    def get_by_killmail_id(query, killmail_id) do
-      filter(query, killmail_id == ^killmail_id)
-    end
+    # Combined result (either feature enables database)
+    map_charts_enabled || kill_charts_enabled
+  end
 
-    def list_for_character(query, character_id, from_date, to_date, limit) do
-      query
-      |> filter(related_character_id == ^character_id)
-      |> filter(kill_time >= ^from_date)
-      |> filter(kill_time <= ^to_date)
-      |> sort(kill_time: :desc)
-      |> limit(limit)
+  @doc """
+  Safely reads killmails from the database, with a fallback when database is disabled.
+  """
+  def read_safely(query \\ nil) do
+    if database_enabled?() do
+      # Database is enabled, proceed with normal read
+      case query do
+        nil -> Api.read(__MODULE__)
+        query -> Api.read(query)
+      end
+    else
+      # Database is disabled, return empty list
+      AppLogger.persistence_debug("Database operations disabled, skipping killmail read")
+      {:ok, []}
     end
   end
 end
