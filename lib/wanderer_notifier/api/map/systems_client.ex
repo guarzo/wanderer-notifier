@@ -202,8 +202,8 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
       # If tracking K-space systems is disabled, filter out K-space systems
       systems
       |> Enum.filter(fn system ->
-        # Keep only wormhole systems (class 1-6)
-        system.security_class in ["C1", "C2", "C3", "C4", "C5", "C6", "C13"]
+        security_class = Map.get(system, :security_class)
+        is_nil(security_class) or security_class in ["C1", "C2", "C3", "C4", "C5", "C6", "C13"]
       end)
     end
   end
