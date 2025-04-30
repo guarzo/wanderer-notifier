@@ -497,7 +497,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   end
 
   # Get weekly statistics for tracked characters
-  defp get_weekly_stats(tracked_characters) do
+  defp get_weekly_stats(_tracked_characters) do
     # Get weekly statistics for these characters
     case Killmail.read_safely(
            KillmailStatistic

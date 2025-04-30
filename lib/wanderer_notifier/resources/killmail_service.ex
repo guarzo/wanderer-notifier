@@ -5,6 +5,7 @@ defmodule WandererNotifier.Resources.KillmailService do
   """
 
   alias WandererNotifier.Resources.KillmailPersistence
+  alias WandererNotifier.Data.Killmail
 
   @doc """
   Persists a killmail to the database if it's relevant to tracked characters.
@@ -19,8 +20,8 @@ defmodule WandererNotifier.Resources.KillmailService do
   More explicit version of maybe_persist_killmail.
   """
   @spec persist_killmail(map()) :: {:ok, :persisted} | :ignored | {:error, String.t()}
-  def persist_killmail(kill) do
-    KillmailPersistence.persist_killmail(kill)
+  def persist_killmail(%Killmail{} = kill) do
+    KillmailPersistence.persist_killmail(kill, nil)
   end
 
   @doc """

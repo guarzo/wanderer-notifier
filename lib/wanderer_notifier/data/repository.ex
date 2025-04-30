@@ -8,7 +8,6 @@ defmodule WandererNotifier.Data.Repository do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.AppLogger, as: Logger
-  alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   require Ash.Query
 

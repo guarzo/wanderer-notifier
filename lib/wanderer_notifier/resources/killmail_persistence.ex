@@ -31,12 +31,10 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
-  alias WandererNotifier.Utils.ListUtils
 
   # Cache TTL for processed kill IDs - 24 hours
   @processed_kills_ttl_seconds 86_400
   # TTL for zkillboard data - 1 hour
-  @zkillboard_cache_ttl_seconds 3600
 
   postgres do
     table("killmails")
@@ -72,6 +70,18 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
   end
 
   @impl true
+  def persist_killmail(%KillmailStruct{} = killmail, character_id) do
+    if Killmail.database_enabled?() do
+      process_killmail_persistence(killmail, character_id)
+    else
+      AppLogger.persistence_debug("Database operations disabled, skipping killmail persistence")
+      :ignored
+    end
+  end
+
+  @doc """
+  Gets tracked kills stats.
+  """
   def get_tracked_kills_stats do
     if Killmail.database_enabled?() do
       # Get the number of tracked characters from the cache
@@ -96,7 +106,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       %{tracked_characters: 0, total_kills: 0}
   end
 
-  @impl true
+  @doc """
+  Gets killmails for a character.
+  """
   def get_killmails_for_character(character_id) do
     if Killmail.database_enabled?() do
       case Killmail
@@ -111,7 +123,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @impl true
+  @doc """
+  Gets killmails for a system.
+  """
   def get_killmails_for_system(system_id) do
     if Killmail.database_enabled?() do
       case Killmail
@@ -126,7 +140,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @impl true
+  @doc """
+  Gets character killmails for a specific time period.
+  """
   def get_character_killmails(character_id, from_date, to_date, limit \\ 100) do
     if Killmail.database_enabled?() do
       Killmail.read_safely(
@@ -147,7 +163,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
       {:ok, []}
   end
 
-  @impl true
+  @doc """
+  Checks if a killmail exists.
+  """
   def exists?(killmail_id, character_id, role) when is_integer(killmail_id) and is_binary(role) do
     if Killmail.database_enabled?() do
       # First check the cache to avoid database queries if possible
@@ -174,7 +192,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @impl true
+  @doc """
+  Checks if a killmail exists in the database.
+  """
   def check_killmail_exists_in_database(killmail_id, character_id, role) do
     if Killmail.database_enabled?() do
       case Killmail.read_safely(
@@ -197,7 +217,9 @@ defmodule WandererNotifier.Resources.KillmailPersistence do
     end
   end
 
-  @impl true
+  @doc """
+  Counts total killmails.
+  """
   def count_total_killmails do
     if Killmail.database_enabled?() do
       case Killmail.read_safely(
