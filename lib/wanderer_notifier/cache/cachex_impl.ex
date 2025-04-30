@@ -1,6 +1,14 @@
 defmodule WandererNotifier.Cache.CachexImpl do
   @moduledoc """
   Cachex-based implementation of the cache behaviour.
+  Provides a high-performance cache implementation using Cachex.
+
+  Features:
+  - TTL support
+  - Atomic operations
+  - Batch operation support
+  - Comprehensive error handling
+  - Logging and monitoring
   """
 
   @behaviour WandererNotifier.Cache.Behaviour
@@ -10,7 +18,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
 
   @cache_name Application.compile_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
-  # Initialize batch logging for cache operations
+  @impl true
   def init_batch_logging do
     AppLogger.init_batch_logger()
   end
@@ -22,6 +30,14 @@ defmodule WandererNotifier.Cache.CachexImpl do
       {:ok, value} -> {:ok, value}
       {:error, reason} -> {:error, reason}
     end
+  rescue
+    e ->
+      AppLogger.cache_error("Error getting value",
+        key: key,
+        error: Exception.message(e)
+      )
+
+      {:error, e}
   end
 
   @impl true
@@ -31,10 +47,17 @@ defmodule WandererNotifier.Cache.CachexImpl do
       ttl_seconds: ttl
     )
 
-    if is_nil(ttl) do
-      Cachex.put(@cache_name, key, value)
-    else
-      Cachex.put(@cache_name, key, value, ttl: :timer.seconds(ttl))
+    result =
+      if is_nil(ttl) do
+        Cachex.put(@cache_name, key, value)
+      else
+        Cachex.put(@cache_name, key, value, ttl: :timer.seconds(ttl))
+      end
+
+    case result do
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :set_failed}
+      {:error, reason} -> {:error, reason}
     end
   rescue
     e ->
@@ -51,7 +74,12 @@ defmodule WandererNotifier.Cache.CachexImpl do
   def put(key, value) do
     # For high-volume sets, we'll use batch logging
     AppLogger.count_batch_event(:cache_set, %{key_pattern: get_key_pattern(key)})
-    Cachex.put(@cache_name, key, value)
+
+    case Cachex.put(@cache_name, key, value) do
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :set_failed}
+      {:error, reason} -> {:error, reason}
+    end
   rescue
     e ->
       AppLogger.cache_error("Error setting value",
@@ -65,7 +93,12 @@ defmodule WandererNotifier.Cache.CachexImpl do
   @impl true
   def delete(key) do
     AppLogger.cache_debug("Deleting cache key", key: key)
-    Cachex.del(@cache_name, key)
+
+    case Cachex.del(@cache_name, key) do
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
   rescue
     e ->
       AppLogger.cache_error("Error deleting key",
@@ -79,7 +112,12 @@ defmodule WandererNotifier.Cache.CachexImpl do
   @impl true
   def clear do
     AppLogger.cache_info("Clearing entire cache")
-    Cachex.clear(@cache_name)
+
+    case Cachex.clear(@cache_name) do
+      {:ok, true} -> :ok
+      {:ok, false} -> {:error, :clear_failed}
+      {:error, reason} -> {:error, reason}
+    end
   rescue
     e ->
       AppLogger.cache_error("Error clearing cache",
@@ -91,15 +129,25 @@ defmodule WandererNotifier.Cache.CachexImpl do
 
   @impl true
   def get_and_update(key, update_fun) do
-    Cachex.get_and_update(@cache_name, key, fn
-      nil ->
-        {current, updated} = update_fun.(nil)
-        {current, updated}
+    try do
+      Cachex.get_and_update(@cache_name, key, fn
+        nil ->
+          {current, updated} = update_fun.(nil)
+          {current, updated}
 
-      existing ->
-        {current, updated} = update_fun.(existing)
-        {current, updated}
-    end)
+        existing ->
+          {current, updated} = update_fun.(existing)
+          {current, updated}
+      end)
+    rescue
+      e ->
+        AppLogger.cache_error("Error in get_and_update",
+          key: key,
+          error: Exception.message(e)
+        )
+
+        {:error, e}
+    end
   end
 
   @impl true

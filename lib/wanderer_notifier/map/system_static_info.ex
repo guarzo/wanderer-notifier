@@ -67,9 +67,8 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   """
 
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.HttpClient.ErrorHandler
-  alias WandererNotifier.HttpClient.UrlBuilder
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Config.Config
 
   @doc """
   Fetches static information for a specific solar system.
@@ -104,34 +103,24 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
       system_id: solar_system_id
     )
 
-    case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
-      {:ok, url} ->
-        # Get auth headers
-        headers = UrlBuilder.get_auth_headers()
+    base_url = Config.get_api_base_url()
+    url = "#{base_url}/common/system-static-info?id=#{solar_system_id}"
+    headers = get_auth_headers()
 
-        AppLogger.api_debug("[SystemStaticInfo] Making request",
-          url: url,
-          headers: headers
-        )
+    AppLogger.api_debug("[SystemStaticInfo] Making request",
+      url: url,
+      headers: headers
+    )
 
-        # Make API request and process
-        make_static_info_request(url, headers)
-
-      {:error, reason} ->
-        AppLogger.api_error("[SystemStaticInfo] Failed to build URL",
-          system_id: solar_system_id,
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-    end
+    # Make API request and process
+    make_static_info_request(url, headers)
   end
 
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
     case HttpClient.get(url, headers) do
-      {:ok, response} ->
-        case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
+      {:ok, %{status: 200, body: body}} ->
+        case Jason.decode(body) do
           {:ok, parsed_response} ->
             AppLogger.api_debug("[SystemStaticInfo] Parsed response",
               response_keys: Map.keys(parsed_response)
@@ -139,13 +128,17 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
             {:ok, parsed_response}
 
-          {:error, reason} = error ->
-            AppLogger.api_error("[SystemStaticInfo] HTTP error",
+          {:error, reason} ->
+            AppLogger.api_error("[SystemStaticInfo] Failed to parse JSON",
               error: inspect(reason)
             )
 
-            error
+            {:error, {:json_parse_error, reason}}
         end
+
+      {:ok, %{status: status}} ->
+        AppLogger.api_error("[SystemStaticInfo] HTTP error", status: status)
+        {:error, {:http_error, status}}
 
       {:error, reason} ->
         AppLogger.api_error("[SystemStaticInfo] Request failed",
@@ -160,7 +153,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   Enriches a MapSystem with static information.
 
   ## Parameters
-    - system: A WandererNotifier.Data.MapSystem struct
+    - system: A WandererNotifier.Map.MapSystem struct
 
   ## Returns
     - {:ok, enhanced_system} on success with enriched data
@@ -211,5 +204,10 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
       # Still return original system
       {:ok, system}
     end
+  end
+
+  defp get_auth_headers do
+    api_key = Config.get_api_key()
+    [{"Authorization", "Bearer #{api_key}"}]
   end
 end

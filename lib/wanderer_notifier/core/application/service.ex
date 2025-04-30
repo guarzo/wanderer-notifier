@@ -451,8 +451,8 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:flush_batch_logs, state) do
-    # Forward the flush_batch_logs message to the BatchLogger
-    # BatchLogger.flush_all()
+    # Flush any remaining batch logs
+    WandererNotifier.Logger.Logger.flush_batch_logs()
     {:noreply, state}
   rescue
     e ->

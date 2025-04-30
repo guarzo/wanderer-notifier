@@ -6,6 +6,8 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
   """
 
   defmacro __using__(opts) do
+    initialize_error_handling = Keyword.get(opts, :initialize_error_handling, false)
+
     quote do
       use WandererNotifier.Schedulers.Scheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
@@ -28,7 +30,36 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
       # Server Callbacks
 
+      @impl true
       def initialize(opts) do
+        if unquote(initialize_error_handling) do
+          try do
+            do_initialize(opts)
+          rescue
+            e in [RuntimeError, ArgumentError] ->
+              AppLogger.scheduler_error("Failed to initialize scheduler", %{
+                scheduler: inspect(@scheduler_name),
+                error: Exception.message(e),
+                stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+              })
+
+              {:error, e}
+
+            e ->
+              AppLogger.scheduler_error("Failed to initialize scheduler", %{
+                scheduler: inspect(@scheduler_name),
+                error: Exception.message(e),
+                stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+              })
+
+              {:error, e}
+          end
+        else
+          do_initialize(opts)
+        end
+      end
+
+      defp do_initialize(opts) do
         # Get interval from options or use default
         interval = get_configured_interval() || Keyword.get(opts, :interval, @default_interval)
 

@@ -353,86 +353,69 @@ REMAINING CRITICAL CLEANUP & MIGRATION TASKS
 
 
 
-Other open TASKS
-1. Purge Legacy Logger Modules
-What:
-Your lib/wanderer_notifier/logger/ directory still contains
+### Remaining tasks 
 
-text
-Copy
-Edit
-app_logger.ex  
-batch_logger.ex  
-behaviour.ex  
-json_formatter.ex  
-startup_tracker.ex  
-—but you only want the one WandererNotifier.Logger facade.
-Action: Delete all of the above and replace any calls to AppLogger.* or Logger.Logger.* with your new WandererNotifier.Logger API ​
+1. Leftover HTTP helpers
+Where: lib/wanderer_notifier/http_client/
+Files to remove:
+
+error_handler.ex
+
+url_builder.ex
+You only need behaviour.ex + httpoison.ex under that folder ​
 .
 
-2. Collapse Multiple Cache Behaviours
-What:
-Under lib/wanderer_notifier/cache/ you have three separate behaviour files:
+2. Map‐API split across two contexts
+Where:
 
-text
-Copy
-Edit
-cache_behaviour.ex  
-helpers_behaviour.ex  
-repository_behaviour.ex  
-Action: Keep a single WandererNotifier.Cache behaviour (with get/put/delete), fold or delete the other two, and have one CachexImpl plus one test/mock adapter. Then remove the “Repository” and “HelpersBehaviour” files ​
+lib/wanderer_notifier/api/characters_client.ex (and similar under api/)
+
+lib/wanderer_notifier/map/*.ex
+Pick one home for “map” clients (e.g. api/clients/map_*) and move/alias the others into it, then delete the stray map/ folder ​
 .
 
-3. Clean Up Old Scheduler Modules
-What:
-In lib/wanderer_notifier/schedulers/ you still have:
+3. “notification” vs “notifications”
+You have both:
 
-text
-Copy
-Edit
-base_scheduler.ex  
-behaviour.ex  
-factory.ex  
-alongside your new unified behaviour (scheduler.ex) and supervisor/registry.
-Action: Delete those three legacy files and ensure each of your remaining schedulers just use WandererNotifier.Scheduler ​
+lib/wanderer_notifier/notification/…
+
+lib/wanderer_notifier/notifications/…
+Merge into one context (singular or plural), relocate its determiners/formatters/factory there, then delete the unused folder ​
 .
 
-4. Normalize Your HTTP‐Client References
-What:
-I spotted at least one import of the old API‐scoped client (alias WandererNotifier.Api.HttpClient) in characters_client.ex.
-Action: Replace all of those with alias WandererNotifier.HttpClient, and remove any stray lib/wanderer_notifier/api/http_client.ex or related legacy code ​
+4. “notifier” vs “notifiers”
+Similarly:
+
+lib/wanderer_notifier/notifier/…
+
+lib/wanderer_notifier/notifiers/…
+Consolidate into one, then purge the redundant modules ​
 .
 
-5. Remove Per‐Controller Fallbacks & Duplicated Macros
-What:
-Your HealthController still has its own
+5. Config folder fragmentation
+Under lib/wanderer_notifier/config/ you’ve still got a grab-bag of modules (behaviour.ex, features_behaviour.ex, api.ex, websocket.ex, etc.). Consider collapsing that into:
 
-elixir
-Copy
-Edit
-match _ do
-  send_error(conn, 404, "Not found")
-end
-even though Api.Controller already defines that fallback.
-Action: Strip out every match _ do … in your controllers (and any duplicated plug :match/plug :dispatch), relying on the behaviour’s default instead ​
+One WandererNotifier.Config module (with sub-modules where absolutely necessary), or
+
+A true “config” context with only the runtime loaders you need.
+Then delete any truly unused helpers ​
 .
 
-6. Tidy Up “Behaviours” Folder
-What:
-You’ve got a grab-bag of behaviour modules in both lib/wanderer_notifier/behaviours/ and scattered under config/, killmail/, notifiers/, etc.
-Action: Only leave a .behaviour file where you actually call @behaviour. Any that aren’t implemented should be moved to their owning context or deleted.
+6. Duplicate application.ex
+You have both:
 
-Next-Steps Checklist
- Delete the five legacy logger files.
+lib/wanderer_notifier/application.ex
 
- Merge cache behaviours into one file and remove the extras.
+lib/wanderer_notifier/config/application.ex
+Keep only the root one; remove the spurious config/application.ex ​
+.
 
- Prune old scheduler support files (base_scheduler.ex, behaviour.ex, factory.ex).
+7. Logger behaviour stub
+In lib/wanderer_notifier/logger/ you still have behaviour.ex alongside your facade logger.ex. Remove the old behaviour file—everything should go through your one WandererNotifier.Logger ​
+.
 
- Global search for alias WandererNotifier.Api.HttpClient → replace, then delete old API-HTTP code.
+8. Cache “repository” vs “behaviour” overlap
+You’ve got both lib/wanderer_notifier/cache/behaviour.ex and cache/repository.ex. Pick one behaviour (Cache.Behaviour) and a single repo/delegator module, then delete the extra file ​
+.
 
- Remove per-controller match _ fallbacks and duplicated plugs/macros.
-
- Audit any .behaviour files—keep only those still in use.
-
-Once those are gone, your module structure will be rock-solid and duplication-free. Let me know if you’d like diffs or shell commands to automate any of these deletions!
+Once you’ve pruned those, you’ll have a one-to-one mapping of contexts → folders → modules, with no stray or half-migrated pieces lingering. Let me know if you’d like diffs or shell snippets to remove them in bulk!

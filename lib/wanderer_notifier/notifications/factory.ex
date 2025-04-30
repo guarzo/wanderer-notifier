@@ -1,6 +1,6 @@
 defmodule WandererNotifier.Notifications.Factory do
   @moduledoc """
-  Factory module for creating and managing notifications.
+  Factory for creating and sending notifications.
   Implements the NotificationsFactoryBehaviour and provides a unified interface
   for sending notifications of various types.
   """

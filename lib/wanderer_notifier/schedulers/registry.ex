@@ -7,8 +7,10 @@ defmodule WandererNotifier.Schedulers.Registry do
   """
 
   use GenServer
+
+  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Logger.StartupTracker
+
   # Client API
 
   @doc """
@@ -69,6 +71,16 @@ defmodule WandererNotifier.Schedulers.Registry do
     # Log a summary based on certain conditions
     maybe_log_scheduler_summary(length(new_state.schedulers), enabled_count, disabled_count)
 
+    # Log scheduler status
+    if scheduler_module.enabled? do
+      WandererNotifier.Logger.Logger.record_startup_event(:scheduler_status, %{
+        scheduler: scheduler_module,
+        enabled: scheduler_module.enabled?(),
+        interval: scheduler_module.get_interval(),
+        last_run: scheduler_module.get_last_run()
+      })
+    end
+
     {:noreply, new_state}
   end
 
@@ -95,20 +107,13 @@ defmodule WandererNotifier.Schedulers.Registry do
     # Only log scheduler summary when we reach a significant milestone
     # in the registration process (final expected scheduler or at regular intervals)
     if total_count == 6 || (total_count > 0 && rem(total_count, 3) == 0) do
-      # Always use the startup tracker to consolidate logs
-      if Process.get(:startup_tracker) do
-        # Only track the event, it will be logged only once by the supervisor later
-        StartupTracker.record_event(:scheduler_status, %{
+      # Log a summary if we have any schedulers
+      if total_count > 0 do
+        WandererNotifier.Logger.Logger.record_startup_event(:scheduler_status, %{
           total: total_count,
           enabled: enabled_count,
           disabled: disabled_count
         })
-      else
-        # If no startup tracker, log at debug level to reduce noise
-        AppLogger.scheduler_debug(
-          "Scheduler registration progress",
-          %{total: total_count, enabled: enabled_count, disabled: disabled_count}
-        )
       end
     end
   end

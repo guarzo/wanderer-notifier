@@ -6,10 +6,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Killmail.{Context, Killmail, Metrics}
+  alias WandererNotifier.Killmail.{Context, Killmail, Metrics, Enrichment, Notification}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-  alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
 
   @type killmail :: Killmail.t()
   @type result :: {:ok, killmail()} | {:error, term()}

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
+defmodule WandererNotifier.Notifier.Helpers.TestNotifications do
   @moduledoc """
   Helper module for sending test notifications.
   """
@@ -10,8 +10,8 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
-  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Notifier.Discord.Notifier, as: NotificationInterface
+  alias WandererNotifier.Notifier.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Killmail.ZKillClient
 
   @doc """
@@ -25,11 +25,10 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
       {:ok, system} ->
         # Format the notification
         generic_notification = StructuredFormatter.format_system_notification(system)
-        discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
         # Send notification
-        case NotificationInterface.send_message(discord_format) do
-          {:ok, _result} ->
+        case NotificationInterface.send_to_discord(generic_notification, :test_system) do
+          :ok ->
             AppLogger.info("Test system notification sent successfully")
             Stats.increment(:systems)
             {:ok, "Test system notification sent successfully"}
@@ -133,11 +132,10 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   defp send_formatted_notification(enriched_kill, kill_id) do
     # Format the notification
     generic_notification = StructuredFormatter.format_kill_notification(enriched_kill)
-    discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
     # Send notification
-    case NotificationInterface.send_message(discord_format) do
-      {:ok, _result} ->
+    case NotificationInterface.send_to_discord(generic_notification, :test_kill) do
+      :ok ->
         AppLogger.kill_info("Test kill notification sent successfully")
         Stats.increment(:kills)
         {:ok, kill_id}
@@ -166,11 +164,10 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
       [character | _] when not is_nil(character) ->
         # Format the notification
         generic_notification = StructuredFormatter.format_character_notification(character)
-        discord_format = StructuredFormatter.to_discord_format(generic_notification)
 
         # Send notification using a real character from cache
-        case NotificationInterface.send_message(discord_format) do
-          {:ok, _result} ->
+        case NotificationInterface.send_to_discord(generic_notification, :test_character) do
+          :ok ->
             AppLogger.info("Test character notification sent successfully")
             Stats.increment(:characters)
             {:ok, "Test character notification sent successfully"}
@@ -198,33 +195,24 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
       esi_data = killmail.esi_data || %{}
       system_name = Map.get(esi_data, "solar_system_name")
 
-      validate_fields(victim, system_name)
+      # Check ZKB data
+      zkb = killmail.zkb || %{}
+
+      cond do
+        victim == %{} ->
+          {:error, "Missing victim data"}
+
+        is_nil(system_name) ->
+          {:error, "Missing system name"}
+
+        zkb == %{} ->
+          {:error, "Missing ZKB data"}
+
+        true ->
+          :ok
+      end
     else
-      # Fall back to treating it as a generic map
-      victim = Map.get(killmail, :victim_data) || %{}
-      system_name = Map.get(killmail, :solar_system_name)
-
-      validate_fields(victim, system_name)
-    end
-  end
-
-  # Validate the required fields
-  defp validate_fields(victim, system_name) do
-    cond do
-      victim == nil || victim == %{} ->
-        {:error, "Killmail is missing victim data"}
-
-      Map.get(victim, "character_name") == nil ->
-        {:error, "Victim is missing character name"}
-
-      Map.get(victim, "ship_type_name") == nil ->
-        {:error, "Victim is missing ship type name"}
-
-      system_name == nil ->
-        {:error, "Killmail is missing system name"}
-
-      true ->
-        :ok
+      {:error, "Invalid killmail struct"}
     end
   end
 end

@@ -70,37 +70,34 @@ defmodule WandererNotifier.Logger.Logger do
   Metadata is properly normalized regardless of format (map or keyword list).
   """
 
-  # This module implements the WandererNotifier.Logger.Behaviour interface
   @behaviour WandererNotifier.Logger.Behaviour
 
   require Logger
   alias WandererNotifier.Config.Debug
-  alias WandererNotifier.Logger.Logger.BatchLogger
-  alias WandererNotifier.Logger.StartupTracker
 
-  # Log categories as module attributes for consistency
-  @category_api "API"
-  @category_websocket "WEBSOCKET"
-  @category_kill "KILL"
-  @category_persistence "PERSISTENCE"
-  @category_processor "PROCESSOR"
-  @category_cache "CACHE"
-  @category_startup "STARTUP"
-  @category_config "CONFIG"
-  @category_maintenance "MAINTENANCE"
-  @category_scheduler "SCHEDULER"
-  @category_chart "CHART"
-  @category_notification "NOTIFICATION"
+  # Category constants
+  @category_api :api
+  @category_websocket :websocket
+  @category_kill :kill
+  @category_persistence :persistence
+  @category_cache :cache
+  @category_startup :startup
+  @category_config :config
+  @category_maintenance :maintenance
+  @category_scheduler :scheduler
+  @category_processor :processor
+  @category_notification :notification
+  @category_chart :chart
 
-  # Log levels mapped to their appropriate use cases
-  # Detailed troubleshooting information
+  # Level constants
   @level_debug :debug
-  # Normal operational events
   @level_info :info
-  # Potential issues that aren't errors
-  @level_warn :warning
-  # Errors that affect functionality
+  @level_warn :warn
   @level_error :error
+
+  # Batch logging state
+  # 5 seconds
+  @batch_log_interval 5_000
 
   @impl true
   def debug(message), do: Logger.debug(message)
@@ -725,7 +722,13 @@ defmodule WandererNotifier.Logger.Logger do
   Should be called during application startup.
   """
   def init_batch_logger do
-    BatchLogger.init()
+    # Log that batch logging is being initialized
+    debug("Initializing batch logger")
+
+    # Schedule periodic flush
+    Process.send_after(self(), :flush_batch_logs, @batch_log_interval)
+
+    :ok
   end
 
   @doc """
@@ -742,30 +745,36 @@ defmodule WandererNotifier.Logger.Logger do
       iex> WandererNotifier.Logger.Logger.count_batch_event(:kill_received, %{system_id: "12345"})
       :ok
   """
-  def count_batch_event(category, details \\ %{}, log_immediately \\ false) do
-    BatchLogger.count_event(category, details, log_immediately)
+  def count_batch_event(category, details, _log_immediately \\ false) do
+    # For now, just log immediately with a batch indicator
+    log(@level_info, category, "Batch event", Map.merge(details, %{batch: true}))
+    :ok
   end
 
   @doc """
   Forces an immediate flush of all pending batch log events.
   """
   def flush_batch_logs do
-    BatchLogger.flush_all()
+    debug("Flushing all batch logs")
+    :ok
   end
 
   @doc """
   Forces an immediate flush of a specific event category.
   """
   def flush_batch_category(category) do
-    BatchLogger.flush_category(category)
+    debug("Flushing batch logs for category: #{category}")
+    :ok
   end
 
   @doc """
   Handles the periodic flush message for batch logging.
   This should be called by the process receiving the `:flush_batch_logs` message.
   """
-  def handle_batch_flush(state) do
-    BatchLogger.handle_info(:flush_batch_logs, state)
+  def handle_batch_flush(_state) do
+    flush_batch_logs()
+    Process.send_after(self(), :flush_batch_logs, @batch_log_interval)
+    :ok
   end
 
   # ------------------------------------------------------------
@@ -778,7 +787,8 @@ defmodule WandererNotifier.Logger.Logger do
   Returns the initial state for the startup tracker.
   """
   def init_startup_tracker do
-    StartupTracker.init()
+    debug("Initializing startup tracker")
+    :ok
   end
 
   @doc """
@@ -789,8 +799,14 @@ defmodule WandererNotifier.Logger.Logger do
   - phase: The phase to begin
   - message: Optional message about this phase
   """
-  def begin_startup_phase(phase, message \\ nil) do
-    StartupTracker.begin_phase(phase, message)
+  def begin_startup_phase(phase, message) do
+    info("[Startup] Beginning phase: #{phase}", %{
+      phase: phase,
+      message: message,
+      timestamp: DateTime.utc_now()
+    })
+
+    :ok
   end
 
   @doc """
@@ -803,8 +819,17 @@ defmodule WandererNotifier.Logger.Logger do
   - details: Map of event details
   - force_log: If true, will log immediately regardless of significance
   """
-  def record_startup_event(type, details \\ %{}, force_log \\ false) do
-    StartupTracker.record_event(type, details, force_log)
+  def record_startup_event(type, details, force_log \\ false) do
+    level = if force_log, do: @level_info, else: @level_debug
+
+    log(
+      level,
+      @category_startup,
+      "Startup event: #{type}",
+      Map.merge(details, %{event_type: type})
+    )
+
+    :ok
   end
 
   @doc """
@@ -816,15 +841,17 @@ defmodule WandererNotifier.Logger.Logger do
   - message: Error message
   - details: Additional error details
   """
-  def record_startup_error(message, details \\ %{}) do
-    StartupTracker.record_error(message, details)
+  def record_startup_error(message, details) do
+    error("[Startup] #{message}", details)
+    :ok
   end
 
   @doc """
   Completes the startup process and logs a summary.
   """
   def complete_startup do
-    StartupTracker.complete_startup()
+    info("[Startup] Application startup complete", %{timestamp: DateTime.utc_now()})
+    :ok
   end
 
   @doc """
@@ -837,8 +864,9 @@ defmodule WandererNotifier.Logger.Logger do
   - message: The message about the state change
   - details: Additional details
   """
-  def log_startup_state_change(type, message, details \\ %{}) do
-    StartupTracker.log_state_change(type, message, details)
+  def log_startup_state_change(type, message, details) do
+    info("[Startup] State change: #{type} - #{message}", details)
+    :ok
   end
 
   defp should_log_debug? do

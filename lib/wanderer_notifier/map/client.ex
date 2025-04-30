@@ -5,7 +5,9 @@ defmodule WandererNotifier.Map.Client do
   This module provides a simplified facade over the specific client modules
   for different map API endpoints, handling feature checks and error management.
   """
+
   alias WandererNotifier.Map.SystemsClient
+  alias WandererNotifier.Map.CharactersClient
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -82,10 +84,7 @@ defmodule WandererNotifier.Map.Client do
     current_characters = cached_characters || CacheRepo.get("map:characters") || []
     current_characters_list = ensure_list(current_characters)
 
-    result =
-      WandererNotifier.Map.CharactersClient.update_tracked_characters(current_characters_list)
-
-    result
+    CharactersClient.update_tracked_characters(current_characters_list)
   end
 
   # Helper function to ensure we're working with a list
@@ -106,7 +105,7 @@ defmodule WandererNotifier.Map.Client do
   """
   def get_character_activity(slug \\ nil) do
     if Features.map_charts_enabled?() do
-      WandererNotifier.Map.CharactersClient.get_character_activity(slug)
+      CharactersClient.get_character_activity(slug)
     else
       AppLogger.api_debug("[Map.Client] Map charts disabled due to license restrictions")
       {:error, :feature_disabled}

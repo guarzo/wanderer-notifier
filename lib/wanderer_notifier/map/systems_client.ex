@@ -3,13 +3,14 @@ defmodule WandererNotifier.Map.SystemsClient do
   Client for retrieving and processing system data from the map API.
   Uses structured data types and consistent parsing to simplify the logic.
   """
+
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.HttpClient.UrlBuilder
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Config.Config
 
   @doc """
   Updates the systems in the cache.
@@ -27,44 +28,48 @@ defmodule WandererNotifier.Map.SystemsClient do
     # Get cached systems if none provided
     cached_systems = cached_systems || CacheRepo.get(CacheKeys.map_systems())
 
-    case UrlBuilder.build_url("map/systems") do
-      {:ok, url} ->
-        headers = UrlBuilder.get_auth_headers()
+    base_url = Config.get_api_base_url()
+    url = "#{base_url}/map/systems"
+    headers = get_auth_headers()
 
-        # Process the systems request
-        case HttpClient.get(url, headers) do
-          {:ok, response} ->
-            process_systems_response(response, cached_systems)
+    # Process the systems request
+    case HttpClient.get(url, headers) do
+      {:ok, %{status: 200, body: body}} ->
+        process_systems_response(body, cached_systems)
 
-          {:error, reason} ->
-            AppLogger.api_error("⚠️ Failed to fetch systems", error: inspect(reason))
-            {:error, {:http_error, reason}}
-        end
+      {:ok, %{status: status}} ->
+        AppLogger.api_error("⚠️ Failed to fetch systems", status: status)
+        {:error, {:http_error, status}}
 
       {:error, reason} ->
-        AppLogger.api_error("⚠️ Failed to build URL", error: inspect(reason))
-        {:error, reason}
+        AppLogger.api_error("⚠️ Failed to fetch systems", error: inspect(reason))
+        {:error, {:http_error, reason}}
     end
   end
 
-  defp process_systems_response(response, cached_systems) do
-    # Handle HTTP response locally if ErrorHandler is not available
-    case response do
-      %{"error" => reason} ->
-        AppLogger.api_error("[SystemsClient] Failed to process API response: #{inspect(reason)}")
-        {:error, reason}
-
-      parsed_response when is_map(parsed_response) or is_list(parsed_response) ->
+  defp process_systems_response(body, cached_systems) do
+    case Jason.decode(body) do
+      {:ok, parsed_response} ->
         AppLogger.api_debug("[SystemsClient] Successfully parsed response",
           response_keys: if(is_map(parsed_response), do: Map.keys(parsed_response), else: [])
         )
 
         process_and_cache_systems(parsed_response, cached_systems)
 
-      _ ->
-        AppLogger.api_error("[SystemsClient] Unexpected response format: #{inspect(response)}")
-        {:error, :unexpected_response_format}
+      {:error, reason} ->
+        AppLogger.api_error("[SystemsClient] Failed to process API response: #{inspect(reason)}")
+        {:error, reason}
     end
+  rescue
+    e ->
+      AppLogger.api_error("⚠️ Exception in process_systems_response",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        body: inspect(body, limit: 100)
+      )
+
+      cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
+      {:ok, cached}
   end
 
   defp process_and_cache_systems(parsed_response, cached_systems) do
@@ -249,40 +254,31 @@ defmodule WandererNotifier.Map.SystemsClient do
     new_ids = MapSet.difference(current_ids, cached_ids)
 
     # Get the new systems
-    new_systems =
-      Enum.filter(current_systems, fn system ->
-        system.system_id in new_ids
-      end)
+    new_systems = Enum.filter(current_systems, &(&1.system_id in new_ids))
 
-    # Notify about new systems if there are any
-    if not Enum.empty?(new_systems) do
-      AppLogger.api_info("Found new systems", count: length(new_systems))
+    # Notify about each new system
+    Enum.each(new_systems, &send_new_system_notification/1)
 
-      # Send notifications for each new system
-      Enum.each(new_systems, fn system ->
-        notification =
-          WandererNotifier.Notifiers.StructuredFormatter.format_system_notification(system)
-
-        discord_format =
-          WandererNotifier.Notifiers.StructuredFormatter.to_discord_format(notification)
-
-        WandererNotifier.Notifications.Factory.send_system_notification(discord_format)
-      end)
-
-      {:ok, new_systems}
-    else
-      {:ok, []}
-    end
+    {:ok, new_systems}
   end
 
-  # Helper function to determine the type of a term
+  defp send_new_system_notification(system) do
+    WandererNotifier.Notifiers.Discord.Notifier.send_new_tracked_system_notification(system)
+  end
+
+  defp get_auth_headers do
+    api_key = Config.get_api_key()
+    [{"Authorization", "Bearer #{api_key}"}]
+  end
+
   defp typeof(term) when is_nil(term), do: "nil"
   defp typeof(term) when is_binary(term), do: "string"
   defp typeof(term) when is_boolean(term), do: "boolean"
   defp typeof(term) when is_number(term), do: "number"
-  defp typeof(term) when is_map(term), do: "map"
-  defp typeof(term) when is_list(term), do: "list"
   defp typeof(term) when is_atom(term), do: "atom"
+  defp typeof(term) when is_list(term), do: "list"
+  defp typeof(term) when is_map(term), do: "map"
+  defp typeof(term) when is_tuple(term), do: "tuple"
   defp typeof(_term), do: "unknown"
 
   @doc """

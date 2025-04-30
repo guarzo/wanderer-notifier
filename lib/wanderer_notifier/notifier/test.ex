@@ -1,20 +1,20 @@
-defmodule WandererNotifier.Notifiers.TestNotifier do
+defmodule WandererNotifier.Notifier.Test do
   @moduledoc """
   Test notifier for use in test environment.
   This module is the single source of truth for test notifications.
   """
 
-  @behaviour WandererNotifier.Notifiers.Behaviour
+  @behaviour WandererNotifier.Notifier.Discord.Behaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_message(message, _feature \\ nil) do
     AppLogger.processor_debug("[TEST] Message", message: message)
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_embed(title, description, url \\ nil, color \\ nil, _feature \\ nil) do
     AppLogger.processor_debug("[TEST] Embed",
       title: title,
@@ -26,7 +26,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
     AppLogger.processor_debug("[TEST] File",
       filename: filename,
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_image_embed(title, description, image_url, color \\ nil, _feature \\ nil) do
     AppLogger.processor_debug("[TEST] Image embed",
       title: title,
@@ -50,7 +50,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_enriched_kill_embed(killmail, kill_id) do
     AppLogger.processor_debug("[TEST] Enriched kill",
       kill_id: kill_id,
@@ -60,7 +60,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_new_system_notification(system) do
     system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
     system_name = Map.get(system, "name") || Map.get(system, :name)
@@ -73,7 +73,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_new_tracked_character_notification(character) do
     char_id = Map.get(character, "character_id") || Map.get(character, :character_id)
     char_name = Map.get(character, "name") || Map.get(character, :name)
@@ -86,7 +86,7 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
     :ok
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
+  @impl WandererNotifier.Notifier.Discord.Behaviour
   def send_kill_notification(kill_data) do
     kill_id = Map.get(kill_data, "killmail_id") || Map.get(kill_data, :killmail_id) || "unknown"
     AppLogger.processor_debug("[TEST] Kill notification", kill_id: kill_id)

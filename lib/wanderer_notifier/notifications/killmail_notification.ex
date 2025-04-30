@@ -4,13 +4,26 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Encapsulates all the notification handling logic for kills.
   """
 
-  alias WandererNotifier.Core.Stats
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.StructuredFormatter
+
+  @doc """
+  Creates a notification from a killmail.
+
+  ## Parameters
+  - killmail: The killmail struct to create a notification from
+
+  ## Returns
+  - A formatted notification ready to be sent
+  """
+  def create(killmail) do
+    # Format the kill notification using the StructuredFormatter
+    StructuredFormatter.format_kill_notification(killmail)
+  end
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -124,55 +137,114 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   # Send system notification and handle result
-  defp send_system_notification(discord_format, kill_id) do
-    case Factory.send_system_kill_notification(discord_format) do
-      {:ok, _result} ->
-        AppLogger.kill_info("System kill notification sent successfully", %{kill_id: kill_id})
-        Stats.increment(:kills)
-        {:ok, kill_id}
+  defp send_system_notification(notification, kill_id) do
+    case Factory.send_message(notification) do
+      {:ok, :sent} ->
+        AppLogger.kill_info("System kill notification sent", %{kill_id: kill_id})
+        {:ok, :system_sent}
 
-      {:error, reason} ->
+      {:error, reason} = error ->
         AppLogger.kill_error("Failed to send system kill notification", %{
           kill_id: kill_id,
           error: inspect(reason)
         })
 
-        {:error, reason}
+        error
     end
   end
 
   # Send character notification and handle result
-  defp send_character_notification(discord_format, kill_id) do
-    case Factory.send_character_kill_notification(discord_format) do
-      {:ok, _result} ->
-        AppLogger.kill_info("Character kill notification sent successfully", %{kill_id: kill_id})
-        Stats.increment(:kills)
-        {:ok, kill_id}
+  defp send_character_notification(notification, kill_id) do
+    case Factory.send_message(notification) do
+      {:ok, :sent} ->
+        AppLogger.kill_info("Character kill notification sent", %{kill_id: kill_id})
+        {:ok, :character_sent}
 
-      {:error, reason} ->
+      {:error, reason} = error ->
         AppLogger.kill_error("Failed to send character kill notification", %{
           kill_id: kill_id,
           error: inspect(reason)
         })
 
-        {:error, reason}
+        error
     end
   end
 
-  # Combine notification results and return appropriate response
+  # Combine results from system and character notifications
   defp combine_notification_results(system_result, character_result, kill_id) do
     case {system_result, character_result} do
       {{:ok, _}, {:ok, _}} ->
-        # Both succeeded or were skipped
-        {:ok, kill_id}
+        AppLogger.kill_info("All kill notifications sent successfully", %{kill_id: kill_id})
+        {:ok, :all_sent}
 
-      {{:error, reason}, _} ->
-        # System notification failed
+      {{:ok, _}, {:error, reason}} ->
+        AppLogger.kill_error("Character notification failed but system notification succeeded", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
         {:error, reason}
 
-      {_, {:error, reason}} ->
-        # Character notification failed
+      {{:error, reason}, {:ok, _}} ->
+        AppLogger.kill_error("System notification failed but character notification succeeded", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
         {:error, reason}
+
+      {{:error, reason}, {:error, _}} ->
+        AppLogger.kill_error("Both notifications failed", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        {:error, reason}
+
+      {{:ok, :skipped_system}, {:ok, :skipped_character}} ->
+        AppLogger.kill_info("No notifications needed", %{kill_id: kill_id})
+        {:ok, :skipped}
+
+      {result_a, result_b} ->
+        AppLogger.kill_info("Mixed notification results", %{
+          kill_id: kill_id,
+          system_result: inspect(result_a),
+          character_result: inspect(result_b)
+        })
+
+        {:ok, :partial}
+    end
+  end
+
+  # Ensure we have a proper Data.Killmail struct
+  defp ensure_data_killmail(killmail) do
+    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
+      killmail
+    else
+      # Try to convert map to struct
+      if is_map(killmail) do
+        struct(WandererNotifier.Killmail.Killmail, Map.delete(killmail, :__struct__))
+      else
+        # Fallback empty struct with required fields
+        %WandererNotifier.Killmail.Killmail{
+          killmail_id: "unknown",
+          zkb: %{}
+        }
+      end
+    end
+  end
+
+  # Validate killmail has essential data
+  defp validate_killmail_data(killmail) do
+    cond do
+      is_nil(killmail.esi_data) ->
+        {:error, "Missing ESI data"}
+
+      is_nil(killmail.killmail_id) ->
+        {:error, "Missing killmail ID"}
+
+      true ->
+        :ok
     end
   end
 
@@ -259,38 +331,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
       true ->
         "unknown"
-    end
-  end
-
-  # Ensure we have a proper Data.Killmail struct
-  defp ensure_data_killmail(killmail) do
-    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
-      killmail
-    else
-      # Try to convert map to struct
-      if is_map(killmail) do
-        struct(WandererNotifier.Killmail.Killmail, Map.delete(killmail, :__struct__))
-      else
-        # Fallback empty struct with required fields
-        %WandererNotifier.Killmail.Killmail{
-          killmail_id: "unknown",
-          zkb: %{}
-        }
-      end
-    end
-  end
-
-  # Validate killmail has essential data
-  defp validate_killmail_data(killmail) do
-    cond do
-      is_nil(killmail.esi_data) ->
-        {:error, "Missing ESI data"}
-
-      is_nil(killmail.killmail_id) ->
-        {:error, "Missing killmail ID"}
-
-      true ->
-        :ok
     end
   end
 end

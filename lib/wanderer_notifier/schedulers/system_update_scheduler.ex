@@ -5,7 +5,8 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @behaviour WandererNotifier.Schedulers.Scheduler
 
   use WandererNotifier.Schedulers.IntervalScheduler,
-    name: __MODULE__
+    name: __MODULE__,
+    initialize_error_handling: true
 
   # Interval is now configured via the Timings module
 

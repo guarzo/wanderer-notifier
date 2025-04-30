@@ -2,6 +2,25 @@ defmodule WandererNotifier.Cache.Behaviour do
   @moduledoc """
   Defines the behaviour for cache implementations.
   This is a unified behavior that combines functionality from both repository and cache operations.
+
+  ## Implementation Guidelines
+
+  1. Cache implementations should handle:
+     - Basic CRUD operations (get/set/delete)
+     - TTL support
+     - Atomic updates
+     - Batch operations
+     - Error handling
+
+  2. Error handling:
+     - All operations should return {:ok, value} or {:error, reason}
+     - Not found should be {:error, :not_found}
+     - Implementation errors should provide meaningful error reasons
+
+  3. Performance considerations:
+     - Implementations should be optimized for high-volume operations
+     - Consider using batch operations where possible
+     - Handle concurrent access appropriately
   """
 
   @doc """
@@ -44,5 +63,13 @@ defmodule WandererNotifier.Cache.Behaviour do
   """
   @callback get_recent_kills() :: list()
 
-  @optional_callbacks [get_recent_kills: 0]
+  @doc """
+  Initializes batch logging for cache operations.
+  """
+  @callback init_batch_logging() :: :ok
+
+  @optional_callbacks [
+    get_recent_kills: 0,
+    init_batch_logging: 0
+  ]
 end

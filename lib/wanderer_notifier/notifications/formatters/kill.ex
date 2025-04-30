@@ -1,10 +1,10 @@
-defmodule WandererNotifier.Notification.Formatter.Kill do
+defmodule WandererNotifier.Notifications.Formatters.Kill do
   @moduledoc """
   Formats kill notifications for delivery.
   Handles all kill-related notification formatting logic.
   """
 
-  alias WandererNotifier.Notification.Formatter.{Base, Embed}
+  alias WandererNotifier.Notifications.Formatters.{Base, Embed}
 
   @doc """
   Formats a kill notification into a Discord-compatible format.
