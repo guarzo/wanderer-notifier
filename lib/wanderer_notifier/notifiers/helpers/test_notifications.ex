@@ -13,7 +13,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
-  alias WandererNotifier.Killmail.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Killmail.ZKillClient
 
   @doc """
   Sends a test system notification.

@@ -1,675 +1,616 @@
-Compiling 4 files (.ex)
-     warning: function fetch_characters_data/1 is unused
-     │
- 388 │   defp fetch_characters_data(url) do
-     │        ~
-     │
-     └─ lib/wanderer_notifier/api/characters_client.ex:388:8: WandererNotifier.Api.CharactersClient (module)
+    warning: the following clause will never match:
 
-    warning: unused alias Cache
-    │
-  9 │   alias __MODULE__
-    │   ~
-    │
-    └─ lib/wanderer_notifier/killmail/cache.ex:9:3
-
-    warning: unused alias Character
-    │
- 11 │   alias WandererNotifier.Killmail.Character
-    │   ~
-    │
-    └─ lib/wanderer_notifier/killmail/cache.ex:11:3
-
-    warning: unused alias Killmail
-    │
- 10 │   alias WandererNotifier.Killmail
-    │   ~
-    │
-    └─ lib/wanderer_notifier/killmail/cache.ex:10:3
-
-     warning: function send_discord_notification/1 is unused
-     │
- 711 │   defp send_discord_notification(discord_embed) do
-     │        ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:711:8: WandererNotifier.Core.Application.Service (module)
-
-     warning: function handle_websocket_error/1 is unused
-     │
- 724 │   defp handle_websocket_error(reason) do
-     │        ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:724:8: WandererNotifier.Core.Application.Service (module)
-
-    warning: unused alias Debug
-    │
- 22 │   alias WandererNotifier.Config.Debug
-    │   ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:22:3
-
-    warning: unused alias Features
-    │
- 23 │   alias WandererNotifier.Config.Features
-    │   ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:23:3
-
-    warning: unused alias NotifierFactory
-    │
- 17 │   alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
-    │   ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:17:3
-
-    warning: unused alias SystemsClient
-    │
- 25 │   alias WandererNotifier.Map.SystemsClient
-    │   ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:25:3
-
-    warning: WandererNotifier.Map.CharactersClient.get_character_activity/2 is undefined or private. Did you mean:
-
-          * get_character_activity/1
-
-    │
- 49 │     NewCharactersClient.get_character_activity(slug, days)
-    │                         ~
-    │
-    └─ lib/wanderer_notifier/api/characters_client.ex:49:25: WandererNotifier.Api.CharactersClient.get_character_activity/2
-
-    warning: WandererNotifier.Killmail.Cache.get_latest_killmails/0 is undefined or private
-    │
- 33 │   `:match` is responsible for finding a matching route which is
-    │                                             ~
-    │
-    └─ deps/plug/lib/plug/router.ex:33:45: WandererNotifier.Api.Controllers.KillController.do_match/4
-
-     warning: WandererNotifier.Cache.Helpers.get_tracked_characters/0 is undefined or private. Did you mean:
-
-           * get_tracked_systems/0
-
-     │
- 313 │     tracked_characters = CacheHelpers.get_tracked_characters()
-     │                                       ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:313:39: WandererNotifier.Core.Application.Service.handle_info/2
-
-    warning: WandererNotifier.Cache.Keys.tracked_systems/0 is undefined or private. Did you mean:
-
-          * tracked_system/1
-          * tracked_systems_list/0
-
-    │
- 62 │       case get(CacheKeys.tracked_systems()) do
-    │                          ~
-    │
-    └─ lib/wanderer_notifier/cache/helpers.ex:62:26: WandererNotifier.Cache.Helpers.get_tracked_systems/0
-
-    warning: unused alias CacheRepo
-    │
-  8 │   alias WandererNotifier.Cache.Repository, as: CacheRepo
-    │   ~
-    │
-    └─ lib/wanderer_notifier/map/characters_client.ex:8:3
-
-    warning: variable "data" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 28 │   def parse_killmail(data) do
-    │                      ~~~~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:28:22: WandererNotifier.ZKill.Parser.parse_killmail/1
-
-    warning: variable "data" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 56 │   def parse_killmails(data) do
-    │                       ~~~~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:56:23: WandererNotifier.ZKill.Parser.parse_killmails/1
-
-    warning: variable "message" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 86 │   def parse_websocket_message(message) do
-    │                               ~~~~~~~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:86:31: WandererNotifier.ZKill.Parser.parse_websocket_message/1
-
-    warning: variable "data" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 92 │   defp validate_killmail(data, nil, _) do
-    │                          ~~~~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:92:26: WandererNotifier.ZKill.Parser.validate_killmail/3
-
-    warning: variable "data" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 96 │   defp validate_killmail(data, _, nil) do
-    │                          ~~~~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:96:26: WandererNotifier.ZKill.Parser.validate_killmail/3
-
-     warning: variable "kill_id" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 100 │   defp validate_killmail(data, kill_id, zkb_data) do
-     │                                ~~~~~~~
-     │
-     └─ lib/wanderer_notifier/zkill/parser.ex:100:32: WandererNotifier.ZKill.Parser.validate_killmail/3
-
-     warning: variable "zkb_data" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 100 │   defp validate_killmail(data, kill_id, zkb_data) do
-     │                                         ~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/zkill/parser.ex:100:41: WandererNotifier.ZKill.Parser.validate_killmail/3
-
-    warning: unused alias AppLogger
-    │
-  7 │   alias WandererNotifier.Logger.Logger, as: AppLogger
-    │   ~
-    │
-    └─ lib/wanderer_notifier/zkill/parser.ex:7:3
-
-    warning: WandererNotifier.Cache.Helpers.get_ship_name/1 is undefined or private
-    │
- 34 │     CacheHelpers.get_ship_name(ship_type_id)
-    │                  ~
-    │
-    └─ lib/wanderer_notifier/data/repository.ex:34:18: WandererNotifier.Data.Repository.get_ship_name/1
-
-    warning: WandererNotifier.Cache.Helpers.get_character_name/1 is undefined or private
-    │
- 43 │     CacheHelpers.get_character_name(character_id)
-    │                  ~
-    │
-    └─ lib/wanderer_notifier/data/repository.ex:43:18: WandererNotifier.Data.Repository.get_character_name/1
-
-    warning: WandererNotifier.Cache.Helpers.get_cached_kills/1 is undefined or private
-    │
- 52 │     CacheHelpers.get_cached_kills(system_id)
-    │                  ~
-    │
-    └─ lib/wanderer_notifier/data/repository.ex:52:18: WandererNotifier.Data.Repository.get_cached_kills/1
-
-    warning: module attribute @base_url was set but never used
-    │
- 18 │   @base_url "https://zkillboard.com/api/"
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/api/zkill/client.ex:18: WandererNotifier.Api.ZKill.Client (module)
-
-    warning: module attribute @http_client was set but never used
-    │
- 12 │   @http_client Application.compile_env(
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/api/zkill/client.ex:12: WandererNotifier.Api.ZKill.Client (module)
-
-    warning: unused alias Killmail
-    │
- 15 │   alias WandererNotifier.Killmail.Killmail
-    │   ~
-    │
-    └─ lib/wanderer_notifier/notifications/killmail_notification.ex:15:3
-
-    warning: WandererNotifier.Api.Map.SystemsClient.get_system_for_notification/0 is undefined or private
-    │
- 25 │     case SystemsClient.get_system_for_notification() do
-    │                        ~
-    │
-    └─ lib/wanderer_notifier/notifiers/helpers/test_notifications.ex:25:24: WandererNotifier.Notifiers.Helpers.TestNotifications.send_test_system_notification/0
-
-     warning: the following clause will never match:
-
-         {:ok, %{status: 200, body: body}}
+        {:error, reason}
 
-     because it attempts to match on the result of:
+    because it attempts to match on the result of:
 
-         WandererNotifier.HttpClient.Httpoison.request(:get, url, headers, nil, follow_redirect: true)
+        initialize(opts)
 
-     which has type:
+    which has type:
 
-         dynamic({:error, term()} or {:error or :ok, %{body: term(), status_code: term()}})
+        dynamic({:ok, %{interval: term(), last_run: term()}})
 
-     typing violation found at:
-     │
- 180 │         {:ok, %{status: 200, body: body}} ->
-     │         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/killmail/zkill/client.ex:180: WandererNotifier.Killmail.ZKill.Client.HTTP.make_http_request/2
-
-     warning: the following clause will never match:
-
-         {:ok, %{status: status, body: body}}
-
-     because it attempts to match on the result of:
-
-         WandererNotifier.HttpClient.Httpoison.request(:get, url, headers, nil, follow_redirect: true)
-
-     which has type:
-
-         dynamic({:error, term()} or {:error or :ok, %{body: term(), status_code: term()}})
-
-     typing violation found at:
-     │
- 183 │         {:ok, %{status: status, body: body}} ->
-     │         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/killmail/zkill/client.ex:183: WandererNotifier.Killmail.ZKill.Client.HTTP.make_http_request/2
-
-     warning: variable "kill_id" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 227 │     defp validate_killmail_format(killmail, kill_id) do
-     │                                             ~~~~~~~
-     │
-     └─ lib/wanderer_notifier/zkill/client.ex:227:45: WandererNotifier.ZKill.Client.HTTP.validate_killmail_format/2
-
-    warning: unused alias KillmailNotification
-    │
- 20 │   alias WandererNotifier.Notifications.KillmailNotification
-    │   ~
-    │
-    └─ lib/wanderer_notifier/killmail/processor.ex:20:3
-
-    warning: unused alias Pipeline
-    │
- 17 │   alias WandererNotifier.Killmail.Pipeline
-    │   ~
-    │
-    └─ lib/wanderer_notifier/killmail/processor.ex:17:3
-
-    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 50 │   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    │                                                    ~~~~
-    │
-    └─ lib/wanderer_notifier/api/esi/service_mock.ex:50:52: WandererNotifier.Api.ESI.ServiceMock.search_inventory_type/3
-
-    warning: variable "query" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 50 │   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    │                             ~~~~~
-    │
-    └─ lib/wanderer_notifier/api/esi/service_mock.ex:50:29: WandererNotifier.Api.ESI.ServiceMock.search_inventory_type/3
-
-    warning: variable "strict" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 50 │   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    │                                    ~~~~~~
-    │
-    └─ lib/wanderer_notifier/api/esi/service_mock.ex:50:36: WandererNotifier.Api.ESI.ServiceMock.search_inventory_type/3
-
-     warning: WandererNotifier.Map.MapSystem.update_with_static_info/2 is undefined or private
-     │
- 231 │           enhanced_system = MapSystem.update_with_static_info(system, static_info)
-     │                                       ~
-     │
-     └─ lib/wanderer_notifier/api/map/system_static_info.ex:231:39: WandererNotifier.Api.Map.SystemStaticInfo.enrich_system/1
-
-     warning: defp fetch_characters_data/1 is private, @doc attribute is always discarded for private functions/macros/types
-     │
- 103 │   @doc """
-     │   ~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/api/map/characters_client.ex:103: WandererNotifier.Api.Map.CharactersClient.fetch_characters_data/1
-
-     warning: function fetch_characters_data/1 is unused
-     │
- 114 │   defp fetch_characters_data(url) do
-     │        ~
-     │
-     └─ lib/wanderer_notifier/api/map/characters_client.ex:114:8: WandererNotifier.Api.Map.CharactersClient (module)
-
-     warning: WandererNotifier.Map.CharactersClient.get_character_activity/2 is undefined or private. Did you mean:
-
-           * get_character_activity/1
-
-     │
- 100 │     NewCharactersClient.get_character_activity(slug, days)
-     │                         ~
-     │
-     └─ lib/wanderer_notifier/api/map/characters_client.ex:100:25: WandererNotifier.Api.Map.CharactersClient.get_character_activity/2
-
-    warning: unused alias ESIService
-    │
- 11 │   alias WandererNotifier.ESI.Service, as: ESIService
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/characters.ex:11:3
-
-    warning: WandererNotifier.Cache.Keys.killmail/2 is undefined or private. Did you mean:
-
-          * kill_comparison/2
-          * killmail_exists/3
-          * killmails_array/0
-          * recent_killmails_list/0
-
-    │
- 18 │     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
-    │                           ~
-    │
-    └─ lib/wanderer_notifier/esi/service.ex:18:27: WandererNotifier.ESI.Service.get_killmail/2
-
-    warning: WandererNotifier.Cache.Keys.corporation/1 is undefined or private
-    │
- 81 │     cache_key = CacheKeys.corporation(corporation_id)
-    │                           ~
-    │
-    └─ lib/wanderer_notifier/esi/service.ex:81:27: WandererNotifier.ESI.Service.get_corporation_info/2
-
-     warning: WandererNotifier.Cache.Keys.alliance/1 is undefined or private
-     │
- 121 │     cache_key = CacheKeys.alliance(alliance_id)
-     │                           ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:121:27: WandererNotifier.ESI.Service.get_alliance_info/2
-
-     warning: WandererNotifier.Cache.Keys.ship_type/1 is undefined or private
-     │
- 161 │     cache_key = CacheKeys.ship_type(ship_type_id)
-     │                           ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:161:27: WandererNotifier.ESI.Service.get_ship_type_name/2
-
-     warning: WandererNotifier.Cache.Keys.ship_type/1 is undefined or private
-     │
- 197 │     cache_key = CacheKeys.ship_type(type_id)
-     │                           ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:197:27: WandererNotifier.ESI.Service.get_type_info/2
-
-    warning: module attribute @entity_region was set but never used
-    │
- 49 │   @entity_region "region"
-    │   ~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/cache/keys.ex:49: WandererNotifier.Cache.Keys (module)
-
-    warning: module attribute @entity_corporation was set but never used
-    │
- 47 │   @entity_corporation "corporation"
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/cache/keys.ex:47: WandererNotifier.Cache.Keys (module)
-
-    warning: module attribute @entity_alliance was set but never used
-    │
- 48 │   @entity_alliance "alliance"
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/cache/keys.ex:48: WandererNotifier.Cache.Keys (module)
-
-     warning: WandererNotifier.Notifiers.StructuredFormatter.format_system_activity_notification/2 is undefined or private. Did you mean:
-
-           * format_system_notification/1
-
-     │
- 106 │       StructuredFormatter.format_system_activity_notification(
-     │                           ~
-     │
-     └─ lib/wanderer_notifier/notifications/interface.ex:106:27: WandererNotifier.Notifications.Interface.send_system_activity_notification/2
-
-     warning: WandererNotifier.Notifiers.StructuredFormatter.format_character_activity_notification/2 is undefined or private. Did you mean:
-
-           * format_character_kill_notification/3
-           * format_character_notification/1
-
-     │
- 132 │       StructuredFormatter.format_character_activity_notification(
-     │                           ~
-     │
-     └─ lib/wanderer_notifier/notifications/interface.ex:132:27: WandererNotifier.Notifications.Interface.send_character_activity_notification/2
-
-    warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    typing violation found at:
     │
- 18 │     label = "ESI.killmail-#{kill_id}"
-    │     ~~~~~
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/esi/client.ex:18:5: WandererNotifier.ESI.Client.get_killmail/3
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:5: WandererNotifier.Schedulers.CharacterUpdateScheduler.init/1
 
-    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 16 │   def get_killmail(kill_id, hash, opts \\ []) do
-    │                                   ~~~~
-    │
-    └─ lib/wanderer_notifier/esi/client.ex:16:35: WandererNotifier.ESI.Client.get_killmail/3
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
 
-    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 58 │   def get_character_info(character_id, opts \\ []) do
-    │                                        ~~~~
-    │
-    └─ lib/wanderer_notifier/esi/client.ex:58:40: WandererNotifier.ESI.Client.get_character_info/2
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
 
-    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
     │
- 94 │   def get_corporation_info(corporation_id, opts \\ []) do
-    │                                            ~~~~
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/esi/client.ex:94:44: WandererNotifier.ESI.Client.get_corporation_info/2
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:5: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
 
-     warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 132 │     label = "ESI.alliance-#{alliance_id}"
-     │     ~~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:132:5: WandererNotifier.ESI.Client.get_alliance_info/2
+    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
 
-     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 130 │   def get_alliance_info(alliance_id, opts \\ []) do
-     │                                      ~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:130:38: WandererNotifier.ESI.Client.get_alliance_info/2
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
 
-     warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 169 │     label = "ESI.universe_type-#{ship_type_id}"
-     │     ~~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:169:5: WandererNotifier.ESI.Client.get_universe_type/2
-
-     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 167 │   def get_universe_type(ship_type_id, opts \\ []) do
-     │                                       ~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:167:39: WandererNotifier.ESI.Client.get_universe_type/2
-
-     warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 212 │     label = "ESI.search-#{query}"
-     │     ~~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:212:5: WandererNotifier.ESI.Client.search_inventory_type/2
-
-     warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 249 │     label = "ESI.solar_system-#{system_id}"
-     │     ~~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:249:5: WandererNotifier.ESI.Client.get_solar_system/2
-
-     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 247 │   def get_solar_system(system_id, opts \\ []) do
-     │                                   ~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:247:35: WandererNotifier.ESI.Client.get_solar_system/2
-
-     warning: variable "label" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 295 │     label = "ESI.system_kills-#{system_id}"
-     │     ~~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:295:5: WandererNotifier.ESI.Client.get_system_kills/3
-
-     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
-     │
- 293 │   def get_system_kills(system_id, limit \\ 50, opts \\ []) do
-     │                                                ~~~~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:293:48: WandererNotifier.ESI.Client.get_system_kills/3
-
-     warning: function retry_opts/0 is unused
-     │
- 341 │   defp retry_opts do
-     │        ~
-     │
-     └─ lib/wanderer_notifier/esi/client.ex:341:8: WandererNotifier.ESI.Client (module)
-
-    warning: module attribute @http_client was set but never used
     │
-  9 │   @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 19 │   def execute(state) do
+    │   ~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/esi/client.ex:9: WandererNotifier.ESI.Client (module)
-
-     warning: incompatible types given to WandererNotifier.Notifiers.StructuredFormatter.format_system_notification/1:
-
-         WandererNotifier.Notifiers.StructuredFormatter.format_system_notification(validated_system)
-
-     given types:
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:19: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
 
-         [31mdynamic(%WandererNotifier.Map.MapSystem{
-           constellation_id: term(),
-           constellation_name: term(),
-           id: term(),
-           jumps: term(),
-           name: term(),
-           npc_kills: term(),
-           pod_kills: term(),
-           region_id: term(),
-           region_name: term(),
-           security_status: term(),
-           ship_kills: term(),
-           status: term(),
-           tracked: term(),
-           updated_at: term()
-         })[0m
+    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
 
-     but expected one of:
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
 
-         dynamic(%WandererNotifier.Data.MapSystem{
-           class_title: term(),
-           effect_name: term(),
-           id: term(),
-           is_shattered: term(),
-           locked: term(),
-           name: term(),
-           original_name: term(),
-           region_name: term(),
-           solar_system_id: term(),
-           static_details: term(),
-           statics: term(),
-           sun_type_id: term(),
-           system_type: term(),
-           temporary_name: term(),
-           type_description: term()
-         })
-
-     where "validated_system" was given the type:
-
-         # type: dynamic(%WandererNotifier.Map.MapSystem{})
-         # from: lib/wanderer_notifier/map/systems_client.ex:453:46
-         %WandererNotifier.Map.MapSystem{} = validated_system
-
-     typing violation found at:
-     │
- 455 │     generic_notification = StructuredFormatter.format_system_notification(validated_system)
-     │                                                ~
-     │
-     └─ lib/wanderer_notifier/map/systems_client.ex:455:48: WandererNotifier.Map.SystemsClient.send_system_notification/1
-
-    warning: variable "ttl" is unused (if the variable is not meant to be used, prefix it with an underscore)
-    │
- 45 │   def get_and_update(key, update_fun, ttl \\ nil) do
-    │                                       ~~~
     │
-    └─ lib/wanderer_notifier/cache/repository.ex:45:39: WandererNotifier.Cache.Repository.get_and_update/3
-
-    warning: unused alias AppLogger
+ 31 │   def enabled? do
+    │   ~~~~~~~~~~~~~~~
     │
- 17 │   alias WandererNotifier.Logger.Logger, as: AppLogger
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:17:3
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:31: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
 
-    warning: unused alias CacheHelpers
-    │
- 20 │   alias WandererNotifier.Cache.Helpers, as: CacheHelpers
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:20:3
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
 
-    warning: unused alias CacheKeys
-    │
- 21 │   alias WandererNotifier.Cache.Keys, as: CacheKeys
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:21:3
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
 
-    warning: unused alias CacheRepo
     │
- 15 │   alias WandererNotifier.Cache.Repository, as: CacheRepo
-    │   ~
+ 38 │   def get_config do
+    │   ~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:15:3
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:38: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
 
     warning: unused alias Config
     │
- 11 │   alias WandererNotifier.Config.Config
+ 10 │   alias WandererNotifier.Config
     │   ~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:11:3
+    └─ lib/wanderer_notifier/notifier/discord/notifier.ex:10:3
 
-    warning: unused alias Factory
+    warning: WandererNotifier.Notifier.Discord.NeoClient.send_message/2 is undefined (module WandererNotifier.Notifier.Discord.NeoClient is not available or is yet to be defined)
     │
- 18 │   alias WandererNotifier.Notifiers.Factory
-    │   ~
+ 16 │          {:ok, _response} <- NeoClient.send_message(notification, config) do
+    │                                        ~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:18:3
+    └─ lib/wanderer_notifier/notifier/discord/notifier.ex:16:40: WandererNotifier.Notifier.Discord.Notifier.notify/1
 
-    warning: unused alias Features
-    │
- 12 │   alias WandererNotifier.Config.Features
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:12:3
+     warning: WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data/1 is undefined (module WandererNotifier.Processing.Killmail.Enrichment is not available or is yet to be defined)
+     │
+ 215 │       enriched_kill = Enrichment.enrich_killmail_data(killmail)
+     │                                  ~
+     │
+     └─ lib/wanderer_notifier/notifications/killmail_notification.ex:215:34: WandererNotifier.Notifications.KillmailNotification.send_test/0
 
-    warning: unused alias HttpClient
-    │
-  8 │   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:8:3
+     warning: WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data/1 is undefined (module WandererNotifier.Processing.Killmail.Enrichment is not available or is yet to be defined)
+     │
+ 105 │         enriched_kill = Enrichment.enrich_killmail_data(killmail)
+     │                                    ~
+     │
+     └─ lib/wanderer_notifier/notifiers/helpers/test_notifications.ex:105:36: WandererNotifier.Notifiers.Helpers.TestNotifications.get_enriched_killmail/3
 
-    warning: unused alias MapSystem
-    │
- 16 │   alias WandererNotifier.Data.MapSystem
-    │   ~
-    │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:16:3
+    warning: the following clause will never match:
 
-    warning: unused alias StructuredFormatter
+        {:error, reason}
+
+    because it attempts to match on the result of:
+
+        initialize(opts)
+
+    which has type:
+
+        dynamic({:ok, %{interval: term(), last_run: term()}})
+
+    typing violation found at:
     │
- 19 │   alias WandererNotifier.Notifiers.StructuredFormatter
-    │   ~
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:19:3
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:5: WandererNotifier.Schedulers.SystemUpdateScheduler.init/1
+
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:5: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
+
+    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 16 │   def execute(state) do
+    │   ~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:16: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
+
+    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 58 │   def enabled? do
+    │   ~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:58: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
+
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 63 │   def get_config do
+    │   ~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:63: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
+
+     warning: WandererNotifier.Api.Map.UrlBuilder.build_url/2 is undefined (module WandererNotifier.Api.Map.UrlBuilder is not available or is yet to be defined)
+     │
+ 132 │     case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
+     │                     ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:132:21: WandererNotifier.Api.Map.SystemStaticInfo.fetch_system_static_info/1
+
+     warning: WandererNotifier.Api.Map.UrlBuilder.get_auth_headers/0 is undefined (module WandererNotifier.Api.Map.UrlBuilder is not available or is yet to be defined)
+     │
+ 135 │         headers = UrlBuilder.get_auth_headers()
+     │                              ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:135:30: WandererNotifier.Api.Map.SystemStaticInfo.fetch_system_static_info/1
+
+     warning: WandererNotifier.Api.Http.Client.get/2 is undefined (module WandererNotifier.Api.Http.Client is not available or is yet to be defined)
+     │
+ 157 │     case Client.get(url, headers) do
+     │                 ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:157:17: WandererNotifier.Api.Map.SystemStaticInfo.make_static_info_request/2
+
+     warning: WandererNotifier.Api.Http.ErrorHandler.handle_http_response/2 is undefined (module WandererNotifier.Api.Http.ErrorHandler is not available or is yet to be defined)
+     │
+ 183 │     case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
+     │                       ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:183:23: WandererNotifier.Api.Map.SystemStaticInfo.process_api_response/1
+
+     warning: WandererNotifier.Api.Map.ResponseValidator.validate_system_static_info_response/1 is undefined (module WandererNotifier.Api.Map.ResponseValidator is not available or is yet to be defined)
+     │
+ 201 │     case ResponseValidator.validate_system_static_info_response(parsed_response) do
+     │                            ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:201:28: WandererNotifier.Api.Map.SystemStaticInfo.validate_static_info/1
+
+     warning: WandererNotifier.Data.MapSystem.update_with_static_info/2 is undefined (module WandererNotifier.Data.MapSystem is not available or is yet to be defined)
+     │
+ 248 │           enhanced_system = MapSystem.update_with_static_info(system, static_info)
+     │                                       ~
+     │
+     └─ lib/wanderer_notifier/map/system_static_info.ex:248:39: WandererNotifier.Api.Map.SystemStaticInfo.enrich_system/1
+
+    warning: WandererNotifier.Map.CharactersClient.update_tracked_characters/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
+    │
+ 30 │     NewCharactersClient.update_tracked_characters(cached_characters)
+    │                         ~
+    │
+    └─ lib/wanderer_notifier/api/characters_client.ex:30:25: WandererNotifier.Api.CharactersClient.update_tracked_characters/1
+
+    warning: WandererNotifier.Map.CharactersClient.get_character_activity/2 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
+    │
+ 48 │     NewCharactersClient.get_character_activity(slug, days)
+    │                         ~
+    │
+    └─ lib/wanderer_notifier/api/characters_client.ex:48:25: WandererNotifier.Api.CharactersClient.get_character_activity/2
+
+    warning: WandererNotifier.Logger.StartupTracker.begin_phase/2 is undefined (module WandererNotifier.Logger.StartupTracker is not available or is yet to be defined)
+    │
+ 43 │       StartupTracker.begin_phase(:schedulers, "Initializing schedulers")
+    │                      ~
+    │
+    └─ lib/wanderer_notifier/schedulers/supervisor.ex:43:22: WandererNotifier.Schedulers.Supervisor.start_scheduler_phase/0
+
+    warning: WandererNotifier.Logger.StartupTracker.record_event/2 is undefined (module WandererNotifier.Logger.StartupTracker is not available or is yet to be defined)
+    │
+ 57 │       StartupTracker.record_event(:scheduler_setup, %{
+    │                      ~
+    │
+    └─ lib/wanderer_notifier/schedulers/supervisor.ex:57:22: WandererNotifier.Schedulers.Supervisor.define_core_schedulers/0
+
+    warning: WandererNotifier.ESI.Client.get_killmail/3 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+    │
+ 24 │         case Client.get_killmail(kill_id, killmail_hash, retry_opts()) do
+    │                     ~
+    │
+    └─ lib/wanderer_notifier/esi/service.ex:24:21: WandererNotifier.ESI.Service.get_killmail/2
+
+    warning: WandererNotifier.ESI.Client.get_character_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+    │
+ 47 │         case Client.get_character_info(character_id, retry_opts()) do
+    │                     ~
+    │
+    └─ lib/wanderer_notifier/esi/service.ex:47:21: WandererNotifier.ESI.Service.get_character_info/2
+
+    warning: WandererNotifier.ESI.Client.get_corporation_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+    │
+ 87 │         case Client.get_corporation_info(corporation_id, retry_opts()) do
+    │                     ~
+    │
+    └─ lib/wanderer_notifier/esi/service.ex:87:21: WandererNotifier.ESI.Service.get_corporation_info/2
+
+     warning: WandererNotifier.ESI.Client.get_alliance_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 127 │         case Client.get_alliance_info(alliance_id, retry_opts()) do
+     │                     ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:127:21: WandererNotifier.ESI.Service.get_alliance_info/2
+
+     warning: WandererNotifier.ESI.Client.get_universe_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 172 │     case Client.get_universe_type(ship_type_id, retry_opts()) do
+     │                 ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:172:17: WandererNotifier.ESI.Service.handle_cache_miss/2
+
+     warning: WandererNotifier.ESI.Client.get_universe_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 203 │         case Client.get_universe_type(type_id, retry_opts()) do
+     │                     ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:203:21: WandererNotifier.ESI.Service.get_type_info/2
+
+     warning: WandererNotifier.ESI.Client.search_inventory_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 222 │     Client.search_inventory_type(query, strict)
+     │            ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:222:12: WandererNotifier.ESI.Service.search_inventory_type/3
+
+     warning: WandererNotifier.ESI.Client.get_solar_system/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 237 │         case Client.get_solar_system(system_id, retry_opts()) do
+     │                     ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:237:21: WandererNotifier.ESI.Service.get_system/2
+
+     warning: WandererNotifier.ESI.Client.get_system_kills/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+     │
+ 290 │     Client.get_system_kills(system_id, limit)
+     │            ~
+     │
+     └─ lib/wanderer_notifier/esi/service.ex:290:12: WandererNotifier.ESI.Service.get_system_kills/3
+
+    warning: WandererNotifier.Map.CharactersClient.update_tracked_characters/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
+    │
+ 86 │       WandererNotifier.Map.CharactersClient.update_tracked_characters(current_characters_list)
+    │                                             ~
+    │
+    └─ lib/wanderer_notifier/map/client.ex:86:45: WandererNotifier.Map.Client.update_tracked_characters/1
+
+     warning: WandererNotifier.Map.CharactersClient.get_character_activity/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
+     │
+ 109 │       WandererNotifier.Map.CharactersClient.get_character_activity(slug)
+     │                                             ~
+     │
+     └─ lib/wanderer_notifier/map/client.ex:109:45: WandererNotifier.Map.Client.get_character_activity/1
+
+    warning: the following clause will never match:
+
+        {:error, reason}
+
+    because it attempts to match on the result of:
+
+        initialize(opts)
+
+    which has type:
+
+        dynamic({:ok, %{interval: term(), last_run: term()}})
+
+    typing violation found at:
+    │
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:5: WandererNotifier.Schedulers.ServiceStatusScheduler.init/1
+
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:5: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+
+    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 15 │   def execute(state) do
+    │   ~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:15: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+
+    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 67 │   def enabled?, do: true
+    │   ~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:67: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+
+    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+
+      * GenServer.code_change/3 (function)
+      * GenServer.format_status/1 (function)
+      * GenServer.format_status/2 (function)
+      * GenServer.handle_call/3 (function)
+      * GenServer.handle_cast/2 (function)
+      * GenServer.handle_continue/2 (function)
+      * GenServer.handle_info/2 (function)
+      * GenServer.init/1 (function)
+      * GenServer.terminate/2 (function)
+
+    │
+ 70 │   def get_config do
+    │   ~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:70: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+
+    warning: @behaviour WandererNotifier.Notifiers.Behaviour does not exist (in module WandererNotifier.Notifiers.Discord.Notifier)
+    │
+  1 │ defmodule WandererNotifier.Notifiers.Discord.Notifier do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:1: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_message/2 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 39 │   def send_message(message, _feature \\ nil) do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:39: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_embed/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 55 │   def send_embed(title, description, url \\ nil, color \\ @default_embed_color, _feature \\ nil) do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:55: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_file/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 93 │   def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:93: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_image_embed/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 107 │   def send_image_embed(
+     │   ~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:107: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_enriched_kill_embed/2 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 137 │   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
+     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:137: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_kill_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 172 │   def send_kill_notification(kill_data) do
+     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:172: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_new_tracked_character_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 189 │   def send_new_tracked_character_notification(character)
+     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:189: WandererNotifier.Notifiers.Discord.Notifier (module)
+
+     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_new_system_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 224 │   def send_new_system_notification(system) do
+     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:224: WandererNotifier.Notifiers.Discord.Notifier (module)
 
     warning: unused alias SystemStaticInfo
     │
-  9 │   alias WandererNotifier.Api.Map.SystemStaticInfo
+  7 │   alias WandererNotifier.Map.SystemStaticInfo
     │   ~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:9:3
+    └─ lib/wanderer_notifier/map/systems_client.ex:7:3
 
-    warning: unused alias UrlBuilder
+    warning: WandererNotifier.Processing.Killmail.Processor.init/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
     │
- 10 │   alias WandererNotifier.Api.Map.UrlBuilder
-    │   ~
+ 61 │     KillmailProcessor.init()
+    │                       ~
     │
-    └─ lib/wanderer_notifier/api/map/systems_client.ex:10:3
+    └─ lib/wanderer_notifier/core/application/service.ex:61:23: WandererNotifier.Core.Application.Service.init/1
 
-Generated wanderer_notifier app
+    warning: WandererNotifier.Processing.Killmail.Processor.schedule_tasks/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
+    │
+ 80 │     KillmailProcessor.schedule_tasks()
+    │                       ~
+    │
+    └─ lib/wanderer_notifier/core/application/service.ex:80:23: WandererNotifier.Core.Application.Service.init/1
+
+     warning: WandererNotifier.Processing.Killmail.Processor.process_zkill_message/2 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
+     │
+ 145 │     new_state = KillmailProcessor.process_zkill_message(message, state)
+     │                                   ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:145:35: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Processing.Killmail.Processor.log_stats/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
+     │
+ 191 │     KillmailProcessor.log_stats()
+     │                       ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:191:23: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Cache.Helpers.get_tracked_systems/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
+     │
+ 235 │     tracked_systems = CacheHelpers.get_tracked_systems()
+     │                                    ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:235:36: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Cache.Helpers.get_tracked_systems/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
+     │
+ 552 │     tracked_systems = CacheHelpers.get_tracked_systems()
+     │                                    ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:552:36: WandererNotifier.Core.Application.Service.collect_tracked_systems_data/0
+
+     warning: WandererNotifier.Cache.Helpers.add_system_to_tracked/2 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
+     │
+ 283 │     :ok = CacheHelpers.add_system_to_tracked(system_id, system_name)
+     │                        ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:283:24: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Cache.Helpers.get_tracked_characters/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
+     │
+ 309 │     tracked_characters = CacheHelpers.get_tracked_characters()
+     │                                       ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:309:39: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Cache.Helpers.add_character_to_tracked/2 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
+     │
+ 325 │     :ok = CacheHelpers.add_character_to_tracked(character_id, character_name)
+     │                        ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:325:24: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.Logger.Logger.BatchLogger.flush_all/0 is undefined (module WandererNotifier.Logger.Logger.BatchLogger is not available or is yet to be defined)
+     │
+ 453 │     BatchLogger.flush_all()
+     │                 ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:453:17: WandererNotifier.Core.Application.Service.handle_info/2
+
+     warning: WandererNotifier.ZKill.start_websocket/1 is undefined (module WandererNotifier.ZKill is not available or is yet to be defined)
+     │
+ 490 │       case ZKill.start_websocket(self()) do
+     │                  ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:490:18: WandererNotifier.Core.Application.Service.start_zkill_ws/1
+
+     warning: WandererNotifier.ZKill.start_websocket/1 is undefined (module WandererNotifier.ZKill is not available or is yet to be defined)
+     │
+ 513 │       case ZKill.start_websocket(self()) do
+     │                  ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:513:18: WandererNotifier.Core.Application.Service.reconnect_zkill_ws/1
+
+     warning: WandererNotifier.Processing.Killmail.Processor.get_recent_kills/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
+     │
+ 685 │     KillmailProcessor.get_recent_kills()
+     │                       ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:685:23: WandererNotifier.Core.Application.Service.get_recent_kills/0
+
+     warning: WandererNotifier.Processing.Killmail.Processor.send_test_kill_notification/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
+     │
+ 693 │     KillmailProcessor.send_test_kill_notification()
+     │                       ~
+     │
+     └─ lib/wanderer_notifier/core/application/service.ex:693:23: WandererNotifier.Core.Application.Service.send_test_kill_notification/0
+

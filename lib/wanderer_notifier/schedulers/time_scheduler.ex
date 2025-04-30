@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
 
   defmacro __using__(opts) do
     quote do
-      use WandererNotifier.Schedulers.BaseScheduler,
+      use WandererNotifier.Schedulers.Scheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       alias WandererNotifier.Config.Timings
@@ -36,7 +36,7 @@ defmodule WandererNotifier.Schedulers.TimeScheduler do
           schedule_next_run(hour, minute)
         end
 
-        # Return initial state - only return :ok tuple since errors are unreachable
+        # Return initial state
         {:ok, %{hour: hour, minute: minute, last_run: last_run}}
       end
 

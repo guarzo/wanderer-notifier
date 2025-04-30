@@ -2,6 +2,8 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @moduledoc """
   Scheduler responsible for periodic system updates from the map.
   """
+  @behaviour WandererNotifier.Schedulers.Scheduler
+
   use WandererNotifier.Schedulers.IntervalScheduler,
     name: __MODULE__
 

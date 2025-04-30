@@ -2,6 +2,8 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   @moduledoc """
   Scheduler responsible for generating periodic service status reports.
   """
+  @behaviour WandererNotifier.Schedulers.Scheduler
+
   use WandererNotifier.Schedulers.IntervalScheduler,
     name: __MODULE__
 

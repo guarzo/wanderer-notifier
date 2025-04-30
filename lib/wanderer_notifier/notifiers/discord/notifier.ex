@@ -408,7 +408,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       try do
         # Check if we need to convert it
         if is_map(system) do
-          MapSystem.new(system)
+          WandererNotifier.Map.MapSystem.new(system)
         else
           # Log error and return original
           AppLogger.processor_error(

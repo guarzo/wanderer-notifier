@@ -5,8 +5,6 @@ defmodule WandererNotifier.Utilities.Debug do
 
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Map.Client, as: MapClient
-  alias WandererNotifier.Api.Map.UrlBuilder
-  # Updated to new path
   alias WandererNotifier.Config.Config, as: AppConfig
   alias WandererNotifier.Config.Debug, as: DebugConfig
   alias WandererNotifier.Config.Features
@@ -104,27 +102,31 @@ defmodule WandererNotifier.Utilities.Debug do
   """
   def direct_test_characters_api do
     alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-    alias WandererNotifier.Api.Map.UrlBuilder
     # Updated to new path
     alias WandererNotifier.Config.Config, as: AppConfig
 
-    # Get URL directly
-    url_result = UrlBuilder.build_url("map/characters")
+    # Build the URL and headers directly
+    base_url = Application.get_env(:wanderer_notifier, :map_url)
+    token = Application.get_env(:wanderer_notifier, :map_token)
+    url = base_url <> "/api/map/characters"
 
-    # Get headers directly
-    headers = UrlBuilder.get_auth_headers()
+    headers = [
+      {"Authorization", "Bearer #{token}"},
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"}
+    ]
 
     # Make direct API call with full debug
     response =
-      case url_result do
-        {:ok, url} ->
+      case url do
+        url when is_binary(url) and url != "" ->
           IO.puts("Making request to URL: #{url}")
           IO.puts("With headers: #{inspect(headers)}")
           HttpClient.get(url, headers)
 
-        {:error, reason} ->
-          IO.puts("URL builder error: #{inspect(reason)}")
-          {:error, reason}
+        _ ->
+          IO.puts("URL builder error: #{inspect(url)}")
+          {:error, :invalid_url}
       end
 
     # Get map settings from Debug config
@@ -132,7 +134,7 @@ defmodule WandererNotifier.Utilities.Debug do
 
     # Return complete debug info
     %{
-      url_result: url_result,
+      url_result: url,
       headers: headers,
       response: response,
       config: %{

@@ -7,7 +7,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
 
   defmacro __using__(opts) do
     quote do
-      use WandererNotifier.Schedulers.BaseScheduler,
+      use WandererNotifier.Schedulers.Scheduler,
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Add the aliases
@@ -40,7 +40,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
           schedule_next(interval)
         end
 
-        # Return initial state - only return :ok tuple (removing the error case that will never match)
+        # Return initial state
         {:ok, %{interval: interval, last_run: last_run}}
       end
 

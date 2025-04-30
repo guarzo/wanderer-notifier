@@ -3,9 +3,10 @@ defmodule WandererNotifier.Cache.CachexImpl do
   Cachex-based implementation of the cache behaviour.
   """
 
-  @behaviour WandererNotifier.Cache.CacheBehaviour
+  @behaviour WandererNotifier.Cache.Behaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys
 
   @cache_name Application.compile_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
@@ -99,6 +100,14 @@ defmodule WandererNotifier.Cache.CachexImpl do
         {current, updated} = update_fun.(existing)
         {current, updated}
     end)
+  end
+
+  @impl true
+  def get_recent_kills do
+    case get(Keys.zkill_recent_kills()) do
+      {:ok, kills} -> kills
+      _ -> []
+    end
   end
 
   # Helper to extract a pattern from the key for batch logging

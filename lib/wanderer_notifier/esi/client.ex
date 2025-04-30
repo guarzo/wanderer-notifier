@@ -1,21 +1,19 @@
 defmodule WandererNotifier.ESI.Client do
   @moduledoc """
-  Client for interacting with EVE Online's ESI (Swagger Interface) API.
-  Provides low-level functions for making requests to ESI endpoints.
+  Client for interacting with the EVE Online ESI API.
   """
+
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @user_agent "my-corp-killbot/1.0 (contact me@example.com)"
   @base_url "https://esi.evetech.net/latest"
+  @user_agent "WandererNotifier/1.0"
 
   @doc """
-  Fetches a killmail from ESI.
+  Gets killmail information from ESI.
   """
-  def get_killmail(kill_id, hash, _opts \\ []) do
+  def get_killmail(kill_id, hash, opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
-    _label = "ESI.killmail-#{kill_id}"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching killmail", %{
@@ -52,11 +50,10 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Fetches character info from ESI.
+  Gets character information from ESI.
   """
-  def get_character_info(character_id, _opts \\ []) do
+  def get_character_info(character_id, opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching character info", %{
@@ -66,8 +63,7 @@ defmodule WandererNotifier.ESI.Client do
 
     case HttpClient.get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        # Add character_id to the response
-        {:ok, Map.put(body, "character_id", character_id)}
+        {:ok, body}
 
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI character info error response", %{
@@ -88,11 +84,10 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Fetches corporation info from ESI.
+  Gets corporation information from ESI.
   """
-  def get_corporation_info(corporation_id, _opts \\ []) do
+  def get_corporation_info(corporation_id, opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching corporation info", %{
@@ -102,8 +97,7 @@ defmodule WandererNotifier.ESI.Client do
 
     case HttpClient.get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        # Add corporation_id to the response
-        {:ok, Map.put(body, "corporation_id", corporation_id)}
+        {:ok, body}
 
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI corporation info error response", %{
@@ -124,12 +118,10 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Fetches alliance info from ESI.
+  Gets alliance information from ESI.
   """
-  def get_alliance_info(alliance_id, _opts \\ []) do
+  def get_alliance_info(alliance_id, opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
-    _label = "ESI.alliance-#{alliance_id}"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching alliance info", %{
@@ -139,8 +131,7 @@ defmodule WandererNotifier.ESI.Client do
 
     case HttpClient.get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        # Add alliance_id to the response
-        {:ok, Map.put(body, "alliance_id", alliance_id)}
+        {:ok, body}
 
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI alliance info error response", %{
@@ -161,16 +152,14 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Fetches universe type info (e.g. ship type) from ESI.
+  Gets type information from ESI.
   """
-  def get_universe_type(ship_type_id, _opts \\ []) do
-    url = "#{@base_url}/universe/types/#{ship_type_id}/"
-    _label = "ESI.universe_type-#{ship_type_id}"
-
+  def get_universe_type(type_id, opts \\ []) do
+    url = "#{@base_url}/universe/types/#{type_id}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching universe type", %{
-      ship_type_id: ship_type_id,
+    AppLogger.api_debug("ESI fetching type info", %{
+      type_id: type_id,
       method: "get_universe_type"
     })
 
@@ -179,16 +168,16 @@ defmodule WandererNotifier.ESI.Client do
         {:ok, body}
 
       {:ok, %{status_code: status}} ->
-        AppLogger.api_error("ESI universe type error response", %{
-          ship_type_id: ship_type_id,
+        AppLogger.api_error("ESI type info error response", %{
+          type_id: type_id,
           status: status
         })
 
         {:error, {:http_error, status}}
 
       {:error, reason} ->
-        AppLogger.api_error("ESI universe type failed", %{
-          ship_type_id: ship_type_id,
+        AppLogger.api_error("ESI type info failed", %{
+          type_id: type_id,
           error: inspect(reason)
         })
 
@@ -197,10 +186,9 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Searches for inventory types using the ESI /search/ endpoint.
-  Returns a map with "inventory_type" mapping to a list of type IDs.
+  Searches for inventory types in ESI.
   """
-  def search_inventory_type(query, strict) do
+  def search_inventory_type(query, strict \\ false) do
     query_params = %{
       "categories" => "inventory_type",
       "search" => query,
@@ -208,8 +196,6 @@ defmodule WandererNotifier.ESI.Client do
     }
 
     url = "#{@base_url}/search/?#{URI.encode_query(query_params)}"
-    _label = "ESI.search-#{query}"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI searching inventory type", %{
@@ -241,12 +227,10 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Fetches solar system info from ESI.
+  Gets solar system information from ESI.
   """
-  def get_solar_system(system_id, _opts \\ []) do
+  def get_solar_system(system_id, opts \\ []) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
-    _label = "ESI.solar_system-#{system_id}"
-
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching solar system", %{
@@ -258,15 +242,6 @@ defmodule WandererNotifier.ESI.Client do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
-      {:ok, %{status_code: 404}} ->
-        AppLogger.api_warn("ESI solar system not found", %{
-          system_id: system_id,
-          status_code: 404,
-          method: "get_solar_system"
-        })
-
-        {:error, :not_found}
-
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI solar system error response", %{
           system_id: system_id,
@@ -276,10 +251,9 @@ defmodule WandererNotifier.ESI.Client do
         {:error, {:http_error, status}}
 
       {:error, reason} ->
-        AppLogger.api_error("ESI failed to fetch solar system", %{
+        AppLogger.api_error("ESI solar system failed", %{
           system_id: system_id,
-          error: inspect(reason),
-          method: "get_solar_system"
+          error: inspect(reason)
         })
 
         {:error, reason}
@@ -287,27 +261,21 @@ defmodule WandererNotifier.ESI.Client do
   end
 
   @doc """
-  Gets kills for a specific system.
+  Gets system kill statistics from ESI.
   """
-  def get_system_kills(system_id, limit \\ 50, _opts \\ []) do
-    url = "#{@base_url}/universe/system_kills/?datasource=tranquility"
-    _label = "ESI.system_kills-#{system_id}"
-
+  def get_system_kills(system_id, limit \\ 5) do
+    url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
     AppLogger.api_debug("ESI fetching system kills", %{
       system_id: system_id,
+      limit: limit,
       method: "get_system_kills"
     })
 
     case HttpClient.get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        filtered_kills =
-          body
-          |> Enum.filter(fn kill -> kill["system_id"] == system_id end)
-          |> Enum.take(limit)
-
-        {:ok, filtered_kills}
+        {:ok, body}
 
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI system kills error response", %{
@@ -320,15 +288,15 @@ defmodule WandererNotifier.ESI.Client do
       {:error, reason} ->
         AppLogger.api_error("ESI system kills failed", %{
           system_id: system_id,
-          error: inspect(reason),
-          method: "get_system_kills"
+          error: inspect(reason)
         })
 
         {:error, reason}
     end
   end
 
-  # Default HTTP headers for ESI requests
+  # Private helper functions
+
   defp default_headers do
     [
       {"Accept", "application/json"},

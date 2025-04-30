@@ -1,221 +1,149 @@
 defmodule WandererNotifier.Killmail.Processor do
   @moduledoc """
-  Processes killmail data from various sources.
-  This module is responsible for analyzing killmail data, determining what actions
-  to take, and orchestrating notifications as needed.
-
-  This is the main entry point for killmail processing and coordinates between specialized modules:
-  - Stats: Tracks and reports statistics about processed kills
-  - Enrichment: Adds additional data to killmails
-  - Notification: Handles notification decisions and dispatch
-  - Cache: Manages caching of killmail data
+  Handles processing of killmail data and scheduling of killmail-related tasks.
   """
 
-  alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Killmail.Cache, as: KillCache
-  alias WandererNotifier.Killmail.ZKillClient
-
-  @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
-  @max_retries 3
-  @retry_backoff_ms 1000
-
-  @impl WandererNotifier.Processing.Killmail.ProcessorBehaviour
-  def init do
-    # Core Stats is started by the application supervisor
-    KillCache.init()
-  end
+  alias WandererNotifier.Killmail.Enrichment
+  alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Killmail.Cache, as: KillmailCache
+  alias WandererNotifier.Notifications.KillmailNotification
 
   @doc """
-  Schedules periodic tasks such as stats logging.
+  Initializes the killmail processor.
   """
-  def schedule_tasks do
-    # Core Stats handles its own scheduling
+  def init do
+    AppLogger.info("Initializing killmail processor")
     :ok
   end
 
   @doc """
-  Logs kill statistics.
-  Called periodically to report stats about processed kills.
+  Schedules killmail-related tasks.
   """
-  def log_stats do
-    Stats.print_summary()
-  end
-
-  @impl WandererNotifier.Processing.Killmail.ProcessorBehaviour
-  def get_recent_kills do
-    {:ok, KillCache.get_recent_kills() || []}
+  def schedule_tasks do
+    AppLogger.info("Scheduling killmail tasks")
+    :ok
   end
 
   @doc """
-  Processes a websocket message from zKillboard.
-  Returns an updated state that tracks processed kills.
+  Processes a ZKillboard websocket message.
+
+  ## Parameters
+    - message: The message to process
+    - state: The current state
+
+  ## Returns
+    - new_state
   """
   def process_zkill_message(message, state) do
-    case Jason.decode(message) do
-      {:ok, %{"killmail_id" => _} = killmail} ->
-        _kill_id = get_killmail_id(killmail)
-        handle_killmail(killmail, state)
-
-      {:ok, payload} ->
-        # Log when we receive a message without a killmail_id
-        AppLogger.websocket_debug("Received message without killmail_id", %{
-          message_type: "unknown",
-          payload_keys: Map.keys(payload)
-        })
-
-        state
+    case decode_zkill_message(message) do
+      {:ok, kill_data} ->
+        process_kill_data(kill_data, state)
 
       {:error, reason} ->
-        AppLogger.websocket_error("Failed to decode WebSocket message", %{
+        AppLogger.error("Failed to decode ZKill message", %{
           error: inspect(reason),
-          message_sample: String.slice(message, 0, 100)
+          message: inspect(message)
         })
 
         state
     end
-  rescue
-    error ->
-      stacktrace = __STACKTRACE__
-
-      AppLogger.websocket_error("Exception while processing WebSocket message", %{
-        error: Exception.message(error),
-        stacktrace: Exception.format_stacktrace(stacktrace),
-        message_sample: String.slice(message, 0, 100)
-      })
-
-      state
   end
 
-  # Handle a killmail from the websocket
-  defp handle_killmail(
-         %{"killmail_id" => kill_id} = killmail,
-         %{processed_kill_ids: processed_kills} = state
-       ) do
-    if Map.has_key?(processed_kills, kill_id) do
-      state
-    else
-      process_new_killmail(killmail, kill_id, state)
+  @doc """
+  Logs killmail processing statistics.
+  """
+  def log_stats do
+    AppLogger.info("Logging killmail stats")
+    :ok
+  end
+
+  @doc """
+  Gets recent kills from the cache.
+
+  ## Returns
+    - {:ok, kills} on success
+    - {:error, reason} on failure
+  """
+  def get_recent_kills do
+    case KillmailCache.get_recent_kills() do
+      {:ok, kills} -> {:ok, kills}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp handle_killmail(_killmail, :processed) do
-    # If the state is :processed, we can just return it
-    :processed
-  end
+  @doc """
+  Sends a test kill notification.
 
-  defp process_new_killmail(_unused_killmail, kill_id, state) do
-    # Check cache first
-    case KillCache.get_kill(kill_id) do
-      {:ok, zkb_data} ->
-        # Use cached data
-        AppLogger.processor_debug("Using cached killmail data", %{
-          kill_id: kill_id,
-          source: :cache
-        })
+  ## Returns
+    - :ok on success
+    - {:error, reason} on failure
+  """
+  def send_test_kill_notification do
+    case get_test_killmail() do
+      {:ok, killmail} ->
+        case Enrichment.enrich_killmail_data(killmail) do
+          {:ok, enriched_kill} ->
+            KillmailNotification.send_kill_notification(enriched_kill)
 
-        process_zkill_data(zkb_data, kill_id, state)
+          {:error, reason} ->
+            AppLogger.error("Failed to enrich test killmail", error: inspect(reason))
+            {:error, reason}
+        end
 
-      _ ->
-        # Fetch from ZKillboard with retry logic
-        fetch_and_process_zkill_data(kill_id, state)
+      {:error, reason} ->
+        AppLogger.error("Failed to get test killmail", error: inspect(reason))
+        {:error, reason}
     end
   end
 
-  defp fetch_and_process_zkill_data(kill_id, state, retry_count \\ 0) do
-    case ZKillClient.get_killmail(kill_id) do
-      {:ok, zkb_data} ->
-        # Cache the result - we need to convert the struct to a map
-        zkb_data_map = Map.from_struct(zkb_data)
-        KillCache.cache_kill(kill_id, zkb_data_map)
-        process_zkill_data(zkb_data_map, kill_id, state)
+  # Private helper functions
 
-      error when retry_count < @max_retries ->
-        # Log and retry
-        AppLogger.processor_warn("Retrying killmail fetch", %{
-          kill_id: kill_id,
-          retry: retry_count + 1,
-          max_retries: @max_retries,
-          error: inspect(error),
-          backoff_ms: (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
+  defp decode_zkill_message(message) do
+    case Jason.decode(message) do
+      {:ok, decoded} -> {:ok, decoded}
+      error -> error
+    end
+  end
+
+  defp process_kill_data(kill_data, state) do
+    case Killmail.from_zkill(kill_data) do
+      {:ok, killmail} ->
+        case Enrichment.enrich_killmail_data(killmail) do
+          {:ok, enriched_kill} ->
+            KillmailNotification.send_kill_notification(enriched_kill)
+            state
+
+          {:error, reason} ->
+            AppLogger.error("Failed to enrich killmail", %{
+              kill_id: killmail.kill_id,
+              error: inspect(reason)
+            })
+
+            state
+        end
+
+      {:error, reason} ->
+        AppLogger.error("Failed to process kill data", %{
+          error: inspect(reason),
+          data: inspect(kill_data)
         })
 
-        # Exponential backoff
-        backoff = (@retry_backoff_ms * :math.pow(2, retry_count)) |> round()
-        :timer.sleep(backoff)
-        fetch_and_process_zkill_data(kill_id, state, retry_count + 1)
-
-      error ->
-        # Max retries reached, log error and return unchanged state
-        log_zkill_error(kill_id, error)
         state
     end
   end
 
-  defp process_zkill_data(kill_data, kill_id, state) do
-    # Check if the kill_id from parameters matches the one in data for validation
-    kill_id_from_data = Map.get(kill_data, "killmail_id")
-
-    # Log if there's a mismatch between the provided kill_id and the one in the data
-    if kill_id_from_data && kill_id_from_data != kill_id do
-      AppLogger.processor_warn("Kill ID mismatch", %{
-        parameter_kill_id: kill_id,
-        data_kill_id: kill_id_from_data
-      })
-    end
-
-    # Check if we've already processed this kill
-    if Map.get(state.processed_kill_ids, kill_id) do
-      AppLogger.processor_debug("Skipping already processed kill", %{
-        kill_id: kill_id
-      })
-
-      # Return state unchanged
-      state
-    else
-      # Create context for processing
-      # Don't use kill_id as character_id as that causes errors
-      # Instead, set character_id to nil for websocket kills
-      ctx = create_realtime_context(nil, "Websocket kill #{kill_id}")
-
-      # Process the kill
-      case process_single_kill(kill_data, ctx) do
-        {:ok, _result} ->
-          # Update state with processed kill
-          Map.update!(state, :processed_kill_ids, &Map.put(&1, kill_id, true))
-
-        _ ->
-          # Just return state on any error
-          state
-      end
-    end
-  end
-
-  defp create_realtime_context(character_id, character_name) do
-    %Context{
-      mode: %{mode: :realtime},
-      character_id: character_id,
-      character_name: character_name,
-      source: :zkill_websocket
-    }
-  end
-
-  defp log_zkill_error(kill_id, error) do
-    AppLogger.websocket_error("Failed to fetch killmail from ZKill", %{
-      kill_id: kill_id,
-      error: inspect(error)
-    })
-  end
-
-  defp get_killmail_id(%{"killmail_id" => kill_id}), do: kill_id
-  defp get_killmail_id(%{killmail_id: kill_id}), do: kill_id
-  defp get_killmail_id(_), do: nil
-
-  # Process a single killmail
-  def process_single_kill(kill_data, _ctx) do
-    # Implementation that uses the context parameter
-    # This fixes the unused variable warning
-    {:ok, kill_data}
+  defp get_test_killmail do
+    # Create a test killmail for testing notifications
+    {:ok,
+     %Killmail{
+       kill_id: 12345,
+       killmail_hash: "abc123",
+       victim_id: 98765,
+       attacker_id: 54321,
+       ship_type_id: 587,
+       solar_system_id: 30_000_142,
+       kill_time: DateTime.utc_now()
+     }}
   end
 end

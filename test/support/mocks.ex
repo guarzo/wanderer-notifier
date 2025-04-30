@@ -3,7 +3,7 @@ defmodule WandererNotifier.MockZKillClient do
   Mock implementation of the ZKillboard client for testing.
   """
 
-  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+  @behaviour WandererNotifier.Killmail.ZKillClient
 
   @impl true
   def get_single_killmail(_kill_id), do: {:ok, []}
@@ -61,63 +61,75 @@ defmodule WandererNotifier.MockESI do
   end
 end
 
-defmodule WandererNotifier.ETSCache do
+defmodule WandererNotifier.Test.Support.Mocks do
   @moduledoc """
-  ETS-based implementation of cache behavior for testing using ETS tables
+  Mock implementations for testing.
   """
 
-  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
+  alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  @behaviour WandererNotifier.Cache.Behaviour
+
+  # -- Cache Implementation --
 
   @impl true
-  def get(key) do
-    case :ets.lookup(:cache_table, key) do
-      [{^key, value}] -> {:ok, value}
-      [] -> {:error, :not_found}
-    end
-  end
+  def get(key), do: {:ok, Process.get({:cache, key})}
 
   @impl true
-  def set(key, value, _ttl \\ nil) do
-    :ets.insert(:cache_table, {key, value})
+  def set(key, value, _ttl) do
+    AppLogger.cache_debug("Setting cache value with TTL",
+      key: key,
+      value: value
+    )
+
+    Process.put({:cache, key}, value)
     {:ok, value}
   end
 
   @impl true
-  def put(key, value, _ttl \\ nil) do
-    :ets.insert(:cache_table, {key, value})
+  def put(key, value) do
+    Process.put({:cache, key}, value)
     {:ok, value}
   end
 
   @impl true
   def delete(key) do
-    :ets.delete(:cache_table, key)
+    Process.delete({:cache, key})
     :ok
   end
 
   @impl true
   def clear do
-    :ets.delete_all_objects(:cache_table)
+    # This is a simplified clear that only clears cache-related process dictionary entries
+    Process.get_keys()
+    |> Enum.filter(fn
+      {:cache, _} -> true
+      _ -> false
+    end)
+    |> Enum.each(&Process.delete/1)
+
     :ok
   end
 
   @impl true
-  def get_and_update(key, update_fn) do
-    case get(key) do
-      {:ok, value} ->
-        case update_fn.(value) do
-          {get_value, update_value} ->
-            set(key, update_value)
-            {:ok, get_value}
-        end
+  def get_and_update(key, update_fun) do
+    current = Process.get({:cache, key})
+    {current_value, new_value} = update_fun.(current)
+    Process.put({:cache, key}, new_value)
+    {:ok, {current_value, new_value}}
+  end
 
-      {:error, :not_found} ->
-        case update_fn.(nil) do
-          {get_value, update_value} ->
-            set(key, update_value)
-            {:ok, get_value}
-        end
+  @impl true
+  def get_recent_kills do
+    case get(Keys.zkill_recent_kills()) do
+      {:ok, kills} when is_list(kills) -> kills
+      _ -> []
     end
   end
+
+  # -- Other Mock Implementations --
+  # Add other mock implementations here as needed
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -338,3 +350,5 @@ Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
   for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
 )
+
+Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Killmail.ZKillClient)

@@ -3,11 +3,10 @@ defmodule WandererNotifier.Api.CharactersClient do
   Character information API client
   """
 
-  alias WandererNotifier.Api.HttpClient
+  alias WandererNotifier.HttpClient
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Character.Character
-  alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Config.Cache
   alias WandererNotifier.Config.Config
@@ -270,10 +269,19 @@ defmodule WandererNotifier.Api.CharactersClient do
   """
   @spec check_characters_endpoint_availability() :: {:ok, boolean()} | {:error, term()}
   def check_characters_endpoint_availability do
-    case UrlBuilder.build_url("map/characters") do
-      {:ok, url} ->
-        headers = UrlBuilder.get_auth_headers()
+    # Build the URL and headers directly
+    base_url = Application.get_env(:wanderer_notifier, :map_url)
+    token = Application.get_env(:wanderer_notifier, :map_token)
+    url = base_url <> "/api/map/characters"
 
+    headers = [
+      {"Authorization", "Bearer #{token}"},
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"}
+    ]
+
+    case url do
+      url when is_binary(url) and url != "" ->
         case HttpClient.get(url, headers) do
           {:ok, %{status_code: status}} when status >= 200 and status < 300 ->
             {:ok, true}
@@ -288,9 +296,9 @@ defmodule WandererNotifier.Api.CharactersClient do
             {:error, reason}
         end
 
-      {:error, reason} ->
-        AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(reason))
-        {:error, reason}
+      _ ->
+        AppLogger.api_warn("⚠️ Characters endpoint not available", error: inspect(url))
+        {:error, :invalid_url}
     end
   end
 

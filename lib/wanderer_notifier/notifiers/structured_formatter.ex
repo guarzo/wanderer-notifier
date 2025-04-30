@@ -8,7 +8,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   on the structured data provided by these schemas.
   """
 
-  alias WandererNotifier.Api.Map.SystemStaticInfo
   alias WandererNotifier.Character.Character
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Map.MapSystem
@@ -201,21 +200,12 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
   end
 
   # Get system security status from ESI if possible
-  defp get_system_security_status(nil), do: nil
-
   defp get_system_security_status(system_id) do
-    case SystemStaticInfo.get_system_static_info(system_id) do
-      {:ok, static_info} ->
-        data = Map.get(static_info, "data", %{})
-
-        # Return a map with both the security status value and type description
-        %{
-          value: Map.get(data, "security"),
-          type: Map.get(data, "type_description")
-        }
-
-      _ ->
-        nil
+    if Code.ensure_loaded?(WandererNotifier.Api.Map.SystemStaticInfo) and
+         function_exported?(WandererNotifier.Api.Map.SystemStaticInfo, :get_system_static_info, 1) do
+      WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id)
+    else
+      nil
     end
   end
 
@@ -472,7 +462,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
       generate_notification_elements(system, is_wormhole, display_name)
 
     # Format statics list and system link
-    formatted_statics = format_statics_list(system.static_details || system.statics)
+    formatted_statics = format_statics_list(system.static_details)
     system_name_with_link = create_system_name_link(system, display_name)
 
     # Build notification fields

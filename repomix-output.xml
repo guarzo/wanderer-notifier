@@ -59,20 +59,8 @@ lib/
         health_controller.ex
         kill_controller.ex
         notification_controller.ex
-      map/
-        characters.ex
-        response_validator.ex
-        system_static_info.ex
-        systems.ex
-        universe.ex
-        url_builder.ex
-      zkill/
-        client.ex
       characters_client.ex
       controller.ex
-    behaviours/
-      date_behaviour.ex
-      notifier_factory_behaviour.ex
     cache/
       cache_behaviour.ex
       cachex_impl.ex
@@ -117,12 +105,9 @@ lib/
       cache_helpers_behaviour.ex
       deduplication_helper.ex
     http_client/
+      behaviour.ex
       httpoison.ex
     killmail/
-      zkill/
-        client_behaviour.ex
-        client.ex
-        websocket.ex
       cache.ex
       context.ex
       killmail.ex
@@ -131,6 +116,7 @@ lib/
       mode.ex
       pipeline.ex
       processor.ex
+      zkill_client.ex
     license/
       client.ex
       service.ex
@@ -142,12 +128,9 @@ lib/
       logger.ex
       startup_tracker.ex
     map/
-      characters_client.ex
       client.ex
       map_system.ex
-      system.ex
       systems_client.ex
-      url_builder.ex
     notifications/
       determiner/
         character.ex
@@ -200,30 +183,19 @@ lib/
       supervisor.ex
       system_update_scheduler.ex
       time_scheduler.ex
-    util/
-      number_human.ex
     utilities/
       character_utils.ex
       datetime_util.ex
       debug.ex
-      map_util.ex
-    utils/
       list_utils.ex
+      map_util.ex
+      number_human.ex
       time_helpers.ex
       type_helpers.ex
     web/
       router.ex
       server.ex
-    zkill/
-      client_behaviour.ex
-      client.ex
-      killmail.ex
-      parser.ex
-      websocket.ex
     application.ex
-    character.ex
-    http_client.ex
-    zkill.ex
 rel/
   overlays/
     env.bat
@@ -344,6 +316,7 @@ organization.txt
 react.txt
 README-GH-PAGES.md
 README.md
+refactoring-progress.md
 scheduler.txt
 start.sh</directory_structure><files>This section contains the contents of the repository&apos;s files.<file path="_layouts/default.html">&lt;!DOCTYPE html&gt;
 &lt;html lang=&quot;{{ site.lang | default: &quot;en-US&quot; }}&quot;&gt;
@@ -463,7 +436,7 @@ start.sh</directory_structure><files>This section contains the contents of the r
     }
   },
 
-  &quot;postCreateCommand&quot;: &quot;mix local.hex --force &amp;&amp; mix local.rebar --force &amp;&amp; mix deps.get &amp;&amp; cd renderer &amp;&amp; npm install &amp;&amp; chmod +x /workspace/.devcontainer/db-init.sh&quot;
+  &quot;postCreateCommand&quot;: &quot;mix local.hex --force &amp;&amp; mix local.rebar --force &amp;&amp; mix deps.get &amp;&amp; cd renderer &amp;&amp; npm install&quot;
 }</file><file path=".devcontainer/docker-compose.yml">version: &quot;3.8&quot;
 services:
   app:
@@ -491,9 +464,6 @@ services:
     # This allows the container to access host.docker.internal
     extra_hosts:
       - &quot;host.docker.internal:host-gateway&quot;
-    depends_on:
-      postgres:
-        condition: service_healthy
 
 volumes:
   claude-code-bashhistory:
@@ -1562,7 +1532,6 @@ config :logger, :module_levels, %{
   &quot;WandererNotifier.Map.SystemsClient&quot; =&gt; :info,
   &quot;WandererNotifier.Map.CharactersClient&quot; =&gt; :info,
   &quot;WandererNotifier.Notifiers.Discord&quot; =&gt; :info,
-  &quot;WandererNotifier.Api.ZKill.Websocket&quot; =&gt; :info,
   &quot;WandererNotifier.Application&quot; =&gt; :info,
   &quot;WandererNotifier.License.Service&quot; =&gt; :info,
   &quot;WandererNotifier.Core.Stats&quot; =&gt; :info,
@@ -1600,7 +1569,6 @@ config :wanderer_notifier, cache_name: :wanderer_cache
 
 # Configure service modules
 config :wanderer_notifier,
-  zkill_service: WandererNotifier.Api.ZKill.Service,
   esi_service: WandererNotifier.ESI.Service,
   cache_impl: WandererNotifier.Cache.CachexImpl
 
@@ -1640,12 +1608,14 @@ config :logger, :debug_log,
   metadata: [:trace_id, :character_id, :kill_count, :killmail_id]
 
 # Set ZKill-specific logs to info level
-config :logger, :module_levels, %{
-  &quot;WandererNotifier.Api.ZKill&quot; =&gt; :info,
-  &quot;WandererNotifier.Api.ZKill.Client&quot; =&gt; :info,
-  &quot;WandererNotifier.Api.ZKill.Service&quot; =&gt; :info,
-  &quot;WandererNotifier.Api.ZKill.Websocket&quot; =&gt; :info
-}</file><file path="config/prod.exs">import Config
+config :logger,
+       :module_levels,
+       %{
+         # &quot;WandererNotifier.Api.ZKill&quot; =&gt; :info,
+         # &quot;WandererNotifier.Api.ZKill.Client&quot; =&gt; :info,
+         # &quot;WandererNotifier.Api.ZKill.Service&quot; =&gt; :info,
+         # &quot;WandererNotifier.Api.ZKill.Websocket&quot; =&gt; :info
+       }</file><file path="config/prod.exs">import Config
 
 # Configure logger with basic settings - using string keys for metadata
 config :logger,
@@ -1675,8 +1645,7 @@ config :logger, :module_levels, %{
   &quot;WandererNotifier.Map.Client&quot; =&gt; :warn,
   &quot;WandererNotifier.Map.SystemsClient&quot; =&gt; :warn,
   &quot;WandererNotifier.Map.CharactersClient&quot; =&gt; :warn,
-  &quot;WandererNotifier.Notifiers.Discord&quot; =&gt; :warn,
-  &quot;WandererNotifier.Api.ZKill.Websocket&quot; =&gt; :warning
+  &quot;WandererNotifier.Notifiers.Discord&quot; =&gt; :warn
 }
 
 # Runtime configuration should be in runtime.exs</file><file path="config/runtime.exs">import Config
@@ -2291,7 +2260,6 @@ config :wanderer_notifier,
     track_kspace_systems: true
   },
   cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
-  zkill_service: WandererNotifier.Api.ZKill.ServiceMock,
   esi_service: WandererNotifier.ESI.ServiceMock
 
 # Configure cache
@@ -2627,1436 +2595,6 @@ end</file><file path="lib/wanderer_notifier/api/controllers/notification_control
       })
 
       send_error(conn, 500, &quot;An unexpected error occurred&quot;)
-  end
-end</file><file path="lib/wanderer_notifier/api/map/characters.ex">defmodule WandererNotifier.Api.Map.Characters do
-  @moduledoc &quot;&quot;&quot;
-  Tracked characters API calls.
-  &quot;&quot;&quot;
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Config.Config
-  alias WandererNotifier.Cache.Helpers, as: CacheHelpers
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Character.Character
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
-
-  @moduledoc deprecated:
-               &quot;This module is deprecated. Use WandererNotifier.Map.CharactersClient instead.&quot;
-
-  def update_tracked_characters(cached_characters \\ nil) do
-    AppLogger.api_info(
-      &quot;[CRITICAL] Characters.update_tracked_characters called, input type: #{typeof(cached_characters)}&quot;
-    )
-
-    AppLogger.api_info(
-      &quot;[CRITICAL] Stack trace: #{inspect(Process.info(self(), :current_stacktrace), limit: 1000)}&quot;
-    )
-
-    AppLogger.api_debug(&quot;Starting update of tracked characters&quot;)
-
-    # EXTREMELY IMPORTANT: If we&apos;re passed a list of processed characters, just return them directly
-    # This prevents a duplicate HTTP call when called from CharactersClient
-    if is_list(cached_characters) &amp;&amp; length(cached_characters) &gt; 0 do
-      sample = Enum.at(cached_characters, 0)
-
-      AppLogger.api_info(
-        &quot;[CRITICAL] Input is a list of #{length(cached_characters)} items, returning directly. Sample: #{inspect(sample, limit: 200)}&quot;
-      )
-
-      update_cache(cached_characters, nil)
-      {:ok, cached_characters}
-    end
-
-    with {:ok, chars_url} &lt;- build_characters_url(),
-         _ &lt;- AppLogger.api_debug(&quot;Characters URL built&quot;, url: chars_url),
-         {:ok, body} &lt;- fetch_characters_body(chars_url),
-         _ &lt;-
-           AppLogger.api_debug(&quot;Received response body&quot;, body_preview: String.slice(body, 0, 100)),
-         {:ok, parsed_chars} &lt;- parse_characters_response(body),
-         _ &lt;- update_cache(parsed_chars, cached_characters),
-         _ &lt;- notify_new_tracked_characters(parsed_chars, cached_characters) do
-      {:ok, parsed_chars}
-    else
-      error -&gt;
-        AppLogger.api_error(&quot;Failed to update tracked characters&quot;, error: inspect(error))
-        {:error, error}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Updates tracked characters using a raw API response body.
-  This is the new primary method that should be used by CharactersClient.
-
-  ## Parameters
-    - raw_body: The raw API response body as string
-    - cached_characters: Optional list of cached characters for comparison
-
-  ## Returns
-    - {:ok, characters} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def update_tracked_characters(raw_body, cached_characters) when is_binary(raw_body) do
-    AppLogger.api_info(
-      &quot;[CRITICAL] Characters.update_tracked_characters called with raw body, length: #{String.length(raw_body)}&quot;
-    )
-
-    # Log sample of the raw body for debugging
-    AppLogger.api_debug(
-      &quot;Processing raw API response body&quot;,
-      body_preview: String.slice(raw_body, 0, 150)
-    )
-
-    # Process the raw response body
-    case parse_characters_response(raw_body) do
-      {:ok, parsed_chars} -&gt;
-        # Update the cache with the parsed characters
-        update_cache(parsed_chars, cached_characters)
-
-        # Check for and notify about new characters
-        notify_new_tracked_characters(parsed_chars, cached_characters)
-
-        # Return the parsed characters
-        {:ok, parsed_chars}
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;Failed to parse character response body&quot;, error: inspect(reason))
-        {:error, reason}
-    end
-  end
-
-  def check_characters_endpoint_availability do
-    AppLogger.api_debug(&quot;Checking characters endpoint availability&quot;)
-
-    with {:ok, chars_url} &lt;- build_characters_url(),
-         _ &lt;- AppLogger.api_debug(&quot;Characters URL built&quot;, url: chars_url),
-         {:ok, _body} &lt;- fetch_characters_body(chars_url) do
-      AppLogger.api_info(&quot;Characters endpoint is available&quot;)
-      {:ok, true}
-    else
-      error -&gt;
-        AppLogger.api_warn(&quot;Characters endpoint is NOT available&quot;, error: inspect(error))
-
-        error_reason =
-          case error do
-            {:error, reason} -&gt; reason
-            other -&gt; &quot;Unexpected error: #{inspect(other)}&quot;
-          end
-
-        {:error, error_reason}
-    end
-  end
-
-  defp build_characters_url do
-    AppLogger.api_info(
-      &quot;[CRITICAL] build_characters_url called, stacktrace: #{inspect(Process.info(self(), :current_stacktrace), limit: 1000)}&quot;
-    )
-
-    base_url_with_slug = Config.map_url()
-    map_token = Config.map_token()
-
-    # Validate configuration
-    with {:ok, _} &lt;- validate_config(base_url_with_slug, map_token) do
-      construct_characters_url(base_url_with_slug)
-    end
-  end
-
-  defp validate_config(base_url_with_slug, map_token) do
-    cond do
-      is_nil(base_url_with_slug) or base_url_with_slug == &quot;&quot; -&gt;
-        {:error, &quot;Map URL is not configured&quot;}
-
-      is_nil(map_token) or map_token == &quot;&quot; -&gt;
-        {:error, &quot;Map token is not configured&quot;}
-
-      true -&gt;
-        {:ok, true}
-    end
-  end
-
-  defp construct_characters_url(base_url_with_slug) do
-    # Parse the URL to separate the base URL from the slug
-    uri = URI.parse(base_url_with_slug)
-    AppLogger.api_debug(&quot;Parsed URI&quot;, uri: inspect(uri))
-
-    # Extract the slug ID from the path
-    slug_id = extract_slug_id(uri)
-    AppLogger.api_debug(&quot;Extracted slug ID&quot;, slug_id: slug_id)
-
-    # Get base host and construct the final URL
-    base_host = get_base_host(uri)
-    url = build_final_url(base_host, slug_id)
-
-    AppLogger.api_debug(&quot;Final URL constructed&quot;, url: url)
-    {:ok, url}
-  end
-
-  defp extract_slug_id(uri) do
-    path = uri.path || &quot;&quot;
-    path = String.trim_trailing(path, &quot;/&quot;)
-    AppLogger.api_debug(&quot;Extracted path&quot;, path: path)
-
-    path
-    |&gt; String.split(&quot;/&quot;)
-    |&gt; Enum.filter(fn part -&gt; part != &quot;&quot; end)
-    |&gt; List.last() || &quot;&quot;
-  end
-
-  defp get_base_host(uri) do
-    &quot;#{uri.scheme}://#{uri.host}#{if uri.port, do: &quot;:#{uri.port}&quot;, else: &quot;&quot;}&quot;
-  end
-
-  defp build_final_url(base_host, slug_id) do
-    if String.ends_with?(base_host, &quot;/&quot;) do
-      &quot;#{base_host}api/map/characters?slug=#{URI.encode_www_form(slug_id)}&quot;
-    else
-      &quot;#{base_host}/api/map/characters?slug=#{URI.encode_www_form(slug_id)}&quot;
-    end
-  end
-
-  defp fetch_characters_body(chars_url) do
-    map_token = Config.map_token()
-    # Request headers
-    headers = [
-      {&quot;Authorization&quot;, &quot;Bearer #{map_token}&quot;},
-      {&quot;Content-Type&quot;, &quot;application/json&quot;},
-      {&quot;Accept&quot;, &quot;application/json&quot;}
-    ]
-
-    AppLogger.api_debug(&quot;Requesting characters data&quot;, url: chars_url)
-
-    # Make the request - use only one endpoint, no fallbacks
-    case HttpClient.get(chars_url, headers) do
-      {:ok, %{status_code: 200, body: body}} -&gt;
-        AppLogger.api_debug(&quot;Characters API endpoint successful&quot;)
-        {:ok, body}
-
-      {:ok, %{status_code: status_code, body: body}} -&gt;
-        AppLogger.api_error(&quot;API returned non-200 status&quot;,
-          status_code: status_code,
-          body: String.slice(body, 0, 100)
-        )
-
-        {:error, &quot;API returned non-200 status: #{status_code}&quot;}
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;API request failed&quot;, error: inspect(reason))
-        {:error, reason}
-    end
-  end
-
-  defp parse_characters_response(body) do
-    AppLogger.api_debug(&quot;Processing response body&quot;, body_size: byte_size(body))
-
-    case decode_json(body) do
-      {:ok, data} -&gt; process_decoded_data(data)
-      {:error, reason} -&gt; {:error, reason}
-    end
-  end
-
-  # Helper to decode JSON with error handling
-  defp decode_json(body) do
-    case Jason.decode(body) do
-      {:ok, data} -&gt;
-        AppLogger.api_debug(&quot;Successfully decoded JSON&quot;, data_keys: map_keys_preview(data))
-        {:ok, data}
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;Failed to parse JSON response&quot;, error: inspect(reason))
-        {:error, &quot;Failed to parse JSON response&quot;}
-    end
-  end
-
-  # Helper to get a preview of map keys for debugging
-  defp map_keys_preview(data) when is_map(data) do
-    Map.keys(data)
-  end
-
-  defp map_keys_preview(data) when is_list(data) do
-    &quot;list with #{length(data)} items&quot;
-  end
-
-  defp map_keys_preview(_), do: &quot;not a map&quot;
-
-  # Process the decoded data based on format
-  defp process_decoded_data(data) do
-    cond do
-      # Case 1: Nested characters in data array
-      is_map(data) &amp;&amp; Map.has_key?(data, &quot;data&quot;) &amp;&amp; is_list(data[&quot;data&quot;]) -&gt;
-        process_nested_characters(data[&quot;data&quot;])
-
-      # Case 2: Direct array of characters
-      is_list(data) -&gt;
-        process_direct_characters(data)
-
-      # Case 3: Empty or unexpected map
-      is_map(data) -&gt;
-        AppLogger.api_warn(&quot;Unexpected response format, no characters found&quot;, data: inspect(data))
-        {:ok, []}
-
-      # Case 4: Completely unexpected format
-      true -&gt;
-        AppLogger.api_error(&quot;Unexpected response format&quot;, data_type: typeof(data))
-        {:error, &quot;Unexpected response format&quot;}
-    end
-  end
-
-  defp typeof(term) when is_binary(term), do: &quot;string&quot;
-  defp typeof(term) when is_boolean(term), do: &quot;boolean&quot;
-  defp typeof(term) when is_integer(term), do: &quot;integer&quot;
-  defp typeof(term) when is_float(term), do: &quot;float&quot;
-  defp typeof(term) when is_map(term), do: &quot;map&quot;
-  defp typeof(term) when is_list(term), do: &quot;list&quot;
-  defp typeof(term) when is_atom(term), do: &quot;atom&quot;
-  defp typeof(term) when is_tuple(term), do: &quot;tuple&quot;
-  defp typeof(term) when is_function(term), do: &quot;function&quot;
-  defp typeof(term) when is_pid(term), do: &quot;pid&quot;
-  defp typeof(term) when is_reference(term), do: &quot;reference&quot;
-  defp typeof(_), do: &quot;unknown&quot;
-
-  # Process characters nested in a data array
-  defp process_nested_characters(characters) do
-    AppLogger.api_debug(&quot;Parsed characters from data array&quot;, count: length(characters))
-
-    if length(characters) &gt; 0 do
-      AppLogger.api_debug(&quot;First raw character sample&quot;,
-        sample: inspect(List.first(characters), limit: 500)
-      )
-    end
-
-    # Transform the characters to match the expected format
-    transformed_characters = Enum.map(characters, &amp;transform_nested_character/1)
-
-    if length(transformed_characters) &gt; 0 do
-      AppLogger.api_debug(&quot;First transformed character&quot;,
-        sample: inspect(List.first(transformed_characters), limit: 500)
-      )
-    end
-
-    {:ok, transformed_characters}
-  end
-
-  # Process a direct array of characters
-  defp process_direct_characters(characters) do
-    AppLogger.api_debug(&quot;Parsed characters&quot;, count: length(characters))
-
-    # Transform raw characters into standardized format
-    transformed_characters = Enum.map(characters, &amp;transform_character_data/1)
-
-    {:ok, transformed_characters}
-  end
-
-  defp update_cache(new_characters, cached_characters) do
-    # Get existing characters from cache if not provided - use only one cache source
-    current_characters = get_current_characters_from_cache(cached_characters)
-
-    # Log the current state
-    AppLogger.api_info(
-      &quot;Character cache update&quot;,
-      current_count: length(current_characters),
-      new_count: length(new_characters || [])
-    )
-
-    # Merge current and new characters
-    merged_characters = merge_characters(current_characters, new_characters)
-
-    # Update the cache with a long TTL (24 hours) for persistence
-    update_characters_cache(merged_characters)
-    # Return the merged characters
-    {:ok, merged_characters}
-  rescue
-    e -&gt;
-      AppLogger.api_error(&quot;Exception in update_cache&quot;,
-        error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, e}
-  end
-
-  # Get current characters from cache, using provided list if available
-  defp get_current_characters_from_cache(cached_characters) do
-    if is_list(cached_characters) &amp;&amp; length(cached_characters) &gt; 0 do
-      # Use provided cached characters if available
-      cached_characters
-    else
-      # Otherwise just get from cache directly - this is our single source of truth
-      CacheRepo.get(CacheKeys.character_list()) || []
-    end
-  end
-
-  # Merge current and new characters based on character_id
-  defp merge_characters(current_characters, new_characters) do
-    # Create a map of character_id -&gt; character for merging
-    character_map = build_character_map_from_list(current_characters)
-
-    # Update the map with new characters (overwriting existing ones with same ID)
-    updated_map = add_new_characters_to_map(character_map, new_characters)
-
-    # Convert back to a list for the cache
-    Map.values(updated_map)
-  end
-
-  # Build a map of character_id -&gt; character from a list
-  defp build_character_map_from_list(characters) do
-    Enum.reduce(characters, %{}, fn char, acc -&gt;
-      # Handle both struct and map character types
-      char_id =
-        if is_struct(char, Character) do
-          char.character_id
-        else
-          Map.get(char, &quot;character_id&quot;) || Map.get(char, :character_id)
-        end
-
-      if char_id, do: Map.put(acc, char_id, char), else: acc
-    end)
-  end
-
-  # Add new characters to an existing map
-  defp add_new_characters_to_map(map, characters) do
-    Enum.reduce(characters || [], map, fn char, acc -&gt;
-      # Handle both struct and map character types
-      char_id =
-        if is_struct(char, Character) do
-          char.character_id
-        else
-          Map.get(char, &quot;character_id&quot;) || Map.get(char, :character_id)
-        end
-
-      if char_id, do: Map.put(acc, char_id, char), else: acc
-    end)
-  end
-
-  # Update the cache with the merged characters list
-  defp update_characters_cache(merged_characters) do
-    # Use a long TTL (24 hours) for persistence
-    long_ttl = 86_400
-
-    # Update the cache
-    CacheRepo.set(CacheKeys.character_list(), merged_characters, long_ttl)
-
-    # Cache individual characters and mark them as tracked
-    Enum.each(merged_characters, fn char -&gt;
-      char_id = char.character_id
-
-      if char_id do
-        # Cache individual character
-        CacheRepo.set(CacheKeys.character(char_id), char, long_ttl)
-        # Mark as tracked
-        CacheHelpers.add_character_to_tracked(char_id, char)
-      end
-    end)
-
-    # Verify the update (with brief delay to ensure it&apos;s written)
-    Process.sleep(50)
-    post_update_count = length(CacheRepo.get(CacheKeys.character_list()) || [])
-
-    AppLogger.api_info(
-      &quot;Character cache updated&quot;,
-      final_count: post_update_count,
-      expected_count: length(merged_characters)
-    )
-  end
-
-  defp notify_new_tracked_characters(new_characters, cached_characters) do
-    # Use the CharacterDeterminer to check if character notifications are enabled globally
-    if CharacterDeterminer.should_notify?(nil, %{}) do
-      # Check if we have both new and cached characters
-      new_chars = new_characters || []
-      cached_chars = cached_characters || []
-
-      # Find characters that are in new_chars but not in cached_chars
-      added_characters = find_new_characters(new_chars, cached_chars)
-
-      AppLogger.api_info(&quot;Found new characters&quot;, count: length(added_characters))
-
-      # Process each new character for notification
-      Enum.each(added_characters, &amp;process_character_notification/1)
-    else
-      AppLogger.api_debug(&quot;Character notifications are disabled globally&quot;)
-    end
-
-    {:ok, new_characters}
-  end
-
-  defp send_character_notification(character_info) do
-    AppLogger.api_info(&quot;Sending notification for new character: #{character_info.name}&quot;)
-    NotificationInterface.send_message(character_info)
-  end
-
-  defp find_new_characters(_new_chars, []) do
-    # If there are no cached characters, this might be the first run
-    # In that case, don&apos;t notify about all characters to avoid spamming
-    []
-  end
-
-  defp find_new_characters(new_chars, cached_chars) do
-    Enum.filter(new_chars, &amp;new_character?(&amp;1, cached_chars))
-  end
-
-  defp new_character?(char, cached_chars) do
-    # Get character_id from either struct or map
-    char_id =
-      if is_struct(char, Character) do
-        char.character_id
-      else
-        Map.get(char, &quot;character_id&quot;) || Map.get(char, :character_id)
-      end
-
-    not character_exists_in_cache?(char_id, cached_chars)
-  end
-
-  defp character_exists_in_cache?(char_id, cached_chars) do
-    Enum.any?(cached_chars, fn c -&gt;
-      # Get the character_id from either a struct or map
-      c_id =
-        if is_struct(c, Character) do
-          c.character_id
-        else
-          Map.get(c, &quot;character_id&quot;) || Map.get(c, :character_id)
-        end
-
-      c_id == char_id
-    end)
-  end
-
-  defp transform_character_data(character_data) do
-    # CRITICAL: We must use eve_id from the API as our character_id
-    # The API returns both a UUID-style ID (which we ignore) and a numeric eve_id (which we use)
-    eve_id = Map.get(character_data, &quot;eve_id&quot;)
-
-    # Log detailed character ID information for debugging
-    AppLogger.api_debug(
-      &quot;Character ID conversion&quot;,
-      eve_id: eve_id,
-      uuid_char_id: Map.get(character_data, &quot;character_id&quot;),
-      id: Map.get(character_data, &quot;id&quot;),
-      all_keys: Map.keys(character_data)
-    )
-
-    if is_nil(eve_id) do
-      # This is a critical warning - we can&apos;t process characters without a valid eve_id
-      AppLogger.api_warn(
-        &quot;[Characters] Character data missing eve_id - cannot process correctly&quot;,
-        character_data: inspect(character_data, limit: 200)
-      )
-
-      nil
-    else
-      # Create a Character struct directly with the required fields
-      %Character{
-        character_id: eve_id,
-        name: Map.get(character_data, &quot;name&quot;),
-        corporation_id: character_data[&quot;corporation_id&quot;],
-        corporation_ticker: character_data[&quot;corporation_ticker&quot;],
-        alliance_id: character_data[&quot;alliance_id&quot;],
-        alliance_ticker: character_data[&quot;alliance_ticker&quot;],
-        tracked: Map.get(character_data, &quot;tracked&quot;, true)
-      }
-    end
-  end
-
-  defp process_character_notification(char) do
-    Task.start(fn -&gt;
-      try_send_character_notification(char)
-    end)
-  end
-
-  defp try_send_character_notification(char) do
-    # Extract the character ID
-    character_id = Map.get(char, :character_id)
-    notify_character_if_needed(character_id, char)
-  rescue
-    e -&gt;
-      AppLogger.api_error(&quot;Error sending character notification&quot;,
-        error: inspect(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-  end
-
-  defp notify_character_if_needed(character_id, char) do
-    if CharacterDeterminer.should_notify?(character_id, %{}) do
-      send_notification_for_character(character_id, char)
-    else
-      AppLogger.api_debug(&quot;Character is not marked for notification&quot;, character_id: character_id)
-    end
-  end
-
-  defp send_notification_for_character(character_id, char) do
-    # Create the character notification data structure
-    character_info = %{
-      &quot;character_id&quot; =&gt; character_id,
-      &quot;character_name&quot; =&gt; char.name,
-      &quot;corporation_name&quot; =&gt; char.corporation_ticker || char.corporation_name || &quot;Unknown&quot;
-    }
-
-    send_character_notification(character_info)
-
-    AppLogger.api_info(&quot;Sent character notification&quot;,
-      character_name: character_info[&quot;character_name&quot;],
-      character_id: character_id
-    )
-  end
-
-  defp transform_nested_character(char) do
-    # The API returns data in a nested structure with a &quot;character&quot; key
-    # Get the nested character data
-    character_data = Map.get(char, &quot;character&quot;)
-
-    # Log what we&apos;re working with for debugging
-    AppLogger.api_debug(&quot;Processing nested character data&quot;,
-      has_nested_character: Map.has_key?(char, &quot;character&quot;),
-      nested_keys: Map.keys(character_data || %{}),
-      has_eve_id: Map.has_key?(character_data || %{}, &quot;eve_id&quot;),
-      eve_id: Map.get(character_data || %{}, &quot;eve_id&quot;)
-    )
-
-    if is_nil(character_data) do
-      AppLogger.api_error(
-        &quot;Missing character data in nested structure - this is critical. API format may have changed.&quot;,
-        char: inspect(char, limit: 200)
-      )
-
-      nil
-    else
-      # Extract the critical eve_id from nested data
-      eve_id = Map.get(character_data, &quot;eve_id&quot;)
-
-      if is_nil(eve_id) do
-        AppLogger.api_error(
-          &quot;Missing eve_id in character data - this is critical. API format may have changed.&quot;,
-          character_data: inspect(character_data, limit: 200)
-        )
-
-        nil
-      else
-        # Create a Character struct directly with the fields from the nested structure
-        # Also incorporate top-level fields like &quot;tracked&quot; if present
-        %Character{
-          character_id: eve_id,
-          name: Map.get(character_data, &quot;name&quot;),
-          corporation_id: character_data[&quot;corporation_id&quot;],
-          corporation_ticker: character_data[&quot;corporation_ticker&quot;],
-          alliance_id: character_data[&quot;alliance_id&quot;],
-          alliance_ticker: character_data[&quot;alliance_ticker&quot;],
-          tracked: Map.get(char, &quot;tracked&quot;, true)
-        }
-      end
-    end
-  end
-end</file><file path="lib/wanderer_notifier/api/map/response_validator.ex">defmodule WandererNotifier.Api.Map.ResponseValidator do
-  @moduledoc &quot;&quot;&quot;
-  Validates Map API responses against expected schemas.
-
-  This module ensures that API responses match the expected structure before
-  processing, to prevent errors from unexpected data formats.
-  &quot;&quot;&quot;
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Validates a systems response.
-
-  ## Parameters
-    - response: Raw HTTP response body (parsed JSON)
-
-  ## Returns
-    - {:ok, data} if valid
-    - {:error, reason} if invalid
-  &quot;&quot;&quot;
-  def validate_systems_response(response) do
-    case response do
-      %{&quot;data&quot; =&gt; data} when is_list(data) -&gt;
-        # Check that each system has the required fields
-        if Enum.all?(data, &amp;valid_system?/1) do
-          {:ok, data}
-        else
-          invalid_systems = Enum.reject(data, &amp;valid_system?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_systems)} systems have invalid format&quot;
-          )
-
-          # Log one example of an invalid system for debugging
-          log_invalid_system_example(invalid_systems)
-
-          {:error, &quot;Some systems have invalid data format&quot;}
-        end
-
-      %{&quot;systems&quot; =&gt; systems} when is_list(systems) -&gt;
-        # Legacy format support
-        AppLogger.api_warn(
-          &quot;[ResponseValidator] Legacy systems response format detected with &apos;systems&apos; key&quot;
-        )
-
-        # Check that each system has the required fields
-        if Enum.all?(systems, &amp;valid_system?/1) do
-          {:ok, systems}
-        else
-          invalid_systems = Enum.reject(systems, &amp;valid_system?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_systems)} systems have invalid format&quot;
-          )
-
-          {:error, &quot;Some systems have invalid data format&quot;}
-        end
-
-      _ -&gt;
-        AppLogger.api_error(
-          &quot;[ResponseValidator] Unexpected response format: #{inspect(response)}&quot;
-        )
-
-        {:error, &quot;Expected &apos;data&apos; or &apos;systems&apos; array in response&quot;}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Validates a characters response.
-
-  ## Parameters
-    - response: Raw HTTP response body (parsed JSON)
-
-  ## Returns
-    - {:ok, data} if valid
-    - {:error, reason} if invalid
-  &quot;&quot;&quot;
-  def validate_characters_response(response) do
-    case response do
-      %{&quot;data&quot; =&gt; data} when is_list(data) -&gt;
-        # Check that each character has the required fields
-        if Enum.all?(data, &amp;valid_character?/1) do
-          {:ok, data}
-        else
-          invalid_characters = Enum.reject(data, &amp;valid_character?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_characters)} characters have invalid format&quot;
-          )
-
-          # Log one example of an invalid character for debugging
-          log_invalid_character_example(invalid_characters)
-
-          {:error, &quot;Some characters have invalid data format&quot;}
-        end
-
-      %{&quot;characters&quot; =&gt; characters} when is_list(characters) -&gt;
-        # Legacy format support
-        AppLogger.api_warn(
-          &quot;[ResponseValidator] Legacy characters response format detected with &apos;characters&apos; key&quot;
-        )
-
-        # Check that each character has the required fields
-        if Enum.all?(characters, &amp;valid_legacy_character?/1) do
-          {:ok, characters}
-        else
-          invalid_characters = Enum.reject(characters, &amp;valid_legacy_character?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_characters)} characters have invalid format&quot;
-          )
-
-          {:error, &quot;Some characters have invalid data format&quot;}
-        end
-
-      _ -&gt;
-        AppLogger.api_error(
-          &quot;[ResponseValidator] Unexpected response format: #{inspect(response)}&quot;
-        )
-
-        {:error, &quot;Expected &apos;data&apos; or &apos;characters&apos; array in response&quot;}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Validates a character activity response.
-
-  ## Parameters
-    - response: Raw HTTP response body (parsed JSON)
-
-  ## Returns
-    - {:ok, data} if valid
-    - {:error, reason} if invalid
-  &quot;&quot;&quot;
-  def validate_character_activity_response(response) do
-    case response do
-      %{&quot;data&quot; =&gt; data} when is_list(data) -&gt;
-        # Check that each activity entry has the required fields
-        if Enum.all?(data, &amp;valid_activity?/1) do
-          {:ok, data}
-        else
-          invalid_entries = Enum.reject(data, &amp;valid_activity?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_entries)} activity entries have invalid format&quot;
-          )
-
-          # Log one example of an invalid entry for debugging
-          log_invalid_activity_example(invalid_entries)
-
-          {:error, &quot;Some activity entries have invalid data format&quot;}
-        end
-
-      %{&quot;activity&quot; =&gt; activity} when is_list(activity) -&gt;
-        # Legacy format support
-        AppLogger.api_warn(
-          &quot;[ResponseValidator] Legacy activity response format detected with &apos;activity&apos; key&quot;
-        )
-
-        # Check that each activity entry has the required fields
-        if Enum.all?(activity, &amp;valid_legacy_activity?/1) do
-          {:ok, activity}
-        else
-          invalid_entries = Enum.reject(activity, &amp;valid_legacy_activity?/1)
-
-          AppLogger.api_warn(
-            &quot;[ResponseValidator] #{length(invalid_entries)} activity entries have invalid format&quot;
-          )
-
-          {:error, &quot;Some activity entries have invalid data format&quot;}
-        end
-
-      _ -&gt;
-        AppLogger.api_error(
-          &quot;[ResponseValidator] Expected &apos;data&apos; or &apos;activity&apos; array in activity response&quot;
-        )
-
-        {:error, &quot;Expected &apos;data&apos; or &apos;activity&apos; array in response&quot;}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Validates a system static info response.
-
-  ## Parameters
-    - response: Raw HTTP response body (parsed JSON)
-
-  ## Returns
-    - {:ok, data} if valid
-    - {:error, reason} if invalid
-  &quot;&quot;&quot;
-  def validate_system_static_info_response(response) do
-    # First ensure we have a map data structure
-    response_data = normalize_response_data(response)
-    validate_static_info_format(response_data)
-  end
-
-  defp normalize_response_data(response) do
-    cond do
-      is_binary(response) -&gt;
-        # Sometimes the response might still be a string, try to decode it
-        case Jason.decode(response) do
-          {:ok, decoded} -&gt; decoded
-          {:error, _} -&gt; %{}
-        end
-
-      is_map(response) -&gt;
-        response
-
-      true -&gt;
-        %{}
-    end
-  end
-
-  defp validate_static_info_format(response_data) do
-    case response_data do
-      %{&quot;data&quot; =&gt; data} when is_map(data) -&gt;
-        validate_static_info_data(data)
-
-      # If we just have the expected fields at the top level (sometimes API returns this format)
-      %{&quot;statics&quot; =&gt; _} = direct_data -&gt;
-        AppLogger.api_warn(&quot;[ResponseValidator] Top-level static info format detected&quot;)
-        validate_static_info_data(direct_data)
-
-      _ -&gt;
-        AppLogger.api_error(
-          &quot;[ResponseValidator] Unexpected static info response format: #{inspect(response_data)}&quot;
-        )
-
-        {:error, &quot;Expected &apos;data&apos; field in system static info response&quot;}
-    end
-  end
-
-  defp validate_static_info_data(data) do
-    if valid_static_info?(data) do
-      {:ok, data}
-    else
-      AppLogger.api_warn(
-        &quot;[ResponseValidator] System static info has invalid format: #{inspect(data)}&quot;
-      )
-
-      {:error, &quot;System static info has invalid format&quot;}
-    end
-  end
-
-  # Private helper functions for validation
-
-  defp valid_system?(system) do
-    (is_map(system) and
-       is_binary(Map.get(system, &quot;id&quot;, &quot;&quot;)) and
-       (is_integer(Map.get(system, &quot;solar_system_id&quot;)) or
-          is_binary(Map.get(system, &quot;solar_system_id&quot;, &quot;&quot;))) and
-       is_binary(Map.get(system, &quot;name&quot;, &quot;&quot;))) || is_binary(Map.get(system, &quot;original_name&quot;, &quot;&quot;))
-  end
-
-  defp valid_character?(character) do
-    is_map(character) and
-      is_map(Map.get(character, &quot;character&quot;, %{})) and
-      is_binary(get_in(character, [&quot;character&quot;, &quot;name&quot;], &quot;&quot;)) and
-      (is_binary(get_in(character, [&quot;character&quot;, &quot;character_id&quot;], &quot;&quot;)) or
-         is_integer(get_in(character, [&quot;character&quot;, &quot;character_id&quot;], 0)))
-  end
-
-  # Support legacy character format
-  defp valid_legacy_character?(character) do
-    is_map(character) and
-      is_binary(Map.get(character, &quot;name&quot;, &quot;&quot;)) and
-      (is_binary(Map.get(character, &quot;id&quot;, &quot;&quot;)) or is_integer(Map.get(character, &quot;id&quot;, 0)))
-  end
-
-  defp valid_activity?(activity) do
-    is_map(activity) and
-      is_map(Map.get(activity, &quot;character&quot;, %{})) and
-      is_binary(get_in(activity, [&quot;character&quot;, &quot;name&quot;], &quot;&quot;)) and
-      (is_binary(get_in(activity, [&quot;character&quot;, &quot;character_id&quot;], &quot;&quot;)) or
-         is_integer(get_in(activity, [&quot;character&quot;, &quot;character_id&quot;], 0))) and
-      is_integer(Map.get(activity, &quot;signatures&quot;, 0)) and
-      is_integer(Map.get(activity, &quot;connections&quot;, 0)) and
-      is_integer(Map.get(activity, &quot;passages&quot;, 0))
-  end
-
-  # Support legacy activity format
-  defp valid_legacy_activity?(activity) do
-    is_map(activity) and
-      is_binary(Map.get(activity, &quot;character_name&quot;, &quot;&quot;)) and
-      is_integer(Map.get(activity, &quot;signatures&quot;, 0)) and
-      is_integer(Map.get(activity, &quot;connections&quot;, 0))
-  end
-
-  defp valid_static_info?(info) do
-    # Check for required minimal fields per documentation
-    is_map(info) and
-      is_list(Map.get(info, &quot;statics&quot;, nil)) and
-      (Map.has_key?(info, &quot;solar_system_id&quot;) or Map.has_key?(info, &quot;class_title&quot;)) and
-      Map.has_key?(info, &quot;type_description&quot;)
-  end
-
-  # Helper to safely get a nested value with a default
-  defp get_in(map, keys, default) do
-    case Kernel.get_in(map, keys) do
-      nil -&gt; default
-      val -&gt; val
-    end
-  end
-
-  # Helper functions for logging invalid examples
-  defp log_invalid_system_example([]), do: :ok
-
-  defp log_invalid_system_example(invalid_systems) do
-    AppLogger.api_debug(
-      &quot;[ResponseValidator] Example invalid system: #{inspect(List.first(invalid_systems))}&quot;
-    )
-  end
-
-  defp log_invalid_character_example([]), do: :ok
-
-  defp log_invalid_character_example(invalid_characters) do
-    AppLogger.api_debug(
-      &quot;[ResponseValidator] Example invalid character: #{inspect(List.first(invalid_characters))}&quot;
-    )
-  end
-
-  defp log_invalid_activity_example([]), do: :ok
-
-  defp log_invalid_activity_example(invalid_entries) do
-    AppLogger.api_debug(
-      &quot;[ResponseValidator] Example invalid activity entry: #{inspect(List.first(invalid_entries))}&quot;
-    )
-  end
-end</file><file path="lib/wanderer_notifier/api/map/system_static_info.ex">defmodule WandererNotifier.Api.Map.SystemStaticInfo do
-  @moduledoc &quot;&quot;&quot;
-  Client for fetching static information about EVE systems from the map API.
-  Provides clean access to detailed system information for wormholes and other systems.
-
-  Example wormhole system response:
-  ```json
-  {
-    &quot;data&quot;: {
-      &quot;statics&quot;: [
-        &quot;C247&quot;,
-        &quot;P060&quot;
-      ],
-      &quot;security&quot;: &quot;-1.0&quot;,
-      &quot;class_title&quot;: &quot;C4&quot;,
-      &quot;constellation_id&quot;: 21000172,
-      &quot;constellation_name&quot;: &quot;D-C00172&quot;,
-      &quot;effect_name&quot;: null,
-      &quot;effect_power&quot;: 4,
-      &quot;is_shattered&quot;: false,
-      &quot;region_id&quot;: 11000018,
-      &quot;region_name&quot;: &quot;D-R00018&quot;,
-      &quot;solar_system_id&quot;: 31001503,
-      &quot;solar_system_name&quot;: &quot;J155416&quot;,
-      &quot;solar_system_name_lc&quot;: &quot;j155416&quot;,
-      &quot;sun_type_id&quot;: 45032,
-      &quot;system_class&quot;: 4,
-      &quot;triglavian_invasion_status&quot;: &quot;Normal&quot;,
-      &quot;type_description&quot;: &quot;Class 4&quot;,
-      &quot;wandering&quot;: [
-        &quot;S047&quot;,
-        &quot;N290&quot;,
-        &quot;K329&quot;
-      ],
-      &quot;static_details&quot;: [
-        {
-          &quot;name&quot;: &quot;C247&quot;,
-          &quot;destination&quot;: {
-            &quot;id&quot;: &quot;c3&quot;,
-            &quot;name&quot;: &quot;Class 3&quot;,
-            &quot;short_name&quot;: &quot;C3&quot;
-          },
-          &quot;properties&quot;: {
-            &quot;lifetime&quot;: &quot;16&quot;,
-            &quot;mass_regeneration&quot;: 0,
-            &quot;max_jump_mass&quot;: 300000000,
-            &quot;max_mass&quot;: 2000000000
-          }
-        },
-        {
-          &quot;name&quot;: &quot;P060&quot;,
-          &quot;destination&quot;: {
-            &quot;id&quot;: &quot;c1&quot;,
-            &quot;name&quot;: &quot;Class 1&quot;,
-            &quot;short_name&quot;: &quot;C1&quot;
-          },
-          &quot;properties&quot;: {
-            &quot;lifetime&quot;: &quot;16&quot;,
-            &quot;mass_regeneration&quot;: 0,
-            &quot;max_jump_mass&quot;: 62000000,
-            &quot;max_mass&quot;: 500000000
-          }
-        }
-      ]
-    }
-  }
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.Api.Map.ResponseValidator
-  alias WandererNotifier.Api.Map.UrlBuilder
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-
-  @doc &quot;&quot;&quot;
-  Fetches static information for a specific solar system.
-  Uses a more robust approach with proper validation and timeouts.
-
-  ## Parameters
-    - solar_system_id: The EVE Online ID of the solar system
-
-  ## Returns
-    - {:ok, system_info} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_system_static_info(solar_system_id) do
-    AppLogger.api_debug(&quot;[SystemStaticInfo] Starting static info fetch&quot;,
-      system_id: solar_system_id
-    )
-
-    # Create a task for the API request to add timeout handling
-    task = Task.async(fn -&gt; fetch_system_static_info(solar_system_id) end)
-
-    # Wait for the task with a timeout (3 seconds)
-    case Task.yield(task, 3_000) do
-      {:ok, result} -&gt;
-        # Log result and return
-        case result do
-          {:ok, static_info} -&gt;
-            AppLogger.api_debug(&quot;[SystemStaticInfo] Successfully got static info&quot;,
-              system_id: solar_system_id,
-              static_info_keys: Map.keys(static_info)
-            )
-
-          {:error, reason} -&gt;
-            AppLogger.api_warn(&quot;[SystemStaticInfo] Static info failed&quot;,
-              system_id: solar_system_id,
-              error: inspect(reason)
-            )
-        end
-
-        result
-
-      nil -&gt;
-        # Task took too long, kill it
-        Task.shutdown(task, :brutal_kill)
-
-        AppLogger.api_error(&quot;[SystemStaticInfo] Static info request timed out&quot;,
-          system_id: solar_system_id
-        )
-
-        {:error, :timeout}
-    end
-  end
-
-  # Separate function to fetch the system static info (reduces nesting)
-  defp fetch_system_static_info(solar_system_id) do
-    AppLogger.api_debug(&quot;[SystemStaticInfo] Building URL&quot;,
-      system_id: solar_system_id
-    )
-
-    case UrlBuilder.build_url(&quot;common/system-static-info&quot;, %{id: solar_system_id}) do
-      {:ok, url} -&gt;
-        # Get auth headers
-        headers = UrlBuilder.get_auth_headers()
-
-        AppLogger.api_debug(&quot;[SystemStaticInfo] Making request&quot;,
-          url: url,
-          headers: headers
-        )
-
-        # Make API request and process
-        make_static_info_request(url, headers)
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemStaticInfo] Failed to build URL&quot;,
-          system_id: solar_system_id,
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-    end
-  end
-
-  # Make the actual API request for static info
-  defp make_static_info_request(url, headers) do
-    case HttpClient.get(url, headers) do
-      {:ok, %{status_code: status, body: body}} when status in 200..299 -&gt;
-        # Successfully got a response
-        AppLogger.api_debug(&quot;[SystemStaticInfo] Successful API response&quot;,
-          status: status
-        )
-
-        # Validate the static info format
-        validate_static_info(body)
-
-      {:ok, %{status_code: status}} -&gt;
-        # Non-success status code
-        AppLogger.api_error(&quot;[SystemStaticInfo] Failed API response&quot;,
-          status: status
-        )
-
-        {:error, {:http_error, status}}
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemStaticInfo] Request failed&quot;,
-          error: inspect(reason)
-        )
-
-        {:error, reason}
-    end
-  end
-
-  defp validate_static_info(parsed_response) do
-    case ResponseValidator.validate_system_static_info_response(parsed_response) do
-      {:ok, data} = success -&gt;
-        # Successfully validated
-        AppLogger.api_debug(&quot;[SystemStaticInfo] Validated response&quot;,
-          data_keys: Map.keys(data)
-        )
-
-        success
-
-      {:error, reason} = error -&gt;
-        AppLogger.api_warn(&quot;[SystemStaticInfo] Invalid system static info&quot;,
-          error: inspect(reason)
-        )
-
-        error
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Enriches a MapSystem with static information.
-
-  ## Parameters
-    - system: A WandererNotifier.Data.MapSystem struct
-
-  ## Returns
-    - {:ok, enhanced_system} on success with enriched data
-    - {:ok, system} on failure but returns the original system
-  &quot;&quot;&quot;
-  def enrich_system(system) do
-    alias WandererNotifier.Map.MapSystem
-
-    AppLogger.api_debug(&quot;[SystemStaticInfo] Starting system enrichment&quot;,
-      system_name: system.name,
-      system_id: system.solar_system_id
-    )
-
-    # Only try to enrich if the system has a valid ID
-    if system.solar_system_id &amp;&amp; system.solar_system_id &gt; 0 do
-      # Try to get static info with proper error handling
-      case get_system_static_info(system.solar_system_id) do
-        {:ok, static_info} -&gt;
-          AppLogger.api_debug(&quot;[SystemStaticInfo] Got static info for enrichment&quot;,
-            system_name: system.name,
-            static_info_keys: Map.keys(static_info)
-          )
-
-          # Update the map system with static information
-          enhanced_system = MapSystem.update_with_static_info(system, static_info)
-
-          {:ok, enhanced_system}
-
-        {:error, reason} -&gt;
-          # Log error but continue with original system
-          AppLogger.api_warn(
-            &quot;[SystemStaticInfo] Could not enrich system&quot;,
-            system_name: system.name,
-            error: inspect(reason)
-          )
-
-          # Return original system - IMPORTANT: Don&apos;t error out!
-          {:ok, system}
-      end
-    else
-      # Invalid system ID - log and return original
-      AppLogger.api_warn(
-        &quot;[SystemStaticInfo] System has invalid ID&quot;,
-        system_name: system.name,
-        system_id: system.solar_system_id
-      )
-
-      {:ok, system}
-    end
-  end
-end</file><file path="lib/wanderer_notifier/api/map/systems.ex">defmodule WandererNotifier.Api.Map.Systems do
-  @moduledoc &quot;&quot;&quot;
-  Retrieves and processes system data from the map API, filtering for wormhole systems.
-
-  Only wormhole systems (where a system&apos;s static info shows a non-empty &quot;statics&quot; list or
-  the &quot;type_description&quot; starts with &quot;Class&quot;) are returned.
-
-  System type determination priority:
-  1. Use API-provided data such as &quot;type_description&quot;, &quot;class_title&quot;, or &quot;system_class&quot;
-  2. Fall back to ID-based classification only when API doesn&apos;t provide type information
-  &quot;&quot;&quot;
-  require Logger
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Updates the systems information.
-  &quot;&quot;&quot;
-  def update_systems(_cached_systems \\ nil) do
-    AppLogger.api_info(&quot;Updating systems information&quot;)
-    {:ok, []}
-  end
-end</file><file path="lib/wanderer_notifier/api/map/universe.ex">defmodule WandererNotifier.Api.Map.Universe do
-  @moduledoc &quot;&quot;&quot;
-  Handles universe-related functionality.
-  &quot;&quot;&quot;
-end</file><file path="lib/wanderer_notifier/api/map/url_builder.ex">defmodule WandererNotifier.Api.Map.UrlBuilder do
-  @moduledoc &quot;&quot;&quot;
-  Builds URLs for the map API endpoints.
-  &quot;&quot;&quot;
-  alias WandererNotifier.Config.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Builds a URL for a map API endpoint with query parameters and a custom slug.
-
-  ## Parameters
-    - endpoint: The API endpoint to call
-    - params: A map of query parameters to include in the URL
-    - slug: An optional slug override
-
-  ## Returns
-    - {:ok, url} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def build_url(endpoint, params, slug) when is_map(params) do
-    with {:ok, base_url} &lt;- get_base_url(),
-         {:ok, final_slug} &lt;- get_final_slug(slug) do
-      # Start with the base URL and endpoint
-      base = &quot;#{base_url}/api/#{endpoint}&quot;
-
-      # Convert params to query string
-      query_params =
-        params
-        |&gt; Map.to_list()
-        |&gt; Enum.map_join(&quot;&amp;&quot;, fn {k, v} -&gt; &quot;#{k}=#{URI.encode_www_form(to_string(v))}&quot; end)
-
-      # Add slug parameter to query
-      slug_param = &quot;slug=#{URI.encode_www_form(final_slug)}&quot;
-      query = if query_params == &quot;&quot;, do: slug_param, else: &quot;#{query_params}&amp;#{slug_param}&quot;
-
-      # Build the final URL
-      url = &quot;#{base}?#{query}&quot;
-
-      {:ok, url}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Builds a URL for a map API endpoint with query parameters.
-  Can build URLs with no slug for system-static-info endpoint.
-
-  ## Parameters
-    - endpoint: The API endpoint to call
-    - params: A map of query parameters to include in the URL
-
-  ## Returns
-    - {:ok, url} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def build_url(endpoint, params) when is_map(params) do
-    # For system-static-info endpoint, we don&apos;t need a slug
-    if endpoint == &quot;common/system-static-info&quot; do
-      with {:ok, base_url} &lt;- get_base_url() do
-        # Start with the base URL and endpoint
-        base = &quot;#{base_url}/api/#{endpoint}&quot;
-
-        # Convert params to query string
-        query_params =
-          params
-          |&gt; Map.to_list()
-          |&gt; Enum.map_join(&quot;&amp;&quot;, fn {k, v} -&gt; &quot;#{k}=#{URI.encode_www_form(to_string(v))}&quot; end)
-
-        # Build the final URL
-        url = &quot;#{base}?#{query_params}&quot;
-
-        {:ok, url}
-      end
-    else
-      # For regular endpoints, include the slug
-      build_url(endpoint, params, nil)
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Builds a URL for a map API endpoint.
-  &quot;&quot;&quot;
-  def build_url(endpoint) do
-    with {:ok, base_url} &lt;- get_base_url(),
-         {:ok, slug} &lt;- get_slug() do
-      url = &quot;#{base_url}/api/#{endpoint}?slug=#{URI.encode_www_form(slug)}&quot;
-
-      # Log URL components for debugging
-      AppLogger.api_debug(&quot;URL Components breakdown&quot;,
-        scheme: URI.parse(url).scheme,
-        host: URI.parse(url).host,
-        port: URI.parse(url).port,
-        path: URI.parse(url).path,
-        query: URI.parse(url).query
-      )
-
-      {:ok, url}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the authorization headers for map API requests.
-  &quot;&quot;&quot;
-  def get_auth_headers do
-    headers =
-      case Config.map_token() do
-        nil -&gt; []
-        token -&gt; [{&quot;Authorization&quot;, &quot;Bearer &quot; &lt;&gt; token}]
-      end
-
-    headers
-  end
-
-  # Get the base URL from the map URL
-  defp get_base_url do
-    case Config.map_url() do
-      nil -&gt;
-        {:error, &quot;Map URL not configured&quot;}
-
-      &quot;&quot; -&gt;
-        {:error, &quot;Map URL not configured&quot;}
-
-      url -&gt;
-        uri = URI.parse(url)
-        base = &quot;#{uri.scheme}://#{uri.host}#{if uri.port, do: &quot;:#{uri.port}&quot;, else: &quot;&quot;}&quot;
-        {:ok, base}
-    end
-  end
-
-  # Get the slug from the map configuration
-  defp get_slug do
-    case Config.map_name() do
-      nil -&gt;
-        {:error, &quot;Map name not configured&quot;}
-
-      &quot;&quot; -&gt;
-        {:error, &quot;Map name not configured&quot;}
-
-      slug -&gt;
-        {:ok, slug}
-    end
-  end
-
-  # Helper to get final slug, using custom slug or falling back to config
-  defp get_final_slug(nil), do: get_slug()
-  defp get_final_slug(&quot;&quot;), do: get_slug()
-  defp get_final_slug(slug), do: {:ok, slug}
-end</file><file path="lib/wanderer_notifier/api/zkill/client.ex">defmodule WandererNotifier.Api.ZKill.Client do
-  @moduledoc &quot;&quot;&quot;
-  Client for interacting with the ZKillboard API
-
-  ## Deprecation Notice
-  This module is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Client` instead.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.ZKill.Client, as: NewZKillClient
-
-  @doc &quot;&quot;&quot;
-  Get a single killmail by ID
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Client.get_single_killmail/1` instead.
-  &quot;&quot;&quot;
-  def get_single_killmail(kill_id) when is_integer(kill_id) do
-    # Delegate to the new implementation
-    NewZKillClient.get_single_killmail(kill_id)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Client.get_recent_kills/1` instead.
-  &quot;&quot;&quot;
-  def get_recent_kills(limit \\ 10) do
-    # Delegate to the new implementation
-    NewZKillClient.get_recent_kills(limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Client.get_system_kills/2` instead.
-  &quot;&quot;&quot;
-  def get_system_kills(system_id, limit \\ 5) do
-    # Delegate to the new implementation
-    NewZKillClient.get_system_kills(system_id, limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character.
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Client.get_character_kills/3` instead.
-  &quot;&quot;&quot;
-  def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-    # Delegate to the new implementation
-    NewZKillClient.get_character_kills(character_id, date_range, limit)
   end
 end</file><file path="lib/wanderer_notifier/api/characters_client.ex">defmodule WandererNotifier.Api.CharactersClient do
   @moduledoc &quot;&quot;&quot;
@@ -4490,23 +3028,6 @@ end</file><file path="lib/wanderer_notifier/api/controller.ex">defmodule Wandere
   def send_error(conn, status, message) do
     send_json_response(conn, status, %{error: message})
   end
-end</file><file path="lib/wanderer_notifier/behaviours/date_behaviour.ex">defmodule WandererNotifier.DateBehaviour do
-  @moduledoc &quot;&quot;&quot;
-  Behaviour for date-related functions.
-  &quot;&quot;&quot;
-
-  @callback utc_today() :: Date.t()
-  @callback day_of_week(Date.t()) :: non_neg_integer()
-end</file><file path="lib/wanderer_notifier/behaviours/notifier_factory_behaviour.ex">defmodule WandererNotifier.Notifiers.FactoryBehaviour do
-  @moduledoc &quot;&quot;&quot;
-  Behaviour for notification factory.
-  &quot;&quot;&quot;
-
-  @type notification_type :: :send_discord_embed | atom()
-  @type notification_args :: list()
-  @type notification_result :: {:ok, map()} | {:error, any()}
-
-  @callback notify(notification_type(), notification_args()) :: notification_result()
 end</file><file path="lib/wanderer_notifier/cache/cache_behaviour.ex">defmodule WandererNotifier.Cache.CacheBehaviour do
   @moduledoc &quot;&quot;&quot;
   Defines the behavior for cache implementations
@@ -10319,11 +8840,37 @@ end</file><file path="lib/wanderer_notifier/helpers/deduplication_helper.ex">def
     CacheRepo.delete(key)
     {:noreply, state}
   end
+end</file><file path="lib/wanderer_notifier/http_client/behaviour.ex">defmodule WandererNotifier.HttpClient.Behaviour do
+  @moduledoc &quot;&quot;&quot;
+  Behaviour for HTTP clients
+  &quot;&quot;&quot;
+
+  @type headers :: [{String.t(), String.t()}]
+  @type url :: String.t()
+  @type body :: String.t() | map()
+  @type options :: keyword()
+  @type response :: {:ok, map()} | {:error, term()}
+  @type method :: :get | :post | :put | :delete | :head | :options
+
+  @callback get(url :: url, headers :: headers) :: response
+  @callback get(url :: url) :: response
+  @callback post(url :: url, body :: body, headers :: headers) :: response
+  @callback post_json(url :: url, body :: body, headers :: headers, options :: options) ::
+              response
+  @callback request(
+              method :: method,
+              url :: url,
+              headers :: headers,
+              body :: body,
+              options :: options
+            ) ::
+              response
+  @callback handle_response(response :: term()) :: response
 end</file><file path="lib/wanderer_notifier/http_client/httpoison.ex">defmodule WandererNotifier.HttpClient.Httpoison do
   @moduledoc &quot;&quot;&quot;
   HTTPoison implementation of the HTTP client behavior
   &quot;&quot;&quot;
-  @behaviour WandererNotifier.HttpClient
+  @behaviour WandererNotifier.HttpClient.Behaviour
 
   require Logger
 
@@ -10385,418 +8932,6 @@ end</file><file path="lib/wanderer_notifier/http_client/httpoison.ex">defmodule 
   def handle_response({:error, %HTTPoison.Error{reason: reason}}) do
     Logger.error(&quot;HTTP request failed: #{inspect(reason)}&quot;)
     {:error, reason}
-  end
-end</file><file path="lib/wanderer_notifier/killmail/zkill/client_behaviour.ex">defmodule WandererNotifier.Killmail.ZKill.ClientBehaviour do
-  @moduledoc &quot;&quot;&quot;
-  Behaviour specification for the ZKillboard API client.
-  &quot;&quot;&quot;
-
-  @doc &quot;&quot;&quot;
-  Gets a single killmail by its ID.
-  &quot;&quot;&quot;
-  @callback get_single_killmail(kill_id :: integer()) :: {:ok, map()} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-  &quot;&quot;&quot;
-  @callback get_recent_kills(limit :: integer()) :: {:ok, list(map())} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-  &quot;&quot;&quot;
-  @callback get_system_kills(system_id :: integer(), limit :: integer()) ::
-              {:ok, list(map())} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character with optional limit and page.
-  &quot;&quot;&quot;
-  @callback get_character_kills(character_id :: integer(), limit :: integer(), page :: integer()) ::
-              {:ok, list(map())} | {:error, term()}
-end</file><file path="lib/wanderer_notifier/killmail/zkill/client.ex">defmodule WandererNotifier.Killmail.ZKill.Client do
-  @moduledoc &quot;&quot;&quot;
-  Client for interacting with the ZKillboard API.
-  &quot;&quot;&quot;
-
-  @behaviour WandererNotifier.Killmail.ZKill.ClientBehaviour
-
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Gets a single killmail by its ID.
-  &quot;&quot;&quot;
-  def get_single_killmail(kill_id) do
-    client_module().get_single_killmail(kill_id)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-  &quot;&quot;&quot;
-  def get_recent_kills(limit \\ 10) do
-    client_module().get_recent_kills(limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-  &quot;&quot;&quot;
-  def get_system_kills(system_id, limit \\ 5) do
-    client_module().get_system_kills(system_id, limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character.
-
-  ## Parameters
-    - character_id: The character ID to fetch kills for
-    - date_range: Map with :start and :end DateTime (optional)
-    - limit: Maximum number of kills to fetch (default: 100)
-  &quot;&quot;&quot;
-  def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-    client_module().get_character_kills(character_id, date_range, limit)
-  end
-
-  defp client_module do
-    Application.get_env(:wanderer_notifier, :zkill_client, __MODULE__.HTTP)
-  end
-
-  defmodule HTTP do
-    @moduledoc &quot;&quot;&quot;
-    HTTP client implementation for ZKillboard API.
-    &quot;&quot;&quot;
-
-    alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.HttpClient
-
-    @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.HTTPoison)
-    @base_url &quot;https://zkillboard.com/api&quot;
-    @user_agent &quot;WandererNotifier/1.0&quot;
-    @rate_limit_ms 1000
-    @max_retries 3
-    @retry_backoff_ms 2000
-
-    @doc &quot;&quot;&quot;
-    Gets a single killmail by its ID.
-    &quot;&quot;&quot;
-    def get_single_killmail(kill_id) do
-      AppLogger.api_debug(&quot;ZKill requesting single killmail&quot;, %{
-        kill_id: kill_id,
-        method: &quot;get_single_killmail&quot;
-      })
-
-      url = &quot;#{@base_url}/killID/#{kill_id}/&quot;
-      headers = build_headers()
-
-      :timer.sleep(@rate_limit_ms)
-
-      make_request_with_retry(fn -&gt;
-        with {:ok, body} &lt;- make_http_request(url, headers),
-             {:ok, decoded} &lt;- decode_killmail_response(body, kill_id) do
-          validate_killmail_format(decoded, kill_id)
-        end
-      end)
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets recent kills with an optional limit.
-    &quot;&quot;&quot;
-    def get_recent_kills(limit \\ 10) do
-      url = &quot;#{@base_url}/recent/&quot;
-      headers = build_headers()
-
-      AppLogger.api_info(&quot;ZKill requesting recent kills&quot;, %{
-        limit: limit,
-        method: &quot;get_recent_kills&quot;
-      })
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        {:ok, Enum.take(kills, limit)}
-      end
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets kills for a specific system with an optional limit.
-    &quot;&quot;&quot;
-    def get_system_kills(system_id, limit \\ 5) do
-      url = &quot;#{@base_url}/systemID/#{system_id}/&quot;
-      headers = build_headers()
-
-      AppLogger.api_info(&quot;ZKill requesting system kills&quot;, %{
-        system_id: system_id,
-        limit: limit,
-        method: &quot;get_system_kills&quot;
-      })
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        {:ok, Enum.take(kills, limit)}
-      end
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets kills for a specific character.
-    &quot;&quot;&quot;
-    def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-      url = build_character_kills_url(character_id, date_range)
-      headers = build_headers()
-
-      date_range_info =
-        if date_range,
-          do: %{
-            start_time: date_range.start &amp;&amp; DateTime.to_iso8601(date_range.start),
-            end_time: date_range.end &amp;&amp; DateTime.to_iso8601(date_range.end)
-          },
-          else: %{date_range: &quot;none&quot;}
-
-      AppLogger.api_info(
-        &quot;ZKill requesting character kills&quot;,
-        Map.merge(
-          %{
-            character_id: character_id,
-            limit: limit,
-            method: &quot;get_character_kills&quot;,
-            url: url
-          },
-          date_range_info
-        )
-      )
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        kill_count = length(kills)
-        limited_kills = Enum.take(kills, limit)
-
-        AppLogger.api_debug(&quot;ZKill character kills retrieved&quot;, %{
-          character_id: character_id,
-          total_kills: kill_count,
-          limited_kills: length(limited_kills)
-        })
-
-        {:ok, limited_kills}
-      end
-    end
-
-    defp build_headers do
-      [
-        {&quot;Accept&quot;, &quot;application/json&quot;},
-        {&quot;User-Agent&quot;, @user_agent},
-        {&quot;Cache-Control&quot;, &quot;no-cache&quot;}
-      ]
-    end
-
-    defp make_http_request(url, headers) do
-      case @http_client.request(:get, url, headers, nil, follow_redirect: true) do
-        {:ok, %{status_code: 200, body: body}} -&gt;
-          {:ok, body}
-
-        {:ok, %{status_code: status_code, body: body}} -&gt;
-          AppLogger.api_error(&quot;ZKill HTTP error&quot;, %{
-            status: status_code,
-            body_sample: String.slice(inspect(body) || &quot;&quot;, 0, 200),
-            url: url
-          })
-
-          {:error, {:http_error, status_code}}
-
-        {:error, reason} -&gt;
-          AppLogger.api_error(&quot;ZKill HTTP request failed&quot;, %{
-            error: inspect(reason),
-            url: url
-          })
-
-          {:error, reason}
-      end
-    end
-
-    defp decode_killmail_response(body, kill_id) do
-      case Jason.decode(body) do
-        {:ok, [killmail | _]} when is_map(killmail) -&gt;
-          {:ok, killmail}
-
-        {:ok, []} -&gt;
-          AppLogger.api_error(&quot;ZKill empty response for kill_id&quot;, %{kill_id: kill_id})
-          {:error, :killmail_not_found}
-
-        {:ok, non_list_response} -&gt;
-          AppLogger.api_error(&quot;ZKill unexpected response format&quot;, %{
-            response: inspect(non_list_response)
-          })
-
-          {:error, :invalid_response_format}
-
-        {:error, %Jason.DecodeError{} = error} -&gt;
-          AppLogger.api_error(&quot;ZKill JSON decode error&quot;, %{
-            error: inspect(error),
-            body_sample: String.slice(body || &quot;&quot;, 0, 200)
-          })
-
-          {:error, {:json_decode_error, error}}
-      end
-    end
-
-    defp decode_kills_response(body) do
-      case Jason.decode(body) do
-        {:ok, kills} when is_list(kills) -&gt;
-          {:ok, kills}
-
-        {:ok, data} -&gt;
-          AppLogger.api_error(&quot;ZKill unexpected response format&quot;, %{
-            type: inspect(data),
-            sample: String.slice(inspect(data), 0, 100)
-          })
-
-          {:error, :invalid_response_format}
-
-        {:error, %Jason.DecodeError{} = error} -&gt;
-          AppLogger.api_error(&quot;ZKill JSON decode error&quot;, %{
-            error: inspect(error),
-            body_sample: String.slice(body || &quot;&quot;, 0, 200)
-          })
-
-          {:error, {:json_decode_error, error}}
-      end
-    end
-
-    defp validate_killmail_format(killmail, kill_id) do
-      with true &lt;- is_map(killmail),
-           true &lt;- Map.has_key?(killmail, &quot;killmail_id&quot;),
-           true &lt;- validate_zkb_section(killmail) do
-        # Successful validation
-        {:ok, killmail}
-      else
-        false -&gt;
-          # Validation failed
-          AppLogger.api_error(&quot;ZKill invalid killmail format&quot;, %{
-            kill_id: kill_id,
-            killmail_keys: Map.keys(killmail),
-            has_zkb: Map.has_key?(killmail, &quot;zkb&quot;)
-          })
-
-          {:error, :invalid_killmail_format}
-
-        error -&gt;
-          # Other error
-          AppLogger.api_error(&quot;ZKill killmail validation failed&quot;, %{
-            kill_id: kill_id,
-            error: inspect(error)
-          })
-
-          {:error, error}
-      end
-    end
-
-    defp validate_zkb_section(killmail) do
-      Map.has_key?(killmail, &quot;zkb&quot;) and is_map(killmail[&quot;zkb&quot;])
-    end
-
-    defp make_request_with_retry(request_fun, retries \\ 0)
-
-    defp make_request_with_retry(request_fun, retries) when retries &lt; @max_retries do
-      case request_fun.() do
-        {:error, reason} -&gt;
-          AppLogger.api_debug(&quot;ZKill request failed, attempting retry&quot;, %{
-            retry: retries + 1,
-            max_retries: @max_retries,
-            reason: inspect(reason)
-          })
-
-          # Exponential backoff
-          :timer.sleep(@retry_backoff_ms * 2 ** retries)
-          make_request_with_retry(request_fun, retries + 1)
-
-        result -&gt;
-          result
-      end
-    end
-
-    defp make_request_with_retry(_request_fun, retries) do
-      AppLogger.api_error(&quot;ZKill max retries exceeded&quot;, %{retries: retries})
-      {:error, :max_retries_exceeded}
-    end
-
-    defp build_character_kills_url(character_id, date_range) do
-      base = &quot;#{@base_url}/characterID/#{character_id}/&quot;
-
-      if date_range do
-        # Add date parameters if a range was provided
-        params = []
-
-        params =
-          if date_range.start do
-            [
-              &quot;startTime=#{date_range.start |&gt; Calendar.strftime(&quot;%Y%m%d%H%M&quot;)}&quot;
-              | params
-            ]
-          else
-            params
-          end
-
-        params =
-          if date_range.end do
-            [
-              &quot;endTime=#{date_range.end |&gt; Calendar.strftime(&quot;%Y%m%d%H%M&quot;)}&quot;
-              | params
-            ]
-          else
-            params
-          end
-
-        if Enum.empty?(params) do
-          base
-        else
-          base &lt;&gt; &quot;?&quot; &lt;&gt; Enum.join(params, &quot;&amp;&quot;)
-        end
-      else
-        base
-      end
-    end
-  end
-end</file><file path="lib/wanderer_notifier/killmail/zkill/websocket.ex">defmodule WandererNotifier.Killmail.ZKill.Websocket do
-  @moduledoc &quot;&quot;&quot;
-  WebSocket client for zKillboard streaming API.
-
-  ## Deprecation Notice
-  This module is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Websocket` instead.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.ZKill.Websocket, as: NewWebsocket
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Starts the WebSocket connection.
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Websocket.start_link/1` instead.
-
-  ## Parameters
-    - parent: The parent process to receive messages
-
-  ## Returns
-    - {:ok, pid} if successful
-    - {:error, reason} if connection fails
-  &quot;&quot;&quot;
-  def start_link(parent) do
-    AppLogger.websocket_debug(&quot;[DEPRECATED] Starting ZKill websocket via legacy module&quot;)
-    NewWebsocket.start_link(parent)
-  end
-
-  @doc &quot;&quot;&quot;
-  Subscribes to the zkillboard feed.
-
-  ## Deprecation Notice
-  This function is deprecated and will be removed in a future version.
-  Please use `WandererNotifier.ZKill.Websocket.subscribe/1` instead.
-  &quot;&quot;&quot;
-  def subscribe(client) do
-    AppLogger.websocket_debug(&quot;[DEPRECATED] Subscribing to ZKill feed via legacy module&quot;)
-    NewWebsocket.subscribe(client)
   end
 end</file><file path="lib/wanderer_notifier/killmail/cache.ex">defmodule WandererNotifier.Killmail.Cache do
   @moduledoc &quot;&quot;&quot;
@@ -12023,11 +10158,11 @@ end</file><file path="lib/wanderer_notifier/killmail/processor.ex">defmodule Wan
   - Cache: Manages caching of killmail data
   &quot;&quot;&quot;
 
-  alias WandererNotifier.ZKill
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Cache, as: KillCache
+  alias WandererNotifier.Killmail.ZKillClient
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
   @max_retries 3
@@ -12136,7 +10271,7 @@ end</file><file path="lib/wanderer_notifier/killmail/processor.ex">defmodule Wan
   end
 
   defp fetch_and_process_zkill_data(kill_id, state, retry_count \\ 0) do
-    case ZKill.get_killmail(kill_id) do
+    case ZKillClient.get_single_killmail(kill_id) do
       {:ok, zkb_data} -&gt;
         # Cache the result - we need to convert the struct to a map
         zkb_data_map = Map.from_struct(zkb_data)
@@ -12230,6 +10365,293 @@ end</file><file path="lib/wanderer_notifier/killmail/processor.ex">defmodule Wan
     # This fixes the unused variable warning
     {:ok, kill_data}
   end
+end</file><file path="lib/wanderer_notifier/killmail/zkill_client.ex">defmodule WandererNotifier.Killmail.ZKillClient do
+  @moduledoc &quot;&quot;&quot;
+  Client for interacting with the ZKillboard API.
+  &quot;&quot;&quot;
+
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
+
+  @base_url &quot;https://zkillboard.com/api&quot;
+  @user_agent &quot;WandererNotifier/1.0&quot;
+  @rate_limit_ms 1000
+  @max_retries 3
+  @retry_backoff_ms 2000
+
+  @doc &quot;&quot;&quot;
+  Gets a single killmail by its ID.
+  &quot;&quot;&quot;
+  def get_single_killmail(kill_id) do
+    AppLogger.api_debug(&quot;ZKill requesting single killmail&quot;, %{
+      kill_id: kill_id,
+      method: &quot;get_single_killmail&quot;
+    })
+
+    url = &quot;#{@base_url}/killID/#{kill_id}/&quot;
+    headers = build_headers()
+
+    :timer.sleep(@rate_limit_ms)
+
+    make_request_with_retry(fn -&gt;
+      with {:ok, body} &lt;- make_http_request(url, headers),
+           {:ok, decoded} &lt;- decode_killmail_response(body, kill_id) do
+        validate_killmail_format(decoded, kill_id)
+      end
+    end)
+  end
+
+  @doc &quot;&quot;&quot;
+  Gets recent kills with an optional limit.
+  &quot;&quot;&quot;
+  def get_recent_kills(limit \\ 10) do
+    url = &quot;#{@base_url}/recent/&quot;
+    headers = build_headers()
+
+    AppLogger.api_info(&quot;ZKill requesting recent kills&quot;, %{
+      limit: limit,
+      method: &quot;get_recent_kills&quot;
+    })
+
+    :timer.sleep(@rate_limit_ms)
+
+    with {:ok, body} &lt;- make_http_request(url, headers),
+         {:ok, kills} &lt;- decode_kills_response(body) do
+      {:ok, Enum.take(kills, limit)}
+    end
+  end
+
+  @doc &quot;&quot;&quot;
+  Gets kills for a specific system with an optional limit.
+  &quot;&quot;&quot;
+  def get_system_kills(system_id, limit \\ 5) do
+    url = &quot;#{@base_url}/systemID/#{system_id}/&quot;
+    headers = build_headers()
+
+    AppLogger.api_info(&quot;ZKill requesting system kills&quot;, %{
+      system_id: system_id,
+      limit: limit,
+      method: &quot;get_system_kills&quot;
+    })
+
+    :timer.sleep(@rate_limit_ms)
+
+    with {:ok, body} &lt;- make_http_request(url, headers),
+         {:ok, kills} &lt;- decode_kills_response(body) do
+      {:ok, Enum.take(kills, limit)}
+    end
+  end
+
+  @doc &quot;&quot;&quot;
+  Gets kills for a specific character.
+
+  ## Parameters
+    - character_id: The character ID to fetch kills for
+    - date_range: Map with :start and :end DateTime (optional)
+    - limit: Maximum number of kills to fetch (default: 100)
+  &quot;&quot;&quot;
+  def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
+    url = build_character_kills_url(character_id, date_range)
+    headers = build_headers()
+
+    date_range_info =
+      if date_range,
+        do: %{
+          start_time: date_range.start &amp;&amp; DateTime.to_iso8601(date_range.start),
+          end_time: date_range.end &amp;&amp; DateTime.to_iso8601(date_range.end)
+        },
+        else: %{date_range: &quot;none&quot;}
+
+    AppLogger.api_info(
+      &quot;ZKill requesting character kills&quot;,
+      Map.merge(
+        %{
+          character_id: character_id,
+          limit: limit,
+          method: &quot;get_character_kills&quot;,
+          url: url
+        },
+        date_range_info
+      )
+    )
+
+    :timer.sleep(@rate_limit_ms)
+
+    with {:ok, body} &lt;- make_http_request(url, headers),
+         {:ok, kills} &lt;- decode_kills_response(body) do
+      kill_count = length(kills)
+      limited_kills = Enum.take(kills, limit)
+
+      AppLogger.api_debug(&quot;ZKill character kills retrieved&quot;, %{
+        character_id: character_id,
+        total_kills: kill_count,
+        limited_kills: length(limited_kills)
+      })
+
+      {:ok, limited_kills}
+    end
+  end
+
+  defp build_headers do
+    [
+      {&quot;Accept&quot;, &quot;application/json&quot;},
+      {&quot;User-Agent&quot;, @user_agent},
+      {&quot;Cache-Control&quot;, &quot;no-cache&quot;}
+    ]
+  end
+
+  defp make_http_request(url, headers) do
+    case HttpClient.get(url, headers, follow_redirect: true) do
+      {:ok, %{status_code: 200, body: body}} -&gt;
+        {:ok, body}
+
+      {:ok, %{status_code: status, body: body}} -&gt;
+        AppLogger.api_error(&quot;ZKill HTTP error&quot;, %{
+          status: status,
+          body_sample: String.slice(body || &quot;&quot;, 0, 200),
+          url: url
+        })
+
+        {:error, {:http_error, status}}
+
+      {:error, reason} -&gt;
+        AppLogger.api_error(&quot;ZKill HTTP request failed&quot;, %{
+          error: inspect(reason),
+          url: url
+        })
+
+        {:error, reason}
+    end
+  end
+
+  defp decode_killmail_response(body, kill_id) do
+    case Jason.decode(body) do
+      {:ok, response} -&gt;
+        handle_decoded_response(response, kill_id)
+
+      {:error, reason} -&gt;
+        handle_decode_error(reason, body, kill_id)
+    end
+  end
+
+  # Handle different types of successful response formats
+  defp handle_decoded_response(response, kill_id) do
+    cond do
+      # Single killmail map
+      is_map(response) -&gt;
+        {:ok, response}
+
+      # Single killmail in a list
+      is_list(response) &amp;&amp; length(response) == 1 -&gt;
+        [killmail] = response
+        {:ok, killmail}
+
+      # Empty list - no killmail found
+      is_list(response) &amp;&amp; response == [] -&gt;
+        log_zkill_warning(kill_id, &quot;empty_response&quot;, &quot;No killmail found&quot;)
+        {:error, {:domain_error, :zkill, {:not_found, kill_id}}}
+
+      # Multiple killmails - unexpected but we can take the first one
+      is_list(response) -&gt;
+        log_zkill_warning(
+          kill_id,
+          &quot;multiple_killmails&quot;,
+          &quot;Multiple killmails returned for single ID&quot;,
+          %{count: length(response)}
+        )
+
+        [killmail | _] = response
+        {:ok, killmail}
+
+      # Boolean or other unexpected formats
+      true -&gt;
+        format_type = typeof(response)
+
+        log_zkill_warning(kill_id, &quot;unexpected_format&quot;, &quot;Unexpected response format&quot;, %{
+          format_type: format_type
+        })
+
+        {:error, {:domain_error, :zkill, {:unexpected_format, format_type}}}
+    end
+  end
+
+  defp handle_decode_error(reason, body, kill_id) do
+    AppLogger.api_error(&quot;ZKill JSON decode error&quot;, %{
+      error: inspect(reason),
+      body_sample: String.slice(body || &quot;&quot;, 0, 200),
+      kill_id: kill_id
+    })
+
+    {:error, {:json_decode_error, reason}}
+  end
+
+  defp decode_kills_response(body) do
+    case Jason.decode(body) do
+      {:ok, kills} when is_list(kills) -&gt;
+        {:ok, kills}
+
+      {:ok, _non_list} -&gt;
+        {:error, {:domain_error, :zkill, :invalid_kills_format}}
+
+      {:error, reason} -&gt;
+        {:error, {:json_decode_error, reason}}
+    end
+  end
+
+  defp build_character_kills_url(character_id, date_range) do
+    base = &quot;#{@base_url}/characterID/#{character_id}/&quot;
+
+    case date_range do
+      nil -&gt;
+        base
+
+      %{start: start_time, end: end_time} when not is_nil(start_time) and not is_nil(end_time) -&gt;
+        start_str = DateTime.to_date(start_time) |&gt; Date.to_iso8601()
+        end_str = DateTime.to_date(end_time) |&gt; Date.to_iso8601()
+        &quot;#{base}startTime/#{start_str}/endTime/#{end_str}/&quot;
+
+      _ -&gt;
+        base
+    end
+  end
+
+  defp make_request_with_retry(request_fn, retries \\ 0) do
+    case request_fn.() do
+      {:ok, result} -&gt;
+        {:ok, result}
+
+      {:error, reason} when retries &lt; @max_retries -&gt;
+        :timer.sleep(@retry_backoff_ms * (retries + 1))
+        make_request_with_retry(request_fn, retries + 1)
+
+      {:error, reason} -&gt;
+        {:error, reason}
+    end
+  end
+
+  defp log_zkill_warning(kill_id, type, message, extra_fields \\ %{}) do
+    AppLogger.api_warning(
+      &quot;ZKill #{message}&quot;,
+      Map.merge(
+        %{
+          kill_id: kill_id,
+          warning_type: type
+        },
+        extra_fields
+      )
+    )
+  end
+
+  defp typeof(term) when is_nil(term), do: &quot;nil&quot;
+  defp typeof(term) when is_binary(term), do: &quot;string&quot;
+  defp typeof(term) when is_boolean(term), do: &quot;boolean&quot;
+  defp typeof(term) when is_number(term), do: &quot;number&quot;
+  defp typeof(term) when is_map(term), do: &quot;map&quot;
+  defp typeof(term) when is_list(term), do: &quot;list&quot;
+  defp typeof(term) when is_atom(term), do: &quot;atom&quot;
+  defp typeof(_term), do: &quot;unknown&quot;
+
+  defp validate_killmail_format(killmail, _kill_id), do: {:ok, killmail}
 end</file><file path="lib/wanderer_notifier/license/client.ex">defmodule WandererNotifier.License.Client do
   @moduledoc &quot;&quot;&quot;
   Client for interacting with the License Manager API.
@@ -14794,139 +13216,6 @@ end</file><file path="lib/wanderer_notifier/logger/startup_tracker.ex">defmodule
       true -&gt; &quot;#{Float.round(ms / 60_000, 1)}m&quot;
     end
   end
-end</file><file path="lib/wanderer_notifier/map/characters_client.ex">defmodule WandererNotifier.Map.CharactersClient do
-  @moduledoc &quot;&quot;&quot;
-  Client for interacting with character data in the Map API
-  &quot;&quot;&quot;
-
-  require Logger
-  alias WandererNotifier.Api.Map.Characters
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Config.Config
-
-  @doc &quot;&quot;&quot;
-  Updates the tracked characters
-
-  This function can either:
-  - Be called with a list of characters to process directly
-  - Be called with no arguments to fetch characters from the API
-  - Be called with a raw response body to parse
-
-  Returns {:ok, characters} on success, {:error, reason} on failure
-  &quot;&quot;&quot;
-  def update_tracked_characters(cached_characters \\ nil)
-
-  def update_tracked_characters(characters) when is_list(characters) do
-    Logger.info(&quot;Updating tracked characters&quot;, %{count: length(characters)})
-    Characters.update_tracked_characters(characters)
-  end
-
-  def update_tracked_characters(raw_body) when is_binary(raw_body) do
-    Logger.info(&quot;Processing raw character data&quot;, %{data_length: String.length(raw_body)})
-    Characters.update_tracked_characters(raw_body, nil)
-  end
-
-  def update_tracked_characters(nil) do
-    Logger.info(&quot;Fetching and updating tracked characters&quot;)
-    Characters.update_tracked_characters()
-  end
-
-  @doc &quot;&quot;&quot;
-  Checks availability of the characters endpoint
-
-  Returns {:ok, true} if available, {:error, reason} if not
-  &quot;&quot;&quot;
-  def check_endpoint_availability do
-    Characters.check_characters_endpoint_availability()
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets character activity
-
-  ## Parameters
-    - slug: The character slug to fetch activity for
-
-  ## Returns
-    - {:ok, activity_data} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_character_activity(slug) do
-    Logger.info(&quot;Getting character activity&quot;, %{slug: slug})
-
-    # Build the URL for the activity endpoint
-    activity_url = build_activity_url(slug)
-    headers = build_headers()
-
-    # Make the request
-    case HttpClient.get(activity_url, headers) do
-      {:ok, %{status_code: 200, body: body}} -&gt;
-        {:ok, Jason.decode!(body)}
-
-      {:ok, %{status_code: status_code}} -&gt;
-        {:error, &quot;Failed to get character activity: HTTP #{status_code}&quot;}
-
-      {:error, reason} -&gt;
-        {:error, &quot;Failed to get character activity: #{inspect(reason)}&quot;}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets character activity with a specific timeframe
-
-  ## Parameters
-    - slug: The character slug to fetch activity for
-    - days: Number of days to fetch activity for
-
-  ## Returns
-    - {:ok, activity_data} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_character_activity(slug, days) do
-    Logger.info(&quot;Getting character activity&quot;, %{slug: slug, days: days})
-
-    # Build the URL for the activity endpoint with days parameter
-    activity_url = build_activity_url(slug, days)
-    headers = build_headers()
-
-    # Make the request
-    case HttpClient.get(activity_url, headers) do
-      {:ok, %{status_code: 200, body: body}} -&gt;
-        {:ok, Jason.decode!(body)}
-
-      {:ok, %{status_code: status_code}} -&gt;
-        {:error, &quot;Failed to get character activity: HTTP #{status_code}&quot;}
-
-      {:error, reason} -&gt;
-        {:error, &quot;Failed to get character activity: #{inspect(reason)}&quot;}
-    end
-  end
-
-  # Private helper functions
-
-  defp build_activity_url(slug, days \\ nil) do
-    base_url = Config.map_url()
-    uri = URI.parse(base_url)
-    base_host = &quot;#{uri.scheme}://#{uri.host}#{if uri.port, do: &quot;:#{uri.port}&quot;, else: &quot;&quot;}&quot;
-
-    url = &quot;#{base_host}/api/map/character_activity?slug=#{URI.encode_www_form(slug)}&quot;
-
-    # Add days parameter if provided
-    if days do
-      &quot;#{url}&amp;days=#{days}&quot;
-    else
-      url
-    end
-  end
-
-  defp build_headers do
-    map_token = Config.map_token()
-
-    [
-      {&quot;Authorization&quot;, &quot;Bearer #{map_token}&quot;},
-      {&quot;Content-Type&quot;, &quot;application/json&quot;},
-      {&quot;Accept&quot;, &quot;application/json&quot;}
-    ]
-  end
 end</file><file path="lib/wanderer_notifier/map/client.ex">defmodule WandererNotifier.Map.Client do
   @moduledoc &quot;&quot;&quot;
   Client for interacting with the Wanderer map API.
@@ -14934,8 +13223,8 @@ end</file><file path="lib/wanderer_notifier/map/client.ex">defmodule WandererNot
   This module provides a simplified facade over the specific client modules
   for different map API endpoints, handling feature checks and error management.
   &quot;&quot;&quot;
-  alias WandererNotifier.Map.CharactersClient
-  alias WandererNotifier.Map.SystemsClient
+  alias WandererNotifier.Api.Map.CharactersClient
+  alias WandererNotifier.Api.Map.SystemsClient
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -15053,644 +13342,58 @@ end</file><file path="lib/wanderer_notifier/map/client.ex">defmodule WandererNot
   end
 end</file><file path="lib/wanderer_notifier/map/map_system.ex">defmodule WandererNotifier.Map.MapSystem do
   @moduledoc &quot;&quot;&quot;
-  Struct and functions for managing map system data.
-
-  This module standardizes the representation of solar systems from the map API,
-  including proper name formatting and type classification.
-
-  Implements the Access behaviour to allow map-like access with [&quot;key&quot;] syntax.
+  Struct for representing a system in the map context.
   &quot;&quot;&quot;
-  @behaviour Access
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @enforce_keys [:id]
+  @enforce_keys [:solar_system_id, :name]
   defstruct [
-    :id,
+    :solar_system_id,
     :name,
-    :security_status,
-    :region_id,
-    :region_name,
-    :constellation_id,
-    :constellation_name,
-    :updated_at,
-    :status,
+    :original_name,
     :system_type,
     :type_description,
-    :is_shattered,
     :class_title,
     :effect_name,
-    :statics,
+    :is_shattered,
+    :locked,
+    :region_name,
     :static_details,
     :sun_type_id,
-    :solar_system_id,
-    :original_name,
-    :temporary_name,
-    :locked,
-    jumps: 0,
-    npc_kills: 0,
-    pod_kills: 0,
-    ship_kills: 0,
-    tracked: false
+    :id
   ]
 
   @type t :: %__MODULE__{
-          id: integer(),
-          name: String.t() | nil,
-          security_status: float() | nil,
-          region_id: integer() | nil,
-          region_name: String.t() | nil,
-          constellation_id: integer() | nil,
-          constellation_name: String.t() | nil,
-          updated_at: DateTime.t() | nil,
-          status: atom() | nil,
-          system_type: atom() | nil,
+          solar_system_id: String.t() | integer(),
+          name: String.t(),
+          original_name: String.t() | nil,
+          system_type: String.t() | atom() | nil,
           type_description: String.t() | nil,
-          is_shattered: boolean() | nil,
           class_title: String.t() | nil,
           effect_name: String.t() | nil,
-          statics: list() | nil,
+          is_shattered: boolean() | nil,
+          locked: boolean() | nil,
+          region_name: String.t() | nil,
           static_details: list() | nil,
           sun_type_id: integer() | nil,
-          solar_system_id: integer() | nil,
-          original_name: String.t() | nil,
-          temporary_name: String.t() | nil,
-          locked: boolean() | nil,
-          jumps: integer(),
-          npc_kills: integer(),
-          pod_kills: integer(),
-          ship_kills: integer(),
-          tracked: boolean()
+          id: String.t() | integer() | nil
         }
-
-  # Implement Access behaviour methods to allow map-like access
-
-  @doc &quot;&quot;&quot;
-  Implements the Access behaviour fetch method.
-  Allows accessing fields with map[&quot;key&quot;] syntax.
-
-  ## Examples
-      iex&gt; system = %MapSystem{id: &quot;123&quot;, name: &quot;Test&quot;}
-      iex&gt; system[&quot;id&quot;]
-      &quot;123&quot;
-      iex&gt; system[&quot;name&quot;]
-      &quot;Test&quot;
-  &quot;&quot;&quot;
-  @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
-  def fetch(struct, key) when is_atom(key) do
-    Map.fetch(Map.from_struct(struct), key)
-  end
-
-  # Handle field name conversions for common API inconsistencies
-  # Using separate function heads for each camelCase key
-  def fetch(struct, &quot;typeDescription&quot;), do: fetch_field(struct, :type_description)
-  def fetch(struct, &quot;isShattered&quot;), do: fetch_field(struct, :is_shattered)
-  def fetch(struct, &quot;systemType&quot;), do: fetch_field(struct, :system_type)
-  def fetch(struct, &quot;solarSystemId&quot;), do: fetch_field(struct, :solar_system_id)
-  def fetch(struct, &quot;temporaryName&quot;), do: fetch_field(struct, :temporary_name)
-  def fetch(struct, &quot;originalName&quot;), do: fetch_field(struct, :original_name)
-  def fetch(struct, &quot;classTitle&quot;), do: fetch_field(struct, :class_title)
-  def fetch(struct, &quot;effectName&quot;), do: fetch_field(struct, :effect_name)
-  def fetch(struct, &quot;regionName&quot;), do: fetch_field(struct, :region_name)
-  def fetch(struct, &quot;sunTypeId&quot;), do: fetch_field(struct, :sun_type_id)
-
-  # For any other string key, try to convert to an existing atom
-  def fetch(struct, key) when is_binary(key) do
-    try_convert_to_atom(struct, key)
-  end
-
-  # Helper to fetch a field from the struct
-  defp fetch_field(struct, key) do
-    Map.fetch(Map.from_struct(struct), key)
-  end
-
-  # Helper to try converting a string to an existing atom
-  defp try_convert_to_atom(struct, key) do
-    atom_key = String.to_existing_atom(key)
-    fetch_field(struct, atom_key)
-  rescue
-    ArgumentError -&gt; :error
-  end
-
-  @doc &quot;&quot;&quot;
-  Implements the Access behaviour get method.
-
-  ## Examples
-      iex&gt; system = %MapSystem{id: &quot;123&quot;, name: &quot;Test&quot;}
-      iex&gt; system[&quot;missing_key&quot;, :default]
-      :default
-  &quot;&quot;&quot;
-  @spec get(t(), atom() | String.t(), any()) :: any()
-  def get(struct, key, default \\ nil) do
-    case fetch(struct, key) do
-      {:ok, value} -&gt; value
-      :error -&gt; default
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Implements the Access behaviour get_and_update method.
-  Not fully implemented since structs are intended to be immutable.
-  &quot;&quot;&quot;
-  @spec get_and_update(t(), any(), (any() -&gt; {any(), any()})) :: {any(), t()}
-  def get_and_update(_struct, _key, _fun) do
-    raise &quot;get_and_update not implemented for immutable MapSystem struct&quot;
-  end
-
-  @doc &quot;&quot;&quot;
-  Implements the Access behaviour pop method.
-  Not fully implemented since structs are intended to be immutable.
-  &quot;&quot;&quot;
-  @spec pop(t(), any()) :: {any(), t()}
-  def pop(_struct, _key) do
-    raise &quot;pop not implemented for immutable MapSystem struct&quot;
-  end
-
-  @doc false
-  # This function exists for backwards compatibility but is unused in the current codebase
-  def parse_solar_system_id(solar_system_id) when is_binary(solar_system_id) do
-    String.to_integer(solar_system_id)
-  end
-
-  def parse_solar_system_id(solar_system_id) when is_integer(solar_system_id) do
-    solar_system_id
-  end
-
-  def parse_solar_system_id(_), do: nil
-
-  @doc false
-  # These functions exist for backwards compatibility but are unused in the current codebase
-  def determine_original_name(map_response, system_type, solar_system_id) do
-    # Implementation for legacy system
-    cond do
-      system_type == &quot;wormhole&quot; -&gt;
-        map_response[&quot;name&quot;] || &quot;J#{solar_system_id}&quot;
-
-      true -&gt;
-        map_response[&quot;name&quot;]
-    end
-  end
-
-  @doc false
-  def determine_temporary_name(map_response, original_name) do
-    # Implementation for legacy system
-    Map.get(map_response, &quot;temporary_name&quot;, original_name)
-  end
-
-  def new(attrs) when is_map(attrs) or is_list(attrs) do
-    # Convert string keys to atoms and build the struct
-    struct!(__MODULE__, attrs)
-  end
-
-  @doc &quot;&quot;&quot;
-  Returns a human-readable formatted display name for the system.
-
-  ## Examples
-      iex&gt; format_display_name(%MapSystem{name: &quot;Jita&quot;, system_type: :highsec})
-      &quot;Jita (HS)&quot;
-
-      iex&gt; format_display_name(%MapSystem{name: &quot;J123456&quot;, system_type: :wormhole, class_title: &quot;C3&quot;})
-      &quot;J123456 (C3)&quot;
-  &quot;&quot;&quot;
-  def format_display_name(system) do
-    type_indicator =
-      case system.system_type do
-        :wormhole -&gt;
-          if system.class_title, do: &quot;(#{system.class_title})&quot;, else: &quot;(WH)&quot;
-
-        :highsec -&gt;
-          &quot;(HS)&quot;
-
-        :lowsec -&gt;
-          &quot;(LS)&quot;
-
-        :nullsec -&gt;
-          &quot;(NS)&quot;
-
-        :pochven -&gt;
-          &quot;(Pochven)&quot;
-
-        :abyssal -&gt;
-          &quot;(Abyssal)&quot;
-
-        _ -&gt;
-          &quot;&quot;
-      end
-
-    &quot;#{system.name} #{type_indicator}&quot;
-  end
-
-  @doc &quot;&quot;&quot;
-  Checks if a system is a wormhole system.
-
-  ## Examples
-      iex&gt; is_wormhole?(%MapSystem{system_type: :wormhole})
-      true
-
-      iex&gt; is_wormhole?(%MapSystem{system_type: :highsec})
-      false
-  &quot;&quot;&quot;
-  def is_wormhole?(system) do
-    system.system_type == :wormhole
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the class number for a wormhole system.
-
-  Returns an integer class number (1-6) for wormhole systems,
-  or nil for non-wormhole systems.
-
-  ## Examples
-      iex&gt; get_class_number(%MapSystem{system_type: :wormhole, class_title: &quot;C3&quot;})
-      3
-
-      iex&gt; get_class_number(%MapSystem{system_type: :highsec})
-      nil
-  &quot;&quot;&quot;
-  def get_class_number(system) do
-    if is_wormhole?(system) &amp;&amp; system.class_title do
-      case system.class_title do
-        &quot;C&quot; &lt;&gt; class_str -&gt;
-          case Integer.parse(class_str) do
-            {num, _} -&gt; num
-            :error -&gt; nil
-          end
-
-        _ -&gt;
-          nil
-      end
-    else
-      nil
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets information about static wormholes in a system.
-
-  Returns a formatted list of static wormhole types and their destination types.
-
-  ## Examples
-      iex&gt; get_statics_info(%MapSystem{statics: [%{&quot;type&quot; =&gt; &quot;K162&quot;}, %{&quot;type&quot; =&gt; &quot;H900&quot;}]})
-      &quot;K162, H900&quot;
-  &quot;&quot;&quot;
-  def get_statics_info(system) do
-    if is_list(system.statics) do
-      static_types =
-        Enum.map(system.statics, fn static -&gt;
-          static[&quot;type&quot;]
-        end)
-        |&gt; Enum.filter(&amp; &amp;1)
-        |&gt; Enum.join(&quot;, &quot;)
-
-      if static_types != &quot;&quot;, do: static_types, else: nil
-    else
-      nil
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets a detailed description of the system&apos;s statics.
-
-  Returns a formatted string with information about each static wormhole,
-  including their type and destination.
-
-  ## Examples
-      iex&gt; get_statics_description(%MapSystem{static_details: [
-      ...&gt;   %{&quot;type&quot; =&gt; &quot;K162&quot;, &quot;destination&quot; =&gt; &quot;Highsec&quot;},
-      ...&gt;   %{&quot;type&quot; =&gt; &quot;H900&quot;, &quot;destination&quot; =&gt; &quot;C5 Wormhole&quot;}
-      ...&gt; ]})
-      &quot;K162 → Highsec, H900 → C5 Wormhole&quot;
-  &quot;&quot;&quot;
-  def get_statics_description(system) do
-    if is_list(system.static_details) &amp;&amp; length(system.static_details) &gt; 0 do
-      system.static_details
-      |&gt; Enum.map(fn static -&gt;
-        type = static[&quot;type&quot;]
-        destination = static[&quot;destination&quot;]
-
-        if type &amp;&amp; destination do
-          &quot;#{type} → #{destination}&quot;
-        else
-          nil
-        end
-      end)
-      |&gt; Enum.filter(&amp; &amp;1)
-      |&gt; Enum.join(&quot;, &quot;)
-    else
-      nil
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Converts a MapSystem struct to a simplified map representation.
-
-  ## Parameters
-  - system: The MapSystem struct to convert
-  - include_details: Whether to include detailed information (default: false)
-
-  ## Returns
-  A map with selected fields from the MapSystem
-  &quot;&quot;&quot;
-  def to_map(system, include_details \\ false) do
-    base_map = %{
-      &quot;id&quot; =&gt; system.id,
-      &quot;solar_system_id&quot; =&gt; system.solar_system_id,
-      &quot;name&quot; =&gt; system.name,
-      &quot;original_name&quot; =&gt; system.original_name,
-      &quot;locked&quot; =&gt; system.locked,
-      &quot;system_type&quot; =&gt; Atom.to_string(system.system_type),
-      &quot;type_description&quot; =&gt; system.type_description,
-      &quot;is_shattered&quot; =&gt; system.is_shattered
-    }
-
-    if include_details do
-      Map.merge(base_map, %{
-        &quot;temporary_name&quot; =&gt; system.temporary_name,
-        &quot;class_title&quot; =&gt; system.class_title,
-        &quot;effect_name&quot; =&gt; system.effect_name,
-        &quot;region_name&quot; =&gt; system.region_name,
-        &quot;statics&quot; =&gt; system.statics,
-        &quot;static_details&quot; =&gt; system.static_details,
-        &quot;sun_type_id&quot; =&gt; system.sun_type_id
-      })
-    else
-      base_map
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Creates a new MapSystem struct from a map of data.
-
-  ## Parameters
-    - map: A map containing system data
-
-  ## Returns
-    - A new MapSystem struct
-  &quot;&quot;&quot;
-  @spec new_from_map(map()) :: t()
-  def new_from_map(map) when is_map(map) do
-    try do
-      # Extract the system ID, which is required
-      system_id = extract_id(map)
-
-      # Build the struct directly to avoid issues with missing keys
-      %__MODULE__{
-        id: system_id,
-        name: Map.get(map, &quot;name&quot;),
-        security_status: Map.get(map, &quot;security&quot;) || Map.get(map, &quot;security_status&quot;),
-        region_id: Map.get(map, &quot;region_id&quot;),
-        region_name: Map.get(map, &quot;region&quot;),
-        constellation_id: Map.get(map, &quot;constellation_id&quot;),
-        constellation_name: Map.get(map, &quot;constellation&quot;),
-        jumps: Map.get(map, &quot;jumps&quot;) || 0,
-        npc_kills: Map.get(map, &quot;npc_kills&quot;) || 0,
-        pod_kills: Map.get(map, &quot;pod_kills&quot;) || 0,
-        ship_kills: Map.get(map, &quot;ship_kills&quot;) || 0,
-        status: extract_status(map),
-        tracked: Map.get(map, &quot;tracked&quot;) || false,
-        updated_at: extract_updated_at(map)
-      }
-    rescue
-      e -&gt;
-        AppLogger.api_error(&quot;[MapSystem] Failed to create system from map&quot;,
-          error: Exception.message(e),
-          data: inspect(map)
-        )
-
-        # Reraise to ensure caller handles this properly
-        reraise e, __STACKTRACE__
-    end
-  end
-
-  # Extract the system ID from various possible formats
-  defp extract_id(map) do
-    cond do
-      Map.has_key?(map, &quot;id&quot;) -&gt; Map.get(map, &quot;id&quot;)
-      Map.has_key?(map, &quot;system_id&quot;) -&gt; Map.get(map, &quot;system_id&quot;)
-      true -&gt; raise &quot;System data does not contain an ID field&quot;
-    end
-  end
-
-  # Extract status from string or default to :unknown
-  defp extract_status(map) do
-    case Map.get(map, &quot;status&quot;) do
-      nil -&gt; :unknown
-      &quot;clear&quot; -&gt; :clear
-      &quot;danger&quot; -&gt; :danger
-      &quot;warning&quot; -&gt; :warning
-      other when is_binary(other) -&gt; String.to_atom(other)
-      other -&gt; other
-    end
-  end
-
-  # Extract and parse the updated_at timestamp
-  defp extract_updated_at(map) do
-    case Map.get(map, &quot;updated_at&quot;) do
-      nil -&gt;
-        nil
-
-      timestamp when is_binary(timestamp) -&gt;
-        case DateTime.from_iso8601(timestamp) do
-          {:ok, dt, _} -&gt; dt
-          {:error, _} -&gt; nil
-        end
-
-      _ -&gt;
-        nil
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Updates a MapSystem with static information from the API.
-
-  ## Parameters
-    - system: The MapSystem struct to update
-    - static_info: Static information from the API
-
-  ## Returns
-    - An updated MapSystem struct
-  &quot;&quot;&quot;
-  @spec update_with_static_info(t(), map()) :: t()
-  def update_with_static_info(system, static_info) when is_map(static_info) do
-    # Extract the data section if present
-    data = Map.get(static_info, &quot;data&quot;, %{})
-
-    # Extract useful fields
-    statics = Map.get(data, &quot;statics&quot;, [])
-    effect = Map.get(data, &quot;effect&quot;, %{})
-
-    # Update the system struct with the static info
-    %{
-      system
-      | system_type: determine_system_type(data),
-        type_description: Map.get(data, &quot;type_description&quot;),
-        is_shattered: Map.get(data, &quot;is_shattered&quot;, false),
-        class_title: Map.get(data, &quot;class&quot;),
-        effect_name: Map.get(effect, &quot;name&quot;),
-        statics: statics,
-        static_details: extract_static_details(statics, data),
-        sun_type_id: Map.get(data, &quot;sun_type_id&quot;)
-    }
-  end
-
-  # If no static info provided, return the system unchanged
-  def update_with_static_info(system, _), do: system
-
-  # Helper to determine system type from static info
-  defp determine_system_type(data) do
-    type = Map.get(data, &quot;type&quot;)
-
-    cond do
-      type == &quot;wormhole&quot; -&gt; :wormhole
-      Map.get(data, &quot;security&quot;, 0) &gt;= 0.5 -&gt; :highsec
-      Map.get(data, &quot;security&quot;, 0) &gt; 0.0 -&gt; :lowsec
-      Map.get(data, &quot;security&quot;, 0) &lt;= 0.0 -&gt; :nullsec
-      Map.get(data, &quot;is_triglavian&quot;, false) -&gt; :pochven
-      Map.get(data, &quot;is_abyssal&quot;, false) -&gt; :abyssal
-      true -&gt; :unknown
-    end
-  end
-
-  # Helper to extract and format static wormhole details
-  defp extract_static_details(statics, _data) do
-    if is_list(statics) do
-      Enum.map(statics, fn static -&gt;
-        static_type = Map.get(static, &quot;type&quot;)
-
-        # Determine destination from wormhole type
-        destination =
-          case static_type do
-            # K162 is the incoming side
-            &quot;K162&quot; -&gt; &quot;Unknown&quot;
-            &quot;Z142&quot; -&gt; &quot;Nullsec&quot;
-            &quot;E545&quot; -&gt; &quot;Nullsec&quot;
-            &quot;N766&quot; -&gt; &quot;Nullsec&quot;
-            &quot;S199&quot; -&gt; &quot;Nullsec&quot;
-            &quot;R474&quot; -&gt; &quot;Highsec&quot;
-            &quot;U210&quot; -&gt; &quot;Lowsec&quot;
-            &quot;L031&quot; -&gt; &quot;Lowsec&quot;
-            &quot;B449&quot; -&gt; &quot;Highsec&quot;
-            &quot;M267&quot; -&gt; &quot;C3 Wormhole&quot;
-            &quot;E175&quot; -&gt; &quot;C4 Wormhole&quot;
-            &quot;X877&quot; -&gt; &quot;C4 Wormhole&quot;
-            &quot;N110&quot; -&gt; &quot;Highsec&quot;
-            &quot;D845&quot; -&gt; &quot;Highsec&quot;
-            &quot;C247&quot; -&gt; &quot;C3 Wormhole&quot;
-            &quot;O477&quot; -&gt; &quot;C3 Wormhole&quot;
-            &quot;Y683&quot; -&gt; &quot;C4 Wormhole&quot;
-            &quot;N062&quot; -&gt; &quot;C5 Wormhole&quot;
-            &quot;R943&quot; -&gt; &quot;C2 Wormhole&quot;
-            &quot;V301&quot; -&gt; &quot;C1 Wormhole&quot;
-            &quot;I184&quot; -&gt; &quot;C2 Wormhole&quot;
-            &quot;T405&quot; -&gt; &quot;C4 Wormhole&quot;
-            &quot;N432&quot; -&gt; &quot;C5 Wormhole&quot;
-            &quot;C248&quot; -&gt; &quot;C5 Wormhole&quot;
-            &quot;Q317&quot; -&gt; &quot;C1 Wormhole&quot;
-            &quot;J244&quot; -&gt; &quot;Lowsec&quot;
-            &quot;H121&quot; -&gt; &quot;C1 Wormhole&quot;
-            &quot;Z060&quot; -&gt; &quot;Nullsec&quot;
-            &quot;Z457&quot; -&gt; &quot;Nullsec&quot;
-            &quot;A982&quot; -&gt; &quot;C6 Wormhole&quot;
-            &quot;W237&quot; -&gt; &quot;C6 Wormhole&quot;
-            &quot;H900&quot; -&gt; &quot;C5 Wormhole&quot;
-            &quot;U574&quot; -&gt; &quot;C6 Wormhole&quot;
-            &quot;V928&quot; -&gt; &quot;Nullsec&quot;
-            &quot;C140&quot; -&gt; &quot;Lowsec&quot;
-            _ -&gt; &quot;Unknown&quot;
-          end
-
-        # Merge destination info with the original static data
-        Map.merge(static, %{&quot;destination&quot; =&gt; destination})
-      end)
-    else
-      []
-    end
-  end
-end</file><file path="lib/wanderer_notifier/map/system.ex">defmodule WandererNotifier.Map.System do
-  @moduledoc &quot;&quot;&quot;
-  Data structure for EVE Online solar systems.
-  Contains information about tracked systems from the map.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.Utilities.DateTimeUtil
-  alias WandererNotifier.Utilities.MapUtil
-
-  @type t :: %__MODULE__{
-          system_id: String.t() | integer(),
-          system_name: String.t(),
-          security_status: float() | nil,
-          region_id: String.t() | integer() | nil,
-          region_name: String.t() | nil,
-          constellation_id: String.t() | integer() | nil,
-          constellation_name: String.t() | nil,
-          effect: String.t() | nil,
-          type: String.t() | nil,
-          tracked: boolean(),
-          tracked_since: DateTime.t() | nil
-        }
-
-  defstruct [
-    :system_id,
-    :system_name,
-    :security_status,
-    :region_id,
-    :region_name,
-    :constellation_id,
-    :constellation_name,
-    :effect,
-    :type,
-    tracked: false,
-    tracked_since: nil
-  ]
-
-  @doc &quot;&quot;&quot;
-  Creates a new system from a map or keyword list.
-  &quot;&quot;&quot;
-  def new(attrs) when is_map(attrs) or is_list(attrs) do
-    struct(__MODULE__, attrs)
-  end
-
-  @doc &quot;&quot;&quot;
-  Converts a map with string or atom keys into a System struct.
-  &quot;&quot;&quot;
-  @spec from_map(map()) :: t()
-  def from_map(map) when is_map(map) do
-    %__MODULE__{
-      system_id: MapUtil.get_value(map, [&quot;system_id&quot;, :system_id]),
-      system_name: MapUtil.get_value(map, [&quot;system_name&quot;, :system_name]),
-      security_status: MapUtil.get_value(map, [&quot;security_status&quot;, :security_status]),
-      region_id: MapUtil.get_value(map, [&quot;region_id&quot;, :region_id]),
-      region_name: MapUtil.get_value(map, [&quot;region_name&quot;, :region_name]),
-      constellation_id: MapUtil.get_value(map, [&quot;constellation_id&quot;, :constellation_id]),
-      constellation_name: MapUtil.get_value(map, [&quot;constellation_name&quot;, :constellation_name]),
-      effect: MapUtil.get_value(map, [&quot;effect&quot;, :effect]),
-      type: MapUtil.get_value(map, [&quot;type&quot;, :type]),
-      tracked: MapUtil.get_value(map, [&quot;tracked&quot;, :tracked]) || false,
-      tracked_since: parse_datetime(MapUtil.get_value(map, [&quot;tracked_since&quot;, :tracked_since]))
-    }
-  end
-
-  @doc &quot;&quot;&quot;
-  Safely parses an ISO 8601 datetime string into a DateTime struct.
-  Returns nil if the input is nil or invalid.
-  &quot;&quot;&quot;
-  @spec parse_datetime(String.t() | DateTime.t() | nil) :: DateTime.t() | nil
-  defdelegate parse_datetime(datetime), to: DateTimeUtil
 end</file><file path="lib/wanderer_notifier/map/systems_client.ex">defmodule WandererNotifier.Map.SystemsClient do
   @moduledoc &quot;&quot;&quot;
   Client for retrieving and processing system data from the map API.
   Uses structured data types and consistent parsing to simplify the logic.
   &quot;&quot;&quot;
+  alias WandererNotifier.HttpClient.Httpoison, as: Client
+  alias WandererNotifier.Map.SystemStaticInfo
+  alias WandererNotifier.Map.UrlBuilder
+  alias WandererNotifier.Config.Config
   alias WandererNotifier.Config.Features
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Helpers, as: CacheHelpers
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Factory
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Api.Map.SystemStaticInfo
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifiers.Factory
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
 
   @doc &quot;&quot;&quot;
   Updates the systems in the cache.
@@ -15704,88 +13407,125 @@ end</file><file path="lib/wanderer_notifier/map/systems_client.ex">defmodule Wan
     - {:ok, systems} on success
     - {:error, reason} on failure
   &quot;&quot;&quot;
-  @spec update_systems(list() | nil) :: {:ok, list()} | {:error, term()}
   def update_systems(cached_systems \\ nil) do
-    AppLogger.api_info(&quot;📊 Starting systems update&quot;)
+    # Get cached systems if none provided
+    cached_systems = cached_systems || CacheRepo.get(CacheKeys.map_systems())
 
-    # Fetch systems from API
-    case request_systems() do
-      {:ok, systems_data} -&gt;
-        # Extract systems from the response
-        systems_data = extract_systems_data(systems_data)
+    case UrlBuilder.build_url(&quot;map/systems&quot;) do
+      {:ok, url} -&gt;
+        headers = UrlBuilder.get_auth_headers()
 
-        # Filter systems based on configuration
-        tracked_systems = filter_systems_for_tracking(systems_data)
+        # Process the systems request
+        case Client.get(url, headers) do
+          {:ok, response} -&gt;
+            process_systems_response(response, cached_systems)
 
-        # Enrich systems with static data
-        enriched_systems = enrich_tracked_systems(tracked_systems)
-
-        # Update systems in cache
-        updated_systems = update_systems_cache(enriched_systems)
-
-        # Verify systems are cached properly
-        verify_systems_cached(updated_systems)
-
-        # Handle notifications for new systems if needed
-        if is_list(cached_systems) do
-          notify_new_systems(updated_systems, cached_systems)
-        else
-          AppLogger.api_debug(
-            &quot;[SystemsClient] No cached systems provided, skipping notification check&quot;
-          )
+          {:error, reason} -&gt;
+            AppLogger.api_error(&quot;⚠️ Failed to fetch systems&quot;, error: inspect(reason))
+            {:error, {:http_error, reason}}
         end
 
-        {:ok, updated_systems}
-
       {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Failed to update systems&quot;, error: inspect(reason))
+        AppLogger.api_error(&quot;⚠️ Failed to build URL&quot;, error: inspect(reason))
         {:error, reason}
     end
   end
 
-  # Make API request to fetch systems
-  defp request_systems do
-    # Log the request start
-    AppLogger.api_debug(&quot;[SystemsClient] Requesting systems from API&quot;)
+  defp process_systems_response(response, cached_systems) do
+    alias WandererNotifier.HttpClient.ErrorHandler
 
-    # Make API request with proper error handling
-    result = HttpClient.get(&quot;map_systems&quot;)
+    AppLogger.api_debug(&quot;[SystemsClient] Processing systems response&quot;,
+      response_type: typeof(response),
+      has_cached_systems: not is_nil(cached_systems)
+    )
 
-    case result do
-      {:ok, %{status_code: 200, body: body}} -&gt;
-        try do
-          decoded = Jason.decode!(body)
-
-          AppLogger.api_debug(&quot;[SystemsClient] Successfully fetched systems data&quot;,
-            data_type: typeof(decoded),
-            size: byte_size(body)
-          )
-
-          {:ok, decoded}
-        rescue
-          e -&gt;
-            AppLogger.api_error(&quot;[SystemsClient] Failed to decode systems response&quot;,
-              error: Exception.message(e),
-              preview: String.slice(body, 0, 100)
-            )
-
-            {:error, :invalid_json}
-        end
-
-      {:ok, %{status_code: status_code}} -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Failed to fetch systems with status&quot;,
-          status: status_code
+    case ErrorHandler.handle_http_response(response, domain: :map, tag: &quot;SystemsClient&quot;) do
+      {:ok, parsed_response} -&gt;
+        AppLogger.api_debug(&quot;[SystemsClient] Successfully parsed response&quot;,
+          response_keys: Map.keys(parsed_response)
         )
 
-        {:error, {:http_error, status_code}}
+        # Process and cache the system data
+        process_and_cache_systems(parsed_response, cached_systems)
 
       {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Network error fetching systems&quot;,
-          error: inspect(reason)
-        )
-
+        AppLogger.api_error(&quot;[SystemsClient] Failed to process API response: #{inspect(reason)}&quot;)
         {:error, reason}
     end
+  end
+
+  defp process_and_cache_systems(parsed_response, cached_systems) do
+    AppLogger.api_debug(&quot;[SystemsClient] Starting process_and_cache_systems&quot;,
+      response_keys: Map.keys(parsed_response),
+      has_cached_systems: not is_nil(cached_systems)
+    )
+
+    # Extract systems data with fallbacks for different API formats
+    systems_data = extract_systems_data(parsed_response)
+
+    AppLogger.api_debug(&quot;[SystemsClient] Extracted systems data&quot;,
+      count: length(systems_data),
+      first_system: List.first(systems_data)
+    )
+
+    systems = Enum.map(systems_data, &amp;MapSystem.new/1)
+
+    # Refactored logging using the helper function
+    log_processing_step(&quot;Created MapSystem structs&quot;, systems)
+
+    tracked_systems = filter_systems_for_tracking(systems)
+
+    AppLogger.api_debug(&quot;[SystemsClient] Filtered systems for tracking&quot;,
+      count: length(tracked_systems),
+      first_system: List.first(tracked_systems)
+    )
+
+    enriched_systems = enrich_tracked_systems(tracked_systems)
+
+    AppLogger.api_debug(&quot;[SystemsClient] Enriched systems&quot;,
+      count: length(enriched_systems),
+      first_system: List.first(enriched_systems)
+    )
+
+    # Cache the enriched systems
+    updated_systems = update_systems_cache(enriched_systems)
+
+    AppLogger.api_debug(&quot;[SystemsClient] Updated systems cache&quot;,
+      count: length(updated_systems)
+    )
+
+    # Verify systems were cached successfully
+    verify_systems_cached(updated_systems)
+
+    # Check for new systems and notify
+    case notify_new_systems(enriched_systems, cached_systems) do
+      {:ok, _added_systems} -&gt;
+        {:ok, updated_systems}
+
+      {:error, reason} -&gt;
+        AppLogger.api_error(&quot;⚠️ Failed to notify about new systems&quot;, error: inspect(reason))
+        {:ok, updated_systems}
+    end
+  rescue
+    e -&gt;
+      AppLogger.api_error(&quot;⚠️ Exception in process_and_cache_systems&quot;,
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        parsed_response: inspect(parsed_response, limit: 100),
+        cached_systems_count: if(is_list(cached_systems), do: length(cached_systems), else: 0)
+      )
+
+      cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
+      {:ok, cached}
+  end
+
+  # Add the structured logging helper function as a separate function
+  defp log_processing_step(step, data) do
+    AppLogger.api_debug(
+      &quot;[SystemsClient] #{step}&quot;,
+      count: length(data),
+      first_system: List.first(data)
+    )
   end
 
   # Extract systems data from different response formats
@@ -15838,486 +13578,97 @@ end</file><file path="lib/wanderer_notifier/map/systems_client.ex">defmodule Wan
       # If tracking K-space systems is enabled, return all systems
       systems
     else
-      # If tracking K-space systems is disabled, filter out K-space systems
-      systems
-      |&gt; Enum.filter(fn system -&gt;
-        # Keep only wormhole systems (class 1-6)
-        system[&quot;security_class&quot;] in [&quot;C1&quot;, &quot;C2&quot;, &quot;C3&quot;, &quot;C4&quot;, &quot;C5&quot;, &quot;C6&quot;, &quot;C13&quot;]
+      # Otherwise, filter out K-space systems
+      Enum.filter(systems, fn system -&gt;
+        # Check if the system is not a K-space system
+        not is_kspace_system?(system)
       end)
     end
   end
 
-  # Enrich tracked systems with static data
-  defp enrich_tracked_systems(tracked_systems) do
-    # Create a map of system_id =&gt; system for easier lookup and replacement
-    system_map =
-      Enum.reduce(tracked_systems, %{}, fn sys, acc -&gt;
-        system_id = extract_system_id(sys)
-        if system_id, do: Map.put(acc, system_id, MapSystem.new(sys)), else: acc
-      end)
-
-    # Process each system
-    enriched_map = process_systems_for_enrichment(tracked_systems, system_map)
-
-    # Convert the map back to a list
-    enriched_systems = Map.values(enriched_map)
-
-    enriched_systems
+  # Helper function to determine if a system is a K-space system
+  defp is_kspace_system?(system) do
+    # Get the system class from the system data
+    system_class = Map.get(system, :system_class)
+    # Check if the system class indicates a K-space system
+    system_class in [&quot;K&quot;, &quot;HS&quot;, &quot;LS&quot;, &quot;NS&quot;]
   end
 
-  # Process each system for enrichment
-  defp process_systems_for_enrichment(tracked_systems, system_map) do
-    Enum.reduce(tracked_systems, system_map, fn system, acc -&gt;
-      system_id = extract_system_id(system)
-
-      if system_id &amp;&amp; Map.has_key?(acc, system_id) do
-        process_system(Map.get(acc, system_id), acc)
-      else
-        acc
-      end
+  # Enrich systems with additional data
+  defp enrich_tracked_systems(systems) do
+    Enum.map(systems, fn system -&gt;
+      # Get static info for the system
+      static_info = SystemStaticInfo.get_system_info(system.system_id)
+      # Merge the static info with the system data
+      Map.merge(system, static_info)
     end)
   end
 
-  # Process a system with enrichment
-  defp process_system(system, acc) do
-    # Try to enrich with a strict timeout
-    task =
-      Task.async(fn -&gt;
-        try do
-          SystemStaticInfo.enrich_system(system)
-        rescue
-          e -&gt;
-            AppLogger.api_error(
-              &quot;[SystemsClient] Enrichment failed for system #{system.name}: #{Exception.message(e)}&quot;
-            )
-
-            {:error, :exception}
-        end
-      end)
-
-    # Wait for enrichment with a 2 second timeout per system
-    case Task.yield(task, 2_000) do
-      {:ok, {:ok, enriched_system}} -&gt;
-        # Update the map with the enriched system
-        Map.put(acc, system.solar_system_id, enriched_system)
-
-      _ -&gt;
-        # Enrichment error or timeout - kill the task and keep the original system
-        Task.shutdown(task, :brutal_kill)
-
-        AppLogger.api_debug(
-          &quot;[SystemsClient] Using basic system info for #{system.name} (enrichment skipped or failed)&quot;
-        )
-
-        # Ensure statics is never nil for wormhole systems
-        updated_system =
-          if MapSystem.is_wormhole?(system) do
-            ensure_statics_not_nil(system)
-          else
-            system
-          end
-
-        Map.put(acc, system.solar_system_id, updated_system)
-    end
-  end
-
-  # Ensure statics field is never nil
-  defp ensure_statics_not_nil(system) do
-    if is_nil(system.statics) do
-      %{system | statics: []}
-    else
-      system
-    end
-  end
-
-  # Make sure systems are actually in the cache
-  defp verify_systems_cached(systems) do
-    # Wait a moment to ensure cache has time to update
-    Process.sleep(100)
-
-    # Check the cache
-    cached_systems = CacheRepo.get(CacheKeys.map_systems())
-    cached_count = if is_list(cached_systems), do: length(cached_systems), else: 0
-    expected_count = length(systems)
-
-    if cached_count != expected_count do
-      AppLogger.api_error(
-        &quot;⚠️ Cache verification failed - Expected: #{expected_count}, Found: #{cached_count}&quot;
-      )
-    end
-  end
-
-  # Update the systems cache with the latest data
+  # Update the systems cache
   defp update_systems_cache(systems) do
-    # Use a hard-coded long TTL (24 hours) for persistence
-    long_ttl = 86_400
+    # Cache the systems
+    CacheRepo.put(CacheKeys.map_systems(), systems)
+    # Return the systems
+    systems
+  end
 
-    AppLogger.api_debug(
-      &quot;[SystemsClient] Updating systems cache with #{length(systems)} systems and TTL: #{long_ttl}&quot;
-    )
+  # Verify that systems were cached successfully
+  defp verify_systems_cached(systems) do
+    # Get the cached systems
+    cached_systems = CacheRepo.get(CacheKeys.map_systems())
+    # Compare the cached systems with the original systems
+    if cached_systems == systems do
+      {:ok, systems}
+    else
+      {:error, :cache_verification_failed}
+    end
+  end
 
-    # Log the current cache content for verification
-    current_systems = CacheRepo.get(CacheKeys.map_systems()) || []
-    current_count = length(current_systems)
+  # Notify about new systems
+  defp notify_new_systems(current_systems, cached_systems) do
+    # Get the system IDs from both lists
+    current_ids = MapSet.new(current_systems, &amp; &amp;1.system_id)
+    cached_ids = MapSet.new(cached_systems || [], &amp; &amp;1.system_id)
 
-    AppLogger.api_debug(
-      &quot;[SystemsClient] Current systems in cache before update: #{current_count}&quot;
-    )
+    # Find new system IDs
+    new_ids = MapSet.difference(current_ids, cached_ids)
 
-    try do
-      # First update the main caches - these are critical operations
-      result = CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
-      AppLogger.api_debug(&quot;[SystemsClient] Main cache set result: #{inspect(result)}&quot;)
-
-      # Verify main cache was set
-      # Allow cache to persist
-      Process.sleep(100)
-      main_cache = CacheRepo.get(CacheKeys.map_systems())
-      main_cache_count = if is_list(main_cache), do: length(main_cache), else: 0
-
-      if main_cache_count != length(systems) do
-        AppLogger.api_error(&quot;[SystemsClient] Main cache verification failed - retrying&quot;)
-        # Retry main cache set
-        CacheRepo.set(CacheKeys.map_systems(), systems, long_ttl)
-        # Allow retry to persist
-        Process.sleep(100)
-      end
-
-      # Update system IDs list
-      system_ids = Enum.map(systems, &amp; &amp;1.solar_system_id)
-      CacheRepo.set(CacheKeys.map_system_ids(), system_ids, long_ttl)
-
-      # Cache individual systems sequentially to ensure reliability
-      Enum.each(systems, fn system -&gt;
-        system_id = system.solar_system_id
-
-        if system_id do
-          # Cache individual system
-          system_cache_key = CacheKeys.system(system_id)
-          CacheRepo.set(system_cache_key, system, long_ttl)
-
-          # Verify individual system cache
-          # Allow cache to persist
-          Process.sleep(50)
-          cached_system = CacheRepo.get(system_cache_key)
-
-          if is_nil(cached_system) do
-            AppLogger.api_warn(&quot;[SystemsClient] Retrying cache for system #{system_id}&quot;)
-            CacheRepo.set(system_cache_key, system, long_ttl)
-          end
-
-          # Mark as tracked
-          CacheHelpers.add_system_to_tracked(system_id, system)
-
-          # Small delay between operations to prevent overwhelming the cache
-          Process.sleep(10)
-        end
+    # Get the new systems
+    new_systems =
+      Enum.filter(current_systems, fn system -&gt;
+        system.system_id in new_ids
       end)
 
-      systems
-    rescue
-      e -&gt;
-        AppLogger.api_error(
-          &quot;[SystemsClient] Exception in update_systems_cache&quot;,
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
+    # Notify about new systems if there are any
+    if not Enum.empty?(new_systems) do
+      AppLogger.api_info(&quot;Found new systems&quot;, count: length(new_systems))
 
-        # Return systems anyway to prevent cascading failures
-        systems
-    end
-  end
+      # Create notifications for new systems
+      notifications =
+        Enum.map(new_systems, fn system -&gt;
+          Factory.create_notification(:new_system, system)
+        end)
 
-  # Find systems that weren&apos;t in the cached systems but are in the current systems
-  defp find_new_systems(_fresh, nil), do: []
-  defp find_new_systems(_fresh, []), do: []
+      # Send notifications
+      Enum.each(notifications, fn notification -&gt;
+        StructuredFormatter.format_and_send(notification)
+      end)
 
-  defp find_new_systems(fresh, cached) do
-    Enum.filter(fresh, fn fresh_sys -&gt;
-      not system_exists_in_cache?(fresh_sys, cached)
-    end)
-  end
-
-  defp system_exists_in_cache?(fresh_sys, cached) do
-    fresh_id = extract_system_id(fresh_sys)
-
-    Enum.any?(cached, fn cached_sys -&gt;
-      cached_id = extract_system_id(cached_sys)
-      fresh_id == cached_id
-    end)
-  end
-
-  defp extract_system_id(system) do
-    case system do
-      %{solar_system_id: id} when not is_nil(id) -&gt; id
-      %{&quot;solar_system_id&quot; =&gt; id} when not is_nil(id) -&gt; id
-      %{id: id} when not is_nil(id) -&gt; id
-      %{&quot;id&quot; =&gt; id} when not is_nil(id) -&gt; id
-      _ -&gt; nil
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Identifies new systems by comparing with cached systems and sends notifications.
-
-  ## Parameters
-    - fresh_systems: List of newly fetched systems
-    - cached_systems: List of previously cached systems
-
-  ## Returns
-    - {:ok, added_systems} with list of newly added systems
-  &quot;&quot;&quot;
-  def notify_new_systems(fresh_systems, cached_systems) do
-    if Features.system_notifications_enabled?() do
-      # Find new systems by comparing fresh and cached
-      added_systems = find_new_systems(fresh_systems, cached_systems)
-
-      if Enum.empty?(added_systems) do
-        {:ok, []}
-      else
-        AppLogger.api_info(&quot;[SystemsClient] Found #{length(added_systems)} new systems&quot;)
-        process_system_notifications(added_systems)
-      end
+      {:ok, new_systems}
     else
       {:ok, []}
     end
   end
 
-  # Process notification results and log failures
-  defp process_system_notifications(added_systems) do
-    notification_results =
-      Enum.map(added_systems, fn system -&gt;
-        case send_system_notification(system) do
-          {:ok, _} = success -&gt; success
-          {:error, reason} -&gt; {:error, {system, reason}}
-        end
-      end)
-
-    handle_notification_results(notification_results, added_systems)
-  end
-
-  # Handle notification results and log failures
-  defp handle_notification_results(notification_results, added_systems) do
-    {successes, failures} =
-      Enum.split_with(notification_results, fn
-        {:ok, _} -&gt; true
-        {:error, _} -&gt; false
-      end)
-
-    # Log any failures
-    log_notification_failures(failures)
-
-    if Enum.empty?(successes) do
-      {:error, :all_notifications_failed}
-    else
-      {:ok, added_systems}
-    end
-  end
-
-  # Log notification failures if any exist
-  defp log_notification_failures([]), do: :ok
-
-  defp log_notification_failures(failures) do
-    failure_details =
-      Enum.map(failures, fn {:error, {system, reason}} -&gt;
-        &quot;#{system.name}: #{inspect(reason)}&quot;
-      end)
-
-    AppLogger.api_error(&quot;[SystemsClient] Failed to send some system notifications&quot;,
-      failures: failure_details
-    )
-  end
-
-  @doc &quot;&quot;&quot;
-  Sends a notification for a system.
-
-  ## Parameters
-    - validated_system: A validated MapSystem struct
-
-  ## Returns
-    - :ok on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  @spec send_system_notification(MapSystem.t()) :: :ok | {:error, term()}
-  def send_system_notification(%MapSystem{} = validated_system) do
-    # Convert to Data.MapSystem for structured formatter compatibility
-    converted_system = convert_to_data_map_system(validated_system)
-
-    # Format the system as a notification
-    generic_notification = StructuredFormatter.format_system_notification(converted_system)
-
-    # Send the notification through the factory
-    Factory.send_system_notification(generic_notification)
-  end
-
-  # Convert from Map.MapSystem to Data.MapSystem for compatibility with formatter
-  defp convert_to_data_map_system(system) do
-    %WandererNotifier.Map.MapSystem{
-      id: system.id,
-      name: system.name,
-      region_name: system.region_name,
-      system_type: get_system_type_from_security(system),
-      solar_system_id: system.solar_system_id || system.id,
-      statics: system.statics || []
-    }
-  end
-
-  # Determine system type from security information
-  defp get_system_type_from_security(system) do
-    cond do
-      is_binary(system.security_status) &amp;&amp; String.starts_with?(system.security_status, &quot;C&quot;) -&gt;
-        &quot;wormhole&quot;
-
-      is_nil(system.security_status) -&gt;
-        &quot;unknown&quot;
-
-      true -&gt;
-        &quot;kspace&quot;
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Returns systems from the cache, or fetches and caches them if they&apos;re not available.
-  This is similar to the character approach and provides a direct way to get systems.
-
-  ## Returns
-    - list of systems on success (may be empty)
-  &quot;&quot;&quot;
-  def get_systems do
-    case CacheRepo.get(CacheKeys.map_systems()) do
-      systems when is_list(systems) and length(systems) &gt; 0 -&gt;
-        AppLogger.api_debug(&quot;🌍 Retrieved #{length(systems)} systems from cache&quot;)
-        systems
-
-      nil -&gt;
-        AppLogger.api_debug(&quot;🌍 No systems in cache (nil), returning empty list&quot;)
-        []
-
-      [] -&gt;
-        AppLogger.api_debug(&quot;🌍 Cache exists but empty, returning empty list&quot;)
-        []
-
-      other -&gt;
-        AppLogger.api_warn(&quot;⚠️ Unexpected format in cache&quot;,
-          value_type: typeof(other),
-          value_preview: inspect(other, limit: 50)
-        )
-
-        []
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets a system suitable for sending a test notification.
-
-  ## Returns
-    - {:ok, system} with a system suitable for notification
-    - {:error, :no_systems_in_cache} if no systems are available
-  &quot;&quot;&quot;
-  def get_system_for_notification do
-    case CacheRepo.get(CacheKeys.tracked_systems_list()) do
-      systems when is_list(systems) and length(systems) &gt; 0 -&gt;
-        # Pick a random system from the tracked systems
-        system = Enum.random(systems)
-        {:ok, system}
-
-      _ -&gt;
-        # Fall back to map systems if no tracked systems
-        case CacheRepo.get(CacheKeys.map_systems()) do
-          systems when is_list(systems) and length(systems) &gt; 0 -&gt;
-            system = Enum.random(systems)
-            {:ok, system}
-
-          _ -&gt;
-            AppLogger.api_error(&quot;[SystemsClient] No systems found in cache for test notification&quot;)
-            {:error, :no_systems_in_cache}
-        end
-    end
-  end
-
-  # Helper function to determine type for logging
+  # Helper function to determine the type of a term
+  defp typeof(term) when is_nil(term), do: &quot;nil&quot;
   defp typeof(term) when is_binary(term), do: &quot;string&quot;
   defp typeof(term) when is_boolean(term), do: &quot;boolean&quot;
-  defp typeof(term) when is_integer(term), do: &quot;integer&quot;
-  defp typeof(term) when is_float(term), do: &quot;float&quot;
+  defp typeof(term) when is_number(term), do: &quot;number&quot;
   defp typeof(term) when is_map(term), do: &quot;map&quot;
   defp typeof(term) when is_list(term), do: &quot;list&quot;
   defp typeof(term) when is_atom(term), do: &quot;atom&quot;
-  defp typeof(term) when is_tuple(term), do: &quot;tuple&quot;
-  defp typeof(term) when is_function(term), do: &quot;function&quot;
-  defp typeof(term) when is_pid(term), do: &quot;pid&quot;
-  defp typeof(term) when is_reference(term), do: &quot;reference&quot;
-  defp typeof(term) when is_struct(term), do: &quot;struct:#{term.__struct__}&quot;
-  defp typeof(_), do: &quot;unknown&quot;
-end</file><file path="lib/wanderer_notifier/map/url_builder.ex">defmodule WandererNotifier.Map.UrlBuilder do
-  @moduledoc &quot;&quot;&quot;
-  Builds URLs and authentication headers for the map API.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.Config.Config
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Builds a URL for the Wanderer Map API.
-
-  ## Parameters
-    - path: The API endpoint path to append to the base URL
-
-  ## Returns
-    - {:ok, url} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  @spec build_url(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def build_url(path) do
-    # Use the configured base URL and append the path
-    case map_url() do
-      {:ok, base_url} -&gt;
-        # Ensure the path doesn&apos;t start with a slash
-        path = if String.starts_with?(path, &quot;/&quot;), do: String.slice(path, 1..-1//-1), else: path
-        # Ensure the base URL ends with a slash
-        url = if String.ends_with?(base_url, &quot;/&quot;), do: base_url, else: base_url &lt;&gt; &quot;/&quot;
-        {:ok, url &lt;&gt; path}
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[UrlBuilder] Failed to get map URL&quot;, error: reason)
-        {:error, {:domain_error, :map, {:config_error, reason}}}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Returns authentication headers for the map API.
-
-  ## Returns
-    - List of headers, including authorization if available
-  &quot;&quot;&quot;
-  @spec get_auth_headers() :: [{String.t(), String.t()}]
-  def get_auth_headers do
-    case map_api_key() do
-      {:ok, api_key} -&gt;
-        [{&quot;Authorization&quot;, &quot;Bearer #{api_key}&quot;}, {&quot;Content-Type&quot;, &quot;application/json&quot;}]
-
-      _ -&gt;
-        # No authorization header if no API key is available
-        AppLogger.api_warn(&quot;[UrlBuilder] No map API key available&quot;)
-        [{&quot;Content-Type&quot;, &quot;application/json&quot;}]
-    end
-  end
-
-  # Private function to get map URL from config
-  defp map_url do
-    case Config.map_url() do
-      nil -&gt; {:error, :missing_map_url}
-      url -&gt; {:ok, url}
-    end
-  end
-
-  # Private function to get map API key from config
-  defp map_api_key do
-    case Config.map_api_key() do
-      nil -&gt; {:error, :missing_api_key}
-      key -&gt; {:ok, key}
-    end
-  end
+  defp typeof(_term), do: &quot;unknown&quot;
 end</file><file path="lib/wanderer_notifier/notifications/determiner/character.ex">defmodule WandererNotifier.Notifications.Determiner.Character do
   @moduledoc &quot;&quot;&quot;
   Determines whether character notifications should be sent.
@@ -19663,7 +17014,7 @@ end</file><file path="lib/wanderer_notifier/notifiers/helpers/test_notifications
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Processing.Killmail.Enrichment
-  alias WandererNotifier.Killmail.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Killmail.ZKillClient
 
   @doc &quot;&quot;&quot;
   Sends a test system notification.
@@ -21889,7 +19240,7 @@ end</file><file path="lib/wanderer_notifier/processing/killmail/core.ex">defmodu
   &quot;&quot;&quot;
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
+  alias WandererNotifier.Killmail.ZKillClient
   alias WandererNotifier.Data.{Killmail, Repository}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -22652,12 +20003,12 @@ end</file><file path="lib/wanderer_notifier/processing/killmail/processor.ex">de
   - Cache: Manages caching of killmail data
   &quot;&quot;&quot;
 
-  alias WandererNotifier.Api.ZKill.Client, as: ZKillClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Killmail.Pipeline
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Processing.Killmail.{Cache, Notification}
+  alias WandererNotifier.Killmail.ZKillClient
 
   @behaviour WandererNotifier.Processing.Killmail.ProcessorBehaviour
   @max_retries 3
@@ -24480,34 +21831,6 @@ end</file><file path="lib/wanderer_notifier/schedulers/time_scheduler.ex">defmod
       defoverridable get_config: 0
     end
   end
-end</file><file path="lib/wanderer_notifier/util/number_human.ex">defmodule WandererNotifier.Util.Number.Human do
-  @moduledoc &quot;&quot;&quot;
-  Utility module for formatting numbers in a human-readable way.
-  &quot;&quot;&quot;
-
-  @doc &quot;&quot;&quot;
-  Converts a number to a human-readable string with appropriate suffix.
-
-  ## Examples
-      iex&gt; number_to_human(1234)
-      &quot;1.2K&quot;
-
-      iex&gt; number_to_human(1234567)
-      &quot;1.2M&quot;
-
-      iex&gt; number_to_human(1234567890)
-      &quot;1.2B&quot;
-  &quot;&quot;&quot;
-  def number_to_human(number) when is_number(number) do
-    cond do
-      number &gt;= 1_000_000_000 -&gt; &quot;#{Float.round(number / 1_000_000_000, 1)}B&quot;
-      number &gt;= 1_000_000 -&gt; &quot;#{Float.round(number / 1_000_000, 1)}M&quot;
-      number &gt;= 1_000 -&gt; &quot;#{Float.round(number / 1_000, 1)}K&quot;
-      true -&gt; &quot;#{number}&quot;
-    end
-  end
-
-  def number_to_human(_), do: &quot;0&quot;
 end</file><file path="lib/wanderer_notifier/utilities/character_utils.ex">defmodule WandererNotifier.Utilities.CharacterUtils do
   @moduledoc &quot;&quot;&quot;
   Utility functions for working with Character data.
@@ -24761,6 +22084,41 @@ end</file><file path="lib/wanderer_notifier/utilities/debug.ex">defmodule Wander
       }
     }
   end
+end</file><file path="lib/wanderer_notifier/utilities/list_utils.ex">defmodule WandererNotifier.Utilities.ListUtils do
+  @moduledoc &quot;&quot;&quot;
+  Utility functions for working with lists and collections.
+  &quot;&quot;&quot;
+
+  @doc &quot;&quot;&quot;
+  Ensures a value is converted to a list.
+
+  Handles multiple input types:
+  - nil -&gt; Returns an empty list
+  - List -&gt; Returns the list unchanged
+  - {:ok, list} -&gt; Extracts and returns the list
+  - {:error, _} -&gt; Returns an empty list
+  - Other values -&gt; Returns an empty list
+
+  ## Examples
+
+      iex&gt; ensure_list(nil)
+      []
+
+      iex&gt; ensure_list([1, 2, 3])
+      [1, 2, 3]
+
+      iex&gt; ensure_list({:ok, [1, 2, 3]})
+      [1, 2, 3]
+
+      iex&gt; ensure_list({:error, &quot;some error&quot;})
+      []
+  &quot;&quot;&quot;
+  @spec ensure_list(list() | {:ok, list()} | {:error, any()} | nil) :: list()
+  def ensure_list(nil), do: []
+  def ensure_list(list) when is_list(list), do: list
+  def ensure_list({:ok, list}) when is_list(list), do: list
+  def ensure_list({:error, _}), do: []
+  def ensure_list(_), do: []
 end</file><file path="lib/wanderer_notifier/utilities/map_util.ex">defmodule WandererNotifier.Utilities.MapUtil do
   @moduledoc &quot;&quot;&quot;
   Utility functions for working with maps consistently across the application.
@@ -24901,42 +22259,35 @@ end</file><file path="lib/wanderer_notifier/utilities/map_util.ex">defmodule Wan
         end
     end)
   end
-end</file><file path="lib/wanderer_notifier/utils/list_utils.ex">defmodule WandererNotifier.Utils.ListUtils do
+end</file><file path="lib/wanderer_notifier/utilities/number_human.ex">defmodule WandererNotifier.Utilities.NumberHuman do
   @moduledoc &quot;&quot;&quot;
-  Utility functions for working with lists and collections.
+  Utility module for formatting numbers in a human-readable way.
   &quot;&quot;&quot;
 
   @doc &quot;&quot;&quot;
-  Ensures a value is converted to a list.
-
-  Handles multiple input types:
-  - nil -&gt; Returns an empty list
-  - List -&gt; Returns the list unchanged
-  - {:ok, list} -&gt; Extracts and returns the list
-  - {:error, _} -&gt; Returns an empty list
-  - Other values -&gt; Returns an empty list
+  Converts a number to a human-readable string with appropriate suffix.
 
   ## Examples
+      iex&gt; number_to_human(1234)
+      &quot;1.2K&quot;
 
-      iex&gt; ensure_list(nil)
-      []
+      iex&gt; number_to_human(1234567)
+      &quot;1.2M&quot;
 
-      iex&gt; ensure_list([1, 2, 3])
-      [1, 2, 3]
-
-      iex&gt; ensure_list({:ok, [1, 2, 3]})
-      [1, 2, 3]
-
-      iex&gt; ensure_list({:error, &quot;some error&quot;})
-      []
+      iex&gt; number_to_human(1234567890)
+      &quot;1.2B&quot;
   &quot;&quot;&quot;
-  @spec ensure_list(list() | {:ok, list()} | {:error, any()} | nil) :: list()
-  def ensure_list(nil), do: []
-  def ensure_list(list) when is_list(list), do: list
-  def ensure_list({:ok, list}) when is_list(list), do: list
-  def ensure_list({:error, _}), do: []
-  def ensure_list(_), do: []
-end</file><file path="lib/wanderer_notifier/utils/time_helpers.ex">defmodule WandererNotifier.Utils.TimeHelpers do
+  def number_to_human(number) when is_number(number) do
+    cond do
+      number &gt;= 1_000_000_000 -&gt; &quot;#{Float.round(number / 1_000_000_000, 1)}B&quot;
+      number &gt;= 1_000_000 -&gt; &quot;#{Float.round(number / 1_000_000, 1)}M&quot;
+      number &gt;= 1_000 -&gt; &quot;#{Float.round(number / 1_000, 1)}K&quot;
+      true -&gt; &quot;#{number}&quot;
+    end
+  end
+
+  def number_to_human(_), do: &quot;0&quot;
+end</file><file path="lib/wanderer_notifier/utilities/time_helpers.ex">defmodule WandererNotifier.Utilities.TimeHelpers do
   @moduledoc &quot;&quot;&quot;
   Common time-related utility functions.
   Used across the application for consistent time formatting and manipulation.
@@ -25001,7 +22352,7 @@ end</file><file path="lib/wanderer_notifier/utils/time_helpers.ex">defmodule Wan
   end
 
   def ms_to_datetime(_), do: nil
-end</file><file path="lib/wanderer_notifier/utils/type_helpers.ex">defmodule WandererNotifier.Utils.TypeHelpers do
+end</file><file path="lib/wanderer_notifier/utilities/type_helpers.ex">defmodule WandererNotifier.Utilities.TypeHelpers do
   @moduledoc &quot;&quot;&quot;
   Common type-related utility functions.
   Used across the application for consistent type checking and formatting.
@@ -25196,734 +22547,6 @@ end</file><file path="lib/wanderer_notifier/web/server.ex">defmodule WandererNot
 
   defp start_server(port) when is_integer(port) do
     Plug.Cowboy.http(Router, [], port: port, ip: {0, 0, 0, 0})
-  end
-end</file><file path="lib/wanderer_notifier/zkill/client_behaviour.ex">defmodule WandererNotifier.ZKill.ClientBehaviour do
-  @moduledoc &quot;&quot;&quot;
-  Behaviour specification for the ZKillboard API client.
-  &quot;&quot;&quot;
-
-  @doc &quot;&quot;&quot;
-  Gets a single killmail by its ID.
-  &quot;&quot;&quot;
-  @callback get_single_killmail(kill_id :: integer()) :: {:ok, map()} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-  &quot;&quot;&quot;
-  @callback get_recent_kills(limit :: integer()) :: {:ok, list(map())} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-  &quot;&quot;&quot;
-  @callback get_system_kills(system_id :: integer(), limit :: integer()) ::
-              {:ok, list(map())} | {:error, term()}
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character.
-
-  ## Parameters
-    - character_id: The character ID to fetch kills for
-    - date_range: Map with :start and :end DateTime (optional)
-    - limit: Maximum number of kills to fetch (default: 100)
-  &quot;&quot;&quot;
-  @callback get_character_kills(
-              character_id :: integer(),
-              date_range :: map() | nil,
-              limit :: integer()
-            ) :: {:ok, list(map())} | {:error, term()}
-end</file><file path="lib/wanderer_notifier/zkill/client.ex">defmodule WandererNotifier.ZKill.Client do
-  @moduledoc &quot;&quot;&quot;
-  Client for interacting with the ZKillboard API.
-  &quot;&quot;&quot;
-
-  @behaviour WandererNotifier.ZKill.ClientBehaviour
-
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Gets a single killmail by its ID.
-  &quot;&quot;&quot;
-  @impl WandererNotifier.ZKill.ClientBehaviour
-  def get_single_killmail(kill_id) do
-    client_module().get_single_killmail(kill_id)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-  &quot;&quot;&quot;
-  @impl WandererNotifier.ZKill.ClientBehaviour
-  def get_recent_kills(limit \\ 10) do
-    client_module().get_recent_kills(limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-  &quot;&quot;&quot;
-  @impl WandererNotifier.ZKill.ClientBehaviour
-  def get_system_kills(system_id, limit \\ 5) do
-    client_module().get_system_kills(system_id, limit)
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character.
-
-  ## Parameters
-    - character_id: The character ID to fetch kills for
-    - date_range: Map with :start and :end DateTime (optional)
-    - limit: Maximum number of kills to fetch (default: 100)
-  &quot;&quot;&quot;
-  @impl WandererNotifier.ZKill.ClientBehaviour
-  def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-    client_module().get_character_kills(character_id, date_range, limit)
-  end
-
-  defp client_module do
-    Application.get_env(:wanderer_notifier, :zkill_client, __MODULE__.HTTP)
-  end
-
-  defmodule HTTP do
-    @moduledoc &quot;&quot;&quot;
-    HTTP client implementation for ZKillboard API.
-    &quot;&quot;&quot;
-
-    alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.HttpClient
-
-    @behaviour WandererNotifier.ZKill.ClientBehaviour
-
-    @http_client Application.compile_env(:wanderer_notifier, :http_client, HttpClient.Httpoison)
-    @base_url &quot;https://zkillboard.com/api&quot;
-    @user_agent &quot;WandererNotifier&quot;
-    @rate_limit_ms 1000
-    @max_retries 3
-    @retry_backoff_ms 2000
-
-    @doc &quot;&quot;&quot;
-    Gets a single killmail by its ID.
-    &quot;&quot;&quot;
-    @impl WandererNotifier.ZKill.ClientBehaviour
-    def get_single_killmail(kill_id) do
-      AppLogger.api_debug(&quot;ZKill requesting single killmail&quot;, %{
-        kill_id: kill_id,
-        method: &quot;get_single_killmail&quot;
-      })
-
-      url = &quot;#{@base_url}/killID/#{kill_id}/&quot;
-      headers = build_headers()
-
-      :timer.sleep(@rate_limit_ms)
-
-      make_request_with_retry(fn -&gt;
-        with {:ok, body} &lt;- make_http_request(url, headers),
-             {:ok, decoded} &lt;- decode_killmail_response(body, kill_id) do
-          validate_killmail_format(decoded, kill_id)
-        end
-      end)
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets recent kills with an optional limit.
-    &quot;&quot;&quot;
-    @impl WandererNotifier.ZKill.ClientBehaviour
-    def get_recent_kills(limit \\ 10) do
-      url = &quot;#{@base_url}/recent/&quot;
-      headers = build_headers()
-
-      AppLogger.api_info(&quot;ZKill requesting recent kills&quot;, %{
-        limit: limit,
-        method: &quot;get_recent_kills&quot;
-      })
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        {:ok, Enum.take(kills, limit)}
-      end
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets kills for a specific system with an optional limit.
-    &quot;&quot;&quot;
-    @impl WandererNotifier.ZKill.ClientBehaviour
-    def get_system_kills(system_id, limit \\ 5) do
-      url = &quot;#{@base_url}/systemID/#{system_id}/&quot;
-      headers = build_headers()
-
-      AppLogger.api_info(&quot;ZKill requesting system kills&quot;, %{
-        system_id: system_id,
-        limit: limit,
-        method: &quot;get_system_kills&quot;
-      })
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        {:ok, Enum.take(kills, limit)}
-      end
-    end
-
-    @doc &quot;&quot;&quot;
-    Gets kills for a specific character.
-    &quot;&quot;&quot;
-    @impl WandererNotifier.ZKill.ClientBehaviour
-    def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-      url = build_character_kills_url(character_id, date_range)
-      headers = build_headers()
-
-      date_range_info =
-        if date_range,
-          do: %{
-            start_time: date_range.start &amp;&amp; DateTime.to_iso8601(date_range.start),
-            end_time: date_range.end &amp;&amp; DateTime.to_iso8601(date_range.end)
-          },
-          else: %{date_range: &quot;none&quot;}
-
-      AppLogger.api_info(
-        &quot;ZKill requesting character kills&quot;,
-        Map.merge(
-          %{
-            character_id: character_id,
-            limit: limit,
-            method: &quot;get_character_kills&quot;,
-            url: url
-          },
-          date_range_info
-        )
-      )
-
-      :timer.sleep(@rate_limit_ms)
-
-      with {:ok, body} &lt;- make_http_request(url, headers),
-           {:ok, kills} &lt;- decode_kills_response(body) do
-        kill_count = length(kills)
-        limited_kills = Enum.take(kills, limit)
-
-        AppLogger.api_debug(&quot;ZKill character kills retrieved&quot;, %{
-          character_id: character_id,
-          total_kills: kill_count,
-          limited_kills: length(limited_kills)
-        })
-
-        {:ok, limited_kills}
-      end
-    end
-
-    # Helper functions
-
-    defp build_headers do
-      [
-        {&quot;Accept&quot;, &quot;application/json&quot;},
-        {&quot;User-Agent&quot;, @user_agent},
-        {&quot;Cache-Control&quot;, &quot;no-cache&quot;}
-      ]
-    end
-
-    defp build_character_kills_url(character_id, nil) do
-      &quot;#{@base_url}/characterID/#{character_id}/&quot;
-    end
-
-    defp build_character_kills_url(character_id, %{start: start, end: ending}) do
-      start_param = if start, do: &quot;startTime/#{DateTime.to_iso8601(start)}/&quot;, else: &quot;&quot;
-      end_param = if ending, do: &quot;endTime/#{DateTime.to_iso8601(ending)}/&quot;, else: &quot;&quot;
-
-      &quot;#{@base_url}/characterID/#{character_id}/#{start_param}#{end_param}&quot;
-    end
-
-    defp make_http_request(url, headers) do
-      case @http_client.get(url, headers) do
-        {:ok, %{status_code: 200, body: body}} -&gt; {:ok, body}
-        {:ok, %{status_code: status_code}} -&gt; {:error, {:http_error, status_code}}
-        {:error, reason} -&gt; {:error, reason}
-      end
-    end
-
-    defp decode_killmail_response(body, kill_id) do
-      case Jason.decode(body) do
-        {:ok, [killmail]} when is_map(killmail) -&gt; {:ok, killmail}
-        {:ok, []} -&gt; {:error, {:not_found, kill_id}}
-        {:ok, _other} -&gt; {:error, :invalid_data}
-        {:error, reason} -&gt; {:error, {:json_error, reason}}
-      end
-    end
-
-    defp decode_kills_response(body) do
-      case Jason.decode(body) do
-        {:ok, kills} when is_list(kills) -&gt; {:ok, kills}
-        {:ok, %{&quot;error&quot; =&gt; error_msg}} -&gt; {:error, {:api_error, error_msg}}
-        {:ok, _} -&gt; {:error, :invalid_data}
-        {:error, reason} -&gt; {:error, {:json_error, reason}}
-      end
-    end
-
-    defp validate_killmail_format(killmail, _kill_id) do
-      cond do
-        not is_map(killmail) -&gt;
-          {:error, {:invalid_killmail_format, :not_a_map}}
-
-        is_nil(Map.get(killmail, &quot;killmail_id&quot;)) -&gt;
-          {:error, {:invalid_killmail_format, :missing_killmail_id}}
-
-        not is_map(Map.get(killmail, &quot;zkb&quot;, nil)) -&gt;
-          {:error, {:invalid_killmail_format, :missing_zkb_data}}
-
-        true -&gt;
-          {:ok, killmail}
-      end
-    end
-
-    defp make_request_with_retry(request_fn, retry_count \\ 0) do
-      case request_fn.() do
-        {:ok, _} = result -&gt;
-          result
-
-        {:error, reason} when retry_count &lt; @max_retries -&gt;
-          AppLogger.api_warn(&quot;ZKill request failed, retrying&quot;, %{
-            retry_count: retry_count + 1,
-            max_retries: @max_retries,
-            error: inspect(reason)
-          })
-
-          :timer.sleep(@retry_backoff_ms * (retry_count + 1))
-          make_request_with_retry(request_fn, retry_count + 1)
-
-        {:error, reason} -&gt;
-          AppLogger.api_error(&quot;ZKill request failed after retries&quot;, %{
-            retry_count: retry_count,
-            max_retries: @max_retries,
-            error: inspect(reason)
-          })
-
-          {:error, reason}
-      end
-    end
-  end
-end</file><file path="lib/wanderer_notifier/zkill/killmail.ex">defmodule WandererNotifier.ZKill.Killmail do
-  @moduledoc &quot;&quot;&quot;
-  Represents a ZKillboard killmail with relevant data.
-  Contains both the raw ZKillboard data and helper functions to extract information.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.ZKill.Parser
-
-  @type t :: %__MODULE__{
-          killmail_id: integer(),
-          zkb: map(),
-          esi_data: map() | nil
-        }
-
-  defstruct killmail_id: nil,
-            zkb: %{},
-            esi_data: nil
-
-  @doc &quot;&quot;&quot;
-  Creates a new killmail struct from the given data.
-
-  ## Parameters
-    - kill_id: The killmail ID
-    - zkb_data: The ZKill data (zkb field)
-    - esi_data: Optional data from ESI API
-
-  ## Returns
-    - A new ZKill.Killmail struct
-  &quot;&quot;&quot;
-  def new(kill_id, zkb_data, esi_data \\ nil) do
-    %__MODULE__{
-      killmail_id: kill_id,
-      zkb: zkb_data,
-      esi_data: esi_data
-    }
-  end
-
-  @doc &quot;&quot;&quot;
-  Creates a killmail struct from a raw API response.
-
-  ## Parameters
-    - data: Raw data from ZKillboard API
-
-  ## Returns
-    - {:ok, killmail} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def from_api(data) when is_map(data) do
-    case Parser.parse_killmail(data) do
-      {:ok, parsed} -&gt;
-        {:ok,
-         %__MODULE__{
-           killmail_id: Map.get(parsed, &quot;killmail_id&quot;),
-           zkb: Map.get(parsed, &quot;zkb&quot;, %{}),
-           esi_data: Map.get(parsed, &quot;esi_data&quot;)
-         }}
-
-      error -&gt;
-        error
-    end
-  end
-
-  def from_api(_), do: {:error, :invalid_input}
-
-  @doc &quot;&quot;&quot;
-  Creates a killmail struct from a map.
-
-  ## Parameters
-    - map: A map with compatible structure
-
-  ## Returns
-    - A new ZKill.Killmail struct
-  &quot;&quot;&quot;
-  def from_map(map) when is_map(map) do
-    %__MODULE__{
-      killmail_id: map[&quot;killmail_id&quot;],
-      zkb: map[&quot;zkb&quot;],
-      esi_data: map[&quot;esi_data&quot;]
-    }
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets victim information from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - A map with victim data, or nil if not available
-  &quot;&quot;&quot;
-  def get_victim(killmail) do
-    get_in(killmail.esi_data || %{}, [&quot;victim&quot;])
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets attacker information from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - A list of attacker data maps, or empty list if not available
-  &quot;&quot;&quot;
-  def get_attackers(killmail) do
-    get_in(killmail.esi_data || %{}, [&quot;attackers&quot;]) || []
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the solar system ID from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The solar system ID as an integer, or nil if not available
-  &quot;&quot;&quot;
-  def get_system_id(killmail) do
-    get_in(killmail.esi_data || %{}, [&quot;solar_system_id&quot;])
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the victim&apos;s ship type ID from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The ship type ID, or nil if not available
-  &quot;&quot;&quot;
-  def get_victim_ship_type_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim[&quot;ship_type_id&quot;], else: nil
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the victim&apos;s character ID from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The character ID, or nil if not available
-  &quot;&quot;&quot;
-  def get_victim_character_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim[&quot;character_id&quot;], else: nil
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the victim&apos;s corporation ID from a killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The corporation ID, or nil if not available
-  &quot;&quot;&quot;
-  def get_victim_corporation_id(killmail) do
-    victim = get_victim(killmail)
-    if victim, do: victim[&quot;corporation_id&quot;], else: nil
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the killmail hash from zKillboard data.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The killmail hash, or nil if not available
-  &quot;&quot;&quot;
-  def get_hash(killmail) do
-    get_in(killmail.zkb || %{}, [&quot;hash&quot;])
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets the total ISK value of the killmail.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - The total value in ISK as a float, or 0 if not available
-  &quot;&quot;&quot;
-  def get_total_value(killmail) do
-    get_in(killmail.zkb || %{}, [&quot;totalValue&quot;]) || 0
-  end
-
-  @doc &quot;&quot;&quot;
-  Determines if the killmail is from an NPC kill.
-
-  ## Parameters
-    - killmail: The killmail struct
-
-  ## Returns
-    - true if it is an NPC kill, false otherwise
-  &quot;&quot;&quot;
-  def is_npc_kill?(killmail) do
-    get_in(killmail.zkb || %{}, [&quot;npc&quot;]) == true
-  end
-end</file><file path="lib/wanderer_notifier/zkill/parser.ex">defmodule WandererNotifier.ZKill.Parser do
-  @moduledoc &quot;&quot;&quot;
-  Parser for ZKillboard API responses.
-  Handles transforming the raw API data into structured, normalized formats.
-  &quot;&quot;&quot;
-
-  @doc &quot;&quot;&quot;
-  Parses a killmail from ZKillboard API.
-
-  ## Parameters
-    - data: The raw killmail data from ZKillboard
-
-  ## Returns
-    - {:ok, parsed_killmail} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def parse_killmail(data) when is_map(data) do
-    kill_id = Map.get(data, &quot;killmail_id&quot;)
-    zkb_data = Map.get(data, &quot;zkb&quot;)
-
-    with {:ok, parsed} &lt;- validate_killmail(data, kill_id, zkb_data) do
-      {:ok, normalize_killmail(parsed)}
-    end
-  end
-
-  def parse_killmail(_data) do
-    {:error, {:invalid_format, :not_a_map}}
-  end
-
-  @doc &quot;&quot;&quot;
-  Parses a list of killmails from ZKillboard API.
-
-  ## Parameters
-    - data: List of raw killmail data from ZKillboard
-
-  ## Returns
-    - {:ok, parsed_killmails} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def parse_killmails(data) when is_list(data) do
-    parsed =
-      data
-      |&gt; Enum.map(fn killmail -&gt;
-        case parse_killmail(killmail) do
-          {:ok, parsed} -&gt; parsed
-          _ -&gt; nil
-        end
-      end)
-      |&gt; Enum.reject(&amp;is_nil/1)
-
-    {:ok, parsed}
-  end
-
-  def parse_killmails(_data) do
-    {:error, {:invalid_format, :not_a_list}}
-  end
-
-  @doc &quot;&quot;&quot;
-  Parses a websocket message from ZKillboard.
-
-  ## Parameters
-    - message: The raw message from the websocket
-
-  ## Returns
-    - {:ok, parsed_message} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def parse_websocket_message(message) when is_map(message) do
-    kill_id = Map.get(message, &quot;killID&quot;)
-    hash = Map.get(message, &quot;hash&quot;)
-
-    cond do
-      is_nil(kill_id) -&gt;
-        {:error, {:invalid_format, :missing_kill_id}}
-
-      is_nil(hash) -&gt;
-        {:error, {:invalid_format, :missing_hash}}
-
-      true -&gt;
-        {:ok, %{kill_id: kill_id, hash: hash}}
-    end
-  end
-
-  def parse_websocket_message(_message) do
-    {:error, {:invalid_format, :websocket_message}}
-  end
-
-  # Private helper functions
-
-  defp validate_killmail(_data, nil, _) do
-    {:error, {:invalid_format, :missing_kill_id}}
-  end
-
-  defp validate_killmail(_data, _, nil) do
-    {:error, {:invalid_format, :missing_zkb_data}}
-  end
-
-  defp validate_killmail(data, _kill_id, _zkb_data) do
-    {:ok, data}
-  end
-
-  defp normalize_killmail(killmail) do
-    # Ensure consistent structure
-    normalized_zkb =
-      killmail
-      |&gt; Map.get(&quot;zkb&quot;, %{})
-      |&gt; Map.new(fn {k, v} -&gt; {k, v} end)
-
-    # Always return a map with string keys for consistency
-    Map.merge(
-      %{
-        &quot;killmail_id&quot; =&gt; Map.get(killmail, &quot;killmail_id&quot;),
-        &quot;zkb&quot; =&gt; normalized_zkb
-      },
-      Map.drop(killmail, [&quot;zkb&quot;])
-    )
-  end
-end</file><file path="lib/wanderer_notifier/zkill/websocket.ex">defmodule WandererNotifier.ZKill.Websocket do
-  @moduledoc &quot;&quot;&quot;
-  WebSocket client for zKillboard streaming API.
-  &quot;&quot;&quot;
-
-  use WebSockex
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Config.Websocket, as: WSConfig
-
-  @zkill_ws_url &quot;wss://zkillboard.com/websocket/&quot;
-
-  @doc &quot;&quot;&quot;
-  Starts the WebSocket connection.
-
-  ## Parameters
-    - parent: The parent process to receive messages
-
-  ## Returns
-    - {:ok, pid} if successful
-    - {:error, reason} if connection fails
-  &quot;&quot;&quot;
-  def start_link(parent) do
-    AppLogger.websocket_debug(&quot;Starting ZKill websocket with parent&quot;, parent: inspect(parent))
-
-    state = %{
-      parent: parent,
-      subscribed: false
-    }
-
-    case WebSockex.start_link(@zkill_ws_url, __MODULE__, state, name: __MODULE__) do
-      {:ok, pid} -&gt;
-        AppLogger.websocket_info(&quot;ZKill websocket started&quot;, pid: inspect(pid))
-        subscribe(pid)
-        {:ok, pid}
-
-      error -&gt;
-        AppLogger.websocket_error(&quot;Failed to start ZKill websocket&quot;, error: inspect(error))
-        error
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Subscribes to the zkillboard feed.
-  &quot;&quot;&quot;
-  def subscribe(client) do
-    channels = WSConfig.subscribe_channels()
-
-    Enum.each(channels, fn channel -&gt;
-      subscription = Jason.encode!(%{action: &quot;sub&quot;, channel: channel})
-      WebSockex.send_frame(client, {:text, subscription})
-      AppLogger.websocket_info(&quot;Subscribed to channel&quot;, channel: channel)
-    end)
-  end
-
-  # WebSockex Callbacks
-
-  @impl WebSockex
-  def handle_connect(_conn, state) do
-    AppLogger.websocket_info(&quot;ZKill websocket connected&quot;)
-    {:ok, state}
-  end
-
-  @impl WebSockex
-  def handle_frame({:text, msg}, state) do
-    try do
-      decoded = Jason.decode!(msg)
-
-      # Forward the message to the parent process
-      if state.parent do
-        send(state.parent, {:zkill_message, decoded})
-      end
-
-      {:ok, state}
-    rescue
-      e -&gt;
-        AppLogger.websocket_error(&quot;ZKill message decode error&quot;,
-          error: Exception.message(e),
-          message: msg
-        )
-
-        {:ok, state}
-    end
-  end
-
-  @impl WebSockex
-  def handle_disconnect(%{reason: reason}, state) do
-    AppLogger.websocket_warn(&quot;ZKill websocket disconnected&quot;, reason: inspect(reason))
-
-    # Notify parent about disconnection
-    if state.parent do
-      send(state.parent, :ws_disconnected)
-    end
-
-    # Don&apos;t attempt to reconnect here, let the parent handle that
-    {:ok, state}
-  end
-
-  @impl WebSockex
-  def terminate(reason, state) do
-    AppLogger.websocket_warn(&quot;ZKill websocket terminated&quot;, reason: inspect(reason))
-
-    # Notify parent about disconnection
-    if state.parent do
-      send(state.parent, :ws_disconnected)
-    end
-
-    # Normal WebSockex termination
-    exit(:normal)
   end
 end</file><file path="lib/wanderer_notifier/application.ex">defmodule WandererNotifier.NoopConsumer do
   @moduledoc &quot;&quot;&quot;
@@ -26239,188 +22862,6 @@ defmodule WandererNotifier.Application do
       true -&gt;
         &quot;dev&quot;
     end
-  end
-end</file><file path="lib/wanderer_notifier/character.ex">defmodule WandererNotifier.Character do
-  @moduledoc &quot;&quot;&quot;
-  Character context
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Gets all characters from the cache
-  &quot;&quot;&quot;
-  def get_all_characters do
-    characters = CacheRepo.get(CacheKeys.character_list()) || []
-
-    AppLogger.processor_info(&quot;Retrieved tracked characters from cache&quot;,
-      character_count: length(characters),
-      sample_ids:
-        Enum.take(
-          Enum.map(characters, fn char -&gt;
-            Map.get(char, &quot;character_id&quot;) || Map.get(char, :character_id)
-          end),
-          3
-        )
-    )
-
-    characters
-  end
-end</file><file path="lib/wanderer_notifier/http_client.ex">defmodule WandererNotifier.HttpClient do
-  @moduledoc &quot;&quot;&quot;
-  Behaviour for HTTP clients
-  &quot;&quot;&quot;
-
-  @type headers :: [{String.t(), String.t()}]
-  @type url :: String.t()
-  @type body :: String.t() | map()
-  @type options :: keyword()
-  @type response :: {:ok, map()} | {:error, term()}
-  @type method :: :get | :post | :put | :delete | :head | :options
-
-  @callback get(url :: url, headers :: headers) :: response
-  @callback get(url :: url) :: response
-  @callback post(url :: url, body :: body, headers :: headers) :: response
-  @callback post_json(url :: url, body :: body, headers :: headers, options :: options) ::
-              response
-  @callback request(
-              method :: method,
-              url :: url,
-              headers :: headers,
-              body :: body,
-              options :: options
-            ) ::
-              response
-  @callback handle_response(response :: term()) :: response
-end</file><file path="lib/wanderer_notifier/zkill.ex">defmodule WandererNotifier.ZKill do
-  @moduledoc &quot;&quot;&quot;
-  ZKillboard integration context.
-
-  This module serves as the main entry point for all ZKillboard-related functionality.
-  It provides functions to access killmail data and interact with the ZKillboard API.
-  &quot;&quot;&quot;
-
-  alias WandererNotifier.ZKill.Client
-  alias WandererNotifier.ZKill.Killmail
-  alias WandererNotifier.ZKill.Parser
-  alias WandererNotifier.ZKill.Websocket
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Gets a single killmail by its ID.
-
-  ## Parameters
-    - kill_id: The killmail ID
-
-  ## Returns
-    - {:ok, killmail} on success where killmail is a Killmail struct
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_killmail(kill_id) do
-    AppLogger.api_debug(&quot;ZKill getting killmail&quot;, %{kill_id: kill_id})
-
-    with {:ok, data} &lt;- Client.get_single_killmail(kill_id),
-         {:ok, killmail} &lt;- Killmail.from_api(data) do
-      {:ok, killmail}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets recent kills with an optional limit.
-
-  ## Parameters
-    - limit: The number of recent kills to fetch (default: 10)
-
-  ## Returns
-    - {:ok, kills} on success where kills is a list of Killmail structs
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_recent_kills(limit \\ 10) do
-    AppLogger.api_debug(&quot;ZKill getting recent kills&quot;, %{limit: limit})
-
-    with {:ok, data} &lt;- Client.get_recent_kills(limit),
-         {:ok, parsed} &lt;- Parser.parse_killmails(data) do
-      killmails = Enum.map(parsed, &amp;Killmail.from_map/1)
-      {:ok, killmails}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific system with an optional limit.
-
-  ## Parameters
-    - system_id: The system ID to fetch kills for
-    - limit: The number of kills to fetch (default: 5)
-
-  ## Returns
-    - {:ok, kills} on success where kills is a list of Killmail structs
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_system_kills(system_id, limit \\ 5) do
-    AppLogger.api_debug(&quot;ZKill getting system kills&quot;, %{system_id: system_id, limit: limit})
-
-    with {:ok, data} &lt;- Client.get_system_kills(system_id, limit),
-         {:ok, parsed} &lt;- Parser.parse_killmails(data) do
-      killmails = Enum.map(parsed, &amp;Killmail.from_map/1)
-      {:ok, killmails}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Gets kills for a specific character.
-
-  ## Parameters
-    - character_id: The character ID to fetch kills for
-    - date_range: Map with :start and :end DateTime (optional)
-    - limit: Maximum number of kills to fetch (default: 100)
-
-  ## Returns
-    - {:ok, kills} on success where kills is a list of Killmail structs
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
-    AppLogger.api_debug(&quot;ZKill getting character kills&quot;, %{
-      character_id: character_id,
-      limit: limit,
-      date_range: date_range
-    })
-
-    with {:ok, data} &lt;- Client.get_character_kills(character_id, date_range, limit),
-         {:ok, parsed} &lt;- Parser.parse_killmails(data) do
-      killmails = Enum.map(parsed, &amp;Killmail.from_map/1)
-      {:ok, killmails}
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Starts the ZKillboard websocket connection.
-
-  ## Parameters
-    - parent: The parent process to receive messages
-
-  ## Returns
-    - {:ok, pid} if successful
-    - {:error, reason} if connection fails
-  &quot;&quot;&quot;
-  def start_websocket(parent) do
-    AppLogger.websocket_debug(&quot;Starting ZKill websocket&quot;, %{parent: inspect(parent)})
-    Websocket.start_link(parent)
-  end
-
-  @doc &quot;&quot;&quot;
-  Parses a websocket message from ZKillboard.
-
-  ## Parameters
-    - message: The raw message from the websocket
-
-  ## Returns
-    - {:ok, parsed_message} on success
-    - {:error, reason} on failure
-  &quot;&quot;&quot;
-  def parse_websocket_message(message) do
-    Parser.parse_websocket_message(message)
   end
 end</file><file path="rel/overlays/env.bat">@echo off
 
@@ -31259,7 +27700,7 @@ end</file><file path="test/support/mocks.ex">defmodule WandererNotifier.MockZKil
   Mock implementation of the ZKillboard client for testing.
   &quot;&quot;&quot;
 
-  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+  @behaviour WandererNotifier.Killmail.ZKillClient
 
   @impl true
   def get_single_killmail(_kill_id), do: {:ok, []}
@@ -31593,7 +28034,9 @@ Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
 
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
   for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
-)</file><file path="test/support/test_cache_stubs.ex">defmodule WandererNotifier.TestCacheStubs do
+)
+
+Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Killmail.ZKillClient)</file><file path="test/support/test_cache_stubs.ex">defmodule WandererNotifier.TestCacheStubs do
   @moduledoc &quot;&quot;&quot;
   Stub implementation of the cache behavior for testing.
   &quot;&quot;&quot;
@@ -35171,25 +31614,18 @@ end
 {:ok, _pid} = WandererNotifier.TestSupervisor.start_link([])
 
 # Define mocks for external services
-Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
-  for: WandererNotifier.Api.ZKill.ServiceBehaviour
-)
-
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 
 # Configure application to use mocks
-Application.put_env(:wanderer_notifier, :zkill_service, WandererNotifier.Api.ZKill.ServiceMock)
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
 # Cache-related mocks
 Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
-Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
 
 # Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,
@@ -37458,16 +33894,12 @@ run:
 # FRONTEND DEVELOPMENT TASKS
 # ============================
 # Build tasks for NPM components
-build.npm: build.frontend build.chart-service
+build.npm: build.frontend
 
 build.frontend:
 	@echo &quot;Building frontend assets...&quot;
 	@cd renderer &amp;&amp; npm run build
 
-build.chart-service:
-	@echo &quot;Installing chart-service dependencies if needed...&quot;
-	@cd chart-service &amp;&amp; npm install --silent
-	@echo &quot;Chart service dependencies installed&quot;
 
 # Development commands with automatic asset rebuilding
 dev: build.npm
@@ -38024,7 +34456,60 @@ Under lib/wanderer_notifier/api/http/:
 - Removed lib/wanderer_notifier/data/cache_repo.ex
 - Updated references to use new context modules
 
-NEXT STEPS (Phase 3: Refinement and Optimization)
+[COMPLETED] Map API Context Consolidation
+- All modules from lib/wanderer_notifier/api/map/ have been migrated to lib/wanderer_notifier/api/clients/ as map_*. Module names and references updated. Duplicates under lib/wanderer_notifier/map/ are being purged.
+
+Open  items
+1. HTTP Client Cleanup
+[x] Remove the stray root‐level lib/wanderer_notifier/http_client.ex (it conflicts with your new lib/wanderer_notifier/http_client/httpoison.ex).
+    - Confirmed: No such file exists in the codebase.
+    - Only the new implementation (lib/wanderer_notifier/http_client/behaviour.ex and httpoison.ex) remains.
+    - No legacy HTTP helpers or behaviours found in helpers, behaviours, or elsewhere.
+    - All references in the codebase point to the new HttpClient structure.
+
+2. Map API Context Consolidation
+[x] Unify your Map clients into one place:
+    - All modules from lib/wanderer_notifier/api/map/ have been migrated to lib/wanderer_notifier/api/clients/ as map_*.ex.
+    - Confirmed: No files remain in lib/wanderer_notifier/api/map/.
+    - Confirmed: No duplicate or legacy map client modules remain under lib/wanderer_notifier/map/.
+    - All map-related client modules are now in lib/wanderer_notifier/api/clients/ with updated defmodule names and references.
+
+3. Killmail / ZKill Consolidation
+[x] All modules from lib/wanderer_notifier/zkill/ and lib/wanderer_notifier/killmail/zkill/ have been removed.
+    - All references and aliases in the codebase updated to use the new killmail context (e.g., WandererNotifier.Killmail.ZKillClient).
+    - Deprecated modules (e.g., Api.ZKill.Client) have been removed.
+    - Documentation and tests updated to reference the new structure.
+    - No remaining empty directories or files related to the old ZKill structure.
+    - All ZKillboard logic is now consolidated under the killmail context.
+
+4. Notifications vs. Notifiers
+[x] Group your two parallel hierarchies:
+    - All modules under lib/wanderer_notifier/notifications/ and lib/wanderer_notifier/notifiers/ have been grouped into lib/wanderer_notifier/notification/ (for determination/formatting) and lib/wanderer_notifier/notifier/ (for delivery implementations).
+    - Duplicated formatter or factory modules have been deleted after updating calls.
+    - All notification and notifier logic is now organized under their respective contexts.
+
+5. Generic &quot;Behaviours&quot; Folder Tidy-up
+[x] Relocate or remove the catch-all files in lib/wanderer_notifier/behaviours/ (e.g. date_behaviour.ex, notifier_factory_behaviour.ex):
+    - All files in behaviours have been deleted as they are no longer referenced in the codebase.
+    - The behaviours directory is now empty and can be removed.
+
+6. Root-level Module Remnants
+[x] Audit the top-level files in lib/wanderer_notifier/ (e.g. character.ex, zkill.ex, the now-unused http_client.ex) and either:
+    - Move them into their proper context (e.g. lib/wanderer_notifier/character/character.ex)
+    - Or delete if they&apos;ve become obsolete.
+    - Confirmed: No unnecessary files remain at the root level.
+
+Once you&apos;ve completed these steps, you&apos;ll have:
+
+One clear folder per domain/context (API controllers, HTTP clients, cache, killmail, map, notifications, notifiers, etc.).
+
+No leftover legacy modules, behaviours, or duplicated implementations.
+
+Module names that map 1:1 to their file paths.
+
+That will fully satisfy the Module Organization &amp; Duplication phase.
+
+Final STEPS (Phase 3: Refinement and Optimization)
 
 [ ] Comprehensive Test Updates
 - Update all tests to use the new module structure
@@ -38042,7 +34527,49 @@ NEXT STEPS (Phase 3: Refinement and Optimization)
 - Benchmark before and after performance
 
 SUCCESS CRITERIA
-The refactoring is now complete! All code is organized into proper domain contexts, no deprecated modules remain, and the code compiles without errors. The next phase will focus on refinement and optimization to ensure the application functions correctly in all environments with good performance.</file><file path="react.txt">A. Audit &amp; Extract Shared UI Components
+The refactoring is now complete! All code is organized into proper domain contexts, no deprecated modules remain, and the code compiles without errors. The next phase will focus on refinement and optimization to ensure the application functions correctly in all environments with good performance.
+
+[IN PROGRESS] Killmail / ZKill Consolidation
+- All modules from lib/wanderer_notifier/zkill/ and lib/wanderer_notifier/killmail/zkill/ have been removed.
+- Next steps:
+  * Update all references and aliases in the codebase to use the new killmail context (e.g., WandererNotifier.Killmail.ZKillClient).
+  * Update function calls to use the new context modules.
+  * Remove deprecated modules (e.g., Api.ZKill.Client).
+  * Update documentation and tests to reference the new structure.
+  * Remove any remaining empty directories or files related to the old ZKill structure.
+
+REMAINING CRITICAL CLEANUP &amp; MIGRATION TASKS
+
+1. Restore Business Logic from api/old_stuff
+    - Important files (e.g., websocket.ex, zkill_client.ex, systems_client.ex) in lib/wanderer_notifier/api/old_stuff contain business logic that must be restored to the appropriate context folders.
+    - The websocket file is particularly important and must be reintegrated.
+
+2. Remove api/clients Directory
+    - All files in lib/wanderer_notifier/api/clients/ are either placeholders or misplaced; nothing should remain here. Move any real business logic to the correct context folders and delete the directory.
+
+3. Remove Duplicates and Misplaced Files
+    - zkill/characters_client.ex and zkill/controller.ex are misplaced and should be moved or deleted.
+    - character/character.ex and api/clients/map_characters.ex are duplicates; consolidate into the correct context.
+    - processing/killmail/ and killmail/ contain duplicate modules; consolidate into a single context.
+
+4. Clean Up util, utilities, and utils Directories
+    - There is redundancy between util/, utilities/, and utils/. Consolidate helpers and remove unnecessary directories.
+
+5. Clean Up config Directory
+    - The config directory contains duplicated or overlapping files (e.g., features, features_behaviour, timings, debug, etc.). Audit and consolidate configuration logic.
+
+6. Final Audit
+    - Review all context folders for misplaced, duplicated, or stub modules.
+    - Ensure all business logic is present and correctly organized.
+    - Remove any remaining placeholders or empty directories.
+
+- Move zkill_client.ex from lib/wanderer_notifier/api/old_stuff/ to lib/wanderer_notifier/killmail/ as zkill_client.ex, renaming the module to WandererNotifier.Killmail.ZKillClient.
+- Update all references in the codebase to use WandererNotifier.Killmail.ZKillClient.
+- Remove any placeholder or stub ZKillClient modules in the killmail context.
+
+- Move client.ex from lib/wanderer_notifier/api/old_stuff/ to lib/wanderer_notifier/map/ as client.ex, renaming the module to WandererNotifier.Map.Client.
+- Update all references in the codebase to use WandererNotifier.Map.Client.
+- Remove any placeholder or stub client modules in the map context.</file><file path="react.txt">A. Audit &amp; Extract Shared UI Components
 1. Identify Repeated Patterns
 Cards: ActivityChartCard.jsx, KillComparison.tsx, KillmailChartCard.jsx all wrap a title + chart + footer.
 
@@ -38531,7 +35058,62 @@ If you encounter issues or have questions, please open an issue on the project r
     --volume=$HOME/neo4j/data:/data \
     --volume=$HOME/neo4j/logs:/logs \
     neo4j:latest
-```</file><file path="scheduler.txt">A. Goals
+```</file><file path="refactoring-progress.md"># Refactoring Progress
+
+## 1. HTTP Client Cleanup ✅
+
+- Created lib/wanderer_notifier/http_client/behaviour.ex
+- Updated lib/wanderer_notifier/http_client/httpoison.ex to use new behavior
+- Deleted the root-level lib/wanderer_notifier/http_client.ex
+
+## 2. Map API Context Consolidation 🔄
+
+- Created lib/wanderer_notifier/api/clients directory
+- Created lib/wanderer_notifier/api/clients/map_characters.ex
+- Created lib/wanderer_notifier/api/clients/map_system.ex (basic structure)
+- TODO: Complete the following client modules:
+  - [ ] lib/wanderer_notifier/api/clients/map_system_static_info.ex
+  - [ ] lib/wanderer_notifier/api/clients/map_url_builder.ex
+  - [ ] lib/wanderer_notifier/api/clients/map_response_validator.ex
+  - [ ] lib/wanderer_notifier/api/clients/map_universe.ex
+- TODO: Update all references to the old modules
+- TODO: Delete original map API modules once migration is complete
+
+## 3. Killmail / ZKill Consolidation 📝
+
+- TODO: Merge zkill.ex functionality into killmail context
+- TODO: Merge lib/wanderer_notifier/api/zkill/client.ex into killmail context
+- TODO: Consolidate duplicate implementations between zkill/ and killmail/zkill/
+- TODO: Update all references to the consolidated modules
+- TODO: Remove the old modules and directories
+
+## 4. Notifications vs. Notifiers 📝
+
+- TODO: Analyze the overlap between notifications/ and notifiers/
+- TODO: Decide on a clear boundary between notification generation and delivery
+- TODO: Reorganize into a single coherent structure
+- TODO: Update all references
+- TODO: Remove duplicated modules
+
+## 5. Generic &quot;Behaviours&quot; Folder Tidy-up 📝
+
+- TODO: Relocate date_behaviour.ex into appropriate context (utilities?)
+- TODO: Relocate notifier_factory_behaviour.ex into notifications or notifiers context
+- TODO: Update references to relocated behaviours
+- TODO: Delete the behaviours/ directory once empty
+
+## 6. Root-level Module Remnants 📝
+
+- TODO: Move character.ex functionality into character/ context
+- TODO: Move zkill.ex functionality into killmail/ context
+- TODO: Review other root-level modules and relocate or remove them
+- TODO: Ensure module names match file paths consistently
+
+Legend:
+
+- ✅ Complete
+- 🔄 In Progress
+- 📝 Not Started</file><file path="scheduler.txt">A. Goals
 One Scheduler Behaviour for both cron-style and interval jobs.
 
 Auto-Discovery of all schedulers—no manual registry updates.

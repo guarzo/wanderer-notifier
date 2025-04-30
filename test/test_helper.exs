@@ -75,7 +75,7 @@ Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehavio
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
-Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
+Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HttpClient.Behaviour)
 
 # Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,
@@ -114,3 +114,51 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
+
+# Set up test configuration
+Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.MockHTTP)
+Application.put_env(:wanderer_notifier, :cache_client, WandererNotifier.MockCache)
+Application.put_env(:wanderer_notifier, :notifier_client, WandererNotifier.MockNotifier)
+
+# Set up test environment variables
+System.put_env("MAP_URL", "http://test.map.url")
+System.put_env("MAP_TOKEN", "test_map_token")
+System.put_env("MAP_NAME", "test_map")
+System.put_env("NOTIFIER_API_TOKEN", "test_notifier_token")
+System.put_env("LICENSE_KEY", "test_license_key")
+System.put_env("LICENSE_MANAGER_API_URL", "http://test.license.url")
+System.put_env("DISCORD_WEBHOOK_URL", "http://test.discord.url")
+
+# Configure logger level for tests
+Logger.configure(level: :warn)
+
+# Helper functions for tests
+defmodule WandererNotifier.TestHelpers do
+  @moduledoc """
+  Helper functions for tests.
+  """
+
+  def mock_http_response(status_code, body) do
+    {:ok, %{status_code: status_code, body: body}}
+  end
+
+  def mock_http_error(reason) do
+    {:error, reason}
+  end
+
+  def mock_cache_response(value) do
+    {:ok, value}
+  end
+
+  def mock_cache_error(reason) do
+    {:error, reason}
+  end
+
+  def mock_notifier_response do
+    :ok
+  end
+
+  def mock_notifier_error(reason) do
+    {:error, reason}
+  end
+end
