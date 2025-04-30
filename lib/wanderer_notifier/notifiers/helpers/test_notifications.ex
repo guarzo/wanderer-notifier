@@ -12,7 +12,6 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Processing.Killmail.Enrichment
   alias WandererNotifier.Killmail.ZKillClient
 
   @doc """
@@ -102,7 +101,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         }
 
         # Enrich the killmail data
-        enriched_kill = Enrichment.enrich_killmail_data(killmail)
+        enriched_kill = WandererNotifier.Killmail.Enrichment.enrich_killmail_data(killmail)
 
         AppLogger.kill_debug(
           "TEST NOTIFICATION: Enriched killmail data: #{inspect(enriched_kill)}"

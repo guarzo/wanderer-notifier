@@ -49,4 +49,11 @@ defmodule WandererNotifier.Map.MapSystem do
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
   end
+
+  @doc """
+  Updates a MapSystem struct with static info from a map.
+  """
+  def update_with_static_info(system, static_info) do
+    struct(__MODULE__, Map.merge(Map.from_struct(system), static_info))
+  end
 end

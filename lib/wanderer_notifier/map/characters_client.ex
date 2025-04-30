@@ -11,7 +11,6 @@ defmodule WandererNotifier.Map.CharactersClient do
   alias WandererNotifier.Character.Character
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Config.Cache
-  alias WandererNotifier.Notifications.Factory, as: NotifierFactory
 
   @doc """
   Updates tracked character information from the map API.
@@ -134,6 +133,6 @@ defmodule WandererNotifier.Map.CharactersClient do
   end
 
   defp send_new_character_notification(character) do
-    NotifierFactory.send_new_tracked_character_notification(character)
+    WandererNotifier.Notifiers.Discord.Notifier.send_new_tracked_character_notification(character)
   end
 end

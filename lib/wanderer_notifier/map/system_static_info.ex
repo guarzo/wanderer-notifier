@@ -167,7 +167,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     - {:ok, system} on failure but returns the original system
   """
   def enrich_system(system) do
-    alias WandererNotifier.Data.MapSystem
+    alias WandererNotifier.Map.MapSystem
 
     AppLogger.api_debug("[SystemStaticInfo] Starting system enrichment",
       system_name: system.name,

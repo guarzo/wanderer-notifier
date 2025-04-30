@@ -1,3 +1,67 @@
+Compiling 7 files (.ex)
+    warning: unused alias NotifierFactory
+    │
+ 14 │   alias WandererNotifier.Notifications.Factory, as: NotifierFactory
+    │   ~
+    │
+    └─ lib/wanderer_notifier/map/characters_client.ex:14:3
+
+    warning: unused alias Enrichment
+    │
+ 14 │   alias WandererNotifier.Processing.Killmail.Enrichment
+    │   ~
+    │
+    └─ lib/wanderer_notifier/notifications/killmail_notification.ex:14:3
+
+    warning: unused alias SystemStaticInfo
+    │
+  8 │   alias WandererNotifier.Map.SystemStaticInfo
+    │   ~
+    │
+    └─ lib/wanderer_notifier/map/systems_client.ex:8:3
+
+    warning: @behaviour WandererNotifier.Config.Behaviour does not exist (in module WandererNotifier.Config.Config)
+    │
+  1 │ defmodule WandererNotifier.Config.Config do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:1: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function map_url/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 11 │   def map_url do
+    │   ~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:11: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function map_token/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 16 │   def map_token do
+    │   ~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:16: WandererNotifier.Config.Config (module)
+
+    warning: module attribute @impl was not set for function initialize/1 callback (specified in WandererNotifier.Schedulers.Scheduler). This either means you forgot to add the "@impl true" annotation before the definition or that you are accidentally overriding this callback
+    │
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:7: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
+
+    warning: got "@impl true" for function map_csrf_token/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 21 │   def map_csrf_token do
+    │   ~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:21: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function map_name/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 26 │   def map_name do
+    │   ~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:26: WandererNotifier.Config.Config (module)
+
     warning: the following clause will never match:
 
         {:error, reason}
@@ -12,103 +76,206 @@
 
     typing violation found at:
     │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:5: WandererNotifier.Schedulers.CharacterUpdateScheduler.init/1
+    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:7: WandererNotifier.Schedulers.SystemUpdateScheduler.init/1
 
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+    warning: got "@impl true" for function notifier_api_token/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 31 │   def notifier_api_token do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:31: WandererNotifier.Config.Config (module)
 
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
+    warning: got "@impl true" for function license_key/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 36 │   def license_key do
+    │   ~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:36: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function license_manager_api_url/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 41 │   def license_manager_api_url do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:41: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function license_manager_api_key/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 46 │   def license_manager_api_key do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:46: WandererNotifier.Config.Config (module)
+
+    warning: the following clause will never match:
+
+        {:error, reason}
+
+    because it attempts to match on the result of:
+
+        WandererNotifier.Killmail.Cache.get_recent_kills()
+
+    which has type:
+
+        dynamic({:ok, term()})
+
+    typing violation found at:
+    │
+ 71 │       {:error, reason} -> {:error, reason}
+    │       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/killmail/processor.ex:71: WandererNotifier.Killmail.Processor.get_recent_kills/0
+
+    warning: got "@impl true" for function discord_channel_id_for/1 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 51 │   def discord_channel_id_for(feature) do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:51: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function character_tracking_enabled?/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 56 │   def character_tracking_enabled? do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:56: WandererNotifier.Config.Config (module)
+
+    warning: WandererNotifier.Notifications.KillmailNotification.send_kill_notification/1 is undefined or private. Did you mean:
+
+          * send_kill_notification/2
+          * send_kill_notification/3
 
     │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 87 │             KillmailNotification.send_kill_notification(enriched_kill)
+    │                                  ~
     │
-    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:5: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
+    └─ lib/wanderer_notifier/killmail/processor.ex:87:34: WandererNotifier.Killmail.Processor.send_test_kill_notification/0
+    └─ lib/wanderer_notifier/killmail/processor.ex:114:34: WandererNotifier.Killmail.Processor.process_kill_data/2
 
-    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
+    warning: got "@impl true" for function character_notifications_enabled?/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
     │
- 19 │   def execute(state) do
+ 61 │   def character_notifications_enabled? do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:61: WandererNotifier.Config.Config (module)
+
+    warning: got "@impl true" for function system_notifications_enabled?/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 66 │   def system_notifications_enabled? do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:66: WandererNotifier.Config.Config (module)
+
+    warning: the following clause will never match:
+
+        {:error, reason}
+
+    because it attempts to match on the result of:
+
+        get_test_killmail()
+
+    which has type:
+
+        dynamic(
+          {:ok,
+           %WandererNotifier.Killmail.Killmail{esi_data: %{...}, killmail_id: integer(), zkb: %{...}}}
+        )
+
+    typing violation found at:
+    │
+ 94 │       {:error, reason} ->
+    │       ~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/killmail/processor.ex:94: WandererNotifier.Killmail.Processor.send_test_kill_notification/0
+
+    warning: got "@impl true" for function track_kspace_systems?/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 71 │   def track_kspace_systems? do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:71: WandererNotifier.Config.Config (module)
+
+     warning: the following clause will never match:
+
+         {:ok, killmail}
+
+     because it attempts to match on the result of:
+
+         WandererNotifier.Killmail.Killmail.from_map(kill_data)
+
+     which has type:
+
+         dynamic(%WandererNotifier.Killmail.Killmail{esi_data: term(), killmail_id: term(), zkb: term()})
+
+     typing violation found at:
+     │
+ 111 │       {:ok, killmail} ->
+     │       ~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/killmail/processor.ex:111: WandererNotifier.Killmail.Processor.process_kill_data/2
+
+     warning: the following clause will never match:
+
+         {:error, reason}
+
+     because it attempts to match on the result of:
+
+         WandererNotifier.Killmail.Killmail.from_map(kill_data)
+
+     which has type:
+
+         dynamic(%WandererNotifier.Killmail.Killmail{esi_data: term(), killmail_id: term(), zkb: term()})
+
+     typing violation found at:
+     │
+ 126 │       {:error, reason} ->
+     │       ~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/killmail/processor.ex:126: WandererNotifier.Killmail.Processor.process_kill_data/2
+
+    warning: got "@impl true" for function get_map_config/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 76 │   def get_map_config do
     │   ~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:19: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
+    └─ lib/wanderer_notifier/config/config.ex:76: WandererNotifier.Config.Config (module)
 
-    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
+    warning: got "@impl true" for function static_info_cache_ttl/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 81 │   def static_info_cache_ttl do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:81: WandererNotifier.Config.Config (module)
 
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
+    warning: got "@impl true" for function get_feature_status/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+    │
+ 86 │   def get_feature_status do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/config/config.ex:86: WandererNotifier.Config.Config (module)
 
+    warning: got "@impl true" for function get_env/2 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
     │
- 31 │   def enabled? do
-    │   ~~~~~~~~~~~~~~~
+ 94 │   def get_env(key, default \\ nil) do
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:31: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
+    └─ lib/wanderer_notifier/config/config.ex:94: WandererNotifier.Config.Config (module)
 
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
-    │
- 38 │   def get_config do
-    │   ~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:38: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
-
-    warning: unused alias Config
-    │
- 10 │   alias WandererNotifier.Config
-    │   ~
-    │
-    └─ lib/wanderer_notifier/notifier/discord/notifier.ex:10:3
-
-    warning: WandererNotifier.Notifier.Discord.NeoClient.send_message/2 is undefined (module WandererNotifier.Notifier.Discord.NeoClient is not available or is yet to be defined)
-    │
- 16 │          {:ok, _response} <- NeoClient.send_message(notification, config) do
-    │                                        ~
-    │
-    └─ lib/wanderer_notifier/notifier/discord/notifier.ex:16:40: WandererNotifier.Notifier.Discord.Notifier.notify/1
+     warning: got "@impl true" for function discord_webhook_url/0 but no behaviour specifies such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
+     │
+ 106 │   def discord_webhook_url do
+     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ lib/wanderer_notifier/config/config.ex:106: WandererNotifier.Config.Config (module)
 
      warning: WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data/1 is undefined (module WandererNotifier.Processing.Killmail.Enrichment is not available or is yet to be defined)
      │
- 215 │       enriched_kill = Enrichment.enrich_killmail_data(killmail)
-     │                                  ~
+ 215 │       case WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data(killmail) do
+     │                                                            ~
      │
-     └─ lib/wanderer_notifier/notifications/killmail_notification.ex:215:34: WandererNotifier.Notifications.KillmailNotification.send_test/0
+     └─ lib/wanderer_notifier/notifications/killmail_notification.ex:215:60: WandererNotifier.Notifications.KillmailNotification.send_test/0
 
      warning: WandererNotifier.Processing.Killmail.Enrichment.enrich_killmail_data/1 is undefined (module WandererNotifier.Processing.Killmail.Enrichment is not available or is yet to be defined)
      │
@@ -117,6 +284,13 @@
      │
      └─ lib/wanderer_notifier/notifiers/helpers/test_notifications.ex:105:36: WandererNotifier.Notifiers.Helpers.TestNotifications.get_enriched_killmail/3
 
+    warning: module attribute @impl was not set for function initialize/1 callback (specified in WandererNotifier.Schedulers.Scheduler). This either means you forgot to add the "@impl true" annotation before the definition or that you are accidentally overriding this callback
+    │
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:7: WandererNotifier.Schedulers.CharacterUpdateScheduler (module)
+
     warning: the following clause will never match:
 
         {:error, reason}
@@ -131,138 +305,17 @@
 
     typing violation found at:
     │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:5: WandererNotifier.Schedulers.SystemUpdateScheduler.init/1
-
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
-    │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:5: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
-
-    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
-    │
- 16 │   def execute(state) do
-    │   ~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:16: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
-
-    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
-    │
- 58 │   def enabled? do
-    │   ~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:58: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
-
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
-    │
- 63 │   def get_config do
-    │   ~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/system_update_scheduler.ex:63: WandererNotifier.Schedulers.SystemUpdateScheduler (module)
-
-     warning: WandererNotifier.Api.Map.UrlBuilder.build_url/2 is undefined (module WandererNotifier.Api.Map.UrlBuilder is not available or is yet to be defined)
-     │
- 132 │     case UrlBuilder.build_url("common/system-static-info", %{id: solar_system_id}) do
-     │                     ~
-     │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:132:21: WandererNotifier.Api.Map.SystemStaticInfo.fetch_system_static_info/1
-
-     warning: WandererNotifier.Api.Map.UrlBuilder.get_auth_headers/0 is undefined (module WandererNotifier.Api.Map.UrlBuilder is not available or is yet to be defined)
-     │
- 135 │         headers = UrlBuilder.get_auth_headers()
-     │                              ~
-     │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:135:30: WandererNotifier.Api.Map.SystemStaticInfo.fetch_system_static_info/1
-
-     warning: WandererNotifier.Api.Http.Client.get/2 is undefined (module WandererNotifier.Api.Http.Client is not available or is yet to be defined)
-     │
- 157 │     case Client.get(url, headers) do
-     │                 ~
-     │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:157:17: WandererNotifier.Api.Map.SystemStaticInfo.make_static_info_request/2
-
-     warning: WandererNotifier.Api.Http.ErrorHandler.handle_http_response/2 is undefined (module WandererNotifier.Api.Http.ErrorHandler is not available or is yet to be defined)
-     │
- 183 │     case ErrorHandler.handle_http_response(response, domain: :map, tag: "Map.static_info") do
-     │                       ~
-     │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:183:23: WandererNotifier.Api.Map.SystemStaticInfo.process_api_response/1
-
-     warning: WandererNotifier.Api.Map.ResponseValidator.validate_system_static_info_response/1 is undefined (module WandererNotifier.Api.Map.ResponseValidator is not available or is yet to be defined)
-     │
- 201 │     case ResponseValidator.validate_system_static_info_response(parsed_response) do
-     │                            ~
-     │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:201:28: WandererNotifier.Api.Map.SystemStaticInfo.validate_static_info/1
+    └─ lib/wanderer_notifier/schedulers/character_update_scheduler.ex:7: WandererNotifier.Schedulers.CharacterUpdateScheduler.init/1
 
      warning: WandererNotifier.Data.MapSystem.update_with_static_info/2 is undefined (module WandererNotifier.Data.MapSystem is not available or is yet to be defined)
      │
- 248 │           enhanced_system = MapSystem.update_with_static_info(system, static_info)
+ 188 │           enhanced_system = MapSystem.update_with_static_info(system, static_info)
      │                                       ~
      │
-     └─ lib/wanderer_notifier/map/system_static_info.ex:248:39: WandererNotifier.Api.Map.SystemStaticInfo.enrich_system/1
-
-    warning: WandererNotifier.Map.CharactersClient.update_tracked_characters/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
-    │
- 30 │     NewCharactersClient.update_tracked_characters(cached_characters)
-    │                         ~
-    │
-    └─ lib/wanderer_notifier/api/characters_client.ex:30:25: WandererNotifier.Api.CharactersClient.update_tracked_characters/1
-
-    warning: WandererNotifier.Map.CharactersClient.get_character_activity/2 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
-    │
- 48 │     NewCharactersClient.get_character_activity(slug, days)
-    │                         ~
-    │
-    └─ lib/wanderer_notifier/api/characters_client.ex:48:25: WandererNotifier.Api.CharactersClient.get_character_activity/2
+     └─ lib/wanderer_notifier/map/system_static_info.ex:188:39: WandererNotifier.Map.SystemStaticInfo.enrich_system/1
 
     warning: WandererNotifier.Logger.StartupTracker.begin_phase/2 is undefined (module WandererNotifier.Logger.StartupTracker is not available or is yet to be defined)
     │
@@ -278,82 +331,12 @@
     │
     └─ lib/wanderer_notifier/schedulers/supervisor.ex:57:22: WandererNotifier.Schedulers.Supervisor.define_core_schedulers/0
 
-    warning: WandererNotifier.ESI.Client.get_killmail/3 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
+    warning: module attribute @impl was not set for function initialize/1 callback (specified in WandererNotifier.Schedulers.Scheduler). This either means you forgot to add the "@impl true" annotation before the definition or that you are accidentally overriding this callback
     │
- 24 │         case Client.get_killmail(kill_id, killmail_hash, retry_opts()) do
-    │                     ~
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
+    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/esi/service.ex:24:21: WandererNotifier.ESI.Service.get_killmail/2
-
-    warning: WandererNotifier.ESI.Client.get_character_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-    │
- 47 │         case Client.get_character_info(character_id, retry_opts()) do
-    │                     ~
-    │
-    └─ lib/wanderer_notifier/esi/service.ex:47:21: WandererNotifier.ESI.Service.get_character_info/2
-
-    warning: WandererNotifier.ESI.Client.get_corporation_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-    │
- 87 │         case Client.get_corporation_info(corporation_id, retry_opts()) do
-    │                     ~
-    │
-    └─ lib/wanderer_notifier/esi/service.ex:87:21: WandererNotifier.ESI.Service.get_corporation_info/2
-
-     warning: WandererNotifier.ESI.Client.get_alliance_info/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 127 │         case Client.get_alliance_info(alliance_id, retry_opts()) do
-     │                     ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:127:21: WandererNotifier.ESI.Service.get_alliance_info/2
-
-     warning: WandererNotifier.ESI.Client.get_universe_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 172 │     case Client.get_universe_type(ship_type_id, retry_opts()) do
-     │                 ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:172:17: WandererNotifier.ESI.Service.handle_cache_miss/2
-
-     warning: WandererNotifier.ESI.Client.get_universe_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 203 │         case Client.get_universe_type(type_id, retry_opts()) do
-     │                     ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:203:21: WandererNotifier.ESI.Service.get_type_info/2
-
-     warning: WandererNotifier.ESI.Client.search_inventory_type/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 222 │     Client.search_inventory_type(query, strict)
-     │            ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:222:12: WandererNotifier.ESI.Service.search_inventory_type/3
-
-     warning: WandererNotifier.ESI.Client.get_solar_system/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 237 │         case Client.get_solar_system(system_id, retry_opts()) do
-     │                     ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:237:21: WandererNotifier.ESI.Service.get_system/2
-
-     warning: WandererNotifier.ESI.Client.get_system_kills/2 is undefined (module WandererNotifier.ESI.Client is not available or is yet to be defined)
-     │
- 290 │     Client.get_system_kills(system_id, limit)
-     │            ~
-     │
-     └─ lib/wanderer_notifier/esi/service.ex:290:12: WandererNotifier.ESI.Service.get_system_kills/3
-
-    warning: WandererNotifier.Map.CharactersClient.update_tracked_characters/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
-    │
- 86 │       WandererNotifier.Map.CharactersClient.update_tracked_characters(current_characters_list)
-    │                                             ~
-    │
-    └─ lib/wanderer_notifier/map/client.ex:86:45: WandererNotifier.Map.Client.update_tracked_characters/1
-
-     warning: WandererNotifier.Map.CharactersClient.get_character_activity/1 is undefined (module WandererNotifier.Map.CharactersClient is not available or is yet to be defined)
-     │
- 109 │       WandererNotifier.Map.CharactersClient.get_character_activity(slug)
-     │                                             ~
-     │
-     └─ lib/wanderer_notifier/map/client.ex:109:45: WandererNotifier.Map.Client.get_character_activity/1
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:7: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
 
     warning: the following clause will never match:
 
@@ -369,248 +352,51 @@
 
     typing violation found at:
     │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
+  7 │   use WandererNotifier.Schedulers.IntervalScheduler,
     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:5: WandererNotifier.Schedulers.ServiceStatusScheduler.init/1
+    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:7: WandererNotifier.Schedulers.ServiceStatusScheduler.init/1
 
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
+    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
     │
-  5 │   use WandererNotifier.Schedulers.IntervalScheduler,
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 15 │   def get_killmail(kill_id, hash, opts \\ []) do
+    │                                   ~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:5: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+    └─ lib/wanderer_notifier/esi/client.ex:15:35: WandererNotifier.ESI.Client.get_killmail/3
 
-    warning: got "@impl true" for function execute/1 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
+    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
     │
- 15 │   def execute(state) do
-    │   ~~~~~~~~~~~~~~~~~~~~~
+ 55 │   def get_character_info(character_id, opts \\ []) do
+    │                                        ~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:15: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+    └─ lib/wanderer_notifier/esi/client.ex:55:40: WandererNotifier.ESI.Client.get_character_info/2
 
-    warning: got "@impl true" for function enabled?/0 but no behaviour specifies such callback. The known callbacks are:
-
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
-
+    warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
     │
- 67 │   def enabled?, do: true
-    │   ~~~~~~~~~~~~~~~~~~~~~~
+ 89 │   def get_corporation_info(corporation_id, opts \\ []) do
+    │                                            ~~~~
     │
-    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:67: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+    └─ lib/wanderer_notifier/esi/client.ex:89:44: WandererNotifier.ESI.Client.get_corporation_info/2
 
-    warning: got "@impl true" for function get_config/0 but no behaviour specifies such callback. The known callbacks are:
+     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 123 │   def get_alliance_info(alliance_id, opts \\ []) do
+     │                                      ~~~~
+     │
+     └─ lib/wanderer_notifier/esi/client.ex:123:38: WandererNotifier.ESI.Client.get_alliance_info/2
 
-      * GenServer.code_change/3 (function)
-      * GenServer.format_status/1 (function)
-      * GenServer.format_status/2 (function)
-      * GenServer.handle_call/3 (function)
-      * GenServer.handle_cast/2 (function)
-      * GenServer.handle_continue/2 (function)
-      * GenServer.handle_info/2 (function)
-      * GenServer.init/1 (function)
-      * GenServer.terminate/2 (function)
+     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 157 │   def get_universe_type(type_id, opts \\ []) do
+     │                                  ~~~~
+     │
+     └─ lib/wanderer_notifier/esi/client.ex:157:34: WandererNotifier.ESI.Client.get_universe_type/2
 
-    │
- 70 │   def get_config do
-    │   ~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/schedulers/service_status_scheduler.ex:70: WandererNotifier.Schedulers.ServiceStatusScheduler (module)
+     warning: variable "opts" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 232 │   def get_solar_system(system_id, opts \\ []) do
+     │                                   ~~~~
+     │
+     └─ lib/wanderer_notifier/esi/client.ex:232:35: WandererNotifier.ESI.Client.get_solar_system/2
 
-    warning: @behaviour WandererNotifier.Notifiers.Behaviour does not exist (in module WandererNotifier.Notifiers.Discord.Notifier)
-    │
-  1 │ defmodule WandererNotifier.Notifiers.Discord.Notifier do
-    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:1: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_message/2 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-    │
- 39 │   def send_message(message, _feature \\ nil) do
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:39: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_embed/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-    │
- 55 │   def send_embed(title, description, url \\ nil, color \\ @default_embed_color, _feature \\ nil) do
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:55: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-    warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_file/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-    │
- 93 │   def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
-    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    │
-    └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:93: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_image_embed/5 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-     │
- 107 │   def send_image_embed(
-     │   ~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:107: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_enriched_kill_embed/2 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-     │
- 137 │   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
-     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:137: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_kill_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-     │
- 172 │   def send_kill_notification(kill_data) do
-     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:172: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_new_tracked_character_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-     │
- 189 │   def send_new_tracked_character_notification(character)
-     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:189: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-     warning: got "@impl WandererNotifier.Notifiers.Behaviour" for function send_new_system_notification/1 but this behaviour does not specify such callback. There are no known callbacks, please specify the proper @behaviour and make sure it defines callbacks
-     │
- 224 │   def send_new_system_notification(system) do
-     │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     │
-     └─ lib/wanderer_notifier/notifiers/discord/notifier.ex:224: WandererNotifier.Notifiers.Discord.Notifier (module)
-
-    warning: unused alias SystemStaticInfo
-    │
-  7 │   alias WandererNotifier.Map.SystemStaticInfo
-    │   ~
-    │
-    └─ lib/wanderer_notifier/map/systems_client.ex:7:3
-
-    warning: WandererNotifier.Processing.Killmail.Processor.init/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-    │
- 61 │     KillmailProcessor.init()
-    │                       ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:61:23: WandererNotifier.Core.Application.Service.init/1
-
-    warning: WandererNotifier.Processing.Killmail.Processor.schedule_tasks/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-    │
- 80 │     KillmailProcessor.schedule_tasks()
-    │                       ~
-    │
-    └─ lib/wanderer_notifier/core/application/service.ex:80:23: WandererNotifier.Core.Application.Service.init/1
-
-     warning: WandererNotifier.Processing.Killmail.Processor.process_zkill_message/2 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-     │
- 145 │     new_state = KillmailProcessor.process_zkill_message(message, state)
-     │                                   ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:145:35: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Processing.Killmail.Processor.log_stats/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-     │
- 191 │     KillmailProcessor.log_stats()
-     │                       ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:191:23: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Cache.Helpers.get_tracked_systems/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
-     │
- 235 │     tracked_systems = CacheHelpers.get_tracked_systems()
-     │                                    ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:235:36: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Cache.Helpers.get_tracked_systems/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
-     │
- 552 │     tracked_systems = CacheHelpers.get_tracked_systems()
-     │                                    ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:552:36: WandererNotifier.Core.Application.Service.collect_tracked_systems_data/0
-
-     warning: WandererNotifier.Cache.Helpers.add_system_to_tracked/2 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
-     │
- 283 │     :ok = CacheHelpers.add_system_to_tracked(system_id, system_name)
-     │                        ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:283:24: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Cache.Helpers.get_tracked_characters/0 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
-     │
- 309 │     tracked_characters = CacheHelpers.get_tracked_characters()
-     │                                       ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:309:39: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Cache.Helpers.add_character_to_tracked/2 is undefined (module WandererNotifier.Cache.Helpers is not available or is yet to be defined)
-     │
- 325 │     :ok = CacheHelpers.add_character_to_tracked(character_id, character_name)
-     │                        ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:325:24: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.Logger.Logger.BatchLogger.flush_all/0 is undefined (module WandererNotifier.Logger.Logger.BatchLogger is not available or is yet to be defined)
-     │
- 453 │     BatchLogger.flush_all()
-     │                 ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:453:17: WandererNotifier.Core.Application.Service.handle_info/2
-
-     warning: WandererNotifier.ZKill.start_websocket/1 is undefined (module WandererNotifier.ZKill is not available or is yet to be defined)
-     │
- 490 │       case ZKill.start_websocket(self()) do
-     │                  ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:490:18: WandererNotifier.Core.Application.Service.start_zkill_ws/1
-
-     warning: WandererNotifier.ZKill.start_websocket/1 is undefined (module WandererNotifier.ZKill is not available or is yet to be defined)
-     │
- 513 │       case ZKill.start_websocket(self()) do
-     │                  ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:513:18: WandererNotifier.Core.Application.Service.reconnect_zkill_ws/1
-
-     warning: WandererNotifier.Processing.Killmail.Processor.get_recent_kills/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-     │
- 685 │     KillmailProcessor.get_recent_kills()
-     │                       ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:685:23: WandererNotifier.Core.Application.Service.get_recent_kills/0
-
-     warning: WandererNotifier.Processing.Killmail.Processor.send_test_kill_notification/0 is undefined (module WandererNotifier.Processing.Killmail.Processor is not available or is yet to be defined)
-     │
- 693 │     KillmailProcessor.send_test_kill_notification()
-     │                       ~
-     │
-     └─ lib/wanderer_notifier/core/application/service.ex:693:23: WandererNotifier.Core.Application.Service.send_test_kill_notification/0
-
+Compilation failed due to warnings while using the --warnings-as-errors option

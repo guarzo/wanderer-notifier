@@ -17,8 +17,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.StructuredFormatter
   alias WandererNotifier.Killmail.Killmail
 
-  @behaviour WandererNotifier.Notifiers.Behaviour
-
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -35,7 +33,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # -- MESSAGE SENDING --
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_message(message, _feature \\ nil) do
     AppLogger.processor_info("Discord message requested")
 
@@ -51,7 +48,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_embed(title, description, url \\ nil, color \\ @default_embed_color, _feature \\ nil) do
     AppLogger.processor_info("Discord embed requested",
       title: title,
@@ -89,7 +85,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     %{"embeds" => [embed]}
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
     AppLogger.processor_info("Sending file to Discord",
       filename: filename,
@@ -103,7 +98,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_image_embed(
         title,
         description,
@@ -133,7 +127,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
     AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
 
@@ -168,7 +161,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     send_to_discord(enhanced_notification, "kill")
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_kill_notification(kill_data) do
     # Log the received kill data for debugging
     AppLogger.processor_debug("Kill notification received",
@@ -185,7 +177,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     send_killmail_notification(killmail)
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Character.Character) do
     if env() == :test do
@@ -220,7 +211,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_new_system_notification(system) do
     # Log system details before processing to diagnose cache issues
     AppLogger.processor_info(

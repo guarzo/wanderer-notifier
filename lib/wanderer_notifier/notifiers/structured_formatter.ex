@@ -201,9 +201,9 @@ defmodule WandererNotifier.Notifiers.StructuredFormatter do
 
   # Get system security status from ESI if possible
   defp get_system_security_status(system_id) do
-    if Code.ensure_loaded?(WandererNotifier.Api.Map.SystemStaticInfo) and
-         function_exported?(WandererNotifier.Api.Map.SystemStaticInfo, :get_system_static_info, 1) do
-      WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system_id)
+    if Code.ensure_loaded?(WandererNotifier.Map.SystemStaticInfo) and
+         function_exported?(WandererNotifier.Map.SystemStaticInfo, :get_system_static_info, 1) do
+      WandererNotifier.Map.SystemStaticInfo.get_system_static_info(system_id)
     else
       nil
     end

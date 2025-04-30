@@ -12,7 +12,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets killmail information from ESI.
   """
-  def get_killmail(kill_id, hash, opts \\ []) do
+  def get_killmail(kill_id, hash, _opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
     headers = default_headers()
 
@@ -52,7 +52,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets character information from ESI.
   """
-  def get_character_info(character_id, opts \\ []) do
+  def get_character_info(character_id, _opts \\ []) do
     url = "#{@base_url}/characters/#{character_id}/"
     headers = default_headers()
 
@@ -86,7 +86,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets corporation information from ESI.
   """
-  def get_corporation_info(corporation_id, opts \\ []) do
+  def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
     headers = default_headers()
 
@@ -120,7 +120,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets alliance information from ESI.
   """
-  def get_alliance_info(alliance_id, opts \\ []) do
+  def get_alliance_info(alliance_id, _opts \\ []) do
     url = "#{@base_url}/alliances/#{alliance_id}/"
     headers = default_headers()
 
@@ -154,7 +154,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets type information from ESI.
   """
-  def get_universe_type(type_id, opts \\ []) do
+  def get_universe_type(type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{type_id}/"
     headers = default_headers()
 
@@ -229,7 +229,7 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets solar system information from ESI.
   """
-  def get_solar_system(system_id, opts \\ []) do
+  def get_solar_system(system_id, _opts \\ []) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
     headers = default_headers()
 

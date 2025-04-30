@@ -6,7 +6,6 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   use Supervisor
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Logger.StartupTracker
   alias WandererNotifier.Schedulers
   alias WandererNotifier.Schedulers.Registry
 
@@ -39,9 +38,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   # Start the scheduler phase in the startup tracker
   defp start_scheduler_phase do
-    if Process.get(:startup_tracker) do
-      StartupTracker.begin_phase(:schedulers, "Initializing schedulers")
-    end
+    # StartupTracker logging is disabled (module not available)
   end
 
   # Define the core schedulers
@@ -52,14 +49,7 @@ defmodule WandererNotifier.Schedulers.Supervisor do
       {Schedulers.ServiceStatusScheduler, []}
     ]
 
-    # Track core schedulers
-    try do
-      StartupTracker.record_event(:scheduler_setup, %{
-        core_schedulers: length(schedulers)
-      })
-    rescue
-      _ -> :ok
-    end
+    # StartupTracker event recording is disabled (module not available)
 
     schedulers
   end

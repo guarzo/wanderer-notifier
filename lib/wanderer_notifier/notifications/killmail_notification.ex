@@ -11,7 +11,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.StructuredFormatter
-  alias WandererNotifier.Processing.Killmail.Enrichment
 
   @doc """
   Determines if a kill notification should be sent and sends it.
@@ -212,21 +211,32 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
       # Make sure to enrich the killmail data before sending notification
       # This will try to get real data from APIs first
-      enriched_kill = Enrichment.enrich_killmail_data(killmail)
+      case WandererNotifier.Killmail.Enrichment.enrich_killmail_data(killmail) do
+        {:ok, enriched_kill} ->
+          # Validate essential data is present - fail if not
+          case validate_killmail_data(enriched_kill) do
+            :ok ->
+              # Use the normal notification flow but bypass deduplication
+              AppLogger.kill_info(
+                "TEST NOTIFICATION: Using normal notification flow for test kill notification"
+              )
 
-      # Validate essential data is present - fail if not
-      case validate_killmail_data(enriched_kill) do
-        :ok ->
-          # Use the normal notification flow but bypass deduplication
-          AppLogger.kill_info(
-            "TEST NOTIFICATION: Using normal notification flow for test kill notification"
-          )
+              send_kill_notification(enriched_kill, kill_id, true)
+              {:ok, kill_id}
 
-          send_kill_notification(enriched_kill, kill_id, true)
-          {:ok, kill_id}
+            {:error, reason} ->
+              # Data validation failed, return error
+              error_message = "Cannot send test notification: #{reason}"
+              AppLogger.kill_error(error_message)
+
+              # Notify the user through Discord
+              Factory.send_message(error_message)
+
+              {:error, error_message}
+          end
 
         {:error, reason} ->
-          # Data validation failed, return error
+          # Data enrichment failed, return error
           error_message = "Cannot send test notification: #{reason}"
           AppLogger.kill_error(error_message)
 

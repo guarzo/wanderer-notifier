@@ -66,10 +66,7 @@ defmodule WandererNotifier.Killmail.Processor do
     - {:error, reason} on failure
   """
   def get_recent_kills do
-    case KillmailCache.get_recent_kills() do
-      {:ok, kills} -> {:ok, kills}
-      {:error, reason} -> {:error, reason}
-    end
+    KillmailCache.get_recent_kills()
   end
 
   @doc """
@@ -80,19 +77,14 @@ defmodule WandererNotifier.Killmail.Processor do
     - {:error, reason} on failure
   """
   def send_test_kill_notification do
-    case get_test_killmail() do
-      {:ok, killmail} ->
-        case Enrichment.enrich_killmail_data(killmail) do
-          {:ok, enriched_kill} ->
-            KillmailNotification.send_kill_notification(enriched_kill)
+    killmail = get_test_killmail()
 
-          {:error, reason} ->
-            AppLogger.error("Failed to enrich test killmail", error: inspect(reason))
-            {:error, reason}
-        end
+    case Enrichment.enrich_killmail_data(killmail) do
+      {:ok, enriched_kill} ->
+        KillmailNotification.send_kill_notification(enriched_kill, :test)
 
       {:error, reason} ->
-        AppLogger.error("Failed to get test killmail", error: inspect(reason))
+        AppLogger.error("Failed to enrich test killmail", error: inspect(reason))
         {:error, reason}
     end
   end
@@ -107,43 +99,41 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp process_kill_data(kill_data, state) do
-    case Killmail.from_zkill(kill_data) do
-      {:ok, killmail} ->
-        case Enrichment.enrich_killmail_data(killmail) do
-          {:ok, enriched_kill} ->
-            KillmailNotification.send_kill_notification(enriched_kill)
-            state
+    killmail = Killmail.from_map(kill_data)
 
-          {:error, reason} ->
-            AppLogger.error("Failed to enrich killmail", %{
-              kill_id: killmail.kill_id,
-              error: inspect(reason)
-            })
-
-            state
-        end
+    case Enrichment.enrich_killmail_data(killmail) do
+      {:ok, enriched_kill} ->
+        KillmailNotification.send_kill_notification(enriched_kill, :zkill)
+        state
 
       {:error, reason} ->
-        AppLogger.error("Failed to process kill data", %{
-          error: inspect(reason),
-          data: inspect(kill_data)
-        })
-
-        state
+        AppLogger.error("Failed to enrich killmail", error: inspect(reason))
+        {:error, reason}
     end
   end
 
   defp get_test_killmail do
     # Create a test killmail for testing notifications
-    {:ok,
-     %Killmail{
-       kill_id: 12345,
-       killmail_hash: "abc123",
-       victim_id: 98765,
-       attacker_id: 54321,
-       ship_type_id: 587,
-       solar_system_id: 30_000_142,
-       kill_time: DateTime.utc_now()
-     }}
+    %Killmail{
+      killmail_id: 12345,
+      zkb: %{
+        "hash" => "abc123"
+      },
+      esi_data: %{
+        "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "solar_system_id" => 30_000_142,
+        "victim" => %{
+          "character_id" => 98765,
+          "ship_type_id" => 587
+        },
+        "attackers" => [
+          %{
+            "character_id" => 54321,
+            "ship_type_id" => 587,
+            "final_blow" => true
+          }
+        ]
+      }
+    }
   end
 end

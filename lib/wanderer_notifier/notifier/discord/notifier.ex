@@ -16,7 +16,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
     config = get_discord_config()
 
     with {:ok, _response} <- HttpClient.post_json(config.webhook_url, notification, [], []) do
-      AppLogger.notifier_info("Discord notification sent", %{
+      AppLogger.notification_info("Discord notification sent", %{
         type: notification.type,
         feature: notification.feature
       })
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
       :ok
     else
       {:error, reason} ->
-        AppLogger.notifier_error("Discord notification failed", %{
+        AppLogger.notification_error("Discord notification failed", %{
           type: notification.type,
           feature: notification.feature,
           error: inspect(reason)
@@ -46,14 +46,14 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
 
     case HttpClient.post_json(config.webhook_url, payload, [], []) do
       {:ok, _response} ->
-        AppLogger.notifier_info("Discord message sent", %{
+        AppLogger.notification_info("Discord message sent", %{
           message_length: String.length(message)
         })
 
         :ok
 
       {:error, reason} ->
-        AppLogger.notifier_error("Discord message failed", %{
+        AppLogger.notification_error("Discord message failed", %{
           error: inspect(reason)
         })
 
@@ -80,7 +80,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
 
     case HttpClient.post_json(config.webhook_url, payload, [], []) do
       {:ok, _response} ->
-        AppLogger.notifier_info("Discord embed sent", %{
+        AppLogger.notification_info("Discord embed sent", %{
           title: title,
           description_length: String.length(description)
         })
@@ -88,7 +88,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
         :ok
 
       {:error, reason} ->
-        AppLogger.notifier_error("Discord embed failed", %{
+        AppLogger.notification_error("Discord embed failed", %{
           title: title,
           error: inspect(reason)
         })
@@ -114,7 +114,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
 
     case HttpClient.post_json(config.webhook_url, payload, [], []) do
       {:ok, _response} ->
-        AppLogger.notifier_info("Discord file sent", %{
+        AppLogger.notification_info("Discord file sent", %{
           filename: filename,
           file_size: byte_size(file_data)
         })
@@ -122,7 +122,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
         :ok
 
       {:error, reason} ->
-        AppLogger.notifier_error("Discord file failed", %{
+        AppLogger.notification_error("Discord file failed", %{
           filename: filename,
           error: inspect(reason)
         })
@@ -158,7 +158,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
 
     case HttpClient.post_json(config.webhook_url, payload, [], []) do
       {:ok, _response} ->
-        AppLogger.notifier_info("Discord image embed sent", %{
+        AppLogger.notification_info("Discord image embed sent", %{
           title: title,
           image_url: image_url
         })
@@ -166,7 +166,7 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
         :ok
 
       {:error, reason} ->
-        AppLogger.notifier_error("Discord image embed failed", %{
+        AppLogger.notification_error("Discord image embed failed", %{
           title: title,
           error: inspect(reason)
         })

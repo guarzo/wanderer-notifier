@@ -5,7 +5,6 @@ defmodule WandererNotifier.Map.SystemsClient do
   """
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.HttpClient.UrlBuilder
-  alias WandererNotifier.Map.SystemStaticInfo
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.Repository, as: CacheRepo
@@ -209,11 +208,11 @@ defmodule WandererNotifier.Map.SystemsClient do
     Enum.map(systems, fn system ->
       static_info =
         if function_exported?(
-             WandererNotifier.Api.Map.SystemStaticInfo,
+             WandererNotifier.Map.SystemStaticInfo,
              :get_system_static_info,
              1
            ),
-           do: WandererNotifier.Api.Map.SystemStaticInfo.get_system_static_info(system.system_id),
+           do: WandererNotifier.Map.SystemStaticInfo.get_system_static_info(system.system_id),
            else: %{}
 
       Map.merge(system, static_info)
