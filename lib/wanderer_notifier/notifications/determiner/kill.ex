@@ -103,37 +103,116 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Gets the system ID from a kill.
   """
   def get_kill_system_id(kill) do
+    Logger.debug(
+      "[Kill Determiner] Extracting system ID from killmail:\n#{inspect(kill, pretty: true, limit: :infinity)}"
+    )
+
     extract_system_id(kill)
   end
 
   # Private helper functions to extract system ID from different data structures
   defp extract_system_id(kill) when is_struct(kill, Killmail) do
+    Logger.debug("[Kill Determiner] Processing Killmail struct")
+
     case kill.esi_data do
       nil ->
+        Logger.debug("[Kill Determiner] No ESI data found")
         "unknown"
 
       esi_data ->
+        Logger.debug("[Kill Determiner] Found ESI data:\n#{inspect(esi_data)}")
+
         case Map.get(esi_data, "solar_system_id") do
-          nil -> "unknown"
-          id when is_integer(id) -> to_string(id)
-          id when is_binary(id) -> id
-          _ -> "unknown"
+          nil ->
+            Logger.debug("[Kill Determiner] No solar_system_id in ESI data")
+            "unknown"
+
+          id when is_integer(id) ->
+            Logger.debug("[Kill Determiner] Found integer system ID: #{id}")
+            to_string(id)
+
+          id when is_binary(id) ->
+            Logger.debug("[Kill Determiner] Found string system ID: #{id}")
+            id
+
+          other ->
+            Logger.debug("[Kill Determiner] Unexpected system ID format: #{inspect(other)}")
+            "unknown"
         end
     end
   end
 
   defp extract_system_id(kill) when is_map(kill) do
+    Logger.debug("[Kill Determiner] Processing map data")
     extract_system_id_from_map(kill)
   end
 
-  defp extract_system_id(_), do: "unknown"
+  defp extract_system_id(other) do
+    Logger.debug("[Kill Determiner] Unexpected killmail format: #{inspect(other)}")
+    "unknown"
+  end
 
   defp extract_system_id_from_map(kill) do
+    Logger.debug("[Kill Determiner] Checking map paths:\n#{inspect(kill)}")
+
     cond do
-      esi_data = Map.get(kill, "esi_data") -> Map.get(esi_data, "solar_system_id")
-      system = Map.get(kill, "system") -> Map.get(system, "id")
-      solar_system = Map.get(kill, "solar_system") -> Map.get(solar_system, "id")
-      true -> "unknown"
+      esi_data = Map.get(kill, "esi_data") ->
+        Logger.debug("[Kill Determiner] Found ESI data path:\n#{inspect(esi_data)}")
+
+        case Map.get(esi_data, "solar_system_id") do
+          id when is_integer(id) ->
+            Logger.debug("[Kill Determiner] Found integer system ID in map: #{id}")
+            to_string(id)
+
+          id when is_binary(id) ->
+            Logger.debug("[Kill Determiner] Found string system ID in map: #{id}")
+            id
+
+          other ->
+            Logger.debug("[Kill Determiner] Invalid system ID in map: #{inspect(other)}")
+            "unknown"
+        end
+
+      system = Map.get(kill, "system") ->
+        Logger.debug("[Kill Determiner] Found system path:\n#{inspect(system)}")
+
+        case Map.get(system, "id") do
+          id when is_integer(id) ->
+            Logger.debug("[Kill Determiner] Found integer system ID in system path: #{id}")
+            to_string(id)
+
+          id when is_binary(id) ->
+            Logger.debug("[Kill Determiner] Found string system ID in system path: #{id}")
+            id
+
+          other ->
+            Logger.debug("[Kill Determiner] Invalid system ID in system path: #{inspect(other)}")
+            "unknown"
+        end
+
+      solar_system = Map.get(kill, "solar_system") ->
+        Logger.debug("[Kill Determiner] Found solar_system path:\n#{inspect(solar_system)}")
+
+        case Map.get(solar_system, "id") do
+          id when is_integer(id) ->
+            Logger.debug("[Kill Determiner] Found integer system ID in solar_system path: #{id}")
+            to_string(id)
+
+          id when is_binary(id) ->
+            Logger.debug("[Kill Determiner] Found string system ID in solar_system path: #{id}")
+            id
+
+          other ->
+            Logger.debug(
+              "[Kill Determiner] Invalid system ID in solar_system path: #{inspect(other)}"
+            )
+
+            "unknown"
+        end
+
+      true ->
+        Logger.debug("[Kill Determiner] No valid system ID path found")
+        "unknown"
     end
   end
 

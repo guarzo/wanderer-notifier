@@ -34,7 +34,8 @@ defmodule WandererNotifier.Core.Application.Service do
       last_systems_update: nil,
       last_characters_update: nil,
       systems_count: 0,
-      characters_count: 0
+      characters_count: 0,
+      config_loaded: false
     ]
   end
 
@@ -65,7 +66,9 @@ defmodule WandererNotifier.Core.Application.Service do
       service_start_time: now,
       last_status_time: now,
       last_systems_update: now,
-      last_characters_update: now
+      last_characters_update: now,
+      # Set config_loaded to true after initialization
+      config_loaded: true
     }
 
     state = start_zkill_ws(state)
@@ -380,70 +383,76 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:send_startup_notification, state) do
-    AppLogger.startup_info("Sending startup notification", %{
-      uptime: :os.system_time(:second) - state.service_start_time
-    })
+    if WandererNotifier.Config.Features.status_messages_disabled?() do
+      AppLogger.startup_info("Status messages are disabled, skipping startup notification")
+      {:noreply, state}
+    else
+      AppLogger.startup_info("Sending startup notification", %{
+        uptime: :os.system_time(:second) - state.service_start_time
+      })
 
-    # Create the notification
-    generic_notification =
-      StructuredFormatter.format_system_status_message(
-        "WandererNotifier Service Started",
-        "The service has started and is now operational.",
-        %{
-          websocket:
-            Map.get(state, :websocket_status, %{
-              connected: false,
-              last_message: nil
-            }),
-          notifications: %{
-            total: 0,
-            kills: 0,
-            systems: 0,
-            characters: 0
-          }
-        },
-        :os.system_time(:second) - state.service_start_time,
-        %{},
-        %{valid: true},
-        state.systems_count,
-        state.characters_count
-      )
+      # Create the notification
+      generic_notification =
+        StructuredFormatter.format_system_status_message(
+          "WandererNotifier Service Started",
+          "The service has started and is now operational.",
+          %{
+            websocket:
+              Map.get(state, :websocket_status, %{
+                connected: false,
+                last_message: nil
+              }),
+            notifications: %{
+              total: 0,
+              kills: 0,
+              systems: 0,
+              characters: 0
+            }
+          },
+          :os.system_time(:second) - state.service_start_time,
+          %{},
+          %{valid: true},
+          state.systems_count,
+          state.characters_count
+        )
 
-    discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+      discord_embed = StructuredFormatter.to_discord_format(generic_notification)
 
-    # Get the main channel ID, with defensive check for test environment
-    main_channel_id =
-      try do
-        Notifications.channel_id(:main)
-      rescue
-        _ ->
-          if Application.get_env(:wanderer_notifier, :environment) == :test,
-            do: "123456789",
-            else: nil
+      # Get the main channel ID, with defensive check for test environment
+      main_channel_id =
+        try do
+          Notifications.channel_id(:main)
+        rescue
+          _ ->
+            if Application.get_env(:wanderer_notifier, :environment) == :test,
+              do: "123456789",
+              else: nil
+        end
+
+      # Send notification via factory - specify main channel to avoid nil channel issue
+      result =
+        if is_nil(main_channel_id) &&
+             Application.get_env(:wanderer_notifier, :environment) != :test do
+          # Log a warning but don't crash
+          AppLogger.startup_warn("No main channel ID available, skipping startup notification")
+          :ok
+        else
+          NotifierFactory.notify(:send_discord_embed_to_channel, [main_channel_id, discord_embed])
+        end
+
+      case result do
+        :ok ->
+          AppLogger.startup_info("Startup notification sent successfully")
+
+        {:ok, _} ->
+          AppLogger.startup_info("Startup notification sent successfully")
+
+        {:error, reason} ->
+          AppLogger.startup_error("Failed to send startup notification", error: inspect(reason))
       end
 
-    # Send notification via factory - specify main channel to avoid nil channel issue
-    result =
-      if is_nil(main_channel_id) && Application.get_env(:wanderer_notifier, :environment) != :test do
-        # Log a warning but don't crash
-        AppLogger.startup_warn("No main channel ID available, skipping startup notification")
-        :ok
-      else
-        NotifierFactory.notify(:send_discord_embed_to_channel, [main_channel_id, discord_embed])
-      end
-
-    case result do
-      :ok ->
-        AppLogger.startup_info("Startup notification sent successfully")
-
-      {:ok, _} ->
-        AppLogger.startup_info("Startup notification sent successfully")
-
-      {:error, reason} ->
-        AppLogger.startup_error("Failed to send startup notification", error: inspect(reason))
+      {:noreply, state}
     end
-
-    {:noreply, state}
   end
 
   @impl true

@@ -6,7 +6,10 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.KillmailProcessing.{Context, Metrics}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -50,12 +53,13 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     kill_id = Map.get(zkb_data, "killmail_id")
     hash = get_in(zkb_data, ["zkb", "hash"])
 
-    with {:ok, esi_data} <- ESIService.get_killmail(kill_id, hash),
-         zkb_map <- Map.get(zkb_data, "zkb", %{}),
-         killmail <- Killmail.new(kill_id, zkb_map, esi_data) do
+    with {:ok, esi_data} <- ESIService.get_killmail(kill_id, hash) do
+      zkb_map = Map.get(zkb_data, "zkb", %{})
+      killmail = Killmail.new(kill_id, zkb_map, esi_data)
       {:ok, killmail}
     else
       error ->
+        AppLogger.kill_error("Failed to fetch ESI data for kill #{kill_id}")
         log_killmail_error(zkb_data, nil, error)
         error
     end
@@ -74,9 +78,27 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   @spec check_tracking(killmail()) :: result()
   defp check_tracking(killmail) do
-    case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: true}} -> {:ok, killmail}
-      {:ok, %{should_notify: false, reason: reason}} -> {:error, {:skipped, reason}}
+    # Get system info directly from ESI data
+    system_id =
+      case killmail do
+        %Killmail{esi_data: %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
+
+        %{"esi_data" => %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
+
+        _ ->
+          "unknown"
+      end
+
+    # Check if system or character is tracked
+    is_tracked_system = KillDeterminer.tracked_system?(system_id)
+    has_tracked_char = KillDeterminer.has_tracked_character?(killmail)
+
+    if is_tracked_system || has_tracked_char do
+      {:ok, killmail}
+    else
+      {:error, {:skipped, "Not tracked by any character or system"}}
     end
   end
 
@@ -100,16 +122,32 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     end
   end
 
-  @spec check_notification(killmail(), Context.t()) :: {:ok, boolean()}
+  @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
   defp check_notification(killmail, ctx) do
-    # Only send notifications for realtime processing
-    case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: should_notify, reason: reason}} ->
-        should_notify = Context.realtime?(ctx) and should_notify
-        {:ok, should_notify, reason}
+    # Get system info directly from ESI data
+    system_id =
+      case killmail do
+        %Killmail{esi_data: %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
 
-      error ->
-        error
+        %{"esi_data" => %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
+
+        _ ->
+          "unknown"
+      end
+
+    # Check if system or character is tracked
+    is_tracked_system = KillDeterminer.tracked_system?(system_id)
+    has_tracked_char = KillDeterminer.has_tracked_character?(killmail)
+    should_notify = is_tracked_system || has_tracked_char
+
+    # Only send notifications for realtime processing
+    if Context.realtime?(ctx) do
+      {:ok, should_notify,
+       if(should_notify, do: nil, else: "Not tracked by any character or system")}
+    else
+      {:ok, false, "Not realtime processing"}
     end
   end
 
@@ -138,30 +176,30 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
          reason: reason
        ) do
     kill_id = get_kill_id(killmail)
-    kill_time = Map.get(killmail, "killmail_time")
 
-    metadata = %{
-      kill_id: kill_id,
-      kill_time: kill_time,
-      character_id: ctx && ctx.character_id,
-      character_name: ctx && ctx.character_name,
-      batch_id: ctx && ctx.batch_id,
-      reason: reason,
-      processing_mode: ctx && ctx.mode && ctx.mode.mode,
-      notified: notified
-    }
+    # Get system info directly from ESI data
+    system_id =
+      case killmail do
+        %Killmail{esi_data: %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
 
-    # Compose a clear outcome message
-    outcome_msg =
-      "Killmail #{kill_id} notified: #{notified}. Reason: #{reason || "n/a"} (persisted: #{persisted})"
+        %{"esi_data" => %{"solar_system_id" => id}} when is_integer(id) ->
+          to_string(id)
 
-    # Determine status and message based on outcomes
+        _ ->
+          "unknown"
+      end
+
+    # Compose outcome message
+    character_name = (ctx && ctx.character_name) || "Websocket kill #{kill_id}"
     {_message, status} = get_log_details(persisted, notified, reason)
 
-    # Add status to metadata and log with appropriate level
-    updated_metadata = Map.put(metadata, :status, status)
-
-    AppLogger.kill_info(outcome_msg, updated_metadata)
+    # Only log if there's a meaningful status change
+    if status != "skipped" || reason != "Not tracked by any character or system" do
+      AppLogger.kill_info(
+        "Kill #{kill_id} (#{status}) (persisted: #{persisted}, notified: #{notified})"
+      )
+    end
   end
 
   # Helper function to get log message and status based on outcomes
