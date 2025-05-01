@@ -92,7 +92,9 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
     systems = Enum.map(systems_data, &MapSystem.new/1)
 
     # Log the list of system names being synced
-    system_names = Enum.map(systems, fn sys -> sys.original_name || sys["name"] || inspect(sys) end)
+    system_names =
+      Enum.map(systems, fn sys -> sys.original_name || sys["name"] || inspect(sys) end)
+
     AppLogger.api_info("[SystemsClient] Syncing systems. Names: #{Enum.join(system_names, ", ")}")
 
     # Refactored logging using the helper function
