@@ -147,21 +147,21 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       character_name: ctx && ctx.character_name,
       batch_id: ctx && ctx.batch_id,
       reason: reason,
-      processing_mode: ctx && ctx.mode && ctx.mode.mode
+      processing_mode: ctx && ctx.mode && ctx.mode.mode,
+      notified: notified
     }
 
+    # Compose a clear outcome message
+    outcome_msg =
+      "Killmail #{kill_id} notified: #{notified}. Reason: #{reason || "n/a"} (persisted: #{persisted})"
+
     # Determine status and message based on outcomes
-    {message, status} = get_log_details(persisted, notified, reason)
+    {_message, status} = get_log_details(persisted, notified, reason)
 
     # Add status to metadata and log with appropriate level
     updated_metadata = Map.put(metadata, :status, status)
 
-    # Use debug level for skipped and duplicates, info for others
-    if status in ["skipped", "duplicate"] do
-      AppLogger.kill_debug(message, updated_metadata)
-    else
-      AppLogger.kill_info(message, updated_metadata)
-    end
+    AppLogger.kill_info(outcome_msg, updated_metadata)
   end
 
   # Helper function to get log message and status based on outcomes
