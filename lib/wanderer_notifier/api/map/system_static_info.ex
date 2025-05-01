@@ -71,6 +71,9 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Config.Timings
 
   @doc """
   Fetches static information for a specific solar system.
@@ -84,42 +87,42 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
     - {:error, reason} on failure
   """
   def get_system_static_info(solar_system_id) do
-    AppLogger.api_debug("[SystemStaticInfo] Starting static info fetch",
-      system_id: solar_system_id
-    )
+    cache_key = "map:system:static_info:#{solar_system_id}"
 
-    # Create a task for the API request to add timeout handling
-    task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
-
-    # Wait for the task with a timeout (3 seconds)
-    case Task.yield(task, 3_000) do
-      {:ok, result} ->
-        # Log result and return
-        case result do
-          {:ok, static_info} ->
-            AppLogger.api_debug("[SystemStaticInfo] Successfully got static info",
-              system_id: solar_system_id,
-              static_info_keys: Map.keys(static_info)
-            )
-
-          {:error, reason} ->
-            AppLogger.api_warn("[SystemStaticInfo] Static info failed",
-              system_id: solar_system_id,
-              error: inspect(reason)
-            )
-        end
-
-        result
-
+    case CacheRepo.get(cache_key) do
       nil ->
-        # Task took too long, kill it
-        Task.shutdown(task, :brutal_kill)
-
-        AppLogger.api_error("[SystemStaticInfo] Static info request timed out",
+        AppLogger.api_debug("[SystemStaticInfo] Cache miss for system",
           system_id: solar_system_id
         )
 
-        {:error, :timeout}
+        # Create a task for the API request to add timeout handling
+        task = Task.async(fn -> fetch_system_static_info(solar_system_id) end)
+
+        # Wait for the task with a timeout (3 seconds)
+        case Task.yield(task, 3_000) do
+          {:ok, {:ok, static_info} = result} ->
+            # Cache the result with TTL from config
+            ttl = Timings.static_info_cache_ttl()
+            CacheRepo.set(cache_key, static_info, ttl)
+            result
+
+          {:ok, error} ->
+            error
+
+          nil ->
+            # Task took too long, kill it
+            Task.shutdown(task, :brutal_kill)
+
+            AppLogger.api_error("[SystemStaticInfo] Static info request timed out",
+              system_id: solar_system_id
+            )
+
+            {:error, :timeout}
+        end
+
+      static_info ->
+        AppLogger.api_debug("[SystemStaticInfo] Cache hit for system", system_id: solar_system_id)
+        {:ok, static_info}
     end
   end
 

@@ -25,34 +25,52 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   - {:ok, :skipped} if the killmail should not be notified
   """
   def process_and_notify(killmail) do
+    # Log each received kill
+    AppLogger.kill_info("Received websocket kill: #{killmail.killmail_id}")
+
+    # Enrich the killmail data first
+    enriched_killmail = enrich_killmail_data(killmail)
+
     # Check if we should notify about this kill
-    should_notify = KillDeterminer.should_notify?(killmail)
+    should_notify = KillDeterminer.should_notify?(enriched_killmail)
 
-    if should_notify do
-      # Enrich the killmail data
-      enriched_killmail = enrich_killmail_data(killmail)
+    result =
+      if should_notify do
+        # Send notification and convert return value
+        case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
+          {:ok, _kill_id} ->
+            AppLogger.kill_info("Kill notification sent successfully", %{
+              kill_id: killmail.killmail_id
+            })
 
-      # Send notification and convert return value
-      case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
-        {:ok, _kill_id} ->
-          AppLogger.kill_info("Kill notification sent successfully", %{
-            kill_id: killmail.killmail_id
-          })
+            :ok
 
-          :ok
+          {:error, reason} ->
+            AppLogger.kill_error("Failed to send kill notification", %{
+              kill_id: killmail.killmail_id,
+              error: inspect(reason)
+            })
 
-        {:error, reason} ->
-          AppLogger.kill_error("Failed to send kill notification", %{
-            kill_id: killmail.killmail_id,
-            error: inspect(reason)
-          })
-
-          {:error, reason}
+            {:error, reason}
+        end
+      else
+        AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
+        {:ok, :skipped}
       end
-    else
-      AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
-      {:ok, :skipped}
-    end
+
+    # Log the final outcome
+    status =
+      case result do
+        :ok -> "processed_and_notified"
+        {:ok, :skipped} -> "skipped"
+        {:error, _} -> "error"
+      end
+
+    AppLogger.kill_info(
+      "Kill #{killmail.killmail_id} outcome: #{status} (should_notify: #{should_notify})"
+    )
+
+    result
   end
 
   @doc """

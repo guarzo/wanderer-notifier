@@ -6,10 +6,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   alias WandererNotifier.Api.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.KillmailProcessing.{Context, Metrics}
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -27,20 +24,34 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- create_killmail(zkb_data),
-         {:ok, enriched} <- enrich_killmail(killmail),
-         {:ok, tracked} <- check_tracking(enriched),
-         {:ok, persisted} <- maybe_persist_killmail(tracked, ctx),
-         {:ok, should_notify, reason} <- check_notification(persisted, ctx),
-         {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
-      Metrics.track_processing_complete(ctx, {:ok, result})
-      log_killmail_outcome(result, ctx, persisted: true, notified: should_notify, reason: reason)
-      {:ok, result}
-    else
-      {:error, {:skipped, reason}} ->
-        Metrics.track_processing_skipped(ctx)
-        log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
-        {:ok, :skipped}
+         {:ok, enriched} <- enrich_killmail(killmail) do
+      case check_tracking(enriched) do
+        {:ok, tracked} ->
+          with {:ok, persisted} <- maybe_persist_killmail(tracked, ctx),
+               {:ok, should_notify, reason} <- check_notification(persisted, ctx),
+               {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
+            Metrics.track_processing_complete(ctx, {:ok, result})
 
+            log_killmail_outcome(enriched, ctx,
+              persisted: true,
+              notified: should_notify,
+              reason: reason
+            )
+
+            {:ok, result}
+          else
+            error ->
+              Metrics.track_processing_error(ctx)
+              log_killmail_error(enriched, ctx, error)
+              error
+          end
+
+        {:error, {:skipped, reason}} ->
+          Metrics.track_processing_skipped(ctx)
+          log_killmail_outcome(enriched, ctx, persisted: false, notified: false, reason: reason)
+          {:ok, :skipped}
+      end
+    else
       error ->
         Metrics.track_processing_error(ctx)
         log_killmail_error(zkb_data, ctx, error)
@@ -177,29 +188,35 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
        ) do
     kill_id = get_kill_id(killmail)
 
-    # Get system info directly from ESI data
-    system_id =
+    # Get system info from ESI data
+    {system_id, system_name} =
       case killmail do
+        %Killmail{esi_data: %{"solar_system_id" => id, "solar_system_name" => name}}
+        when is_integer(id) ->
+          {to_string(id), name}
+
         %Killmail{esi_data: %{"solar_system_id" => id}} when is_integer(id) ->
-          to_string(id)
+          {to_string(id), "unknown"}
+
+        %{"esi_data" => %{"solar_system_id" => id, "solar_system_name" => name}}
+        when is_integer(id) ->
+          {to_string(id), name}
 
         %{"esi_data" => %{"solar_system_id" => id}} when is_integer(id) ->
-          to_string(id)
+          {to_string(id), "unknown"}
 
         _ ->
-          "unknown"
+          {"unknown", "unknown"}
       end
 
     # Compose outcome message
     character_name = (ctx && ctx.character_name) || "Websocket kill #{kill_id}"
     {_message, status} = get_log_details(persisted, notified, reason)
 
-    # Only log if there's a meaningful status change
-    if status != "skipped" || reason != "Not tracked by any character or system" do
-      AppLogger.kill_info(
-        "Kill #{kill_id} (#{status}) (persisted: #{persisted}, notified: #{notified})"
-      )
-    end
+    # Log all outcomes
+    AppLogger.kill_info(
+      "Kill #{kill_id} (#{status}) (system: #{system_name} [#{system_id}]) (persisted: #{persisted}, notified: #{notified}, reason: #{reason})"
+    )
   end
 
   # Helper function to get log message and status based on outcomes
