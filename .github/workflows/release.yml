@@ -43,15 +43,15 @@ jobs:
       - name: Debug version extraction
         run: |
           if [ -z "${{ steps.version.outputs.version }}" ]; then
-            echo "ERROR: Version output is empty!"
+            echo "::error::Version output is empty!"
             exit 1
           fi
           if [ -z "${{ steps.version.outputs.full_version }}" ]; then
-            echo "ERROR: Full version output is empty!"
+            echo "::error::Full version output is empty!"
             exit 1
           fi
           if [ -z "${{ steps.version.outputs.short_sha }}" ]; then
-            echo "ERROR: Short SHA output is empty!"
+            echo "::error::Short SHA output is empty!"
             exit 1
           fi
           echo "Version outputs:"
