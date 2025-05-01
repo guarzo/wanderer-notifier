@@ -223,6 +223,8 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       id = Map.get(entity, id_key)
       AppLogger.kill_debug("[Enrichment] Fetching #{name_key} for ID: #{id}")
       name = fetch_entity_name(id, fetch_fn, default_name)
+      # Ensure name is not nil or empty string
+      name = if is_nil(name) or name == "", do: default_name, else: name
       AppLogger.kill_debug("[Enrichment] Got name: #{name}")
       Map.put(entity, name_key, name)
     else
@@ -236,8 +238,8 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
     case fetch_fn.(id) do
       {:ok, info} ->
         name = Map.get(info, "name", default_name)
-        AppLogger.kill_debug("[Enrichment] Successfully fetched name: #{name}")
-        name
+        # Ensure name is not nil or empty string
+        if is_nil(name) or name == "", do: default_name, else: name
 
       error ->
         AppLogger.kill_warn("[Enrichment] Failed to fetch name: #{inspect(error)}")
