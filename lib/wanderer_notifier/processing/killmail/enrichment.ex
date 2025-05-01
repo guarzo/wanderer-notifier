@@ -91,7 +91,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
           victim_data: inspect(victim, limit: 200)
         )
 
-        enriched_victim = enrich_entity(victim)
+        enriched_victim = enrich_entity(victim, killmail.killmail_id)
         Map.put(esi_data, "victim", enriched_victim)
       else
         # Log and continue without adding placeholder
@@ -114,7 +114,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
             if(length(attackers) > 0, do: inspect(hd(attackers), limit: 200), else: nil)
         )
 
-        enriched_attackers = Enum.map(attackers, &enrich_entity/1)
+        enriched_attackers = Enum.map(attackers, &enrich_entity(&1, killmail.killmail_id))
         Map.put(esi_data, "attackers", enriched_attackers)
       else
         # Log and continue without adding placeholder
@@ -136,53 +136,56 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Private functions
 
-  # Enrich entity (victim or attacker) with additional information
-  defp enrich_entity(entity) when is_map(entity) do
+  # Add function header for enrich_entity/2 with default value
+  defp enrich_entity(entity, killmail_id) when is_map(entity) do
     AppLogger.kill_debug("[Enrichment] Enriching entity: #{inspect(entity)}")
 
     enriched =
       entity
-      |> add_character_name()
-      |> add_corporation_name()
-      |> add_alliance_name()
+      |> add_character_name(killmail_id)
+      |> add_corporation_name(killmail_id)
+      |> add_alliance_name(killmail_id)
       |> add_ship_name()
 
     AppLogger.kill_debug("[Enrichment] Enriched entity result: #{inspect(enriched)}")
     enriched
   end
 
-  defp enrich_entity(entity), do: entity
+  defp enrich_entity(entity, _killmail_id), do: entity
 
   # Add character name if missing
-  defp add_character_name(entity) do
+  defp add_character_name(entity, killmail_id) do
     add_entity_info(
       entity,
       "character_id",
       "character_name",
       &ESIService.get_character_info/1,
-      "Unknown Pilot"
+      "Unknown Pilot",
+      killmail_id
     )
   end
 
   # Add corporation name if missing
-  defp add_corporation_name(entity) do
+  defp add_corporation_name(entity, killmail_id) do
     add_entity_info(
       entity,
       "corporation_id",
       "corporation_name",
       &ESIService.get_corporation_info/1,
-      "Unknown Corp"
+      "Unknown Corp",
+      killmail_id
     )
   end
 
   # Add alliance name if missing
-  defp add_alliance_name(entity) do
+  defp add_alliance_name(entity, killmail_id) do
     add_entity_info(
       entity,
       "alliance_id",
       "alliance_name",
       &ESIService.get_alliance_info/1,
-      "Unknown Alliance"
+      "Unknown Alliance",
+      killmail_id
     )
   end
 
@@ -218,11 +221,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   # Generic function to add entity information if missing
-  defp add_entity_info(entity, id_key, name_key, fetch_fn, default_name) do
+  defp add_entity_info(entity, id_key, name_key, fetch_fn, default_name, killmail_id) do
     if Map.has_key?(entity, id_key) do
       id = Map.get(entity, id_key)
       AppLogger.kill_debug("[Enrichment] Fetching #{name_key} for ID: #{id}")
-      name = fetch_entity_name(id, fetch_fn, default_name)
+      name = fetch_entity_name(id, fetch_fn, default_name, killmail_id)
       # Ensure name is not nil or empty string
       name = if is_nil(name) or name == "", do: default_name, else: name
       AppLogger.kill_debug("[Enrichment] Got name: #{name}")
@@ -234,7 +237,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   end
 
   # Fetch entity name from ESI API
-  defp fetch_entity_name(id, fetch_fn, default_name) do
+  defp fetch_entity_name(id, fetch_fn, default_name, killmail_id) do
     case fetch_fn.(id) do
       {:ok, info} ->
         name = Map.get(info, "name", default_name)
@@ -242,7 +245,11 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         if is_nil(name) or name == "", do: default_name, else: name
 
       error ->
-        AppLogger.kill_warn("[Enrichment] Failed to fetch name: #{inspect(error)}")
+        AppLogger.kill_warn("[Enrichment] Failed to fetch name: #{inspect(error)}",
+          killmail_id: killmail_id,
+          entity_id: id
+        )
+
         default_name
     end
   end

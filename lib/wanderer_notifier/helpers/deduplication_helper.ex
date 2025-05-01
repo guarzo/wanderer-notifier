@@ -34,6 +34,9 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
           CacheRepo.set(cache_key, true, @dedup_ttl)
           {:ok, :new}
 
+        %{status: _status, reason: _reason} ->
+          {:ok, :duplicate}
+
         _ ->
           {:ok, :duplicate}
       end
@@ -53,5 +56,22 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   def handle_cast({:clear_key, key}, state) do
     CacheRepo.delete(key)
     {:noreply, state}
+  end
+
+  # When marking a killmail as seen, store the status and reason
+  def mark_kill_status(kill_id, status, reason \\ nil) do
+    cache_key = "kill:#{kill_id}"
+    CacheRepo.set(cache_key, %{status: status, reason: reason}, @dedup_ttl)
+  end
+
+  # When checking for duplicates, return the cached value if present
+  def duplicate_with_status?(kill_id) do
+    cache_key = "kill:#{kill_id}"
+
+    case CacheRepo.get(cache_key) do
+      nil -> {:ok, :new}
+      %{status: status, reason: reason} -> {:ok, :duplicate, status, reason}
+      _ -> {:ok, :duplicate, nil, nil}
+    end
   end
 end

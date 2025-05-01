@@ -4,6 +4,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Handles all kill-related notification decision logic.
   """
 
+  require Logger
+
   alias WandererNotifier.Config.Features
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
@@ -23,9 +25,44 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_id = get_kill_system_id(killmail)
     kill_id = get_kill_id(killmail)
 
+    # Deduplication check is performed before any persistence or notification.
+    # Only the first occurrence of a killmail (per kill_id) will be processed; all true duplicates are skipped.
     with true <- check_notifications_enabled(kill_id),
          true <- check_tracking(system_id, killmail) do
-      check_deduplication_and_decide(kill_id)
+      case DeduplicationHelper.duplicate_with_status?(kill_id) do
+        {:ok, :new} ->
+          # Determine notification status as before
+          result = check_deduplication_and_decide(kill_id)
+          # Mark the status and reason in the deduplication cache
+          status =
+            if result == {:ok, %{should_notify: true, reason: nil}},
+              do: "notified",
+              else: "skipped"
+
+          reason =
+            case result do
+              {:ok, %{reason: r}} -> r
+              _ -> nil
+            end
+
+          DeduplicationHelper.mark_kill_status(kill_id, status, reason)
+          result
+
+        {:ok, :duplicate, orig_status, orig_reason} ->
+          Logger.info("[Deduplication] Duplicate killmail detected and skipped",
+            kill_id: kill_id,
+            original_status: orig_status,
+            original_reason: orig_reason
+          )
+
+          {:ok,
+           %{
+             should_notify: false,
+             reason: "Duplicate kill",
+             original_status: orig_status,
+             original_reason: orig_reason
+           }}
+      end
     else
       false -> {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
       _ -> {:ok, %{should_notify: false, reason: "Notifications disabled"}}
