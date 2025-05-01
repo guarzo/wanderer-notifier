@@ -78,12 +78,18 @@ runs:
           FULL_VERSION="${UPDATED_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
           echo "Full version will be: ${FULL_VERSION}"
 
-          # Set outputs using printf to ensure no trailing newlines
+          # Set all outputs first, before any debug output
           {
-            printf "version=%s\n" "${UPDATED_VERSION}"
-            printf "full_version=%s\n" "${FULL_VERSION}"
+            echo "version=${UPDATED_VERSION}"
+            echo "full_version=${FULL_VERSION}"
+            echo "short_sha=${SHORT_SHA}"
           } >> "$GITHUB_OUTPUT"
           
+          # Now do debug output
+          echo "Debug: Version set to: ${UPDATED_VERSION}"
+          echo "Debug: Full version set to: ${FULL_VERSION}"
+          echo "Debug: Short SHA set to: ${SHORT_SHA}"
+
           echo "Debug: Contents of GITHUB_OUTPUT:"
           cat "$GITHUB_OUTPUT"
           

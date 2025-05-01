@@ -42,9 +42,22 @@ jobs:
 
       - name: Debug version extraction
         run: |
-          echo "steps.version.outputs.version: ${{ steps.version.outputs.version }}"
-          echo "steps.version.outputs.full_version: ${{ steps.version.outputs.full_version }}"
-          echo "steps.version.outputs.short_sha: ${{ steps.version.outputs.short_sha }}"
+          if [ -z "${{ steps.version.outputs.version }}" ]; then
+            echo "ERROR: Version output is empty!"
+            exit 1
+          fi
+          if [ -z "${{ steps.version.outputs.full_version }}" ]; then
+            echo "ERROR: Full version output is empty!"
+            exit 1
+          fi
+          if [ -z "${{ steps.version.outputs.short_sha }}" ]; then
+            echo "ERROR: Short SHA output is empty!"
+            exit 1
+          fi
+          echo "Version outputs:"
+          echo "  version: ${{ steps.version.outputs.version }}"
+          echo "  full_version: ${{ steps.version.outputs.full_version }}"
+          echo "  short_sha: ${{ steps.version.outputs.short_sha }}"
 
       - name: Update workflow title
         run: |
@@ -53,6 +66,10 @@ jobs:
       - name: Debug tag value before creation
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Version is empty before tag creation!"
+            exit 1
+          fi
           echo "About to create tag: v$VERSION"
 
       - name: Create version bump commit and tag

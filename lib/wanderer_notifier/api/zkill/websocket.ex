@@ -271,6 +271,13 @@ defmodule WandererNotifier.Api.ZKill.Websocket do
 
     case Jason.decode(raw_msg, keys: :strings) do
       {:ok, json_data} ->
+        # Log killmail reception if it is a killmail
+        if Map.has_key?(json_data, "killmail_id") do
+          AppLogger.websocket_info("Received killmail from websocket", %{
+            kill_id: json_data["killmail_id"]
+          })
+        end
+
         # Log the type of message using batch logging to reduce volume
         message_type = classify_message_type(json_data)
         AppLogger.count_batch_event(:websocket_message, %{type: message_type})
