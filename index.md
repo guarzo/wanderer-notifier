@@ -63,79 +63,9 @@ WANDERER_MAP_TOKEN=your_map_api_token
 WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 
 # Feature Flags (default values shown below)
-# WANDERER_FEATURE_KILL_NOTIFICATIONS=true
-# WANDERER_FEATURE_CHARACTER_NOTIFICATIONS=true
-# WANDERER_FEATURE_SYSTEM_NOTIFICATIONS=true
+# WANDERER_KILL_NOTIFICATIONS_ENABLED=true
+# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true
+# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true
 # WANDERER_DISABLE_STATUS_MESSAGES=false # Disable startup and status notifications
 # WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
 ```
-
-
-> **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
-
-#### 3. Create the Docker Compose Configuration
-
-Create a file named `docker-compose.yml` with the following content:
-
-```yaml
-services:
-  wanderer_notifier:
-    image: guarzo/wanderer-notifier:v1
-    container_name: wanderer-notifier
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "${WANDERER_PORT:-4000}:4000"
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-      restart_policy:
-        condition: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    volumes:
-      - wanderer_data:/app/data
-
-volumes:
-  wanderer_data:
-    name: wanderer_data
-```
-
-#### 4. Run It
-
-Start the service with Docker Compose:
-
-```bash
-docker-compose up -d
-```
-
-Your notifier is now up and running, delivering alerts to your Discord channel automatically!
-
-## Configuration Validation
-
-On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them. This ensures that your notifier is properly configured before it begins operation.
-
-## Features
-
-- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
-- **Data Enrichment:** Retrieves detailed killmail information from ESI
-- **Map-Based Filtering:** Uses a custom map API to track wormhole systems (with option to include K-Space systems) and process only kills from systems you care about
-- **Periodic Maintenance:** Automatically updates system data and processes backup kills
-- **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
-- **Web Dashboard:** Access system status and notification statistics via the built-in web interface
-- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
-
-[Learn more about notification types](./notifications.html)
-
-[View on GitHub](https://github.com/guarzo/wanderer-notifier)

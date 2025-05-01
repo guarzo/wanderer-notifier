@@ -143,7 +143,8 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
    - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
    - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
+   - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system kill notifications
+   - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character kill notifications
    - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
    - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
    - `WANDERER_DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
@@ -151,45 +152,26 @@ All environment variables now use a standardized `WANDERER_` prefix.
 2. **License Configuration**
 
    - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
-   - `WANDERER_LICENSE_MANAGER_URL`: URL for the license manager service (defaults to production service)
 
 3. **Map API Configuration**
 
    - `WANDERER_MAP_URL`: URL of the map service
    - `WANDERER_MAP_TOKEN`: Authentication token for map API
 
-4. **Database Configuration**
+4. **Web Server Configuration**
 
-   - `WANDERER_DB_USERNAME`: Database username (default: postgres)
-   - `WANDERER_DB_PASSWORD`: Database password (default: postgres)
-   - `WANDERER_DB_HOSTNAME`: Database hostname (default: postgres)
-   - `WANDERER_DB_NAME`: Database name (default: wanderer*notifier*[environment])
-   - `WANDERER_DB_PORT`: Database port (default: 5432)
-   - `WANDERER_DB_POOL_SIZE`: Connection pool size (default: 10)
-
-5. **Web Server Configuration**
-
-   - `WANDERER_WEB_PORT`: Port for the web server (default: 4000)
-   - `WANDERER_WEB_HOST`: Host for the web server (default: localhost)
+   - `WANDERER_PORT`: Port for the web server (default: 4000)
+   - `WANDERER_HOST`: Host for the web server (default: localhost)
    - `WANDERER_PUBLIC_URL`: Public URL for the web interface
 
-6. **WebSocket Configuration**
+5. **Feature Flags**
 
-   - `WANDERER_WEBSOCKET_ENABLED`: Enable/disable websocket connection (default: true)
-   - `WANDERER_WEBSOCKET_RECONNECT_DELAY`: Delay between reconnection attempts in ms (default: 5000)
-
-7. **Feature Flags**
-
-   - `WANDERER_FEATURE_KILL_NOTIFICATIONS`: Enable kill notifications (default: true)
-   - `WANDERER_FEATURE_SYSTEM_NOTIFICATIONS`: Enable system notifications (default: true)
-   - `WANDERER_FEATURE_CHARACTER_NOTIFICATIONS`: Enable character notifications (default: true)
-   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: false)
-   - `WANDERER_FEATURE_KILL_CHARTS`: Enable kill charts (default: false)
-   - `WANDERER_FEATURE_MAP_CHARTS`: Enable map charts (default: false)
-   - `WANDERER_FEATURE_ACTIVITY_CHARTS`: Enable activity charts (default: false)
+   - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
+   - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
+   - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
 
-8. **Character Configuration**
+6. **Character Configuration**
 
    - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
 
@@ -225,7 +207,6 @@ Wanderer Notifier follows an event-driven, functional, and component-based archi
 - Notifications are determined based on configured rules
 - Messages are formatted and sent to Discord channels
 
-
 ## License
 
 This project is licensed according to the terms in the LICENSE file.
@@ -238,7 +219,7 @@ If you encounter issues or have questions, please open an issue on the project r
 
 ```
  mix archive.install hex bunt
- 
+
  docker buildx build . \
   --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \
