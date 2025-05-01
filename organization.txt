@@ -350,72 +350,58 @@ REMAINING CRITICAL CLEANUP & MIGRATION TASKS
 - Update all references in the codebase to use WandererNotifier.Map.Client.
 - Remove any placeholder or stub client modules in the map context.
 
+## Progress Update (as of latest review)
 
+### Completed/Confirmed Items
 
+- **Leftover HTTP helpers:**
+  - `lib/wanderer_notifier/http_client/` contains only `behaviour.ex` and `httpoison.ex`.
+  - `error_handler.ex` and `url_builder.ex` do not exist.
+  - ✅ No action needed.
 
-### Remaining tasks 
+- **Logger behaviour stub:**
+  - Removed `lib/wanderer_notifier/logger/behaviour.ex`.
+  - ✅ Done.
 
-1. Leftover HTTP helpers
-Where: lib/wanderer_notifier/http_client/
-Files to remove:
+- **Duplicate application.ex:**
+  - Removed `lib/wanderer_notifier/config/application.ex`, keeping only the root version.
+  - ✅ Done.
 
-error_handler.ex
+- **Cache "repository" vs "behaviour" overlap:**
+  - Removed `lib/wanderer_notifier/cache/repository.ex`.
+  - ✅ Done.
 
-url_builder.ex
-You only need behaviour.ex + httpoison.ex under that folder ​
-.
+### Items In Progress / Next Steps
 
-2. Map‐API split across two contexts
-Where:
+#### 1. Map‐API split across two contexts
+- All map-related files are now in `lib/wanderer_notifier/map/` (e.g., `characters_client.ex`, `client.ex`, `systems_client.ex`).
+- No `api/clients/` directory exists, so no stray files there.
+- **Next:** Confirm that all map clients are in `map/` and delete any duplicate or placeholder files elsewhere (none found so far).
 
-lib/wanderer_notifier/api/characters_client.ex (and similar under api/)
+#### 2. "notifications" vs "notification"
+- Both `lib/wanderer_notifier/notifications/` and (possibly) `lib/wanderer_notifier/notification/` exist.
+- `notifications/` contains: `behaviour.ex`, `factory.ex`, `factory_behaviour.ex`, `interface.ex`, `killmail_notification.ex`, `utils.ex`, and subfolders `determiner/`, `formatters/`.
+- **Next:** If both exist, merge into `notifications/` (plural form chosen), move all logic there, and delete the unused folder.
 
-lib/wanderer_notifier/map/*.ex
-Pick one home for “map” clients (e.g. api/clients/map_*) and move/alias the others into it, then delete the stray map/ folder ​
-.
+#### 3. "notifiers" vs "notifier"
+- `lib/wanderer_notifier/notifier/` exists with subfolders and files.
+- Could not confirm if `notifiers/` exists (tool error).
+- **Next:** If both exist, merge into `notifiers/` (plural form chosen), move all logic there, and delete the unused folder.
 
-3. “notification” vs “notifications”
-You have both:
+#### 4. Config folder fragmentation
+- `lib/wanderer_notifier/config/` contains many files (e.g., `behaviour.ex`, `features_behaviour.ex`, `api.ex`, `websocket.ex`, etc.).
+- **Next:** Collapse into a single `Config` module/context, delete unused helpers.
 
-lib/wanderer_notifier/notification/…
+---
 
-lib/wanderer_notifier/notifications/…
-Merge into one context (singular or plural), relocate its determiners/formatters/factory there, then delete the unused folder ​
-.
+### Plural Form Decision
+- The plural form will be used for final context names: `notifications/`, `notifiers/`.
 
-4. “notifier” vs “notifiers”
-Similarly:
+---
 
-lib/wanderer_notifier/notifier/…
-
-lib/wanderer_notifier/notifiers/…
-Consolidate into one, then purge the redundant modules ​
-.
-
-5. Config folder fragmentation
-Under lib/wanderer_notifier/config/ you’ve still got a grab-bag of modules (behaviour.ex, features_behaviour.ex, api.ex, websocket.ex, etc.). Consider collapsing that into:
-
-One WandererNotifier.Config module (with sub-modules where absolutely necessary), or
-
-A true “config” context with only the runtime loaders you need.
-Then delete any truly unused helpers ​
-.
-
-6. Duplicate application.ex
-You have both:
-
-lib/wanderer_notifier/application.ex
-
-lib/wanderer_notifier/config/application.ex
-Keep only the root one; remove the spurious config/application.ex ​
-.
-
-7. Logger behaviour stub
-In lib/wanderer_notifier/logger/ you still have behaviour.ex alongside your facade logger.ex. Remove the old behaviour file—everything should go through your one WandererNotifier.Logger ​
-.
-
-8. Cache “repository” vs “behaviour” overlap
-You’ve got both lib/wanderer_notifier/cache/behaviour.ex and cache/repository.ex. Pick one behaviour (Cache.Behaviour) and a single repo/delegator module, then delete the extra file ​
-.
-
-Once you’ve pruned those, you’ll have a one-to-one mapping of contexts → folders → modules, with no stray or half-migrated pieces lingering. Let me know if you’d like diffs or shell snippets to remove them in bulk!
+### Immediate Next Steps
+1. Check for existence of `lib/wanderer_notifier/notification/` and `lib/wanderer_notifier/notifiers/` using alternate methods.
+2. If they exist, list their contents and plan the merge into the plural form.
+3. Begin merging `notifications/notification` and `notifiers/notifier` contexts.
+4. Plan config folder consolidation.
+5. Confirm all map clients are in `map/` and delete any stray/duplicate files.
