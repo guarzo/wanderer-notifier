@@ -655,17 +655,9 @@ defmodule WandererNotifier.Processing.Killmail.Comparison do
       |> filter(kill_time >= ^start_date)
       |> filter(kill_time <= ^end_date)
 
-    case Api.read(query) do
-      {:ok, kills} ->
-        {:ok, kills}
-
-      error ->
-        AppLogger.processor_error("Error fetching our kills",
-          error: inspect(error),
-          character_id: character_id
-        )
-
-        error
+    case Killmail.read_safely(query) do
+      {:ok, kills} -> {:ok, kills}
+      {:error, error} -> {:error, error}
     end
   end
 

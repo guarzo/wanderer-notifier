@@ -11,7 +11,6 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.{Enrichment, Notification}
-  alias WandererNotifier.Resources.KillmailPersistence
 
   @type killmail :: Killmail.t()
   @type result :: {:ok, killmail()} | {:error, term()}
@@ -83,19 +82,21 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
 
   @spec maybe_persist_killmail(killmail(), Context.t()) :: result()
   defp maybe_persist_killmail(killmail, ctx) do
-    case KillmailPersistence.maybe_persist_killmail(killmail, ctx.character_id) do
+    case WandererNotifier.Resources.KillmailPersistence.maybe_persist_killmail(
+           killmail,
+           ctx.character_id
+         ) do
       {:ok, :persisted} ->
-        Metrics.track_persistence(ctx)
         {:ok, killmail}
 
-      {:ok, :already_exists} ->
+      {:ok, :not_persisted} ->
         {:ok, killmail}
 
       :ignored ->
         {:ok, killmail}
 
-      error ->
-        error
+      {:error, error} ->
+        {:error, error}
     end
   end
 

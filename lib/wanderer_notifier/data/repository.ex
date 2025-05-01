@@ -8,7 +8,6 @@ defmodule WandererNotifier.Data.Repository do
   alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Logger.AppLogger, as: Logger
-  alias WandererNotifier.Resources.Api
   alias WandererNotifier.Resources.Killmail
   require Ash.Query
 
@@ -74,7 +73,7 @@ defmodule WandererNotifier.Data.Repository do
       )
       |> Ash.Query.aggregate(:count, :id, :total)
 
-    case Api.read(query) do
+    case Killmail.read_safely(query) do
       {:ok, [%{total: count}]} -> count
       _ -> 0
     end
@@ -102,7 +101,7 @@ defmodule WandererNotifier.Data.Repository do
       |> Ash.Query.sort(updated_at: :desc)
       |> Ash.Query.limit(1)
 
-    case Api.read(query) do
+    case Killmail.read_safely(query) do
       {:ok, [kill]} -> kill.updated_at
       _ -> nil
     end

@@ -16,6 +16,7 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.NeoClient, as: DiscordClient
   alias WandererNotifier.Resources.Api
+  alias WandererNotifier.Resources.Killmail
   alias WandererNotifier.Resources.KillmailStatistic
   alias WandererNotifier.Resources.TrackedCharacter
 
@@ -496,39 +497,24 @@ defmodule WandererNotifier.ChartService.KillmailChartAdapter do
   end
 
   # Get weekly statistics for tracked characters
-  defp get_weekly_stats(tracked_characters) do
-    # Get character IDs
-    character_ids = Enum.map(tracked_characters, & &1.character_id)
-
-    # Get the current date and calculate the most recent week start
-    today = Date.utc_today()
-    days_since_monday = Date.day_of_week(today) - 1
-    week_start = Date.add(today, -days_since_monday)
-
-    # Query for weekly stats for these characters - using proper Ash.Query filter syntax
-    case KillmailStatistic
-         |> Query.filter(character_id: [in: character_ids])
-         |> Query.filter(period_type: :weekly)
-         |> Query.filter(period_start: week_start)
-         |> Query.load([
-           :character_id,
-           :character_name,
-           :kills_count,
-           :deaths_count,
-           :isk_destroyed,
-           :isk_lost,
-           :solo_kills_count,
-           :final_blows_count,
-           :period_start,
-           :period_end
-         ])
-         |> Api.read() do
-      {:ok, stats} ->
-        stats
-
-      {:error, error} ->
-        AppLogger.kill_error("Error fetching weekly stats", error: inspect(error))
-        []
+  defp get_weekly_stats(_tracked_characters) do
+    # Get weekly statistics for these characters
+    case Killmail.read_safely(
+           KillmailStatistic
+           |> Query.filter(period_type == "weekly")
+           |> Query.sort(period_start: :desc)
+           |> Query.limit(1)
+         ) do
+      {:ok, [latest_stat | _]} ->
+        # Get all stats for this period
+        case Killmail.read_safely(
+               KillmailStatistic
+               |> Query.filter(period_start == ^latest_stat.period_start)
+               |> Query.filter(period_type == "weekly")
+             ) do
+          {:ok, stats} -> stats
+          _ -> []
+        end
 
       _ ->
         []
