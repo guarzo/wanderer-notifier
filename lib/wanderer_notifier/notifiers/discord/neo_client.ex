@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.NeoClient do
+defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   @moduledoc """
   Neo client for Discord integration.
   Handles direct communication with Discord's API.

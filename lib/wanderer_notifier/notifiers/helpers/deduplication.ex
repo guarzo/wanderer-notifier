@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Helpers.Deduplication do
+defmodule WandererNotifier.Notifiers.Helpers.Deduplication do
   @moduledoc """
   Helper module for preventing duplicate notifications in WandererNotifier.
   Uses ETS for fast lookups and automatic expiration of entries.

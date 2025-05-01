@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Helpers.TestNotifications do
+defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   @moduledoc """
   Helper module for sending test notifications.
   """
@@ -10,8 +10,8 @@ defmodule WandererNotifier.Notifier.Helpers.TestNotifications do
   alias WandererNotifier.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifier.Discord.Notifier, as: NotificationInterface
-  alias WandererNotifier.Notifier.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Discord.Notifier, as: NotificationInterface
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Killmail.ZKillClient
 
   @doc """

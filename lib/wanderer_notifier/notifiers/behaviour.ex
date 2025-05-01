@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Behaviour do
+defmodule WandererNotifier.Notifiers.Behaviour do
   @moduledoc """
   Defines the behaviour for notification delivery.
   This includes sending notifications through various channels (e.g., Discord).

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.ComponentBuilder do
+defmodule WandererNotifier.Notifiers.Discord.ComponentBuilder do
   @moduledoc """
   Builds Discord message components like buttons and action rows.
   """

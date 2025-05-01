@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Formatters.Structured do
+defmodule WandererNotifier.Notifiers.Formatters.Structured do
   @moduledoc """
   Structured notification formatting utilities for Discord notifications.
 
@@ -13,7 +13,7 @@ defmodule WandererNotifier.Notifier.Formatters.Structured do
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Cache.{Keys, Repository}
-  alias WandererNotifier.Notifier.Discord.Constants
+  alias WandererNotifier.Notifiers.Discord.Constants
 
   # Get configured services
   defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)

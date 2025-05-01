@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.Behaviour do
+defmodule WandererNotifier.Notifiers.Discord.Behaviour do
   @moduledoc """
   Behaviour for Discord notification implementations.
   """

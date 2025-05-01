@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.Notifier do
+defmodule WandererNotifier.Notifiers.Discord.Notifier do
   @moduledoc """
   Discord notification service.
   Handles sending notifications to Discord using the Nostrum client.
@@ -11,10 +11,10 @@ defmodule WandererNotifier.Notifier.Discord.Notifier do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
-  alias WandererNotifier.Notifier.Discord.ComponentBuilder
-  alias WandererNotifier.Notifier.Discord.FeatureFlags
-  alias WandererNotifier.Notifier.Discord.NeoClient
-  alias WandererNotifier.Notifier.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Discord.ComponentBuilder
+  alias WandererNotifier.Notifiers.Discord.FeatureFlags
+  alias WandererNotifier.Notifiers.NeoClient
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Killmail.Killmail
 
   # Default embed colors

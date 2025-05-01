@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.Constants do
+defmodule WandererNotifier.Notifiers.Discord.Constants do
   @moduledoc """
   Constants used in Discord notifications.
   """

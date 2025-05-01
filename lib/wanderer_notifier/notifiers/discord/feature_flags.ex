@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifier.Discord.FeatureFlags do
+defmodule WandererNotifier.Notifiers.Discord.FeatureFlags do
   @moduledoc """
   Feature flags for Discord notification functionality.
   """
