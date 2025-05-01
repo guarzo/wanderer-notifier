@@ -24,34 +24,20 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- create_killmail(zkb_data),
-         {:ok, enriched} <- enrich_killmail(killmail) do
-      case check_tracking(enriched) do
-        {:ok, tracked} ->
-          with {:ok, persisted} <- maybe_persist_killmail(tracked, ctx),
-               {:ok, should_notify, reason} <- check_notification(persisted, ctx),
-               {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
-            Metrics.track_processing_complete(ctx, {:ok, result})
-
-            log_killmail_outcome(enriched, ctx,
-              persisted: true,
-              notified: should_notify,
-              reason: reason
-            )
-
-            {:ok, result}
-          else
-            error ->
-              Metrics.track_processing_error(ctx)
-              log_killmail_error(enriched, ctx, error)
-              error
-          end
-
-        {:error, {:skipped, reason}} ->
-          Metrics.track_processing_skipped(ctx)
-          log_killmail_outcome(enriched, ctx, persisted: false, notified: false, reason: reason)
-          {:ok, :skipped}
-      end
+         {:ok, enriched} <- enrich_killmail(killmail),
+         {:ok, tracked} <- check_tracking(enriched),
+         {:ok, persisted} <- maybe_persist_killmail(tracked, ctx),
+         {:ok, should_notify, reason} <- check_notification(persisted, ctx),
+         {:ok, result} <- maybe_send_notification(persisted, should_notify, ctx) do
+      Metrics.track_processing_complete(ctx, {:ok, result})
+      log_killmail_outcome(result, ctx, persisted: true, notified: should_notify, reason: reason)
+      {:ok, result}
     else
+      {:error, {:skipped, reason}} ->
+        Metrics.track_processing_skipped(ctx)
+        log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
+        {:ok, :skipped}
+
       error ->
         Metrics.track_processing_error(ctx)
         log_killmail_error(zkb_data, ctx, error)
@@ -188,34 +174,26 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
        ) do
     kill_id = get_kill_id(killmail)
 
-    # Get system info from ESI data
-    {system_id, system_name} =
+    # Get system info directly from ESI data
+    system_id =
       case killmail do
-        %Killmail{esi_data: %{"solar_system_id" => id, "solar_system_name" => name}}
-        when is_integer(id) ->
-          {to_string(id), name}
-
         %Killmail{esi_data: %{"solar_system_id" => id}} when is_integer(id) ->
-          {to_string(id), "unknown"}
-
-        %{"esi_data" => %{"solar_system_id" => id, "solar_system_name" => name}}
-        when is_integer(id) ->
-          {to_string(id), name}
+          to_string(id)
 
         %{"esi_data" => %{"solar_system_id" => id}} when is_integer(id) ->
-          {to_string(id), "unknown"}
+          to_string(id)
 
         _ ->
-          {"unknown", "unknown"}
+          "unknown"
       end
 
     # Compose outcome message
     character_name = (ctx && ctx.character_name) || "Websocket kill #{kill_id}"
-    {_message, status} = get_log_details(persisted, notified, reason)
+    {message, status} = get_log_details(persisted, notified, reason)
 
     # Log all outcomes
     AppLogger.kill_info(
-      "Kill #{kill_id} (#{status}) (system: #{system_name} [#{system_id}]) (persisted: #{persisted}, notified: #{notified}, reason: #{reason})"
+      "Kill #{kill_id} (#{status}) (persisted: #{persisted}, notified: #{notified}, reason: #{reason})"
     )
   end
 

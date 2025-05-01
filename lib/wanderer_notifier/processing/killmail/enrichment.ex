@@ -25,17 +25,14 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   - {:ok, :skipped} if the killmail should not be notified
   """
   def process_and_notify(killmail) do
-    # Log each received kill
-    AppLogger.kill_info("Received websocket kill: #{killmail.killmail_id}")
-
-    # Enrich the killmail data first
-    enriched_killmail = enrich_killmail_data(killmail)
-
     # Check if we should notify about this kill
-    should_notify = KillDeterminer.should_notify?(enriched_killmail)
+    should_notify = KillDeterminer.should_notify?(killmail)
 
     result =
       if should_notify do
+        # Enrich the killmail data
+        enriched_killmail = enrich_killmail_data(killmail)
+
         # Send notification and convert return value
         case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
           {:ok, _kill_id} ->
