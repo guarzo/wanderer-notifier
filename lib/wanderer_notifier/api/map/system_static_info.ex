@@ -71,7 +71,6 @@ defmodule WandererNotifier.Api.Map.SystemStaticInfo do
   alias WandererNotifier.Api.Map.ResponseValidator
   alias WandererNotifier.Api.Map.UrlBuilder
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
   alias WandererNotifier.Config.Timings
 

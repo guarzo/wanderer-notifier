@@ -210,7 +210,7 @@ defmodule WandererNotifier.KillmailProcessing.Pipeline do
       end
 
     # Compose outcome message
-    character_name = (ctx && ctx.character_name) || "Websocket kill #{kill_id}"
+    _character_name = (ctx && ctx.character_name) || "Websocket kill #{kill_id}"
     {_message, status} = get_log_details(persisted, notified, reason)
 
     # Log all outcomes
