@@ -78,24 +78,28 @@ runs:
           FULL_VERSION="${UPDATED_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
           echo "Full version will be: ${FULL_VERSION}"
 
-          # Set all outputs first, before any debug output
+          # Set outputs in a more explicit way
           {
             echo "version=${UPDATED_VERSION}"
             echo "full_version=${FULL_VERSION}"
             echo "short_sha=${SHORT_SHA}"
-          } >> "$GITHUB_OUTPUT"
+          } > "$GITHUB_OUTPUT"
           
-          # Now do debug output
-          echo "Debug: Version set to: ${UPDATED_VERSION}"
-          echo "Debug: Full version set to: ${FULL_VERSION}"
-          echo "Debug: Short SHA set to: ${SHORT_SHA}"
-
-          echo "Debug: Contents of GITHUB_OUTPUT:"
+          # Verify outputs were set
+          echo "Debug: Verifying outputs were set correctly:"
+          echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT"
           
-          echo "Debug: Showing contents of VERSION file:"
+          # Additional debug information
+          echo "Debug: Version information:"
+          echo "- Version: ${UPDATED_VERSION}"
+          echo "- Full version: ${FULL_VERSION}"
+          echo "- Short SHA: ${SHORT_SHA}"
+          
+          echo "Debug: File contents:"
+          echo "VERSION file:"
           cat VERSION
-          echo "Debug: Showing relevant line from mix.exs:"
+          echo "mix.exs version line:"
           grep "version:" mix.exs
         else
           echo "Invalid mode: ${{ inputs.mode }}"
