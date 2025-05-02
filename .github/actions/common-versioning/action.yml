@@ -13,25 +13,32 @@ inputs:
 outputs:
   short_sha:
     description: "Short SHA of the current commit"
+    value: ${{ steps.versioning.outputs.short_sha }}
   version:
     description: "Version number (for release and adhoc modes)"
+    value: ${{ steps.versioning.outputs.version }}
   full_version:
     description: "Full version string including build metadata"
+    value: ${{ steps.versioning.outputs.full_version }}
   dev_version:
     description: "Development version string (for automatic mode)"
+    value: ${{ steps.versioning.outputs.dev_version }}
   safe_branch:
     description: "Sanitized branch name (for adhoc mode)"
+    value: ${{ steps.versioning.outputs.safe_branch }}
   docker_tags:
     description: "Comma-separated list of Docker tags to apply"
+    value: ${{ steps.versioning.outputs.docker_tags }}
 runs:
   using: "composite"
   steps:
     - name: Run versioning script
+      id: versioning
       shell: bash
       run: |
         set -x  # Enable debug output
         SHORT_SHA=$(git rev-parse --short HEAD)
-        echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+        echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
         if [ "${{ inputs.mode }}" = "adhoc" ]; then
           if [ -z "${{ inputs.branch }}" ]; then
@@ -42,15 +49,19 @@ runs:
           CURRENT_VERSION=$(./scripts/version.sh get)
           FULL_VERSION="${CURRENT_VERSION}-${SAFE_BRANCH}+$(date +'%Y%m%d').${SHORT_SHA}"
           DOCKER_TAG_LIST="guarzo/wanderer-notifier:branch-${SAFE_BRANCH},guarzo/wanderer-notifier:branch-${SAFE_BRANCH}-$(date +'%Y%m%d')-${SHORT_SHA}"
-          echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "full_version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "docker_tags=${DOCKER_TAG_LIST}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${CURRENT_VERSION}"
+            echo "full_version=${FULL_VERSION}"
+            echo "safe_branch=${SAFE_BRANCH}"
+            echo "docker_tags=${DOCKER_TAG_LIST}"
+          } >> $GITHUB_OUTPUT
         elif [ "${{ inputs.mode }}" = "automatic" ]; then
           DEV_VERSION="dev-$(date +'%Y%m%d')-${SHORT_SHA}"
           DOCKER_TAGS="guarzo/wanderer-notifier:dev,guarzo/wanderer-notifier:sha-${SHORT_SHA}"
-          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "docker_tags=${DOCKER_TAGS}" >> "$GITHUB_OUTPUT"
+          {
+            echo "dev_version=${DEV_VERSION}"
+            echo "docker_tags=${DOCKER_TAGS}"
+          } >> $GITHUB_OUTPUT
         elif [ "${{ inputs.mode }}" = "release" ]; then
           if [ -z "${{ inputs.version_type }}" ]; then
             echo "Version type input is required for release mode"
@@ -78,12 +89,12 @@ runs:
           FULL_VERSION="${UPDATED_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
           echo "Full version will be: ${FULL_VERSION}"
 
-          # Set outputs in a more explicit way
+          # Set outputs using GitHub Actions output syntax
           {
             echo "version=${UPDATED_VERSION}"
             echo "full_version=${FULL_VERSION}"
             echo "short_sha=${SHORT_SHA}"
-          } > "$GITHUB_OUTPUT"
+          } >> $GITHUB_OUTPUT
           
           # Verify outputs were set
           echo "Debug: Verifying outputs were set correctly:"
