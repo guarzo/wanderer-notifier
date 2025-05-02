@@ -12,6 +12,7 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Processing.Killmail.Notification, as: KillNotification
+  alias WandererNotifier.Api.Map.SystemStaticInfo
 
   @doc """
   Process and notify about a killmail.
@@ -24,34 +25,52 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   - {:ok, :skipped} if the killmail should not be notified
   """
   def process_and_notify(killmail) do
+    # Log each received kill
+    AppLogger.kill_info("Received websocket kill: #{killmail.killmail_id}")
+
+    # Enrich the killmail data first
+    enriched_killmail = enrich_killmail_data(killmail)
+
     # Check if we should notify about this kill
-    should_notify = KillDeterminer.should_notify?(killmail)
+    should_notify = KillDeterminer.should_notify?(enriched_killmail)
 
-    if should_notify do
-      # Enrich the killmail data
-      enriched_killmail = enrich_killmail_data(killmail)
+    result =
+      if should_notify do
+        # Send notification and convert return value
+        case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
+          {:ok, _kill_id} ->
+            AppLogger.kill_info("Kill notification sent successfully", %{
+              kill_id: killmail.killmail_id
+            })
 
-      # Send notification and convert return value
-      case KillNotification.send_kill_notification(enriched_killmail, killmail.killmail_id) do
-        {:ok, _kill_id} ->
-          AppLogger.kill_info("Kill notification sent successfully", %{
-            kill_id: killmail.killmail_id
-          })
+            :ok
 
-          :ok
+          {:error, reason} ->
+            AppLogger.kill_error("Failed to send kill notification", %{
+              kill_id: killmail.killmail_id,
+              error: inspect(reason)
+            })
 
-        {:error, reason} ->
-          AppLogger.kill_error("Failed to send kill notification", %{
-            kill_id: killmail.killmail_id,
-            error: inspect(reason)
-          })
-
-          {:error, reason}
+            {:error, reason}
+        end
+      else
+        AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
+        {:ok, :skipped}
       end
-    else
-      AppLogger.kill_debug("Skipping notification for killmail: #{killmail.killmail_id}")
-      {:ok, :skipped}
-    end
+
+    # Log the final outcome
+    status =
+      case result do
+        :ok -> "processed_and_notified"
+        {:ok, :skipped} -> "skipped"
+        {:error, _} -> "error"
+      end
+
+    AppLogger.kill_info(
+      "Kill #{killmail.killmail_id} outcome: #{status} (should_notify: #{should_notify})"
+    )
+
+    result
   end
 
   @doc """
@@ -66,19 +85,15 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   def enrich_killmail_data(%Killmail{} = killmail) do
     %Killmail{esi_data: esi_data} = killmail
 
-    AppLogger.kill_debug("[Enrichment] Starting enrichment process",
-      kill_id: killmail.killmail_id,
-      initial_esi_data: inspect(esi_data, limit: 500)
+    AppLogger.kill_debug(
+      "[Enrichment] Starting enrichment process for kill #{killmail.killmail_id}"
     )
 
-    # Enrich with system name if needed
+    # Enrich with system name first
     esi_data = enrich_with_system_name(esi_data)
 
-    AppLogger.kill_debug("[Enrichment] After system name enrichment",
-      kill_id: killmail.killmail_id,
-      system_name: Map.get(esi_data, "solar_system_name"),
-      has_victim: Map.has_key?(esi_data, "victim"),
-      has_attackers: Map.has_key?(esi_data, "attackers")
+    AppLogger.kill_debug(
+      "[Enrichment] System name enrichment complete for kill #{killmail.killmail_id}: #{Map.get(esi_data, "solar_system_name", "unknown")}"
     )
 
     # Enrich victim data if available
@@ -86,17 +101,15 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       if Map.has_key?(esi_data, "victim") do
         victim = Map.get(esi_data, "victim")
 
-        AppLogger.kill_debug("[Enrichment] Processing victim data",
-          kill_id: killmail.killmail_id,
-          victim_data: inspect(victim, limit: 200)
+        AppLogger.kill_debug(
+          "[Enrichment] Processing victim data for kill #{killmail.killmail_id}"
         )
 
         enriched_victim = enrich_entity(victim, killmail.killmail_id)
         Map.put(esi_data, "victim", enriched_victim)
       else
-        # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing victim data in killmail",
-          kill_id: killmail.killmail_id
+        AppLogger.kill_warning(
+          "[Enrichment] Missing victim data in killmail #{killmail.killmail_id}"
         )
 
         esi_data
@@ -107,27 +120,22 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
       if Map.has_key?(esi_data, "attackers") do
         attackers = Map.get(esi_data, "attackers", [])
 
-        AppLogger.kill_debug("[Enrichment] Processing attackers data",
-          kill_id: killmail.killmail_id,
-          attackers_count: length(attackers),
-          sample_attacker:
-            if(length(attackers) > 0, do: inspect(hd(attackers), limit: 200), else: nil)
+        AppLogger.kill_debug(
+          "[Enrichment] Processing #{length(attackers)} attackers for kill #{killmail.killmail_id}"
         )
 
         enriched_attackers = Enum.map(attackers, &enrich_entity(&1, killmail.killmail_id))
         Map.put(esi_data, "attackers", enriched_attackers)
       else
-        # Log and continue without adding placeholder
-        AppLogger.kill_warning("[Enrichment] Missing attackers data in killmail",
-          kill_id: killmail.killmail_id
+        AppLogger.kill_warning(
+          "[Enrichment] Missing attackers data in killmail #{killmail.killmail_id}"
         )
 
         esi_data
       end
 
-    AppLogger.kill_debug("[Enrichment] Completed enrichment process",
-      kill_id: killmail.killmail_id,
-      final_esi_data: inspect(esi_data, limit: 500)
+    AppLogger.kill_debug(
+      "[Enrichment] Completed enrichment process for kill #{killmail.killmail_id}"
     )
 
     # Return updated killmail with enriched ESI data
@@ -244,6 +252,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
         # Ensure name is not nil or empty string
         if is_nil(name) or name == "", do: default_name, else: name
 
+      {:error, {:domain_error, :esi, "Character has been deleted!"}} ->
+        # Silently handle deleted characters
+        default_name
+
       error ->
         AppLogger.kill_warn("[Enrichment] Failed to fetch name: #{inspect(error)}",
           killmail_id: killmail_id,
@@ -258,6 +270,10 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
   defp enrich_with_system_name(esi_data) when is_map(esi_data) do
     # Already has a system name, no need to add it
     if Map.has_key?(esi_data, "solar_system_name") do
+      AppLogger.kill_debug(
+        "[Enrichment] System already has name: #{Map.get(esi_data, "solar_system_name")}"
+      )
+
       esi_data
     else
       add_system_name_to_data(esi_data)
@@ -268,34 +284,37 @@ defmodule WandererNotifier.Processing.Killmail.Enrichment do
 
   # Helper to add system name if system_id exists
   defp add_system_name_to_data(esi_data) do
-    system_id = Map.get(esi_data, "solar_system_id")
+    case Map.get(esi_data, "solar_system_id") do
+      system_id when is_integer(system_id) ->
+        AppLogger.kill_debug("[Enrichment] Fetching name for system ID: #{system_id}")
 
-    # No system ID, return original data
-    if is_nil(system_id) do
-      AppLogger.kill_warning("[Enrichment] No system ID available in killmail data")
-      esi_data
-    else
-      # Get system name and add it if found
-      system_name = get_system_name(system_id)
-      add_system_name_if_found(esi_data, system_id, system_name)
-    end
-  end
+        case SystemStaticInfo.get_system_static_info(system_id) do
+          {:ok, static_info} ->
+            case Map.get(static_info, "solar_system_name") do
+              name when is_binary(name) and name != "" ->
+                AppLogger.kill_debug("[Enrichment] Found system name from static data: #{name}")
+                Map.put(esi_data, "solar_system_name", name)
 
-  # Add system name to data if found
-  defp add_system_name_if_found(esi_data, system_id, nil) do
-    AppLogger.kill_debug("[Enrichment] No system name found for ID #{system_id}")
-    esi_data
-  end
+              _ ->
+                AppLogger.kill_warning("[Enrichment] No valid system name in static data")
+                esi_data
+            end
 
-  defp add_system_name_if_found(esi_data, _system_id, system_name) do
-    Map.put(esi_data, "solar_system_name", system_name)
-  end
+          error ->
+            AppLogger.kill_warning(
+              "[Enrichment] Failed to get static system info: #{inspect(error)}"
+            )
 
-  # Helper method to get system name from ESI
-  defp get_system_name(system_id) do
-    case ESIService.get_system_info(system_id) do
-      {:ok, system_info} -> Map.get(system_info, "name")
-      _ -> nil
+            esi_data
+        end
+
+      nil ->
+        AppLogger.kill_warning("[Enrichment] No system ID in killmail data")
+        esi_data
+
+      other ->
+        AppLogger.kill_warning("[Enrichment] Invalid system ID format: #{inspect(other)}")
+        esi_data
     end
   end
 end
