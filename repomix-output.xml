@@ -115,7 +115,6 @@ lib/
       determiner/
         character.ex
         kill.ex
-        system.ex
       formatters/
         base.ex
         embed.ex
@@ -271,6 +270,7 @@ Makefile
 mix.exs
 NOTIFICATION_TROUBLESHOOTING_PLAN.md
 notifications.md
+originalformatter.ex
 react.txt
 README-GH-PAGES.md
 README.md
@@ -2887,6 +2887,9 @@ end</file><file path="lib/wanderer_notifier/cache/keys.ex">defmodule WandererNot
     join_parts([@prefix_esi, @entity_alliance, to_string(alliance_id)])
   end
 
+  @spec alliance(integer() | String.t()) :: String.t() | nil
+  def alliance(nil), do: nil
+
   @doc &quot;&quot;&quot;
   Generates a cache key for a ship type.
 
@@ -2903,6 +2906,7 @@ end</file><file path="lib/wanderer_notifier/cache/keys.ex">defmodule WandererNot
   Returns the cache key for a system.
   &quot;&quot;&quot;
   def system_key(system_id) when is_integer(system_id), do: system(system_id)
+
 end</file><file path="lib/wanderer_notifier/config/config.ex">defmodule WandererNotifier.Config do
   @moduledoc &quot;&quot;&quot;
   Centralized configuration access for WandererNotifier.
@@ -9203,347 +9207,147 @@ end</file><file path="lib/wanderer_notifier/map/clients/systems_client.ex">defmo
   }
   &quot;&quot;&quot;
 
+  # alias the HTTPoison-based implementation under the name HttpClient
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Config
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  alias WandererNotifier.{
+    Config,
+    Cache.Keys,
+    Cache.CachexImpl,
+    Map.MapSystem,
+    Logger.Logger
+  }
 
   @doc &quot;&quot;&quot;
-  Updates the systems in the cache.
+  Fetch, decode, process, notify (unless suppressed), and cache systems.
 
-  If cached_systems is provided, it will also identify and notify about new systems.
-
-  ## Parameters
-    - cached_systems: Optional list of cached systems for comparison
-    - opts: Optional keyword list with options
-
-  ## Returns
-    - {:ok, systems} on success
-    - {:error, reason} on failure
+  Returns:
+    - {:ok, new_systems, all_systems}
+    - {:error, reason}
   &quot;&quot;&quot;
-  def update_systems(cached_systems \\ nil, opts \\ []) do
-    suppress_notifications = Keyword.get(opts, :suppress_notifications, false)
-    # Get cached systems if none provided
-    cached_systems =
-      case cached_systems do
-        nil -&gt;
-          case CacheRepo.get(CacheKeys.map_systems()) do
-            {:ok, systems} -&gt; systems
-            _ -&gt; []
-          end
-
-        value -&gt;
-          value
-      end
-
-    base_url = Config.base_map_url()
-    url = &quot;#{base_url}/api/map/systems?slug=#{Config.map_slug()}&quot;
-    headers = get_auth_headers()
-    raw_result = HttpClient.get(url, headers)
-    # Process the systems request
-    case raw_result do
-      {:ok, %{body: %{&quot;data&quot; =&gt; _} = body}} -&gt;
-        AppLogger.api_debug(&quot;[SystemsClient] Successfully fetched systems (map body)&quot;,
-          body_type: typeof(body),
-          keys: Map.keys(body)
-        )
-
-        process_systems_response(body, cached_systems, suppress_notifications)
-
-      other -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Unexpected or failed result from HttpClient.get&quot;,
-          result: inspect(other)
-        )
-
-        {:error, :unexpected_http_result}
-    end
+  def update_systems(opts \\ []) do
+    fetch()
+    |&gt; parse()
+    |&gt; to_structs()
+    |&gt; filter_systems()
+    |&gt; detect_and_notify(opts)
+    |&gt; cache_and_return()
+  rescue
+    e -&gt; handle_failure(e)
   end
 
-  defp process_systems_response(body, cached_systems, suppress_notifications) do
-    # If body is a string, decode; if it&apos;s a map, use as is
-    decode_result =
-      cond do
-        is_binary(body) -&gt;
-          try do
-            Jason.decode(body)
-          rescue
-            e -&gt;
-              AppLogger.api_error(&quot;[SystemsClient] Exception in Jason.decode&quot;,
-                error: Exception.message(e),
-                body: inspect(body)
-              )
+  # 1) Fetch raw response
+  defp fetch do
+    url     = &quot;#{Config.base_map_url()}/api/map/systems?slug=#{Config.map_slug()}&quot;
+    headers = [{&quot;Authorization&quot;, &quot;Bearer #{Config.map_token()}&quot;}]
+    HttpClient.get(url, headers)
+  end
 
-              {:error, :decode_exception}
-          end
-
-        is_map(body) -&gt;
-          {:ok, body}
-
-        true -&gt;
-          {:error, :invalid_body_type}
-      end
-
-    case decode_result do
-      {:ok, parsed_response} -&gt;
-        process_and_cache_systems(parsed_response, cached_systems, suppress_notifications)
-
-      {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Failed to process API response: #{inspect(reason)}&quot;)
-        {:error, reason}
+  # 2) Parse HTTP result into a flat list of maps
+  defp parse({:ok, %{body: %{&quot;data&quot; =&gt; data}}}),    do: {:ok, data}
+  defp parse({:ok, %{body: %{&quot;systems&quot; =&gt; data}}}), do: {:ok, data}
+  defp parse({:ok, %{body: body}}) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{&quot;data&quot; =&gt; d}} when is_list(d) -&gt; {:ok, d}
+      {:ok, l} when is_list(l)              -&gt; {:ok, l}
+      err                                   -&gt; err
     end
+  end
+  defp parse(err) do
+    Logger.api_error(&quot;Unexpected HTTP result&quot;, result: inspect(err))
+    {:error, :http_error}
+  end
+
+  # 3) Map raw maps into our MapSystem structs
+  defp to_structs({:ok, data}) do
+    data
+    |&gt; Enum.map(&amp;MapSystem.new/1)
+    |&gt; then(&amp;{:ok, &amp;1})
   rescue
     e -&gt;
-      AppLogger.api_error(&quot;⚠️ Exception in process_systems_response&quot;,
+      Logger.api_error(&quot;Failed to build structs&quot;, error: Exception.message(e))
+      {:error, :struct_build_failed}
+  end
+  defp to_structs(err), do: err
+
+  # 4) Optionally filter out K-space
+  defp filter_systems({:ok, systems}) do
+    filtered =
+      if Config.track_kspace_systems?() do
+        systems
+      else
+        Enum.reject(systems, &amp;kspace?/1)
+      end
+
+    {:ok, filtered}
+  end
+  defp filter_systems(err), do: err
+
+  # 5) Compare against cache, send notifications for new ones (unless suppressed)
+  defp detect_and_notify({:ok, systems}, opts) do
+    {:ok, cached_systems} = CachexImpl.get(Keys.map_systems()) |&gt; unwrap_cache()
+
+    # build a MapSet of cached IDs
+    cached_ids =
+      MapSet.new(cached_systems, fn sys -&gt;
+        sys.solar_system_id
+      end)
+
+    new_systems =
+      Enum.reject(systems, fn sys -&gt;
+        sys.solar_system_id in cached_ids
+      end)
+
+    unless Keyword.get(opts, :suppress_notifications, false) do
+      Enum.each(new_systems, &amp;notify/1)
+    end
+
+    {:ok, new_systems, systems}
+  end
+  defp detect_and_notify(err, _), do: err
+
+  # 6) Write to cache and return successful tuple
+  defp cache_and_return({:ok, new, all}) do
+    CachexImpl.put(Keys.map_systems(), all)
+    {:ok, new, all}
+  end
+  defp cache_and_return(err), do: err
+
+  # Notification helper
+  defp notify(system) do
+    enriched =
+      case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
+        {:ok, e} -&gt; e
+        _        -&gt; system
+      end
+
+    WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(enriched)
+  rescue
+    e -&gt;
+      Logger.api_error(&quot;Notification failed&quot;,
         error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
-        body: inspect(body, limit: 100)
+        system: inspect(system)
       )
-
-      cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
-      {:ok, cached}
   end
 
-  defp process_and_cache_systems(parsed_response, cached_systems, suppress_notifications) do
-    # Extract systems data with fallbacks for different API formats
-    systems_data = extract_systems_data(parsed_response)
+  # Simple K-space detector (works whether system is a struct or map)
+  defp kspace?(system) do
+    Map.get(system, :system_class) in [&quot;K&quot;, &quot;HS&quot;, &quot;LS&quot;, &quot;NS&quot;]
+  end
 
-    systems =
-      try do
-        Enum.map(systems_data, &amp;MapSystem.new/1)
-      rescue
-        e -&gt;
-          AppLogger.api_error(&quot;[SystemsClient] Exception in MapSystem.new/1&quot;,
-            error: Exception.message(e)
-          )
+  # Unified fallback on any crash
+  defp handle_failure(error) do
+    Logger.api_error(&quot;SystemsClient failed&quot;, error: Exception.message(error))
 
-          raise e
-      end
-
-    tracked_systems = filter_systems_for_tracking(systems)
-
-    enriched_systems =
-      try do
-        enrich_tracked_systems(tracked_systems)
-      rescue
-        e -&gt;
-          AppLogger.api_error(&quot;[SystemsClient] Exception in enrich_tracked_systems&quot;,
-            error: Exception.message(e)
-          )
-
-          raise e
-      end
-
-    # Log all system names and IDs during each update
-    system_names = Enum.map(enriched_systems, fn sys -&gt;
-      name = Map.get(sys, :name) || Map.get(sys, &quot;name&quot;) || &quot;Unknown&quot;
-      id = Map.get(sys, :solar_system_id) || Map.get(sys, &quot;solar_system_id&quot;) || &quot;Unknown&quot;
-      %{id: id, name: name}
-    end)
-    AppLogger.api_info(&quot;[SystemsClient] Systems in this update: #{inspect(system_names)}&quot;)
-
-    if suppress_notifications do
-      updated_systems =
-        try do
-          update_systems_cache(enriched_systems)
-        rescue
-          e -&gt;
-            AppLogger.api_error(&quot;[SystemsClient] Exception in update_systems_cache&quot;,
-              error: Exception.message(e)
-            )
-            raise e
-        end
-      verify_systems_cached(updated_systems)
-      {:ok, [], updated_systems}
-    else
-      # Notify about new systems BEFORE updating the cache
-      notify_result = notify_new_systems(enriched_systems, cached_systems)
-      updated_systems =
-        try do
-          update_systems_cache(enriched_systems)
-        rescue
-          e -&gt;
-            AppLogger.api_error(&quot;[SystemsClient] Exception in update_systems_cache&quot;,
-              error: Exception.message(e)
-            )
-            raise e
-        end
-      verify_systems_cached(updated_systems)
-      notify_result
+    case CachexImpl.get(Keys.map_systems()) do
+      {:ok, systems} -&gt; {:ok, [], systems}
+      _              -&gt; {:ok, [], []}
     end
   end
 
-  # Extract systems data from different response formats
-  defp extract_systems_data(parsed_response) do
-    result =
-      case parsed_response do
-        %{&quot;data&quot; =&gt; data} when is_list(data) -&gt;
-          data
-
-        %{&quot;systems&quot; =&gt; systems} when is_list(systems) -&gt;
-          systems
-
-        data when is_list(data) -&gt;
-          data
-
-        _ -&gt;
-          AppLogger.api_error(&quot;[SystemsClient] No systems found in response&quot;,
-            response_type: typeof(parsed_response),
-            response: inspect(parsed_response, limit: 100)
-          )
-
-          []
-      end
-
-    result
-  end
-
-  # Filter systems based on configuration
-  defp filter_systems_for_tracking(systems) do
-    track_kspace_systems = Config.track_kspace_systems?()
-    # Filter the systems based on the configuration
-    if track_kspace_systems do
-      # If tracking K-space systems is enabled, return all systems
-      systems
-    else
-      # Otherwise, filter out K-space systems
-      Enum.filter(systems, fn system -&gt;
-        # Check if the system is not a K-space system
-        not is_kspace_system?(system)
-      end)
-    end
-  end
-
-  # Helper function to determine if a system is a K-space system
-  defp is_kspace_system?(system) do
-    # Get the system class from the system data
-    system_class = Map.get(system, :system_class)
-    # Check if the system class indicates a K-space system
-    system_class in [&quot;K&quot;, &quot;HS&quot;, &quot;LS&quot;, &quot;NS&quot;]
-  end
-
-  # Enrich systems with additional data
-  defp enrich_tracked_systems(systems) do
-    Enum.map(systems, fn system -&gt;
-      static_info =
-        if function_exported?(
-             WandererNotifier.Map.SystemStaticInfo,
-             :get_system_static_info,
-             1
-           ),
-           do:
-             WandererNotifier.Map.SystemStaticInfo.get_system_static_info(system.solar_system_id),
-           else: %{}
-
-      Map.merge(system, static_info)
-    end)
-  end
-
-  # Update the systems cache
-  defp update_systems_cache(systems) do
-    # Cache the systems
-    CacheRepo.put(CacheKeys.map_systems(), systems)
-    # Return the systems
-    systems
-  end
-
-  # Verify that systems were cached successfully
-  defp verify_systems_cached(systems) do
-    # Get the cached systems
-    cached_systems = CacheRepo.get(CacheKeys.map_systems())
-    # Compare the cached systems with the original systems
-    if cached_systems == systems do
-      {:ok, systems}
-    else
-      {:error, :cache_verification_failed}
-    end
-  end
-
-  # Notify about new systems
-  defp notify_new_systems(current_systems, cached_systems) do
-    valid_current_systems =
-      Enum.filter(current_systems, fn
-        %WandererNotifier.Map.MapSystem{solar_system_id: id}
-        when (is_integer(id) or is_binary(id)) and id != &quot;&quot; -&gt;
-          true
-
-        _bad -&gt;
-          false
-      end)
-
-    valid_cached_systems =
-      Enum.filter(cached_systems || [], fn
-        %WandererNotifier.Map.MapSystem{solar_system_id: id}
-        when (is_integer(id) or is_binary(id)) and id != &quot;&quot; -&gt;
-          true
-
-        _bad -&gt;
-          false
-      end)
-
-    try do
-      current_ids = MapSet.new(valid_current_systems, &amp; &amp;1.solar_system_id)
-      cached_ids = MapSet.new(valid_cached_systems, &amp; &amp;1.solar_system_id)
-      new_ids = MapSet.difference(current_ids, cached_ids)
-      new_systems = Enum.filter(valid_current_systems, &amp;(&amp;1.solar_system_id in new_ids))
-      Enum.each(new_systems, &amp;send_new_system_notification/1)
-      {:ok, new_systems, valid_current_systems}
-    rescue
-      e -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Error in notify_new_systems&quot;,
-          error: Exception.message(e)
-        )
-
-        raise e
-    end
-  end
-
-  defp send_new_system_notification(system) do
-    try do
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(system)
-    rescue
-      e -&gt;
-        AppLogger.api_error(&quot;[SystemsClient] Exception in send_new_system_notification&quot;,
-          error: Exception.message(e),
-          system: inspect(system)
-        )
-
-        raise e
-    end
-  end
-
-  defp get_auth_headers do
-    api_key = Config.map_token()
-    [{&quot;Authorization&quot;, &quot;Bearer #{api_key}&quot;}]
-  end
-
-  defp typeof(term) when is_nil(term), do: &quot;nil&quot;
-  defp typeof(term) when is_binary(term), do: &quot;string&quot;
-  defp typeof(term) when is_boolean(term), do: &quot;boolean&quot;
-  defp typeof(term) when is_number(term), do: &quot;number&quot;
-  defp typeof(term) when is_atom(term), do: &quot;atom&quot;
-  defp typeof(term) when is_list(term), do: &quot;list&quot;
-  defp typeof(term) when is_map(term), do: &quot;map&quot;
-  defp typeof(term) when is_tuple(term), do: &quot;tuple&quot;
-  defp typeof(_term), do: &quot;unknown&quot;
-
-  @doc &quot;&quot;&quot;
-  Returns a system for notification testing purposes.
-  Returns {:ok, system} or {:error, :no_systems_in_cache}.
-  &quot;&quot;&quot;
-  def get_system_for_notification do
-    systems =
-      case CacheRepo.get(WandererNotifier.Cache.Keys.map_systems()) do
-        {:ok, systems} -&gt; systems
-        _ -&gt; []
-      end
-
-    case systems do
-      [system | _] -&gt; {:ok, system}
-      _ -&gt; {:error, :no_systems_in_cache}
-    end
-  end
+  # Cachex returns {:ok, val} or {:error, _}, so normalize
+  defp unwrap_cache({:ok, val}), do: {:ok, val}
+  defp unwrap_cache(_),        do: {:ok, []}
 end</file><file path="lib/wanderer_notifier/map/map_character.ex">defmodule WandererNotifier.Map.MapCharacter do
   @moduledoc &quot;&quot;&quot;
   Struct and functions for managing tracked character data from the map API.
@@ -10157,8 +9961,8 @@ end</file><file path="lib/wanderer_notifier/map/system_static_info.ex">defmodule
       system_id: solar_system_id
     )
 
-    base_url = Config.api_base_url()
-    url = &quot;#{base_url}/common/system-static-info?id=#{solar_system_id}&quot;
+    base_url = Config.base_map_url()
+    url = &quot;#{base_url}/api/common/system-static-info?id=#{solar_system_id}&quot;
     headers = get_auth_headers()
 
     AppLogger.api_debug(&quot;[SystemStaticInfo] Making request&quot;,
@@ -10173,20 +9977,14 @@ end</file><file path="lib/wanderer_notifier/map/system_static_info.ex">defmodule
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
     case HttpClient.get(url, headers) do
-      {:ok, %{status_code: 200, body: body}} -&gt;
+      {:ok, %{status_code: 200, body: body}} when is_map(body) -&gt;
+        {:ok, body}
+
+      {:ok, %{status_code: 200, body: body}} when is_binary(body) -&gt;
         case Jason.decode(body) do
-          {:ok, parsed_response} -&gt;
-            AppLogger.api_debug(&quot;[SystemStaticInfo] Parsed response&quot;,
-              response_keys: Map.keys(parsed_response)
-            )
-
-            {:ok, parsed_response}
-
+          {:ok, parsed_response} -&gt; {:ok, parsed_response}
           {:error, reason} -&gt;
-            AppLogger.api_error(&quot;[SystemStaticInfo] Failed to parse JSON&quot;,
-              error: inspect(reason)
-            )
-
+            AppLogger.api_error(&quot;[SystemStaticInfo] Failed to parse JSON&quot;, error: inspect(reason))
             {:error, {:json_parse_error, reason}}
         end
 
@@ -10195,10 +9993,7 @@ end</file><file path="lib/wanderer_notifier/map/system_static_info.ex">defmodule
         {:error, {:http_error, status}}
 
       {:error, reason} -&gt;
-        AppLogger.api_error(&quot;[SystemStaticInfo] Request failed&quot;,
-          error: inspect(reason)
-        )
-
+        AppLogger.api_error(&quot;[SystemStaticInfo] Request failed&quot;, error: inspect(reason))
         {:error, reason}
     end
   end
@@ -10216,47 +10011,114 @@ end</file><file path="lib/wanderer_notifier/map/system_static_info.ex">defmodule
   def enrich_system(system) do
     alias WandererNotifier.Map.MapSystem
 
-    AppLogger.api_debug(&quot;[SystemStaticInfo] Starting system enrichment&quot;,
-      system_name: system.name,
-      system_id: system.solar_system_id
-    )
-
-    # Only try to enrich if the system has a valid ID
-    if system.solar_system_id &amp;&amp; system.solar_system_id &gt; 0 do
-      # Try to get static info with proper error handling
-      case get_system_static_info(system.solar_system_id) do
-        {:ok, static_info} -&gt;
-          AppLogger.api_debug(&quot;[SystemStaticInfo] Got static info for enrichment&quot;,
-            system_name: system.name,
-            static_info_keys: Map.keys(static_info)
-          )
-
-          # Update the map system with static information
-          enhanced_system = MapSystem.update_with_static_info(system, static_info)
-
-          {:ok, enhanced_system}
-
-        {:error, reason} -&gt;
-          # Log error but continue with original system
-          AppLogger.api_warn(
-            &quot;[SystemStaticInfo] Could not enrich system&quot;,
-            system_name: system.name,
-            error: inspect(reason)
-          )
-
-          # Return original system - IMPORTANT: Don&apos;t error out!
-          {:ok, system}
-      end
-    else
-      # Invalid system ID - log and return original
-      AppLogger.api_warn(
-        &quot;[SystemStaticInfo] Cannot enrich system with invalid ID&quot;,
-        system_name: system.name,
-        system_id: system.solar_system_id
+    try do
+      AppLogger.api_info(&quot;[SystemStaticInfo] Starting system enrichment&quot;,
+        system: inspect(system, pretty: true, limit: 1000)
       )
 
-      # Still return original system
-      {:ok, system}
+      # Only try to enrich if the system has a valid ID
+      if system.solar_system_id &amp;&amp; system.solar_system_id &gt; 0 do
+        # Try to get static info with proper error handling
+        result = get_system_static_info(system.solar_system_id)
+        AppLogger.api_debug(&quot;[SystemStaticInfo] get_system_static_info result (FULL RAW)&quot;,
+          system_id: system.solar_system_id,
+          raw_result: inspect(result, pretty: true, limit: 2000)
+        )
+        AppLogger.api_debug(&quot;[SystemStaticInfo] get_system_static_info result&quot;,
+          system_id: system.solar_system_id,
+          result: inspect(result, pretty: true, limit: 1000)
+        )
+        case result do
+          {:ok, static_info} -&gt;
+            # Merge only the inner data map if present
+            data_to_merge =
+              case static_info do
+                %{&quot;data&quot; =&gt; data_map} when is_map(data_map) -&gt; data_map
+                other -&gt; other
+              end
+            AppLogger.api_debug(&quot;[SystemStaticInfo] Got static info for enrichment&quot;,
+              system_name: system.name,
+              static_info_keys: Map.keys(data_to_merge),
+              static_info: inspect(data_to_merge, pretty: true, limit: 1000)
+            )
+
+            # Update the map system with static information
+            enhanced_system = MapSystem.update_with_static_info(system, data_to_merge)
+
+            # Convert &quot;security&quot; to :security_status (float) and add to struct
+            security_status =
+              case Map.get(data_to_merge, &quot;security&quot;) do
+                nil -&gt; 0.0
+                val when is_binary(val) -&gt;
+                  case Float.parse(val) do
+                    {f, _} -&gt; f
+                    :error -&gt; 0.0
+                  end
+                val when is_number(val) -&gt; val
+                _ -&gt; 0.0
+              end
+            enhanced_system = Map.put(enhanced_system, :security_status, security_status)
+
+            # Map expected string keys to atom keys, handling optional fields
+            expected_fields = [
+              :statics, :effect_name, :class_title, :effect_power, :is_shattered, :region_id,
+              :region_name, :system_class, :triglavian_invasion_status, :type_description,
+              :constellation_id, :constellation_name, :static_details, :sun_type_id
+            ]
+            enhanced_system = Enum.reduce(expected_fields, enhanced_system, fn field, acc -&gt;
+              string_key = Atom.to_string(field)
+              value = Map.get(data_to_merge, string_key)
+              # For statics and static_details, default to [] if not present
+              default = if field in [:statics, :static_details], do: [], else: nil
+              Map.put(acc, field, (if value == nil, do: default, else: value))
+            end)
+
+            AppLogger.api_debug(&quot;[SystemStaticInfo] Enriched system result&quot;,
+              enriched_system: inspect(enhanced_system, pretty: true, limit: 1000)
+            )
+            {:ok, enhanced_system}
+
+          {:error, reason} -&gt;
+            # Log error but continue with original system
+            AppLogger.api_warn(
+              &quot;[SystemStaticInfo] Could not enrich system&quot;,
+              system_name: system.name,
+              error: inspect(reason),
+              system: inspect(system, pretty: true, limit: 1000)
+            )
+
+            # Return original system - IMPORTANT: Don&apos;t error out!
+            AppLogger.api_debug(&quot;[SystemStaticInfo] Returning original system after enrichment failure&quot;,
+              system: inspect(system, pretty: true, limit: 1000)
+            )
+            {:ok, system}
+        end
+      else
+        # Invalid system ID - log and return original
+        AppLogger.api_warn(
+          &quot;[SystemStaticInfo] Cannot enrich system with invalid ID&quot;,
+          system_name: system.name,
+          system_id: system.solar_system_id,
+          system: inspect(system, pretty: true, limit: 1000)
+        )
+
+        # Still return original system
+        AppLogger.api_debug(&quot;[SystemStaticInfo] Returning original system due to invalid ID&quot;,
+          system: inspect(system, pretty: true, limit: 1000)
+        )
+        {:ok, system}
+      end
+    rescue
+      e -&gt;
+        log_message = [
+          &quot;[SystemStaticInfo] Exception during system enrichment:&quot;,
+          &quot;Error: #{Exception.message(e)}&quot;,
+          &quot;System: #{inspect(system, pretty: true, limit: 1000)}&quot;,
+          &quot;Stacktrace:\n#{Exception.format_stacktrace(__STACKTRACE__)}&quot;
+        ] |&gt; Enum.join(&quot;\n&quot;)
+
+        AppLogger.api_error(log_message)
+        {:ok, system}
     end
   end
 
@@ -10776,152 +10638,6 @@ end</file><file path="lib/wanderer_notifier/notifications/determiner/kill.ex">de
   #     true -&gt; :unknown
   #   end
   # end
-end</file><file path="lib/wanderer_notifier/notifications/determiner/system.ex">defmodule WandererNotifier.Notifications.Determiner.System do
-  @moduledoc &quot;&quot;&quot;
-  Determines whether system notifications should be sent.
-  Handles all system-related notification decision logic.
-  &quot;&quot;&quot;
-
-  require Logger
-  alias WandererNotifier.Config
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  @doc &quot;&quot;&quot;
-  Determines if a notification should be sent for a system.
-
-  ## Parameters
-    - system_id: The ID of the system to check
-    - system_data: The system data to check
-
-  ## Returns
-    - true if a notification should be sent
-    - false otherwise
-  &quot;&quot;&quot;
-  def should_notify?(system_id, system_data) when is_map(system_data) do
-    AppLogger.processor_info(&quot;[SystemDeterminer] Starting notification check&quot;,
-      system_id: system_id,
-      system_data: inspect(system_data, limit: 500)
-    )
-
-    notifications_enabled = Config.system_notifications_enabled?()
-    has_changed = system_changed?(system_id, system_data)
-
-    AppLogger.processor_debug(&quot;[SystemDeterminer] System changed (new) check&quot;,
-      system_id: system_id,
-      changed: has_changed
-    )
-
-    with true &lt;- notifications_enabled,
-         true &lt;- has_changed do
-      dedup_result = check_deduplication_and_decide(system_id)
-
-      AppLogger.processor_info(&quot;[SystemDeterminer] Final notification decision&quot;,
-        system_id: system_id,
-        should_notify: dedup_result
-      )
-
-      dedup_result
-    else
-      false -&gt;
-        AppLogger.processor_info(&quot;[SystemDeterminer] Notification check failed&quot;,
-          system_id: system_id,
-          notifications_enabled: notifications_enabled,
-          has_changed: has_changed
-        )
-        false
-      _ -&gt;
-        false
-    end
-  end
-
-  def should_notify?(_, _), do: false
-
-  @doc &quot;&quot;&quot;
-  Checks if a system&apos;s data has changed from what&apos;s in cache.
-
-  ## Parameters
-    - system_id: The ID of the system to check
-    - system_data: The new system data to compare against cache
-
-  ## Returns
-    - true if the system is new (not in cache)
-    - false otherwise
-  &quot;&quot;&quot;
-  def system_changed?(system_id, _system_data) do
-    cache_key = CacheKeys.system(system_id)
-    case CacheRepo.get(cache_key) do
-      {:ok, _cached} -&gt; false  # Already exists, not new
-      _ -&gt; true               # Not in cache, so it&apos;s new
-    end
-  end
-
-  @doc &quot;&quot;&quot;
-  Checks if a system is being tracked.
-
-  ## Parameters
-    - system_id: The ID of the system to check
-
-  ## Returns
-    - true if the system is tracked
-    - false otherwise
-  &quot;&quot;&quot;
-  def tracked_system?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    tracked_system?(system_id_str)
-  end
-
-  def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    # Get the current list of tracked systems from the cache
-    case CacheRepo.get(CacheKeys.map_systems()) do
-      {:ok, systems} when is_list(systems) -&gt;
-        Enum.any?(systems, fn system -&gt;
-          id = Map.get(system, :solar_system_id) || Map.get(system, &quot;solar_system_id&quot;)
-          to_string(id) == system_id_str
-        end)
-
-      _ -&gt;
-        false
-    end
-  end
-
-  def tracked_system?(_), do: false
-
-  # Apply deduplication check and decide whether to send notification
-  defp check_deduplication_and_decide(system_id) do
-    case DeduplicationHelper.duplicate?(:system, system_id) do
-      {:ok, :new} -&gt;
-        # Not a duplicate, allow sending
-        true
-
-      {:ok, :duplicate} -&gt;
-        # Duplicate, skip notification
-        false
-
-      {:error, reason} -&gt;
-        # Error during deduplication check - default to allowing
-        AppLogger.processor_warn(
-          &quot;Deduplication check failed, allowing notification by default&quot;,
-          %{
-            system_id: system_id,
-            error: inspect(reason)
-          }
-        )
-
-        true
-    end
-  end
-
-  def tracked_system_info(system_id) do
-    system_cache_key = CacheKeys.system(system_id)
-
-    case CacheRepo.get(system_cache_key) do
-      {:ok, value} -&gt; %{system_in_cache: true, value: value}
-      _ -&gt; %{system_in_cache: false, value: nil}
-    end
-  end
 end</file><file path="lib/wanderer_notifier/notifications/formatters/base.ex">defmodule WandererNotifier.Notifications.Formatters.Base do
   @moduledoc &quot;&quot;&quot;
   Base formatting utilities for notifications.
@@ -11535,7 +11251,6 @@ end</file><file path="lib/wanderer_notifier/notifications/interface.ex">defmodul
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.KillmailNotification
 
@@ -11569,21 +11284,6 @@ end</file><file path="lib/wanderer_notifier/notifications/interface.ex">defmodul
   &quot;&quot;&quot;
   def should_notify_kill?(killmail) do
     KillDeterminer.should_notify?(killmail)
-  end
-
-  @doc &quot;&quot;&quot;
-  Checks if a notification should be sent for a given system.
-
-  ## Parameters
-  - system_id: The system ID to check
-  - system_details: Optional map with system details for performance optimization
-
-  ## Returns
-  - true if a notification should be sent
-  - false otherwise
-  &quot;&quot;&quot;
-  def should_notify_system?(system_id, system_details \\ nil) do
-    SystemDeterminer.should_notify?(system_id, system_details)
   end
 
   @doc &quot;&quot;&quot;
@@ -13001,7 +12701,6 @@ end</file><file path="lib/wanderer_notifier/notifiers/discord/notifier.ex">defmo
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
@@ -13221,60 +12920,40 @@ end</file><file path="lib/wanderer_notifier/notifiers/discord/notifier.ex">defmo
   end
 
   def send_new_system_notification(system) do
-    # Log system details before processing to diagnose cache issues
     AppLogger.processor_info(
-      &quot;[NEW_SYSTEM_NOTIFICATION] Processing system notification request&quot;,
+      &quot;[NEW_SYSTEM_NOTIFICATION] Processing system notification request (detailed)&quot;,
       system_type: typeof(system),
-      system_preview: inspect(system, limit: 200)
+      system_preview: inspect(system, pretty: true, limit: 1000)
     )
 
-    if env() == :test do
-      # Get system ID safely regardless of structure
-      system_id = extract_system_id(system)
-      handle_test_mode(&quot;DISCORD MOCK: System ID #{system_id}&quot;)
-    else
-      # Extract system data safely with fallbacks
+    try do
       system_id = extract_system_id(system)
       system_name = extract_system_name(system)
-
-      # Log extracted details for debugging
       AppLogger.processor_info(
-        &quot;[NEW_SYSTEM_NOTIFICATION] Extracted system details&quot;,
+        &quot;[NEW_SYSTEM_NOTIFICATION] Extracted system details (detailed)&quot;,
         system_id: system_id,
-        system_name: system_name
+        system_name: system_name,
+        system_struct: inspect(system, pretty: true, limit: 1000)
       )
 
-      # Convert to MapSystem struct if needed for formatter
-      map_system = ensure_map_system(system)
+      # Assume system is already enriched; do not enrich here
+      enriched_system = system
+      AppLogger.processor_info(&quot;[NEW_SYSTEM_NOTIFICATION] MapSystem struct (detailed)&quot;, enriched_system: inspect(enriched_system, pretty: true, limit: 1000))
 
-      # Check if this system should trigger a notification
-      if SystemDeterminer.should_notify?(system_id, map_system) do
-        # This is not a duplicate, proceed with notification
-        AppLogger.processor_info(&quot;Processing new system notification&quot;,
-          system_id: system_id,
-          system_name: system_name
+      generic_notification = StructuredFormatter.format_system_notification(enriched_system)
+      AppLogger.processor_info(&quot;[NEW_SYSTEM_NOTIFICATION] Formatted notification payload&quot;, payload: inspect(generic_notification, pretty: true, limit: 1000))
+
+      send_to_discord(generic_notification, :system_tracking)
+      Stats.increment(:systems)
+      {:ok, :sent}
+    rescue
+      e -&gt;
+        AppLogger.processor_error(&quot;[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)&quot;,
+          error: Exception.message(e),
+          system: inspect(system, pretty: true, limit: 1000),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
-
-        # Create notification with StructuredFormatter
-        AppLogger.processor_info(&quot;Using StructuredFormatter for system notification&quot;)
-        generic_notification = StructuredFormatter.format_system_notification(map_system)
-
-        # Send using the standard send_to_discord helper
-        send_to_discord(generic_notification, :system_tracking)
-
-        # Record stats
-        Stats.increment(:systems)
-
-        :ok
-      else
-        # This is a duplicate or doesn&apos;t meet criteria, skip notification
-        AppLogger.processor_info(&quot;Skipping system notification&quot;,
-          system_id: system_id,
-          system_name: system_name
-        )
-
-        :ok
-      end
+        {:error, e}
     end
   end
 
@@ -13394,37 +13073,6 @@ end</file><file path="lib/wanderer_notifier/notifiers/discord/notifier.ex">defmo
 
       # Send notification
       send_to_discord(notification, :killmail)
-    end
-  end
-
-  # Helper to convert to MapSystem struct if needed
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      # Already a MapSystem, just return it
-      system
-    else
-      # Try to create MapSystem from a map or other structure
-      try do
-        # Check if we need to convert it
-        if is_map(system) do
-          MapSystem.new(system)
-        else
-          # Log error and return original
-          AppLogger.processor_error(
-            &quot;[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}&quot;
-          )
-
-          system
-        end
-      rescue
-        e -&gt;
-          # Log error and return original on conversion failure
-          AppLogger.processor_error(
-            &quot;[Discord.Notifier] Failed to convert to MapSystem: #{Exception.message(e)}&quot;
-          )
-
-          system
-      end
     end
   end
 
@@ -13700,7 +13348,7 @@ end</file><file path="lib/wanderer_notifier/notifiers/formatters/structured.ex">
   defp extract_system_info(system) do
     %{
       name: system.name,
-      system_id: system.system_id,
+      system_id: system.solar_system_id,
       region_name: system.region_name,
       security_status: system.security_status,
       class_title: system.class_title,
@@ -14293,7 +13941,6 @@ end</file><file path="lib/wanderer_notifier/notifiers/helpers/test_notifications
   &quot;&quot;&quot;
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Map.Clients.SystemsClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
@@ -14310,32 +13957,32 @@ end</file><file path="lib/wanderer_notifier/notifiers/helpers/test_notifications
     AppLogger.info(&quot;Sending test system notification...&quot;)
 
     # Get a system from the cache for testing
-    case SystemsClient.get_system_for_notification() do
-      {:ok, system} -&gt;
-        # Format the notification
-        generic_notification = StructuredFormatter.format_system_notification(system)
+    # case SystemsClient.get_system_for_notification() do
+    #   {:ok, system} -&gt;
+    #     # Format the notification
+    #     generic_notification = StructuredFormatter.format_system_notification(system)
 
-        # Send notification
-        case NotificationInterface.send_message(generic_notification) do
-          :ok -&gt;
-            AppLogger.info(&quot;Test system notification sent successfully&quot;)
-            Stats.increment(:systems)
-            {:ok, &quot;Test system notification sent successfully&quot;}
+    #     # Send notification
+    #     case NotificationInterface.send_message(generic_notification) do
+    #       :ok -&gt;
+    #         AppLogger.info(&quot;Test system notification sent successfully&quot;)
+    #         Stats.increment(:systems)
+    #         {:ok, &quot;Test system notification sent successfully&quot;}
 
-          {:error, reason} -&gt;
-            AppLogger.error(&quot;Failed to send test system notification: #{inspect(reason)}&quot;)
-            {:error, reason}
-        end
+    #       {:error, reason} -&gt;
+    #         AppLogger.error(&quot;Failed to send test system notification: #{inspect(reason)}&quot;)
+    #         {:error, reason}
+    #     end
 
-      {:error, :no_systems_in_cache} -&gt;
-        error_msg = &quot;No systems found in cache for test notification&quot;
-        AppLogger.error(error_msg)
-        {:error, error_msg}
+    #   {:error, :no_systems_in_cache} -&gt;
+    #     error_msg = &quot;No systems found in cache for test notification&quot;
+    #     AppLogger.error(error_msg)
+    #     {:error, error_msg}
 
-      {:error, reason} -&gt;
-        AppLogger.error(&quot;Failed to get system for test notification: #{inspect(reason)}&quot;)
-        {:error, reason}
-    end
+    #   {:error, reason} -&gt;
+    #     AppLogger.error(&quot;Failed to get system for test notification: #{inspect(reason)}&quot;)
+    #     {:error, reason}
+    # end
   end
 
   @doc &quot;&quot;&quot;
@@ -14934,13 +14581,10 @@ end</file><file path="lib/wanderer_notifier/schedulers/system_update_scheduler.e
 
   defp update_tracked_systems do
     primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
-    cached_systems = CacheRepo.get(:system_list)
-    cached_systems_safe = ensure_list(cached_systems)
-
     task =
       Task.async(fn -&gt;
         try do
-          SystemsClient.update_systems(cached_systems_safe, suppress_notifications: !primed?)
+          SystemsClient.update_systems(suppress_notifications: !primed?)
         rescue
           e -&gt;
             AppLogger.api_error(&quot;⚠️ Exception in system update task&quot;,
@@ -26137,7 +25781,1231 @@ If you encounter issues with Wanderer Notifier, here are solutions to common pro
 
 For additional support, join our [Discord community](https://discord.gg/wanderer)
 
-[Back to home](./index.html) | [See subscription options](https://wanderer.ltd/news/map-subscriptions) | [View on GitHub](https://github.com/guarzo/wanderer-notifier)</file><file path="react.txt">A. Audit &amp; Extract Shared UI Components
+[Back to home](./index.html) | [See subscription options](https://wanderer.ltd/news/map-subscriptions) | [View on GitHub](https://github.com/guarzo/wanderer-notifier)</file><file path="originalformatter.ex">defmodule WandererNotifier.Notifiers.StructuredFormatter do
+  @moduledoc &quot;&quot;&quot;
+  Structured notification formatting utilities for Discord notifications.
+
+  This module provides standardized formatting specifically designed to work with
+  the domain data structures like Character, MapSystem, and Killmail.
+  It eliminates the complex extraction logic of the original formatter by relying
+  on the structured data provided by these schemas.
+  &quot;&quot;&quot;
+
+  alias WandererNotifier.Api.Map.SystemStaticInfo
+  alias WandererNotifier.Data.{Character, MapSystem}
+  alias WandererNotifier.Data.Killmail
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  # Get configured services
+  defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)
+  defp esi_service, do: Application.get_env(:wanderer_notifier, :esi_service)
+
+  # Color constants for Discord notifications
+  # Default blue
+  @default_color 0x3498DB
+  # Green
+  @success_color 0x2ECC71
+  # Orange
+  @warning_color 0xF39C12
+  # Red
+  @error_color 0xE74C3C
+  # Blue
+  @info_color 0x3498DB
+
+  # Wormhole and security colors
+  # Blue for Pulsar
+  @wormhole_color 0x428BCA
+  # Green for highsec
+  @highsec_color 0x5CB85C
+  # Yellow/orange for lowsec
+  @lowsec_color 0xE28A0D
+  # Red for nullsec
+  @nullsec_color 0xD9534F
+
+  # System notification icons
+  # Wormhole icon
+  @wormhole_icon &quot;https://images.evetech.net/types/45041/icon&quot;
+  # Highsec icon
+  @highsec_icon &quot;https://images.evetech.net/types/3802/icon&quot;
+  # Lowsec icon
+  @lowsec_icon &quot;https://images.evetech.net/types/3796/icon&quot;
+  # Nullsec icon
+  @nullsec_icon &quot;https://images.evetech.net/types/3799/icon&quot;
+  # Default icon
+  @default_icon &quot;https://images.evetech.net/types/3802/icon&quot;
+
+  @doc &quot;&quot;&quot;
+  Returns a standardized set of colors for notification embeds.
+
+  ## Returns
+    - A map with color constants for various notification types
+  &quot;&quot;&quot;
+  def colors do
+    %{
+      default: @default_color,
+      success: @success_color,
+      warning: @warning_color,
+      error: @error_color,
+      info: @info_color,
+      wormhole: @wormhole_color,
+      highsec: @highsec_color,
+      lowsec: @lowsec_color,
+      nullsec: @nullsec_color
+    }
+  end
+
+  @doc &quot;&quot;&quot;
+  Converts a color in one format to Discord format.
+
+  ## Parameters
+    - color: The color to convert (atom, integer, or hex string)
+
+  ## Returns
+    - The color in Discord format (integer)
+  &quot;&quot;&quot;
+  def convert_color(color) when is_atom(color) do
+    Map.get(colors(), color, @default_color)
+  end
+
+  def convert_color(color) when is_integer(color), do: color
+
+  def convert_color(&quot;#&quot; &lt;&gt; hex) do
+    {color, _} = Integer.parse(hex, 16)
+    color
+  end
+
+  def convert_color(_color), do: @default_color
+
+  @doc &quot;&quot;&quot;
+  Creates a standard formatted kill notification embed/attachment from a Killmail struct.
+  Returns data in a generic format that can be converted to platform-specific format.
+
+  ## Parameters
+    - killmail: The Killmail struct
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  &quot;&quot;&quot;
+  def format_kill_notification(%Killmail{} = killmail) do
+    # Log the structure of the killmail for debugging
+    log_killmail_data(killmail)
+
+    # Extract basic kill information
+    kill_id = killmail.killmail_id
+    kill_time = Map.get(killmail.esi_data || %{}, &quot;killmail_time&quot;)
+
+    # Extract victim information
+    victim_info = extract_victim_info(killmail)
+
+    # Extract system, value and attackers info
+    kill_context = extract_kill_context(killmail)
+
+    # Final blow details
+    final_blow_details = get_final_blow_details(killmail)
+
+    # Build notification fields
+    fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
+
+    # Build a platform-agnostic structure
+    build_kill_notification(
+      kill_id,
+      kill_time,
+      victim_info,
+      kill_context,
+      final_blow_details,
+      fields
+    )
+  end
+
+  # Log killmail data for debugging
+  defp log_killmail_data(killmail) do
+    AppLogger.processor_debug(
+      &quot;[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}&quot;
+    )
+  end
+
+  # Extract victim information
+  defp extract_victim_info(killmail) do
+    victim = Killmail.get_victim(killmail) || %{}
+
+    victim_name = Map.get(victim, &quot;character_name&quot;, &quot;Unknown Pilot&quot;)
+    victim_ship = Map.get(victim, &quot;ship_type_name&quot;, &quot;Unknown Ship&quot;)
+    victim_corp = Map.get(victim, &quot;corporation_name&quot;, &quot;Unknown Corp&quot;)
+    victim_alliance = Map.get(victim, &quot;alliance_name&quot;)
+    victim_ship_type_id = Map.get(victim, &quot;ship_type_id&quot;)
+    victim_character_id = Map.get(victim, &quot;character_id&quot;)
+
+    # Log extracted values
+    AppLogger.processor_debug(&quot;[StructuredFormatter] Extracted victim_name: #{victim_name}&quot;)
+    AppLogger.processor_debug(&quot;[StructuredFormatter] Extracted victim_ship: #{victim_ship}&quot;)
+
+    %{
+      name: victim_name,
+      ship: victim_ship,
+      corp: victim_corp,
+      alliance: victim_alliance,
+      ship_type_id: victim_ship_type_id,
+      character_id: victim_character_id
+    }
+  end
+
+  # Extract kill context (system, value, attackers)
+  defp extract_kill_context(killmail) do
+    # System name and ID
+    system_name = Map.get(killmail.esi_data || %{}, &quot;solar_system_name&quot;, &quot;Unknown System&quot;)
+    system_id = Map.get(killmail.esi_data || %{}, &quot;solar_system_id&quot;)
+
+    AppLogger.processor_debug(&quot;[StructuredFormatter] Extracted system_name: #{system_name}&quot;)
+
+    # Get system security status if possible
+    security_status = get_system_security_status(system_id)
+    security_formatted = format_security_status(security_status)
+
+    # Kill value
+    zkb = killmail.zkb || %{}
+    kill_value = Map.get(zkb, &quot;totalValue&quot;, 0)
+    formatted_value = format_isk_value(kill_value)
+
+    # Attackers information
+    attackers = Map.get(killmail.esi_data || %{}, &quot;attackers&quot;, [])
+    attackers_count = length(attackers)
+
+    %{
+      system_name: system_name,
+      system_id: system_id,
+      security_status: security_status,
+      security_formatted: security_formatted,
+      formatted_value: formatted_value,
+      attackers_count: attackers_count,
+      is_npc_kill: Map.get(zkb, &quot;npc&quot;, false) == true
+    }
+  end
+
+  # Get system security status from ESI if possible
+  defp get_system_security_status(nil), do: nil
+
+  defp get_system_security_status(system_id) do
+    case SystemStaticInfo.get_system_static_info(system_id) do
+      {:ok, static_info} -&gt;
+        data = Map.get(static_info, &quot;data&quot;, %{})
+
+        # Return a map with both the security status value and type description
+        %{
+          value: Map.get(data, &quot;security&quot;),
+          type: Map.get(data, &quot;type_description&quot;)
+        }
+
+      _ -&gt;
+        nil
+    end
+  end
+
+  # Format security status for display
+  defp format_security_status(nil), do: nil
+
+  # Handle the case where we have a map with both security value and type
+  defp format_security_status(%{value: value, type: type}) when not is_nil(type) do
+    # If we have a pre-defined type from static data, use it
+    if is_binary(value) do
+      # Also include the numerical value
+      &quot;#{type} (#{value})&quot;
+    else
+      type
+    end
+  end
+
+  defp format_security_status(%{value: value}) when not is_nil(value) do
+    # If we only have the value but not the type, fall back to the old method
+    format_security_status(value)
+  end
+
+  defp format_security_status(security) when is_binary(security) do
+    # Try to parse as float
+    case Float.parse(security) do
+      {value, _} -&gt; format_security_status(value)
+      :error -&gt; security
+    end
+  end
+
+  defp format_security_status(security) when is_float(security) do
+    cond do
+      security &gt;= 0.5 -&gt; &quot;High-sec (#{Float.round(security, 1)})&quot;
+      security &gt; 0.0 -&gt; &quot;Low-sec (#{Float.round(security, 1)})&quot;
+      security &lt;= 0.0 -&gt; &quot;Null-sec (#{Float.round(security, 1)})&quot;
+      true -&gt; nil
+    end
+  end
+
+  defp format_security_status(_), do: nil
+
+  # Get final blow details
+  defp get_final_blow_details(killmail) do
+    attackers = Map.get(killmail.esi_data || %{}, &quot;attackers&quot;, [])
+    zkb = killmail.zkb || %{}
+
+    # Find final blow attacker
+    final_blow_attacker =
+      Enum.find(attackers, fn attacker -&gt;
+        Map.get(attacker, &quot;final_blow&quot;) in [true, &quot;true&quot;]
+      end)
+
+    is_npc_kill = Map.get(zkb, &quot;npc&quot;, false) == true
+
+    # Extract final blow details
+    extract_final_blow_details(final_blow_attacker, is_npc_kill)
+  end
+
+  # Build kill notification fields
+  defp build_kill_notification_fields(victim_info, kill_context, final_blow_details) do
+    # Base fields that are always present
+    base_fields = [
+      %{name: &quot;Value&quot;, value: kill_context.formatted_value, inline: true},
+      %{name: &quot;Attackers&quot;, value: &quot;#{kill_context.attackers_count}&quot;, inline: true},
+      %{name: &quot;Final Blow&quot;, value: final_blow_details.text, inline: true}
+    ]
+
+    # Add alliance field if available
+    if victim_info.alliance do
+      base_fields ++ [%{name: &quot;Alliance&quot;, value: victim_info.alliance, inline: true}]
+    else
+      # If no alliance, add location to keep the field count consistent
+      system_with_link =
+        if kill_context.system_id do
+          &quot;[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)&quot;
+        else
+          kill_context.system_name
+        end
+
+      base_fields ++ [%{name: &quot;Location&quot;, value: system_with_link, inline: true}]
+    end
+  end
+
+  # Extract final blow details from attacker data
+  defp extract_final_blow_details(nil, true) do
+    # This is an NPC kill
+    %{text: &quot;NPC&quot;, icon_url: nil}
+  end
+
+  defp extract_final_blow_details(nil, _) do
+    # No final blow attacker found
+    %{text: &quot;Unknown&quot;, icon_url: nil}
+  end
+
+  defp extract_final_blow_details(attacker, _) do
+    # Get character and ship details
+    character_name = Map.get(attacker, &quot;character_name&quot;, &quot;Unknown&quot;)
+    ship_name = Map.get(attacker, &quot;ship_type_name&quot;, &quot;Unknown Ship&quot;)
+    character_id = Map.get(attacker, &quot;character_id&quot;)
+
+    # Format the final blow text
+    text = &quot;#{character_name} (#{ship_name})&quot;
+
+    # Determine icon URL
+    icon_url =
+      if character_id do
+        &quot;https://imageserver.eveonline.com/Character/#{character_id}_64.jpg&quot;
+      else
+        nil
+      end
+
+    %{text: text, icon_url: icon_url}
+  end
+
+  # Build the kill notification structure
+  defp build_kill_notification(
+         kill_id,
+         kill_time,
+         victim_info,
+         kill_context,
+         _final_blow_details,
+         fields
+       ) do
+    AppLogger.processor_debug(&quot;Building kill notification for kill #{kill_id}&quot;)
+
+    # Determine author name
+    author_name =
+      if victim_info.name == &quot;Unknown Pilot&quot; and victim_info.corp == &quot;Unknown Corp&quot; do
+        &quot;Kill in #{kill_context.system_name}&quot;
+      else
+        &quot;#{victim_info.name} (#{victim_info.corp})&quot;
+      end
+
+    # Determine author icon URL
+    author_icon_url =
+      if victim_info.name == &quot;Unknown Pilot&quot; and victim_info.corp == &quot;Unknown Corp&quot; do
+        &quot;https://images.evetech.net/types/30_371/icon&quot;
+      else
+        if victim_info.character_id do
+          &quot;https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg&quot;
+        else
+          nil
+        end
+      end
+
+    # Determine thumbnail URL
+    thumbnail_url =
+      if victim_info.ship_type_id do
+        &quot;https://images.evetech.net/types/#{victim_info.ship_type_id}/render&quot;
+      else
+        nil
+      end
+
+    # Create system link if system ID is available
+    system_with_link =
+      if kill_context.system_id do
+        &quot;[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)&quot;
+      else
+        kill_context.system_name
+      end
+
+    # Enhanced description with linked system name
+    description = &quot;#{victim_info.name} lost a #{victim_info.ship} in #{system_with_link}&quot;
+
+    # Build the notification
+    %{
+      type: :kill_notification,
+      title: &quot;Kill Notification&quot;,
+      description: description,
+      color: @error_color,
+      url: &quot;https://zkillboard.com/kill/#{kill_id}/&quot;,
+      timestamp: kill_time,
+      footer: %{
+        text: &quot;Kill ID: #{kill_id}&quot;
+      },
+      thumbnail: %{
+        url: thumbnail_url
+      },
+      author: %{
+        name: author_name,
+        icon_url: author_icon_url
+      },
+      fields: fields
+    }
+  end
+
+  @doc &quot;&quot;&quot;
+  Creates a standard formatted new tracked character notification from a Character struct.
+
+  ## Parameters
+    - character: The Character struct
+
+  ## Returns
+    - A Discord-formatted embed for the notification
+  &quot;&quot;&quot;
+  def format_character_notification(%Character{} = character) do
+    # Build notification structure
+    %{
+      type: :character_notification,
+      title: &quot;New Character Tracked&quot;,
+      description: &quot;A new character has been added to the tracking list.&quot;,
+      color: @info_color,
+      timestamp: DateTime.utc_now() |&gt; DateTime.to_iso8601(),
+      thumbnail: %{
+        url: &quot;https://imageserver.eveonline.com/Character/#{character.character_id}_128.jpg&quot;
+      },
+      fields:
+        [
+          %{
+            name: &quot;Character&quot;,
+            value:
+              &quot;[#{character.name}](https://zkillboard.com/character/#{character.character_id}/)&quot;,
+            inline: true
+          }
+        ] ++
+          if Character.has_corporation?(character) do
+            corporation_link =
+              &quot;[#{character.corporation_ticker}](https://zkillboard.com/corporation/#{character.corporation_id}/)&quot;
+
+            AppLogger.processor_info(
+              &quot;[StructuredFormatter] Adding corporation field with value: #{corporation_link}&quot;
+            )
+
+            [%{name: &quot;Corporation&quot;, value: corporation_link, inline: true}]
+          else
+            AppLogger.processor_info(
+              &quot;[StructuredFormatter] No corporation data available for inclusion&quot;
+            )
+
+            []
+          end
+    }
+  end
+
+  @doc &quot;&quot;&quot;
+  Creates a standard formatted system notification from a MapSystem struct.
+
+  ## Parameters
+    - system: The MapSystem struct
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  &quot;&quot;&quot;
+  def format_system_notification(%MapSystem{} = system) do
+    # Validate required fields
+    validate_system_fields(system)
+
+    # Generate basic notification elements
+    is_wormhole = MapSystem.wormhole?(system)
+    display_name = MapSystem.format_display_name(system)
+
+    # Generate notification elements
+    {title, description, color, icon_url} =
+      generate_notification_elements(system, is_wormhole, display_name)
+
+    # Format statics list and system link
+    formatted_statics = format_statics_list(system.static_details || system.statics)
+    system_name_with_link = create_system_name_link(system, display_name)
+
+    # Build notification fields
+    fields =
+      build_system_notification_fields(
+        system,
+        is_wormhole,
+        formatted_statics,
+        system_name_with_link
+      )
+
+    # Create the generic notification structure
+    %{
+      type: :system_notification,
+      title: title,
+      description: description,
+      color: color,
+      timestamp: DateTime.utc_now() |&gt; DateTime.to_iso8601(),
+      thumbnail: %{url: icon_url},
+      fields: fields,
+      footer: %{
+        text: &quot;System ID: #{system.solar_system_id}&quot;
+      }
+    }
+  rescue
+    e -&gt;
+      AppLogger.processor_error(&quot;[StructuredFormatter] Error formatting system notification&quot;,
+        system: system.name,
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      reraise e, __STACKTRACE__
+  end
+
+  # Helper function to validate required system fields
+  defp validate_system_fields(system) do
+    if is_nil(system.solar_system_id) do
+      raise &quot;Cannot format system notification: solar_system_id is missing in MapSystem struct&quot;
+    end
+
+    if is_nil(system.name) do
+      raise &quot;Cannot format system notification: name is missing in MapSystem struct&quot;
+    end
+  end
+
+  # Generate notification elements (title, description, color, icon)
+  defp generate_notification_elements(system, is_wormhole, display_name) do
+    title = generate_system_title(display_name)
+
+    description =
+      generate_system_description(is_wormhole, system.class_title, system.type_description)
+
+    system_color = determine_system_color(system.type_description, is_wormhole)
+    icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
+
+    {title, description, system_color, icon_url}
+  end
+
+  # Create system name with zkillboard link
+  defp create_system_name_link(system, display_name) do
+    has_numeric_id =
+      is_integer(system.solar_system_id) ||
+        (is_binary(system.solar_system_id) &amp;&amp; Integer.parse(system.solar_system_id) != :error)
+
+    if has_numeric_id do
+      system_id_str = to_string(system.solar_system_id)
+
+      has_temp_and_original =
+        system.temporary_name &amp;&amp; system.temporary_name != &quot;&quot; &amp;&amp;
+          system.original_name &amp;&amp; system.original_name != &quot;&quot;
+
+      if has_temp_and_original do
+        &quot;[#{system.temporary_name} (#{system.original_name})](https://zkillboard.com/system/#{system_id_str}/)&quot;
+      else
+        &quot;[#{system.name}](https://zkillboard.com/system/#{system_id_str}/)&quot;
+      end
+    else
+      display_name
+    end
+  end
+
+  # Build notification fields
+  defp build_system_notification_fields(
+         system,
+         is_wormhole,
+         formatted_statics,
+         system_name_with_link
+       ) do
+    fields = [%{name: &quot;System&quot;, value: system_name_with_link, inline: true}]
+    fields = add_shattered_field(fields, is_wormhole, system.is_shattered)
+    fields = add_statics_field(fields, is_wormhole, formatted_statics)
+    fields = add_region_field(fields, system.region_name)
+    fields = add_effect_field(fields, is_wormhole, system.effect_name)
+    fields = add_zkill_system_kills(fields, system.solar_system_id)
+    fields
+  end
+
+  # Add recent kills from ZKill API
+  defp add_zkill_system_kills(fields, system_id) do
+    system_id_int = parse_system_id(system_id)
+
+    if is_nil(system_id_int) do
+      fields
+    else
+      case zkill_service().get_system_kills(system_id_int, 3) do
+        {:ok, []} -&gt; fields
+        {:ok, zkill_kills} when is_list(zkill_kills) -&gt; process_kill_data(fields, zkill_kills)
+        {:error, _} -&gt; fields
+      end
+    end
+  end
+
+  # Helper for parsing system_id
+  defp parse_system_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_val, _} -&gt; int_val
+      :error -&gt; nil
+    end
+  end
+
+  defp parse_system_id(id) when is_integer(id), do: id
+  defp parse_system_id(_), do: nil
+
+  defp generate_system_title(display_name) when is_binary(display_name) and display_name != &quot;&quot; do
+    &quot;New System Mapped: #{display_name}&quot;
+  end
+
+  defp generate_system_title(_) do
+    &quot;New System Mapped&quot;
+  end
+
+  defp generate_system_description(true, class_title, _)
+       when is_binary(class_title) and class_title != &quot;&quot; do
+    &quot;#{class_title} wormhole added to the map.&quot;
+  end
+
+  defp generate_system_description(true, _, _) do
+    &quot;Wormhole added to the map.&quot;
+  end
+
+  defp generate_system_description(_, _, type_description)
+       when is_binary(type_description) and type_description != &quot;&quot; do
+    &quot;#{type_description} system added to the map.&quot;
+  end
+
+  defp generate_system_description(_, _, _) do
+    &quot;New system added to the map.&quot;
+  end
+
+  # Helper to determine system icon URL based on MapSystem data
+  defp determine_system_icon(is_wormhole, type_description, sun_type_id) do
+    sun_id = parse_sun_type_id(sun_type_id)
+
+    if sun_id &amp;&amp; sun_id &gt; 0 do
+      &quot;https://images.evetech.net/types/#{sun_id}/icon&quot;
+    else
+      get_system_type_icon(is_wormhole, type_description)
+    end
+  end
+
+  # Helper to get the appropriate icon based on system type
+  defp get_system_type_icon(is_wormhole, type_description) do
+    cond do
+      is_wormhole -&gt; @wormhole_icon
+      type_description &amp;&amp; String.contains?(type_description, &quot;High-sec&quot;) -&gt; @highsec_icon
+      type_description &amp;&amp; String.contains?(type_description, &quot;Low-sec&quot;) -&gt; @lowsec_icon
+      type_description &amp;&amp; String.contains?(type_description, &quot;Null-sec&quot;) -&gt; @nullsec_icon
+      true -&gt; @default_icon
+    end
+  end
+
+  # Helper to parse sun_type_id values which might be strings
+  defp parse_sun_type_id(nil), do: nil
+  defp parse_sun_type_id(id) when is_integer(id), do: id
+
+  defp parse_sun_type_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_val, _} -&gt; int_val
+      :error -&gt; nil
+    end
+  end
+
+  defp parse_sun_type_id(_), do: nil
+
+  # Helper to determine system color based on type_description and is_wormhole
+  defp determine_system_color(type_description, is_wormhole) do
+    cond do
+      is_wormhole -&gt; @wormhole_color
+      type_description &amp;&amp; String.contains?(type_description, &quot;High-sec&quot;) -&gt; @highsec_color
+      type_description &amp;&amp; String.contains?(type_description, &quot;Low-sec&quot;) -&gt; @lowsec_color
+      type_description &amp;&amp; String.contains?(type_description, &quot;Null-sec&quot;) -&gt; @nullsec_color
+      true -&gt; @default_color
+    end
+  end
+
+  # Format a list of statics for system notification with clear error handling
+  defp format_statics_list(nil) do
+    AppLogger.processor_debug(&quot;[StructuredFormatter.format_statics_list] Nil statics list&quot;)
+    &quot;None&quot;
+  end
+
+  defp format_statics_list([]) do
+    AppLogger.processor_debug(&quot;[StructuredFormatter.format_statics_list] Empty statics list&quot;)
+    &quot;None&quot;
+  end
+
+  defp format_statics_list(statics) when is_list(statics) do
+    formatted =
+      Enum.map(statics, fn static -&gt;
+        format_single_static(static)
+      end)
+      |&gt; Enum.reject(&amp;is_nil/1)
+      |&gt; Enum.join(&quot;, &quot;)
+
+    if formatted == &quot;&quot; do
+      &quot;None&quot;
+    else
+      formatted
+    end
+  end
+
+  # Formats a single static wormhole for display
+  # Handles both map and struct formats
+  defp format_single_static(static) when is_map(static) do
+    cond do
+      has_destination_info?(static) -&gt; format_static_with_destination(static)
+      has_name_info?(static) -&gt; get_static_name(static)
+      is_binary(static) -&gt; static
+      true -&gt; log_unrecognized_static(static)
+    end
+  end
+
+  defp format_single_static(static) when is_binary(static) do
+    static
+  end
+
+  defp format_single_static(static) do
+    log_unrecognized_static(static)
+  end
+
+  # Helper function to check if static has destination info
+  defp has_destination_info?(static) do
+    Map.has_key?(static, &quot;destination&quot;) || Map.has_key?(static, :destination)
+  end
+
+  # Helper function to check if static has name info
+  defp has_name_info?(static) do
+    Map.has_key?(static, &quot;name&quot;) || Map.has_key?(static, :name)
+  end
+
+  # Helper function to get static name
+  defp get_static_name(static) do
+    Map.get(static, &quot;name&quot;) || Map.get(static, :name)
+  end
+
+  # Helper function to format static with destination info
+  defp format_static_with_destination(static) do
+    name = get_static_name(static)
+    destination = Map.get(static, &quot;destination&quot;) || Map.get(static, :destination)
+    dest_short = get_in(destination, [&quot;short_name&quot;]) || get_in(destination, [:short_name])
+
+    if name &amp;&amp; dest_short do
+      &quot;#{name} (#{dest_short})&quot;
+    else
+      name
+    end
+  end
+
+  # Helper function to log unrecognized static format
+  defp log_unrecognized_static(static) do
+    AppLogger.processor_warn(
+      &quot;[StructuredFormatter.format_single_static] Unrecognized static format: #{inspect(static)}&quot;
+    )
+
+    nil
+  end
+
+  # Formats ISK value for display
+  defp format_isk_value(value) when is_float(value) or is_integer(value) do
+    cond do
+      value &lt; 1000 -&gt; &quot;&lt;1k ISK&quot;
+      value &lt; 1_000_000 -&gt; &quot;#{custom_round(value / 1000)}k ISK&quot;
+      true -&gt; &quot;#{custom_round(value / 1_000_000)}M ISK&quot;
+    end
+  end
+
+  defp format_isk_value(_), do: &quot;0 ISK&quot;
+
+  # Round a float to the nearest integer
+  defp custom_round(float) when is_float(float), do: trunc(float + 0.5)
+  defp custom_round(int) when is_integer(int), do: int
+
+  # Get application version from Version module
+  defp get_app_version do
+    # Use our new Version module which reads the version from mix.exs at compile time
+    # This eliminates the need for environment variables for versioning
+    WandererNotifier.Config.Version.version()
+  end
+
+  @doc &quot;&quot;&quot;
+  Creates a rich formatted status/startup message with enhanced visual elements.
+
+  ## Parameters
+    - title: The title for the message (e.g., &quot;WandererNotifier Started&quot; or &quot;Service Status Report&quot;)
+    - description: Brief description of the message purpose
+    - stats: The stats map containing notification counts and websocket info
+    - uptime: Optional uptime in seconds (for status messages, nil for startup)
+    - features_status: Map of feature statuses
+    - license_status: Map with license information
+    - systems_count: Number of tracked systems
+    - characters_count: Number of tracked characters
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  &quot;&quot;&quot;
+  def format_system_status_message(
+        title,
+        description,
+        stats,
+        uptime \\ nil,
+        features_status,
+        license_status,
+        systems_count,
+        characters_count
+      ) do
+    AppLogger.processor_info(&quot;[StructuredFormatter] Creating status message with title: #{title}&quot;)
+
+    # Prepare all the data needed for the status message
+    uptime_str = format_uptime(uptime)
+    license_icon = get_license_icon(license_status)
+    websocket_icon = get_websocket_status_icon(stats)
+    notification_info = get_notification_info(stats)
+    formatted_features = format_feature_statuses(features_status)
+
+    # Prepare fields data as a map to reduce parameter count
+    notification_data = %{
+      title: title,
+      description: description,
+      uptime_str: uptime_str,
+      license_icon: license_icon,
+      websocket_icon: websocket_icon,
+      systems_count: systems_count,
+      characters_count: characters_count,
+      notification_info: notification_info,
+      formatted_features: formatted_features
+    }
+
+    # Build the response structure
+    build_status_notification(notification_data)
+  end
+
+  # Format uptime for display
+  defp format_uptime(nil), do: &quot;🚀 Just started&quot;
+
+  defp format_uptime(uptime) do
+    days = div(uptime, 86_400)
+    hours = div(rem(uptime, 86_400), 3600)
+    minutes = div(rem(uptime, 3600), 60)
+    seconds = rem(uptime, 60)
+    &quot;⏱️ #{days}d #{hours}h #{minutes}m #{seconds}s&quot;
+  end
+
+  # Get license icon based on validity and premium status
+  defp get_license_icon(license_status) do
+    # Since premium tier is removed, we only check for license validity
+    if license_status.valid do
+      &quot;✅&quot;
+    else
+      &quot;❌&quot;
+    end
+  end
+
+  # Get notification info string
+  defp get_notification_info(stats) do
+    if Map.has_key?(stats, :notifications) do
+      format_notification_counts(stats.notifications)
+    else
+      &quot;No notifications sent yet&quot;
+    end
+  end
+
+  # Extract and format feature statuses
+  defp format_feature_statuses(features_status) do
+    # Extract primary feature statuses
+    primary_features = %{
+      kill_notifications: Map.get(features_status, :kill_notifications_enabled, true),
+      tracked_systems_notifications: Map.get(features_status, :system_tracking_enabled, true),
+      tracked_characters_notifications:
+        Map.get(features_status, :character_tracking_enabled, true),
+      activity_charts: Map.get(features_status, :activity_charts, false)
+    }
+
+    # For debugging display
+    AppLogger.processor_debug(
+      &quot;[StructuredFormatter] Found feature statuses: #{inspect(features_status)}&quot;
+    )
+
+    AppLogger.processor_debug(
+      &quot;[StructuredFormatter] Extracted primary features: #{inspect(primary_features)}&quot;
+    )
+
+    # Format primary feature statuses
+    [
+      format_feature_item(&quot;Kill Notifications&quot;, primary_features.kill_notifications),
+      format_feature_item(
+        &quot;System Notifications&quot;,
+        primary_features.tracked_systems_notifications
+      ),
+      format_feature_item(
+        &quot;Character Notifications&quot;,
+        primary_features.tracked_characters_notifications
+      ),
+      format_feature_item(
+        &quot;Activity Charts&quot;,
+        primary_features.activity_charts
+      )
+    ]
+    |&gt; Enum.join(&quot;\n&quot;)
+  end
+
+  # Build the final status notification structure
+  defp build_status_notification(data) do
+    %{
+      type: :status_notification,
+      title: data.title,
+      description: &quot;#{data.description}\n\n**System Status Overview:**&quot;,
+      color: @info_color,
+      timestamp: DateTime.utc_now() |&gt; DateTime.to_iso8601(),
+      thumbnail: %{
+        # Use the EVE Online logo or similar icon
+        url: &quot;https://images.evetech.net/corporations/1_000_001/logo?size=128&quot;
+      },
+      footer: %{
+        text: &quot;Wanderer Notifier v#{get_app_version()}&quot;
+      },
+      fields: [
+        %{name: &quot;Uptime&quot;, value: data.uptime_str, inline: true},
+        %{name: &quot;License&quot;, value: data.license_icon, inline: true},
+        %{name: &quot;WebSocket&quot;, value: data.websocket_icon, inline: true},
+        %{name: &quot;Systems&quot;, value: &quot;🗺️ #{data.systems_count}&quot;, inline: true},
+        %{name: &quot;Characters&quot;, value: &quot;👤 #{data.characters_count}&quot;, inline: true},
+        %{name: &quot;📊 Notifications&quot;, value: data.notification_info, inline: false},
+        %{name: &quot;⚙️ Primary Features&quot;, value: data.formatted_features, inline: false}
+      ]
+    }
+  end
+
+  # Helper to format a single feature item
+  defp format_feature_item(name, enabled) do
+    if enabled do
+      &quot;✅ #{name}&quot;
+    else
+      &quot;❌ #{name}&quot;
+    end
+  end
+
+  # Helper to format notification counts
+  defp format_notification_counts(%{} = notifications) do
+    total = Map.get(notifications, :total, 0)
+    kills = Map.get(notifications, :kills, 0)
+    systems = Map.get(notifications, :systems, 0)
+    characters = Map.get(notifications, :characters, 0)
+
+    &quot;Total: **#{total}** (Kills: **#{kills}**, Systems: **#{systems}**, Characters: **#{characters}**)&quot;
+  end
+
+  # Helper to get websocket status icon based on connection state and last message time
+  defp get_websocket_status_icon(stats) do
+    if Map.has_key?(stats, :websocket) do
+      ws_status = stats.websocket
+      get_icon_by_connection_state(ws_status)
+    else
+      &quot;❓&quot;
+    end
+  end
+
+  defp get_icon_by_connection_state(%{connected: false}), do: &quot;🔴&quot;
+
+  defp get_icon_by_connection_state(%{connected: true, last_message: nil}), do: &quot;🟡&quot;
+
+  defp get_icon_by_connection_state(%{connected: true, last_message: last_message}) do
+    time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
+
+    cond do
+      time_diff &lt; 60 -&gt; &quot;🟢&quot;
+      time_diff &lt; 300 -&gt; &quot;🟡&quot;
+      true -&gt; &quot;🟠&quot;
+    end
+  end
+
+  @doc &quot;&quot;&quot;
+  Converts a generic notification structure to Discord&apos;s specific format.
+  This is the interface between our internal notification format and Discord&apos;s requirements.
+
+  ## Parameters
+    - notification: The generic notification structure
+
+  ## Returns
+    - A map in Discord&apos;s expected format
+  &quot;&quot;&quot;
+  def to_discord_format(notification) do
+    # Extract components if available
+    components = Map.get(notification, :components, [])
+
+    # Convert to Discord embed format with safe field access
+    embed = %{
+      &quot;title&quot; =&gt; Map.get(notification, :title, &quot;&quot;),
+      &quot;description&quot; =&gt; Map.get(notification, :description, &quot;&quot;),
+      &quot;color&quot; =&gt; Map.get(notification, :color, @default_color),
+      &quot;url&quot; =&gt; Map.get(notification, :url),
+      &quot;timestamp&quot; =&gt; Map.get(notification, :timestamp),
+      &quot;footer&quot; =&gt; Map.get(notification, :footer),
+      &quot;thumbnail&quot; =&gt; Map.get(notification, :thumbnail),
+      &quot;image&quot; =&gt; Map.get(notification, :image),
+      &quot;author&quot; =&gt; Map.get(notification, :author),
+      &quot;fields&quot; =&gt;
+        case Map.get(notification, :fields) do
+          fields when is_list(fields) -&gt;
+            Enum.map(fields, fn field -&gt;
+              %{
+                &quot;name&quot; =&gt; Map.get(field, :name, &quot;&quot;),
+                &quot;value&quot; =&gt; Map.get(field, :value, &quot;&quot;),
+                &quot;inline&quot; =&gt; Map.get(field, :inline, false)
+              }
+            end)
+
+          _ -&gt;
+            []
+        end
+    }
+
+    # Add components if present
+    add_components_if_present(embed, components)
+  end
+
+  # Helper to add components if present
+  defp add_components_if_present(embed, []), do: embed
+  defp add_components_if_present(embed, components), do: Map.put(embed, &quot;components&quot;, components)
+
+  # Add shattered field if applicable
+  defp add_shattered_field(fields, true, true) do
+    fields ++ [%{name: &quot;Shattered&quot;, value: &quot;Yes&quot;, inline: true}]
+  end
+
+  defp add_shattered_field(fields, _, _), do: fields
+
+  # Add statics field if applicable
+  defp add_statics_field(fields, true, formatted_statics)
+       when formatted_statics != nil and formatted_statics != &quot;None&quot; do
+    fields ++ [%{name: &quot;Statics&quot;, value: formatted_statics, inline: true}]
+  end
+
+  defp add_statics_field(fields, _, _), do: fields
+
+  # Add region field if available
+  defp add_region_field(fields, nil), do: fields
+
+  defp add_region_field(fields, region_name) do
+    encoded_region_name = URI.encode(region_name)
+    region_link = &quot;[#{region_name}](https://evemaps.dotlan.net/region/#{encoded_region_name})&quot;
+    fields ++ [%{name: &quot;Region&quot;, value: region_link, inline: true}]
+  end
+
+  # Add effect field if available for wormhole systems
+  defp add_effect_field(fields, true, effect_name)
+       when effect_name != nil and effect_name != &quot;&quot; do
+    fields ++ [%{name: &quot;Effect&quot;, value: effect_name, inline: true}]
+  end
+
+  defp add_effect_field(fields, _, _), do: fields
+
+  # Process kill data and add to fields
+  defp process_kill_data(fields, zkill_kills) do
+    # Enrich each killmail with complete data from ESI
+    detailed_kills = Enum.map(zkill_kills, &amp;fetch_complete_killmail/1)
+
+    # Format the kills and add to fields if we got any valid kills
+    if Enum.any?(detailed_kills) do
+      formatted_kills = format_system_kills(detailed_kills)
+      fields ++ [%{name: &quot;Recent Kills&quot;, value: formatted_kills, inline: false}]
+    else
+      fields
+    end
+  end
+
+  # Fetch complete killmail details using ESI API
+  defp fetch_complete_killmail(zkill_data) do
+    kill_id = Map.get(zkill_data, &quot;killmail_id&quot;)
+    hash = get_in(zkill_data, [&quot;zkb&quot;, &quot;hash&quot;])
+
+    if kill_id &amp;&amp; hash do
+      case esi_service().get_killmail(kill_id, hash) do
+        {:ok, esi_data} -&gt; Map.merge(zkill_data, %{&quot;esi_killmail&quot; =&gt; esi_data})
+        _ -&gt; zkill_data
+      end
+    else
+      zkill_data
+    end
+  end
+
+  # Format kills list for system notification
+  defp format_system_kills(kills) do
+    Enum.map_join(kills, &quot;\n&quot;, fn kill -&gt;
+      kill_id = Map.get(kill, &quot;killmail_id&quot;)
+      total_value = get_in(kill, [&quot;zkb&quot;, &quot;totalValue&quot;]) || 0
+
+      # Try to get victim and ship info from ESI data if available
+      esi_data = Map.get(kill, &quot;esi_killmail&quot;, %{})
+      victim_data = Map.get(esi_data, &quot;victim&quot;, %{})
+      victim_id = Map.get(victim_data, &quot;character_id&quot;)
+      ship_type_id = Map.get(victim_data, &quot;ship_type_id&quot;)
+
+      {victim_name, ship_name} = get_victim_and_ship_names(victim_id, ship_type_id)
+      formatted_value = format_compact_isk_value(total_value)
+
+      &quot;[#{victim_name} (#{ship_name})](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value}&quot;
+    end)
+  end
+
+  # Get victim and ship names using ESI API
+  defp get_victim_and_ship_names(victim_id, ship_type_id) do
+    victim_name = get_victim_name(victim_id)
+    ship_name = get_ship_name(ship_type_id)
+
+    {victim_name, ship_name}
+  end
+
+  # Get the victim name using either tracking data or ESI
+  defp get_victim_name(nil), do: &quot;Unknown&quot;
+
+  defp get_victim_name(victim_id) do
+    # First check if this is a tracked character
+    case check_tracked_character(victim_id) do
+      {:ok, name} when is_binary(name) and name != &quot;&quot; and name != &quot;Unknown&quot; -&gt;
+        # We found the character in our tracked characters with a valid name, use that data
+        AppLogger.processor_debug(&quot;[StructuredFormatter] Using tracked character name: #{name}&quot;)
+        name
+
+      _ -&gt;
+        # Fall back to ESI lookup only if we couldn&apos;t get name from tracking system
+        AppLogger.processor_debug(
+          &quot;[StructuredFormatter] Character #{victim_id} not found in tracking or has invalid name, using ESI&quot;
+        )
+
+        lookup_character_from_esi(victim_id)
+    end
+  end
+
+  # Lookup character from ESI
+  defp lookup_character_from_esi(victim_id) do
+    case esi_service().get_character_info(victim_id) do
+      {:ok, char_info} -&gt; Map.get(char_info, &quot;name&quot;, &quot;Unknown&quot;)
+      _ -&gt; &quot;Unknown&quot;
+    end
+  end
+
+  # Get the ship name from ESI
+  defp get_ship_name(nil), do: &quot;Unknown Ship&quot;
+
+  defp get_ship_name(ship_type_id) do
+    case esi_service().get_ship_type_name(ship_type_id) do
+      {:ok, ship_info} -&gt; Map.get(ship_info, &quot;name&quot;, &quot;Unknown Ship&quot;)
+      _ -&gt; &quot;Unknown Ship&quot;
+    end
+  end
+
+  # Helper function to check if a character is in our tracked characters
+  defp check_tracked_character(victim_id) do
+    alias WandererNotifier.Data.Cache.{Keys, Repository}
+    alias WandererNotifier.Data.Repository, as: DataRepository
+
+    # First check if character is in tracking list
+    cache_key = Keys.tracked_character(to_string(victim_id))
+    is_tracked = Repository.get(cache_key) != nil
+
+    if is_tracked do
+      # If character is tracked, get full character data from appropriate repository
+      case DataRepository.get_character_name(victim_id) do
+        {:ok, name} when is_binary(name) and name != &quot;&quot; -&gt;
+          {:ok, name}
+
+        _ -&gt;
+          # Fall back to character list cache
+          get_name_from_character_list(victim_id)
+      end
+    else
+      {:error, :not_tracked}
+    end
+  end
+
+  # Helper to try getting character name from the character list cache
+  defp get_name_from_character_list(victim_id) do
+    alias WandererNotifier.Data.Cache.{Keys, Repository}
+
+    # Get the full character list
+    character_list =
+      Repository.get(Keys.character_list()) || []
+
+    # Try to find the character in the list
+    victim_id_str = to_string(victim_id)
+
+    character =
+      Enum.find(character_list, fn char -&gt;
+        char_id = Map.get(char, &quot;character_id&quot;) || Map.get(char, :character_id)
+        to_string(char_id) == victim_id_str
+      end)
+
+    if character do
+      name = Map.get(character, &quot;name&quot;) || Map.get(character, :name) || &quot;Unknown&quot;
+      {:ok, name}
+    else
+      {:error, :not_in_character_list}
+    end
+  end
+
+  # Format ISK value in a compact way
+  defp format_compact_isk_value(value) when is_number(value) do
+    cond do
+      value &gt;= 1_000_000_000 -&gt; &quot;#{Float.round(value / 1_000_000_000, 1)}B ISK&quot;
+      value &gt;= 1_000_000 -&gt; &quot;#{Float.round(value / 1_000_000, 1)}M ISK&quot;
+      value &gt;= 1_000 -&gt; &quot;#{Float.round(value / 1_000, 1)}K ISK&quot;
+      true -&gt; &quot;#{Float.round(value, 1)} ISK&quot;
+    end
+  end
+
+  defp format_compact_isk_value(_), do: &quot;Unknown Value&quot;
+
+  @doc &quot;&quot;&quot;
+  Creates a standard formatted kill notification specifically for character channel.
+  Similar to format_kill_notification but uses green color for kills where tracked characters are attackers,
+  and red for when tracked characters are victims.
+
+  ## Parameters
+    - killmail: The Killmail struct
+    - tracked_characters: List of tracked character IDs involved in this kill
+    - are_victims: Boolean indicating if tracked characters are victims (true) or attackers (false)
+
+  ## Returns
+    - A generic structured map that can be converted to platform-specific format
+  &quot;&quot;&quot;
+  def format_character_kill_notification(%Killmail{} = killmail, _tracked_characters, are_victims) do
+    # Use the standard formatting logic
+    standard_notification = format_kill_notification(killmail)
+
+    # Override the color based on victim/attacker status
+    color = if are_victims, do: @error_color, else: @success_color
+
+    # Update the notification with the new color
+    Map.put(standard_notification, :color, color)
+  end
+end</file><file path="react.txt">A. Audit &amp; Extract Shared UI Components
 1. Identify Repeated Patterns
 Cards: ActivityChartCard.jsx, KillComparison.tsx, KillmailChartCard.jsx all wrap a title + chart + footer.
 

@@ -22,8 +22,6 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   defp update_tracked_systems do
     primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
-    cached_systems = CacheRepo.get(:system_list)
-
     task =
       Task.async(fn ->
         try do

@@ -4,7 +4,6 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   """
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Map.Clients.SystemsClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
@@ -21,32 +20,32 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     AppLogger.info("Sending test system notification...")
 
     # Get a system from the cache for testing
-    case SystemsClient.get_system_for_notification() do
-      {:ok, system} ->
-        # Format the notification
-        generic_notification = StructuredFormatter.format_system_notification(system)
+    # case SystemsClient.get_system_for_notification() do
+    #   {:ok, system} ->
+    #     # Format the notification
+    #     generic_notification = StructuredFormatter.format_system_notification(system)
 
-        # Send notification
-        case NotificationInterface.send_message(generic_notification) do
-          :ok ->
-            AppLogger.info("Test system notification sent successfully")
-            Stats.increment(:systems)
-            {:ok, "Test system notification sent successfully"}
+    #     # Send notification
+    #     case NotificationInterface.send_message(generic_notification) do
+    #       :ok ->
+    #         AppLogger.info("Test system notification sent successfully")
+    #         Stats.increment(:systems)
+    #         {:ok, "Test system notification sent successfully"}
 
-          {:error, reason} ->
-            AppLogger.error("Failed to send test system notification: #{inspect(reason)}")
-            {:error, reason}
-        end
+    #       {:error, reason} ->
+    #         AppLogger.error("Failed to send test system notification: #{inspect(reason)}")
+    #         {:error, reason}
+    #     end
 
-      {:error, :no_systems_in_cache} ->
-        error_msg = "No systems found in cache for test notification"
-        AppLogger.error(error_msg)
-        {:error, error_msg}
+    #   {:error, :no_systems_in_cache} ->
+    #     error_msg = "No systems found in cache for test notification"
+    #     AppLogger.error(error_msg)
+    #     {:error, error_msg}
 
-      {:error, reason} ->
-        AppLogger.error("Failed to get system for test notification: #{inspect(reason)}")
-        {:error, reason}
-    end
+    #   {:error, reason} ->
+    #     AppLogger.error("Failed to get system for test notification: #{inspect(reason)}")
+    #     {:error, reason}
+    # end
   end
 
   @doc """

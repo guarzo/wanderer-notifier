@@ -254,7 +254,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
       send_to_discord(generic_notification, :system_tracking)
       Stats.increment(:systems)
-      :ok
+      {:ok, :sent}
     rescue
       e ->
         AppLogger.processor_error("[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)",
@@ -271,14 +271,17 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       :send_discord_embed ->
         [embed] = data
         NeoClient.send_embed(embed, nil)
+        {:ok, :sent}
 
       :send_discord_embed_to_channel ->
         [channel_id, embed] = data
         NeoClient.send_embed(embed, channel_id)
+        {:ok, :sent}
 
       :send_message ->
         [message] = data
         send_message(message)
+        {:ok, :sent}
 
       _ ->
         AppLogger.processor_warn("Unknown notification type", type: type)
@@ -308,6 +311,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     # Skip actual sending in test mode
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{inspect(feature)}")
+      {:ok, :sent}
     else
       # Convert to Discord format
       discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
@@ -317,14 +321,13 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       use_components = components != [] && FeatureFlags.components_enabled?()
 
       if use_components do
-        # If components are enabled, use enhanced format
         AppLogger.processor_info("Using Discord components for #{feature} notification")
         NeoClient.send_message_with_components(discord_embed, components, nil)
       else
-        # Otherwise use standard embed
         AppLogger.processor_info("Using standard embeds for #{feature} notification")
         NeoClient.send_embed(discord_embed, nil)
       end
+      {:ok, :sent}
     end
   end
 
