@@ -44,7 +44,17 @@ defmodule WandererNotifier.Killmail.Processor do
             process_kill_data(kill_data, state)
 
           {:ok, %{should_notify: false, reason: reason}} ->
-            AppLogger.processor_info("Skipping killmail: #{reason}")
+            system_id = Map.get(kill_data, "solar_system_id")
+            killmail_id = Map.get(kill_data, "killmail_id")
+            system_name =
+              case WandererNotifier.ESI.Service.get_system(system_id) do
+                {:ok, %{"name" => name}} -> name
+                _ -> "Unknown"
+              end
+
+            AppLogger.processor_info(
+              "Skipping killmail: #{reason} (killmail_id=#{killmail_id}, system_id=#{system_id}, system_name=#{system_name})"
+            )
             state
 
           _ ->

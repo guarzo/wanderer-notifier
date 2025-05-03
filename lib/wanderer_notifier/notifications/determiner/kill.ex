@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Determines if a notification should be sent for a kill.
@@ -92,12 +93,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp extract_system_id(_), do: "unknown"
 
   defp extract_system_id_from_map(kill) do
-    cond do
-      esi_data = Map.get(kill, "esi_data") -> Map.get(esi_data, "solar_system_id")
-      system = Map.get(kill, "system") -> Map.get(system, "id")
-      solar_system = Map.get(kill, "solar_system") -> Map.get(solar_system, "id")
-      true -> "unknown"
-    end
+    Map.get(kill, "solar_system_id", "unknown")
   end
 
   @doc """
@@ -110,21 +106,17 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the system is tracked
     - false otherwise
   """
-  def tracked_system?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    tracked_system?(system_id_str)
-  end
+  def tracked_system?(system_id) when is_integer(system_id), do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    cache_key = CacheKeys.tracked_system(system_id_str)
-
-    tracked =
-      case CacheRepo.get(cache_key) do
-        {:ok, _} -> true
-        _ -> false
-      end
-
-    tracked
+    case CacheRepo.get(:system_list) do
+      {:ok, systems} when is_list(systems) ->
+        Enum.any?(systems, fn system ->
+          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+          to_string(id) == system_id_str
+        end)
+      _ -> false
+    end
   end
 
   def tracked_system?(_), do: false
@@ -341,21 +333,17 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the character is tracked
     - false otherwise
   """
-  def tracked_character?(character_id) when is_integer(character_id) do
-    character_id_str = Integer.to_string(character_id)
-    tracked_character?(character_id_str)
-  end
+  def tracked_character?(character_id) when is_integer(character_id), do: tracked_character?(to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    cache_key = CacheKeys.tracked_character(character_id_str)
-
-    tracked =
-      case CacheRepo.get(cache_key) do
-        {:ok, _} -> true
-        _ -> false
-      end
-
-    tracked
+    case CacheRepo.get(CacheKeys.character_list()) do
+      {:ok, characters} when is_list(characters) ->
+        Enum.any?(characters, fn char ->
+          id = Map.get(char, :character_id) || Map.get(char, "character_id")
+          to_string(id) == character_id_str
+        end)
+      _ -> false
+    end
   end
 
   def tracked_character?(_), do: false

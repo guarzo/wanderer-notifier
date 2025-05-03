@@ -177,6 +177,14 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
           raise e
       end
 
+    # Log all system names and IDs during each update
+    system_names = Enum.map(enriched_systems, fn sys ->
+      name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
+      id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
+      %{id: id, name: name}
+    end)
+    AppLogger.api_info("[SystemsClient] Systems in this update: #{inspect(system_names)}")
+
     updated_systems =
       try do
         update_systems_cache(enriched_systems)

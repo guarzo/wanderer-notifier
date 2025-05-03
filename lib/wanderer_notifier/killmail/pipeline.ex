@@ -32,6 +32,20 @@ defmodule WandererNotifier.Killmail.Pipeline do
     else
       {:error, {:skipped, reason}} ->
         Metrics.track_processing_skipped(ctx)
+        # Log system name and ID for skipped killmails
+        system_id = Map.get(zkb_data, "solar_system_id")
+        killmail_id = Map.get(zkb_data, "killmail_id")
+        system_name =
+          case WandererNotifier.ESI.Service.get_system(system_id) do
+            {:ok, %{"name" => name}} -> name
+            _ -> "Unknown"
+          end
+        AppLogger.kill_info("!!! DEBUG SKIP KILLMAIL (killmail_id=#{killmail_id}, system_id=#{system_id}, system_name=#{system_name})", %{
+          killmail_id: killmail_id,
+          system_id: system_id,
+          system_name: system_name,
+          reason: reason
+        })
         log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
         {:ok, :skipped}
 
