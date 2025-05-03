@@ -1,4 +1,4 @@
-defmodule WandererNotifier.ZKill.Websocket do
+defmodule WandererNotifier.Killmail.Websocket do
   @moduledoc """
   WebSocket client for zKillboard's WebSocket API.
 

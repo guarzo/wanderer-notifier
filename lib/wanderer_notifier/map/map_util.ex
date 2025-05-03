@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Utilities.MapUtil do
+defmodule WandererNotifier.Map.MapUtil do
   @moduledoc """
   Utility functions for working with maps consistently across the application.
   """

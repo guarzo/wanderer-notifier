@@ -17,7 +17,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
 
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Helpers.TestNotifications, as: NotificationHelpers
+  alias WandererNotifier.Notifiers.TestNotifier, as: NotificationHelpers
 
   # Get notification settings
   get "/settings" do

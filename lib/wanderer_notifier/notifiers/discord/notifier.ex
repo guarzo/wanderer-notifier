@@ -14,7 +14,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
-
+  alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -249,7 +249,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       enriched_system = system
       AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] MapSystem struct (detailed)", enriched_system: inspect(enriched_system, pretty: true, limit: 1000))
 
-      generic_notification = StructuredFormatter.format_system_notification(enriched_system)
+      generic_notification = SystemFormatter.format_system_notification(enriched_system)
       AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] Formatted notification payload", payload: inspect(generic_notification, pretty: true, limit: 1000))
 
       send_to_discord(generic_notification, :system_tracking)

@@ -14,9 +14,60 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Cache.{CachexImpl, Keys}
   alias WandererNotifier.Notifiers.Discord.Constants
+  alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
 
-  # Get colors from Constants
-  defp colors, do: Constants.colors()
+  # Color constants for Discord notifications
+  @default_color 0x3498DB
+  @success_color 0x2ECC71
+  @warning_color 0xF39C12
+  @error_color 0xE74C3C
+  @info_color 0x3498DB
+
+  # Wormhole and security colors
+  @wormhole_color 0x428BCA
+  @highsec_color 0x5CB85C
+  @lowsec_color 0xE28A0D
+  @nullsec_color 0xD9534F
+
+
+  @doc """
+  Returns a standardized set of colors for notification embeds.
+
+  ## Returns
+    - A map with color constants for various notification types
+  """
+  def colors do
+    %{
+      default: @default_color,
+      success: @success_color,
+      warning: @warning_color,
+      error: @error_color,
+      info: @info_color,
+      wormhole: @wormhole_color,
+      highsec: @highsec_color,
+      lowsec: @lowsec_color,
+      nullsec: @nullsec_color
+    }
+  end
+
+  @doc """
+  Converts a color in one format to Discord format.
+
+  ## Parameters
+    - color: The color to convert (atom, integer, or hex string)
+
+  ## Returns
+    - The color in Discord format (integer)
+  """
+  def convert_color(color) when is_atom(color) do
+    Map.get(colors(), color, @default_color)
+  end
+  def convert_color(color) when is_integer(color), do: color
+  def convert_color("#" <> hex) do
+    {color, _} = Integer.parse(hex, 16)
+    color
+  end
+  def convert_color(_color), do: @default_color
 
   @doc """
   Creates a standard formatted kill notification embed/attachment from a Killmail struct.
@@ -84,8 +135,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   end
 
   @doc """
-  Creates a standard formatted system notification embed/attachment from a MapSystem struct.
-  Returns data in a generic format that can be converted to platform-specific format.
+  Creates a standard formatted system notification from a MapSystem struct.
 
   ## Parameters
     - system: The MapSystem struct
@@ -94,17 +144,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_system_notification(%MapSystem{} = system) do
-    # Log the system data for debugging
-    log_system_data(system)
-
-    # Extract basic system information
-    system_info = extract_system_info(system)
-
-    # Build notification fields
-    fields = build_system_notification_fields(system_info)
-
-    # Build a platform-agnostic structure
-    build_system_notification(system_info, fields)
+    SystemFormatter.format_system_notification(system)
   end
 
   @doc """
@@ -145,23 +185,54 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   end
 
   @doc """
-  Converts a generic notification to Discord format.
-  """
-  def to_discord_format(generic_notification) do
-    color = Map.get(generic_notification, :color, Constants.colors().default)
+  Converts a generic notification structure to Discord's specific format.
+  This is the interface between our internal notification format and Discord's requirements.
 
-    %{
-      title: generic_notification.title,
-      description: generic_notification.description,
-      url: Map.get(generic_notification, :url),
-      color: color,
-      fields: Map.get(generic_notification, :fields, []),
-      footer: Map.get(generic_notification, :footer),
-      thumbnail: Map.get(generic_notification, :thumbnail)
+  ## Parameters
+    - notification: The generic notification structure
+
+  ## Returns
+    - A map in Discord's expected format
+  """
+  def to_discord_format(notification) do
+    # Extract components if available
+    components = Map.get(notification, :components, [])
+
+    # Convert to Discord embed format with safe field access
+    embed = %{
+      "title" => Map.get(notification, :title, ""),
+      "description" => Map.get(notification, :description, ""),
+      "color" => Map.get(notification, :color, @default_color),
+      "url" => Map.get(notification, :url),
+      "timestamp" => Map.get(notification, :timestamp),
+      "footer" => Map.get(notification, :footer),
+      "thumbnail" => Map.get(notification, :thumbnail),
+      "image" => Map.get(notification, :image),
+      "author" => Map.get(notification, :author),
+      "fields" =>
+        case Map.get(notification, :fields) do
+          fields when is_list(fields) ->
+            Enum.map(fields, fn field ->
+              %{
+                "name" => Map.get(field, :name, ""),
+                "value" => Map.get(field, :value, ""),
+                "inline" => Map.get(field, :inline, false)
+              }
+            end)
+          _ ->
+            []
+        end
     }
+
+    # Add components if present
+    add_components_if_present(embed, components)
   end
 
   # Private helper functions
+
+  # Helper to add components if present
+  defp add_components_if_present(embed, []), do: embed
+  defp add_components_if_present(embed, components), do: Map.put(embed, "components", components)
 
   defp log_killmail_data(killmail) do
     AppLogger.processor_debug(
@@ -175,11 +246,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     )
   end
 
-  defp log_system_data(system) do
-    AppLogger.processor_debug(
-      "[StructuredFormatter] Formatting system: #{inspect(system, limit: 200)}"
-    )
-  end
 
   defp extract_victim_info(killmail) do
     victim = Killmail.get_victim(killmail) || %{}
@@ -244,19 +310,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
       security_status: character.security_status,
       last_location: character.last_location,
       ship_type: character.ship_type
-    }
-  end
-
-  defp extract_system_info(system) do
-    %{
-      name: system.name,
-      system_id: system.solar_system_id,
-      region_name: system.region_name,
-      security_status: system.security_status,
-      class_title: system.class_title,
-      effect_name: system.effect_name,
-      is_shattered: system.is_shattered,
-      statics: system.statics
     }
   end
 
@@ -352,26 +405,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     ]
   end
 
-  defp build_system_notification_fields(system_info) do
-    [
-      %{
-        name: "System",
-        value: format_system_details(system_info),
-        inline: true
-      },
-      %{
-        name: "Region",
-        value: format_region_details(system_info),
-        inline: true
-      },
-      %{
-        name: "Properties",
-        value: format_system_properties(system_info),
-        inline: true
-      }
-    ]
-  end
-
   defp build_character_notification(character_info, fields) do
     title = "New Character Tracked: #{character_info.name}"
     description = "A new character has been added to tracking"
@@ -399,33 +432,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     }
   end
 
-  defp build_system_notification(system_info, fields) do
-    title = "New System Tracked: #{system_info.name}"
-    description = "A new system has been added to tracking"
-
-    color =
-      case system_info do
-        %{class_title: class} when not is_nil(class) -> colors().wormhole
-        %{security_status: sec} when is_number(sec) and sec >= 0.5 -> colors().highsec
-        %{security_status: sec} when is_number(sec) and sec > 0.0 -> colors().lowsec
-        %{security_status: sec} when is_number(sec) and sec <= 0.0 -> colors().nullsec
-        _ -> colors().default
-      end
-
-    %{
-      title: title,
-      description: description,
-      color: color,
-      fields: fields,
-      footer: %{
-        text: "System Tracking"
-      },
-      thumbnail: %{
-        url: get_system_image_url(system_info)
-      }
-    }
-  end
-
   defp format_character_details(%{name: name, security_status: security}) do
     security_text = format_security_status(security)
     "Name: #{name}\nSecurity: #{security_text}"
@@ -439,24 +445,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   defp format_character_location(%{last_location: location, ship_type: ship}) do
     ship_text = if ship, do: "\nShip: #{ship}", else: ""
     "Location: #{location || "Unknown"}#{ship_text}"
-  end
-
-  defp format_system_details(%{name: name, security_status: security, class_title: class}) do
-    class_text = if class, do: "\nClass: #{class}", else: ""
-    "Name: #{name}\nSecurity: #{format_security_status(security)}#{class_text}"
-  end
-
-  defp format_region_details(%{region_name: region}) do
-    "Region: #{region || "Unknown"}"
-  end
-
-  defp format_system_properties(%{effect_name: effect, is_shattered: shattered, statics: statics}) do
-    effect_text = if effect, do: "Effect: #{effect}\n", else: ""
-    shattered_text = if shattered, do: "Shattered System\n", else: ""
-    statics_text = if statics, do: "Statics: #{Enum.join(statics, ", ")}", else: ""
-
-    "#{effect_text}#{shattered_text}#{statics_text}"
-    |> String.trim()
   end
 
   defp format_security_status(security_status) when is_float(security_status) do
@@ -481,19 +469,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   defp get_character_image_url(character_id),
     do: "https://images.evetech.net/characters/#{character_id}/portrait"
 
-  defp get_system_image_url(%{class_title: class}) when not is_nil(class),
-    do: "https://images.evetech.net/types/30881/render"
-
-  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec >= 0.5,
-    do: "https://images.evetech.net/types/30882/render"
-
-  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec > 0.0,
-    do: "https://images.evetech.net/types/30883/render"
-
-  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec <= 0.0,
-    do: "https://images.evetech.net/types/30884/render"
-
-  defp get_system_image_url(_), do: "https://images.evetech.net/types/30885/render"
 
   defp get_notification_color(%{security_status: sec}) when is_number(sec) do
     case sec do

@@ -8,14 +8,14 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Config
-  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Notifications.Helpers.Deduplication
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
   alias WandererNotifier.Notifications.Interface, as: NotificationInterface
-  alias WandererNotifier.ZKill.Websocket, as: ZKillWebsocket
+  alias WandererNotifier.Killmail.Websocket, as: KillmailWebsocket
 
   @default_interval :timer.minutes(5)
 
@@ -157,12 +157,12 @@ defmodule WandererNotifier.Core.Application.Service do
   def handle_info(:reconnect_ws, state) do
     # Check if the websocket is enabled in config
     if Config.websocket_enabled?() do
-      AppLogger.websocket_info("Attempting to reconnect WandererNotifier.ZKill.Websocket")
+      AppLogger.websocket_info("Attempting to reconnect WandererNotifier.Killmail.Websocket")
       new_state = reconnect_zkill_ws(state)
       {:noreply, new_state}
     else
       AppLogger.websocket_info(
-        "Skipping WandererNotifier.ZKill.Websocket reconnection - disabled by configuration"
+        "Skipping WandererNotifier.Killmail.Websocket reconnection - disabled by configuration"
       )
 
       {:noreply, state}
@@ -365,10 +365,10 @@ defmodule WandererNotifier.Core.Application.Service do
       reason: inspect(reason)
     )
 
-    # Check if the crashed process is the ZKill websocket (now WandererNotifier.ZKill.Websocket)
+    # Check if the crashed process is the Killmail websocket (now WandererNotifier.Killmail.Websocket)
     if pid == state.ws_pid do
       AppLogger.websocket_warn(
-        "ZKill websocket crashed. Scheduling reconnect (WandererNotifier.ZKill.Websocket)",
+        "Killmail websocket crashed. Scheduling reconnect (WandererNotifier.Killmail.Websocket)",
         reconnect_delay_ms: Config.websocket_reconnect_delay()
       )
 
@@ -382,7 +382,20 @@ defmodule WandererNotifier.Core.Application.Service do
   @impl true
   def handle_info({:clear_dedup_key, key}, state) do
     # Handle deduplication key expiration
-    DeduplicationHelper.handle_clear_key(key)
+    # Parse type and id from key (e.g., "system:123")
+    case String.split(key, ":", parts: 2) do
+      [type_str, id] ->
+        type =
+          case type_str do
+            "system" -> :system
+            "character" -> :character
+            "kill" -> :kill
+            _ -> :system # default/fallback
+          end
+        Deduplication.clear_key(type, id)
+      _ ->
+        :noop
+    end
     {:noreply, state}
   end
 
@@ -500,11 +513,11 @@ defmodule WandererNotifier.Core.Application.Service do
   defp start_zkill_ws(state) do
     # Check if websocket is enabled in config
     if Config.websocket_enabled?() do
-      AppLogger.websocket_debug("Starting WandererNotifier.ZKill.Websocket")
+      AppLogger.websocket_debug("Starting WandererNotifier.Killmail.Websocket")
 
-      case ZKillWebsocket.start_link(self()) do
+      case KillmailWebsocket.start_link(self()) do
         {:ok, pid} ->
-          AppLogger.websocket_info("🔌 WandererNotifier.ZKill.Websocket ready")
+          AppLogger.websocket_info("🔌 WandererNotifier.Killmail.Websocket ready")
           %{state | ws_pid: pid}
 
         {:error, reason} ->
@@ -517,7 +530,7 @@ defmodule WandererNotifier.Core.Application.Service do
           state
       end
     else
-      AppLogger.websocket_debug("WandererNotifier.ZKill.Websocket disabled by configuration")
+      AppLogger.websocket_debug("WandererNotifier.Killmail.Websocket disabled by configuration")
       state
     end
   end
@@ -525,9 +538,9 @@ defmodule WandererNotifier.Core.Application.Service do
   defp reconnect_zkill_ws(state) do
     # Check if the websocket is enabled in config
     if Config.websocket_enabled?() do
-      case ZKillWebsocket.start_link(self()) do
+      case KillmailWebsocket.start_link(self()) do
         {:ok, pid} ->
-          AppLogger.websocket_info("Reconnected to WandererNotifier.ZKill.Websocket",
+          AppLogger.websocket_info("Reconnected to WandererNotifier.Killmail.Websocket",
             pid: inspect(pid)
           )
 
@@ -540,7 +553,7 @@ defmodule WandererNotifier.Core.Application.Service do
       end
     else
       AppLogger.websocket_info(
-        "WandererNotifier.ZKill.Websocket reconnection skipped - disabled by configuration"
+        "WandererNotifier.Killmail.Websocket reconnection skipped - disabled by configuration"
       )
 
       state

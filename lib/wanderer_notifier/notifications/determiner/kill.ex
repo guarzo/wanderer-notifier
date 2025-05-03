@@ -8,7 +8,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Notifications.Helpers.Deduplication
   @doc """
   Determines if a notification should be sent for a kill.
 
@@ -44,7 +44,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_deduplication_and_decide(kill_id) do
-    case DeduplicationHelper.duplicate?(:kill, kill_id) do
+    case Deduplication.check(:kill, kill_id) do
       {:ok, :new} -> {:ok, %{should_notify: true, reason: nil}}
       {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
       {:error, _reason} -> {:ok, %{should_notify: true, reason: nil}}

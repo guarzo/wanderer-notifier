@@ -17,7 +17,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
   defp generate_service_status_report do
     alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.Notifiers.Helpers.Deduplication
+    alias WandererNotifier.Notifications.Helpers.Deduplication
 
     uptime_seconds = calculate_uptime()
     days = div(uptime_seconds, 86_400)
@@ -28,7 +28,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     current_day = div(:os.system_time(:second), 86_400)
     dedup_key = "status_report:#{current_day}"
 
-    case Deduplication.check_and_mark(dedup_key) do
+    case Deduplication.check(:system, dedup_key) do
       {:ok, :new} ->
         AppLogger.maintenance_info("Service status report",
           uptime: formatted_uptime,

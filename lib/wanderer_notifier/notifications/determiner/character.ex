@@ -8,7 +8,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Notifications.Helpers.Deduplication
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -127,7 +127,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
 
   # Apply deduplication check and decide whether to send notification
   defp check_deduplication_and_decide(character_id) do
-    case DeduplicationHelper.duplicate?(:character, character_id) do
+    case Deduplication.check(:character, character_id) do
       {:ok, :new} ->
         # Not a duplicate, allow sending
         true

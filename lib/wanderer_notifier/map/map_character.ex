@@ -42,7 +42,6 @@ defmodule WandererNotifier.Map.MapCharacter do
   """
   @behaviour Access
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Utilities.MapUtil
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -288,7 +287,7 @@ defmodule WandererNotifier.Map.MapCharacter do
     ]
 
     # Extract fields using MapUtil
-    attrs = MapUtil.extract_map(map, field_mappings)
+    attrs = WandererNotifier.Map.MapUtil.extract_map(map, field_mappings)
 
     # Ensure character_id is a string
     attrs =
