@@ -8,16 +8,12 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   on the structured data provided by these schemas.
   """
 
-  alias WandererNotifier.Character.Character
+  alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Cache.{Keys, Repository}
+  alias WandererNotifier.Cache.{CachexImpl, Keys}
   alias WandererNotifier.Notifiers.Discord.Constants
-
-  # Get configured services
-  defp zkill_service, do: Application.get_env(:wanderer_notifier, :zkill_service)
-  defp esi_service, do: Application.get_env(:wanderer_notifier, :esi_service)
 
   # Get colors from Constants
   defp colors, do: Constants.colors()
@@ -50,7 +46,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     final_blow_details = get_final_blow_details(killmail)
 
     # Build notification fields
-    fields = build_kill_notification_fields(victim_info, kill_context, final_blow_details)
+    fields = build_kill_notification_fields(killmail, kill_context)
 
     # Build a platform-agnostic structure
     build_kill_notification(
@@ -73,7 +69,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   ## Returns
     - A generic structured map that can be converted to platform-specific format
   """
-  def format_character_notification(%Character{} = character) do
+  def format_character_notification(%MapCharacter{} = character) do
     # Log the character data for debugging
     log_character_data(character)
 
@@ -109,6 +105,60 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
 
     # Build a platform-agnostic structure
     build_system_notification(system_info, fields)
+  end
+
+  @doc """
+  Formats a character kill notification into a generic format.
+  """
+  def format_character_kill_notification(killmail, character_id, character_name) do
+    %{
+      title: "Character Kill Report: #{character_name}",
+      description: build_character_kill_description(killmail, character_id),
+      url: "https://zkillboard.com/kill/#{killmail.killmail_id}/",
+      color: Constants.colors().info,
+      fields: build_character_kill_fields(killmail, character_id)
+    }
+  end
+
+  @doc """
+  Formats a system activity notification into a generic format.
+  """
+  def format_system_activity_notification(system, activity_data) do
+    %{
+      title: "System Activity Update: #{system.name}",
+      description: build_system_activity_description(activity_data),
+      color: Constants.colors().warning,
+      fields: build_system_activity_fields(activity_data)
+    }
+  end
+
+  @doc """
+  Formats a character activity notification into a generic format.
+  """
+  def format_character_activity_notification(character, activity_data) do
+    %{
+      title: "Character Activity Update: #{character.name}",
+      description: build_character_activity_description(activity_data),
+      color: Constants.colors().info,
+      fields: build_character_activity_fields(activity_data)
+    }
+  end
+
+  @doc """
+  Converts a generic notification to Discord format.
+  """
+  def to_discord_format(generic_notification) do
+    color = Map.get(generic_notification, :color, Constants.colors().default)
+
+    %{
+      title: generic_notification.title,
+      description: generic_notification.description,
+      url: Map.get(generic_notification, :url),
+      color: color,
+      fields: Map.get(generic_notification, :fields, []),
+      footer: Map.get(generic_notification, :footer),
+      thumbnail: Map.get(generic_notification, :thumbnail)
+    }
   end
 
   # Private helper functions
@@ -176,6 +226,15 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     }
   end
 
+  defp get_system_security_status(system_id) when is_integer(system_id) do
+    case CachexImpl.get(Keys.system_key(system_id)) do
+      {:ok, system_data} -> Map.get(system_data, "security_status", 0.0)
+      _ -> 0.0
+    end
+  end
+
+  defp get_system_security_status(_), do: 0.0
+
   defp extract_character_info(character) do
     %{
       name: character.name,
@@ -232,29 +291,46 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     end
   end
 
-  defp build_kill_notification_fields(victim_info, kill_context, final_blow_details) do
+  defp build_kill_notification_fields(_killmail, kill_context) do
     [
       %{
-        name: "Victim",
-        value: format_entity_info(victim_info),
+        name: "System",
+        value: "#{kill_context.system_name} (#{kill_context.security_formatted})",
         inline: true
       },
       %{
-        name: "Final Blow",
-        value: format_entity_info(final_blow_details),
+        name: "Attackers",
+        value: "#{kill_context.attackers_count}",
         inline: true
       },
       %{
-        name: "Location",
-        value: format_location_info(kill_context),
-        inline: true
-      },
-      %{
-        name: "Details",
-        value: format_kill_details(kill_context),
+        name: "Value",
+        value: kill_context.formatted_value,
         inline: true
       }
     ]
+  end
+
+  defp build_kill_notification(
+         kill_id,
+         kill_time,
+         victim_info,
+         kill_context,
+         _final_blow_details,
+         fields
+       ) do
+    %{
+      title: "Kill Report: #{victim_info.name}",
+      description:
+        "#{victim_info.name} lost their #{victim_info.ship} in #{kill_context.system_name} (#{kill_context.security_formatted})",
+      url: "https://zkillboard.com/kill/#{kill_id}/",
+      timestamp: kill_time,
+      color: get_notification_color(kill_context.security_status),
+      fields: fields,
+      footer: %{
+        text: "Value: #{kill_context.formatted_value} ISK"
+      }
+    }
   end
 
   defp build_character_notification_fields(character_info) do
@@ -295,41 +371,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
         inline: true
       }
     ]
-  end
-
-  defp build_kill_notification(
-         kill_id,
-         kill_time,
-         victim_info,
-         kill_context,
-         final_blow_details,
-         fields
-       ) do
-    title = "Kill Report: #{victim_info.name}"
-    description = "#{victim_info.name} lost their #{victim_info.ship}"
-
-    color =
-      case kill_context.security_status do
-        sec when is_number(sec) and sec >= 0.5 -> colors().highsec
-        sec when is_number(sec) and sec > 0.0 -> colors().lowsec
-        sec when is_number(sec) and sec <= 0.0 -> colors().nullsec
-        _ -> colors().default
-      end
-
-    %{
-      title: title,
-      description: description,
-      url: "https://zkillboard.com/kill/#{kill_id}/",
-      color: color,
-      timestamp: kill_time,
-      fields: fields,
-      footer: %{
-        text: "Kill Report"
-      },
-      thumbnail: %{
-        url: get_ship_image_url(victim_info.ship_type_id)
-      }
-    }
   end
 
   defp build_character_notification(character_info, fields) do
@@ -386,25 +427,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     }
   end
 
-  defp format_entity_info(%{name: name, corp: corp, alliance: alliance}) do
-    [
-      name,
-      corp,
-      alliance
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n")
-  end
-
-  defp format_location_info(%{system_name: system, security_formatted: security}) do
-    "System: #{system}\nSecurity: #{security}"
-  end
-
-  defp format_kill_details(%{formatted_value: value, attackers_count: count, is_npc_kill: is_npc}) do
-    npc_text = if is_npc, do: "\nNPC Kill", else: ""
-    "Value: #{value}\nAttackers: #{count}#{npc_text}"
-  end
-
   defp format_character_details(%{name: name, security_status: security}) do
     security_text = format_security_status(security)
     "Name: #{name}\nSecurity: #{security_text}"
@@ -438,57 +460,166 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     |> String.trim()
   end
 
-  defp format_security_status(nil), do: "Unknown"
-
-  defp format_security_status(security) when is_number(security) do
+  defp format_security_status(security_status) when is_float(security_status) do
     cond do
-      security >= 0.5 -> "#{Float.round(security, 1)} HS"
-      security > 0.0 -> "#{Float.round(security, 1)} LS"
-      security <= 0.0 -> "#{Float.round(security, 1)} NS"
-      true -> "Unknown"
+      security_status >= 0.5 -> "High Sec"
+      security_status > 0.0 -> "Low Sec"
+      true -> "Null Sec"
     end
   end
-
-  defp format_security_status(_), do: "Unknown"
 
   defp format_isk_value(value) when is_number(value) do
     cond do
-      value >= 1_000_000_000 ->
-        "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-
-      value >= 1_000_000 ->
-        "#{Float.round(value / 1_000_000, 1)}M ISK"
-
-      value >= 1_000 ->
-        "#{Float.round(value / 1_000, 1)}K ISK"
-
-      true ->
-        "#{Float.round(value, 0)} ISK"
+      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
+      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
+      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
+      true -> "#{Float.round(value, 0)}"
     end
   end
-
-  defp format_isk_value(_), do: "Unknown ISK"
-
-  defp get_ship_image_url(nil), do: "https://images.evetech.net/types/0/render"
-  defp get_ship_image_url(ship_id), do: "https://images.evetech.net/types/#{ship_id}/render"
 
   defp get_character_image_url(nil), do: "https://images.evetech.net/characters/1/portrait"
 
-  defp get_character_image_url(char_id),
-    do: "https://images.evetech.net/characters/#{char_id}/portrait"
+  defp get_character_image_url(character_id),
+    do: "https://images.evetech.net/characters/#{character_id}/portrait"
 
-  defp get_system_image_url(%{class_title: class}) when not is_nil(class) do
-    "https://images.evetech.net/types/45041/icon"
-  end
+  defp get_system_image_url(%{class_title: class}) when not is_nil(class),
+    do: "https://images.evetech.net/types/30881/render"
 
-  defp get_system_image_url(%{security_status: sec}) when is_number(sec) do
-    cond do
-      sec >= 0.5 -> "https://images.evetech.net/types/3802/icon"
-      sec > 0.0 -> "https://images.evetech.net/types/3796/icon"
-      sec <= 0.0 -> "https://images.evetech.net/types/3799/icon"
-      true -> "https://images.evetech.net/types/3802/icon"
+  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec >= 0.5,
+    do: "https://images.evetech.net/types/30882/render"
+
+  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec > 0.0,
+    do: "https://images.evetech.net/types/30883/render"
+
+  defp get_system_image_url(%{security_status: sec}) when is_number(sec) and sec <= 0.0,
+    do: "https://images.evetech.net/types/30884/render"
+
+  defp get_system_image_url(_), do: "https://images.evetech.net/types/30885/render"
+
+  defp get_notification_color(%{security_status: sec}) when is_number(sec) do
+    case sec do
+      sec when sec >= 0.5 -> colors().highsec
+      sec when sec > 0.0 -> colors().lowsec
+      sec when sec <= 0.0 -> colors().nullsec
+      _ -> colors().default
     end
   end
 
-  defp get_system_image_url(_), do: "https://images.evetech.net/types/3802/icon"
+  defp get_notification_color(_), do: colors().default
+
+  defp build_character_kill_description(killmail, character_id) do
+    victim = Map.get(killmail.esi_data || %{}, "victim", %{})
+    attacker_info = find_character_in_attackers(killmail, character_id)
+
+    case {victim["character_id"] == character_id, attacker_info} do
+      {true, _} -> "Lost a ship"
+      {false, nil} -> "Was involved in a kill"
+      {false, info} -> "Got a kill (#{info["damage_done"]} damage)"
+    end
+  end
+
+  defp find_character_in_attackers(killmail, character_id) do
+    attackers = Map.get(killmail.esi_data || %{}, "attackers", [])
+    Enum.find(attackers, &(Map.get(&1, "character_id") == character_id))
+  end
+
+  defp build_character_kill_fields(killmail, character_id) do
+    victim = Map.get(killmail.esi_data || %{}, "victim", %{})
+    attacker_info = find_character_in_attackers(killmail, character_id)
+
+    case {victim["character_id"] == character_id, attacker_info} do
+      {true, _} -> build_victim_fields(victim)
+      {false, info} when is_map(info) -> build_attacker_fields(info)
+      _ -> []
+    end
+  end
+
+  defp build_victim_fields(victim) do
+    [
+      %{
+        name: "Ship Lost",
+        value: victim["ship_type_name"] || "Unknown Ship",
+        inline: true
+      }
+    ]
+  end
+
+  defp build_attacker_fields(attacker) do
+    [
+      %{
+        name: "Ship Used",
+        value: attacker["ship_type_name"] || "Unknown Ship",
+        inline: true
+      },
+      %{
+        name: "Damage Done",
+        value: "#{attacker["damage_done"]}",
+        inline: true
+      }
+    ]
+  end
+
+  defp build_system_activity_description(activity_data) do
+    kills = Map.get(activity_data, "kills", 0)
+    jumps = Map.get(activity_data, "jumps", 0)
+    "Activity in the last hour: #{kills} kills, #{jumps} jumps"
+  end
+
+  defp build_system_activity_fields(activity_data) do
+    [
+      %{
+        name: "Kills",
+        value: "#{Map.get(activity_data, "kills", 0)}",
+        inline: true
+      },
+      %{
+        name: "Jumps",
+        value: "#{Map.get(activity_data, "jumps", 0)}",
+        inline: true
+      }
+    ]
+  end
+
+  defp build_character_activity_description(activity_data) do
+    kills = Map.get(activity_data, "kills", 0)
+    losses = Map.get(activity_data, "losses", 0)
+    "Activity in the last hour: #{kills} kills, #{losses} losses"
+  end
+
+  defp build_character_activity_fields(activity_data) do
+    [
+      %{
+        name: "Kills",
+        value: "#{Map.get(activity_data, "kills", 0)}",
+        inline: true
+      },
+      %{
+        name: "Losses",
+        value: "#{Map.get(activity_data, "losses", 0)}",
+        inline: true
+      }
+    ]
+  end
+
+  def format_system_status_message(
+        title,
+        description,
+        websocket,
+        uptime,
+        extra,
+        status,
+        systems_count,
+        characters_count
+      ) do
+    %{
+      title: title,
+      description: description,
+      websocket: websocket,
+      uptime: uptime,
+      extra: extra,
+      status: status,
+      systems_count: systems_count,
+      characters_count: characters_count
+    }
+  end
 end

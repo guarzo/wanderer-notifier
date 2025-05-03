@@ -155,7 +155,7 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
 3. **Map API Configuration**
 
-   - `WANDERER_MAP_URL`: URL of the map service
+   - `WANDERER_MAP_URL_WITH_NAME`: URL for the wanderer map
    - `WANDERER_MAP_TOKEN`: Authentication token for map API
 
 4. **Database Configuration**

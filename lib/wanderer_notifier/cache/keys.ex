@@ -546,4 +546,9 @@ defmodule WandererNotifier.Cache.Keys do
   def ship_type(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
     join_parts([@prefix_esi, "ship_type", to_string(ship_type_id)])
   end
+
+  @doc """
+  Returns the cache key for a system.
+  """
+  def system_key(system_id) when is_integer(system_id), do: system(system_id)
 end

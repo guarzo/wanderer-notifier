@@ -13,7 +13,7 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
         name: unquote(Keyword.get(opts, :name, __CALLER__.module))
 
       # Add the aliases
-      alias WandererNotifier.Config.Timings
+      alias WandererNotifier.Config
       alias WandererNotifier.Logger.Logger, as: AppLogger
 
       # Default interval is 1 hour (in milliseconds) if not specified
@@ -157,18 +157,16 @@ defmodule WandererNotifier.Schedulers.IntervalScheduler do
       defp get_interval_for_scheduler(scheduler_module) do
         scheduler_interval_map = %{
           WandererNotifier.Schedulers.CharacterUpdateScheduler =>
-            Timings.character_update_scheduler_interval(),
+            Config.character_update_scheduler_interval(),
           WandererNotifier.Schedulers.SystemUpdateScheduler =>
-            Timings.system_update_scheduler_interval(),
-          WandererNotifier.Schedulers.ServiceStatusScheduler => Timings.service_status_interval(),
+            Config.system_update_scheduler_interval(),
+          WandererNotifier.Schedulers.ServiceStatusScheduler => Config.service_status_interval(),
           WandererNotifier.Schedulers.KillmailRetentionScheduler =>
-            Timings.killmail_retention_interval(),
-          WandererNotifier.Schedulers.CacheCheckScheduler => Timings.cache_check_interval(),
-          WandererNotifier.Schedulers.CacheSyncScheduler => Timings.cache_sync_interval(),
-          WandererNotifier.Schedulers.CacheCleanupScheduler => Timings.cache_cleanup_interval(),
-          WandererNotifier.Schedulers.LicenseRefreshScheduler =>
-            Timings.license_refresh_interval(),
-          WandererNotifier.Schedulers.ActivityChartScheduler => Timings.activity_chart_interval()
+            Config.killmail_retention_interval(),
+          WandererNotifier.Schedulers.CacheCheckScheduler => Config.cache_check_interval(),
+          WandererNotifier.Schedulers.CacheSyncScheduler => Config.cache_sync_interval(),
+          WandererNotifier.Schedulers.CacheCleanupScheduler => Config.cache_cleanup_interval(),
+          WandererNotifier.Schedulers.LicenseRefreshScheduler => Config.license_refresh_interval()
         }
 
         # Look up the scheduler in the map, or return nil if not found

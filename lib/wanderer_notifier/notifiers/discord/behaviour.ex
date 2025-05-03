@@ -1,48 +1,52 @@
 defmodule WandererNotifier.Notifiers.Discord.Behaviour do
   @moduledoc """
-  Behaviour for Discord notification implementations.
+  Defines the behaviour for Discord notification implementations.
   """
 
-  @doc """
-  Sends a notification to Discord.
-  """
+  @doc "Sends a notification"
   @callback notify(notification :: map()) :: :ok | {:error, term()}
 
-  @doc """
-  Sends a simple text message to Discord.
-  """
-  @callback send_message(message :: String.t(), feature :: atom() | nil) :: :ok | {:error, term()}
+  @doc "Sends a message to Discord"
+  @callback send_message(message :: String.t(), channel :: atom()) :: :ok | {:error, term()}
 
-  @doc """
-  Sends an embed message to Discord.
-  """
+  @doc "Sends an embed to Discord"
   @callback send_embed(
               title :: String.t(),
               description :: String.t(),
-              url :: String.t() | nil,
-              color :: integer() | nil,
-              feature :: atom() | nil
+              color :: integer(),
+              fields :: list(),
+              channel :: atom()
             ) :: :ok | {:error, term()}
 
-  @doc """
-  Sends a file to Discord.
-  """
+  @doc "Sends a file to Discord"
   @callback send_file(
               filename :: String.t(),
               file_data :: binary(),
-              title :: String.t() | nil,
-              description :: String.t() | nil,
-              feature :: atom() | nil
+              title :: String.t(),
+              description :: String.t(),
+              channel :: atom()
             ) :: :ok | {:error, term()}
 
-  @doc """
-  Sends an image embed to Discord.
-  """
+  @doc "Sends an image embed to Discord"
   @callback send_image_embed(
               title :: String.t(),
               description :: String.t(),
               image_url :: String.t(),
-              color :: integer() | nil,
-              feature :: atom() | nil
+              color :: integer(),
+              channel :: atom()
             ) :: :ok | {:error, term()}
+
+  @doc "Sends an enriched kill embed"
+  @callback send_enriched_kill_embed(killmail :: struct(), kill_id :: integer()) ::
+              :ok | {:error, term()}
+
+  @doc "Sends a new system notification"
+  @callback send_new_system_notification(system :: struct()) :: :ok | {:error, term()}
+
+  @doc "Sends a new tracked character notification"
+  @callback send_new_tracked_character_notification(character :: struct()) ::
+              :ok | {:error, term()}
+
+  @doc "Sends a kill notification"
+  @callback send_kill_notification(kill_data :: map()) :: :ok | {:error, term()}
 end

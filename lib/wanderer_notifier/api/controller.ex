@@ -3,24 +3,6 @@ defmodule WandererNotifier.Api.Controller do
   Base controller module that provides common functionality
   """
 
-  defmacro __using__(_opts) do
-    quote do
-      use Plug.Router
-
-      plug(:match)
-
-      plug(Plug.Parsers,
-        parsers: [:json],
-        pass: ["application/json"],
-        json_decoder: Jason
-      )
-
-      plug(:dispatch)
-
-      import WandererNotifier.Api.Controller
-    end
-  end
-
   import Plug.Conn
 
   @doc """

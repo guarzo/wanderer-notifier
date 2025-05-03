@@ -2,10 +2,20 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   @moduledoc """
   Controller for notification-related endpoints.
   """
-  use WandererNotifier.Api.Controller
+  use Plug.Router
+  import WandererNotifier.Api.Controller
 
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Notifications, as: NotificationConfig
+  plug(:match)
+
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason
+  )
+
+  plug(:dispatch)
+
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Helpers.TestNotifications, as: NotificationHelpers
 
@@ -38,13 +48,16 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
     end
   end
 
-  # Private functions
+  match _ do
+    send_error(conn, 404, "not_found")
+  end
 
+  # Private functions
   defp get_notification_settings(conn) do
     settings = %{
-      channels: NotificationConfig.get_discord_config(),
-      features: Features.get_feature_status(),
-      limits: Features.get_all_limits()
+      channels: Config.discord_channel_id(),
+      features: Config.features(),
+      limits: Config.get_all_limits()
     }
 
     {:ok, settings}

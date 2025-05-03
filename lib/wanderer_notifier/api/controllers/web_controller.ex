@@ -1,10 +1,21 @@
-defmodule WandererNotifier.Api.Controllers.DebugController do
+defmodule WandererNotifier.Api.Controllers.WebController do
   @moduledoc """
   Controller for debug-related endpoints.
   """
-  use WandererNotifier.Api.Controller
+  use Plug.Router
+  import WandererNotifier.Api.Controller
 
-  alias WandererNotifier.Config.Features
+  plug(:match)
+
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason
+  )
+
+  plug(:dispatch)
+
+  alias WandererNotifier.Config
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.License.Service, as: License
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -105,6 +116,10 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
     send_success(conn, %{message: "All schedulers execution triggered"})
   end
 
+  match _ do
+    send_error(conn, 404, "not_found")
+  end
+
   # Private functions
 
   defp get_service_status(conn) do
@@ -130,8 +145,8 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
 
     # Get features and limits
     AppLogger.api_info("Fetching features and limits")
-    features = Features.get_feature_status()
-    limits = get_limits_safely()
+    features = Config.features()
+    limits = Config.get_all_limits()
 
     # Build response
     {:ok,
@@ -173,20 +188,6 @@ defmodule WandererNotifier.Api.Controllers.DebugController do
       })
 
       create_default_stats()
-  end
-
-  defp get_limits_safely do
-    result = Features.get_all_limits()
-    AppLogger.api_info("Retrieved limits", %{limits: inspect(result)})
-    result
-  rescue
-    error ->
-      AppLogger.api_error("Error getting limits", %{
-        error: inspect(error),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      })
-
-      %{tracked_systems: 0, tracked_characters: 0, notification_history: 0}
   end
 
   defp create_default_stats do

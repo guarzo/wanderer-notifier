@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Character.Character do
+defmodule WandererNotifier.Map.MapCharacter do
   @moduledoc """
   Struct and functions for managing tracked character data from the map API.
 

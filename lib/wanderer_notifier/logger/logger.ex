@@ -70,16 +70,12 @@ defmodule WandererNotifier.Logger.Logger do
   Metadata is properly normalized regardless of format (map or keyword list).
   """
 
-  @behaviour WandererNotifier.Logger.Behaviour
-
   require Logger
-  alias WandererNotifier.Config.Debug
 
   # Category constants
   @category_api :api
   @category_websocket :websocket
   @category_kill :kill
-  @category_persistence :persistence
   @category_cache :cache
   @category_startup :startup
   @category_config :config
@@ -87,95 +83,77 @@ defmodule WandererNotifier.Logger.Logger do
   @category_scheduler :scheduler
   @category_processor :processor
   @category_notification :notification
-  @category_chart :chart
 
   # Level constants
   @level_debug :debug
   @level_info :info
-  @level_warn :warn
+  @level_warn :warning
   @level_error :error
 
   # Batch logging state
   # 5 seconds
   @batch_log_interval 5_000
 
-  @impl true
   def debug(message), do: Logger.debug(message)
 
-  @impl true
   def debug(message, metadata), do: Logger.debug(message, metadata)
 
-  @impl true
   def info(message), do: Logger.info(message)
 
-  @impl true
   def info(message, metadata), do: Logger.info(message, metadata)
 
-  @impl true
-  def warn(message), do: Logger.warning(message)
+  def warn(message), do: Logger.warning(message, [])
 
-  @impl true
   def warn(message, metadata), do: Logger.warning(message, metadata)
 
-  @impl true
   def error(message), do: Logger.error(message)
 
-  @impl true
   def error(message, metadata), do: Logger.error(message, metadata)
 
-  @impl true
   def api_error(message, metadata \\ [])
   def api_error(message, metadata), do: Logger.error("[API] #{message}", metadata)
+  def api_info(message, metadata \\ []), do: log(@level_info, @category_api, message, metadata)
 
-  @impl true
   def processor_debug(message, metadata \\ [])
 
   def processor_debug(message, metadata),
     do: log(@level_debug, @category_processor, message, metadata)
 
-  @impl true
   def processor_info(message, metadata \\ [])
 
   def processor_info(message, metadata),
     do: log(@level_info, @category_processor, message, metadata)
 
-  @impl true
   def processor_warn(message, metadata \\ [])
 
   def processor_warn(message, metadata),
     do: log(@level_warn, @category_processor, message, metadata)
 
-  @impl true
   def processor_error(message, metadata \\ [])
 
   def processor_error(message, metadata),
     do: log(@level_error, @category_processor, message, metadata)
 
-  @impl true
   def notification_debug(message, metadata \\ [])
 
   def notification_debug(message, metadata),
     do: log(@level_debug, @category_notification, message, metadata)
 
-  @impl true
   def notification_info(message, metadata \\ [])
 
   def notification_info(message, metadata),
     do: log(@level_info, @category_notification, message, metadata)
 
-  @impl true
   def notification_warn(message, metadata \\ [])
 
   def notification_warn(message, metadata),
     do: log(@level_warn, @category_notification, message, metadata)
 
-  @impl true
   def notification_error(message, metadata \\ [])
 
   def notification_error(message, metadata),
     do: log(@level_error, @category_notification, message, metadata)
 
-  @impl true
   def log(level, category, message, metadata \\ []) do
     # Process and prepare metadata
     metadata_with_diagnostics = prepare_metadata(metadata, category)
@@ -237,75 +215,32 @@ defmodule WandererNotifier.Logger.Logger do
     end
   end
 
-  # Formats the log message with optional debug information
+  # Formats the log message with all metadata included
   defp maybe_add_debug_metadata(message, metadata) do
-    # Always include key metadata fields in the log message, regardless of debug mode
-    # Extract the important fields into a simple string
-    important_fields = extract_important_metadata(metadata)
+    # Format all metadata fields for the log message
+    all_metadata = extract_metadata_for_debug(metadata, :full)
 
     message_with_data =
-      if important_fields != "", do: "#{message} #{important_fields}", else: message
+      if all_metadata != "", do: "#{message} (#{all_metadata})", else: message
 
-    # If debug mode is enabled, add full detailed metadata
-    if should_log_debug?() do
-      # Include both keys and values in debug mode
-      metadata_summary = extract_metadata_for_debug(metadata)
-      "#{message_with_data} [META:#{metadata_summary}]"
-    else
-      message_with_data
-    end
+    message_with_data
   end
 
-  # Extract important metadata for formatted logging
-  defp extract_important_metadata(metadata) do
-    # Define which keys are considered important for different log types
-    important_keys = [
-      :character_id,
-      :character_name,
-      :solar_system_id,
-      :solar_system_name,
-      :region_name,
-      :kill_id,
-      :status,
-      :reason,
-      :error,
-      :count,
-      :trace_id
-    ]
-
-    # Filter important metadata
-    important_data =
-      metadata
-      |> Enum.filter(fn {k, _v} -> k in important_keys end)
-      # Limit to 5 most important items
-      |> Enum.take(5)
-
-    # Format empty data
-    if Enum.empty?(important_data) do
-      ""
-    else
-      # Format them nicely for the log message
-      "(" <>
-        Enum.map_join(important_data, ", ", fn {k, v} -> "#{k}=#{inspect(v)}" end) <>
-        ")"
-    end
-  end
-
-  # Extracts and formats metadata for debug logging - shows both keys and values
-  defp extract_metadata_for_debug(metadata) do
+  # Extracts and formats metadata for logging - shows both keys and values
+  defp extract_metadata_for_debug(metadata, :full) do
     metadata
+    |> Enum.reject(fn {k, _v} ->
+      k in [:_metadata_source, :_metadata_warning, :_original_data, :_caller, :orig_metadata_type]
+    end)
     |> Enum.map_join(", ", fn {k, v} ->
-      # Format value based on type for better readability
       formatted_value = format_value_for_debug(v)
       "#{k}=#{formatted_value}"
     end)
-    # Limit length for readability
-    |> String.slice(0, 200)
   end
 
   # Formats different value types for debug output
   defp format_value_for_debug(value) when is_binary(value),
-    do: "\"#{String.slice(value, 0, 30)}\""
+    do: "\"#{String.slice(value, 0, 100)}\""
 
   defp format_value_for_debug(value) when is_list(value), do: "list[#{length(value)}]"
   defp format_value_for_debug(value) when is_map(value), do: "map{#{map_size(value)}}"
@@ -439,113 +374,71 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   # API category helpers
-  @impl true
   def api_debug(message, metadata \\ []), do: log(@level_debug, @category_api, message, metadata)
 
-  @impl true
-  def api_info(message, metadata \\ []), do: log(@level_info, @category_api, message, metadata)
-
-  @impl true
   def api_warn(message, metadata \\ []), do: log(@level_warn, @category_api, message, metadata)
 
   # WebSocket category helpers
-  @impl true
   def websocket_debug(message, metadata \\ []),
     do: log(@level_debug, @category_websocket, message, metadata)
 
-  @impl true
   def websocket_info(message, metadata \\ []),
     do: log(@level_info, @category_websocket, message, metadata)
 
-  @impl true
   def websocket_warn(message, metadata \\ []),
     do: log(@level_warn, @category_websocket, message, metadata)
 
-  @impl true
   def websocket_error(message, metadata \\ []),
     do: log(@level_error, @category_websocket, message, metadata)
 
   # Kill processing category helpers
-  @impl true
   def kill_debug(message, metadata \\ []),
     do: log(@level_debug, @category_kill, message, metadata)
 
-  @impl true
   def kill_info(message, metadata \\ []),
     do: log(@level_info, @category_kill, message, metadata)
 
-  @impl true
   def kill_warn(message, metadata \\ []),
     do: log(@level_warn, @category_kill, message, metadata)
 
-  @impl true
   def kill_error(message, metadata \\ []),
     do: log(@level_error, @category_kill, message, metadata)
 
-  # Persistence category helpers
-  @impl true
-  def persistence_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_persistence, message, metadata)
-
-  @impl true
-  def persistence_info(message, metadata \\ []),
-    do: log(@level_info, @category_persistence, message, metadata)
-
-  @impl true
-  def persistence_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_persistence, message, metadata)
-
-  @impl true
-  def persistence_error(message, metadata \\ []),
-    do: log(@level_error, @category_persistence, message, metadata)
-
   # Cache category helpers
-  @impl true
   def cache_debug(message, metadata \\ []),
     do: log(@level_debug, @category_cache, message, metadata)
 
-  @impl true
   def cache_info(message, metadata \\ []),
     do: log(@level_info, @category_cache, message, metadata)
 
-  @impl true
   def cache_warn(message, metadata \\ []),
     do: log(@level_warn, @category_cache, message, metadata)
 
-  @impl true
   def cache_error(message, metadata \\ []),
     do: log(@level_error, @category_cache, message, metadata)
 
   # Startup/Config helpers
-  @impl true
   def startup_info(message, metadata \\ []),
     do: log(@level_info, @category_startup, message, metadata)
 
-  @impl true
   def startup_debug(message, metadata \\ []),
     do: log(@level_debug, @category_startup, message, metadata)
 
-  @impl true
   def startup_warn(message, metadata \\ []),
     do: log(@level_warn, @category_startup, message, metadata)
 
-  @impl true
   def startup_error(message, metadata \\ []),
     do: log(@level_error, @category_startup, message, metadata)
 
-  @impl true
   def config_info(message, metadata \\ []),
     do: log(@level_info, @category_config, message, metadata)
 
-  @impl true
   def config_warn(message, metadata \\ []),
     do: log(@level_warn, @category_config, message, metadata)
 
-  @impl true
   def config_error(message, metadata \\ []),
     do: log(@level_error, @category_config, message, metadata)
 
-  @impl true
   def config_debug(message, metadata \\ []) do
     if should_log_debug?() do
       log(:debug, "CONFIG", message, metadata)
@@ -553,43 +446,31 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   # Maintenance category helpers
-  @impl true
   def maintenance_debug(message, metadata \\ []),
     do: log(@level_debug, @category_maintenance, message, metadata)
 
-  @impl true
   def maintenance_info(message, metadata \\ []),
     do: log(@level_info, @category_maintenance, message, metadata)
 
-  @impl true
   def maintenance_warn(message, metadata \\ []),
     do: log(@level_warn, @category_maintenance, message, metadata)
 
-  @impl true
   def maintenance_error(message, metadata \\ []),
     do: log(@level_error, @category_maintenance, message, metadata)
 
   # Scheduler category helpers
-  @impl true
   def scheduler_debug(message, metadata \\ []),
     do: log(@level_debug, @category_scheduler, message, metadata)
 
-  @impl true
   def scheduler_info(message, metadata \\ []),
     do: log(@level_info, @category_scheduler, message, metadata)
 
-  @impl true
   def scheduler_warn(message, metadata \\ []),
     do: log(@level_warn, @category_scheduler, message, metadata)
 
-  @impl true
   def scheduler_error(message, metadata \\ []),
     do: log(@level_error, @category_scheduler, message, metadata)
 
-  @doc """
-  Logs a scheduler message at the specified level.
-  This allows for dynamic log level selection.
-  """
   def scheduler_log(level, message, metadata \\ [])
       when level in [:debug, :info, :warning, :warn, :error] do
     # Normalize :warning to :warn for consistency
@@ -602,11 +483,6 @@ defmodule WandererNotifier.Logger.Logger do
   def kill_warning(message, metadata \\ []),
     do: kill_warn(message, metadata)
 
-  # Persistence processing category
-  def persistence_warning(message, metadata \\ []),
-    do: persistence_warn(message, metadata)
-
-  @impl true
   def set_context(metadata) do
     # Convert to keyword list and normalize
     normalized_metadata = convert_metadata_to_keyword_list(metadata)
@@ -615,7 +491,6 @@ defmodule WandererNotifier.Logger.Logger do
     Logger.metadata(normalized_metadata)
   end
 
-  @impl true
   def with_trace_id(metadata \\ []) do
     trace_id = generate_trace_id()
 
@@ -632,13 +507,11 @@ defmodule WandererNotifier.Logger.Logger do
     trace_id
   end
 
-  @impl true
   def generate_trace_id do
     # Generate a unique trace ID
     :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
   end
 
-  @impl true
   def exception(level, category, message, exception, metadata \\ []) do
     # Create enhanced metadata with exception details
     enhanced_metadata =
@@ -662,7 +535,6 @@ defmodule WandererNotifier.Logger.Logger do
     end
   end
 
-  @impl true
   def log_kv(level, category, message, value) do
     # Create metadata from the value
     metadata = %{value: value}
@@ -671,7 +543,6 @@ defmodule WandererNotifier.Logger.Logger do
     log(level, category, message, metadata)
   end
 
-  @impl true
   def log_full_data(level, category, message, data, metadata \\ []) do
     # Create enhanced metadata with full data
     enhanced_metadata =
@@ -683,44 +554,30 @@ defmodule WandererNotifier.Logger.Logger do
     log(level, category, message, enhanced_metadata)
   end
 
-  @impl true
   def info_kv(category, message, value), do: log_kv(@level_info, category, message, value)
 
-  @impl true
   def debug_kv(category, message, value), do: log_kv(@level_debug, category, message, value)
 
-  @impl true
   def warn_kv(category, message, value), do: log_kv(@level_warn, category, message, value)
 
-  @impl true
   def error_kv(category, message, value), do: log_kv(@level_error, category, message, value)
 
-  @impl true
   def config_kv(message, value), do: info_kv(@category_config, message, value)
 
-  @impl true
   def startup_kv(message, value), do: info_kv(@category_startup, message, value)
 
-  @impl true
   def cache_kv(message, value), do: info_kv(@category_cache, message, value)
 
-  @impl true
   def websocket_kv(message, value), do: info_kv(@category_websocket, message, value)
 
-  @impl true
   def api_kv(message, value), do: info_kv(@category_api, message, value)
 
-  @impl true
   def maintenance_kv(message, value), do: info_kv(@category_maintenance, message, value)
 
   # ------------------------------------------------------------
   # Batch Logging Support
   # ------------------------------------------------------------
 
-  @doc """
-  Initializes the batch logger system.
-  Should be called during application startup.
-  """
   def init_batch_logger do
     # Log that batch logging is being initialized
     debug("Initializing batch logger")
@@ -731,46 +588,22 @@ defmodule WandererNotifier.Logger.Logger do
     :ok
   end
 
-  @doc """
-  Counts an event occurrence, batching it for later logging.
-
-  ## Parameters
-
-  - category: The event category (atom)
-  - details: Map of event details used to group similar events
-  - log_immediately: Whether to log immediately if count reaches threshold
-
-  ## Examples
-
-      iex> WandererNotifier.Logger.Logger.count_batch_event(:kill_received, %{system_id: "12345"})
-      :ok
-  """
-  def count_batch_event(category, details, _log_immediately \\ false) do
+  def count_batch_event(_category, _details, _log_immediately \\ false) do
     # For now, just log immediately with a batch indicator
-    log(@level_info, category, "Batch event", Map.merge(details, %{batch: true}))
+    # log(@level_info, category, "Batch event", Map.merge(details, %{batch: true}))
     :ok
   end
 
-  @doc """
-  Forces an immediate flush of all pending batch log events.
-  """
   def flush_batch_logs do
     debug("Flushing all batch logs")
     :ok
   end
 
-  @doc """
-  Forces an immediate flush of a specific event category.
-  """
   def flush_batch_category(category) do
     debug("Flushing batch logs for category: #{category}")
     :ok
   end
 
-  @doc """
-  Handles the periodic flush message for batch logging.
-  This should be called by the process receiving the `:flush_batch_logs` message.
-  """
   def handle_batch_flush(_state) do
     flush_batch_logs()
     Process.send_after(self(), :flush_batch_logs, @batch_log_interval)
@@ -781,24 +614,11 @@ defmodule WandererNotifier.Logger.Logger do
   # Startup Tracking Support
   # ------------------------------------------------------------
 
-  @doc """
-  Initializes the startup tracker.
-  Should be called at the very beginning of application startup.
-  Returns the initial state for the startup tracker.
-  """
   def init_startup_tracker do
     debug("Initializing startup tracker")
     :ok
   end
 
-  @doc """
-  Begins a new startup phase.
-
-  ## Parameters
-
-  - phase: The phase to begin
-  - message: Optional message about this phase
-  """
   def begin_startup_phase(phase, message) do
     info("[Startup] Beginning phase: #{phase}", %{
       phase: phase,
@@ -809,16 +629,6 @@ defmodule WandererNotifier.Logger.Logger do
     :ok
   end
 
-  @doc """
-  Records a startup event without necessarily logging it.
-  Events are accumulated and may be summarized later.
-
-  ## Parameters
-
-  - type: The type of event
-  - details: Map of event details
-  - force_log: If true, will log immediately regardless of significance
-  """
   def record_startup_event(type, details, force_log \\ false) do
     level = if force_log, do: @level_info, else: @level_debug
 
@@ -832,65 +642,25 @@ defmodule WandererNotifier.Logger.Logger do
     :ok
   end
 
-  @doc """
-  Records an error during startup.
-  Errors are always logged immediately.
-
-  ## Parameters
-
-  - message: Error message
-  - details: Additional error details
-  """
   def record_startup_error(message, details) do
     error("[Startup] #{message}", details)
     :ok
   end
 
-  @doc """
-  Completes the startup process and logs a summary.
-  """
   def complete_startup do
     info("[Startup] Application startup complete", %{timestamp: DateTime.utc_now()})
     :ok
   end
 
-  @doc """
-  Logs a significant state change during startup.
-  These are always logged immediately.
-
-  ## Parameters
-
-  - type: The type of state change
-  - message: The message about the state change
-  - details: Additional details
-  """
   def log_startup_state_change(type, message, details) do
     info("[Startup] State change: #{type} - #{message}", details)
     :ok
   end
 
   defp should_log_debug? do
-    Debug.debug_logging_enabled?()
+    WandererNotifier.Config.debug_logging_enabled?()
   end
 
-  # Chart category helpers
-  @impl true
-  def chart_debug(message, metadata \\ []),
-    do: log(@level_debug, @category_chart, message, metadata)
-
-  @impl true
-  def chart_info(message, metadata \\ []),
-    do: log(@level_info, @category_chart, message, metadata)
-
-  @impl true
-  def chart_warn(message, metadata \\ []),
-    do: log(@level_warn, @category_chart, message, metadata)
-
-  @impl true
-  def chart_error(message, metadata \\ []),
-    do: log(@level_error, @category_chart, message, metadata)
-
-  @impl true
   def log_with_timing(level, category, metadata \\ [], fun) do
     start_time = :os.system_time(:microsecond)
     result = fun.()

@@ -5,11 +5,11 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   """
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Factory
-  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
 
   @doc """
   Creates a notification from a killmail.
@@ -255,19 +255,19 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     AppLogger.kill_info("Sending test kill notification...")
 
     # Get recent kills using proper cache key
-    recent_kills = CacheRepo.get(CacheKeys.zkill_recent_kills())
+    recent_kills_result = CacheRepo.get(CacheKeys.zkill_recent_kills())
+
+    recent_kills =
+      case recent_kills_result do
+        {:ok, kills} -> kills
+        _ -> []
+      end
+
     AppLogger.kill_debug("Found #{length(recent_kills)} recent kills in shared cache repository")
 
     if recent_kills == [] do
-      error_message = "No recent kills available for test notification"
-      AppLogger.kill_error(error_message)
-
-      # Notify the user through Discord
-      Factory.send_message(
-        "Error: #{error_message} - No test notification sent. Please wait for some kills to be processed."
-      )
-
-      {:error, error_message}
+      AppLogger.kill_warn("No recent kills found in shared cache repository")
+      {:error, :no_recent_kills}
     else
       # Get the first kill
       recent_kill = List.first(recent_kills)

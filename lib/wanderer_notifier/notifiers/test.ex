@@ -100,4 +100,7 @@ defmodule WandererNotifier.Notifiers.Test do
     AppLogger.processor_debug("[TEST] Activity chart", chart_info: inspect(chart_info))
     :ok
   end
+
+  @impl true
+  def notify(_msg), do: :ok
 end

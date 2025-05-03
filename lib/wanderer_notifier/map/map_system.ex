@@ -56,14 +56,41 @@ defmodule WandererNotifier.Map.MapSystem do
   Creates a new MapSystem struct from a map of attributes.
 
   ## Parameters
-    - attrs: Map containing system attributes
+    - attrs: Map containing system attributes. Must include a string 'id' key.
 
   ## Returns
     - %MapSystem{} struct
+
+  ## Raises
+    - ArgumentError if 'id' key is missing or not a string (enforces correct API format)
   """
   @spec new(map()) :: t()
   def new(attrs) when is_map(attrs) do
-    struct(__MODULE__, attrs)
+    system_id = Map.get(attrs, "id")
+    name = Map.get(attrs, "name")
+    solar_system_id = Map.get(attrs, "solar_system_id")
+
+    if !(is_binary(system_id) and is_binary(name) and not is_nil(solar_system_id)) do
+      raise ArgumentError,
+            "MapSystem.new/1 expects a map with string 'id', string 'name', and non-nil 'solar_system_id'. Got: #{inspect(attrs)}"
+    end
+
+    struct(__MODULE__, %{
+      system_id: system_id,
+      name: name,
+      solar_system_id: solar_system_id,
+      original_name: Map.get(attrs, "original_name"),
+      system_type: Map.get(attrs, "system_type"),
+      type_description: Map.get(attrs, "type_description"),
+      class_title: Map.get(attrs, "class_title"),
+      effect_name: Map.get(attrs, "effect_name"),
+      is_shattered: Map.get(attrs, "is_shattered"),
+      locked: Map.get(attrs, "locked"),
+      region_name: Map.get(attrs, "region_name"),
+      static_details: Map.get(attrs, "static_details"),
+      sun_type_id: Map.get(attrs, "sun_type_id"),
+      id: system_id
+    })
   end
 
   @doc """

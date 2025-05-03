@@ -4,7 +4,7 @@ defmodule WandererNotifier.Utilities.CharacterUtils do
   Provides helper functions for extracting and formatting character information.
   """
 
-  alias WandererNotifier.Character.Character
+  alias WandererNotifier.Map.MapCharacter
 
   @doc """
   Extracts a character ID from a Character struct.
@@ -12,8 +12,8 @@ defmodule WandererNotifier.Utilities.CharacterUtils do
 
   Returns the ID as a string.
   """
-  @spec extract_character_id(Character.t()) :: String.t()
-  def extract_character_id(%Character{} = character) do
+  @spec extract_character_id(MapCharacter.t()) :: String.t()
+  def extract_character_id(%MapCharacter{} = character) do
     character.character_id
   end
 
@@ -23,8 +23,8 @@ defmodule WandererNotifier.Utilities.CharacterUtils do
 
   Returns the name as a string.
   """
-  @spec extract_character_name(Character.t()) :: String.t()
-  def extract_character_name(%Character{} = character) do
+  @spec extract_character_name(MapCharacter.t()) :: String.t()
+  def extract_character_name(%MapCharacter{} = character) do
     character.name
   end
 
@@ -34,8 +34,8 @@ defmodule WandererNotifier.Utilities.CharacterUtils do
 
   Returns the corporation ticker as a string.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t()
-  def extract_corporation_name(%Character{} = character) do
+  @spec extract_corporation_name(MapCharacter.t()) :: String.t()
+  def extract_corporation_name(%MapCharacter{} = character) do
     character.corporation_ticker
   end
 

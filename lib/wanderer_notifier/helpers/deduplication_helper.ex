@@ -4,7 +4,7 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
   """
 
   use GenServer
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
 
   # Default TTL for deduplication entries (24 hours)
   @dedup_ttl 86_400
@@ -30,12 +30,12 @@ defmodule WandererNotifier.Helpers.DeduplicationHelper do
 
     try do
       case CacheRepo.get(cache_key) do
-        nil ->
-          CacheRepo.set(cache_key, true, @dedup_ttl)
-          {:ok, :new}
+        {:ok, _} ->
+          {:ok, :duplicate}
 
         _ ->
-          {:ok, :duplicate}
+          CacheRepo.set(cache_key, true, @dedup_ttl)
+          {:ok, :new}
       end
     rescue
       e -> {:error, Exception.message(e)}

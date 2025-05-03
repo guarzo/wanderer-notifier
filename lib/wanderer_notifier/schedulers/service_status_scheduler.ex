@@ -10,7 +10,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
 
   # Interval is now configured via the Timings module
 
-  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Helpers.Deduplication
 
@@ -72,7 +72,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   @impl true
   def get_config do
     %{
-      interval_ms: Timings.service_status_interval(),
+      interval_ms: Config.service_status_interval(),
       enabled: true,
       last_execution: nil
     }

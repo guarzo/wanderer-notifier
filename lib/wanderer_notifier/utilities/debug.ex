@@ -4,10 +4,8 @@ defmodule WandererNotifier.Utilities.Debug do
   """
 
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
-  alias WandererNotifier.Map.Client, as: MapClient
-  alias WandererNotifier.Config.Config, as: AppConfig
-  alias WandererNotifier.Config.Debug, as: DebugConfig
-  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Map.Clients.Client, as: MapClient
+  alias WandererNotifier.Config, as: AppConfig
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -28,7 +26,7 @@ defmodule WandererNotifier.Utilities.Debug do
     AppLogger.processor_warn("DEBUG: Current feature flags: #{inspect(feature_flags)}")
 
     # Check character tracking specifically
-    tracking_enabled = Features.character_tracking_enabled?()
+    tracking_enabled = AppConfig.character_tracking_enabled?()
     AppLogger.processor_warn("DEBUG: Character tracking enabled? #{tracking_enabled}")
 
     feature_flags
@@ -44,12 +42,12 @@ defmodule WandererNotifier.Utilities.Debug do
     token = Application.get_env(:wanderer_notifier, :map_token)
 
     # Check Config module access
-    core_url = AppConfig.map_url()
+    core_url = AppConfig.base_map_url()
     core_name = AppConfig.map_name()
     core_token = AppConfig.map_token()
 
     # Get map settings from Debug config module
-    debug_settings = DebugConfig.map_debug_settings()
+    debug_settings = AppConfig.map_debug_settings()
 
     %{
       env: %{
@@ -103,7 +101,7 @@ defmodule WandererNotifier.Utilities.Debug do
   def direct_test_characters_api do
     alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
     # Updated to new path
-    alias WandererNotifier.Config.Config, as: AppConfig
+    alias WandererNotifier.Config, as: AppConfig
 
     # Build the URL and headers directly
     base_url = Application.get_env(:wanderer_notifier, :map_url)
@@ -130,7 +128,7 @@ defmodule WandererNotifier.Utilities.Debug do
       end
 
     # Get map settings from Debug config
-    debug_settings = DebugConfig.map_debug_settings()
+    debug_settings = AppConfig.map_debug_settings()
 
     # Return complete debug info
     %{
@@ -138,7 +136,7 @@ defmodule WandererNotifier.Utilities.Debug do
       headers: headers,
       response: response,
       config: %{
-        map_url: AppConfig.map_url(),
+        map_url: AppConfig.map_url_with_name(),
         map_name: AppConfig.map_name(),
         map_token: AppConfig.map_token(),
         debug_settings: debug_settings

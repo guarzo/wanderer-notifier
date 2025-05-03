@@ -4,9 +4,7 @@ defmodule WandererNotifier.License.Service do
   Handles license validation and feature access control.
   """
   use GenServer
-  alias WandererNotifier.Config.Application
-  alias WandererNotifier.Config.Config
-  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Config
   alias WandererNotifier.License.Client, as: LicenseClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -116,7 +114,7 @@ defmodule WandererNotifier.License.Service do
       "License validation - token check (redacted): #{if token, do: "[REDACTED]", else: "nil"}"
     )
 
-    AppLogger.config_info("License validation - environment: #{Application.get_env()}")
+    AppLogger.config_info("License validation - environment: #{Config.get_env(:environment)}")
 
     # Basic validation - ensure token exists and is a non-empty string
     is_valid = is_binary(token) && String.trim(token) != ""
@@ -132,14 +130,14 @@ defmodule WandererNotifier.License.Service do
   Gets the license key from configuration.
   """
   def get_license_key do
-    Application.get_env(:wanderer_notifier, :license_key)
+    Config.get_env(:license_key)
   end
 
   @doc """
   Gets the license manager URL from configuration.
   """
   def get_license_manager_url do
-    Application.get_env(:wanderer_notifier, :license_manager_url)
+    Config.get_env(:license_manager_url)
   end
 
   @doc """
@@ -160,7 +158,7 @@ defmodule WandererNotifier.License.Service do
 
   # Private helper to check if bot token is assigned
   defp bot_assigned? do
-    case Application.get_env(:wanderer_notifier, :bot_token) do
+    case Config.get_env(:bot_token) do
       nil -> false
       "" -> false
       _ -> true
@@ -169,7 +167,7 @@ defmodule WandererNotifier.License.Service do
 
   # Private helper to check if license key is valid
   defp license_key_valid? do
-    case Application.get_env(:wanderer_notifier, :license_key) do
+    case Config.get_env(:license_key) do
       nil -> false
       "" -> false
       _ -> true
@@ -236,7 +234,7 @@ defmodule WandererNotifier.License.Service do
     license_key = Config.license_key()
 
     # Get the API token from configuration
-    notifier_api_token = Config.notifier_api_token()
+    notifier_api_token = Config.api_token()
 
     # Validate the license with a timeout - use validate_bot for consistency with init/startup
     validation_result =
@@ -386,12 +384,12 @@ defmodule WandererNotifier.License.Service do
   end
 
   defp schedule_refresh do
-    Process.send_after(self(), :refresh, Timings.license_refresh_interval())
+    Process.send_after(self(), :refresh, Config.license_refresh_interval())
   end
 
   defp do_validate do
     license_key = Config.license_key()
-    notifier_api_token = Config.notifier_api_token()
+    notifier_api_token = Config.api_token()
 
     # Validate the license with the license manager
     case LicenseClient.validate_bot(notifier_api_token, license_key) do
@@ -443,14 +441,6 @@ defmodule WandererNotifier.License.Service do
   end
 
   # Helper function to convert error reasons to human-readable messages
-  defp error_reason_to_message(:api_error), do: "API error from license server"
-  defp error_reason_to_message(:not_found), do: "License or bot not found"
-
-  defp error_reason_to_message(:notifier_not_authorized),
-    do: "Notifier not authorized for this license"
-
-  defp error_reason_to_message(:invalid_notifier_token), do: "Invalid notifier API token"
-  defp error_reason_to_message(:request_failed), do: "Failed to connect to license server"
   defp error_reason_to_message(reason) when is_atom(reason), do: "License server error: #{reason}"
   defp error_reason_to_message(reason) when is_binary(reason), do: reason
   defp error_reason_to_message(reason), do: "Unknown error: #{inspect(reason)}"

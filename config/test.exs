@@ -15,7 +15,7 @@ config :wanderer_notifier,
   map_url: "https://example.com",
   map_token: "test_map_token",
   test_mode: true,
-  minimal_test: System.get_env("MINIMAL_TEST") == "true",
+  minimal_test: WandererNotifier.Config.fetch("MINIMAL_TEST", "false") == "true",
   features: %{
     notifications_enabled: true,
     character_notifications_enabled: true,

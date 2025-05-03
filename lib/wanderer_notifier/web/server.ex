@@ -5,7 +5,6 @@ defmodule WandererNotifier.Web.Server do
   use GenServer
   require Logger
 
-  alias WandererNotifier.Config.Web, as: WebConfig
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Web.Router
   # Client API
@@ -22,7 +21,7 @@ defmodule WandererNotifier.Web.Server do
   @impl true
   def init(_opts) do
     # Get port from configuration
-    port = WebConfig.get_web_port()
+    port = WandererNotifier.Config.port()
 
     AppLogger.startup_debug("Starting web server", port: port)
 

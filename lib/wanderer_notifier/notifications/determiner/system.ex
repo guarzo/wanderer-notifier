@@ -5,9 +5,9 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   """
 
   require Logger
-  alias WandererNotifier.Config.Features
+  alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -28,7 +28,7 @@ defmodule WandererNotifier.Notifications.Determiner.System do
       system_data: inspect(system_data, limit: 500)
     )
 
-    notifications_enabled = Features.system_notifications_enabled?()
+    notifications_enabled = Config.system_notifications_enabled?()
 
     AppLogger.processor_debug("[SystemDeterminer] System notifications enabled check",
       enabled: notifications_enabled
@@ -93,38 +93,17 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    AppLogger.processor_debug("[Determiner] Checking if system #{system_id_str} is tracked")
+    # Get the current list of tracked systems from the cache
+    case CacheRepo.get(CacheKeys.map_systems()) do
+      {:ok, systems} when is_list(systems) ->
+        Enum.any?(systems, fn system ->
+          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+          to_string(id) == system_id_str
+        end)
 
-    # First check if we have a direct tracking entry for the system
-    cache_key = CacheKeys.tracked_system(system_id_str)
-    cache_value = CacheRepo.get(cache_key)
-
-    # Log the cache check
-    AppLogger.processor_debug("[Determiner] Tracked system cache check",
-      system_id: system_id_str,
-      value: inspect(cache_value)
-    )
-
-    # Get the system details from cache too
-    system_cache_key = CacheKeys.system(system_id_str)
-    system_in_cache = CacheRepo.get(system_cache_key)
-
-    AppLogger.processor_debug("[Determiner] System cache check",
-      system_id: system_id_str,
-      system: inspect(system_in_cache)
-    )
-
-    # Return tracking status with detailed logging
-    tracked = cache_value != nil
-
-    AppLogger.processor_debug("[Determiner] System tracking check result",
-      system_id: system_id_str,
-      tracked: tracked,
-      system_cache_key: system_cache_key,
-      system_in_cache: system_in_cache != nil
-    )
-
-    tracked
+      _ ->
+        false
+    end
   end
 
   def tracked_system?(_), do: false
@@ -141,18 +120,10 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     - false otherwise
   """
   def system_changed?(system_id, system_data) when is_map(system_data) do
-    # Get cached system data
     cache_key = CacheKeys.system(system_id)
-    cached_data = CacheRepo.get(cache_key)
 
-    # Compare relevant fields
-    case cached_data do
-      nil ->
-        # No cached data, consider it changed
-        true
-
-      cached when is_map(cached) ->
-        # Compare relevant fields
+    case CacheRepo.get(cache_key) do
+      {:ok, cached} when is_map(cached) ->
         changed?(cached, system_data, [
           "security_status",
           "statics",
@@ -163,7 +134,6 @@ defmodule WandererNotifier.Notifications.Determiner.System do
         ])
 
       _ ->
-        # Invalid cache data, consider it changed
         true
     end
   end
@@ -201,6 +171,15 @@ defmodule WandererNotifier.Notifications.Determiner.System do
         )
 
         true
+    end
+  end
+
+  def tracked_system_info(system_id) do
+    system_cache_key = CacheKeys.system(system_id)
+
+    case CacheRepo.get(system_cache_key) do
+      {:ok, value} -> %{system_in_cache: true, value: value}
+      _ -> %{system_in_cache: false, value: nil}
     end
   end
 end

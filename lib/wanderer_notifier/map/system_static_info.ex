@@ -68,7 +68,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Config.Config
+  alias WandererNotifier.Config
 
   @doc """
   Fetches static information for a specific solar system.
@@ -103,7 +103,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
       system_id: solar_system_id
     )
 
-    base_url = Config.get_api_base_url()
+    base_url = Config.api_base_url()
     url = "#{base_url}/common/system-static-info?id=#{solar_system_id}"
     headers = get_auth_headers()
 
@@ -119,7 +119,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   # Make the actual API request for static info
   defp make_static_info_request(url, headers) do
     case HttpClient.get(url, headers) do
-      {:ok, %{status: 200, body: body}} ->
+      {:ok, %{status_code: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, parsed_response} ->
             AppLogger.api_debug("[SystemStaticInfo] Parsed response",
@@ -136,7 +136,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
             {:error, {:json_parse_error, reason}}
         end
 
-      {:ok, %{status: status}} ->
+      {:ok, %{status_code: status}} ->
         AppLogger.api_error("[SystemStaticInfo] HTTP error", status: status)
         {:error, {:http_error, status}}
 
@@ -207,7 +207,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   end
 
   defp get_auth_headers do
-    api_key = Config.get_api_key()
+    api_key = Config.map_token()
     [{"Authorization", "Bearer #{api_key}"}]
   end
 end

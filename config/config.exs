@@ -24,12 +24,13 @@ config :mime, :extensions, %{
 }
 
 # Configure websocket defaults
-config :wanderer_notifier, :websocket,
+config :wanderer_notifier, :websocket, %{
   enabled: true,
   url: "wss://zkillboard.com/websocket/",
   reconnect_delay: 5000,
   max_reconnects: 20,
   reconnect_window: 3600
+}
 
 # Configure the logger
 config :logger,

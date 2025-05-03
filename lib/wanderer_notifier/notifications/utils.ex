@@ -2,7 +2,7 @@ defmodule WandererNotifier.Notifications.Utils do
   @moduledoc """
   Utility functions for notification formatting and data extraction.
   """
-  alias WandererNotifier.Character.Character
+  alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Utilities.CharacterUtils
 
   @doc """
@@ -87,20 +87,20 @@ defmodule WandererNotifier.Notifications.Utils do
   Extracts a character ID from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_character_id(Character.t()) :: String.t()
+  @spec extract_character_id(MapCharacter.t()) :: String.t()
   defdelegate extract_character_id(character), to: CharacterUtils
 
   @doc """
   Extracts a character name from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_character_name(Character.t()) :: String.t()
+  @spec extract_character_name(MapCharacter.t()) :: String.t()
   defdelegate extract_character_name(character), to: CharacterUtils
 
   @doc """
   Extracts a corporation name from a Character struct.
   Delegates to CharacterUtils.
   """
-  @spec extract_corporation_name(Character.t()) :: String.t()
+  @spec extract_corporation_name(MapCharacter.t()) :: String.t()
   defdelegate extract_corporation_name(character), to: CharacterUtils
 end

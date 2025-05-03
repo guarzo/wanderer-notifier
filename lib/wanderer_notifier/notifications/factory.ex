@@ -6,9 +6,9 @@ defmodule WandererNotifier.Notifications.Factory do
   """
 
   require Logger
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Factory, as: NotifierFactory
+  alias WandererNotifier.Config
+  alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Notifiers.TestNotifier
 
   @behaviour WandererNotifier.Notifications.FactoryBehaviour
 
@@ -27,60 +27,52 @@ defmodule WandererNotifier.Notifications.Factory do
   """
   @impl WandererNotifier.Notifications.FactoryBehaviour
   def notify(type, data) do
-    if Features.notifications_enabled?() do
-      AppLogger.notification_debug("Sending notification", %{
-        type: type,
-        data_size: length(data)
-      })
-
-      # Delegate to the Notifiers.Factory for actual notification sending
-      case NotifierFactory.notify(type, data) do
-        :ok ->
-          {:ok, :sent}
-
-        {:ok, result} ->
-          {:ok, result}
-
-        {:error, reason} ->
-          AppLogger.notification_error("Failed to send notification", %{
-            type: type,
-            error: inspect(reason)
-          })
-
-          {:error, reason}
-      end
+    if Config.notifications_enabled?() do
+      do_notify(get_notifier(), type, data)
     else
-      AppLogger.notification_debug("Notifications disabled, skipping", %{type: type})
       {:error, :notifications_disabled}
     end
   end
 
   @doc """
-  Sends a kill notification to the system channel.
-
-  ## Parameters
-  - embed: The formatted embed to send
-
-  ## Returns
-  - {:ok, result} on success
-  - {:error, reason} on failure
+  Gets the appropriate notifier based on the current configuration.
   """
-  def send_system_kill_notification(embed) do
-    notify(:send_system_kill_discord_embed, [embed])
+  def get_notifier do
+    if Config.test_mode_enabled?() do
+      TestNotifier
+    else
+      DiscordNotifier
+    end
   end
 
-  @doc """
-  Sends a kill notification to the character channel.
+  defp do_notify(notifier, :send_system_kill_discord_embed, [embed]) do
+    # Get the channel ID for system kill notifications
+    channel_id = Config.discord_system_kill_channel_id()
 
-  ## Parameters
-  - embed: The formatted embed to send
+    if is_nil(channel_id) do
+      # Fall back to main channel if no dedicated channel is configured
+      notifier.send_notification(:send_discord_embed, [embed])
+    else
+      # Send to the system kill channel
+      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+    end
+  end
 
-  ## Returns
-  - {:ok, result} on success
-  - {:error, reason} on failure
-  """
-  def send_character_kill_notification(embed) do
-    notify(:send_character_kill_discord_embed, [embed])
+  defp do_notify(notifier, :send_character_kill_discord_embed, [embed]) do
+    # Get the channel ID for character kill notifications
+    channel_id = Config.discord_character_kill_channel_id()
+
+    if is_nil(channel_id) do
+      # Fall back to main channel if no dedicated channel is configured
+      notifier.send_notification(:send_discord_embed, [embed])
+    else
+      # Send to the character kill channel
+      notifier.send_notification(:send_discord_embed_to_channel, [channel_id, embed])
+    end
+  end
+
+  defp do_notify(notifier, type, data) do
+    notifier.send_notification(type, data)
   end
 
   @doc """

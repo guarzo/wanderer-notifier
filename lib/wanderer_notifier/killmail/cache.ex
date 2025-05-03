@@ -7,7 +7,7 @@ defmodule WandererNotifier.Killmail.Cache do
   - Maintains a list of kill IDs for quick access
   """
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Cache TTL values (in seconds)
@@ -52,13 +52,22 @@ defmodule WandererNotifier.Killmail.Cache do
     id = to_string(kill_id)
 
     # Get the list of cached kill IDs
-    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+    kill_ids =
+      case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+        {:ok, ids} -> ids
+        _ -> []
+      end
 
     # Check if this kill is in our tracked list
     if id in kill_ids do
       # Get the individual kill data
       key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
-      kill_data = CacheRepo.get(key)
+
+      kill_data =
+        case CacheRepo.get(key) do
+          {:ok, data} -> data
+          _ -> nil
+        end
 
       if kill_data do
         {:ok, kill_data}
@@ -75,14 +84,23 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   def get_recent_kills do
     # Get the list of cached kill IDs
-    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+    kill_ids =
+      case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+        {:ok, ids} -> ids
+        _ -> []
+      end
 
     # Map through and get each kill
     kills =
       kill_ids
       |> Enum.map(fn id ->
         key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
-        {id, CacheRepo.get(key)}
+
+        {id,
+         case CacheRepo.get(key) do
+           {:ok, data} -> data
+           _ -> nil
+         end}
       end)
       |> Enum.filter(fn {_id, kill} -> kill != nil end)
       |> Enum.into(%{})
@@ -98,13 +116,22 @@ defmodule WandererNotifier.Killmail.Cache do
   """
   def get_latest_killmails do
     # Get the list of cached kill IDs
-    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+    kill_ids =
+      case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+        {:ok, ids} -> ids
+        _ -> []
+      end
 
     # Map through and get each kill
     kill_ids
     |> Enum.map(fn id ->
       key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
-      kill = CacheRepo.get(key)
+
+      kill =
+        case CacheRepo.get(key) do
+          {:ok, data} -> data
+          _ -> nil
+        end
 
       if kill do
         Map.put(kill, "id", id)
@@ -136,7 +163,11 @@ defmodule WandererNotifier.Killmail.Cache do
   # Helper to update the recent kills list with a new kill ID
   defp update_recent_kills_list(kill_id) do
     # Get current list of kill IDs
-    kill_ids = CacheRepo.get(CacheKeys.zkill_recent_kills()) || []
+    kill_ids =
+      case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+        {:ok, ids} -> ids
+        _ -> []
+      end
 
     # Add the new kill ID to the list (if not already present)
     updated_ids =

@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Map.Client do
+defmodule WandererNotifier.Map.Clients.Client do
   @moduledoc """
   Client for interacting with the Wanderer map API.
 
@@ -6,10 +6,9 @@ defmodule WandererNotifier.Map.Client do
   for different map API endpoints, handling feature checks and error management.
   """
 
-  alias WandererNotifier.Map.SystemsClient
-  alias WandererNotifier.Map.CharactersClient
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Map.Clients.SystemsClient
+  alias WandererNotifier.Map.Clients.CharactersClient
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
@@ -20,7 +19,7 @@ defmodule WandererNotifier.Map.Client do
     - {:error, reason} on failure
   """
   def update_systems do
-    if Features.system_tracking_enabled?() do
+    if WandererNotifier.Config.system_tracking_enabled?() do
       SystemsClient.update_systems()
     else
       AppLogger.api_debug("[Map.Client] System tracking disabled due to license restrictions")
@@ -48,7 +47,7 @@ defmodule WandererNotifier.Map.Client do
     - {:error, reason} on failure
   """
   def update_systems_with_cache(cached_systems) do
-    if Features.system_tracking_enabled?() do
+    if WandererNotifier.Config.system_tracking_enabled?() do
       # Updated to work with new SystemsClient module that returns MapSystem structs
       case SystemsClient.update_systems(cached_systems) do
         {:ok, systems} -> {:ok, systems}
@@ -92,28 +91,4 @@ defmodule WandererNotifier.Map.Client do
   defp ensure_list(list) when is_list(list), do: list
   defp ensure_list({:ok, list}) when is_list(list), do: list
   defp ensure_list(_), do: []
-
-  @doc """
-  Retrieves character activity data from the map API.
-
-  ## Parameters
-    - slug: Optional map slug override
-
-  ## Returns
-    - {:ok, data} on success
-    - {:error, reason} on failure
-  """
-  def get_character_activity(slug \\ nil) do
-    if Features.map_charts_enabled?() do
-      CharactersClient.get_character_activity(slug)
-    else
-      AppLogger.api_debug("[Map.Client] Map charts disabled due to license restrictions")
-      {:error, :feature_disabled}
-    end
-  rescue
-    e ->
-      error_message = "Error in get_character_activity: #{inspect(e)}"
-      AppLogger.api_error(error_message)
-      {:error, {:domain_error, :map, {:exception, error_message}}}
-  end
 end

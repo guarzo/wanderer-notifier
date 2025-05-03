@@ -56,7 +56,7 @@ WANDERER_DISCORD_BOT_TOKEN=your_discord_bot_token
 WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 
 # Map Configuration
-WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
+WANDERER_MAP_URL_WITH_NAME="https://wanderer.ltd/<yourmap>"
 WANDERER_MAP_TOKEN=your_map_api_token
 
 # Note: Premium features are enabled with your map subscription

@@ -46,7 +46,9 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   end
 
   @impl true
-  def handle_response({:ok, %HTTPoison.Response{status_code: status, body: body}})
+  def handle_response(
+        {:ok, %HTTPoison.Response{status_code: status, body: body, headers: _headers}}
+      )
       when status in 200..299 do
     case Jason.decode(body) do
       {:ok, decoded} ->
@@ -57,12 +59,24 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     end
   end
 
-  def handle_response({:ok, %HTTPoison.Response{status_code: status, body: body}}) do
+  def handle_response(
+        {:ok, %HTTPoison.Response{status_code: status, body: body, headers: headers}}
+      ) do
+    Logger.warning("Non-2xx response",
+      status: status,
+      headers: inspect(headers),
+      body: inspect(body)
+    )
+
     {:error, %{status_code: status, body: body}}
   end
 
   def handle_response({:error, %HTTPoison.Error{reason: reason}}) do
     Logger.error("HTTP request failed: #{inspect(reason)}")
     {:error, reason}
+  end
+
+  def handle_response(other) do
+    {:error, {:unexpected_response, other}}
   end
 end

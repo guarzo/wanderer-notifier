@@ -8,7 +8,7 @@ defmodule WandererNotifier.Notifications.Interface do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Factory
-  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
@@ -152,10 +152,28 @@ defmodule WandererNotifier.Notifications.Interface do
   - {:error, reason} on failure
   """
   def send_message(message) do
-    AppLogger.notification_info("Sending message notification", %{
-      message_length: String.length(message)
-    })
+    case message do
+      msg when is_binary(msg) ->
+        AppLogger.notification_info("Sending message notification", %{
+          message_length: String.length(msg)
+        })
 
-    Factory.send_message(message)
+        Factory.send_message(msg)
+
+      embed when is_map(embed) ->
+        AppLogger.notification_info("Sending embed notification", %{
+          title: Map.get(embed, :title) || Map.get(embed, "title"),
+          description: Map.get(embed, :description) || Map.get(embed, "description")
+        })
+
+        Factory.send_message(embed)
+
+      _ ->
+        AppLogger.notification_error("Unknown message type for notification", %{
+          type: inspect(message)
+        })
+
+        {:error, :invalid_message_type}
+    end
   end
 end

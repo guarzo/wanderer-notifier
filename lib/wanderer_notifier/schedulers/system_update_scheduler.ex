@@ -10,21 +10,21 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   # Interval is now configured via the Timings module
 
-  alias WandererNotifier.Map.SystemsClient
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Timings
+  alias WandererNotifier.Map.Clients.SystemsClient
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
 
   @impl true
   def execute(state) do
     # Only update systems if system tracking feature is enabled
-    if Features.should_load_tracking_data?() do
-      # Use Task with timeout to prevent hanging
+    if Config.should_load_tracking_data?() do
+      primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
+
       task =
         Task.async(fn ->
           try do
-            # Simply call SystemsClient.update_systems which handles caching
-            SystemsClient.update_systems()
+            SystemsClient.update_systems(nil, suppress_notifications: !primed?)
           rescue
             e ->
               AppLogger.api_error("⚠️ System update failed", error: Exception.message(e))
@@ -32,18 +32,26 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
           end
         end)
 
-      # Wait for the task with a timeout (30 seconds)
       case Task.yield(task, 30_000) do
-        {:ok, {:ok, systems}} ->
-          AppLogger.api_info("🌍 Systems updated: #{length(systems)} systems synchronized")
-          {:ok, systems, Map.put(state, :systems_count, length(systems))}
+        {:ok, {:ok, _new_systems, all_systems}} ->
+          AppLogger.api_info("🌍 Systems updated: #{length(all_systems)} systems synchronized",
+            category: :api
+          )
+
+          if primed? do
+            {:ok, all_systems, Map.put(state, :systems_count, length(all_systems))}
+          else
+            # First run: just cache, do not notify
+            CacheRepo.put(:map_systems_primed, true)
+            # Optionally log that this was the initial sync
+            {:ok, all_systems, Map.put(state, :systems_count, length(all_systems))}
+          end
 
         {:ok, {:error, reason}} ->
           AppLogger.api_error("⚠️ System update failed", error: inspect(reason))
           {:error, reason, state}
 
         nil ->
-          # Task took too long, kill it and return
           Task.shutdown(task, :brutal_kill)
           AppLogger.api_error("⚠️ System update timed out after 30 seconds")
           {:error, :timeout, state}
@@ -59,18 +67,17 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   @impl true
   def enabled? do
-    Features.should_load_tracking_data?()
+    Config.should_load_tracking_data?()
   end
 
   @impl true
   def get_config do
     %{
-      interval_ms: Timings.system_update_scheduler_interval(),
+      interval_ms: Config.system_update_scheduler_interval(),
       enabled: enabled?(),
       feature_flags: %{
-        system_notifications: Features.tracked_systems_notifications_enabled?(),
-        should_load_tracking: Features.should_load_tracking_data?(),
-        map_charts: Features.map_charts_enabled?()
+        system_notifications: Config.tracked_systems_notifications_enabled?(),
+        should_load_tracking: Config.should_load_tracking_data?()
       }
     }
   end

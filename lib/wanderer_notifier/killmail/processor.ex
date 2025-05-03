@@ -38,7 +38,22 @@ defmodule WandererNotifier.Killmail.Processor do
   def process_zkill_message(message, state) do
     case decode_zkill_message(message) do
       {:ok, kill_data} ->
-        process_kill_data(kill_data, state)
+        # Early exit if not relevant
+        case WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data) do
+          {:ok, %{should_notify: true}} ->
+            process_kill_data(kill_data, state)
+
+          {:ok, %{should_notify: false, reason: reason}} ->
+            AppLogger.processor_info("Skipping killmail: #{reason}")
+            state
+
+          _ ->
+            AppLogger.processor_error(
+              "Skipping killmail: unexpected response from determine_should_notify"
+            )
+
+            state
+        end
 
       {:error, reason} ->
         AppLogger.error("Failed to decode ZKill message", %{

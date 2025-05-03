@@ -4,10 +4,10 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   """
 
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Map.SystemsClient
+  alias WandererNotifier.Map.Clients.SystemsClient
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.Notifier, as: NotificationInterface
@@ -27,7 +27,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
         generic_notification = StructuredFormatter.format_system_notification(system)
 
         # Send notification
-        case NotificationInterface.send_to_discord(generic_notification, :test_system) do
+        case NotificationInterface.send_message(generic_notification) do
           :ok ->
             AppLogger.info("Test system notification sent successfully")
             Stats.increment(:systems)
@@ -134,7 +134,7 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
     generic_notification = StructuredFormatter.format_kill_notification(enriched_kill)
 
     # Send notification
-    case NotificationInterface.send_to_discord(generic_notification, :test_kill) do
+    case NotificationInterface.send_message(generic_notification) do
       :ok ->
         AppLogger.kill_info("Test kill notification sent successfully")
         Stats.increment(:kills)
@@ -157,30 +157,33 @@ defmodule WandererNotifier.Notifiers.Helpers.TestNotifications do
   Sends a test character notification.
   """
   def send_test_character_notification do
-    AppLogger.info("Sending test character notification...")
-
-    # Get tracked characters from cache
     case CacheRepo.get(CacheKeys.character_list()) do
-      [character | _] when not is_nil(character) ->
-        # Format the notification
+      {:ok, [character | _]} when not is_nil(character) ->
         generic_notification = StructuredFormatter.format_character_notification(character)
 
-        # Send notification using a real character from cache
-        case NotificationInterface.send_to_discord(generic_notification, :test_character) do
+        case NotificationInterface.send_message(generic_notification) do
           :ok ->
-            AppLogger.info("Test character notification sent successfully")
-            Stats.increment(:characters)
-            {:ok, "Test character notification sent successfully"}
+            AppLogger.notification_info("Test character notification sent successfully")
+            :ok
 
           {:error, reason} ->
-            AppLogger.error("Failed to send test character notification: #{inspect(reason)}")
+            AppLogger.notification_error("Failed to send test character notification",
+              error: inspect(reason)
+            )
+
             {:error, reason}
         end
 
+      {:ok, []} ->
+        AppLogger.notification_warn("No characters found in cache for test notification")
+        {:error, :no_characters}
+
       _ ->
-        error_msg = "No tracked characters found in cache for test notification"
-        AppLogger.error(error_msg)
-        {:error, error_msg}
+        AppLogger.notification_error(
+          "Failed to fetch characters from cache for test notification"
+        )
+
+        {:error, :cache_error}
     end
   end
 

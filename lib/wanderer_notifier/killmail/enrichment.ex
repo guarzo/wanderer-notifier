@@ -18,6 +18,12 @@ defmodule WandererNotifier.Killmail.Enrichment do
     - {:error, reason} on failure
   """
   def enrich_killmail_data(killmail) when is_struct(killmail, Killmail) do
+    AppLogger.kill_info("Enriching killmail struct", %{killmail: inspect(killmail, pretty: true)})
+
+    if is_nil(killmail.esi_data) do
+      AppLogger.kill_warn("Killmail esi_data is nil", %{killmail_id: killmail.killmail_id})
+    end
+
     with {:ok, victim_info} <- get_character_info(killmail.victim_id),
          {:ok, attacker_info} <- get_character_info(killmail.attacker_id),
          {:ok, ship_info} <- get_ship_info(killmail.ship_type_id) do

@@ -6,14 +6,11 @@ defmodule WandererNotifier.Core.Application.Service do
 
   use GenServer
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Config
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
@@ -149,17 +146,17 @@ defmodule WandererNotifier.Core.Application.Service do
   @impl true
   def handle_info(:ws_disconnected, state) do
     AppLogger.websocket_warn("Websocket disconnected, scheduling reconnect",
-      reconnect_delay_ms: Timings.reconnect_delay()
+      reconnect_delay_ms: Config.websocket_reconnect_delay()
     )
 
-    Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
+    Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:reconnect_ws, state) do
     # Check if the websocket is enabled in config
-    if Websocket.enabled() do
+    if Config.websocket_enabled?() do
       AppLogger.websocket_info("Attempting to reconnect WandererNotifier.ZKill.Websocket")
       new_state = reconnect_zkill_ws(state)
       {:noreply, new_state}
@@ -232,7 +229,11 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Get all tracked systems from cache
-    tracked_systems = CacheRepo.get("map:system:#{system_id}")
+    tracked_systems =
+      case CacheRepo.get("map:systems") do
+        {:ok, value} -> value
+        _ -> []
+      end
 
     AppLogger.maintenance_info("Found tracked systems", count: length(tracked_systems))
 
@@ -272,7 +273,11 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Try direct cache lookup
-    direct_system = CacheRepo.get("map:system:#{system_id}")
+    direct_system =
+      case CacheRepo.get("map:system:#{system_id}") do
+        {:ok, value} -> value
+        _ -> nil
+      end
 
     AppLogger.cache_debug("Direct cache lookup result",
       key: "map:system:#{system_id}",
@@ -280,7 +285,7 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Use the new CacheHelpers function instead of directly manipulating the cache
-    ttl = WandererNotifier.Config.Cache.systems_cache_ttl()
+    ttl = Config.systems_cache_ttl()
     :ok = CacheRepo.set(WandererNotifier.Cache.Keys.tracked_system(system_id), true, ttl)
 
     AppLogger.maintenance_info("Added system to tracked systems",
@@ -307,7 +312,11 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Get all tracked characters from cache
-    tracked_characters = CacheRepo.get("tracked:character:#{character_id}")
+    tracked_characters =
+      case CacheRepo.get("tracked:character:#{character_id}") do
+        {:ok, value} -> value
+        _ -> []
+      end
 
     AppLogger.maintenance_info("Found tracked characters", count: length(tracked_characters))
 
@@ -315,7 +324,11 @@ defmodule WandererNotifier.Core.Application.Service do
     character_id_str = to_string(character_id)
 
     # Try direct cache lookup
-    direct_character = CacheRepo.get("tracked:character:#{character_id_str}")
+    direct_character =
+      case CacheRepo.get("tracked:character:#{character_id_str}") do
+        {:ok, value} -> value
+        _ -> nil
+      end
 
     AppLogger.cache_debug("Direct cache lookup result",
       key: "tracked:character:#{character_id_str}",
@@ -323,7 +336,7 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Use the CacheHelpers function to add the character
-    ttl = WandererNotifier.Config.Cache.characters_cache_ttl()
+    ttl = Config.characters_cache_ttl()
     :ok = CacheRepo.set(WandererNotifier.Cache.Keys.tracked_character(character_id), true, ttl)
 
     AppLogger.maintenance_info("Added character to tracked characters",
@@ -356,10 +369,10 @@ defmodule WandererNotifier.Core.Application.Service do
     if pid == state.ws_pid do
       AppLogger.websocket_warn(
         "ZKill websocket crashed. Scheduling reconnect (WandererNotifier.ZKill.Websocket)",
-        reconnect_delay_ms: Timings.reconnect_delay()
+        reconnect_delay_ms: Config.websocket_reconnect_delay()
       )
 
-      Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
+      Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
       {:noreply, %{state | ws_pid: nil}}
     else
       {:noreply, state}
@@ -417,7 +430,7 @@ defmodule WandererNotifier.Core.Application.Service do
     # Get the main channel ID, with defensive check for test environment
     main_channel_id =
       try do
-        Notifications.channel_id(:main)
+        Config.discord_channel_id()
       rescue
         _ ->
           if Application.get_env(:wanderer_notifier, :environment) == :test,
@@ -486,7 +499,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
   defp start_zkill_ws(state) do
     # Check if websocket is enabled in config
-    if Websocket.enabled() do
+    if Config.websocket_enabled?() do
       AppLogger.websocket_debug("Starting WandererNotifier.ZKill.Websocket")
 
       case ZKillWebsocket.start_link(self()) do
@@ -511,7 +524,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
   defp reconnect_zkill_ws(state) do
     # Check if the websocket is enabled in config
-    if Websocket.enabled() do
+    if Config.websocket_enabled?() do
       case ZKillWebsocket.start_link(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("Reconnected to WandererNotifier.ZKill.Websocket",
@@ -522,7 +535,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
         {:error, reason} ->
           AppLogger.websocket_error("Reconnection failed", error: inspect(reason))
-          Process.send_after(self(), :reconnect_ws, Timings.reconnect_delay())
+          Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
           state
       end
     else
@@ -557,12 +570,22 @@ defmodule WandererNotifier.Core.Application.Service do
   # Collect all tracked systems data
   defp collect_tracked_systems_data do
     # Fetch tracked systems and log count
-    tracked_systems = CacheRepo.get("map:systems")
+    tracked_systems =
+      case CacheRepo.get("map:systems") do
+        {:ok, value} -> value
+        _ -> []
+      end
+
     system_count = length(tracked_systems)
     AppLogger.maintenance_info("Found tracked systems", count: system_count)
 
     # Fetch raw systems from cache and log count
-    raw_systems = CacheRepo.get("map:systems")
+    raw_systems =
+      case CacheRepo.get("map:systems") do
+        {:ok, value} -> value
+        _ -> []
+      end
+
     raw_system_count = if is_list(raw_systems), do: length(raw_systems), else: 0
     AppLogger.cache_info("Raw map:systems cache data", count: raw_system_count)
 
@@ -639,9 +662,17 @@ defmodule WandererNotifier.Core.Application.Service do
 
   # Check additional cache data for test system
   defp check_additional_cache_data(test_system_id) do
-    system_ids_key = CacheRepo.get("map:system_ids")
+    system_ids_key =
+      case CacheRepo.get("map:system_ids") do
+        {:ok, value} -> value
+        _ -> nil
+      end
 
-    specific_system_key = CacheRepo.get("map:system:#{test_system_id}")
+    specific_system_key =
+      case CacheRepo.get("map:system:#{test_system_id}") do
+        {:ok, value} -> value
+        _ -> nil
+      end
 
     AppLogger.cache_debug("map:system_ids contents", contents: inspect(system_ids_key))
 
@@ -702,7 +733,7 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   def start_websocket do
-    if Websocket.enabled() do
+    if Config.websocket_enabled?() do
       AppLogger.api_info("Starting WebSocket")
 
       # Continue with the rest of the implementation...
@@ -710,5 +741,27 @@ defmodule WandererNotifier.Core.Application.Service do
       AppLogger.api_info("WebSocket is disabled via configuration")
       :ok
     end
+  end
+
+  def format_system_status_message(
+        title,
+        description,
+        websocket,
+        uptime,
+        extra,
+        status,
+        systems_count,
+        characters_count
+      ) do
+    %{
+      title: title,
+      description: description,
+      websocket: websocket,
+      uptime: uptime,
+      extra: extra,
+      status: status,
+      systems_count: systems_count,
+      characters_count: characters_count
+    }
   end
 end

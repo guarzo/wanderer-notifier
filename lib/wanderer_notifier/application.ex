@@ -12,63 +12,73 @@ end
 defmodule WandererNotifier.Application do
   @moduledoc """
   Application module for WandererNotifier.
+  Handles application startup and environment configuration.
   """
 
   use Application
 
-  alias WandererNotifier.Config.API
-  alias WandererNotifier.Config.Debug
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Notifications
-  alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Config.Version
-  alias WandererNotifier.Config.Web
-  alias WandererNotifier.Config.Websocket
-  alias WandererNotifier.Cache.CachexImpl
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Killmail.Metrics
 
   @doc """
-  Starts the application.
+  Starts the WandererNotifier application.
   """
   def start(_type, _args) do
-    # Initialize startup tracker
-    AppLogger.init_startup_tracker()
-    AppLogger.begin_startup_phase(:initialization, "Starting WandererNotifier")
+    AppLogger.startup_info("Starting WandererNotifier")
 
-    # Initialize batch logging for cache operations
-    CachexImpl.init_batch_logging()
+    # Initialize metric registry (not as a supervised child)
+    initialize_metric_registry()
 
-    # Log application version
-    AppLogger.log_startup_state_change(:version, "Running WandererNotifier", %{
-      value: "v#{Version.version()}"
-    })
+    children = [
+      {WandererNotifier.NoopConsumer, []},
+      {Metrics, []},
+      {WandererNotifier.Core.Stats, []},
+      {WandererNotifier.License.Service, []},
+      {WandererNotifier.Core.Application.Service, []},
+      WandererNotifier.Schedulers.Supervisor
+      # Add other children here
+    ]
 
-    # Get environment using a robust detection mechanism
-    env_value = get_environment()
+    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
 
-    AppLogger.log_startup_state_change(:environment, "Environment", %{
-      value: env_value
-    })
+  defp initialize_metric_registry do
+    case WandererNotifier.Killmail.MetricRegistry.initialize() do
+      {:ok, atoms} ->
+        AppLogger.log_startup_state_change(
+          :metric_registry,
+          "Metric registry initialized successfully",
+          %{metric_count: length(atoms)}
+        )
 
-    minimal_test = Application.get_env(:wanderer_notifier, :minimal_test, false)
+        :ok
 
-    if minimal_test do
-      start_minimal_application()
-    else
-      # Check if we're in test mode
-      is_test = Application.get_env(:wanderer_notifier, :env) == :test
-
-      if is_test do
-        # Start with minimal validation for tests
-        start_test_application()
-      else
-        # Full validation for production
-        AppLogger.begin_startup_phase(:configuration, "Validating configuration")
-        validate_configuration()
-        AppLogger.begin_startup_phase(:services, "Starting main application")
-        start_main_application()
-      end
+      error ->
+        AppLogger.startup_error("Failed to initialize metric registry", error: inspect(error))
+        error
     end
+  end
+
+  @doc """
+  Gets the current environment.
+  """
+  def get_env do
+    Application.get_env(:wanderer_notifier, :environment, :dev)
+  end
+
+  @doc """
+  Gets a configuration value for the given key.
+  """
+  def get_env(key, default \\ nil) do
+    Application.get_env(:wanderer_notifier, key, default)
+  end
+
+  @doc """
+  Gets a configuration value for the given key and module.
+  """
+  def get_env(module, key, default) do
+    Application.get_env(module, key, default)
   end
 
   @doc """
@@ -90,227 +100,5 @@ defmodule WandererNotifier.Application do
     error ->
       AppLogger.config_error("Error reloading modules", error: inspect(error))
       {:error, error}
-  end
-
-  # Private functions
-
-  defp validate_configuration do
-    # Define all configuration modules to validate with their display names and extra info
-    config_modules = [
-      {Web, "Web", [port: Web.port(), host: Web.host()]},
-      {Websocket, "Websocket", [url: Websocket.url(), enabled: Websocket.enabled()]},
-      {API, "API", []},
-      {Features, "Features",
-       fn ->
-         status = Features.get_feature_status()
-
-         [
-           kill_notifications: status.kill_notifications_enabled,
-           character_tracking: status.character_tracking_enabled,
-           system_tracking: status.system_tracking_enabled
-         ]
-       end},
-      {Notifications, "Notifications",
-       fn ->
-         channels = Notifications.config().channels
-
-         [
-           main_channel: channels.main.enabled,
-           system_kill_channel: channels.system_kill.enabled,
-           character_kill_channel: channels.character_kill.enabled,
-           system_channel: channels.system.enabled
-         ]
-       end},
-      {Timings, "Timings", []},
-      {Debug, "Debug", [logging_enabled: Debug.debug_logging_enabled?()]}
-    ]
-
-    # Validate each module in parallel with Task.async_stream
-    Task.async_stream(
-      config_modules,
-      fn module_info ->
-        {module, name, info_fn} = module_info
-
-        # Get extra info if it's a function
-        info = if is_function(info_fn), do: info_fn.(), else: info_fn
-
-        # Call the validate function on the module
-        validate_module(module, name, info)
-      end,
-      timeout: :infinity
-    )
-    |> Stream.run()
-  end
-
-  defp process_validation_result(_module, name, info, result) do
-    case result do
-      :ok ->
-        # Log success with any extra info at debug level
-        AppLogger.config_debug("#{name} configuration validated successfully", info)
-        :ok
-
-      {:error, reason} when is_binary(reason) ->
-        # Single error string
-        AppLogger.config_error("Invalid #{name} configuration", error: reason)
-        {:error, name, reason}
-
-      {:error, errors} when is_list(errors) ->
-        # List of error strings
-        Enum.each(errors, fn error ->
-          AppLogger.config_error("#{name} configuration validation error", error: error)
-        end)
-
-        {:error, name, errors}
-    end
-  end
-
-  defp validate_module(module, name, info) do
-    # Call the validate function on the module directly instead of using apply
-    result = module.validate()
-    process_validation_result(module, name, info, result)
-  end
-
-  defp start_minimal_application do
-    AppLogger.begin_startup_phase(:minimal, "Starting minimal application")
-
-    children = [
-      {WandererNotifier.NoopConsumer, []}
-    ]
-
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-    result = Supervisor.start_link(children, opts)
-
-    AppLogger.complete_startup()
-    result
-  end
-
-  defp start_test_application do
-    # Minimal validation for test environment
-    AppLogger.begin_startup_phase(:test, "Starting application in test mode")
-
-    children = [
-      # Core services needed for testing
-      {WandererNotifier.NoopConsumer, []},
-      {Cachex, name: :wanderer_cache},
-      {WandererNotifier.Web.Server, []}
-    ]
-
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-
-    case Supervisor.start_link(children, opts) do
-      {:ok, pid} ->
-        AppLogger.startup_info("✨ Test application started")
-        AppLogger.complete_startup()
-        {:ok, pid}
-
-      {:error, reason} = error ->
-        AppLogger.startup_error("❌ Failed to start test application", error: inspect(reason))
-        AppLogger.complete_startup()
-        error
-    end
-  end
-
-  defp start_main_application do
-    # Initialize metric registry to ensure all metrics are pre-registered
-    AppLogger.begin_startup_phase(:metrics, "Initializing metrics")
-    initialize_metric_registry()
-
-    AppLogger.begin_startup_phase(:children, "Starting child processes")
-    children = get_children()
-    opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
-
-    AppLogger.log_startup_state_change(:child_processes, "Starting child processes", %{
-      child_count: length(children)
-    })
-
-    case Supervisor.start_link(children, opts) do
-      {:ok, pid} ->
-        AppLogger.startup_info("✨ WandererNotifier started successfully")
-        AppLogger.complete_startup()
-        {:ok, pid}
-
-      {:error, {:already_started, pid}} ->
-        AppLogger.startup_warn("⚠️ Supervisor already started", pid: inspect(pid))
-        AppLogger.complete_startup()
-        {:ok, pid}
-
-      {:error, reason} = error ->
-        AppLogger.startup_error("❌ Failed to start application", error: inspect(reason))
-        AppLogger.complete_startup()
-        error
-    end
-  end
-
-  # Initialize metric registry
-  defp initialize_metric_registry do
-    alias WandererNotifier.Killmail.MetricRegistry
-
-    # Register the metric atoms
-    case MetricRegistry.initialize() do
-      {:ok, atoms} ->
-        AppLogger.log_startup_state_change(
-          :metric_registry,
-          "Metric registry initialized successfully",
-          %{
-            metric_count: length(atoms)
-          }
-        )
-
-        :ok
-
-      error ->
-        AppLogger.startup_error("Failed to initialize metric registry",
-          error: inspect(error)
-        )
-
-        error
-    end
-  end
-
-  defp get_children do
-    # Core services
-    base_children = [
-      {WandererNotifier.NoopConsumer, []},
-      {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Stats, []},
-      %{
-        id: WandererNotifier.Killmail.Metrics,
-        start: {WandererNotifier.Killmail.Metrics, :start_link, [[]]}
-      },
-      {WandererNotifier.Helpers.DeduplicationHelper, []},
-      {WandererNotifier.Core.Application.Service, []},
-      {Cachex, name: :wanderer_cache},
-      {WandererNotifier.Cache.Repository, []},
-      {WandererNotifier.Web.Server, []}
-    ]
-
-    # Add schedulers last
-    base_children ++ [{WandererNotifier.Schedulers.Supervisor, []}]
-  end
-
-  # Helper to get the current environment in a robust way
-  defp get_environment do
-    # Try different environment detection methods in order of preference
-    cond do
-      # Check for explicitly set Application environment
-      env = Application.get_env(:wanderer_notifier, :env) ->
-        to_string(env)
-
-      # Check for Mix.env() (works in development)
-      function_exported?(Mix, :env, 0) ->
-        to_string(Mix.env())
-
-      # Check for MIX_ENV environment variable
-      System.get_env("MIX_ENV") ->
-        System.get_env("MIX_ENV")
-
-      # Check for RELEASE_MODE (which implies prod)
-      System.get_env("RELEASE_MODE") ->
-        "prod"
-
-      # Default to dev if no other method works
-      true ->
-        "dev"
-    end
   end
 end

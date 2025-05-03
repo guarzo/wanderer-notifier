@@ -8,7 +8,7 @@ defmodule WandererNotifier.ESI.Service do
   alias WandererNotifier.ESI.Client
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.ESI.ServiceBehaviour
@@ -18,7 +18,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for killmail", kill_id: kill_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for killmail", kill_id: kill_id)
 
         case Client.get_killmail(kill_id, killmail_hash, retry_opts()) do
@@ -29,10 +33,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for killmail", kill_id: kill_id)
-        {:ok, data}
     end
   end
 
@@ -41,7 +41,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.character(character_id)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
 
         case Client.get_character_info(character_id, retry_opts()) do
@@ -52,10 +56,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
-        {:ok, data}
     end
   end
 
@@ -81,7 +81,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.corporation(corporation_id)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for corporation", corporation_id: corporation_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for corporation", corporation_id: corporation_id)
 
         case Client.get_corporation_info(corporation_id, retry_opts()) do
@@ -92,10 +96,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for corporation", corporation_id: corporation_id)
-        {:ok, data}
     end
   end
 
@@ -121,7 +121,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.alliance(alliance_id)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for alliance", alliance_id: alliance_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for alliance", alliance_id: alliance_id)
 
         case Client.get_alliance_info(alliance_id, retry_opts()) do
@@ -132,10 +136,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for alliance", alliance_id: alliance_id)
-        {:ok, data}
     end
   end
 
@@ -161,8 +161,8 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.ship_type(ship_type_id)
 
     case CacheRepo.get(cache_key) do
-      nil -> handle_cache_miss(ship_type_id, cache_key)
-      data -> handle_cache_hit(ship_type_id, data)
+      {:ok, data} -> handle_cache_hit(ship_type_id, data)
+      {:error, _} -> handle_cache_miss(ship_type_id, cache_key)
     end
   end
 
@@ -197,7 +197,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.ship_type(type_id)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for type", type_id: type_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for type", type_id: type_id)
 
         case Client.get_universe_type(type_id, retry_opts()) do
@@ -208,10 +212,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for type", type_id: type_id)
-        {:ok, data}
     end
   end
 
@@ -231,7 +231,11 @@ defmodule WandererNotifier.ESI.Service do
     cache_key = CacheKeys.system(system_id)
 
     case CacheRepo.get(cache_key) do
-      nil ->
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for solar system", system_id: system_id)
+        {:ok, data}
+
+      {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for solar system", system_id: system_id)
 
         case Client.get_solar_system(system_id, retry_opts()) do
@@ -242,10 +246,6 @@ defmodule WandererNotifier.ESI.Service do
           error ->
             error
         end
-
-      data ->
-        AppLogger.api_debug("✨ ESI cache hit for solar system", system_id: system_id)
-        {:ok, data}
     end
   end
 
