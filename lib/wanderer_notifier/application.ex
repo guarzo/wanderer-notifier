@@ -31,6 +31,7 @@ defmodule WandererNotifier.Application do
 
     children = [
       {WandererNotifier.NoopConsumer, []},
+      {Cachex, name: :wanderer_cache},
       {Metrics, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},

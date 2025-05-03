@@ -2,6 +2,9 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @moduledoc """
   Scheduler responsible for periodic system updates from the map.
   """
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Map.Clients.SystemsClient
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
@@ -18,10 +21,6 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   end
 
   defp update_tracked_systems do
-    alias WandererNotifier.Map.Clients.SystemsClient
-    alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-
     primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
     cached_systems = CacheRepo.get(:system_list)
     cached_systems_safe = ensure_list(cached_systems)
@@ -65,15 +64,13 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   defp ensure_list(_), do: []
 
   defp handle_successful_system_update(systems) do
-    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
     systems_list = ensure_list(systems)
     verify_and_update_systems_cache(systems_list)
     :ok
   end
 
   defp verify_and_update_systems_cache(systems) do
-    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-    alias WandererNotifier.Logger.Logger, as: AppLogger
+
     task =
       Task.async(fn ->
         try do
