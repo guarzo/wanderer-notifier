@@ -184,10 +184,10 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   defp extract_victim_info(killmail) do
     victim = Killmail.get_victim(killmail) || %{}
 
-    victim_name = Map.get(victim, "character_name", "Unknown Pilot")
-    victim_ship = Map.get(victim, "ship_type_name", "Unknown Ship")
-    victim_corp = Map.get(victim, "corporation_name", "Unknown Corp")
-    victim_alliance = Map.get(victim, "alliance_name")
+    victim_name = killmail.victim_name || Map.get(victim, "character_name", "Unknown Pilot")
+    victim_ship = killmail.ship_name || Map.get(victim, "ship_type_name", "Unknown Ship")
+    victim_corp = killmail.victim_corporation || Map.get(victim, "corporation_name", "Unknown Corp")
+    victim_alliance = killmail.victim_alliance || Map.get(victim, "alliance_name")
     victim_ship_type_id = Map.get(victim, "ship_type_id")
     victim_character_id = Map.get(victim, "character_id")
 
@@ -202,8 +202,8 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   end
 
   defp extract_kill_context(killmail) do
-    system_name = Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
-    system_id = Map.get(killmail.esi_data || %{}, "solar_system_id")
+    system_name = killmail.system_name || Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
+    system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
 
     security_status = get_system_security_status(system_id)
     security_formatted = format_security_status(security_status)
@@ -262,9 +262,8 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
 
   defp get_final_blow_details(killmail) do
     final_blow =
-      killmail.esi_data
-      |> Map.get("attackers", [])
-      |> Enum.find(&Map.get(&1, "final_blow", false))
+      (killmail.attackers || [])
+      |> Enum.find(&(&1[:final_blow] == true))
 
     case final_blow do
       nil ->
@@ -280,13 +279,13 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
 
       attacker ->
         %{
-          name: Map.get(attacker, "character_name", "Unknown"),
-          ship: Map.get(attacker, "ship_type_name", "Unknown Ship"),
-          corp: Map.get(attacker, "corporation_name", "Unknown Corp"),
-          alliance: Map.get(attacker, "alliance_name"),
-          ship_type_id: Map.get(attacker, "ship_type_id"),
-          character_id: Map.get(attacker, "character_id"),
-          weapon: Map.get(attacker, "weapon_type_name", "Unknown Weapon")
+          name: attacker[:character_name] || "Unknown",
+          ship: attacker[:ship_type_name] || "Unknown Ship",
+          corp: attacker[:corporation_name] || "Unknown Corp",
+          alliance: attacker[:alliance_name],
+          ship_type_id: attacker[:ship_type_id],
+          character_id: attacker[:character_id],
+          weapon: attacker[:weapon_type_name] || "Unknown Weapon"
         }
     end
   end

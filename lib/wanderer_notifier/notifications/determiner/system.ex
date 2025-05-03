@@ -29,27 +29,14 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     )
 
     notifications_enabled = Config.system_notifications_enabled?()
-
-    AppLogger.processor_debug("[SystemDeterminer] System notifications enabled check",
-      enabled: notifications_enabled
-    )
-
-    is_tracked = tracked_system?(system_id)
-
-    AppLogger.processor_debug("[SystemDeterminer] System tracking check",
-      system_id: system_id,
-      tracked: is_tracked
-    )
-
     has_changed = system_changed?(system_id, system_data)
 
-    AppLogger.processor_debug("[SystemDeterminer] System changed check",
+    AppLogger.processor_debug("[SystemDeterminer] System changed (new) check",
       system_id: system_id,
       changed: has_changed
     )
 
     with true <- notifications_enabled,
-         true <- is_tracked,
          true <- has_changed do
       dedup_result = check_deduplication_and_decide(system_id)
 
@@ -64,18 +51,34 @@ defmodule WandererNotifier.Notifications.Determiner.System do
         AppLogger.processor_info("[SystemDeterminer] Notification check failed",
           system_id: system_id,
           notifications_enabled: notifications_enabled,
-          is_tracked: is_tracked,
           has_changed: has_changed
         )
-
         false
-
       _ ->
         false
     end
   end
 
   def should_notify?(_, _), do: false
+
+  @doc """
+  Checks if a system's data has changed from what's in cache.
+
+  ## Parameters
+    - system_id: The ID of the system to check
+    - system_data: The new system data to compare against cache
+
+  ## Returns
+    - true if the system is new (not in cache)
+    - false otherwise
+  """
+  def system_changed?(system_id, _system_data) do
+    cache_key = CacheKeys.system(system_id)
+    case CacheRepo.get(cache_key) do
+      {:ok, _cached} -> false  # Already exists, not new
+      _ -> true               # Not in cache, so it's new
+    end
+  end
 
   @doc """
   Checks if a system is being tracked.
@@ -107,47 +110,6 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   end
 
   def tracked_system?(_), do: false
-
-  @doc """
-  Checks if a system's data has changed from what's in cache.
-
-  ## Parameters
-    - system_id: The ID of the system to check
-    - system_data: The new system data to compare against cache
-
-  ## Returns
-    - true if the system data has changed
-    - false otherwise
-  """
-  def system_changed?(system_id, system_data) when is_map(system_data) do
-    cache_key = CacheKeys.system(system_id)
-
-    case CacheRepo.get(cache_key) do
-      {:ok, cached} when is_map(cached) ->
-        changed?(cached, system_data, [
-          "security_status",
-          "statics",
-          "wormhole_class",
-          "system_name",
-          "constellation_name",
-          "region_name"
-        ])
-
-      _ ->
-        true
-    end
-  end
-
-  def system_changed?(_, _), do: false
-
-  # Check if any of the specified fields have changed
-  defp changed?(old_data, new_data, fields) do
-    Enum.any?(fields, fn field ->
-      old_value = Map.get(old_data, field)
-      new_value = Map.get(new_data, field)
-      old_value != new_value
-    end)
-  end
 
   # Apply deduplication check and decide whether to send notification
   defp check_deduplication_and_decide(system_id) do

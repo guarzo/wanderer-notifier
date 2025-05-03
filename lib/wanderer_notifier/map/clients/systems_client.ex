@@ -185,24 +185,60 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     end)
     AppLogger.api_info("[SystemsClient] Systems in this update: #{inspect(system_names)}")
 
-    updated_systems =
-      try do
-        update_systems_cache(enriched_systems)
-      rescue
-        e ->
-          AppLogger.api_error("[SystemsClient] Exception in update_systems_cache",
-            error: Exception.message(e)
-          )
-
-          raise e
-      end
-
-    verify_systems_cached(updated_systems)
-
-    if suppress_notifications do
-      {:ok, [], updated_systems}
+    if suppress_notifications or cached_systems == [] or is_nil(cached_systems) do
+      # First run or suppressed: just update the cache, no notifications
+      updated_systems =
+        try do
+          update_systems_cache(enriched_systems)
+        rescue
+          e ->
+            AppLogger.api_error("[SystemsClient] Exception in update_systems_cache",
+              error: Exception.message(e)
+            )
+            raise e
+        end
+      verified_systems =
+        case verify_systems_cached(updated_systems) do
+          {:ok, systems} -> systems
+          _ -> updated_systems
+        end
+      {:ok, [], verified_systems}
     else
-      notify_new_systems(enriched_systems, cached_systems)
+      # Normal run: notify for new systems
+      cached_ids = MapSet.new(Enum.map(cached_systems, &(&1.solar_system_id)))
+      new_systems = Enum.filter(enriched_systems, fn sys ->
+        id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
+        not MapSet.member?(cached_ids, id)
+      end)
+      AppLogger.api_info("[SystemsClient] New systems to notify: #{inspect(new_systems)}")
+      Enum.each(new_systems, fn system ->
+        try do
+          WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(system)
+        rescue
+          e ->
+            AppLogger.api_error("[SystemsClient] Exception in send_new_system_notification",
+              error: Exception.message(e),
+              system: inspect(system)
+            )
+        end
+      end)
+      updated_systems =
+        try do
+          update_systems_cache(enriched_systems)
+        rescue
+          e ->
+            AppLogger.api_error("[SystemsClient] Exception in update_systems_cache",
+              error: Exception.message(e)
+            )
+            raise e
+        end
+      verified_systems =
+        case verify_systems_cached(updated_systems) do
+          {:ok, systems} -> systems
+          _ -> updated_systems
+        end
+      AppLogger.api_info("[SystemsClient] Finished notification and cache update", notified: length(new_systems), total: length(verified_systems))
+      {:ok, new_systems, verified_systems}
     end
   end
 
@@ -289,59 +325,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
       {:ok, systems}
     else
       {:error, :cache_verification_failed}
-    end
-  end
-
-  # Notify about new systems
-  defp notify_new_systems(current_systems, cached_systems) do
-    valid_current_systems =
-      Enum.filter(current_systems, fn
-        %WandererNotifier.Map.MapSystem{solar_system_id: id}
-        when (is_integer(id) or is_binary(id)) and id != "" ->
-          true
-
-        _bad ->
-          false
-      end)
-
-    valid_cached_systems =
-      Enum.filter(cached_systems || [], fn
-        %WandererNotifier.Map.MapSystem{solar_system_id: id}
-        when (is_integer(id) or is_binary(id)) and id != "" ->
-          true
-
-        _bad ->
-          false
-      end)
-
-    try do
-      current_ids = MapSet.new(valid_current_systems, & &1.solar_system_id)
-      cached_ids = MapSet.new(valid_cached_systems, & &1.solar_system_id)
-      new_ids = MapSet.difference(current_ids, cached_ids)
-      new_systems = Enum.filter(valid_current_systems, &(&1.solar_system_id in new_ids))
-      Enum.each(new_systems, &send_new_system_notification/1)
-      {:ok, new_systems, valid_current_systems}
-    rescue
-      e ->
-        AppLogger.api_error("[SystemsClient] Error in notify_new_systems",
-          error: Exception.message(e)
-        )
-
-        raise e
-    end
-  end
-
-  defp send_new_system_notification(system) do
-    try do
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(system)
-    rescue
-      e ->
-        AppLogger.api_error("[SystemsClient] Exception in send_new_system_notification",
-          error: Exception.message(e),
-          system: inspect(system)
-        )
-
-        raise e
     end
   end
 

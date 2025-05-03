@@ -230,60 +230,39 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   def send_new_system_notification(system) do
-    # Log system details before processing to diagnose cache issues
     AppLogger.processor_info(
-      "[NEW_SYSTEM_NOTIFICATION] Processing system notification request",
+      "[NEW_SYSTEM_NOTIFICATION] Processing system notification request (detailed)",
       system_type: typeof(system),
-      system_preview: inspect(system, limit: 200)
+      system_preview: inspect(system, pretty: true, limit: 1000)
     )
 
-    if env() == :test do
-      # Get system ID safely regardless of structure
-      system_id = extract_system_id(system)
-      handle_test_mode("DISCORD MOCK: System ID #{system_id}")
-    else
-      # Extract system data safely with fallbacks
+    try do
       system_id = extract_system_id(system)
       system_name = extract_system_name(system)
-
-      # Log extracted details for debugging
       AppLogger.processor_info(
-        "[NEW_SYSTEM_NOTIFICATION] Extracted system details",
+        "[NEW_SYSTEM_NOTIFICATION] Extracted system details (detailed)",
         system_id: system_id,
-        system_name: system_name
+        system_name: system_name,
+        system_struct: inspect(system, pretty: true, limit: 1000)
       )
 
-      # Convert to MapSystem struct if needed for formatter
       map_system = ensure_map_system(system)
+      AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] MapSystem struct (detailed)", map_system: inspect(map_system, pretty: true, limit: 1000))
 
-      # Check if this system should trigger a notification
-      if SystemDeterminer.should_notify?(system_id, map_system) do
-        # This is not a duplicate, proceed with notification
-        AppLogger.processor_info("Processing new system notification",
-          system_id: system_id,
-          system_name: system_name
+      generic_notification = StructuredFormatter.format_system_notification(map_system)
+      AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] Formatted notification payload", payload: inspect(generic_notification, pretty: true, limit: 1000))
+
+      send_to_discord(generic_notification, :system_tracking)
+      Stats.increment(:systems)
+      :ok
+    rescue
+      e ->
+        AppLogger.processor_error("[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)",
+          error: Exception.message(e),
+          system: inspect(system, pretty: true, limit: 1000),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
-
-        # Create notification with StructuredFormatter
-        AppLogger.processor_info("Using StructuredFormatter for system notification")
-        generic_notification = StructuredFormatter.format_system_notification(map_system)
-
-        # Send using the standard send_to_discord helper
-        send_to_discord(generic_notification, :system_tracking)
-
-        # Record stats
-        Stats.increment(:systems)
-
-        :ok
-      else
-        # This is a duplicate or doesn't meet criteria, skip notification
-        AppLogger.processor_info("Skipping system notification",
-          system_id: system_id,
-          system_name: system_name
-        )
-
-        :ok
-      end
+        {:error, e}
     end
   end
 

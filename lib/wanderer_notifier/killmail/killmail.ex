@@ -4,7 +4,18 @@ defmodule WandererNotifier.Killmail.Killmail do
   Contains information about ship kills, combining data from zKillboard and ESI.
   """
   @enforce_keys [:killmail_id, :zkb]
-  defstruct [:killmail_id, :zkb, :esi_data]
+  defstruct [
+    :killmail_id,
+    :zkb,
+    :esi_data,
+    :victim_name,
+    :victim_corporation,
+    :victim_alliance,
+    :ship_name,
+    :system_name,
+    :system_id,
+    :attackers
+  ]
 
   @type t :: %__MODULE__{
           killmail_id: any(),
