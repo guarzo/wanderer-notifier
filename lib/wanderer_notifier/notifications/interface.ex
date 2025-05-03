@@ -10,7 +10,6 @@ defmodule WandererNotifier.Notifications.Interface do
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.KillmailNotification
 
@@ -44,21 +43,6 @@ defmodule WandererNotifier.Notifications.Interface do
   """
   def should_notify_kill?(killmail) do
     KillDeterminer.should_notify?(killmail)
-  end
-
-  @doc """
-  Checks if a notification should be sent for a given system.
-
-  ## Parameters
-  - system_id: The system ID to check
-  - system_details: Optional map with system details for performance optimization
-
-  ## Returns
-  - true if a notification should be sent
-  - false otherwise
-  """
-  def should_notify_system?(system_id, system_details \\ nil) do
-    SystemDeterminer.should_notify?(system_id, system_details)
   end
 
   @doc """

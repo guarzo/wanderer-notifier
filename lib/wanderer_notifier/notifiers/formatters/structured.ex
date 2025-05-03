@@ -250,7 +250,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   defp extract_system_info(system) do
     %{
       name: system.name,
-      system_id: system.system_id,
+      system_id: system.solar_system_id,
       region_name: system.region_name,
       security_status: system.security_status,
       class_title: system.class_title,

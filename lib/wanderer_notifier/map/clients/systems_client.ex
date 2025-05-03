@@ -65,21 +65,8 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     - {:ok, systems} on success
     - {:error, reason} on failure
   """
-  def update_systems(cached_systems \\ nil, opts \\ []) do
+  def update_systems(opts \\ []) do
     suppress_notifications = Keyword.get(opts, :suppress_notifications, false)
-    # Get cached systems if none provided
-    cached_systems =
-      case cached_systems do
-        nil ->
-          case CacheRepo.get(CacheKeys.map_systems()) do
-            {:ok, systems} -> systems
-            _ -> []
-          end
-
-        value ->
-          value
-      end
-
     base_url = Config.base_map_url()
     url = "#{base_url}/api/map/systems?slug=#{Config.map_slug()}"
     headers = get_auth_headers()
@@ -91,19 +78,16 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
           body_type: typeof(body),
           keys: Map.keys(body)
         )
-
-        process_systems_response(body, cached_systems, suppress_notifications)
-
+        process_systems_response(body, suppress_notifications)
       other ->
         AppLogger.api_error("[SystemsClient] Unexpected or failed result from HttpClient.get",
           result: inspect(other)
         )
-
         {:error, :unexpected_http_result}
     end
   end
 
-  defp process_systems_response(body, cached_systems, suppress_notifications) do
+  defp process_systems_response(body, suppress_notifications) do
     # If body is a string, decode; if it's a map, use as is
     decode_result =
       cond do
@@ -116,21 +100,16 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
                 error: Exception.message(e),
                 body: inspect(body)
               )
-
               {:error, :decode_exception}
           end
-
         is_map(body) ->
           {:ok, body}
-
         true ->
           {:error, :invalid_body_type}
       end
-
     case decode_result do
       {:ok, parsed_response} ->
-        process_and_cache_systems(parsed_response, cached_systems, suppress_notifications)
-
+        process_and_cache_systems(parsed_response, suppress_notifications)
       {:error, reason} ->
         AppLogger.api_error("[SystemsClient] Failed to process API response: #{inspect(reason)}")
         {:error, reason}
@@ -142,12 +121,18 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         stacktrace: Exception.format_stacktrace(__STACKTRACE__),
         body: inspect(body, limit: 100)
       )
-
-      cached = cached_systems || CacheRepo.get(CacheKeys.map_systems()) || []
+      cached = CacheRepo.get(CacheKeys.map_systems()) || []
       {:ok, cached}
   end
 
-  defp process_and_cache_systems(parsed_response, cached_systems, suppress_notifications) do
+  defp process_and_cache_systems(parsed_response, suppress_notifications) do
+    # Always fetch the latest cache at the start
+    cached_systems =
+      case CacheRepo.get(CacheKeys.map_systems()) do
+        {:ok, systems} -> systems
+        _ -> []
+      end
+
     # Extract systems data with fallbacks for different API formats
     systems_data = extract_systems_data(parsed_response)
 
@@ -159,37 +144,32 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
           AppLogger.api_error("[SystemsClient] Exception in MapSystem.new/1",
             error: Exception.message(e)
           )
-
           raise e
       end
 
     tracked_systems = filter_systems_for_tracking(systems)
 
-    enriched_systems =
-      try do
-        enrich_tracked_systems(tracked_systems)
-      rescue
-        e ->
-          AppLogger.api_error("[SystemsClient] Exception in enrich_tracked_systems",
-            error: Exception.message(e)
-          )
-
-          raise e
-      end
-
     # Log all system names and IDs during each update
-    system_names = Enum.map(enriched_systems, fn sys ->
+    system_names = Enum.map(tracked_systems, fn sys ->
       name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
       id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
       %{id: id, name: name}
     end)
     AppLogger.api_info("[SystemsClient] Systems in this update: #{inspect(system_names)}")
 
+    # Log cached system IDs and names BEFORE update
+    cached_systems_info = Enum.map(cached_systems || [], fn sys ->
+      name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
+      id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
+      %{id: id, name: name}
+    end)
+    AppLogger.api_info("[SystemsClient] Cached systems BEFORE update: #{inspect(cached_systems_info)}")
+
     if suppress_notifications or cached_systems == [] or is_nil(cached_systems) do
       # First run or suppressed: just update the cache, no notifications
       updated_systems =
         try do
-          update_systems_cache(enriched_systems)
+          update_systems_cache(tracked_systems)
         rescue
           e ->
             AppLogger.api_error("[SystemsClient] Exception in update_systems_cache",
@@ -197,6 +177,18 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
             )
             raise e
         end
+      # Log cached system IDs and names AFTER update
+      after_update =
+        case CacheRepo.get(CacheKeys.map_systems()) do
+          {:ok, systems} -> systems
+          _ -> []
+        end
+      after_update_info = Enum.map(after_update, fn sys ->
+        name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
+        id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
+        %{id: id, name: name}
+      end)
+      AppLogger.api_info("[SystemsClient] Cached systems AFTER update: #{inspect(after_update_info)}")
       verified_systems =
         case verify_systems_cached(updated_systems) do
           {:ok, systems} -> systems
@@ -204,14 +196,29 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         end
       {:ok, [], verified_systems}
     else
-      # Normal run: notify for new systems
+      # Normal run: detect new systems (not enriched)
       cached_ids = MapSet.new(Enum.map(cached_systems, &(&1.solar_system_id)))
-      new_systems = Enum.filter(enriched_systems, fn sys ->
+      current_ids = Enum.map(tracked_systems, &(&1.solar_system_id))
+      AppLogger.api_info("[SystemsClient] Cached system IDs: #{inspect(MapSet.to_list(cached_ids))}")
+      AppLogger.api_info("[SystemsClient] Current system IDs: #{inspect(current_ids)}")
+      new_systems = Enum.filter(tracked_systems, fn sys ->
         id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
         not MapSet.member?(cached_ids, id)
       end)
-      AppLogger.api_info("[SystemsClient] New systems to notify: #{inspect(new_systems)}")
-      Enum.each(new_systems, fn system ->
+      new_systems_info = Enum.map(new_systems, fn sys ->
+        name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
+        id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
+        %{id: id, name: name}
+      end)
+      AppLogger.api_info("[SystemsClient] Detected new systems: #{inspect(new_systems_info)}")
+      # Enrich only the new systems for notification
+      enriched_new_systems = Enum.map(new_systems, fn system ->
+        case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
+          {:ok, enriched} -> enriched
+          _ -> system
+        end
+      end)
+      Enum.each(enriched_new_systems, fn system ->
         try do
           WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(system)
         rescue
@@ -224,7 +231,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
       end)
       updated_systems =
         try do
-          update_systems_cache(enriched_systems)
+          update_systems_cache(tracked_systems)
         rescue
           e ->
             AppLogger.api_error("[SystemsClient] Exception in update_systems_cache",
@@ -232,13 +239,25 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
             )
             raise e
         end
+      # Log cached system IDs and names AFTER update
+      after_update =
+        case CacheRepo.get(CacheKeys.map_systems()) do
+          {:ok, systems} -> systems
+          _ -> []
+        end
+      after_update_info = Enum.map(after_update, fn sys ->
+        name = Map.get(sys, :name) || Map.get(sys, "name") || "Unknown"
+        id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id") || "Unknown"
+        %{id: id, name: name}
+      end)
+      AppLogger.api_info("[SystemsClient] Cached systems AFTER update: #{inspect(after_update_info)}")
       verified_systems =
         case verify_systems_cached(updated_systems) do
           {:ok, systems} -> systems
           _ -> updated_systems
         end
-      AppLogger.api_info("[SystemsClient] Finished notification and cache update", notified: length(new_systems), total: length(verified_systems))
-      {:ok, new_systems, verified_systems}
+      AppLogger.api_info("[SystemsClient] Finished notification and cache update", notified: length(enriched_new_systems), total: length(verified_systems))
+      {:ok, enriched_new_systems, verified_systems}
     end
   end
 
@@ -289,23 +308,6 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     system_class = Map.get(system, :system_class)
     # Check if the system class indicates a K-space system
     system_class in ["K", "HS", "LS", "NS"]
-  end
-
-  # Enrich systems with additional data
-  defp enrich_tracked_systems(systems) do
-    Enum.map(systems, fn system ->
-      static_info =
-        if function_exported?(
-             WandererNotifier.Map.SystemStaticInfo,
-             :get_system_static_info,
-             1
-           ),
-           do:
-             WandererNotifier.Map.SystemStaticInfo.get_system_static_info(system.solar_system_id),
-           else: %{}
-
-      Map.merge(system, static_info)
-    end)
   end
 
   # Update the systems cache

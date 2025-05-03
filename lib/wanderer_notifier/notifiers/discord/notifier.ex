@@ -10,7 +10,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
@@ -246,10 +245,11 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         system_struct: inspect(system, pretty: true, limit: 1000)
       )
 
-      map_system = ensure_map_system(system)
-      AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] MapSystem struct (detailed)", map_system: inspect(map_system, pretty: true, limit: 1000))
+      # Assume system is already enriched; do not enrich here
+      enriched_system = system
+      AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] MapSystem struct (detailed)", enriched_system: inspect(enriched_system, pretty: true, limit: 1000))
 
-      generic_notification = StructuredFormatter.format_system_notification(map_system)
+      generic_notification = StructuredFormatter.format_system_notification(enriched_system)
       AppLogger.processor_info("[NEW_SYSTEM_NOTIFICATION] Formatted notification payload", payload: inspect(generic_notification, pretty: true, limit: 1000))
 
       send_to_discord(generic_notification, :system_tracking)
@@ -382,37 +382,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
       # Send notification
       send_to_discord(notification, :killmail)
-    end
-  end
-
-  # Helper to convert to MapSystem struct if needed
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      # Already a MapSystem, just return it
-      system
-    else
-      # Try to create MapSystem from a map or other structure
-      try do
-        # Check if we need to convert it
-        if is_map(system) do
-          MapSystem.new(system)
-        else
-          # Log error and return original
-          AppLogger.processor_error(
-            "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
-          )
-
-          system
-        end
-      rescue
-        e ->
-          # Log error and return original on conversion failure
-          AppLogger.processor_error(
-            "[Discord.Notifier] Failed to convert to MapSystem: #{Exception.message(e)}"
-          )
-
-          system
-      end
     end
   end
 

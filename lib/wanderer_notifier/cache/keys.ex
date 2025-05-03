@@ -535,6 +535,9 @@ defmodule WandererNotifier.Cache.Keys do
     join_parts([@prefix_esi, @entity_alliance, to_string(alliance_id)])
   end
 
+  @spec alliance(integer() | String.t()) :: String.t() | nil
+  def alliance(nil), do: nil
+
   @doc """
   Generates a cache key for a ship type.
 
@@ -551,4 +554,5 @@ defmodule WandererNotifier.Cache.Keys do
   Returns the cache key for a system.
   """
   def system_key(system_id) when is_integer(system_id), do: system(system_id)
+
 end

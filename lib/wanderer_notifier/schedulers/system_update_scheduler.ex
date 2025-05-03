@@ -23,12 +23,11 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   defp update_tracked_systems do
     primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
     cached_systems = CacheRepo.get(:system_list)
-    cached_systems_safe = ensure_list(cached_systems)
 
     task =
       Task.async(fn ->
         try do
-          SystemsClient.update_systems(cached_systems_safe, suppress_notifications: !primed?)
+          SystemsClient.update_systems(suppress_notifications: !primed?)
         rescue
           e ->
             AppLogger.api_error("⚠️ Exception in system update task",
