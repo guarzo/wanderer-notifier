@@ -15,8 +15,8 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   plug(:dispatch)
 
-  alias WandererNotifier.Config
   alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Config
   alias WandererNotifier.License.Service, as: License
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -39,7 +39,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   # Get scheduler stats
   get "/scheduler-stats" do
-    scheduler_info = WandererNotifier.Schedulers.Registry.get_all_schedulers()
+    scheduler_info = WandererNotifier.Schedulers.Registry.all_schedulers()
 
     # Transform scheduler info into a more friendly format
     formatted_schedulers =
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
     # Find the scheduler module
     scheduler_module =
-      WandererNotifier.Schedulers.Registry.get_all_schedulers()
+      WandererNotifier.Schedulers.Registry.all_schedulers()
       |> Enum.find(fn %{module: module} ->
         module
         |> to_string()
@@ -99,7 +99,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     case scheduler_module do
       %{module: module, enabled: true} ->
         # Execute the scheduler
-        module.execute_now()
+        module.run()
         send_success(conn, %{message: "Scheduler execution triggered"})
 
       %{enabled: false} ->
@@ -112,7 +112,10 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   # Execute all schedulers
   post "/schedulers/execute" do
-    WandererNotifier.Schedulers.Registry.execute_all()
+    WandererNotifier.Schedulers.Registry.all_schedulers()
+    |> Enum.each(fn %{module: module, enabled: enabled} ->
+      if enabled, do: module.run()
+    end)
     send_success(conn, %{message: "All schedulers execution triggered"})
   end
 

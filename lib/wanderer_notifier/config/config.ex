@@ -37,7 +37,6 @@ defmodule WandererNotifier.Config do
 
   def map_token do
     value = get(:map_token)
-    IO.inspect(value, label: "[CONFIG DEBUG] map_token")
     value
   end
 
@@ -53,7 +52,6 @@ defmodule WandererNotifier.Config do
     url = map_url_with_name()
     uri = URI.parse(url || "")
     slug = uri.path |> String.trim("/") |> String.split("/") |> List.last()
-    IO.inspect(slug, label: "[CONFIG DEBUG] map_slug")
     slug
   end
 

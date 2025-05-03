@@ -1,134 +1,17 @@
 defmodule WandererNotifier.Schedulers.Registry do
   @moduledoc """
-  Registry for managing all schedulers in the application.
-
-  This module keeps track of all registered schedulers and provides
-  utility functions to interact with them collectively.
+  Finds all modules under WandererNotifier.Schedulers that implement the behaviour.
   """
 
-  use GenServer
-
-  require Logger
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  # Client API
-
-  @doc """
-  Starts the scheduler registry.
-  """
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def all_schedulers do
+    :application.get_key(:wanderer_notifier, :modules)
+    |> elem(1)
+    |> Enum.filter(&String.starts_with?(Atom.to_string(&1), "Elixir.WandererNotifier.Schedulers."))
+    |> Enum.filter(&implements_scheduler?/1)
   end
 
-  @doc """
-  Registers a scheduler module with the registry.
-  """
-  def register(scheduler_module) do
-    GenServer.cast(__MODULE__, {:register, scheduler_module})
-  end
-
-  @doc """
-  Gets information about all registered schedulers.
-  """
-  def get_all_schedulers do
-    GenServer.call(__MODULE__, :get_all_schedulers)
-  end
-
-  @doc """
-  Triggers execution of all registered schedulers.
-  """
-  def execute_all do
-    GenServer.cast(__MODULE__, :execute_all)
-  end
-
-  # Server Callbacks
-
-  @impl true
-  def init(_opts) do
-    AppLogger.scheduler_debug("Initializing Scheduler Registry...")
-
-    # Initialize with a counter to track the number of schedulers
-    {:ok, %{schedulers: [], enabled_count: 0, disabled_count: 0}}
-  end
-
-  @impl true
-  def handle_cast({:register, scheduler_module}, state) do
-    {enabled_count, disabled_count} =
-      if scheduler_module.enabled?() do
-        {state.enabled_count + 1, state.disabled_count}
-      else
-        {state.enabled_count, state.disabled_count + 1}
-      end
-
-    # Update state with new scheduler
-    new_state = %{
-      state
-      | schedulers: [scheduler_module | state.schedulers],
-        enabled_count: enabled_count,
-        disabled_count: disabled_count
-    }
-
-    # Log a summary based on certain conditions
-    maybe_log_scheduler_summary(length(new_state.schedulers), enabled_count, disabled_count)
-
-    # Log scheduler status
-    if scheduler_module.enabled? do
-      WandererNotifier.Logger.Logger.record_startup_event(:scheduler_status, %{
-        scheduler: scheduler_module,
-        enabled: scheduler_module.enabled?(),
-        interval: scheduler_module.get_interval(),
-        last_run: scheduler_module.get_last_run()
-      })
-    end
-
-    {:noreply, new_state}
-  end
-
-  @impl true
-  def handle_cast(:execute_all, state) do
-    AppLogger.scheduler_info("Triggering execution of all registered schedulers")
-
-    Enum.each(state.schedulers, fn scheduler ->
-      if function_exported?(scheduler, :execute_now, 0) do
-        AppLogger.scheduler_debug("Executing scheduler: #{inspect(scheduler)}")
-        scheduler.execute_now()
-      else
-        AppLogger.scheduler_warn(
-          "Scheduler #{inspect(scheduler)} does not implement execute_now/0"
-        )
-      end
-    end)
-
-    {:noreply, state}
-  end
-
-  # Private function to handle logging logic
-  defp maybe_log_scheduler_summary(total_count, enabled_count, disabled_count) do
-    # Only log scheduler summary when we reach a significant milestone
-    # in the registration process (final expected scheduler or at regular intervals)
-    if total_count == 6 || (total_count > 0 && rem(total_count, 3) == 0) do
-      # Log a summary if we have any schedulers
-      if total_count > 0 do
-        WandererNotifier.Logger.Logger.record_startup_event(:scheduler_status, %{
-          total: total_count,
-          enabled: enabled_count,
-          disabled: disabled_count
-        })
-      end
-    end
-  end
-
-  @impl true
-  def handle_call(:get_all_schedulers, _from, state) do
-    scheduler_info =
-      Enum.map(state.schedulers, fn scheduler ->
-        %{
-          module: scheduler,
-          enabled: scheduler.enabled?(),
-          config: scheduler.get_config()
-        }
-      end)
-
-    {:reply, scheduler_info, state}
+  defp implements_scheduler?(mod) do
+    behaviours = mod.module_info(:attributes)[:behaviour] || []
+    WandererNotifier.Schedulers.Scheduler in behaviours
   end
 end

@@ -6,8 +6,8 @@ defmodule WandererNotifier.Core.Application.Service do
 
   use GenServer
   alias WandererNotifier.ESI.Service, as: ESIService
-  alias WandererNotifier.Config
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Config
   alias WandererNotifier.Helpers.DeduplicationHelper
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
@@ -176,8 +176,8 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Execute the system and character update schedulers directly
-    SystemUpdateScheduler.execute_now()
-    CharacterUpdateScheduler.execute_now()
+    SystemUpdateScheduler.run()
+    CharacterUpdateScheduler.run()
 
     AppLogger.cache_info("Cache refresh completed after recovery")
     {:noreply, state}
@@ -199,8 +199,8 @@ defmodule WandererNotifier.Core.Application.Service do
 
     try do
       # Execute the system and character update schedulers directly
-      SystemUpdateScheduler.execute_now()
-      CharacterUpdateScheduler.execute_now()
+      SystemUpdateScheduler.run()
+      CharacterUpdateScheduler.run()
 
       AppLogger.startup_debug("Initial tracked data update complete")
 

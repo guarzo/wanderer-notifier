@@ -161,6 +161,7 @@ Task	Done
 [ ] Remove old behaviour.ex, base_scheduler.ex, factory.ex
 [ ] Add lib/wanderer_notifier/scheduler.ex behaviour
 [ ] Refactor each scheduler to use WandererNotifier.Scheduler
+[ ] Abstract and simplify the map schedulers (character/system) -- they have almost the same function, just a different domain object
 [ ] Implement Registry.all_schedulers/0 for auto-discovery
 [ ] Build Schedulers.Supervisor to dynamically start jobs
 [ ] Instrument Telemetry for success, failure, and duration

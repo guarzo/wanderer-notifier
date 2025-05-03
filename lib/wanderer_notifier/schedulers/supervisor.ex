@@ -1,80 +1,73 @@
 defmodule WandererNotifier.Schedulers.Supervisor do
   @moduledoc """
-  Supervisor for scheduler modules.
-  Manages the lifecycle of all scheduler processes.
+  Supervisor for all scheduler modules. Dynamically starts all discovered schedulers.
   """
 
   use Supervisor
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Schedulers
   alias WandererNotifier.Schedulers.Registry
 
-  def start_link(opts \\ []) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(_opts \\ []) do
+    Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
-  def init(_opts) do
-    # Begin the scheduler phase in the startup tracker
-    start_scheduler_phase()
+  def init(_) do
+    children =
+      Registry.all_schedulers()
+      |> Enum.map(&scheduler_child_spec/1)
 
-    AppLogger.scheduler_debug("Starting Scheduler Supervisor...")
-
-    # Define the scheduler registry
-    registry = {Registry, []}
-
-    # Define core schedulers and build complete list
-    core_schedulers = define_core_schedulers()
-
-    # Create children list with consolidated logging
-    children = [registry | core_schedulers]
-
-    # Single consolidated log message for all schedulers
-    AppLogger.startup_info("⏰ Scheduler system ready (#{length(core_schedulers)} schedulers)")
-
-    # Start all children with a one_for_one strategy
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # Start the scheduler phase in the startup tracker
-  defp start_scheduler_phase do
-    # StartupTracker logging is disabled (module not available)
+  defp scheduler_child_spec(mod) do
+    %{
+      id: mod,
+      start: {Task, :start_link, [fn -> start_scheduler(mod) end]},
+      restart: :permanent
+    }
   end
 
-  # Define the core schedulers
-  defp define_core_schedulers do
-    schedulers = [
-      {Schedulers.SystemUpdateScheduler, []},
-      {Schedulers.CharacterUpdateScheduler, []},
-      {Schedulers.ServiceStatusScheduler, []}
-    ]
+  def start_scheduler(mod) do
+    %{type: type, spec: spec} = mod.config()
 
-    # StartupTracker event recording is disabled (module not available)
-
-    schedulers
-  end
-
-  @doc """
-  Adds a scheduler dynamically to the supervision tree.
-  """
-  def add_scheduler(scheduler_module) do
-    # Add the scheduler to the supervision tree
-    case Supervisor.start_child(__MODULE__, {scheduler_module, []}) do
-      {:ok, _pid} ->
-        # Register the scheduler with the registry
-        Registry.register(scheduler_module)
-        :ok
-
-      {:error, {:already_started, _pid}} ->
-        # Scheduler already started
-        :ok
-
-      {:error, reason} ->
-        AppLogger.scheduler_error(
-          "Failed to start scheduler #{inspect(scheduler_module)}: #{inspect(reason)}"
-        )
-
-        {:error, reason}
+    case type do
+      :interval ->
+        :timer.send_interval(spec, {:run, mod})
+        loop(mod)
     end
+  end
+
+  defp loop(mod) do
+    receive do
+      {:run, ^mod} ->
+        execute(mod)
+        loop(mod)
+    end
+  end
+
+  defp execute(mod) do
+    start = System.monotonic_time()
+    case mod.run() do
+      :ok ->
+        :telemetry.execute([:wanderer_notifier, :scheduler, :success], %{}, %{module: mod})
+      {:error, reason} ->
+        :telemetry.execute([
+          :wanderer_notifier, :scheduler, :failure
+        ], %{}, %{module: mod, error: inspect(reason)})
+    end
+    duration = System.monotonic_time() - start
+    :telemetry.execute([
+      :wanderer_notifier, :scheduler, :duration
+    ], %{duration: duration}, %{module: mod})
+  end
+
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :supervisor,
+      restart: :permanent,
+      shutdown: 500
+    }
   end
 end
