@@ -15,6 +15,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
   alias WandererNotifier.Notifiers.Formatters.Character, as: CharacterFormatter
   alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Notifications.LicenseLimiter
+  alias WandererNotifier.Notifiers.Formatters.PlainText, as: PlainTextFormatter
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -151,26 +153,45 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   def send_kill_notification(kill_data) do
-    # Log the received kill data for debugging
-    AppLogger.processor_debug("Kill notification received",
-      data_type: typeof(kill_data)
-    )
-
-    # Ensure we have a Killmail struct
-    killmail =
-      if is_struct(kill_data, Killmail),
-        do: kill_data,
-        else: struct(Killmail, Map.from_struct(kill_data))
-
-    # Delegate to the enriched killmail notification function
-    send_killmail_notification(killmail)
+    try do
+      if LicenseLimiter.should_send_rich?(:killmail) do
+        # Log the received kill data for debugging
+        AppLogger.processor_debug("Kill notification received",
+          data_type: typeof(kill_data)
+        )
+        # Ensure we have a Killmail struct
+        killmail =
+          if is_struct(kill_data, Killmail),
+            do: kill_data,
+            else: struct(Killmail, Map.from_struct(kill_data))
+        send_killmail_notification(killmail)
+        LicenseLimiter.increment(:killmail)
+      else
+        message = PlainTextFormatter.plain_killmail_notification(kill_data)
+        NeoClient.send_message(message)
+      end
+    rescue
+      e ->
+        AppLogger.processor_error("[KILL_NOTIFICATION] Exception in send_kill_notification",
+          error: Exception.message(e),
+          kill_data: inspect(kill_data),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+        {:error, e}
+    end
   end
 
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Map.MapCharacter) do
     try do
-      generic_notification = CharacterFormatter.format_character_notification(character)
-      send_to_discord(generic_notification, :character_tracking)
+      if LicenseLimiter.should_send_rich?(:character) do
+        generic_notification = CharacterFormatter.format_character_notification(character)
+        send_to_discord(generic_notification, :character_tracking)
+        LicenseLimiter.increment(:character)
+      else
+        message = PlainTextFormatter.plain_character_notification(character)
+        NeoClient.send_message(message)
+      end
       Stats.increment(:characters)
     rescue
       e ->
@@ -181,11 +202,15 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   def send_new_system_notification(system) do
     try do
-      enriched_system = system
-
-      generic_notification = SystemFormatter.format_system_notification(enriched_system)
-
-      send_to_discord(generic_notification, :system_tracking)
+      if LicenseLimiter.should_send_rich?(:system) do
+        enriched_system = system
+        generic_notification = SystemFormatter.format_system_notification(enriched_system)
+        send_to_discord(generic_notification, :system_tracking)
+        LicenseLimiter.increment(:system)
+      else
+        message = PlainTextFormatter.plain_system_notification(system)
+        NeoClient.send_message(message)
+      end
       Stats.increment(:systems)
       {:ok, :sent}
     rescue

@@ -151,6 +151,21 @@ defmodule WandererNotifier.License.Service do
     end
   end
 
+  @doc """
+  Increments the notification counter for the given type (:system, :character, :killmail).
+  Returns the new count.
+  """
+  def increment_notification_count(type) when type in [:system, :character, :killmail] do
+    GenServer.call(__MODULE__, {:increment_notification_count, type})
+  end
+
+  @doc """
+  Gets the current notification count for the given type.
+  """
+  def get_notification_count(type) when type in [:system, :character, :killmail] do
+    GenServer.call(__MODULE__, {:get_notification_count, type})
+  end
+
   # Private helper to check if license is valid
   defp valid? do
     bot_assigned?() && license_key_valid?()
@@ -186,7 +201,8 @@ defmodule WandererNotifier.License.Service do
       details: nil,
       error: nil,
       error_message: nil,
-      last_validated: :os.system_time(:second)
+      last_validated: :os.system_time(:second),
+      notification_counts: %{system: 0, character: 0, killmail: 0}
     }
 
     {:ok, initial_state, {:continue, :initial_validation}}
@@ -316,7 +332,6 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:status, _from, state) do
-    # Make sure we return a safe and complete state
     safe_state = ensure_complete_state(state)
     {:reply, safe_state, safe_state}
   end
@@ -329,14 +344,11 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:valid, _from, state) do
-    # Return if license is valid (has been validated)
     {:reply, state.validated, state}
   end
 
   @impl true
   def handle_call(:premium, _from, state) do
-    # Since we no longer have premium licenses, always return false
-    # This is kept for backward compatibility
     AppLogger.config_debug("Premium check: not premium (premium tier removed)")
     {:reply, false, state}
   end
@@ -348,10 +360,18 @@ defmodule WandererNotifier.License.Service do
   end
 
   @impl true
-  def handle_info(:refresh, _state) do
-    schedule_refresh()
-    new_state = do_validate()
-    {:noreply, new_state}
+  def handle_call({:increment_notification_count, type}, _from, state) do
+    counts = Map.get(state, :notification_counts, %{})
+    new_count = Map.get(counts, type, 0) + 1
+    new_counts = Map.put(counts, type, new_count)
+    new_state = Map.put(state, :notification_counts, new_counts)
+    {:reply, new_count, new_state}
+  end
+
+  @impl true
+  def handle_call({:get_notification_count, type}, _from, state) do
+    counts = Map.get(state, :notification_counts, %{})
+    {:reply, Map.get(counts, type, 0), state}
   end
 
   # Helper function to check if a feature is enabled based on state
@@ -365,6 +385,13 @@ defmodule WandererNotifier.License.Service do
         AppLogger.config_debug("Feature check: #{feature} - disabled (invalid license)")
         false
     end
+  end
+
+  @impl true
+  def handle_info(:refresh, _state) do
+    schedule_refresh()
+    new_state = do_validate()
+    {:noreply, new_state}
   end
 
   # Helper function to check if a feature is in the features list
