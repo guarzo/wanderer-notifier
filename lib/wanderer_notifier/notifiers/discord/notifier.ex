@@ -8,7 +8,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
@@ -169,35 +168,23 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Map.MapCharacter) do
-    if env() == :test do
-      handle_test_mode("DISCORD MOCK: Character ID #{character.character_id}")
-    else
-      # Extract character ID for deduplication check
-      character_id = character.character_id
+    require Logger
+    Logger.info("[Discord.Notifier] send_new_tracked_character_notification/1 called", character_id: inspect(character.character_id), character_name: inspect(character.name))
 
-      # Check if this character should trigger a notification
-      if CharacterDeterminer.should_notify?(character_id, character) do
-        # This is not a duplicate, proceed with notification
-        AppLogger.processor_info("Processing new character notification",
-          character_name: character.name,
-          character_id: character.character_id
-        )
+    try do
+      # Format the notification using the CharacterFormatter
+      generic_notification = CharacterFormatter.format_character_notification(character)
+      Logger.info("[Discord.Notifier] Character notification formatted", notification: inspect(generic_notification))
 
-        # Create notification with StructuredFormatter
-        generic_notification = CharacterFormatter.format_character_notification(character)
-        send_to_discord(generic_notification, :character_tracking)
+      # Send to Discord
+      send_to_discord(generic_notification, :character_tracking)
 
-        # Record stats
-        Stats.increment(:characters)
-      else
-        # This is a duplicate or doesn't meet criteria, skip notification
-        AppLogger.processor_debug("Skipping character notification",
-          character_name: character.name,
-          character_id: character.character_id
-        )
-
-        :ok
-      end
+      # Record stats
+      Stats.increment(:characters)
+    rescue
+      e ->
+        Logger.error("[Discord.Notifier] Exception in send_new_tracked_character_notification/1", error: Exception.message(e), stacktrace: Exception.format_stacktrace(__STACKTRACE__))
+        {:error, e}
     end
   end
 
@@ -238,6 +225,12 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         send_message(message)
         {:ok, :sent}
 
+      :send_new_tracked_character_notification ->
+        [character_struct] = data
+        require Logger
+        Logger.info("[Discord.Notifier] send_notification/2 handling :send_new_tracked_character_notification", character_id: inspect(character_struct.character_id))
+        send_new_tracked_character_notification(character_struct)
+
       _ ->
         AppLogger.processor_warn("Unknown notification type", type: type)
         {:error, :unknown_notification_type}
@@ -275,9 +268,14 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       components = Map.get(formatted_notification, :components, [])
       use_components = components != [] && FeatureFlags.components_enabled?()
 
+      require Logger
+      Logger.info("[Notifier] send_to_discord called", feature: inspect(feature), embed: inspect(discord_embed), components: inspect(components))
+
       if use_components do
+        Logger.info("[Notifier] Using send_message_with_components", feature: inspect(feature))
         NeoClient.send_message_with_components(discord_embed, components, nil)
       else
+        Logger.info("[Notifier] Using send_embed", feature: inspect(feature))
         NeoClient.send_embed(discord_embed, nil)
       end
       {:ok, :sent}

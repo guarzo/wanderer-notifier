@@ -145,6 +145,9 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     # Extract components if available
     components = Map.get(notification, :components, [])
 
+    require Logger
+    Logger.info("[StructuredFormatter] to_discord_format input", notification: inspect(notification))
+
     # Convert to Discord embed format with safe field access
     embed = %{
       "title" => Map.get(notification, :title, ""),
@@ -170,6 +173,8 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
             []
         end
     }
+
+    Logger.info("[StructuredFormatter] to_discord_format output", embed: inspect(embed))
 
     # Add components if present
     add_components_if_present(embed, components)

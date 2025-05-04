@@ -157,8 +157,11 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     CacheRepo.set(CacheKeys.character_list(), character_list, cache_ttl)
 
     # Notify about new characters if we have cached data to compare against
-    if cached_characters do
+    if cached_characters && cached_characters != [] do
       notify_new_tracked_characters(character_list, cached_characters)
+    else
+      require Logger
+      Logger.info("[CharactersClient] Skipping notifications: no cached_characters prior to API call")
     end
 
     {:ok, character_list}
@@ -200,7 +203,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     # Only send notification if determiner says we should
     if WandererNotifier.Notifications.Determiner.Character.should_notify?(character_id, character_struct) do
       Logger.info("[CharactersClient] Sending notification for new EVE character_id: #{inspect(character_id)} (name: #{character_struct.name})")
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_tracked_character_notification(character_struct)
+      WandererNotifier.Notifications.Factory.notify(:send_new_tracked_character_notification, [character_struct])
     else
       Logger.info("[CharactersClient] Skipping notification for EVE character_id: #{inspect(character_id)} (name: #{character_struct.name}) - deduplication or feature flag")
     end

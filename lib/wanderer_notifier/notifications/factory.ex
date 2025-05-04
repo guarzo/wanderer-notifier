@@ -38,11 +38,15 @@ defmodule WandererNotifier.Notifications.Factory do
   Gets the appropriate notifier based on the current configuration.
   """
   def get_notifier do
-    if Config.test_mode_enabled?() do
-      TestNotifier
-    else
-      DiscordNotifier
-    end
+    notifier =
+      if Config.test_mode_enabled?() do
+        TestNotifier
+      else
+        DiscordNotifier
+      end
+    require Logger
+    Logger.info("[Factory] get_notifier returning", notifier: inspect(notifier))
+    notifier
   end
 
   defp do_notify(notifier, :send_system_kill_discord_embed, [embed]) do
