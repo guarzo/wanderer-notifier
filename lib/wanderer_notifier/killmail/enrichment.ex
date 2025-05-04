@@ -76,6 +76,26 @@ defmodule WandererNotifier.Killmail.Enrichment do
                 end
               end
 
+            corporation_ticker =
+              if is_nil(corporation_id) do
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+                  {:ok, %{"ticker" => ticker}} -> ticker
+                  _ -> nil
+                end
+              end
+
+            alliance_ticker =
+              if is_nil(alliance_id) do
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
+                  {:ok, %{"ticker" => ticker}} -> ticker
+                  _ -> nil
+                end
+              end
+
             ship_type_name =
               if is_nil(ship_type_id) do
                 AppLogger.kill_warn("Attacker missing ship_type_id", %{killmail_id: killmail_id, attacker: attacker})
@@ -103,8 +123,10 @@ defmodule WandererNotifier.Killmail.Enrichment do
               character_name: character_name,
               corporation_id: corporation_id,
               corporation_name: corporation_name,
+              corporation_ticker: corporation_ticker,
               alliance_id: alliance_id,
               alliance_name: alliance_name,
+              alliance_ticker: alliance_ticker,
               ship_type_id: ship_type_id,
               ship_type_name: ship_type_name,
               weapon_type_id: weapon_type_id,

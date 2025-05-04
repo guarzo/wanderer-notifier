@@ -184,18 +184,26 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
           %{:character => %{eve_id: id}} -> id
           _ -> nil
         end
-
       eve_id in cached_ids
     end)
-    |> Enum.each(&send_new_character_notification/1)
+    |> Enum.each(&notify/1)
   end
 
-  defp send_new_character_notification(character_map) do
+  # Notify helper, similar to system notification flow
+  defp notify(character_map) do
     character_struct = WandererNotifier.Map.MapCharacter.new(character_map)
+    character_id = character_struct.character_id
 
-    WandererNotifier.Notifiers.Discord.Notifier.send_new_tracked_character_notification(
-      character_struct
-    )
+    require Logger
+    Logger.info("[CharactersClient] Notifying for EVE character_id: #{inspect(character_id)} (struct: #{inspect(character_struct)})")
+
+    # Only send notification if determiner says we should
+    if WandererNotifier.Notifications.Determiner.Character.should_notify?(character_id, character_struct) do
+      Logger.info("[CharactersClient] Sending notification for new EVE character_id: #{inspect(character_id)} (name: #{character_struct.name})")
+      WandererNotifier.Notifiers.Discord.Notifier.send_new_tracked_character_notification(character_struct)
+    else
+      Logger.info("[CharactersClient] Skipping notification for EVE character_id: #{inspect(character_id)} (name: #{character_struct.name}) - deduplication or feature flag")
+    end
   end
 
   defp get_auth_headers do

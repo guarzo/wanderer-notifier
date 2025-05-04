@@ -9,7 +9,6 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Helpers.Deduplication
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Determines if a notification should be sent for a character.
@@ -22,18 +21,17 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
     - true if a notification should be sent
     - false otherwise
   """
-  def should_notify?(character_id, character_data) when is_map(character_data) do
-    with true <- Config.character_notifications_enabled?(),
-         true <- tracked_character?(character_id),
-         true <- character_changed?(character_id, character_data) do
-      check_deduplication_and_decide(character_id)
+  def should_notify?(character_id, _character_data) do
+    if Config.character_notifications_enabled?() do
+      case Deduplication.check(:character, character_id) do
+        {:ok, :new} -> true
+        {:ok, :duplicate} -> false
+        {:error, _reason} -> true
+      end
     else
-      false -> false
-      _ -> false
+      false
     end
   end
-
-  def should_notify?(_, _), do: false
 
   @doc """
   Checks if a character is being tracked.
@@ -123,30 +121,5 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
       new_value = Map.get(new_data, field)
       old_value != new_value
     end)
-  end
-
-  # Apply deduplication check and decide whether to send notification
-  defp check_deduplication_and_decide(character_id) do
-    case Deduplication.check(:character, character_id) do
-      {:ok, :new} ->
-        # Not a duplicate, allow sending
-        true
-
-      {:ok, :duplicate} ->
-        # Duplicate, skip notification
-        false
-
-      {:error, reason} ->
-        # Error during deduplication check - default to allowing
-        AppLogger.processor_warn(
-          "Deduplication check failed, allowing notification by default",
-          %{
-            character_id: character_id,
-            error: inspect(reason)
-          }
-        )
-
-        true
-    end
   end
 end

@@ -10,7 +10,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
 
   alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifiers.Discord.Constants
   alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
 
@@ -79,17 +78,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     - A generic structured map that can be converted to platform-specific format
   """
   def format_character_notification(%MapCharacter{} = character) do
-    # Log the character data for debugging
-    log_character_data(character)
-
-    # Extract basic character information
-    character_info = extract_character_info(character)
-
-    # Build notification fields
-    fields = build_character_notification_fields(character_info)
-
-    # Build a platform-agnostic structure
-    build_character_notification(character_info, fields)
+    WandererNotifier.Notifiers.Formatters.Character.format_character_notification(character)
   end
 
   @doc """
@@ -191,99 +180,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   # Helper to add components if present
   defp add_components_if_present(embed, []), do: embed
   defp add_components_if_present(embed, components), do: Map.put(embed, "components", components)
-
-  defp log_character_data(character) do
-    AppLogger.processor_debug(
-      "[StructuredFormatter] Formatting character: #{inspect(character, limit: 200)}"
-    )
-  end
-
-  defp extract_character_info(character) do
-    %{
-      name: character.name,
-      character_id: character.character_id,
-      corporation_name: character.corporation_name,
-      alliance_name: character.alliance_name,
-      security_status: character.security_status,
-      last_location: character.last_location,
-      ship_type: character.ship_type
-    }
-  end
-
-  defp build_character_notification_fields(character_info) do
-    [
-      %{
-        name: "Character",
-        value: format_character_details(character_info),
-        inline: true
-      },
-      %{
-        name: "Corporation",
-        value: format_corporation_details(character_info),
-        inline: true
-      },
-      %{
-        name: "Location",
-        value: format_character_location(character_info),
-        inline: true
-      }
-    ]
-  end
-
-  defp build_character_notification(character_info, fields) do
-    title = "New Character Tracked: #{character_info.name}"
-    description = "A new character has been added to tracking"
-
-    color =
-      case character_info.security_status do
-        sec when is_number(sec) and sec >= 5.0 -> colors().highsec
-        sec when is_number(sec) and sec > 0.0 -> colors().lowsec
-        sec when is_number(sec) and sec <= 0.0 -> colors().nullsec
-        _ -> colors().default
-      end
-
-    %{
-      title: title,
-      description: description,
-      url: "https://zkillboard.com/character/#{character_info.character_id}/",
-      color: color,
-      fields: fields,
-      footer: %{
-        text: "Character Tracking"
-      },
-      thumbnail: %{
-        url: get_character_image_url(character_info.character_id)
-      }
-    }
-  end
-
-  defp format_character_details(%{name: name, security_status: security}) do
-    security_text = format_security_status(security)
-    "Name: #{name}\nSecurity: #{security_text}"
-  end
-
-  defp format_corporation_details(%{corporation_name: corp, alliance_name: alliance}) do
-    alliance_text = if alliance, do: "\nAlliance: #{alliance}", else: ""
-    "Corporation: #{corp}#{alliance_text}"
-  end
-
-  defp format_character_location(%{last_location: location, ship_type: ship}) do
-    ship_text = if ship, do: "\nShip: #{ship}", else: ""
-    "Location: #{location || "Unknown"}#{ship_text}"
-  end
-
-  defp format_security_status(security_status) when is_float(security_status) do
-    cond do
-      security_status >= 0.5 -> "High Sec"
-      security_status > 0.0 -> "Low Sec"
-      true -> "Null Sec"
-    end
-  end
-
-  defp get_character_image_url(nil), do: "https://images.evetech.net/characters/1/portrait"
-
-  defp get_character_image_url(character_id),
-    do: "https://images.evetech.net/characters/#{character_id}/portrait"
 
   defp build_character_kill_description(killmail, character_id) do
     victim = Map.get(killmail.esi_data || %{}, "victim", %{})

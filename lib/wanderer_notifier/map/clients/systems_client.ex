@@ -159,7 +159,10 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         _        -> system
       end
 
-    WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(enriched)
+    system_id = enriched.solar_system_id
+    if WandererNotifier.Notifications.Determiner.System.should_notify?(system_id, enriched) do
+      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(enriched)
+    end
   rescue
     e ->
       Logger.api_error("Notification failed",

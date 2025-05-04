@@ -12,10 +12,10 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
-  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
   alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
-
+  alias WandererNotifier.Notifiers.Formatters.Character, as: CharacterFormatter
+  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -184,7 +184,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         )
 
         # Create notification with StructuredFormatter
-        generic_notification = StructuredFormatter.format_character_notification(character)
+        generic_notification = CharacterFormatter.format_character_notification(character)
         send_to_discord(generic_notification, :character_tracking)
 
         # Record stats

@@ -45,7 +45,8 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @doc """
   Sends a kill notification.
   """
-  def send_kill_notification(enriched_killmail, kill_id, _bypass_dedup \\ false) do
+  def send_kill_notification(enriched_killmail, _kill_id, _bypass_dedup \\ false) do
+    kill_id = enriched_killmail.killmail_id
     AppLogger.kill_info("Sending kill notification", %{kill_id: kill_id})
 
     # Check if the kill is relevant for system and/or character channels
@@ -92,7 +93,8 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   end
 
   # Process system notification if needed
-  defp process_system_notification(enriched_killmail, kill_id, has_tracked_system) do
+  defp process_system_notification(enriched_killmail, _kill_id, has_tracked_system) do
+    kill_id = enriched_killmail.killmail_id
     if has_tracked_system do
       # Prepare system notification
       system_generic_notification =
@@ -110,10 +112,11 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Process character notification if needed
   defp process_character_notification(
          enriched_killmail,
-         kill_id,
+         _kill_id,
          has_tracked_characters,
          _tracked_characters
        ) do
+    kill_id = enriched_killmail.killmail_id
     if has_tracked_characters do
       # For now, use the same notification format for character notifications
       character_generic_notification =

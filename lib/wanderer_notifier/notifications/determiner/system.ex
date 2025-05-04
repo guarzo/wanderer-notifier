@@ -9,7 +9,6 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Helpers.Deduplication
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @doc """
   Determines if a notification should be sent for a system.
@@ -22,44 +21,17 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     - true if a notification should be sent
     - false otherwise
   """
-  def should_notify?(system_id, system_data) when is_map(system_data) do
-    AppLogger.processor_info("[SystemDeterminer] Starting notification check",
-      system_id: system_id,
-      system_data: inspect(system_data, limit: 500)
-    )
-
-    notifications_enabled = Config.system_notifications_enabled?()
-    has_changed = system_changed?(system_id, system_data)
-
-    AppLogger.processor_debug("[SystemDeterminer] System changed (new) check",
-      system_id: system_id,
-      changed: has_changed
-    )
-
-    with true <- notifications_enabled,
-         true <- has_changed do
-      dedup_result = check_deduplication_and_decide(system_id)
-
-      AppLogger.processor_info("[SystemDeterminer] Final notification decision",
-        system_id: system_id,
-        should_notify: dedup_result
-      )
-
-      dedup_result
+  def should_notify?(system_id, _system_data) do
+    if Config.system_notifications_enabled?() do
+      case Deduplication.check(:system, system_id) do
+        {:ok, :new} -> true
+        {:ok, :duplicate} -> false
+        {:error, _reason} -> true
+      end
     else
-      false ->
-        AppLogger.processor_info("[SystemDeterminer] Notification check failed",
-          system_id: system_id,
-          notifications_enabled: notifications_enabled,
-          has_changed: has_changed
-        )
-        false
-      _ ->
-        false
+      false
     end
   end
-
-  def should_notify?(_, _), do: false
 
   @doc """
   Checks if a system's data has changed from what's in cache.
@@ -110,31 +82,6 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   end
 
   def tracked_system?(_), do: false
-
-  # Apply deduplication check and decide whether to send notification
-  defp check_deduplication_and_decide(system_id) do
-    case Deduplication.check(:system, system_id) do
-      {:ok, :new} ->
-        # Not a duplicate, allow sending
-        true
-
-      {:ok, :duplicate} ->
-        # Duplicate, skip notification
-        false
-
-      {:error, reason} ->
-        # Error during deduplication check - default to allowing
-        AppLogger.processor_warn(
-          "Deduplication check failed, allowing notification by default",
-          %{
-            system_id: system_id,
-            error: inspect(reason)
-          }
-        )
-
-        true
-    end
-  end
 
   def tracked_system_info(system_id) do
     system_cache_key = CacheKeys.system(system_id)
