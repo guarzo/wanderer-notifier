@@ -22,7 +22,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
       {:ok, esi_data} ->
         # Attach esi_data to the killmail
         killmail = %Killmail{killmail | esi_data: esi_data}
-        AppLogger.kill_info("Enriching killmail struct", %{killmail: inspect(killmail, pretty: true)})
 
         # Extract victim info
         victim_id = get_in(esi_data, ["victim", "character_id"])
@@ -119,6 +118,95 @@ defmodule WandererNotifier.Killmail.Enrichment do
       {:error, reason} ->
         AppLogger.kill_warn("Failed to fetch ESI data for killmail", %{killmail_id: killmail_id, reason: inspect(reason)})
         {:error, :esi_data_missing}
+    end
+  end
+
+  @doc """
+  Fetches and formats recent kills for a system, suitable for system notifications.
+
+  ## Parameters
+    - system_id: The solar system ID
+    - limit: Number of kills to fetch
+
+  ## Returns
+    - List of formatted strings for each kill
+  """
+  def recent_kills_for_system(system_id, limit \\ 3) do
+    case WandererNotifier.Killmail.ZKillClient.get_system_kills(system_id, limit) do
+      {:ok, kills} when is_list(kills) ->
+        kills
+        |> Enum.map(&enrich_killmail_for_system/1)
+        |> Enum.map(&format_kill_for_system/1)
+        |> Enum.filter(&is_binary/1)
+        |> Enum.reject(&(&1 == ""))
+      _ -> []
+    end
+  end
+
+  defp enrich_killmail_for_system(kill) do
+    kill_id = Map.get(kill, "killmail_id")
+    hash = get_in(kill, ["zkb", "hash"])
+    case WandererNotifier.ESI.Service.get_killmail(kill_id, hash) do
+      {:ok, esi_data} -> Map.put(kill, "esi_data", esi_data)
+      _ -> kill
+    end
+  end
+
+  defp format_kill_for_system(kill) do
+    kill_id = Map.get(kill, "killmail_id")
+    esi_data = Map.get(kill, "esi_data", %{})
+    victim = Map.get(esi_data, "victim", %{})
+    ship_type_id = Map.get(victim, "ship_type_id")
+    character_id = Map.get(victim, "character_id")
+    kill_time = Map.get(esi_data, "killmail_time")
+    value = get_in(kill, ["zkb", "totalValue"]) || 0
+
+    # Get ship name from ESI
+    ship_name =
+      case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
+        {:ok, %{"name" => name}} -> name
+        _ -> "Unknown Ship"
+      end
+
+    # Get victim name from ESI
+    victim_name =
+      case WandererNotifier.ESI.Service.get_character_info(character_id) do
+        {:ok, %{"name" => name}} -> name
+        _ -> "Unknown"
+      end
+
+    # Format time since kill
+    time_ago = format_time_ago(kill_time)
+    formatted_value = format_isk_value(value)
+
+    if kill_id && ship_name && victim_name do
+      "[#{ship_name}](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value} ISK, #{time_ago} ago"
+    else
+      ""
+    end
+  end
+
+  defp format_time_ago(nil), do: "?"
+  defp format_time_ago(kill_time) do
+    case DateTime.from_iso8601(kill_time) do
+      {:ok, dt, _} ->
+        now = DateTime.utc_now()
+        diff = DateTime.diff(now, dt, :second)
+        cond do
+          diff < 3600 -> "<1h"
+          diff < 86_400 -> "#{div(diff, 3600)}h"
+          true -> "#{div(diff, 86_400)}d"
+        end
+      _ -> "?"
+    end
+  end
+
+  defp format_isk_value(value) when is_number(value) do
+    cond do
+      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
+      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
+      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
+      true -> "#{Float.round(value, 0)}"
     end
   end
 

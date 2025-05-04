@@ -36,7 +36,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
         end
       end)
 
-    case Task.yield(task, 10_000) do
+    case Task.yield(task, 50_000) do
       {:ok, { :ok, _new_systems, all_systems }} ->
         AppLogger.api_info("🌍 Systems updated: #{length(ensure_list(all_systems))} systems synchronized")
         if primed? do

@@ -6,7 +6,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
 
-  @base_url "https://zkillboard.com/api"
+  @base_url "https://zkillboard.com/api/kills"
   @user_agent "WandererNotifier/1.0"
   @rate_limit_ms 1000
   @max_retries 3
@@ -60,12 +60,6 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   def get_system_kills(system_id, limit \\ 5) do
     url = "#{@base_url}/systemID/#{system_id}/"
     headers = build_headers()
-
-    AppLogger.api_info("ZKill requesting system kills", %{
-      system_id: system_id,
-      limit: limit,
-      method: "get_system_kills"
-    })
 
     :timer.sleep(@rate_limit_ms)
 
@@ -134,7 +128,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   end
 
   defp make_http_request(url, headers) do
-    case HttpClient.get(url, headers) do
+    # Increase timeout for debugging
+    options = [recv_timeout: 10_000, timeout: 10_000]
+    case HttpClient.get(url, headers, options) do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}
 

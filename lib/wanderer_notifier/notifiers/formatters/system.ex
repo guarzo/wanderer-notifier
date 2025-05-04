@@ -6,7 +6,6 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
 
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Killmail.ZKillClient
 
   # Color and icon constants (can be refactored to a shared place if needed)
   @default_color 0x3498DB
@@ -27,9 +26,9 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
     validate_system_fields(system)
 
     is_wormhole = MapSystem.is_wormhole?(system)
-    display_name = MapSystem.format_display_name(system)
+    display_name = system.name # Only use the system name for the title
 
-    {title, description, color, icon_url} =
+    {title, description, _color, icon_url} =
       generate_notification_elements(system, is_wormhole, display_name)
 
     formatted_statics = format_statics_list(Map.get(system, :static_details) || Map.get(system, :statics))
@@ -47,7 +46,7 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
       type: :system_notification,
       title: title,
       description: description,
-      color: color,
+      color: determine_system_color_from_security(system),
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
       thumbnail: %{url: icon_url},
       fields: fields,
@@ -164,10 +163,11 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
     if is_nil(system_id_int) do
       fields
     else
-      case ZKillClient.get_system_kills(system_id_int, 3) do
-        {:ok, []} -> fields
-        {:ok, zkill_kills} when is_list(zkill_kills) -> process_kill_data(fields, zkill_kills)
-        {:error, _} -> fields
+      recent_kills = WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3)
+      if recent_kills != [] do
+        fields ++ [%{name: "Recent Kills", value: Enum.join(recent_kills, "\n"), inline: false}]
+      else
+        fields
       end
     end
   end
@@ -181,36 +181,5 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
 
-  defp process_kill_data(fields, zkill_kills) do
-    formatted_kills =
-      zkill_kills
-      |> Enum.map(&format_kill/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.join("\n")
-
-    if formatted_kills == "" do
-      fields
-    else
-      fields ++ [%{name: "Recent Kills", value: formatted_kills, inline: false}]
-    end
-  end
-
-  defp format_kill(kill) do
-    kill_id = Map.get(kill, "killmail_id") || Map.get(kill, :killmail_id)
-    victim = Map.get(kill, "victim") || Map.get(kill, :victim) || %{}
-    ship_type = Map.get(victim, "ship_type_name") || Map.get(victim, :ship_type_name) || "Unknown Ship"
-    character_name = Map.get(victim, "character_name") || Map.get(victim, :character_name) || "Unknown"
-    value = Map.get(kill, "zkb", %{}) |> Map.get("totalValue") || Map.get(kill, :zkb, %{}) |> Map.get(:totalValue) || 0
-    formatted_value = format_isk_value(value)
-    "[`#{kill_id}`](https://zkillboard.com/kill/#{kill_id}/): #{character_name} lost a #{ship_type} (#{formatted_value} ISK)"
-  end
-
-  defp format_isk_value(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
-      true -> "#{Float.round(value, 0)}"
-    end
-  end
+  defp determine_system_color_from_security(_), do: @default_color
 end

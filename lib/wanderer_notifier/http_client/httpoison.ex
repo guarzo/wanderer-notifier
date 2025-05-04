@@ -14,6 +14,10 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     |> handle_response()
   end
 
+  def get(url, headers, options) do
+    HTTPoison.get(url, headers, options)
+  end
+
   @impl true
   def post(url, body, headers \\ @default_headers) do
     HTTPoison.post(url, body, headers)
