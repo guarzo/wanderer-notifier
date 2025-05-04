@@ -10,6 +10,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Factory
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
 
   @doc """
   Creates a notification from a killmail.
@@ -22,7 +23,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   """
   def create(killmail) do
     # Format the kill notification using the StructuredFormatter
-    StructuredFormatter.format_kill_notification(killmail)
+    KillmailFormatter.format_kill_notification(killmail)
   end
 
   @doc """
@@ -95,7 +96,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     if has_tracked_system do
       # Prepare system notification
       system_generic_notification =
-        StructuredFormatter.format_kill_notification(enriched_killmail)
+        KillmailFormatter.format_kill_notification(enriched_killmail)
 
       system_discord_format = StructuredFormatter.to_discord_format(system_generic_notification)
 
@@ -111,23 +112,14 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
          enriched_killmail,
          kill_id,
          has_tracked_characters,
-         tracked_characters
+         _tracked_characters
        ) do
     if has_tracked_characters do
-      # Determine if tracked characters are victims or attackers
-      are_victims =
-        KillDeterminer.are_tracked_characters_victims?(enriched_killmail, tracked_characters)
-
-      # Prepare character notification with appropriate color
+      # For now, use the same notification format for character notifications
       character_generic_notification =
-        StructuredFormatter.format_character_kill_notification(
-          enriched_killmail,
-          tracked_characters,
-          are_victims
-        )
+        KillmailFormatter.format_kill_notification(enriched_killmail)
 
-      character_discord_format =
-        StructuredFormatter.to_discord_format(character_generic_notification)
+      character_discord_format = StructuredFormatter.to_discord_format(character_generic_notification)
 
       # Send character notification
       send_character_notification(character_discord_format, kill_id)

@@ -10,6 +10,7 @@ defmodule WandererNotifier.Killmail.Killmail do
     :esi_data,
     :victim_name,
     :victim_corporation,
+    :victim_corp_ticker,
     :victim_alliance,
     :ship_name,
     :system_name,

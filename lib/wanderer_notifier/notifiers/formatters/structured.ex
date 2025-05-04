@@ -9,10 +9,8 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   """
 
   alias WandererNotifier.Map.MapCharacter
-  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Cache.{CachexImpl, Keys}
   alias WandererNotifier.Notifiers.Discord.Constants
   alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
 
@@ -69,46 +67,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   end
   def convert_color(_color), do: @default_color
 
-  @doc """
-  Creates a standard formatted kill notification embed/attachment from a Killmail struct.
-  Returns data in a generic format that can be converted to platform-specific format.
-
-  ## Parameters
-    - killmail: The Killmail struct
-
-  ## Returns
-    - A generic structured map that can be converted to platform-specific format
-  """
-  def format_kill_notification(%Killmail{} = killmail) do
-    # Log the structure of the killmail for debugging
-    log_killmail_data(killmail)
-
-    # Extract basic kill information
-    kill_id = killmail.killmail_id
-    kill_time = Map.get(killmail.esi_data || %{}, "killmail_time")
-
-    # Extract victim information
-    victim_info = extract_victim_info(killmail)
-
-    # Extract system, value and attackers info
-    kill_context = extract_kill_context(killmail)
-
-    # Final blow details
-    final_blow_details = get_final_blow_details(killmail)
-
-    # Build notification fields
-    fields = build_kill_notification_fields(killmail, kill_context)
-
-    # Build a platform-agnostic structure
-    build_kill_notification(
-      kill_id,
-      kill_time,
-      victim_info,
-      kill_context,
-      final_blow_details,
-      fields
-    )
-  end
 
   @doc """
   Creates a standard formatted character notification embed/attachment from a Character struct.
@@ -234,72 +192,11 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
   defp add_components_if_present(embed, []), do: embed
   defp add_components_if_present(embed, components), do: Map.put(embed, "components", components)
 
-  defp log_killmail_data(killmail) do
-    AppLogger.processor_debug(
-      "[StructuredFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}"
-    )
-  end
-
   defp log_character_data(character) do
     AppLogger.processor_debug(
       "[StructuredFormatter] Formatting character: #{inspect(character, limit: 200)}"
     )
   end
-
-
-  defp extract_victim_info(killmail) do
-    victim = Killmail.get_victim(killmail) || %{}
-
-    victim_name = killmail.victim_name || Map.get(victim, "character_name", "Unknown Pilot")
-    victim_ship = killmail.ship_name || Map.get(victim, "ship_type_name", "Unknown Ship")
-    victim_corp = killmail.victim_corporation || Map.get(victim, "corporation_name", "Unknown Corp")
-    victim_alliance = killmail.victim_alliance || Map.get(victim, "alliance_name")
-    victim_ship_type_id = Map.get(victim, "ship_type_id")
-    victim_character_id = Map.get(victim, "character_id")
-
-    %{
-      name: victim_name,
-      ship: victim_ship,
-      corp: victim_corp,
-      alliance: victim_alliance,
-      ship_type_id: victim_ship_type_id,
-      character_id: victim_character_id
-    }
-  end
-
-  defp extract_kill_context(killmail) do
-    system_name = killmail.system_name || Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
-    system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
-
-    security_status = get_system_security_status(system_id)
-    security_formatted = format_security_status(security_status)
-
-    zkb = killmail.zkb || %{}
-    kill_value = Map.get(zkb, "totalValue", 0)
-    formatted_value = format_isk_value(kill_value)
-
-    attackers = Map.get(killmail.esi_data || %{}, "attackers", [])
-    attackers_count = length(attackers)
-
-    %{
-      system_name: system_name,
-      system_id: system_id,
-      security_status: security_status,
-      security_formatted: security_formatted,
-      formatted_value: formatted_value,
-      attackers_count: attackers_count,
-      is_npc_kill: Map.get(zkb, "npc", false) == true
-    }
-  end
-
-  defp get_system_security_status(system_id) when is_integer(system_id) do
-    case CachexImpl.get(Keys.system_key(system_id)) do
-      {:ok, system_data} -> Map.get(system_data, "security_status", 0.0)
-      _ -> 0.0
-    end
-  end
-
-  defp get_system_security_status(_), do: 0.0
 
   defp extract_character_info(character) do
     %{
@@ -310,78 +207,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
       security_status: character.security_status,
       last_location: character.last_location,
       ship_type: character.ship_type
-    }
-  end
-
-  defp get_final_blow_details(killmail) do
-    final_blow =
-      (killmail.attackers || [])
-      |> Enum.find(&(&1[:final_blow] == true))
-
-    case final_blow do
-      nil ->
-        %{
-          name: "Unknown",
-          ship: "Unknown Ship",
-          corp: "Unknown Corp",
-          alliance: nil,
-          ship_type_id: nil,
-          character_id: nil,
-          weapon: "Unknown Weapon"
-        }
-
-      attacker ->
-        %{
-          name: attacker[:character_name] || "Unknown",
-          ship: attacker[:ship_type_name] || "Unknown Ship",
-          corp: attacker[:corporation_name] || "Unknown Corp",
-          alliance: attacker[:alliance_name],
-          ship_type_id: attacker[:ship_type_id],
-          character_id: attacker[:character_id],
-          weapon: attacker[:weapon_type_name] || "Unknown Weapon"
-        }
-    end
-  end
-
-  defp build_kill_notification_fields(_killmail, kill_context) do
-    [
-      %{
-        name: "System",
-        value: "#{kill_context.system_name} (#{kill_context.security_formatted})",
-        inline: true
-      },
-      %{
-        name: "Attackers",
-        value: "#{kill_context.attackers_count}",
-        inline: true
-      },
-      %{
-        name: "Value",
-        value: kill_context.formatted_value,
-        inline: true
-      }
-    ]
-  end
-
-  defp build_kill_notification(
-         kill_id,
-         kill_time,
-         victim_info,
-         kill_context,
-         _final_blow_details,
-         fields
-       ) do
-    %{
-      title: "Kill Report: #{victim_info.name}",
-      description:
-        "#{victim_info.name} lost their #{victim_info.ship} in #{kill_context.system_name} (#{kill_context.security_formatted})",
-      url: "https://zkillboard.com/kill/#{kill_id}/",
-      timestamp: kill_time,
-      color: get_notification_color(kill_context.security_status),
-      fields: fields,
-      footer: %{
-        text: "Value: #{kill_context.formatted_value} ISK"
-      }
     }
   end
 
@@ -455,31 +280,10 @@ defmodule WandererNotifier.Notifiers.Formatters.Structured do
     end
   end
 
-  defp format_isk_value(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
-      true -> "#{Float.round(value, 0)}"
-    end
-  end
-
   defp get_character_image_url(nil), do: "https://images.evetech.net/characters/1/portrait"
 
   defp get_character_image_url(character_id),
     do: "https://images.evetech.net/characters/#{character_id}/portrait"
-
-
-  defp get_notification_color(%{security_status: sec}) when is_number(sec) do
-    case sec do
-      sec when sec >= 0.5 -> colors().highsec
-      sec when sec > 0.0 -> colors().lowsec
-      sec when sec <= 0.0 -> colors().nullsec
-      _ -> colors().default
-    end
-  end
-
-  defp get_notification_color(_), do: colors().default
 
   defp build_character_kill_description(killmail, character_id) do
     victim = Map.get(killmail.esi_data || %{}, "victim", %{})

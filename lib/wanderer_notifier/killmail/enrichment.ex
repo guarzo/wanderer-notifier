@@ -54,25 +54,48 @@ defmodule WandererNotifier.Killmail.Enrichment do
                 {:ok, info} -> info["name"]
                 _ -> nil
               end
+
             corporation_name =
-              case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-                {:ok, %{"name" => name}} -> name
-                _ -> nil
+              if is_nil(corporation_id) do
+                AppLogger.kill_warn("Attacker missing corporation_id", %{killmail_id: killmail_id, attacker: attacker})
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+                  {:ok, %{"name" => name}} -> name
+                  _ -> nil
+                end
               end
+
             alliance_name =
-              case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
-                {:ok, %{"name" => name}} -> name
-                _ -> nil
+              if is_nil(alliance_id) do
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
+                  {:ok, %{"name" => name}} -> name
+                  _ -> nil
+                end
               end
+
             ship_type_name =
-              case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
-                {:ok, %{"name" => name}} -> name
-                _ -> nil
+              if is_nil(ship_type_id) do
+                AppLogger.kill_warn("Attacker missing ship_type_id", %{killmail_id: killmail_id, attacker: attacker})
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
+                  {:ok, %{"name" => name}} -> name
+                  _ -> nil
+                end
               end
+
             weapon_type_name =
-              case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
-                {:ok, %{"name" => name}} -> name
-                _ -> nil
+              if is_nil(weapon_type_id) do
+                AppLogger.kill_warn("Attacker missing weapon_type_id", %{killmail_id: killmail_id, attacker: attacker})
+                nil
+              else
+                case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
+                  {:ok, %{"name" => name}} -> name
+                  _ -> nil
+                end
               end
 
             %{
@@ -95,10 +118,21 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
         with {:ok, victim_info} <- get_character_info(victim_id),
              {:ok, ship_info} <- get_ship_info(ship_type_id) do
+          # Fetch victim corporation ticker if possible
+          victim_corp_ticker =
+            case victim_info["corporation_id"] do
+              nil -> nil
+              corp_id ->
+                case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
+                  {:ok, %{"ticker" => ticker}} -> ticker
+                  _ -> nil
+                end
+            end
           enriched_killmail = %Killmail{
             killmail
             | victim_name: victim_info["name"],
               victim_corporation: victim_info["corporation_id"],
+              victim_corp_ticker: victim_corp_ticker,
               victim_alliance: Map.get(victim_info, "alliance_id"),
               ship_name: ship_info["name"],
               system_id: system_id,

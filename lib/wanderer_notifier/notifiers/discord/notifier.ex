@@ -14,6 +14,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Discord.NeoClient
   alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
+  alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
+
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -122,7 +124,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     enriched_killmail = enrich_with_system_name(killmail)
 
     # Format the kill notification
-    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
+    formatted_embed = KillmailFormatter.format_kill_notification(enriched_killmail)
 
     # Only add components if the feature flag is enabled
     enhanced_notification =
@@ -330,9 +332,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: Killmail ID #{killmail.killmail_id}")
     else
-      # Create notification with StructuredFormatter
       AppLogger.processor_info("Formatting killmail notification")
-      notification = StructuredFormatter.format_kill_notification(killmail)
+      notification = KillmailFormatter.format_kill_notification(killmail)
 
       # Send notification
       send_to_discord(notification, :killmail)

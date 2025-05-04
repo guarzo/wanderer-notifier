@@ -28,11 +28,16 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
     is_wormhole = MapSystem.is_wormhole?(system)
     display_name = system.name # Only use the system name for the title
 
-    {title, description, _color, icon_url} =
-      generate_notification_elements(system, is_wormhole, display_name)
+    # Debug logging for types and values
+    AppLogger.processor_info("[SystemFormatter] system.name type: #{inspect(typeof(system.name))}, value: #{inspect(system.name)}")
+    AppLogger.processor_info("[SystemFormatter] system.region_name type: #{inspect(typeof(system.region_name))}, value: #{inspect(system.region_name)}")
 
     formatted_statics = format_statics_list(Map.get(system, :static_details) || Map.get(system, :statics))
     system_name_with_link = create_system_name_link(system, display_name)
+    AppLogger.processor_info("[SystemFormatter] system_name_with_link type: #{inspect(typeof(system_name_with_link))}, value: #{inspect(system_name_with_link)}")
+
+    {title, description, _color, icon_url} =
+      generate_notification_elements(system, is_wormhole, display_name)
 
     fields =
       build_rich_system_notification_fields(
@@ -41,6 +46,11 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
         formatted_statics,
         system_name_with_link
       )
+
+    # Log all field types and values
+    Enum.each(fields, fn field ->
+      AppLogger.processor_info("[SystemFormatter] field: #{inspect(field.name)}, type: #{inspect(typeof(field.value))}, value: #{inspect(field.value)}")
+    end)
 
     %{
       type: :system_notification,
@@ -136,30 +146,32 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
   end
 
   defp build_rich_system_notification_fields(system, is_wormhole, formatted_statics, system_name_with_link) do
-    fields = [%{name: "System", value: system_name_with_link, inline: true}]
+    fields = [%{name: "System", value: to_string(system_name_with_link), inline: true}]
     fields = add_shattered_field(fields, is_wormhole, Map.get(system, :is_shattered))
     fields = add_statics_field(fields, is_wormhole, formatted_statics)
     fields = add_region_field(fields, Map.get(system, :region_name))
     fields = add_effect_field(fields, is_wormhole, Map.get(system, :effect_name))
     fields = add_zkill_system_kills(fields, Map.get(system, :solar_system_id))
-    fields
+    # Ensure all field values are strings
+    Enum.map(fields, fn field ->
+      %{field | value: if(is_binary(field.value), do: field.value, else: inspect(field.value))}
+    end)
   end
 
   defp add_shattered_field(fields, true, true), do: fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
   defp add_shattered_field(fields, _, _), do: fields
 
-  defp add_statics_field(fields, true, statics) when statics != "N/A", do: fields ++ [%{name: "Statics", value: statics, inline: true}]
+  defp add_statics_field(fields, true, statics) when statics != "N/A", do: fields ++ [%{name: "Statics", value: to_string(statics), inline: true}]
   defp add_statics_field(fields, _, _), do: fields
 
-  defp add_region_field(fields, region_name) when not is_nil(region_name), do: fields ++ [%{name: "Region", value: region_name, inline: true}]
+  defp add_region_field(fields, region_name) when not is_nil(region_name), do: fields ++ [%{name: "Region", value: to_string(region_name), inline: true}]
   defp add_region_field(fields, _), do: fields
 
-  defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name), do: fields ++ [%{name: "Effect", value: effect_name, inline: true}]
+  defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name), do: fields ++ [%{name: "Effect", value: to_string(effect_name), inline: true}]
   defp add_effect_field(fields, _, _), do: fields
 
   defp add_zkill_system_kills(fields, system_id) do
     system_id_int = parse_system_id(system_id)
-
     if is_nil(system_id_int) do
       fields
     else
@@ -182,4 +194,18 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
   defp parse_system_id(_), do: nil
 
   defp determine_system_color_from_security(_), do: @default_color
+
+  defp typeof(val) do
+    cond do
+      is_binary(val) -> :string
+      is_integer(val) -> :integer
+      is_float(val) -> :float
+      is_atom(val) -> :atom
+      is_list(val) -> :list
+      is_map(val) -> :map
+      is_boolean(val) -> :boolean
+      is_nil(val) -> :nil
+      true -> :unknown
+    end
+  end
 end
