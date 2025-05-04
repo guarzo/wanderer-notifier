@@ -8,10 +8,11 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
 
   def should_send_rich?(type) when type in [:system, :character, :killmail] do
     license = WandererNotifier.License.Service.status()
+    count = WandererNotifier.License.Service.get_notification_count(type)
     if license.valid do
       true
     else
-      WandererNotifier.License.Service.get_notification_count(type) < @max_rich
+      count < @max_rich
     end
   end
 

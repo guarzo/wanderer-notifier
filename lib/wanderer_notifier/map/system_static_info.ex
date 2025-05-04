@@ -154,10 +154,6 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     alias WandererNotifier.Map.MapSystem
 
     try do
-      AppLogger.api_info("[SystemStaticInfo] Starting system enrichment",
-        system: inspect(system, pretty: true, limit: 1000)
-      )
-
       # Only try to enrich if the system has a valid ID
       if system.solar_system_id && system.solar_system_id > 0 do
         # Try to get static info with proper error handling

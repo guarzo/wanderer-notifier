@@ -85,18 +85,8 @@ defmodule WandererNotifier.Notifications.Interface do
   def send_message(message) do
     case message do
       msg when is_binary(msg) ->
-        AppLogger.notification_info("Sending message notification", %{
-          message_length: String.length(msg)
-        })
-
         Factory.send_message(msg)
-
       embed when is_map(embed) ->
-        AppLogger.notification_info("Sending embed notification", %{
-          title: Map.get(embed, :title) || Map.get(embed, "title"),
-          description: Map.get(embed, :description) || Map.get(embed, "description")
-        })
-
         Factory.send_message(embed)
 
       _ ->

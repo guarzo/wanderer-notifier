@@ -25,14 +25,19 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     minutes = div(rem(uptime_seconds, 3600), 60)
     seconds = rem(uptime_seconds, 60)
     formatted_uptime = "#{days}d #{hours}h #{minutes}m #{seconds}s"
-    current_day = div(:os.system_time(:second), 86_400)
-    dedup_key = "status_report:#{current_day}"
+    current_minute = div(:os.system_time(:second), 60)
+    dedup_key = "status_report:#{current_minute}"
 
     case Deduplication.check(:system, dedup_key) do
       {:ok, :new} ->
         AppLogger.maintenance_info("Service status report",
           uptime: formatted_uptime,
           status: "operational"
+        )
+
+        WandererNotifier.Notifiers.StatusNotifier.send_status_message(
+          "WandererNotifier Service Status",
+          "Automated periodic status report."
         )
       {:ok, :duplicate} ->
         AppLogger.maintenance_info("Service status notification skipped (duplicate)",

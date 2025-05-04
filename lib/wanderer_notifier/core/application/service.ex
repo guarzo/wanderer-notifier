@@ -10,8 +10,6 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Config
   alias WandererNotifier.Notifications.Helpers.Deduplication
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
-  alias WandererNotifier.Notifiers.Formatters.Status, as: StatusFormatter
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
@@ -414,64 +412,10 @@ defmodule WandererNotifier.Core.Application.Service do
       uptime: :os.system_time(:second) - state.service_start_time
     })
 
-    # Create the notification
-    generic_notification =
-      StatusFormatter.format_system_status_message(
-        "WandererNotifier Service Started",
-        "The service has started and is now operational.",
-        %{
-          websocket:
-            Map.get(state, :websocket_status, %{
-              connected: false,
-              last_message: nil
-            }),
-          notifications: %{
-            total: 0,
-            kills: 0,
-            systems: 0,
-            characters: 0
-          }
-        },
-        :os.system_time(:second) - state.service_start_time,
-        %{},
-        %{valid: true},
-        state.systems_count,
-        state.characters_count
-      )
-
-    discord_embed = CommonFormatter.to_discord_format(generic_notification)
-
-    # Get the main channel ID, with defensive check for test environment
-    main_channel_id =
-      try do
-        Config.discord_channel_id()
-      rescue
-        _ ->
-          if Application.get_env(:wanderer_notifier, :environment) == :test,
-            do: "123456789",
-            else: nil
-      end
-
-    # Send notification via factory - specify main channel to avoid nil channel issue
-    result =
-      if is_nil(main_channel_id) && Application.get_env(:wanderer_notifier, :environment) != :test do
-        # Log a warning but don't crash
-        AppLogger.startup_warn("No main channel ID available, skipping startup notification")
-        :ok
-      else
-        NotificationInterface.send_message(discord_embed)
-      end
-
-    case result do
-      :ok ->
-        AppLogger.startup_info("Startup notification sent successfully")
-
-      {:ok, _} ->
-        AppLogger.startup_info("Startup notification sent successfully")
-
-      {:error, reason} ->
-        AppLogger.startup_error("Failed to send startup notification", error: inspect(reason))
-    end
+    WandererNotifier.Notifiers.StatusNotifier.send_status_message(
+      "WandererNotifier Service Status",
+      "The service has started and is now operational."
+    )
 
     {:noreply, state}
   end
@@ -721,7 +665,7 @@ defmodule WandererNotifier.Core.Application.Service do
     end
   end
 
-  # Helper function to get character name
+  # Helper function to get character names
   defp get_character_name(character_id) do
     case ESIService.get_character_info(character_id) do
       {:ok, character_info} -> Map.get(character_info, "name")
@@ -757,25 +701,4 @@ defmodule WandererNotifier.Core.Application.Service do
     end
   end
 
-  def format_system_status_message(
-        title,
-        description,
-        websocket,
-        uptime,
-        extra,
-        status,
-        systems_count,
-        characters_count
-      ) do
-    %{
-      title: title,
-      description: description,
-      websocket: websocket,
-      uptime: uptime,
-      extra: extra,
-      status: status,
-      systems_count: systems_count,
-      characters_count: characters_count
-    }
-  end
 end

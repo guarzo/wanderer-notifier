@@ -282,14 +282,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       components = Map.get(formatted_notification, :components, [])
       use_components = components != [] && FeatureFlags.components_enabled?()
 
-      require Logger
-      Logger.info("[Notifier] send_to_discord called", feature: inspect(feature), embed: inspect(discord_embed), components: inspect(components))
-
       if use_components do
-        Logger.info("[Notifier] Using send_message_with_components", feature: inspect(feature))
         NeoClient.send_message_with_components(discord_embed, components, nil)
       else
-        Logger.info("[Notifier] Using send_embed", feature: inspect(feature))
         NeoClient.send_embed(discord_embed, nil)
       end
       {:ok, :sent}
@@ -344,7 +339,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: Killmail ID #{killmail.killmail_id}")
     else
-      AppLogger.processor_info("Formatting killmail notification")
       notification = KillmailFormatter.format_kill_notification(killmail)
 
       # Send notification
@@ -352,24 +346,4 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  # # Extract system ID from killmail
-  # defp extract_system_id(%MapSystem{solar_system_id: id}) when not is_nil(id), do: id
-
-  # defp extract_system_id(_), do: nil
-
-  # # Extract system name from system data
-  # defp extract_system_name(system) do
-  #   extract_field_value(system, [:name, "name"], "Unknown System")
-  # end
-
-  # # Helper to extract a field with a default value
-  # defp extract_field_value(system, field_names, default) do
-  #   Enum.find_value(field_names, default, fn field ->
-  #     cond do
-  #       is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
-  #       is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
-  #       true -> nil
-  #     end
-  #   end)
-  # end
 end

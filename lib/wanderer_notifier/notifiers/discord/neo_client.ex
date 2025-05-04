@@ -41,8 +41,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
       log_test_embed(embed)
     else
       target_channel = resolve_target_channel(override_channel_id)
-      require Logger
-      Logger.info("[NeoClient] Sending embed to Discord:", embed: inspect(embed))
       send_embed_to_channel(embed, target_channel)
     end
   end

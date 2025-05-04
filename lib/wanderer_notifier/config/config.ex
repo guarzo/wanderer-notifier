@@ -187,7 +187,7 @@ defmodule WandererNotifier.Config do
 
   # --- Scheduler/Timing Accessors ---
   @doc "Returns the service status interval in ms."
-  def service_status_interval, do: get(:service_status_interval, 300_000)
+  def service_status_interval, do: get(:service_status_interval, 10_000)
 
   @doc "Returns the killmail retention interval in ms."
   def killmail_retention_interval, do: get(:killmail_retention_interval, 600_000)

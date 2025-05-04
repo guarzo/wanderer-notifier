@@ -70,8 +70,18 @@ defmodule WandererNotifier.Cache.Keys do
       "map:character:12345"
   """
   @spec character(integer() | String.t()) :: String.t()
-  def character(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_map, @entity_character, to_string(id)])
+  def character(nil) do
+    require Logger
+    Logger.warning("Cache.Keys.character/1 called with nil")
+    nil
+  end
+  def character(character_id) when is_integer(character_id) or is_binary(character_id) do
+    join_parts([@prefix_esi, @entity_character, to_string(character_id)])
+  end
+  def character(other) do
+    require Logger
+    Logger.warning("Cache.Keys.character/1 called with unexpected value: #{inspect(other)}")
+    nil
   end
 
   @doc """
@@ -95,7 +105,13 @@ defmodule WandererNotifier.Cache.Keys do
   """
   @spec tracked_character(integer() | String.t()) :: String.t()
   def tracked_character(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_tracked, @entity_character, to_string(id)])
+    "tracked_character:#{id}"
+  end
+
+  def tracked_character(id) when is_map(id) or is_struct(id) do
+    require Logger
+    Logger.error("[Cache.Keys] tracked_character/1 called with a map or struct!", value: inspect(id))
+    raise ArgumentError, "Cache.Keys.tracked_character/1 called with a map or struct: #{inspect(id)}"
   end
 
   @doc """

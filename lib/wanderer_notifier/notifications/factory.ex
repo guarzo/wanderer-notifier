@@ -44,8 +44,6 @@ defmodule WandererNotifier.Notifications.Factory do
       else
         DiscordNotifier
       end
-    require Logger
-    Logger.info("[Factory] get_notifier returning", notifier: inspect(notifier))
     notifier
   end
 

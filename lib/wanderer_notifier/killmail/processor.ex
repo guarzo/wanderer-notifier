@@ -129,6 +129,8 @@ defmodule WandererNotifier.Killmail.Processor do
     case Enrichment.enrich_killmail_data(killmail) do
       {:ok, enriched_kill} ->
         KillmailNotification.send_kill_notification(enriched_kill, :zkill)
+        # Increment kill notification count
+        WandererNotifier.Core.Stats.increment(:kills)
         state
 
       {:error, reason} ->

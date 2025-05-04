@@ -32,6 +32,9 @@ defmodule WandererNotifier.Notifiers.Formatters.Status do
         systems_count,
         characters_count
       ) do
+    require Logger
+    Logger.info("[StatusFormatter] Incoming stats for status message: #{inspect(stats)}")
+    Logger.info("[StatusFormatter] Websocket status: #{inspect(Map.get(stats, :websocket))}")
     uptime_str = format_uptime(uptime)
     license_icon = get_license_icon(license_status)
     websocket_icon = get_websocket_status_icon(stats)
@@ -79,14 +82,12 @@ defmodule WandererNotifier.Notifiers.Formatters.Status do
       kill_notifications: Map.get(features_status, :kill_notifications_enabled, true),
       tracked_systems_notifications: Map.get(features_status, :system_tracking_enabled, true),
       tracked_characters_notifications: Map.get(features_status, :character_tracking_enabled, true),
-      activity_charts: Map.get(features_status, :activity_charts, false)
     }
 
     [
       format_feature_item("Kill Notifications", primary_features.kill_notifications),
       format_feature_item("System Notifications", primary_features.tracked_systems_notifications),
       format_feature_item("Character Notifications", primary_features.tracked_characters_notifications),
-      format_feature_item("Activity Charts", primary_features.activity_charts)
     ]
     |> Enum.join("\n")
   end
@@ -151,5 +152,45 @@ defmodule WandererNotifier.Notifiers.Formatters.Status do
 
   defp get_app_version do
     WandererNotifier.Config.Version.version()
+  end
+end
+
+defmodule WandererNotifier.Notifiers.StatusNotifier do
+  @moduledoc """
+  Sends rich status notifications by gathering all relevant state and using the Status formatter.
+  """
+  alias WandererNotifier.Notifiers.Formatters.Status, as: StatusFormatter
+  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.Config
+  alias WandererNotifier.Notifications.Interface
+  alias WandererNotifier.License.Service, as: LicenseService
+
+  @doc """
+  Gathers all relevant state and sends a status message to the main notification channel.
+  """
+  def send_status_message(title, description) do
+    stats = Stats.get_stats()
+    features_status = Config.features()
+    systems_count = Map.get(stats, :systems_count, 0)
+    characters_count = Map.get(stats, :characters_count, 0)
+
+    # Use LicenseService.status/0 for license status
+    license_status = LicenseService.status()
+
+    notification =
+      StatusFormatter.format_system_status_message(
+        title,
+        description,
+        stats,
+        stats.uptime_seconds,
+        features_status,
+        license_status,
+        systems_count,
+        characters_count
+      )
+
+    embed = CommonFormatter.to_discord_format(notification)
+    Interface.send_message(embed)
   end
 end

@@ -3,7 +3,7 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
   System notification formatting utilities for Discord notifications.
   Provides rich formatting for system tracking events.
   """
-
+  require Logger
   alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -28,13 +28,8 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
     is_wormhole = MapSystem.is_wormhole?(system)
     display_name = system.name # Only use the system name for the title
 
-    # Debug logging for types and values
-    AppLogger.processor_info("[SystemFormatter] system.name type: #{inspect(typeof(system.name))}, value: #{inspect(system.name)}")
-    AppLogger.processor_info("[SystemFormatter] system.region_name type: #{inspect(typeof(system.region_name))}, value: #{inspect(system.region_name)}")
-
     formatted_statics = format_statics_list(Map.get(system, :static_details) || Map.get(system, :statics))
     system_name_with_link = create_system_name_link(system, display_name)
-    AppLogger.processor_info("[SystemFormatter] system_name_with_link type: #{inspect(typeof(system_name_with_link))}, value: #{inspect(system_name_with_link)}")
 
     {title, description, _color, icon_url} =
       generate_notification_elements(system, is_wormhole, display_name)
@@ -46,11 +41,6 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
         formatted_statics,
         system_name_with_link
       )
-
-    # Log all field types and values
-    Enum.each(fields, fn field ->
-      AppLogger.processor_info("[SystemFormatter] field: #{inspect(field.name)}, type: #{inspect(typeof(field.value))}, value: #{inspect(field.value)}")
-    end)
 
     %{
       type: :system_notification,
@@ -66,6 +56,7 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
     }
   rescue
     e ->
+      Logger.error("[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}")
       AppLogger.processor_error("[SystemFormatter] Error formatting system notification",
         system: system.name,
         error: Exception.message(e),
@@ -123,7 +114,13 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
 
   defp format_statics_list(nil), do: "N/A"
   defp format_statics_list([]), do: "N/A"
-  defp format_statics_list(statics) when is_list(statics), do: Enum.join(statics, ", ")
+  defp format_statics_list(statics) when is_list(statics) do
+    Enum.map(statics, fn
+      m when is_map(m) -> m["name"] || m[:name] || inspect(m)
+      s -> to_string(s)
+    end)
+    |> Enum.join(", ")
+  end
   defp format_statics_list(statics), do: to_string(statics)
 
   defp create_system_name_link(system, display_name) do
@@ -194,18 +191,4 @@ defmodule WandererNotifier.Notifiers.Formatters.System do
   defp parse_system_id(_), do: nil
 
   defp determine_system_color_from_security(_), do: @default_color
-
-  defp typeof(val) do
-    cond do
-      is_binary(val) -> :string
-      is_integer(val) -> :integer
-      is_float(val) -> :float
-      is_atom(val) -> :atom
-      is_list(val) -> :list
-      is_map(val) -> :map
-      is_boolean(val) -> :boolean
-      is_nil(val) -> :nil
-      true -> :unknown
-    end
-  end
 end

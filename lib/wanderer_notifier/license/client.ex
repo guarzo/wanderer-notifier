@@ -25,9 +25,6 @@ defmodule WandererNotifier.License.Client do
   def validate_bot(notifier_api_token, license_key) do
     url = "#{Config.license_manager_api_url()}/api/validate_bot"
 
-    # Log minimal request information without exposing sensitive data
-    AppLogger.api_info("Making license validation request to License Manager API")
-
     # Set up request parameters
     headers = build_auth_headers(notifier_api_token)
     body = %{"license_key" => license_key}

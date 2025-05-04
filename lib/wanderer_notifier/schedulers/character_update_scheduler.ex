@@ -79,6 +79,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     alias WandererNotifier.Logger.Logger, as: AppLogger
     characters_list = ensure_list(characters)
     verify_and_update_characters_cache(characters_list)
+    # Update Stats with new characters count
+    WandererNotifier.Core.Stats.set_tracked_count(:characters, length(characters_list))
     :ok
   end
 

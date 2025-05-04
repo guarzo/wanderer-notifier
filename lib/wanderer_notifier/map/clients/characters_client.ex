@@ -198,12 +198,13 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     character_id = character_struct.character_id
 
     require Logger
-    Logger.info("[CharactersClient] Notifying for EVE character_id: #{inspect(character_id)} (struct: #{inspect(character_struct)})")
 
     # Only send notification if determiner says we should
     if WandererNotifier.Notifications.Determiner.Character.should_notify?(character_id, character_struct) do
       Logger.info("[CharactersClient] Sending notification for new EVE character_id: #{inspect(character_id)} (name: #{character_struct.name})")
       WandererNotifier.Notifications.Factory.notify(:send_new_tracked_character_notification, [character_struct])
+      # Increment character notification count
+      WandererNotifier.Core.Stats.increment(:characters)
     else
       Logger.info("[CharactersClient] Skipping notification for EVE character_id: #{inspect(character_id)} (name: #{character_struct.name}) - deduplication or feature flag")
     end

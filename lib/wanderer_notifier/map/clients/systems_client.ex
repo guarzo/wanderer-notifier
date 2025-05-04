@@ -159,9 +159,18 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         _        -> system
       end
 
-    system_id = enriched.solar_system_id
-    if WandererNotifier.Notifications.Determiner.System.should_notify?(system_id, enriched) do
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(enriched)
+    # Ensure enriched is a %MapSystem{} struct
+    final_enriched =
+      if is_struct(enriched, MapSystem) do
+        enriched
+      else
+        Logger.api_warn("[SystemsClient] Enriched system is not a struct, converting to %MapSystem{}", original: inspect(enriched))
+        MapSystem.new(enriched)
+      end
+
+    system_id = final_enriched.solar_system_id
+    if WandererNotifier.Notifications.Determiner.System.should_notify?(system_id, final_enriched) do
+      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(final_enriched)
     end
   rescue
     e ->

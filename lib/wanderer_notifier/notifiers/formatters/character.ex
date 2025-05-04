@@ -42,13 +42,9 @@ defmodule WandererNotifier.Notifiers.Formatters.Character do
             corporation_link =
               "[#{character.corporation_ticker}](https://zkillboard.com/corporation/#{character.corporation_id}/)"
 
-            AppLogger.processor_info(
-              "[CharacterFormatter] Adding corporation field with value: #{corporation_link}"
-            )
-
             [%{name: "Corporation", value: corporation_link, inline: true}]
           else
-            AppLogger.processor_info(
+            AppLogger.processor_warn(
               "[CharacterFormatter] No corporation data available for inclusion"
             )
 
