@@ -239,7 +239,9 @@ defmodule WandererNotifier.Core.Stats do
       notifications: state.notifications,
       websocket: state.websocket,
       first_notifications: Map.get(state, :first_notifications, %{}),
-      processing: state.processing
+      processing: state.processing,
+      systems_count: Map.get(state, :systems_count, 0),
+      characters_count: Map.get(state, :characters_count, 0)
     }
 
     {:reply, stats, state}

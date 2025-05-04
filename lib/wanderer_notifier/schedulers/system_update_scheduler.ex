@@ -63,10 +63,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   defp handle_successful_system_update(systems) do
     systems_list = ensure_list(systems)
     verify_and_update_systems_cache(systems_list)
-    # Update Stats with new systems count
     WandererNotifier.Core.Stats.set_tracked_count(:systems, length(systems_list))
-    # Send notifications for each system
-    Enum.each(systems_list, &notify/1)
     :ok
   end
 
@@ -98,34 +95,5 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
       cache_ttl = 60_000 # TODO: Replace with Config.systems_cache_ttl/0 if/when available
       CacheRepo.set(:system_list, systems_list, cache_ttl)
     end
-  end
-
-  # Notification helper
-  defp notify(system) do
-    enriched =
-      case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
-        {:ok, e} -> e
-        _        -> system
-      end
-
-    # Ensure enriched is a %MapSystem{} struct
-    final_enriched =
-      if is_struct(enriched, WandererNotifier.Map.MapSystem) do
-        enriched
-      else
-        AppLogger.api_warn("[SystemsClient] Enriched system is not a struct, converting to %MapSystem{}", original: inspect(enriched))
-        WandererNotifier.Map.MapSystem.new(enriched)
-      end
-
-    system_id = final_enriched.solar_system_id
-    if WandererNotifier.Notifications.Determiner.System.should_notify?(system_id, final_enriched) do
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(final_enriched)
-    end
-  rescue
-    e ->
-      AppLogger.api_error("Notification failed",
-        error: Exception.message(e),
-        system: inspect(system)
-      )
   end
 end

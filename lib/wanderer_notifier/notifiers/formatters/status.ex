@@ -32,9 +32,6 @@ defmodule WandererNotifier.Notifiers.Formatters.Status do
         systems_count,
         characters_count
       ) do
-    require Logger
-    Logger.info("[StatusFormatter] Incoming stats for status message: #{inspect(stats)}")
-    Logger.info("[StatusFormatter] Websocket status: #{inspect(Map.get(stats, :websocket))}")
     uptime_str = format_uptime(uptime)
     license_icon = get_license_icon(license_status)
     websocket_icon = get_websocket_status_icon(stats)
