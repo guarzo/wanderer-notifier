@@ -8,7 +8,6 @@ defmodule WandererNotifier.Notifications.Interface do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Factory
-  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
   alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.KillmailNotification
@@ -71,58 +70,6 @@ defmodule WandererNotifier.Notifications.Interface do
   """
   def send_test_kill_notification do
     KillmailNotification.send_test()
-  end
-
-  @doc """
-  Sends a system activity notification.
-
-  ## Parameters
-  - system_id: The system ID
-  - activity_data: Map containing activity details
-
-  ## Returns
-  - {:ok, result} on success
-  - {:error, reason} on failure
-  """
-  def send_system_activity_notification(system_id, activity_data) do
-    # Format the system activity data into a structured format
-    generic_notification =
-      StructuredFormatter.format_system_activity_notification(
-        system_id,
-        activity_data
-      )
-
-    # Convert to Discord format
-    discord_format = StructuredFormatter.to_discord_format(generic_notification)
-
-    # Send notification
-    Factory.send_system_activity_notification(discord_format)
-  end
-
-  @doc """
-  Sends a character activity notification.
-
-  ## Parameters
-  - character_id: The character ID
-  - activity_data: Map containing activity details
-
-  ## Returns
-  - {:ok, result} on success
-  - {:error, reason} on failure
-  """
-  def send_character_activity_notification(character_id, activity_data) do
-    # Format the character activity data into a structured format
-    generic_notification =
-      StructuredFormatter.format_character_activity_notification(
-        character_id,
-        activity_data
-      )
-
-    # Convert to Discord format
-    discord_format = StructuredFormatter.to_discord_format(generic_notification)
-
-    # Send notification
-    Factory.send_character_activity_notification(discord_format)
   end
 
   @doc """

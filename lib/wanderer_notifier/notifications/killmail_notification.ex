@@ -9,7 +9,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Factory
-  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
 
   @doc """
@@ -22,7 +22,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   - A formatted notification ready to be sent
   """
   def create(killmail) do
-    # Format the kill notification using the StructuredFormatter
+    # Format the kill notification using the CommonFormatter
     KillmailFormatter.format_kill_notification(killmail)
   end
 
@@ -100,7 +100,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       system_generic_notification =
         KillmailFormatter.format_kill_notification(enriched_killmail)
 
-      system_discord_format = StructuredFormatter.to_discord_format(system_generic_notification)
+      system_discord_format = CommonFormatter.to_discord_format(system_generic_notification)
 
       # Send system notification
       send_system_notification(system_discord_format, kill_id)
@@ -122,7 +122,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       character_generic_notification =
         KillmailFormatter.format_kill_notification(enriched_killmail)
 
-      character_discord_format = StructuredFormatter.to_discord_format(character_generic_notification)
+      character_discord_format = CommonFormatter.to_discord_format(character_generic_notification)
 
       # Send character notification
       send_character_notification(character_discord_format, kill_id)

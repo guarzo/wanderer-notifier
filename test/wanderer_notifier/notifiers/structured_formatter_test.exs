@@ -8,7 +8,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Data.MapSystem
   alias WandererNotifier.MockZKillClient
-  alias WandererNotifier.Notifiers.StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
 
   # Set up mocks for the test
   setup :verify_on_exit!
@@ -106,7 +106,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   describe "colors/0" do
     test "returns a map of color constants" do
-      colors = StructuredFormatter.colors()
+      colors = CommonFormatter.colors()
       assert is_map(colors)
       assert Map.has_key?(colors, :default)
       assert Map.has_key?(colors, :success)
@@ -122,29 +122,29 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   describe "convert_color/1" do
     test "converts atom color names to integer values" do
-      assert StructuredFormatter.convert_color(:default) == StructuredFormatter.colors().default
-      assert StructuredFormatter.convert_color(:success) == StructuredFormatter.colors().success
-      assert StructuredFormatter.convert_color(:warning) == StructuredFormatter.colors().warning
-      assert StructuredFormatter.convert_color(:error) == StructuredFormatter.colors().error
-      assert StructuredFormatter.convert_color(:info) == StructuredFormatter.colors().info
+      assert CommonFormatter.convert_color(:default) == CommonFormatter.colors().default
+      assert CommonFormatter.convert_color(:success) == CommonFormatter.colors().success
+      assert CommonFormatter.convert_color(:warning) == CommonFormatter.colors().warning
+      assert CommonFormatter.convert_color(:error) == CommonFormatter.colors().error
+      assert CommonFormatter.convert_color(:info) == CommonFormatter.colors().info
     end
 
     test "returns integer color values unchanged" do
-      assert StructuredFormatter.convert_color(0x3498DB) == 0x3498DB
-      assert StructuredFormatter.convert_color(16_711_680) == 16_711_680
+      assert CommonFormatter.convert_color(0x3498DB) == 0x3498DB
+      assert CommonFormatter.convert_color(16_711_680) == 16_711_680
     end
 
     test "converts hex strings to integer values" do
-      assert StructuredFormatter.convert_color("#FF0000") == 0xFF0000
-      assert StructuredFormatter.convert_color("#00FF00") == 0x00FF00
-      assert StructuredFormatter.convert_color("#0000FF") == 0x0000FF
+      assert CommonFormatter.convert_color("#FF0000") == 0xFF0000
+      assert CommonFormatter.convert_color("#00FF00") == 0x00FF00
+      assert CommonFormatter.convert_color("#0000FF") == 0x0000FF
     end
 
     test "returns default color for invalid inputs" do
-      default_color = StructuredFormatter.colors().default
-      assert StructuredFormatter.convert_color(nil) == default_color
-      assert StructuredFormatter.convert_color("invalid") == default_color
-      assert StructuredFormatter.convert_color([]) == default_color
+      default_color = CommonFormatter.colors().default
+      assert CommonFormatter.convert_color(nil) == default_color
+      assert CommonFormatter.convert_color("invalid") == default_color
+      assert CommonFormatter.convert_color([]) == default_color
     end
   end
 
@@ -174,7 +174,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       }
 
       # Format the notification
-      result = StructuredFormatter.format_kill_notification(killmail)
+      result = CommonFormatter.format_kill_notification(killmail)
 
       # Assert the result structure
       assert is_map(result)
@@ -205,7 +205,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       }
 
       # Format the notification
-      result = StructuredFormatter.format_kill_notification(killmail)
+      result = CommonFormatter.format_kill_notification(killmail)
 
       # Assert the result structure
       assert is_map(result)
@@ -233,7 +233,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         tracked: true
       }
 
-      result = StructuredFormatter.format_character_notification(character)
+      result = CommonFormatter.format_character_notification(character)
 
       # Check that the result has the expected structure
       assert is_map(result)
@@ -265,7 +265,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         tracked: true
       }
 
-      result = StructuredFormatter.format_character_notification(character)
+      result = CommonFormatter.format_character_notification(character)
 
       # Check that the result omits the corporation field
       assert is_map(result)
@@ -306,7 +306,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         sun_type_id: 45_041
       }
 
-      result = StructuredFormatter.format_system_notification(system)
+      result = CommonFormatter.format_system_notification(system)
 
       # Check that the result has the expected structure
       assert is_map(result)
@@ -352,7 +352,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         system_type: "k-space"
       }
 
-      result = StructuredFormatter.format_system_notification(system)
+      result = CommonFormatter.format_system_notification(system)
 
       # Check that the result has the expected structure
       assert is_map(result)
@@ -383,17 +383,17 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
       # Test with missing system ID
       assert_raise RuntimeError, ~r/solar_system_id is missing/, fn ->
-        StructuredFormatter.format_system_notification(system_with_only_name)
+        CommonFormatter.format_system_notification(system_with_only_name)
       end
 
       # Test with missing name
       assert_raise RuntimeError, ~r/name is missing/, fn ->
-        StructuredFormatter.format_system_notification(system_with_only_id)
+        CommonFormatter.format_system_notification(system_with_only_id)
       end
 
       # Test with both fields missing (from new)
       assert_raise RuntimeError, ~r/solar_system_id is missing|name is missing/, fn ->
-        StructuredFormatter.format_system_notification(empty_system)
+        CommonFormatter.format_system_notification(empty_system)
       end
     end
   end
@@ -414,7 +414,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
         ]
       }
 
-      result = StructuredFormatter.to_discord_format(notification)
+      result = CommonFormatter.to_discord_format(notification)
 
       # Check that the result is in Discord format
       assert is_map(result)
@@ -465,7 +465,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       uptime = 86_400 + 3_600 + 60 + 30
 
       result =
-        StructuredFormatter.format_system_status_message(
+        CommonFormatter.format_system_status_message(
           "System Status",
           "Current system status report",
           stats,
@@ -549,7 +549,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
       }
 
       result =
-        StructuredFormatter.format_system_status_message(
+        CommonFormatter.format_system_status_message(
           "WandererNotifier Started",
           "The service has started",
           stats,

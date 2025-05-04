@@ -10,7 +10,8 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Config
   alias WandererNotifier.Notifications.Helpers.Deduplication
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Notifiers.Formatters.Status, as: StatusFormatter
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
@@ -415,7 +416,7 @@ defmodule WandererNotifier.Core.Application.Service do
 
     # Create the notification
     generic_notification =
-      StructuredFormatter.format_system_status_message(
+      StatusFormatter.format_system_status_message(
         "WandererNotifier Service Started",
         "The service has started and is now operational.",
         %{
@@ -438,7 +439,7 @@ defmodule WandererNotifier.Core.Application.Service do
         state.characters_count
       )
 
-    discord_embed = StructuredFormatter.to_discord_format(generic_notification)
+    discord_embed = CommonFormatter.to_discord_format(generic_notification)
 
     # Get the main channel ID, with defensive check for test environment
     main_channel_id =

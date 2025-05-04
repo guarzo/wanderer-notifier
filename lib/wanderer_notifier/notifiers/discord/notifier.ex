@@ -14,7 +14,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
   alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
   alias WandererNotifier.Notifiers.Formatters.Character, as: CharacterFormatter
-  alias WandererNotifier.Notifiers.Formatters.Structured, as: StructuredFormatter
+  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -168,18 +168,9 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Map.MapCharacter) do
-    require Logger
-    Logger.info("[Discord.Notifier] send_new_tracked_character_notification/1 called", character_id: inspect(character.character_id), character_name: inspect(character.name))
-
     try do
-      # Format the notification using the CharacterFormatter
       generic_notification = CharacterFormatter.format_character_notification(character)
-      Logger.info("[Discord.Notifier] Character notification formatted", notification: inspect(generic_notification))
-
-      # Send to Discord
       send_to_discord(generic_notification, :character_tracking)
-
-      # Record stats
       Stats.increment(:characters)
     rescue
       e ->
@@ -227,8 +218,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
       :send_new_tracked_character_notification ->
         [character_struct] = data
-        require Logger
-        Logger.info("[Discord.Notifier] send_notification/2 handling :send_new_tracked_character_notification", character_id: inspect(character_struct.character_id))
         send_new_tracked_character_notification(character_struct)
 
       _ ->
@@ -262,7 +251,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       {:ok, :sent}
     else
       # Convert to Discord format
-      discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
+      discord_embed = CommonFormatter.to_discord_format(formatted_notification)
 
       # Check if components are available
       components = Map.get(formatted_notification, :components, [])
