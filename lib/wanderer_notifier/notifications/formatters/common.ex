@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.Common do
+defmodule WandererNotifier.Notifications.Formatters.Common do
   @moduledoc """
   Common notification formatting utilities for Discord notifications.
   Provides standardized formatting for domain data structures like Character, MapSystem, and Killmail.
@@ -6,7 +6,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Common do
 
   alias WandererNotifier.Map.MapCharacter
   alias WandererNotifier.Map.MapSystem
-  alias WandererNotifier.Notifiers.Formatters.System, as: SystemFormatter
+  alias WandererNotifier.Notifications.Formatters.System, as: SystemFormatter
 
   # Color constants for Discord notifications
   @default_color 0x3498DB
@@ -53,7 +53,7 @@ defmodule WandererNotifier.Notifiers.Formatters.Common do
   Returns data in a generic format that can be converted to platform-specific format.
   """
   def format_character_notification(%MapCharacter{} = character) do
-    WandererNotifier.Notifiers.Formatters.Character.format_character_notification(character)
+    WandererNotifier.Notifications.Formatters.Character.format_character_notification(character)
   end
 
   @doc """

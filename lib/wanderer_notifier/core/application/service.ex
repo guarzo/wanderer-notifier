@@ -13,7 +13,6 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Killmail.Processor, as: KillmailProcessor
   alias WandererNotifier.Schedulers.CharacterUpdateScheduler
   alias WandererNotifier.Schedulers.SystemUpdateScheduler
-  alias WandererNotifier.Notifications.Interface, as: NotificationInterface
   alias WandererNotifier.Killmail.Websocket, as: KillmailWebsocket
 
   @default_interval :timer.minutes(5)
@@ -469,7 +468,7 @@ defmodule WandererNotifier.Core.Application.Service do
           AppLogger.websocket_error("❌ Failed to start websocket", error: inspect(reason))
 
           # Notify about the failure
-          NotificationInterface.send_message("Failed to start websocket: #{inspect(reason)}")
+          WandererNotifier.Notifications.Dispatcher.send_message("Failed to start websocket: #{inspect(reason)}")
 
           # Return state without websocket
           state

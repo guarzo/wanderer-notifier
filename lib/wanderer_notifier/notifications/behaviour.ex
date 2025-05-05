@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifications.Behaviour do
+defmodule WandererNotifier.Notifications.Notification do
   @moduledoc """
   Defines the behaviour for notification handling.
   This includes both determination of what needs to be notified and formatting of notifications.

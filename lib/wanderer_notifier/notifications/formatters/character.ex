@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.Character do
+defmodule WandererNotifier.Notifications.Formatters.Character do
   @moduledoc """
   Character notification formatting utilities for Discord notifications.
   Provides rich formatting for character tracking events.

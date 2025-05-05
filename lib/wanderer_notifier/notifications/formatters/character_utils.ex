@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifications.Formatters.CharacterHelpers do
+defmodule WandererNotifier.Notifications.Formatters.CharacterUtils do
   @moduledoc """
   Utility functions for working with Character data.
   Provides helper functions for extracting and formatting character information.

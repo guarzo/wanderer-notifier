@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.Status do
+defmodule WandererNotifier.Notifications.Formatters.Status do
   @moduledoc """
   Status message formatting utilities for Discord notifications.
   Provides rich formatting for service status and startup events.
@@ -156,11 +156,10 @@ defmodule WandererNotifier.Notifiers.StatusNotifier do
   @moduledoc """
   Sends rich status notifications by gathering all relevant state and using the Status formatter.
   """
-  alias WandererNotifier.Notifiers.Formatters.Status, as: StatusFormatter
-  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Notifications.Formatters.Status, as: StatusFormatter
+  alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Config
-  alias WandererNotifier.Notifications.Interface
   alias WandererNotifier.License.Service, as: LicenseService
 
   @doc """
@@ -188,6 +187,6 @@ defmodule WandererNotifier.Notifiers.StatusNotifier do
       )
 
     embed = CommonFormatter.to_discord_format(notification)
-    Interface.send_message(embed)
+    WandererNotifier.Notifications.Dispatcher.send_message(embed)
   end
 end

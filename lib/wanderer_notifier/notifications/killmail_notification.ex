@@ -8,9 +8,9 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-  alias WandererNotifier.Notifications.Factory
-  alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
-  alias WandererNotifier.Notifiers.Formatters.Killmail, as: KillmailFormatter
+  alias WandererNotifier.Notifications.Dispatcher
+  alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
 
   @doc """
   Creates a notification from a killmail.
@@ -133,7 +133,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   # Send system notification and handle result
   defp send_system_notification(notification, kill_id) do
-    case Factory.send_message(notification) do
+    case Dispatcher.send_message(notification) do
       {:ok, :sent} ->
         AppLogger.kill_info("System kill notification sent", %{kill_id: kill_id})
         {:ok, :system_sent}
@@ -150,7 +150,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   # Send character notification and handle result
   defp send_character_notification(notification, kill_id) do
-    case Factory.send_message(notification) do
+    case Dispatcher.send_message(notification) do
       {:ok, :sent} ->
         AppLogger.kill_info("Character kill notification sent", %{kill_id: kill_id})
         {:ok, :character_sent}
@@ -297,7 +297,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
               AppLogger.kill_error(error_message)
 
               # Notify the user through Discord
-              Factory.send_message(error_message)
+              Dispatcher.send_message(error_message)
 
               {:error, error_message}
           end
@@ -308,7 +308,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
           AppLogger.kill_error(error_message)
 
           # Notify the user through Discord
-          Factory.send_message(error_message)
+          Dispatcher.send_message(error_message)
 
           {:error, error_message}
       end

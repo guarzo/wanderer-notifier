@@ -4,7 +4,7 @@ defmodule WandererNotifier.Killmail.Notification do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Factory
+  alias WandererNotifier.Notifications.Dispatcher
   alias WandererNotifier.Notifications.KillmailNotification
 
   @doc """
@@ -24,7 +24,7 @@ defmodule WandererNotifier.Killmail.Notification do
       notification = KillmailNotification.create(killmail)
 
       # Send the notification through the factory
-      case Factory.send_message(notification) do
+      case Dispatcher.send_message(notification) do
         {:ok, :sent} ->
           AppLogger.notification_info("Kill notification sent successfully", %{
             kill_id: kill_id,

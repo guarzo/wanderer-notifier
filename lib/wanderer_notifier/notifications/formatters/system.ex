@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.System do
+defmodule WandererNotifier.Notifications.Formatters.System do
   @moduledoc """
   System notification formatting utilities for Discord notifications.
   Provides rich formatting for system tracking events.

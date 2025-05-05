@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.Killmail do
+defmodule WandererNotifier.Notifications.Formatters.Killmail do
   @moduledoc """
   Killmail notification formatting utilities for Discord notifications.
   Provides rich formatting for killmail events.

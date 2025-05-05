@@ -19,14 +19,6 @@ WORKDIR /renderer
 
 # Install required fonts and dependencies for canvas
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    fonts-liberation \
-    fonts-dejavu \
-    fontconfig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,16 +29,6 @@ RUN npm ci
 # Copy the rest of the renderer code and build frontend assets
 COPY renderer/ ./
 RUN npm run build && npm run postbuild
-
-# Set up chart-service
-WORKDIR /chart-service
-
-# Copy package files first for effective caching
-COPY chart-service/package*.json ./
-RUN npm install
-
-# Copy the rest of the chart-service code
-COPY chart-service/ ./
 
 # ----------------------------------------
 # 2. DEPS STAGE
@@ -112,16 +94,7 @@ RUN apt-get update -y && \
         lsof \
         net-tools \
         gnupg \
-        curl \
-        # Canvas dependencies
-        libcairo2-dev \
-        libpango1.0-dev \
-        libjpeg-dev \
-        libgif-dev \
-        librsvg2-dev \
-        fonts-liberation \
-        fonts-dejavu \
-        fontconfig && \
+        curl 
     # Install Node.js
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
@@ -140,9 +113,6 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 
 # Copy static assets from builder (if needed)
 COPY --from=builder /app/priv/static /app/priv/static
-
-# Copy chart-service from node builder
-COPY --from=node_builder /chart-service /app/chart-service
 
 # Copy runtime scripts and set executable permissions
 COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/

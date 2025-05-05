@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifiers.Formatters.PlainText do
+defmodule WandererNotifier.Notifications.Formatters.PlainText do
   @moduledoc """
   Provides plain text fallback formatting for notifications when license is invalid.
   """

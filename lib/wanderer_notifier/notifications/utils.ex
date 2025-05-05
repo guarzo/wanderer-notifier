@@ -3,7 +3,7 @@ defmodule WandererNotifier.Notifications.Utils do
   Utility functions for notification formatting and data extraction.
   """
   alias WandererNotifier.Map.MapCharacter
-  alias WandererNotifier.Notifications.Formatters.CharacterHelpers
+  alias WandererNotifier.Notifications.Formatters.CharacterUtils
 
   @doc """
   Adds a field to an embed map if the value is available.
@@ -85,22 +85,22 @@ defmodule WandererNotifier.Notifications.Utils do
 
   @doc """
   Extracts a character ID from a Character struct.
-  Delegates to CharacterHelpers.
+  Delegates to CharacterUtils.
   """
   @spec extract_character_id(MapCharacter.t()) :: String.t()
-  defdelegate extract_character_id(character), to: CharacterHelpers
+  defdelegate extract_character_id(character), to: CharacterUtils
 
   @doc """
   Extracts a character name from a Character struct.
-  Delegates to CharacterHelpers.
+  Delegates to CharacterUtils.
   """
   @spec extract_character_name(MapCharacter.t()) :: String.t()
-  defdelegate extract_character_name(character), to: CharacterHelpers
+  defdelegate extract_character_name(character), to: CharacterUtils
 
   @doc """
   Extracts a corporation name from a Character struct.
-  Delegates to CharacterHelpers.
+  Delegates to CharacterUtils.
   """
   @spec extract_corporation_name(MapCharacter.t()) :: String.t()
-  defdelegate extract_corporation_name(character), to: CharacterHelpers
+  defdelegate extract_corporation_name(character), to: CharacterUtils
 end

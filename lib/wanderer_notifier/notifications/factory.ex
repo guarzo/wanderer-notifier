@@ -1,8 +1,7 @@
-defmodule WandererNotifier.Notifications.Factory do
+defmodule WandererNotifier.Notifications.Dispatcher do
   @moduledoc """
-  Factory for creating and sending notifications.
-  Implements the NotificationsFactoryBehaviour and provides a unified interface
-  for sending notifications of various types.
+  Dispatcher for creating and sending notifications.
+  Provides a unified interface for sending notifications of various types.
   """
 
   require Logger
@@ -10,12 +9,8 @@ defmodule WandererNotifier.Notifications.Factory do
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
 
-  @behaviour WandererNotifier.Notifications.FactoryBehaviour
-
   @doc """
   Sends a notification using the appropriate notifier based on the current configuration.
-
-  This function implements the FactoryBehaviour callback and handles all notification types.
 
   ## Parameters
   - type: The type of notification to send (e.g. :send_discord_embed)
@@ -25,8 +20,7 @@ defmodule WandererNotifier.Notifications.Factory do
   - {:ok, result} on success
   - {:error, reason} on failure
   """
-  @impl WandererNotifier.Notifications.FactoryBehaviour
-  def notify(type, data) do
+  def run(type, data) do
     if Config.notifications_enabled?() do
       do_notify(get_notifier(), type, data)
     else
@@ -38,13 +32,7 @@ defmodule WandererNotifier.Notifications.Factory do
   Gets the appropriate notifier based on the current configuration.
   """
   def get_notifier do
-    notifier =
-      if Config.test_mode_enabled?() do
-        TestNotifier
-      else
-        DiscordNotifier
-      end
-    notifier
+    if Config.test_mode_enabled?(), do: TestNotifier, else: DiscordNotifier
   end
 
   defp do_notify(notifier, :send_system_kill_discord_embed, [embed]) do
@@ -88,7 +76,7 @@ defmodule WandererNotifier.Notifications.Factory do
   - {:error, reason} on failure
   """
   def send_system_activity_notification(embed) do
-    notify(:send_system_activity_discord_embed, [embed])
+    run(:send_system_activity_discord_embed, [embed])
   end
 
   @doc """
@@ -102,7 +90,7 @@ defmodule WandererNotifier.Notifications.Factory do
   - {:error, reason} on failure
   """
   def send_character_activity_notification(embed) do
-    notify(:send_character_activity_discord_embed, [embed])
+    run(:send_character_activity_discord_embed, [embed])
   end
 
   @doc """
@@ -116,7 +104,7 @@ defmodule WandererNotifier.Notifications.Factory do
   - {:error, reason} on failure
   """
   def send_message(message) do
-    notify(:send_message, [message])
+    run(:send_message, [message])
   end
 
   @doc """
@@ -130,6 +118,6 @@ defmodule WandererNotifier.Notifications.Factory do
   - {:error, reason} on failure
   """
   def send_system_notification(embed) do
-    notify(:send_system_discord_embed, [embed])
+    run(:send_system_discord_embed, [embed])
   end
 end

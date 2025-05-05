@@ -2,10 +2,20 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   @moduledoc """
   Test Notifier implementation for WandererNotifier.
   Used for testing notification delivery in development and test environments.
-  Implements the Notifier behaviour.
+  Implements the Notification behaviour.
   """
 
-  @behaviour WandererNotifier.Notifiers.Behaviour
+  @behaviour WandererNotifier.Notifications.Notification
+
+  @doc """
+  Stub implementation for determine/1 for test notifier.
+  """
+  def determine(_context), do: {:ok, %{test: true}}
+
+  @doc """
+  Stub implementation for format/1 for test notifier.
+  """
+  def format(notification_data), do: {:ok, notification_data}
 
   @doc """
   Delivers a test notification. This function simulates notification delivery.
