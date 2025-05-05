@@ -25,15 +25,10 @@ config :logger, :module_levels, %{
   "WandererNotifier.Core.Maintenance.Scheduler" => :warning,
   "WandererNotifier.Config.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
-  "WandererNotifier.Api.Map.Client" => :warn,
-  "WandererNotifier.Api.Map.Systems" => :warn,
-  "WandererNotifier.Api.Map.Characters" => :warn,
-  "WandererNotifier.Notifiers.Discord" => :warn,
-  "WandererNotifier.Api.ZKill.Websocket" => :warning
+  "WandererNotifier.Map.Client" => :warn,
+  "WandererNotifier.Map.SystemsClient" => :warn,
+  "WandererNotifier.Map.CharactersClient" => :warn,
+  "WandererNotifier.Notifiers.Discord" => :warn
 }
-
-# Configure chart service directory for production
-config :wanderer_notifier,
-  chart_service_dir: "/app/chart-service"
 
 # Runtime configuration should be in runtime.exs

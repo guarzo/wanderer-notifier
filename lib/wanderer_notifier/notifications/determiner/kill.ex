@@ -4,14 +4,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Handles all kill-related notification decision logic.
   """
 
-  require Logger
-
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Helpers.DeduplicationHelper
-
+  alias WandererNotifier.Config
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Notifications.Helpers.Deduplication
   @doc """
   Determines if a notification should be sent for a kill.
 
@@ -25,44 +22,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_id = get_kill_system_id(killmail)
     kill_id = get_kill_id(killmail)
 
-    # Deduplication check is performed before any persistence or notification.
-    # Only the first occurrence of a killmail (per kill_id) will be processed; all true duplicates are skipped.
     with true <- check_notifications_enabled(kill_id),
          true <- check_tracking(system_id, killmail) do
-      case DeduplicationHelper.duplicate_with_status?(kill_id) do
-        {:ok, :new} ->
-          # Determine notification status as before
-          result = check_deduplication_and_decide(kill_id)
-          # Mark the status and reason in the deduplication cache
-          status =
-            if result == {:ok, %{should_notify: true, reason: nil}},
-              do: "notified",
-              else: "skipped"
-
-          reason =
-            case result do
-              {:ok, %{reason: r}} -> r
-              _ -> nil
-            end
-
-          DeduplicationHelper.mark_kill_status(kill_id, status, reason)
-          result
-
-        {:ok, :duplicate, orig_status, orig_reason} ->
-          Logger.info("[Deduplication] Duplicate killmail detected and skipped",
-            kill_id: kill_id,
-            original_status: orig_status,
-            original_reason: orig_reason
-          )
-
-          {:ok,
-           %{
-             should_notify: false,
-             reason: "Duplicate kill",
-             original_status: orig_status,
-             original_reason: orig_reason
-           }}
-      end
+      check_deduplication_and_decide(kill_id)
     else
       false -> {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
       _ -> {:ok, %{should_notify: false, reason: "Notifications disabled"}}
@@ -70,8 +32,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_notifications_enabled(_kill_id) do
-    notifications_enabled = Features.notifications_enabled?()
-    system_notifications_enabled = Features.system_notifications_enabled?()
+    notifications_enabled = Config.notifications_enabled?()
+    system_notifications_enabled = Config.system_notifications_enabled?()
     notifications_enabled && system_notifications_enabled
   end
 
@@ -82,7 +44,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_deduplication_and_decide(kill_id) do
-    case DeduplicationHelper.duplicate?(:kill, kill_id) do
+    case Deduplication.check(:kill, kill_id) do
       {:ok, :new} -> {:ok, %{should_notify: true, reason: nil}}
       {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
       {:error, _reason} -> {:ok, %{should_notify: true, reason: nil}}
@@ -103,117 +65,33 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Gets the system ID from a kill.
   """
   def get_kill_system_id(kill) do
-    Logger.debug(
-      "[Kill Determiner] Extracting system ID from killmail:\n#{inspect(kill, pretty: true, limit: :infinity)}"
-    )
-
     extract_system_id(kill)
   end
 
   # Private helper functions to extract system ID from different data structures
   defp extract_system_id(kill) when is_struct(kill, Killmail) do
-    Logger.debug("[Kill Determiner] Processing Killmail struct")
-
     case kill.esi_data do
       nil ->
-        Logger.debug("[Kill Determiner] No ESI data found")
         "unknown"
 
       esi_data ->
-        Logger.debug("[Kill Determiner] Found ESI data:\n#{inspect(esi_data)}")
-
         case Map.get(esi_data, "solar_system_id") do
-          nil ->
-            Logger.debug("[Kill Determiner] No solar_system_id in ESI data")
-            "unknown"
-
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Unexpected system ID format: #{inspect(other)}")
-            "unknown"
+          nil -> "unknown"
+          id when is_integer(id) -> to_string(id)
+          id when is_binary(id) -> id
+          _ -> "unknown"
         end
     end
   end
 
   defp extract_system_id(kill) when is_map(kill) do
-    Logger.debug("[Kill Determiner] Processing map data")
     extract_system_id_from_map(kill)
   end
 
-  defp extract_system_id(other) do
-    Logger.debug("[Kill Determiner] Unexpected killmail format: #{inspect(other)}")
-    "unknown"
-  end
+  defp extract_system_id(_), do: "unknown"
 
   defp extract_system_id_from_map(kill) do
-    Logger.debug("[Kill Determiner] Checking map paths:\n#{inspect(kill)}")
-
-    cond do
-      esi_data = Map.get(kill, "esi_data") ->
-        Logger.debug("[Kill Determiner] Found ESI data path:\n#{inspect(esi_data)}")
-
-        case Map.get(esi_data, "solar_system_id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in map: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in map: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Invalid system ID in map: #{inspect(other)}")
-            "unknown"
-        end
-
-      system = Map.get(kill, "system") ->
-        Logger.debug("[Kill Determiner] Found system path:\n#{inspect(system)}")
-
-        case Map.get(system, "id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in system path: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in system path: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Invalid system ID in system path: #{inspect(other)}")
-            "unknown"
-        end
-
-      solar_system = Map.get(kill, "solar_system") ->
-        Logger.debug("[Kill Determiner] Found solar_system path:\n#{inspect(solar_system)}")
-
-        case Map.get(solar_system, "id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in solar_system path: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in solar_system path: #{id}")
-            id
-
-          other ->
-            Logger.debug(
-              "[Kill Determiner] Invalid system ID in solar_system path: #{inspect(other)}"
-            )
-
-            "unknown"
-        end
-
-      true ->
-        Logger.debug("[Kill Determiner] No valid system ID path found")
-        "unknown"
-    end
+    Map.get(kill, "solar_system_id", "unknown")
   end
 
   @doc """
@@ -226,14 +104,18 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the system is tracked
     - false otherwise
   """
-  def tracked_system?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    tracked_system?(system_id_str)
-  end
+  def tracked_system?(system_id) when is_integer(system_id), do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    cache_key = CacheKeys.tracked_system(system_id_str)
-    CacheRepo.get(cache_key) != nil
+    result = CacheRepo.get(CacheKeys.map_systems())
+    case result do
+      {:ok, systems} when is_list(systems) ->
+        Enum.any?(systems, fn system ->
+          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+          to_string(id) == system_id_str
+        end)
+      _ -> false
+    end
   end
 
   def tracked_system?(_), do: false
@@ -273,13 +155,17 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Get all tracked character IDs
   defp get_all_tracked_character_ids do
-    all_characters = CacheRepo.get(CacheKeys.character_list()) || []
+    case CacheRepo.get(CacheKeys.character_list()) do
+      {:ok, all_characters} when is_list(all_characters) ->
+        Enum.map(all_characters, fn char ->
+          character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
+          if character_id, do: to_string(character_id), else: nil
+        end)
+        |> Enum.reject(&is_nil/1)
 
-    Enum.map(all_characters, fn char ->
-      character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
-      if character_id, do: to_string(character_id), else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
+      _ ->
+        []
+    end
   end
 
   # Extract victim ID from kill data
@@ -292,7 +178,14 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # Check if victim is tracked through direct cache lookup
   defp check_direct_victim_tracking(victim_id_str) do
     direct_cache_key = CacheKeys.tracked_character(victim_id_str)
-    CacheRepo.get(direct_cache_key) != nil
+
+    tracked =
+      case CacheRepo.get(direct_cache_key) do
+        {:ok, _} -> true
+        _ -> false
+      end
+
+    tracked
   end
 
   # Check if the victim in this kill is being tracked
@@ -439,15 +332,31 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the character is tracked
     - false otherwise
   """
-  def tracked_character?(character_id) when is_integer(character_id) do
-    character_id_str = Integer.to_string(character_id)
-    tracked_character?(character_id_str)
-  end
+  def tracked_character?(character_id) when is_integer(character_id), do: tracked_character?(to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    cache_key = CacheKeys.tracked_character(character_id_str)
-    CacheRepo.get(cache_key) != nil
+    result = CacheRepo.get(CacheKeys.character_list())
+    case result do
+      {:ok, characters} when is_list(characters) ->
+        Enum.any?(characters, fn char ->
+          id = Map.get(char, :character_id) || Map.get(char, "character_id")
+          to_string(id) == character_id_str
+        end)
+      _ -> false
+    end
   end
 
   def tracked_character?(_), do: false
+
+  # defp typeof(val) do
+  #   cond do
+  #     is_integer(val) -> :integer
+  #     is_binary(val) -> :binary
+  #     is_atom(val) -> :atom
+  #     is_float(val) -> :float
+  #     is_list(val) -> :list
+  #     is_map(val) -> :map
+  #     true -> :unknown
+  #   end
+  # end
 end

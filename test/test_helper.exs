@@ -6,15 +6,13 @@ Application.put_env(:wanderer_notifier, :discord_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_enabled, false)
 Application.put_env(:wanderer_notifier, :character_tracking_enabled, false)
 Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
-Application.put_env(:wanderer_notifier, :kill_charts_enabled, false)
-Application.put_env(:wanderer_notifier, :map_charts_enabled, false)
 
 # Configure Mox
 Application.ensure_all_started(:mox)
 
 # Define single mock for repository
-Mox.defmock(WandererNotifier.Data.Cache.RepositoryMock,
-  for: WandererNotifier.Data.Cache.RepositoryBehaviour
+Mox.defmock(WandererNotifier.Cache.RepositoryMock,
+  for: WandererNotifier.Cache.RepositoryBehaviour
 )
 
 # Configure cache implementation
@@ -23,7 +21,7 @@ Application.put_env(:wanderer_notifier, :cache_impl, WandererNotifier.ETSCache)
 Application.put_env(
   :wanderer_notifier,
   :cache_repository,
-  WandererNotifier.Data.Cache.RepositoryMock
+  WandererNotifier.Cache.RepositoryMock
 )
 
 # Start ExUnit with global mode disabled
@@ -66,43 +64,18 @@ end
 {:ok, _pid} = WandererNotifier.TestSupervisor.start_link([])
 
 # Define mocks for external services
-Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
-  for: WandererNotifier.Api.ZKill.ServiceBehaviour
-)
-
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 
 # Configure application to use mocks
-Application.put_env(:wanderer_notifier, :zkill_service, WandererNotifier.Api.ZKill.ServiceMock)
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
 # Cache-related mocks
-Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Data.Cache.CacheBehaviour)
+Mox.defmock(WandererNotifier.MockCache, for: WandererNotifier.Cache.CacheBehaviour)
 
 # Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockKillmailChartAdapter,
-  for: WandererNotifier.ChartService.KillmailChartAdapterBehaviour
-)
-
-# Set up application environment for testing
-Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.Client)
-Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.Service)
-Application.put_env(:wanderer_notifier, :cache_helpers, WandererNotifier.MockCacheHelpers)
-Application.put_env(:wanderer_notifier, :repository, WandererNotifier.MockRepository)
-Application.put_env(:wanderer_notifier, :logger, WandererNotifier.MockLogger)
-
-Application.put_env(
-  :wanderer_notifier,
-  :killmail_chart_adapter,
-  WandererNotifier.MockKillmailChartAdapter
-)
-
-# Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Api.ZKill.ClientBehaviour)
 Mox.defmock(WandererNotifier.MockESI, for: WandererNotifier.Api.ESI.ServiceBehaviour)
 Mox.defmock(WandererNotifier.MockLogger, for: WandererNotifier.Logger.Behaviour)
-Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.Api.Http.Behaviour)
-Mox.defmock(WandererNotifier.MockWebSocket, for: WandererNotifier.Api.ZKill.WebSocketBehaviour)
+Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HttpClient.Behaviour)
 
 # Define mocks for notifiers
 Mox.defmock(WandererNotifier.MockStructuredFormatter,
@@ -120,13 +93,9 @@ Application.put_env(:wanderer_notifier, :discord_notifier, WandererNotifier.Mock
 Mox.stub_with(WandererNotifier.MockDiscordNotifier, WandererNotifier.Test.Stubs.DiscordNotifier)
 
 # Define mocks for cache helpers
-Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Data.Cache.HelpersBehaviour)
+Mox.defmock(WandererNotifier.MockCacheHelpers, for: WandererNotifier.Cache.HelpersBehaviour)
 
-Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Data.Cache.RepositoryBehaviour)
-
-Mox.defmock(WandererNotifier.MockKillmailPersistence,
-  for: WandererNotifier.Resources.KillmailPersistenceBehaviour
-)
+Mox.defmock(WandererNotifier.MockRepository, for: WandererNotifier.Cache.RepositoryBehaviour)
 
 # Set Mox to verify on exit
 Application.put_env(:mox, :verify_on_exit, true)
@@ -145,3 +114,51 @@ Application.put_env(:wanderer_notifier, :config_module, WandererNotifier.MockCon
 Application.put_env(:wanderer_notifier, :cache_helpers_module, WandererNotifier.MockCacheHelpers)
 Application.put_env(:wanderer_notifier, :notifier_factory, WandererNotifier.MockNotifierFactory)
 Application.put_env(:wanderer_notifier, :date_module, WandererNotifier.MockDate)
+
+# Set up test configuration
+Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.MockHTTP)
+Application.put_env(:wanderer_notifier, :cache_client, WandererNotifier.MockCache)
+Application.put_env(:wanderer_notifier, :notifier_client, WandererNotifier.MockNotifier)
+
+# Set up test environment variables
+System.put_env("MAP_URL", "http://test.map.url")
+System.put_env("MAP_TOKEN", "test_map_token")
+System.put_env("MAP_NAME", "test_map")
+System.put_env("NOTIFIER_API_TOKEN", "test_notifier_token")
+System.put_env("LICENSE_KEY", "test_license_key")
+System.put_env("LICENSE_MANAGER_API_URL", "http://test.license.url")
+System.put_env("DISCORD_WEBHOOK_URL", "http://test.discord.url")
+
+# Configure logger level for tests
+Logger.configure(level: :warn)
+
+# Helper functions for tests
+defmodule WandererNotifier.TestHelpers do
+  @moduledoc """
+  Helper functions for tests.
+  """
+
+  def mock_http_response(status_code, body) do
+    {:ok, %{status_code: status_code, body: body}}
+  end
+
+  def mock_http_error(reason) do
+    {:error, reason}
+  end
+
+  def mock_cache_response(value) do
+    {:ok, value}
+  end
+
+  def mock_cache_error(reason) do
+    {:error, reason}
+  end
+
+  def mock_notifier_response do
+    :ok
+  end
+
+  def mock_notifier_error(reason) do
+    {:error, reason}
+  end
+end

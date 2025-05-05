@@ -6,13 +6,9 @@ defmodule WandererNotifier.Web.Router do
   import Plug.Conn
 
   alias WandererNotifier.Api.Controllers.{
-    ActivityChartController,
-    CharacterController,
-    ChartController,
-    DebugController,
     HealthController,
-    KillController,
-    NotificationController
+    NotificationController,
+    WebController
   }
 
   # Basic request logging
@@ -51,13 +47,8 @@ defmodule WandererNotifier.Web.Router do
 
   # API Routes
   forward("/api/health", to: HealthController)
-  forward("/api/character-kills", to: CharacterController)
-  forward("/api/characters", to: CharacterController)
-  forward("/api/kills", to: KillController)
   forward("/api/notifications", to: NotificationController)
-  forward("/api/debug", to: DebugController)
-  forward("/api/charts", to: ChartController)
-  forward("/api/activity-charts", to: ActivityChartController)
+  forward("/api/debug", to: WebController)
 
   # React app routes
   get "/schedulers" do

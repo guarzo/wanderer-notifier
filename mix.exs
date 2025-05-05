@@ -40,16 +40,13 @@ defmodule WandererNotifier.MixProject do
       {:plug, "~> 1.14"},
       {:plug_cowboy, "~> 2.6"},
       {:mime, "~> 2.0"},
-      {:ecto_sql, "~> 3.10"},
-      {:postgrex, "~> 0.17"},
-      {:ash, "~> 3.4"},
-      {:ash_postgres, "~> 2.5"},
       {:decimal, "~> 2.1"},
       {:logger_file_backend, "~> 0.0.13"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:bunt, "~> 0.2.1"},
       {:exsync, "~> 0.2", only: :dev},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+      {:crontab, "~> 1.1"}
     ]
   end
 

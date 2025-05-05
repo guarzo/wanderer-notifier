@@ -3,7 +3,7 @@ defmodule WandererNotifier.MockZKillClient do
   Mock implementation of the ZKillboard client for testing.
   """
 
-  @behaviour WandererNotifier.Api.ZKill.ClientBehaviour
+  @behaviour WandererNotifier.Killmail.ZKillClient
 
   @impl true
   def get_single_killmail(_kill_id), do: {:ok, []}
@@ -61,63 +61,75 @@ defmodule WandererNotifier.MockESI do
   end
 end
 
-defmodule WandererNotifier.ETSCache do
+defmodule WandererNotifier.Test.Support.Mocks do
   @moduledoc """
-  ETS-based implementation of cache behavior for testing using ETS tables
+  Mock implementations for testing.
   """
 
-  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
+  alias WandererNotifier.Cache.Keys
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
+  @behaviour WandererNotifier.Cache.Behaviour
+
+  # -- Cache Implementation --
 
   @impl true
-  def get(key) do
-    case :ets.lookup(:cache_table, key) do
-      [{^key, value}] -> {:ok, value}
-      [] -> {:error, :not_found}
-    end
-  end
+  def get(key), do: {:ok, Process.get({:cache, key})}
 
   @impl true
-  def set(key, value, _ttl \\ nil) do
-    :ets.insert(:cache_table, {key, value})
+  def set(key, value, _ttl) do
+    AppLogger.cache_debug("Setting cache value with TTL",
+      key: key,
+      value: value
+    )
+
+    Process.put({:cache, key}, value)
     {:ok, value}
   end
 
   @impl true
-  def put(key, value, _ttl \\ nil) do
-    :ets.insert(:cache_table, {key, value})
+  def put(key, value) do
+    Process.put({:cache, key}, value)
     {:ok, value}
   end
 
   @impl true
   def delete(key) do
-    :ets.delete(:cache_table, key)
+    Process.delete({:cache, key})
     :ok
   end
 
   @impl true
   def clear do
-    :ets.delete_all_objects(:cache_table)
+    # This is a simplified clear that only clears cache-related process dictionary entries
+    Process.get_keys()
+    |> Enum.filter(fn
+      {:cache, _} -> true
+      _ -> false
+    end)
+    |> Enum.each(&Process.delete/1)
+
     :ok
   end
 
   @impl true
-  def get_and_update(key, update_fn) do
-    case get(key) do
-      {:ok, value} ->
-        case update_fn.(value) do
-          {get_value, update_value} ->
-            set(key, update_value)
-            {:ok, get_value}
-        end
+  def get_and_update(key, update_fun) do
+    current = Process.get({:cache, key})
+    {current_value, new_value} = update_fun.(current)
+    Process.put({:cache, key}, new_value)
+    {:ok, {current_value, new_value}}
+  end
 
-      {:error, :not_found} ->
-        case update_fn.(nil) do
-          {get_value, update_value} ->
-            set(key, update_value)
-            {:ok, get_value}
-        end
+  @impl true
+  def get_recent_kills do
+    case get(Keys.zkill_recent_kills()) do
+      {:ok, kills} when is_list(kills) -> kills
+      _ -> []
     end
   end
+
+  # -- Other Mock Implementations --
+  # Add other mock implementations here as needed
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -152,23 +164,6 @@ defmodule WandererNotifier.MockRepository do
   def clear, do: :ok
 end
 
-defmodule WandererNotifier.MockKillmailPersistence do
-  @moduledoc """
-  Mock implementation of the killmail persistence service for testing.
-  """
-
-  @behaviour WandererNotifier.Resources.KillmailPersistenceBehaviour
-
-  @impl true
-  def maybe_persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail), do: {:ok, %{}}
-
-  @impl true
-  def persist_killmail(_killmail, _character_id), do: {:ok, %{}}
-end
-
 defmodule WandererNotifier.MockLogger do
   @moduledoc """
   Mock implementation of the logger for testing.
@@ -188,106 +183,99 @@ end
 
 defmodule WandererNotifier.MockConfig do
   @moduledoc """
-  Mock implementation of the config for testing.
+  Mock for the config module.
   """
 
   @behaviour WandererNotifier.Config.Behaviour
-
-  def start_link do
-    Agent.start_link(
-      fn ->
-        %{
-          kill_charts_enabled: true,
-          map_charts_enabled: true,
-          character_notifications_enabled: true,
-          character_tracking_enabled: true,
-          system_notifications_enabled: true,
-          track_kspace_systems: true,
-          env: :test
-        }
-      end,
-      name: __MODULE__
-    )
-  end
-
-  def set_kill_charts_enabled(value) do
-    Agent.update(__MODULE__, &Map.put(&1, :kill_charts_enabled, value))
-  end
-
-  @impl true
-  def get_env(key, default \\ nil) do
-    case key do
-      :features -> %{track_kspace_systems: true}
-      _ -> default
-    end
-  end
-
-  @impl true
-  def get_map_config, do: %{}
-
-  @impl true
-  def map_charts_enabled?, do: true
-
-  @impl true
-  def kill_charts_enabled? do
-    Agent.get(__MODULE__, & &1.kill_charts_enabled)
-  end
-
-  @impl true
-  def character_notifications_enabled?, do: true
 
   @impl true
   def character_tracking_enabled?, do: true
 
   @impl true
+  def character_notifications_enabled?, do: true
+
+  @impl true
   def system_notifications_enabled?, do: true
 
   @impl true
-  def track_kspace_systems?, do: true
+  def get_feature_status do
+    %{
+      notifications_enabled: true,
+      character_notifications_enabled: true,
+      system_notifications_enabled: true,
+      kill_notifications_enabled: true,
+      character_tracking_enabled: true,
+      system_tracking_enabled: true,
+      tracked_systems_notifications_enabled: true,
+      tracked_characters_notifications_enabled: true,
+      status_messages_disabled: true,
+      track_kspace_systems: true
+    }
+  end
 
   @impl true
-  def license_key, do: "test-license-key"
+  def discord_channel_id_for(channel) do
+    case channel do
+      :main -> "123456789"
+      :system_kill -> "123456789"
+      :character_kill -> "123456789"
+      :system -> "123456789"
+      :character -> "123456789"
+      _ -> "123456789"
+    end
+  end
 
   @impl true
-  def license_manager_api_key, do: "test-api-key"
+  def get_map_config do
+    %{
+      url: "https://wanderer.ltd",
+      name: "TestMap",
+      token: "test-token",
+      csrf_token: "test-csrf-token"
+    }
+  end
 
   @impl true
-  def license_manager_api_url, do: "https://test-license-api.example.com"
-
-  @impl true
-  def map_csrf_token, do: "test-csrf-token"
-
-  @impl true
-  def map_name, do: "Test Map"
-
-  @impl true
-  def map_token, do: "test-map-token"
-
-  @impl true
-  def map_url, do: "https://test-map.example.com"
-
-  @impl true
-  def notifier_api_token, do: "test-notifier-token"
+  def get_env(key, default) do
+    case key do
+      :webhook_url -> "https://discord.com/api/webhooks/123/abc"
+      :map_url -> "https://wanderer.ltd"
+      :map_name -> "TestMap"
+      :map_token -> "test-token"
+      :test_mode -> true
+      _ -> default
+    end
+  end
 
   @impl true
   def static_info_cache_ttl, do: 3600
 
   @impl true
-  def discord_channel_id_for_activity_charts, do: "123456789"
+  def map_url, do: "https://wanderer.ltd"
 
   @impl true
-  def discord_channel_id_for(:kill_charts), do: "123456789"
-  def discord_channel_id_for(_), do: nil
+  def map_name, do: "TestMap"
 
   @impl true
-  def get_feature_status do
-    %{
-      kill_notifications_enabled: true,
-      system_tracking_enabled: true,
-      character_tracking_enabled: true,
-      activity_charts: true
-    }
-  end
+  def map_token, do: "test-token"
+
+  @impl true
+  def map_csrf_token, do: "test-csrf-token"
+
+  @impl true
+  def license_key, do: "test-license-key"
+
+  @impl true
+  def license_manager_api_url, do: "https://license.example.com"
+
+  @impl true
+  def license_manager_api_key, do: "test-api-key"
+
+  @impl true
+  def notifier_api_token, do: "test-api-token"
+
+  @impl true
+  def track_kspace_systems?, do: true
 end
 
 defmodule WandererNotifier.MockCacheHelpers do
@@ -362,3 +350,5 @@ Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
   for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
 )
+
+Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Killmail.ZKillClient)

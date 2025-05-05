@@ -6,6 +6,7 @@ defmodule WandererNotifier.Core.Stats do
   """
   use GenServer
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  require Logger
 
   # Client API
 
@@ -107,6 +108,13 @@ defmodule WandererNotifier.Core.Stats do
     WebSocket: #{connected}, last message #{last_message}")
   end
 
+  @doc """
+  Sets the tracked count for a specific type (:systems or :characters).
+  """
+  def set_tracked_count(type, count) when type in [:systems, :characters] and is_integer(count) do
+    GenServer.cast(__MODULE__, {:set_tracked_count, type, count})
+  end
+
   # Server Implementation
 
   @impl true
@@ -186,6 +194,37 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @impl true
+  def handle_cast({:set_tracked_count, type, count}, state) do
+    key =
+      case type do
+        :systems -> :systems_count
+        :characters -> :characters_count
+      end
+    {:noreply, Map.put(state, key, count)}
+  end
+
+  @impl true
+  def handle_cast({:update_counts, systems_count, characters_count, notifications_count}, state) do
+    # Update only the provided counts, leave others unchanged
+    state =
+      state
+      |> maybe_update(:systems_count, systems_count)
+      |> maybe_update(:characters_count, characters_count)
+      |> maybe_update_notifications(notifications_count)
+
+    {:noreply, state}
+  end
+
+  defp maybe_update(state, _key, nil), do: state
+  defp maybe_update(state, key, value), do: Map.put(state, key, value)
+
+  defp maybe_update_notifications(state, nil), do: state
+  defp maybe_update_notifications(state, count) do
+    notifications = Map.put(state.notifications, :total, count)
+    %{state | notifications: notifications}
+  end
+
+  @impl true
   def handle_call(:get_stats, _from, state) do
     uptime_seconds =
       case state.websocket.startup_time do
@@ -200,7 +239,9 @@ defmodule WandererNotifier.Core.Stats do
       notifications: state.notifications,
       websocket: state.websocket,
       first_notifications: Map.get(state, :first_notifications, %{}),
-      processing: state.processing
+      processing: state.processing,
+      systems_count: Map.get(state, :systems_count, 0),
+      characters_count: Map.get(state, :characters_count, 0)
     }
 
     {:reply, stats, state}

@@ -1,17 +1,18 @@
-defmodule WandererNotifier.TestCacheStubs do
+defmodule WandererNotifier.Test.Support.TestCacheStubs do
   @moduledoc """
-  Stub implementation of the cache behavior for testing.
+  Test stubs for cache behavior.
   """
-  @behaviour WandererNotifier.Data.Cache.CacheBehaviour
+
+  @behaviour WandererNotifier.Cache.Behaviour
 
   @impl true
-  def get(_key), do: nil
+  def get(_key), do: {:ok, nil}
 
   @impl true
-  def set(_key, _value, _ttl), do: :ok
+  def set(_key, value, _ttl), do: {:ok, value}
 
   @impl true
-  def put(_key, _value), do: :ok
+  def put(_key, value), do: {:ok, value}
 
   @impl true
   def delete(_key), do: :ok
@@ -20,8 +21,11 @@ defmodule WandererNotifier.TestCacheStubs do
   def clear, do: :ok
 
   @impl true
-  def get_and_update(_key, fun) do
-    {old, new} = fun.(nil)
-    {old, new}
+  def get_and_update(_key, update_fun) do
+    {current, updated} = update_fun.(nil)
+    {:ok, {current, updated}}
   end
+
+  @impl true
+  def get_recent_kills, do: []
 end

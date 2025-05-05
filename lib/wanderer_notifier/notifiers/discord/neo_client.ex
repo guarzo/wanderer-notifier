@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
-  alias WandererNotifier.Config.Notifications
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
@@ -20,8 +20,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   Gets the configured Discord channel ID as an integer.
   """
   def channel_id do
-    config = Notifications.get_discord_config()
-    normalize_channel_id(config.main_channel)
+    normalize_channel_id(Config.discord_channel_id())
   end
 
   # -- MESSAGING API --
@@ -73,7 +72,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   defp send_embed_to_channel(embed, target_channel) do
     # Convert to Nostrum.Struct.Embed
     discord_embed = convert_to_nostrum_embed(embed)
-
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     case Message.create(target_channel, embeds: [discord_embed]) do
       {:ok, _message} ->
@@ -131,7 +129,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     # Convert to Nostrum structs
     discord_embed = convert_to_nostrum_embed(embed)
     discord_components = components
-
     # Log detailed info about what we're sending
     AppLogger.api_debug("Sending message with components via Nostrum",
       channel_id: target_channel,
@@ -426,7 +423,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # Apply system notification thumbnail fallback if needed
   defp get_thumbnail_with_fallback(embed) do
     thumbnail = extract_thumbnail(embed)
-
     # If this is a sun type notification with no thumbnail, use a hardcoded URL
     if is_nil(thumbnail) && Map.get(embed, "title", "") =~ "System Notification" do
       %Embed.Thumbnail{url: "https://images.evetech.net/types/45041/icon?size=64"}
@@ -438,7 +434,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # Extract thumbnail from the embed
   defp extract_thumbnail(embed) do
     thumbnail = Map.get(embed, "thumbnail")
-
     # Try different formats in order of likelihood
     cond do
       valid_thumbnail = extract_thumbnail_from_map(thumbnail) ->
