@@ -94,7 +94,7 @@ RUN apt-get update -y && \
         lsof \
         net-tools \
         gnupg \
-        curl 
+        curl \
     # Install Node.js
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \

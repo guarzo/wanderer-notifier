@@ -12,9 +12,9 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   # Get service status
   get "/status" do
-    case get_service_status(conn) do
+    case get_service_status() do
       {:ok, status} -> send_success(conn, status)
-      _error -> send_error(conn, 404, "oops")
+      {:error, reason} -> send_error(conn, 500, reason)
     end
   end
 
@@ -103,6 +103,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     |> Enum.each(fn %{module: module, enabled: enabled} ->
       if enabled, do: module.run()
     end)
+
     send_success(conn, %{message: "All schedulers execution triggered"})
   end
 
@@ -112,7 +113,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   # Private functions
 
-  defp get_service_status(conn) do
+  defp get_service_status() do
     AppLogger.api_info("Starting status endpoint processing")
 
     # Get license status safely
@@ -153,7 +154,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       })
 
-      send_error(conn, 500, "An unexpected error occurred")
+      {:error, "An unexpected error occurred"}
   end
 
   defp get_stats_safely do

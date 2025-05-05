@@ -4,6 +4,9 @@ defmodule WandererNotifier.Api.Helpers do
   """
   import Plug.Conn
 
+  @success_status 200
+  @error_key :error
+
   @doc """
   Sends a JSON response with the given status and data.
   """
@@ -16,17 +19,13 @@ defmodule WandererNotifier.Api.Helpers do
   @doc """
   Sends a 200 OK JSON response.
   """
-  def send_success(conn, data), do: send_json_response(conn, 200, data)
+  def send_success(conn, data), do: send_json_response(conn, @success_status, data)
 
   @doc """
   Sends an error response with the given status and message.
   """
-  def send_error(conn, status, message), do: send_json_response(conn, status, %{error: message})
-
-  @doc """
-  Renders a map or struct as JSON with the given status (default 200).
-  """
-  def render_json(conn, data, status \\ 200), do: send_json_response(conn, status, data)
+  def send_error(conn, status, message),
+    do: send_json_response(conn, status, %{@error_key => message})
 
   @doc """
   Parses the JSON body from the connection (assumes Plug.Parsers ran).

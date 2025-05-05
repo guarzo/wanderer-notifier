@@ -77,6 +77,7 @@ defmodule WandererNotifier.Config do
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
   def min_kill_value, do: get(:min_kill_value, 0)
   def max_notifications_per_minute, do: get(:max_notifications_per_minute, 10)
+  def discord_kill_channel_id, do: get(:kill_channel_id)
 
   def character_exclude_list do
     get(:character_exclude_list, "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)

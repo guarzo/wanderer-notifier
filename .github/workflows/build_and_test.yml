@@ -83,8 +83,22 @@ jobs:
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
     steps:
-      <<: *checkout-cache
-      <<: *elixir-setup
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          branch: ${{ github.event.inputs.branch || 'main' }}
+          cache-key-prefix: mix
+          cache-paths: |
+            deps
+            _build
+            priv/static
+      - name: Common Elixir Setup
+        uses: ./.github/actions/common-elixir-setup
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
       - name: Install dependencies
         run: |
           mix deps.get
@@ -105,8 +119,22 @@ jobs:
     env:
       MIX_ENV: dev
     steps:
-      <<: *checkout-cache
-      <<: *elixir-setup
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          branch: ${{ github.event.inputs.branch || 'main' }}
+          cache-key-prefix: mix
+          cache-paths: |
+            deps
+            _build
+            priv/static
+      - name: Common Elixir Setup
+        uses: ./.github/actions/common-elixir-setup
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
       - name: Install dependencies
         run: |
           mix local.hex --force
@@ -125,10 +153,39 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
-      <<: *checkout-cache
-      <<: *elixir-setup
-      <<: *node-setup
-      <<: *docker-build
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Common Checkout and Cache
+        uses: ./.github/actions/common-checkout-cache
+        with:
+          branch: ${{ github.event.inputs.branch || 'main' }}
+          cache-key-prefix: mix
+          cache-paths: |
+            deps
+            _build
+            priv/static
+      - name: Common Elixir Setup
+        uses: ./.github/actions/common-elixir-setup
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+      - name: Common Node.js Setup
+        uses: ./.github/actions/common-node-setup
+        with:
+          node_version: "20"
+          cache_dependency_path: "renderer/package-lock.json"
+      - name: Build Docker image (SHA tagged)
+        uses: ./.github/actions/common-docker-build
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ github.sha }}
+          build-args: |
+            APP_VERSION=0.0.0-ci-test
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
       - name: Full Docker validation with web server
         env:
           DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
@@ -156,15 +213,31 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
-      <<: *checkout-cache
+      - name: Checkout code
+        uses: actions/checkout@v3
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version
         with:
           mode: release
           version_type: ${{ github.event.inputs.version_type }}
-      <<: *node-setup
-      <<: *docker-build
+      - name: Common Node.js Setup
+        uses: ./.github/actions/common-node-setup
+        with:
+          node_version: "20"
+          cache_dependency_path: "renderer/package-lock.json"
+      - name: Build Docker image (SHA tagged)
+        uses: ./.github/actions/common-docker-build
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ github.sha }}
+          build-args: |
+            APP_VERSION=0.0.0-ci-test
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
       # Add additional release steps as needed (tagging, pushing, etc.)
 
   adhoc:
@@ -174,15 +247,31 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
-      <<: *checkout-cache
+      - name: Checkout code
+        uses: actions/checkout@v3
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version
         with:
           mode: adhoc
           branch: ${{ github.event.inputs.branch }}
-      <<: *node-setup
-      <<: *docker-build
+      - name: Common Node.js Setup
+        uses: ./.github/actions/common-node-setup
+        with:
+          node_version: "20"
+          cache_dependency_path: "renderer/package-lock.json"
+      - name: Build Docker image (SHA tagged)
+        uses: ./.github/actions/common-docker-build
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ github.sha }}
+          build-args: |
+            APP_VERSION=0.0.0-ci-test
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
       # Add additional adhoc steps as needed (pushing, etc.)
 
   automatic:
@@ -192,12 +281,28 @@ jobs:
     env:
       MIX_ENV: prod
     steps:
-      <<: *checkout-cache
+      - name: Checkout code
+        uses: actions/checkout@v3
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version
         with:
           mode: automatic
-      <<: *node-setup
-      <<: *docker-build
-      # Add additional automatic steps as needed (pushing, etc.) 
+      - name: Common Node.js Setup
+        uses: ./.github/actions/common-node-setup
+        with:
+          node_version: "20"
+          cache_dependency_path: "renderer/package-lock.json"
+      - name: Build Docker image (SHA tagged)
+        uses: ./.github/actions/common-docker-build
+        with:
+          context: .
+          push: false
+          load: true
+          tags: guarzo/wanderer-notifier:sha-${{ github.sha }}
+          build-args: |
+            APP_VERSION=0.0.0-ci-test
+            WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
+          cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
+          cache-to: type=inline
+      # Add additional automatic steps as needed (pushing, etc.)

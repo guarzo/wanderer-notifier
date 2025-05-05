@@ -12,6 +12,25 @@ env_vars = source!(".env")
 # Explicitly set all .env variables in the process environment
 Enum.each(env_vars, fn {k, v} -> System.put_env(k, v) end)
 
+# Helper to parse boolean env vars
+parse_bool = fn var, default ->
+  val = System.get_env(var)
+
+  case String.downcase(val || "") do
+    "true" -> true
+    "1" -> true
+    "yes" -> true
+    "on" -> true
+    "false" -> false
+    "0" -> false
+    "no" -> false
+    "off" -> false
+    "" -> default
+    nil -> default
+    _ -> default
+  end
+end
+
 config :nostrum,
   token: fetch_env!.("WANDERER_DISCORD_BOT_TOKEN")
 
@@ -26,22 +45,18 @@ config :wanderer_notifier,
   discord_character_kill_channel_id: System.get_env("WANDERER_CHARACTER_KILL_CHANNEL_ID") || "",
   discord_system_channel_id: System.get_env("WANDERER_SYSTEM_CHANNEL_ID") || "",
   discord_character_channel_id: System.get_env("WANDERER_CHARACTER_CHANNEL_ID") || "",
+  kill_channel_id: System.get_env("WANDERER_DISCORD_KILL_CHANNEL_ID") || "",
   license_manager_api_url: fetch_env!.("WANDERER_LICENSE_MANAGER_URL"),
   features: %{
-    notifications_enabled: (System.get_env("WANDERER_NOTIFICATIONS_ENABLED") || "true") == "true",
+    notifications_enabled: parse_bool.("WANDERER_NOTIFICATIONS_ENABLED", true),
     character_notifications_enabled:
-      (System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED") || "true") == "true",
-    system_notifications_enabled:
-      (System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED") || "true") == "true",
-    kill_notifications_enabled:
-      (System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED") || "true") == "true",
-    character_tracking_enabled:
-      (System.get_env("WANDERER_CHARACTER_TRACKING_ENABLED") || "true") == "true",
-    system_tracking_enabled:
-      (System.get_env("WANDERER_SYSTEM_TRACKING_ENABLED") || "true") == "true",
-    status_messages_disabled:
-      (System.get_env("WANDERER_DISABLE_STATUS_MESSAGES") || "false") == "true",
-    track_kspace_systems: (System.get_env("WANDERER_FEATURE_TRACK_KSPACE") || "true") == "true"
+      parse_bool.("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
+    system_notifications_enabled: parse_bool.("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
+    kill_notifications_enabled: parse_bool.("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
+    character_tracking_enabled: parse_bool.("WANDERER_CHARACTER_TRACKING_ENABLED", true),
+    system_tracking_enabled: parse_bool.("WANDERER_SYSTEM_TRACKING_ENABLED", true),
+    status_messages_disabled: parse_bool.("WANDERER_DISABLE_STATUS_MESSAGES", false),
+    track_kspace_systems: parse_bool.("WANDERER_FEATURE_TRACK_KSPACE", true)
   },
   character_exclude_list:
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")

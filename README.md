@@ -225,7 +225,6 @@ Wanderer Notifier follows an event-driven, functional, and component-based archi
 - Notifications are determined based on configured rules
 - Messages are formatted and sent to Discord channels
 
-
 ## License
 
 This project is licensed according to the terms in the LICENSE file.
@@ -238,7 +237,7 @@ If you encounter issues or have questions, please open an issue on the project r
 
 ```
  mix archive.install hex bunt
- 
+
  docker buildx build . \
   --build-arg WANDERER_NOTIFIER_API_TOKEN=your_token_here \
   --build-arg APP_VERSION=local \

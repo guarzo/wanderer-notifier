@@ -75,9 +75,11 @@ defmodule WandererNotifier.Cache.Keys do
     Logger.warning("Cache.Keys.character/1 called with nil")
     nil
   end
+
   def character(character_id) when is_integer(character_id) or is_binary(character_id) do
     join_parts([@prefix_esi, @entity_character, to_string(character_id)])
   end
+
   def character(other) do
     require Logger
     Logger.warning("Cache.Keys.character/1 called with unexpected value: #{inspect(other)}")
@@ -110,8 +112,8 @@ defmodule WandererNotifier.Cache.Keys do
 
   def tracked_character(id) when is_map(id) or is_struct(id) do
     require Logger
-    Logger.error("[Cache.Keys] tracked_character/1 called with a map or struct!", value: inspect(id))
-    raise ArgumentError, "Cache.Keys.tracked_character/1 called with a map or struct: #{inspect(id)}"
+    Logger.warning("Cache.Keys.tracked_character/1 called with invalid input: #{inspect(id)}")
+    nil
   end
 
   @doc """
@@ -211,6 +213,16 @@ defmodule WandererNotifier.Cache.Keys do
   @doc """
   Generates a cache key for the tracked systems list.
 
+  tracked_systems/0 is an alias for tracked_systems_list/0 for backward compatibility.
+  """
+  @spec tracked_systems() :: String.t()
+  def tracked_systems do
+    tracked_systems_list()
+  end
+
+  @doc """
+  Generates a cache key for the tracked systems list.
+
   ## Examples
       iex> WandererNotifier.Cache.Keys.tracked_systems_list()
       "tracked:systems"
@@ -218,18 +230,6 @@ defmodule WandererNotifier.Cache.Keys do
   @spec tracked_systems_list() :: String.t()
   def tracked_systems_list do
     join_parts([@prefix_tracked, "systems"])
-  end
-
-  @doc """
-  Generates a cache key for the tracked characters list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.tracked_characters_list()
-      "tracked:characters"
-  """
-  @spec tracked_characters_list() :: String.t()
-  def tracked_characters_list do
-    join_parts([@prefix_tracked, "characters"])
   end
 
   @doc """
@@ -503,18 +503,6 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   @doc """
-  Generates a cache key for tracked systems.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.tracked_systems()
-      "tracked:systems"
-  """
-  @spec tracked_systems() :: String.t()
-  def tracked_systems do
-    tracked_systems_list()
-  end
-
-  @doc """
   Generates a cache key for a killmail.
 
   ## Examples
@@ -546,13 +534,12 @@ defmodule WandererNotifier.Cache.Keys do
       iex> WandererNotifier.Cache.Keys.alliance(12345)
       "esi:alliance:12345"
   """
-  @spec alliance(integer() | String.t()) :: String.t()
+  @spec alliance(integer() | String.t()) :: String.t() | nil
+  def alliance(nil), do: nil
+
   def alliance(alliance_id) when is_integer(alliance_id) or is_binary(alliance_id) do
     join_parts([@prefix_esi, @entity_alliance, to_string(alliance_id)])
   end
-
-  @spec alliance(integer() | String.t()) :: String.t() | nil
-  def alliance(nil), do: nil
 
   @doc """
   Generates a cache key for a ship type.
@@ -567,8 +554,7 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   @doc """
-  Returns the cache key for a system.
+  Returns the cache key for a system by delegating to the system/1 function.
   """
   def system_key(system_id) when is_integer(system_id), do: system(system_id)
-
 end

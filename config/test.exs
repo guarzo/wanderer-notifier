@@ -10,12 +10,14 @@ config :nostrum, token: "test_discord_token"
 
 # WandererNotifier test configuration
 config :wanderer_notifier,
-  discord_bot_token: "test_token",
-  discord_channel_id: "123456789",
+  discord: %{
+    bot_token: "test_token",
+    channel_id: "123456789"
+  },
   map_url: "https://example.com",
   map_token: "test_map_token",
   test_mode: true,
-  minimal_test: WandererNotifier.Config.fetch("MINIMAL_TEST", "false") == "true",
+  minimal_test: System.get_env("MINIMAL_TEST") == "true",
   features: %{
     notifications_enabled: true,
     character_notifications_enabled: true,

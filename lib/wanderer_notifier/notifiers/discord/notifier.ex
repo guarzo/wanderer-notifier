@@ -33,15 +33,16 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   # -- MESSAGE SENDING --
 
   def send_message(message, _feature \\ nil) do
-
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{inspect(message)}")
     else
       case message do
         msg when is_binary(msg) ->
           NeoClient.send_message(msg)
+
         embed when is_map(embed) ->
           NeoClient.send_embed(embed)
+
         _ ->
           AppLogger.processor_error("Unknown message type for Discord notification",
             type: inspect(message)
@@ -99,7 +100,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         color \\ @default_embed_color,
         _feature \\ nil
       ) do
-
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{title} - #{description} with image: #{image_url}")
     else
@@ -158,11 +158,13 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         AppLogger.processor_debug("Kill notification received",
           data_type: typeof(kill_data)
         )
+
         # Ensure we have a Killmail struct
         killmail =
           if is_struct(kill_data, Killmail),
             do: kill_data,
             else: struct(Killmail, Map.from_struct(kill_data))
+
         send_killmail_notification(killmail)
         WandererNotifier.Notifications.LicenseLimiter.increment(:killmail)
       else
@@ -176,6 +178,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
           kill_data: inspect(kill_data),
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
+
         {:error, e}
     end
   end
@@ -191,10 +194,15 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         message = PlainTextFormatter.plain_character_notification(character)
         NeoClient.send_message(message)
       end
+
       Stats.increment(:characters)
     rescue
       e ->
-        Logger.error("[Discord.Notifier] Exception in send_new_tracked_character_notification/1", error: Exception.message(e), stacktrace: Exception.format_stacktrace(__STACKTRACE__))
+        Logger.error("[Discord.Notifier] Exception in send_new_tracked_character_notification/1",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
         {:error, e}
     end
   end
@@ -210,15 +218,18 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         message = PlainTextFormatter.plain_system_notification(system)
         NeoClient.send_message(message)
       end
+
       Stats.increment(:systems)
       {:ok, :sent}
     rescue
       e ->
-        AppLogger.processor_error("[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)",
+        AppLogger.processor_error(
+          "[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)",
           error: Exception.message(e),
           system: inspect(system, pretty: true, limit: 1000),
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
+
         {:error, e}
     end
   end
@@ -269,23 +280,25 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Send formatted notification to Discord
   defp send_to_discord(formatted_notification, feature) do
-    # Skip actual sending in test mode
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{inspect(feature)}")
       {:ok, :sent}
     else
-      # Convert to Discord format
       discord_embed = CommonFormatter.to_discord_format(formatted_notification)
-
-      # Check if components are available
       components = Map.get(formatted_notification, :components, [])
       use_components = components != [] && FeatureFlags.components_enabled?()
+      # Use kill_channel_id for kill notifications
+      channel_id =
+        if feature in ["kill", :killmail],
+          do: WandererNotifier.Config.discord_kill_channel_id(),
+          else: nil
 
       if use_components do
-        NeoClient.send_message_with_components(discord_embed, components, nil)
+        NeoClient.send_message_with_components(discord_embed, components, channel_id)
       else
-        NeoClient.send_embed(discord_embed, nil)
+        NeoClient.send_embed(discord_embed, channel_id)
       end
+
       {:ok, :sent}
     end
   end
@@ -344,5 +357,4 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       send_to_discord(notification, :killmail)
     end
   end
-
 end

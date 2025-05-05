@@ -11,9 +11,9 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get recent kills
   get "/recent" do
-    case get_recent_kills(conn) do
+    case get_recent_kills() do
       {:ok, kills} -> send_success(conn, kills)
-      _error -> send_error(conn, 200, "world")
+      {:error, reason} -> send_error(conn, 500, reason)
     end
   end
 
@@ -29,7 +29,7 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get killmail list
   get "/kills" do
-    kills = WandererNotifier.Killmail.Cache.get_latest_killmails()
+    kills = Cache.get_latest_killmails()
     send_success(conn, kills)
   end
 
@@ -38,7 +38,7 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   end
 
   # Private functions
-  defp get_recent_kills(conn) do
+  defp get_recent_kills() do
     {:ok, Processor.get_recent_kills()}
   rescue
     error ->
@@ -47,6 +47,6 @@ defmodule WandererNotifier.Api.Controllers.KillController do
         stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       })
 
-      send_error(conn, 500, "An unexpected error occurred")
+      {:error, "An unexpected error occurred"}
   end
 end
