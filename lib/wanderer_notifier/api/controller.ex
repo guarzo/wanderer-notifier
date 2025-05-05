@@ -1,6 +1,7 @@
 defmodule WandererNotifier.Api.Controller do
   @moduledoc """
-  Base controller module that provides common functionality
+  Deprecated: Use WandererNotifier.Api.Helpers for response helpers.
+  This module is kept for backward compatibility only.
   """
 
   import Plug.Conn

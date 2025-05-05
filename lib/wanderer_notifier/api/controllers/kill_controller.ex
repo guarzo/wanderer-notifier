@@ -2,18 +2,8 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   @moduledoc """
   Controller for kill-related endpoints.
   """
-  use Plug.Router
-  import WandererNotifier.Api.Controller
-
-  plug(:match)
-
-  plug(Plug.Parsers,
-    parsers: [:json],
-    pass: ["application/json"],
-    json_decoder: Jason
-  )
-
-  plug(:dispatch)
+  use WandererNotifier.Api.ApiPipeline
+  import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Killmail.Cache
   alias WandererNotifier.Killmail.Processor
@@ -22,11 +12,8 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   # Get recent kills
   get "/recent" do
     case get_recent_kills(conn) do
-      {:ok, kills} ->
-        send_success(conn, kills)
-
-      _error ->
-        send_resp(conn, 200, "world")
+      {:ok, kills} -> send_success(conn, kills)
+      _error -> send_error(conn, 200, "world")
     end
   end
 

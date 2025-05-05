@@ -2,18 +2,8 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   @moduledoc """
   Controller for debug-related endpoints.
   """
-  use Plug.Router
-  import WandererNotifier.Api.Controller
-
-  plug(:match)
-
-  plug(Plug.Parsers,
-    parsers: [:json],
-    pass: ["application/json"],
-    json_decoder: Jason
-  )
-
-  plug(:dispatch)
+  use WandererNotifier.Api.ApiPipeline
+  import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Config
@@ -23,11 +13,8 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   # Get service status
   get "/status" do
     case get_service_status(conn) do
-      {:ok, status} ->
-        send_success(conn, status)
-
-      _error ->
-        send_resp(conn, 404, "oops")
+      {:ok, status} -> send_success(conn, status)
+      _error -> send_error(conn, 404, "oops")
     end
   end
 

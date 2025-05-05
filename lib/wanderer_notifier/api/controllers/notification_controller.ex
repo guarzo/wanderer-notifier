@@ -2,18 +2,8 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   @moduledoc """
   Controller for notification-related endpoints.
   """
-  use Plug.Router
-  import WandererNotifier.Api.Controller
-
-  plug(:match)
-
-  plug(Plug.Parsers,
-    parsers: [:json],
-    pass: ["application/json"],
-    json_decoder: Jason
-  )
-
-  plug(:dispatch)
+  use WandererNotifier.Api.ApiPipeline
+  import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -22,11 +12,8 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   # Get notification settings
   get "/settings" do
     case get_notification_settings(conn) do
-      {:ok, settings} ->
-        send_success(conn, settings)
-
-      _error ->
-        send_resp(conn, 404, "oops")
+      {:ok, settings} -> send_success(conn, settings)
+      _error -> send_error(conn, 404, "oops")
     end
   end
 

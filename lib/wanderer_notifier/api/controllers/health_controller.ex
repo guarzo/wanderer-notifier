@@ -2,18 +2,8 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   @moduledoc """
   Controller for health check endpoints.
   """
-  use Plug.Router
-  import WandererNotifier.Api.Controller
-
-  plug(:match)
-
-  plug(Plug.Parsers,
-    parsers: [:json],
-    pass: ["application/json"],
-    json_decoder: Jason
-  )
-
-  plug(:dispatch)
+  use WandererNotifier.Api.ApiPipeline
+  import WandererNotifier.Api.Helpers
 
   # Health check endpoint
   get "/" do
