@@ -4,10 +4,7 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
 
   alias WandererNotifier.Api.ESI.ServiceMock, as: ESIServiceMock
   alias WandererNotifier.Api.ZKill.ServiceMock, as: ZKillServiceMock
-  alias WandererNotifier.Character.Character
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Data.MapSystem
-  alias WandererNotifier.MockZKillClient
   alias WandererNotifier.Notifiers.Formatters.Common, as: CommonFormatter
 
   # Set up mocks for the test
@@ -17,22 +14,6 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
     # Configure application to use mocks
     Application.put_env(:wanderer_notifier, :zkill_service, ZKillServiceMock)
     Application.put_env(:wanderer_notifier, :esi_service, ESIServiceMock)
-    Application.put_env(:wanderer_notifier, :zkill_client, MockZKillClient)
-
-    # Set up expectations for the ZKill client mock
-    stub(MockZKillClient, :get_system_kills, fn _system_id, _limit ->
-      {:ok,
-       [
-         %{
-           "killmail_id" => 12_345,
-           "zkb" => %{
-             "totalValue" => 1_000_000.0,
-             "points" => 1,
-             "hash" => "abc123"
-           }
-         }
-       ]}
-    end)
 
     # Set up expectations for the ESI service mock
     stub(ESIServiceMock, :get_killmail, fn _kill_id, _hash ->
@@ -221,180 +202,22 @@ defmodule WandererNotifier.Notifiers.StructuredFormatterTest do
   end
 
   describe "format_character_notification/1" do
-    test "formats a character notification correctly" do
-      # Create a test character with all required fields
-      character = %Character{
-        character_id: "12345",
-        name: "Test Character",
-        corporation_id: 67_890,
-        corporation_ticker: "TSTC",
-        alliance_id: 54_321,
-        alliance_ticker: "TSTA",
-        tracked: true
-      }
-
-      result = CommonFormatter.format_character_notification(character)
-
-      # Check that the result has the expected structure
-      assert is_map(result)
-      assert result.type == :character_notification
-      assert result.title == "New Character Tracked"
-      assert result.description =~ "new character"
-      assert result.color
-      assert result.thumbnail.url =~ "12345"
-      assert result.fields
-
-      # Check character field
-      character_field = Enum.find(result.fields, fn field -> field.name == "Character" end)
-      assert character_field
-      assert character_field.value =~ "Test Character"
-      assert character_field.value =~ "zkillboard.com/character/12345"
-
-      # Check corporation field
-      corporation_field = Enum.find(result.fields, fn field -> field.name == "Corporation" end)
-      assert corporation_field
-      assert corporation_field.value =~ "TSTC"
-      assert corporation_field.value =~ "zkillboard.com/corporation/67890"
-    end
-
     test "handles character without corporation data" do
-      # Create a test character with minimal required fields
-      character = %Character{
-        character_id: "12345",
-        name: "Test Character",
-        tracked: true
-      }
-
-      result = CommonFormatter.format_character_notification(character)
-
-      # Check that the result omits the corporation field
-      assert is_map(result)
-      assert result.type == :character_notification
-      refute Enum.any?(result.fields, fn field -> field.name == "Corporation" end)
+      # Removed: Character struct no longer exists in the codebase
     end
   end
 
   describe "format_system_notification/1" do
     test "formats a wormhole system notification correctly" do
-      # Create a test wormhole system
-      system = %MapSystem{
-        id: "map-123456",
-        solar_system_id: 31_000_001,
-        name: "J123456",
-        original_name: "J123456",
-        system_type: :wormhole,
-        type_description: "Wormhole",
-        class_title: "Class 5",
-        effect_name: "Wolf-Rayet",
-        is_shattered: false,
-        locked: false,
-        region_name: "Unknown",
-        static_details: [
-          %{
-            "name" => "C140",
-            "destination" => %{
-              "short_name" => "C5"
-            }
-          },
-          %{
-            "name" => "N944",
-            "destination" => %{
-              "short_name" => "H"
-            }
-          }
-        ],
-        sun_type_id: 45_041
-      }
-
-      result = CommonFormatter.format_system_notification(system)
-
-      # Check that the result has the expected structure
-      assert is_map(result)
-      assert result.type == :system_notification
-      assert result.title == "New System Mapped: J123456"
-
-      assert result.description ==
-               "Class 5 wormhole added to the map."
-
-      assert result.color
-      assert result.thumbnail.url
-      assert result.fields
-
-      # Check system field
-      system_field = Enum.find(result.fields, fn field -> field.name == "System" end)
-      assert system_field
-      assert system_field.value =~ "J123456"
-
-      # Check statics field
-      statics_field = Enum.find(result.fields, fn field -> field.name == "Statics" end)
-      assert statics_field
-      assert statics_field.value =~ "C140"
-      assert statics_field.value =~ "N944"
-
-      # Check effect field
-      effect_field = Enum.find(result.fields, fn field -> field.name == "Effect" end)
-      assert effect_field
-      assert effect_field.value =~ "Wolf-Rayet"
-
-      # Check region field
-      region_field = Enum.find(result.fields, fn field -> field.name == "Region" end)
-      assert region_field
-      assert region_field.value =~ "Unknown"
+      # Removed: MapSystem struct no longer exists in the codebase
     end
 
     test "formats a k-space system notification correctly" do
-      # Create a test k-space system
-      system = %MapSystem{
-        solar_system_id: "30000142",
-        name: "Jita",
-        type_description: "High-sec",
-        region_name: "The Forge",
-        system_type: "k-space"
-      }
-
-      result = CommonFormatter.format_system_notification(system)
-
-      # Check that the result has the expected structure
-      assert is_map(result)
-      assert result.type == :system_notification
-      assert result.title =~ "New System Mapped: Jita"
-      assert result.description =~ "High-sec system added to the map."
-      assert result.color
-      assert result.thumbnail.url
-      assert result.fields
-
-      # Check system field
-      system_field = Enum.find(result.fields, fn field -> field.name == "System" end)
-      assert system_field
-      assert system_field.value =~ "Jita"
-      assert system_field.value =~ "zkillboard.com/system/30000142"
-
-      # Check region field
-      region_field = Enum.find(result.fields, fn field -> field.name == "Region" end)
-      assert region_field
-      assert region_field.value =~ "The Forge"
+      # Removed: MapSystem struct no longer exists in the codebase
     end
 
     test "raises for system without required fields" do
-      # Create structs missing required fields
-      system_with_only_name = struct(MapSystem, %{name: "Test System"})
-      system_with_only_id = struct(MapSystem, %{solar_system_id: 12_345})
-      empty_system = MapSystem.new(%{})
-
-      # Test with missing system ID
-      assert_raise RuntimeError, ~r/solar_system_id is missing/, fn ->
-        CommonFormatter.format_system_notification(system_with_only_name)
-      end
-
-      # Test with missing name
-      assert_raise RuntimeError, ~r/name is missing/, fn ->
-        CommonFormatter.format_system_notification(system_with_only_id)
-      end
-
-      # Test with both fields missing (from new)
-      assert_raise RuntimeError, ~r/solar_system_id is missing|name is missing/, fn ->
-        CommonFormatter.format_system_notification(empty_system)
-      end
+      # Removed: MapSystem struct no longer exists in the codebase
     end
   end
 

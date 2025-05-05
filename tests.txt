@@ -1,0 +1,1986 @@
+warning: the log level :warn is deprecated, use :warning instead
+  (logger 1.18.3) lib/logger.ex:1210: Logger.elixir_level_to_erlang_level/1
+  (logger 1.18.3) lib/logger.ex:687: anonymous fn/2 in Logger.configure/1
+  (elixir 1.18.3) lib/enum.ex:2546: Enum."-reduce/3-lists^foldl/2-0-"/3
+  (logger 1.18.3) lib/logger.ex:685: Logger.configure/1
+  test/test_helper.exs:87: (file)
+  (elixir 1.18.3) src/elixir_compiler.erl:77: :elixir_compiler.dispatch/4
+
+Running ExUnit with seed: 986502, max_cases: 48
+
+    warning: variable "character_data" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+ 86 │     test "returns a Character struct when successful", %{character_data: character_data} do
+    │                                                                          ~~~~~~~~~~~~~~
+    │
+    └─ test/wanderer_notifier/esi/service_test.exs:86:74: WandererNotifier.ESI.ServiceTest."test get_character_struct/2 returns a Character struct when successful"/1
+
+     warning: variable "corporation_data" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 123 │     test "returns a Corporation struct when successful", %{corporation_data: corporation_data} do
+     │                                                                              ~~~~~~~~~~~~~~~~
+     │
+     └─ test/wanderer_notifier/esi/service_test.exs:123:78: WandererNotifier.ESI.ServiceTest."test get_corporation_struct/2 returns a Corporation struct when successful"/1
+
+     warning: variable "alliance_data" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 143 │     test "returns an Alliance struct when successful", %{alliance_data: alliance_data} do
+     │                                                                         ~~~~~~~~~~~~~
+     │
+     └─ test/wanderer_notifier/esi/service_test.exs:143:73: WandererNotifier.ESI.ServiceTest."test get_alliance_struct/2 returns an Alliance struct when successful"/1
+
+     warning: variable "system_data" is unused (if the variable is not meant to be used, prefix it with an underscore)
+     │
+ 163 │     test "returns a SolarSystem struct when successful", %{system_data: system_data} do
+     │                                                                         ~~~~~~~~~~~
+     │
+     └─ test/wanderer_notifier/esi/service_test.exs:163:73: WandererNotifier.ESI.ServiceTest."test get_system_struct/2 returns a SolarSystem struct when successful"/1
+
+    warning: unused alias MapSystem
+    │
+ 12 │   alias WandererNotifier.Data.MapSystem
+    │   ~
+    │
+    └─ test/wanderer_notifier/data/cache/helpers_test.exs:12:3
+
+............
+
+  1) test channels should use fallback for missing channel IDs (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:29
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.channel_id/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.channel_id(:system_kill) == "main-channel"
+     stacktrace:
+       WandererNotifier.Config.Notifications.channel_id(:system_kill)
+       test/wanderer_notifier/config/notifications_test.exs:34: (test)
+
+
+
+  2) test key validation valid?/1 returns false for invalid keys (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:58
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.valid?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: refute Keys.valid?("invalid-key")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.valid?("invalid-key")
+       test/wanderer_notifier/data/cache/keys_test.exs:59: (test)
+
+
+
+  3) test key generation tracked_system/1 generates correct tracked system key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:17
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.tracked_system/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.tracked_system(30_004_759) == "tracked:system:30004759"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.tracked_system(30004759)
+       test/wanderer_notifier/data/cache/keys_test.exs:18: (test)
+
+    warning: WandererNotifier.MockHTTP.get/3 is undefined or private. Did you mean:
+
+          * get/1
+          * get/2
+
+    │
+ 15 │     result = WandererNotifier.MockHTTP.get("https://example.com", [], [])
+    │                                        ~
+    │
+    └─ test/wanderer_notifier/http/http_test.exs:15:40: WandererNotifier.HttpTest."test mocks HTTP client successfully"/1
+
+    warning: WandererNotifier.MockHTTP.get/3 is undefined or private. Did you mean:
+
+          * get/1
+          * get/2
+
+    │
+ 21 │     systems_result = WandererNotifier.MockHTTP.get("https://api.example.com/systems", [], [])
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/api/api_test.exs:21:48: WandererNotifier.ApiTest."test uses fixtures for API testing"/1
+    └─ test/wanderer_notifier/api/api_test.exs:27:45: WandererNotifier.ApiTest."test uses fixtures for API testing"/1
+
+
+
+  4) test get_discord_channel_id_for should return appropriate channel for character_kill (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:67
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.get_discord_channel_id_for/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.get_discord_channel_id_for(:character_kill) == "67890"
+     stacktrace:
+       WandererNotifier.Config.Notifications.get_discord_channel_id_for(:character_kill)
+       test/wanderer_notifier/config/notifications_test.exs:72: (test)
+
+
+
+  5) test pattern extraction extract_pattern/1 extracts correct pattern from keys (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:66
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.extract_pattern/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.extract_pattern("map:system:12345") == "map:system"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.extract_pattern("map:system:12345")
+       test/wanderer_notifier/data/cache/keys_test.exs:67: (test)
+
+
+
+  6) test get_discord_channel_id_for should map kill feature to system_kill channel (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:45
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.get_discord_channel_id_for/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.get_discord_channel_id_for(:kill) == "12345"
+     stacktrace:
+       WandererNotifier.Config.Notifications.get_discord_channel_id_for(:kill)
+       test/wanderer_notifier/config/notifications_test.exs:50: (test)
+
+    warning: WandererNotifier.Config.Application.get_env/2 is undefined (module WandererNotifier.Config.Application is not available or is yet to be defined)
+    │
+ 11 │     previous_env = Application.get_env(:wanderer_notifier, :env)
+    │                                ~
+    │
+    └─ test/wanderer_notifier/notifiers/discord/notifier_test.exs:11:32: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+
+    warning: WandererNotifier.Config.Application.put_env/3 is undefined (module WandererNotifier.Config.Application is not available or is yet to be defined)
+    │
+ 14 │     Application.put_env(:wanderer_notifier, :env, :test)
+    │                 ~
+    │
+    └─ test/wanderer_notifier/notifiers/discord/notifier_test.exs:14:17: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+    └─ test/wanderer_notifier/notifiers/discord/notifier_test.exs:18:19: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+
+
+
+  7) test key validation valid?/1 returns true for valid keys (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:52
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.valid?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.valid?("map:system:12345")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.valid?("map:system:12345")
+       test/wanderer_notifier/data/cache/keys_test.exs:53: (test)
+
+
+
+  8) test get_discord_channel_id_for should return appropriate channel for system_kill (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:56
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.get_discord_channel_id_for/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.get_discord_channel_id_for(:system_kill) == "12345"
+     stacktrace:
+       WandererNotifier.Config.Notifications.get_discord_channel_id_for(:system_kill)
+       test/wanderer_notifier/config/notifications_test.exs:61: (test)
+
+    warning: WandererNotifier.Cache.Repository.delete/1 is undefined (module WandererNotifier.Cache.Repository is not available or is yet to be defined)
+    │
+ 88 │       CacheRepo.delete("character:123456")
+    │                 ~
+    │
+    └─ test/wanderer_notifier/esi/service_test.exs:88:17: WandererNotifier.ESI.ServiceTest."test get_character_struct/2 returns a Character struct when successful"/1
+    └─ test/wanderer_notifier/esi/service_test.exs:125:17: WandererNotifier.ESI.ServiceTest."test get_corporation_struct/2 returns a Corporation struct when successful"/1
+    └─ test/wanderer_notifier/esi/service_test.exs:145:17: WandererNotifier.ESI.ServiceTest."test get_alliance_struct/2 returns an Alliance struct when successful"/1
+    └─ test/wanderer_notifier/esi/service_test.exs:165:17: WandererNotifier.ESI.ServiceTest."test get_system_struct/2 returns a SolarSystem struct when successful"/1
+
+     warning: WandererNotifier.Cache.Repository.put/2 is undefined (module WandererNotifier.Cache.Repository is not available or is yet to be defined)
+     │
+ 105 │       CacheRepo.put("character:123456", character_data)
+     │                 ~
+     │
+     └─ test/wanderer_notifier/esi/service_test.exs:105:17: WandererNotifier.ESI.ServiceTest."test get_character_struct/2 uses cached data when available"/1
+
+
+
+  9) test key type detection is_critical_key?/1 identifies critical keys correctly (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:88
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.is_critical_key?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.is_critical_key?("critical:app_state")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.is_critical_key?("critical:app_state")
+       test/wanderer_notifier/data/cache/keys_test.exs:89: (test)
+
+    warning: WandererNotifier.Config.Notifications.channel_id/1 is undefined (module WandererNotifier.Config.Notifications is not available or is yet to be defined)
+    │
+ 12 │       assert Notifications.channel_id(:system_kill) == "12345"
+    │                            ~
+    │
+    └─ test/wanderer_notifier/config/notifications_test.exs:12:28: WandererNotifier.Config.NotificationsTest."test channels should return system_kill channel ID"/1
+    └─ test/wanderer_notifier/config/notifications_test.exs:23:28: WandererNotifier.Config.NotificationsTest."test channels should return character_kill channel ID"/1
+    └─ test/wanderer_notifier/config/notifications_test.exs:34:28: WandererNotifier.Config.NotificationsTest."test channels should use fallback for missing channel IDs"/1
+    └─ test/wanderer_notifier/config/notifications_test.exs:37:28: WandererNotifier.Config.NotificationsTest."test channels should use fallback for missing channel IDs"/1
+
+    warning: WandererNotifier.Config.Notifications.get_discord_channel_id_for/1 is undefined (module WandererNotifier.Config.Notifications is not available or is yet to be defined)
+    │
+ 50 │       assert Notifications.get_discord_channel_id_for(:kill) == "12345"
+    │                            ~
+    │
+    └─ test/wanderer_notifier/config/notifications_test.exs:50:28: WandererNotifier.Config.NotificationsTest."test get_discord_channel_id_for should map kill feature to system_kill channel"/1
+    └─ test/wanderer_notifier/config/notifications_test.exs:61:28: WandererNotifier.Config.NotificationsTest."test get_discord_channel_id_for should return appropriate channel for system_kill"/1
+    └─ test/wanderer_notifier/config/notifications_test.exs:72:28: WandererNotifier.Config.NotificationsTest."test get_discord_channel_id_for should return appropriate channel for character_kill"/1
+
+
+
+ 10) test channels should return system_kill channel ID (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:7
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.channel_id/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.channel_id(:system_kill) == "12345"
+     stacktrace:
+       WandererNotifier.Config.Notifications.channel_id(:system_kill)
+       test/wanderer_notifier/config/notifications_test.exs:12: (test)
+
+    warning: WandererNotifier.Data.Cache.get/1 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+    │
+ 50 │       assert {:ok, ^value} = Cache.get(key)
+    │                                    ~
+    │
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:50:36: WandererNotifier.Data.CacheTest."test get/1 returns value when key exists"/1
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:54:43: WandererNotifier.Data.CacheTest."test get/1 returns error when key does not exist"/1
+
+    warning: WandererNotifier.Data.Cache.set/2 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+    │
+ 63 │       assert {:ok, ^value} = Cache.set(key, value)
+    │                                    ~
+    │
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:63:36: WandererNotifier.Data.CacheTest."test set/3 sets value successfully"/1
+
+    warning: WandererNotifier.Data.Cache.put/2 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+    │
+ 73 │       assert {:ok, ^value} = Cache.put(key, value)
+    │                                    ~
+    │
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:73:36: WandererNotifier.Data.CacheTest."test put/3 puts value successfully"/1
+
+
+
+ 11) test key generation killmail_exists/3 generates correct existence check key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:36
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.killmail_exists/3 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.killmail_exists(123, 456, "attacker") == "exists:killmail:123:456:attacker"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.killmail_exists(123, 456, "attacker")
+       test/wanderer_notifier/data/cache/keys_test.exs:37: (test)
+
+    warning: WandererNotifier.Data.Cache.delete/1 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+    │
+ 84 │       assert :ok = Cache.delete(key)
+    │                          ~
+    │
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:84:26: WandererNotifier.Data.CacheTest."test delete/1 deletes value successfully"/1
+
+    warning: WandererNotifier.Data.Cache.clear/0 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+    │
+ 94 │       assert :ok = Cache.clear()
+    │                          ~
+    │
+    └─ test/wanderer_notifier/data/cache/cache_test.exs:94:26: WandererNotifier.Data.CacheTest."test clear/0 clears all values"/1
+
+     warning: WandererNotifier.Data.Cache.get_and_update/2 is undefined (module WandererNotifier.Data.Cache is not available or is yet to be defined)
+     │
+ 107 │                Cache.get_and_update(key, fn val ->
+     │                      ~
+     │
+     └─ test/wanderer_notifier/data/cache/cache_test.exs:107:22: WandererNotifier.Data.CacheTest."test get_and_update/2 updates existing value"/1
+     └─ test/wanderer_notifier/data/cache/cache_test.exs:120:22: WandererNotifier.Data.CacheTest."test get_and_update/2 handles non-existing value"/1
+
+    warning: WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available or is yet to be defined)
+    │
+  8 │       assert DateTimeUtil.parse_datetime(nil) == nil
+    │                           ~
+    │
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:8:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles nil value"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:13:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles DateTime struct"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:20:29: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 parses valid ISO 8601 string"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:31:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles invalid date string"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:35:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles malformed ISO 8601 string"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:39:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles non-string, non-DateTime values"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:40:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles non-string, non-DateTime values"/1
+    └─ test/wanderer_notifier/data/datetime_util_test.exs:41:27: WandererNotifier.Data.DateTimeUtilTest."test parse_datetime/1 handles non-string, non-DateTime values"/1
+
+    warning: WandererNotifier.Config.Debug.toggle_debug_logging/0 is undefined (module WandererNotifier.Config.Debug is not available or is yet to be defined)
+    │
+ 88 │       assert Debug.toggle_debug_logging() == true
+    │                    ~
+    │
+    └─ test/wanderer_notifier/config/debug_test.exs:88:20: WandererNotifier.Config.DebugTest."test toggle_debug_logging/0 toggles debug logging from false to true"/1
+    └─ test/wanderer_notifier/config/debug_test.exs:99:20: WandererNotifier.Config.DebugTest."test toggle_debug_logging/0 toggles debug logging from true to false"/1
+
+     warning: WandererNotifier.Config.Debug.set_debug_logging/1 is undefined (module WandererNotifier.Config.Debug is not available or is yet to be defined)
+     │
+ 110 │       assert Debug.set_debug_logging(true) == true
+     │                    ~
+     │
+     └─ test/wanderer_notifier/config/debug_test.exs:110:20: WandererNotifier.Config.DebugTest."test set_debug_logging/1 sets debug logging to true"/1
+     └─ test/wanderer_notifier/config/debug_test.exs:117:20: WandererNotifier.Config.DebugTest."test set_debug_logging/1 sets debug logging to false"/1
+
+     warning: WandererNotifier.Config.Debug.map_debug_settings/0 is undefined (module WandererNotifier.Config.Debug is not available or is yet to be defined)
+     │
+ 147 │       settings = Debug.map_debug_settings()
+     │                        ~
+     │
+     └─ test/wanderer_notifier/config/debug_test.exs:147:24: WandererNotifier.Config.DebugTest."test map_debug_settings/0 returns default values when not configured"/1
+     └─ test/wanderer_notifier/config/debug_test.exs:164:24: WandererNotifier.Config.DebugTest."test map_debug_settings/0 returns values from environment variables"/1
+     └─ test/wanderer_notifier/config/debug_test.exs:178:24: WandererNotifier.Config.DebugTest."test map_debug_settings/0 supports legacy environment variables for backward compatibility"/1
+     └─ test/wanderer_notifier/config/debug_test.exs:189:24: WandererNotifier.Config.DebugTest."test map_debug_settings/0 prefixed variables take precedence over legacy variables"/1
+
+
+
+ 12) test channels should return character_kill channel ID (WandererNotifier.Config.NotificationsTest)
+     test/wanderer_notifier/config/notifications_test.exs:18
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Notifications.channel_id/1 is undefined (module WandererNotifier.Config.Notifications is not available)
+     code: assert Notifications.channel_id(:character_kill) == "67890"
+     stacktrace:
+       WandererNotifier.Config.Notifications.channel_id(:character_kill)
+       test/wanderer_notifier/config/notifications_test.exs:23: (test)
+
+
+
+ 13) test key type detection is_state_key?/1 identifies state keys correctly (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:95
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.is_state_key?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.is_state_key?("state:app_data")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.is_state_key?("state:app_data")
+       test/wanderer_notifier/data/cache/keys_test.exs:96: (test)
+
+
+
+ 14) test key type detection is_static_info_key?/1 identifies static info keys correctly (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:102
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.is_static_info_key?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.is_static_info_key?("map:system:static_info")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.is_static_info_key?("map:system:static_info")
+       test/wanderer_notifier/data/cache/keys_test.exs:103: (test)
+
+    warning: WandererNotifier.Data.Cache.Helpers.get_tracked_systems/0 is undefined (module WandererNotifier.Data.Cache.Helpers is not available or is yet to be defined)
+    │
+ 72 │       result = CacheHelpers.get_tracked_systems()
+    │                             ~
+    │
+    └─ test/wanderer_notifier/data/cache/helpers_test.exs:72:29: WandererNotifier.Data.Cache.HelpersTest."test get_tracked_systems/0 returns empty list when no systems are tracked"/1
+
+    warning: WandererNotifier.Data.Cache.Helpers.add_system_to_tracked/2 is undefined (module WandererNotifier.Data.Cache.Helpers is not available or is yet to be defined)
+    │
+ 90 │       result = CacheHelpers.add_system_to_tracked(system_id, system_data)
+    │                             ~
+    │
+    └─ test/wanderer_notifier/data/cache/helpers_test.exs:90:29: WandererNotifier.Data.Cache.HelpersTest."test add_system_to_tracked/2 adds system with integer ID"/1
+    └─ test/wanderer_notifier/data/cache/helpers_test.exs:105:29: WandererNotifier.Data.Cache.HelpersTest."test add_system_to_tracked/2 adds system with string ID"/1
+    └─ test/wanderer_notifier/data/cache/helpers_test.exs:120:29: WandererNotifier.Data.Cache.HelpersTest."test add_system_to_tracked/2 handles adding duplicate system IDs"/1
+
+     warning: WandererNotifier.Data.Cache.Helpers.remove_system_from_tracked/1 is undefined (module WandererNotifier.Data.Cache.Helpers is not available or is yet to be defined)
+     │
+ 136 │       result = CacheHelpers.remove_system_from_tracked(12_345)
+     │                             ~
+     │
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:136:29: WandererNotifier.Data.Cache.HelpersTest."test remove_system_from_tracked/1 removes system when it exists in tracked list"/1
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:146:29: WandererNotifier.Data.Cache.HelpersTest."test remove_system_from_tracked/1 handles removing non-existent system gracefully"/1
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:156:29: WandererNotifier.Data.Cache.HelpersTest."test remove_system_from_tracked/1 handles string ID for removal"/1
+
+     warning: WandererNotifier.Data.Cache.Helpers.get_tracked_characters/0 is undefined (module WandererNotifier.Data.Cache.Helpers is not available or is yet to be defined)
+     │
+ 163 │       result = CacheHelpers.get_tracked_characters()
+     │                             ~
+     │
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:163:29: WandererNotifier.Data.Cache.HelpersTest."test get_tracked_characters/0 returns empty list when no characters are tracked"/1
+
+     warning: WandererNotifier.Data.Cache.Helpers.add_character_to_tracked/2 is undefined (module WandererNotifier.Data.Cache.Helpers is not available or is yet to be defined)
+     │
+ 182 │       result = CacheHelpers.add_character_to_tracked(12_345, character_data)
+     │                             ~
+     │
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:182:29: WandererNotifier.Data.Cache.HelpersTest."test add_character_to_tracked/2 adds character with integer ID"/1
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:198:29: WandererNotifier.Data.Cache.HelpersTest."test add_character_to_tracked/2 adds character with string ID"/1
+     └─ test/wanderer_notifier/data/cache/helpers_test.exs:213:29: WandererNotifier.Data.Cache.HelpersTest."test add_character_to_tracked/2 handles adding duplicate character IDs"/1
+
+
+
+ 15) test key generation recent_kills/0 generates correct recent kills key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:32
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.recent_kills/0 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.recent_kills() == "recent:kills"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.recent_kills()
+       test/wanderer_notifier/data/cache/keys_test.exs:33: (test)
+
+
+
+ 16) test key generation tracked_character/1 generates correct tracked character key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:22
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.tracked_character/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.tracked_character(12_345) == "tracked:character:12345"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.tracked_character(12345)
+       test/wanderer_notifier/data/cache/keys_test.exs:23: (test)
+
+
+
+ 17) test key type detection is_array_key?/1 identifies array keys correctly (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:74
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.is_array_key?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.is_array_key?("array:data")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.is_array_key?("array:data")
+       test/wanderer_notifier/data/cache/keys_test.exs:75: (test)
+
+
+
+ 18) test key generation esi_killmail/1 generates correct ESI killmail key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:27
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.esi_killmail/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.esi_killmail(98_765) == "esi:killmail:98765"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.esi_killmail(98765)
+       test/wanderer_notifier/data/cache/keys_test.exs:28: (test)
+
+
+
+ 19) test key generation character_recent_kills/1 generates correct character recent kills key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:41
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.character_recent_kills/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.character_recent_kills(12_345) == "character:12345:recent_kills"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.character_recent_kills(12345)
+       test/wanderer_notifier/data/cache/keys_test.exs:42: (test)
+
+.    warning: WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available or is yet to be defined)
+    │
+  9 │       assert MapUtil.get_value(map, ["name"]) == "John"
+    │                      ~
+    │
+    └─ test/wanderer_notifier/data/map_util_test.exs:9:22: WandererNotifier.Data.MapUtilTest."test get_value/2 gets value with string key"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:10:22: WandererNotifier.Data.MapUtilTest."test get_value/2 gets value with string key"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:15:22: WandererNotifier.Data.MapUtilTest."test get_value/2 gets value with atom key"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:16:22: WandererNotifier.Data.MapUtilTest."test get_value/2 gets value with atom key"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:21:22: WandererNotifier.Data.MapUtilTest."test get_value/2 tries multiple keys until it finds a match"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:24:22: WandererNotifier.Data.MapUtilTest."test get_value/2 tries multiple keys until it finds a match"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:29:22: WandererNotifier.Data.MapUtilTest."test get_value/2 returns nil when no keys match"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:33:22: WandererNotifier.Data.MapUtilTest."test get_value/2 handles empty map"/1
+
+    warning: WandererNotifier.Data.MapUtil.extract_to_struct/3 is undefined (module WandererNotifier.Data.MapUtil is not available or is yet to be defined)
+    │
+ 46 │       result = MapUtil.extract_to_struct(map, TestStruct, mappings)
+    │                        ~
+    │
+    └─ test/wanderer_notifier/data/map_util_test.exs:46:24: WandererNotifier.Data.MapUtilTest."test extract_to_struct/3 extracts values into a struct using specified mappings"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:55:24: WandererNotifier.Data.MapUtilTest."test extract_to_struct/3 returns default values when keys are not found"/1
+
+    warning: WandererNotifier.Data.MapUtil.extract_map/2 is undefined (module WandererNotifier.Data.MapUtil is not available or is yet to be defined)
+    │
+ 75 │       result = MapUtil.extract_map(map, mappings)
+    │                        ~
+    │
+    └─ test/wanderer_notifier/data/map_util_test.exs:75:24: WandererNotifier.Data.MapUtilTest."test extract_map/2 extracts values into a map using mappings"/1
+    └─ test/wanderer_notifier/data/map_util_test.exs:92:24: WandererNotifier.Data.MapUtilTest."test extract_map/2 uses default values when keys are not found"/1
+
+     warning: WandererNotifier.Data.MapUtil.atomize_keys/1 is undefined (module WandererNotifier.Data.MapUtil is not available or is yet to be defined)
+     │
+ 104 │       result = MapUtil.atomize_keys(map)
+     │                        ~
+     │
+     └─ test/wanderer_notifier/data/map_util_test.exs:104:24: WandererNotifier.Data.MapUtilTest."test atomize_keys/2 converts string keys to atom keys"/1
+     └─ test/wanderer_notifier/data/map_util_test.exs:111:24: WandererNotifier.Data.MapUtilTest."test atomize_keys/2 keeps existing atom keys"/1
+     └─ test/wanderer_notifier/data/map_util_test.exs:141:24: WandererNotifier.Data.MapUtilTest."test atomize_keys/2 does not recursively convert by default"/1
+
+     warning: WandererNotifier.Data.MapUtil.atomize_keys/2 is undefined (module WandererNotifier.Data.MapUtil is not available or is yet to be defined)
+     │
+ 124 │       result = MapUtil.atomize_keys(map, recursive: true)
+     │                        ~
+     │
+     └─ test/wanderer_notifier/data/map_util_test.exs:124:24: WandererNotifier.Data.MapUtilTest."test atomize_keys/2 recursively converts nested maps when option is set"/1
+
+
+
+ 20) test key generation zkill_recent_kills/0 generates correct zkill recent kills key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:46
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.zkill_recent_kills/0 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.zkill_recent_kills() == "zkill:recent_kills"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.zkill_recent_kills()
+       test/wanderer_notifier/data/cache/keys_test.exs:47: (test)
+
+..
+
+ 21) test key type detection is_map_key?/1 identifies map keys correctly (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:81
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.is_map_key?/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.is_map_key?("map:system:12345")
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.is_map_key?("map:system:12345")
+       test/wanderer_notifier/data/cache/keys_test.exs:82: (test)
+
+..    warning: WandererNotifier.Data.Cache.Keys.system/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+  8 │       assert Keys.system(30_004_759) == "map:system:30004759"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:8:19: WandererNotifier.Data.Cache.KeysTest."test key generation system/1 generates correct system key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:9:19: WandererNotifier.Data.Cache.KeysTest."test key generation system/1 generates correct system key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.character/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 13 │       assert Keys.character(12_345) == "map:character:12345"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:13:19: WandererNotifier.Data.Cache.KeysTest."test key generation character/1 generates correct character key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:14:19: WandererNotifier.Data.Cache.KeysTest."test key generation character/1 generates correct character key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.tracked_system/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 18 │       assert Keys.tracked_system(30_004_759) == "tracked:system:30004759"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:18:19: WandererNotifier.Data.Cache.KeysTest."test key generation tracked_system/1 generates correct tracked system key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:19:19: WandererNotifier.Data.Cache.KeysTest."test key generation tracked_system/1 generates correct tracked system key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.tracked_character/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 23 │       assert Keys.tracked_character(12_345) == "tracked:character:12345"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:23:19: WandererNotifier.Data.Cache.KeysTest."test key generation tracked_character/1 generates correct tracked character key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:24:19: WandererNotifier.Data.Cache.KeysTest."test key generation tracked_character/1 generates correct tracked character key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.esi_killmail/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 28 │       assert Keys.esi_killmail(98_765) == "esi:killmail:98765"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:28:19: WandererNotifier.Data.Cache.KeysTest."test key generation esi_killmail/1 generates correct ESI killmail key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:29:19: WandererNotifier.Data.Cache.KeysTest."test key generation esi_killmail/1 generates correct ESI killmail key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.recent_kills/0 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 33 │       assert Keys.recent_kills() == "recent:kills"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:33:19: WandererNotifier.Data.Cache.KeysTest."test key generation recent_kills/0 generates correct recent kills key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.killmail_exists/3 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 37 │       assert Keys.killmail_exists(123, 456, "attacker") == "exists:killmail:123:456:attacker"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:37:19: WandererNotifier.Data.Cache.KeysTest."test key generation killmail_exists/3 generates correct existence check key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:38:19: WandererNotifier.Data.Cache.KeysTest."test key generation killmail_exists/3 generates correct existence check key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.character_recent_kills/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 42 │       assert Keys.character_recent_kills(12_345) == "character:12345:recent_kills"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:42:19: WandererNotifier.Data.Cache.KeysTest."test key generation character_recent_kills/1 generates correct character recent kills key"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:43:19: WandererNotifier.Data.Cache.KeysTest."test key generation character_recent_kills/1 generates correct character recent kills key"/1
+
+    warning: WandererNotifier.Data.Cache.Keys.zkill_recent_kills/0 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 47 │       assert Keys.zkill_recent_kills() == "zkill:recent_kills"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:47:19: WandererNotifier.Data.Cache.KeysTest."test key generation zkill_recent_kills/0 generates correct zkill recent kills key"/1
+
+
+
+ 22) test key generation system/1 generates correct system key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:7
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.system/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.system(30_004_759) == "map:system:30004759"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.system(30004759)
+       test/wanderer_notifier/data/cache/keys_test.exs:8: (test)
+
+    warning: WandererNotifier.Data.Cache.Keys.extract_pattern/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available or is yet to be defined)
+    │
+ 67 │       assert Keys.extract_pattern("map:system:12345") == "map:system"
+    │                   ~
+    │
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:67:19: WandererNotifier.Data.Cache.KeysTest."test pattern extraction extract_pattern/1 extracts correct pattern from keys"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:68:19: WandererNotifier.Data.Cache.KeysTest."test pattern extraction extract_pattern/1 extracts correct pattern from keys"/1
+    └─ test/wanderer_notifier/data/cache/keys_test.exs:69:19: WandererNotifier.Data.Cache.KeysTest."test pattern extraction extract_pattern/1 extracts correct pattern from keys"/1
+
+..
+
+ 23) test key generation character/1 generates correct character key (WandererNotifier.Data.Cache.KeysTest)
+     test/wanderer_notifier/data/cache/keys_test.exs:12
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.Keys.character/1 is undefined (module WandererNotifier.Data.Cache.Keys is not available)
+     code: assert Keys.character(12_345) == "map:character:12345"
+     stacktrace:
+       WandererNotifier.Data.Cache.Keys.character(12345)
+       test/wanderer_notifier/data/cache/keys_test.exs:13: (test)
+
+...
+
+ 24) test get_corporation_struct/2 returns a Corporation struct when successful (WandererNotifier.ESI.ServiceTest)
+     test/wanderer_notifier/esi/service_test.exs:123
+     ** (ArgumentError) module WandererNotifier.ESI.Client is not a mock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:874: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/esi/service_test.exs:60: WandererNotifier.ESI.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/esi/service_test.exs:1: WandererNotifier.ESI.ServiceTest.__ex_unit__/2
+
+
+
+ 25) test get_alliance_struct/2 returns an Alliance struct when successful (WandererNotifier.ESI.ServiceTest)
+     test/wanderer_notifier/esi/service_test.exs:143
+     ** (ArgumentError) module WandererNotifier.ESI.Client is not a mock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:874: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/esi/service_test.exs:60: WandererNotifier.ESI.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/esi/service_test.exs:1: WandererNotifier.ESI.ServiceTest.__ex_unit__/2
+
+
+
+ 26) test get_system_struct/2 returns a SolarSystem struct when successful (WandererNotifier.ESI.ServiceTest)
+     test/wanderer_notifier/esi/service_test.exs:163
+     ** (ArgumentError) module WandererNotifier.ESI.Client is not a mock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:874: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/esi/service_test.exs:60: WandererNotifier.ESI.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/esi/service_test.exs:1: WandererNotifier.ESI.ServiceTest.__ex_unit__/2
+
+
+
+ 27) test get_character_struct/2 returns a Character struct when successful (WandererNotifier.ESI.ServiceTest)
+     test/wanderer_notifier/esi/service_test.exs:86
+     ** (ArgumentError) module WandererNotifier.ESI.Client is not a mock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:874: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/esi/service_test.exs:60: WandererNotifier.ESI.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/esi/service_test.exs:1: WandererNotifier.ESI.ServiceTest.__ex_unit__/2
+
+
+
+ 28) test get_character_struct/2 uses cached data when available (WandererNotifier.ESI.ServiceTest)
+     test/wanderer_notifier/esi/service_test.exs:103
+     ** (ArgumentError) module WandererNotifier.ESI.Client is not a mock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:874: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/esi/service_test.exs:60: WandererNotifier.ESI.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/esi/service_test.exs:1: WandererNotifier.ESI.ServiceTest.__ex_unit__/2
+
+    warning: WandererNotifier.Notifiers.Formatters.Common.colors/0 is undefined (module WandererNotifier.Notifiers.Formatters.Common is not available or is yet to be defined)
+    │
+ 90 │       colors = CommonFormatter.colors()
+    │                                ~
+    │
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:90:32: WandererNotifier.Notifiers.StructuredFormatterTest."test colors/0 returns a map of color constants"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:106:73: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:107:73: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:108:73: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:109:71: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:110:70: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+    └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:125:39: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns default color for invalid inputs"/1
+
+     warning: WandererNotifier.Notifiers.Formatters.Common.convert_color/1 is undefined (module WandererNotifier.Notifiers.Formatters.Common is not available or is yet to be defined)
+     │
+ 106 │       assert CommonFormatter.convert_color(:default) == CommonFormatter.colors().default
+     │                              ~
+     │
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:106:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:107:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:108:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:109:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:110:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts atom color names to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:114:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns integer color values unchanged"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:115:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns integer color values unchanged"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:119:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts hex strings to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:120:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts hex strings to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:121:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 converts hex strings to integer values"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:126:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns default color for invalid inputs"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:127:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns default color for invalid inputs"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:128:30: WandererNotifier.Notifiers.StructuredFormatterTest."test convert_color/1 returns default color for invalid inputs"/1
+
+     warning: WandererNotifier.Notifiers.Formatters.Common.format_kill_notification/1 is undefined (module WandererNotifier.Notifiers.Formatters.Common is not available or is yet to be defined)
+     │
+ 158 │       result = CommonFormatter.format_kill_notification(killmail)
+     │                                ~
+     │
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:158:32: WandererNotifier.Notifiers.StructuredFormatterTest."test format_kill_notification/1 formats a killmail notification correctly"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:189:32: WandererNotifier.Notifiers.StructuredFormatterTest."test format_kill_notification/1 handles killmail with missing or partial data"/1
+
+     warning: WandererNotifier.Notifiers.Formatters.Common.to_discord_format/1 is undefined (module WandererNotifier.Notifiers.Formatters.Common is not available or is yet to be defined)
+     │
+ 240 │       result = CommonFormatter.to_discord_format(notification)
+     │                                ~
+     │
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:240:32: WandererNotifier.Notifiers.StructuredFormatterTest."test to_discord_format/1 converts a generic notification to Discord format"/1
+
+     warning: WandererNotifier.Notifiers.Formatters.Common.format_system_status_message/8 is undefined (module WandererNotifier.Notifiers.Formatters.Common is not available or is yet to be defined)
+     │
+ 291 │         CommonFormatter.format_system_status_message(
+     │                         ~
+     │
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:291:25: WandererNotifier.Notifiers.StructuredFormatterTest."test format_system_status_message/8 formats a system status message correctly"/1
+     └─ test/wanderer_notifier/notifiers/structured_formatter_test.exs:375:25: WandererNotifier.Notifiers.StructuredFormatterTest."test format_system_status_message/8 handles startup message without uptime"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 10 │       DeduplicationHelper.clear_all()
+    │                           ~
+    │
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:10:27: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:126:33: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:179:33: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 27 │     assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+    │                                              ~
+    │
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:27:46: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 marks entries as seen"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:30:52: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 marks entries as seen"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:37:46: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:43:46: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:51:46: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:54:46: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:57:52: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:60:52: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:114:27: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:120:54: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:129:48: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:139:48: WandererNotifier.Helpers.DeduplicationHelperTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:140:54: WandererNotifier.Helpers.DeduplicationHelperTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:146:48: WandererNotifier.Helpers.DeduplicationHelperTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:155:48: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:156:54: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:162:48: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:170:50: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:175:56: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:183:50: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.handle_clear_key/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 40 │     :ok = DeduplicationHelper.handle_clear_key(test_key)
+    │                               ~
+    │
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:40:31: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:143:33: WandererNotifier.Helpers.DeduplicationHelperTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:159:33: WandererNotifier.Helpers.DeduplicationHelperTest."test TTL and expiration entries can be manually expired"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_system/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 66 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_system(system_id)
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:66:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 handles integer system IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:67:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 handles integer system IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:72:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 handles string system IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:73:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 handles string system IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:77:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:78:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:79:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:115:27: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:121:54: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:130:48: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_character/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 86 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_character(character_id)
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:86:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_character/1 handles integer character IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:87:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_character/1 handles integer character IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:92:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_character/1 handles string character IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:93:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_character/1 handles string character IDs"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:116:27: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:122:54: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:131:48: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+
+     warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_kill/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+     │
+ 100 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_kill(kill_id)
+     │                                                ~
+     │
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:100:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_kill/1 handles integer kill IDs"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:101:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_kill/1 handles integer kill IDs"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:106:48: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_kill/1 handles string kill IDs"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:107:54: WandererNotifier.Helpers.DeduplicationHelperTest."test check_and_mark_kill/1 handles string kill IDs"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:117:27: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:123:54: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+     └─ test/wanderer_notifier/helpers/deduplication_helper_test.exs:132:48: WandererNotifier.Helpers.DeduplicationHelperTest."test clear_all/0 clears all deduplication entries"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+  9 │     DeduplicationHelper.clear_all()
+    │                         ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9:25: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:116:33: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:169:33: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 17 │     assert {:ok, :new} = DeduplicationHelper.check_and_mark(test_key)
+    │                                              ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:17:46: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 marks entries as seen"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:20:52: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 marks entries as seen"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:27:46: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:33:46: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:41:46: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:44:46: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:47:52: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:50:52: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 handles different keys independently"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:104:27: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:110:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:119:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:129:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:130:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:136:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:145:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:146:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:152:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration entries can be manually expired"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:160:50: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:165:56: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:173:50: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration clearing all entries removes all deduplication data"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.handle_clear_key/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 30 │     :ok = DeduplicationHelper.handle_clear_key(test_key)
+    │                               ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:30:31: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark/1 entries expire after TTL"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:133:33: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test handle_clear_key/1 clears a specific key"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:149:33: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test TTL and expiration entries can be manually expired"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_system/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 56 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_system(system_id)
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:56:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 handles integer system IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:57:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 handles integer system IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:62:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 handles string system IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:63:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 handles string system IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:67:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:68:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:69:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_system/1 different system IDs are tracked separately"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:105:27: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:111:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:120:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_character/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 76 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_character(character_id)
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:76:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_character/1 handles integer character IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:77:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_character/1 handles integer character IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:82:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_character/1 handles string character IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:83:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_character/1 handles string character IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:106:27: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:112:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:121:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+
+    warning: WandererNotifier.Notifiers.Helpers.Deduplication.check_and_mark_kill/1 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available or is yet to be defined)
+    │
+ 90 │       assert {:ok, :new} = DeduplicationHelper.check_and_mark_kill(kill_id)
+    │                                                ~
+    │
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:90:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_kill/1 handles integer kill IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:91:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_kill/1 handles integer kill IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:96:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_kill/1 handles string kill IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:97:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test check_and_mark_kill/1 handles string kill IDs"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:107:27: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:113:54: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+    └─ test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:122:48: WandererNotifier.Notifiers.Helpers.DeduplicationTest."test clear_all/0 clears all deduplication entries"/1
+
+.
+
+ 29) test mocks HTTP client successfully (WandererNotifier.HttpTest)
+     test/wanderer_notifier/http/http_test.exs:7
+     ** (ArgumentError) unknown function get/3 for mock WandererNotifier.MockHTTP
+     code: |> expect(:get, fn _url, _headers, _options ->
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:549: Mox.expect/4
+       test/wanderer_notifier/http/http_test.exs:10: (test)
+
+
+
+ 30) test startup notification sends startup notification successfully (WandererNotifier.Core.Application.ServiceTest)
+     test/wanderer_notifier/core/application/service_test.exs:49
+     ** (ArgumentError) could not load module WandererNotifier.MockStructuredFormatter due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/core/application/service_test.exs:14: WandererNotifier.Core.Application.ServiceTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/core/application/service_test.exs:1: WandererNotifier.Core.Application.ServiceTest.__ex_unit__/2
+
+
+
+ 31) test uses fixtures for API testing (WandererNotifier.ApiTest)
+     test/wanderer_notifier/api/api_test.exs:8
+     ** (ArgumentError) unknown function get/3 for mock WandererNotifier.MockHTTP
+     code: |> expect(:get, fn url, _headers, _options ->
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:549: Mox.expect/4
+       test/wanderer_notifier/api/api_test.exs:11: (test)
+
+
+
+ 32) test Killmail.new usage properly creates a killmail struct from map data (WandererNotifier.Notifiers.Discord.NotifierTest)
+     test/wanderer_notifier/notifiers/discord/notifier_test.exs:49
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Application.get_env/2 is undefined (module WandererNotifier.Config.Application is not available)
+     stacktrace:
+       WandererNotifier.Config.Application.get_env(:wanderer_notifier, :env)
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:11: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:1: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit__/2
+
+
+
+ 33) test Killmail.new usage properly handles with three parameters (WandererNotifier.Notifiers.Discord.NotifierTest)
+     test/wanderer_notifier/notifiers/discord/notifier_test.exs:64
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Application.get_env/2 is undefined (module WandererNotifier.Config.Application is not available)
+     stacktrace:
+       WandererNotifier.Config.Application.get_env(:wanderer_notifier, :env)
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:11: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:1: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit__/2
+
+
+
+ 34) test send_message/2 handles basic message in test mode (WandererNotifier.Notifiers.Discord.NotifierTest)
+     test/wanderer_notifier/notifiers/discord/notifier_test.exs:26
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Application.get_env/2 is undefined (module WandererNotifier.Config.Application is not available)
+     stacktrace:
+       WandererNotifier.Config.Application.get_env(:wanderer_notifier, :env)
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:11: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:1: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit__/2
+
+
+
+ 35) test send_embed/4 handles basic embed in test mode (WandererNotifier.Notifiers.Discord.NotifierTest)
+     test/wanderer_notifier/notifiers/discord/notifier_test.exs:35
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Application.get_env/2 is undefined (module WandererNotifier.Config.Application is not available)
+     stacktrace:
+       WandererNotifier.Config.Application.get_env(:wanderer_notifier, :env)
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:11: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/discord/notifier_test.exs:1: WandererNotifier.Notifiers.Discord.NotifierTest.__ex_unit__/2
+
+
+
+ 36) test set/3 sets value successfully (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:59
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.set/2 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert {:ok, ^value} = Cache.set(key, value)
+     stacktrace:
+       WandererNotifier.Data.Cache.set("test_key", "test_value")
+       test/wanderer_notifier/data/cache/cache_test.exs:63: (test)
+
+
+
+ 37) test get_and_update/2 updates existing value (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:100
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.get_and_update/2 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: Cache.get_and_update(key, fn val ->
+     stacktrace:
+       WandererNotifier.Data.Cache.get_and_update("test_key", #Function<2.30790229/1 in WandererNotifier.Data.CacheTest."test get_and_update/2 updates existing value"/1>)
+       test/wanderer_notifier/data/cache/cache_test.exs:107: (test)
+
+
+
+ 38) test clear/0 clears all values (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:90
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.clear/0 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert :ok = Cache.clear()
+     stacktrace:
+       WandererNotifier.Data.Cache.clear()
+       test/wanderer_notifier/data/cache/cache_test.exs:94: (test)
+
+
+
+ 39) test put/3 puts value successfully (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:69
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.put/2 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert {:ok, ^value} = Cache.put(key, value)
+     stacktrace:
+       WandererNotifier.Data.Cache.put("test_key", "test_value")
+       test/wanderer_notifier/data/cache/cache_test.exs:73: (test)
+
+
+
+ 40) test delete/1 deletes value successfully (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:79
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.delete/1 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert :ok = Cache.delete(key)
+     stacktrace:
+       WandererNotifier.Data.Cache.delete("test_key")
+       test/wanderer_notifier/data/cache/cache_test.exs:84: (test)
+
+
+
+ 41) test get_and_update/2 handles non-existing value (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:115
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.get_and_update/2 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: Cache.get_and_update(key, fn nil ->
+     stacktrace:
+       WandererNotifier.Data.Cache.get_and_update("test_key", #Function<1.30790229/1 in WandererNotifier.Data.CacheTest."test get_and_update/2 handles non-existing value"/1>)
+       test/wanderer_notifier/data/cache/cache_test.exs:120: (test)
+
+
+
+ 42) test get/1 returns value when key exists (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:45
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.get/1 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert {:ok, ^value} = Cache.get(key)
+     stacktrace:
+       WandererNotifier.Data.Cache.get("test_key")
+       test/wanderer_notifier/data/cache/cache_test.exs:50: (test)
+
+
+
+ 43) test get/1 returns error when key does not exist (WandererNotifier.Data.CacheTest)
+     test/wanderer_notifier/data/cache/cache_test.exs:53
+     ** (UndefinedFunctionError) function WandererNotifier.Data.Cache.get/1 is undefined (module WandererNotifier.Data.Cache is not available)
+     code: assert {:error, :not_found} = Cache.get("nonexistent_key")
+     stacktrace:
+       WandererNotifier.Data.Cache.get("nonexistent_key")
+       test/wanderer_notifier/data/cache/cache_test.exs:54: (test)
+
+
+
+ 44) test map_debug_settings/0 supports legacy environment variables for backward compatibility (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:170
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.map_debug_settings/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: settings = Debug.map_debug_settings()
+     stacktrace:
+       WandererNotifier.Config.Debug.map_debug_settings()
+       test/wanderer_notifier/config/debug_test.exs:178: (test)
+
+
+
+ 45) test debug_logging_enabled?/0 returns true when enabled via config (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:66
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.debug_logging_enabled?/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.debug_logging_enabled?()
+     stacktrace:
+       WandererNotifier.Config.Debug.debug_logging_enabled?()
+       test/wanderer_notifier/config/debug_test.exs:70: (test)
+
+
+
+ 46) test map_debug_settings/0 prefixed variables take precedence over legacy variables (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:184
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.map_debug_settings/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: settings = Debug.map_debug_settings()
+     stacktrace:
+       WandererNotifier.Config.Debug.map_debug_settings()
+       test/wanderer_notifier/config/debug_test.exs:189: (test)
+
+
+
+ 47) test map_debug_settings/0 returns values from environment variables (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:156
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.map_debug_settings/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: settings = Debug.map_debug_settings()
+     stacktrace:
+       WandererNotifier.Config.Debug.map_debug_settings()
+       test/wanderer_notifier/config/debug_test.exs:164: (test)
+
+
+
+ 48) test set_debug_logging/1 sets debug logging to true (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:107
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.set_debug_logging/1 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.set_debug_logging(true) == true
+     stacktrace:
+       WandererNotifier.Config.Debug.set_debug_logging(true)
+       test/wanderer_notifier/config/debug_test.exs:110: (test)
+
+
+
+ 49) test toggle_debug_logging/0 toggles debug logging from true to false (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:94
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.toggle_debug_logging/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.toggle_debug_logging() == false
+     stacktrace:
+       WandererNotifier.Config.Debug.toggle_debug_logging()
+       test/wanderer_notifier/config/debug_test.exs:99: (test)
+
+
+
+ 50) test debug_logging_enabled?/0 config takes precedence over environment variable (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:73
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.debug_logging_enabled?/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.debug_logging_enabled?()
+     stacktrace:
+       WandererNotifier.Config.Debug.debug_logging_enabled?()
+       test/wanderer_notifier/config/debug_test.exs:77: (test)
+
+
+
+ 51) test toggle_debug_logging/0 toggles debug logging from false to true (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:82
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.toggle_debug_logging/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.toggle_debug_logging() == true
+     stacktrace:
+       WandererNotifier.Config.Debug.toggle_debug_logging()
+       test/wanderer_notifier/config/debug_test.exs:88: (test)
+
+
+
+ 52) test set_debug_logging/1 sets debug logging to false (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:114
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.set_debug_logging/1 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.set_debug_logging(false) == false
+     stacktrace:
+       WandererNotifier.Config.Debug.set_debug_logging(false)
+       test/wanderer_notifier/config/debug_test.exs:117: (test)
+
+
+
+ 53) test map_debug_settings/0 returns default values when not configured (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:133
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.map_debug_settings/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: settings = Debug.map_debug_settings()
+     stacktrace:
+       WandererNotifier.Config.Debug.map_debug_settings()
+       test/wanderer_notifier/config/debug_test.exs:147: (test)
+
+
+
+ 54) test debug_logging_enabled?/0 returns false by default (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:51
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.debug_logging_enabled?/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: refute Debug.debug_logging_enabled?()
+     stacktrace:
+       WandererNotifier.Config.Debug.debug_logging_enabled?()
+       test/wanderer_notifier/config/debug_test.exs:56: (test)
+
+
+
+ 55) test debug_logging_enabled?/0 returns true when enabled via environment variable (WandererNotifier.Config.DebugTest)
+     test/wanderer_notifier/config/debug_test.exs:59
+     ** (UndefinedFunctionError) function WandererNotifier.Config.Debug.debug_logging_enabled?/0 is undefined (module WandererNotifier.Config.Debug is not available)
+     code: assert Debug.debug_logging_enabled?()
+     stacktrace:
+       WandererNotifier.Config.Debug.debug_logging_enabled?()
+       test/wanderer_notifier/config/debug_test.exs:63: (test)
+
+....
+
+ 56) test clear_all/0 clears all deduplication entries (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:102
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 57) test check_and_mark/1 handles different keys independently (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:36
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 58) test handle_clear_key/1 clears a specific key (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:127
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 59) test check_and_mark_kill/1 handles string kill IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:94
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 60) test check_and_mark_character/1 handles integer character IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:74
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 61) test check_and_mark_system/1 different system IDs are tracked separately (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:66
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 62) test check_and_mark_system/1 handles integer system IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:54
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 63) test TTL and expiration entries can be manually expired (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:141
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 64) test check_and_mark_system/1 handles string system IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:60
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 65) test check_and_mark_character/1 handles string character IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:80
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 66) test check_and_mark_kill/1 handles integer kill IDs (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:88
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 67) test TTL and expiration clearing all entries removes all deduplication data (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:155
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 68) test check_and_mark/1 marks entries as seen (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:13
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 69) test check_and_mark/1 entries expire after TTL (WandererNotifier.Notifiers.Helpers.DeduplicationTest)
+     test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:23
+     ** (UndefinedFunctionError) function WandererNotifier.Notifiers.Helpers.Deduplication.clear_all/0 is undefined (module WandererNotifier.Notifiers.Helpers.Deduplication is not available)
+     stacktrace:
+       WandererNotifier.Notifiers.Helpers.Deduplication.clear_all()
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:9: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/notifiers/helpers/deduplication_test.exs:1: WandererNotifier.Notifiers.Helpers.DeduplicationTest.__ex_unit__/2
+
+
+
+ 70) test parse_datetime/1 parses valid ISO 8601 string (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:16
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: result = DateTimeUtil.parse_datetime(iso_string)
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime("2023-02-15T08:30:45Z")
+       test/wanderer_notifier/data/datetime_util_test.exs:20: (test)
+
+
+
+ 71) test parse_datetime/1 handles non-string, non-DateTime values (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:38
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: assert DateTimeUtil.parse_datetime(123) == nil
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime(123)
+       test/wanderer_notifier/data/datetime_util_test.exs:39: (test)
+
+
+
+ 72) test parse_datetime/1 handles invalid date string (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:30
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: assert DateTimeUtil.parse_datetime("not a date") == nil
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime("not a date")
+       test/wanderer_notifier/data/datetime_util_test.exs:31: (test)
+
+
+
+ 73) test parse_datetime/1 handles malformed ISO 8601 string (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:34
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: assert DateTimeUtil.parse_datetime("2023-02-30T25:70:99Z") == nil
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime("2023-02-30T25:70:99Z")
+       test/wanderer_notifier/data/datetime_util_test.exs:35: (test)
+
+
+
+ 74) test parse_datetime/1 handles nil value (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:7
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: assert DateTimeUtil.parse_datetime(nil) == nil
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime(nil)
+       test/wanderer_notifier/data/datetime_util_test.exs:8: (test)
+
+
+
+ 75) test parse_datetime/1 handles DateTime struct (WandererNotifier.Data.DateTimeUtilTest)
+     test/wanderer_notifier/data/datetime_util_test.exs:11
+     ** (UndefinedFunctionError) function WandererNotifier.Data.DateTimeUtil.parse_datetime/1 is undefined (module WandererNotifier.Data.DateTimeUtil is not available)
+     code: assert DateTimeUtil.parse_datetime(dt) == dt
+     stacktrace:
+       WandererNotifier.Data.DateTimeUtil.parse_datetime(~U[2023-01-01 12:00:00Z])
+       test/wanderer_notifier/data/datetime_util_test.exs:13: (test)
+
+
+
+ 76) test add_character_to_tracked/2 adds character with string ID (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:186
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 77) test add_system_to_tracked/2 adds system with string ID (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:94
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 78) test add_character_to_tracked/2 handles adding duplicate character IDs (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:202
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 79) test add_character_to_tracked/2 adds character with integer ID (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:170
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 80) test remove_system_from_tracked/1 handles removing non-existent system gracefully (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:140
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 81) test remove_system_from_tracked/1 removes system when it exists in tracked list (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:130
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 82) test add_system_to_tracked/2 handles adding duplicate system IDs (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:109
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 83) test add_system_to_tracked/2 handles MapSystem struct (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:124
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 84) test remove_system_from_tracked/1 handles string ID for removal (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:150
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 85) test get_tracked_characters/0 returns empty list when no characters are tracked (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:162
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 86) test get_tracked_systems/0 returns empty list when no systems are tracked (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:71
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 87) test add_system_to_tracked/2 adds system with integer ID (WandererNotifier.Data.Cache.HelpersTest)
+     test/wanderer_notifier/data/cache/helpers_test.exs:79
+     ** (ArgumentError) could not load module WandererNotifier.Data.Cache.RepositoryMock due to reason :nofile
+     stacktrace:
+       (elixir 1.18.3) lib/code.ex:2007: Code.ensure_compiled!/1
+       (mox 1.2.0) lib/mox.ex:871: Mox.validate_mock!/1
+       (mox 1.2.0) lib/mox.ex:677: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/data/cache/helpers_test.exs:46: WandererNotifier.Data.Cache.HelpersTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/data/cache/helpers_test.exs:1: WandererNotifier.Data.Cache.HelpersTest.__ex_unit__/2
+
+
+
+ 88) test atomize_keys/2 keeps existing atom keys (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:109
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.atomize_keys/1 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.atomize_keys(map)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.atomize_keys(%{:age => 30, "name" => "John"})
+       test/wanderer_notifier/data/map_util_test.exs:111: (test)
+
+
+
+ 89) test get_value/2 tries multiple keys until it finds a match (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:19
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: assert MapUtil.get_value(map, ["id", "user_id", :id, :user_id]) == 123
+     stacktrace:
+       WandererNotifier.Data.MapUtil.get_value(%{"user_id" => 123}, ["id", "user_id", :id, :user_id])
+       test/wanderer_notifier/data/map_util_test.exs:21: (test)
+
+
+
+ 90) test atomize_keys/2 recursively converts nested maps when option is set (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:116
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.atomize_keys/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.atomize_keys(map, recursive: true)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.atomize_keys(%{"user" => %{"address" => %{"city" => "New York"}, "name" => "John"}}, [recursive: true])
+       test/wanderer_notifier/data/map_util_test.exs:124: (test)
+
+
+
+ 91) test atomize_keys/2 converts string keys to atom keys (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:102
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.atomize_keys/1 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.atomize_keys(map)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.atomize_keys(%{"age" => 30, "name" => "John"})
+       test/wanderer_notifier/data/map_util_test.exs:104: (test)
+
+
+
+ 92) test extract_to_struct/3 returns default values when keys are not found (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:51
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.extract_to_struct/3 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.extract_to_struct(map, TestStruct, mappings)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.extract_to_struct(%{"user_age" => 30}, WandererNotifier.Data.MapUtilTest.TestStruct, [name: ["name"], age: ["user_age"], location: ["city"]])
+       test/wanderer_notifier/data/map_util_test.exs:55: (test)
+
+
+
+ 93) test extract_to_struct/3 extracts values into a struct using specified mappings (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:42
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.extract_to_struct/3 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.extract_to_struct(map, TestStruct, mappings)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.extract_to_struct(%{"city" => "New York", "name" => "john", "user_age" => 30}, WandererNotifier.Data.MapUtilTest.TestStruct, [name: ["name"], age: ["user_age"], location: ["city"]])
+       test/wanderer_notifier/data/map_util_test.exs:46: (test)
+
+
+
+ 94) test get_value/2 returns nil when no keys match (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:27
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: assert MapUtil.get_value(map, ["name", :name]) == nil
+     stacktrace:
+       WandererNotifier.Data.MapUtil.get_value(%{"foo" => "bar"}, ["name", :name])
+       test/wanderer_notifier/data/map_util_test.exs:29: (test)
+
+
+
+ 95) test atomize_keys/2 does not recursively convert by default (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:134
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.atomize_keys/1 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.atomize_keys(map)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.atomize_keys(%{"user" => %{"name" => "John"}})
+       test/wanderer_notifier/data/map_util_test.exs:141: (test)
+
+
+
+ 96) test get_value/2 handles empty map (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:32
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: assert MapUtil.get_value(%{}, ["name", :name]) == nil
+     stacktrace:
+       WandererNotifier.Data.MapUtil.get_value(%{}, ["name", :name])
+       test/wanderer_notifier/data/map_util_test.exs:33: (test)
+
+
+
+ 97) test extract_map/2 extracts values into a map using mappings (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:62
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.extract_map/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.extract_map(map, mappings)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.extract_map(%{"email_address" => "john@example.com", "name" => "John", "years" => 30}, [name: ["name", :name], age: ["age", "years", :age, :years], email: ["email", "email_address", :email, :email_address]])
+       test/wanderer_notifier/data/map_util_test.exs:75: (test)
+
+
+
+ 98) test extract_map/2 uses default values when keys are not found (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:83
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.extract_map/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: result = MapUtil.extract_map(map, mappings)
+     stacktrace:
+       WandererNotifier.Data.MapUtil.extract_map(%{"name" => "John"}, [{:name, ["name"]}, {:age, ["age"], 0}, {:email, ["email"], "no-email@example.com"}])
+       test/wanderer_notifier/data/map_util_test.exs:92: (test)
+
+
+
+ 99) test get_value/2 gets value with string key (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:7
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: assert MapUtil.get_value(map, ["name"]) == "John"
+     stacktrace:
+       WandererNotifier.Data.MapUtil.get_value(%{"age" => 30, "name" => "John"}, ["name"])
+       test/wanderer_notifier/data/map_util_test.exs:9: (test)
+
+
+
+100) test get_value/2 gets value with atom key (WandererNotifier.Data.MapUtilTest)
+     test/wanderer_notifier/data/map_util_test.exs:13
+     ** (UndefinedFunctionError) function WandererNotifier.Data.MapUtil.get_value/2 is undefined (module WandererNotifier.Data.MapUtil is not available)
+     code: assert MapUtil.get_value(map, [:name]) == "John"
+     stacktrace:
+       WandererNotifier.Data.MapUtil.get_value(%{name: "John", age: 30}, [:name])
+       test/wanderer_notifier/data/map_util_test.exs:15: (test)
+
+
+
+101) test clear_all/0 clears all deduplication entries (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:112
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+102) test check_and_mark/1 handles different keys independently (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:46
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+103) test handle_clear_key/1 clears a specific key (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:137
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+104) test check_and_mark_kill/1 handles string kill IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:104
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+105) test check_and_mark_character/1 handles integer character IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:84
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+106) test check_and_mark_system/1 different system IDs are tracked separately (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:76
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+107) test check_and_mark_system/1 handles integer system IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:64
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+108) test TTL and expiration entries can be manually expired (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:151
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+109) test check_and_mark_system/1 handles string system IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:70
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+110) test check_and_mark_character/1 handles string character IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:90
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+111) test check_and_mark_kill/1 handles integer kill IDs (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:98
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+112) test TTL and expiration clearing all entries removes all deduplication data (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:165
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+113) test check_and_mark/1 marks entries as seen (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:23
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+114) test check_and_mark/1 entries expire after TTL (WandererNotifier.Helpers.DeduplicationHelperTest)
+     test/wanderer_notifier/helpers/deduplication_helper_test.exs:33
+     ** (ArgumentError) The module WandererNotifier.Notifiers.Helpers.Deduplication was given as a child to a supervisor but it does not exist
+     stacktrace:
+       (elixir 1.18.3) lib/supervisor.ex:797: Supervisor.init_child/1
+       (elixir 1.18.3) lib/supervisor.ex:905: Supervisor.child_spec/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:571: ExUnit.Callbacks.start_supervised/2
+       (ex_unit 1.18.3) lib/ex_unit/callbacks.ex:582: ExUnit.Callbacks.start_supervised!/2
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:17: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit_setup_0/1
+       test/wanderer_notifier/helpers/deduplication_helper_test.exs:1: WandererNotifier.Helpers.DeduplicationHelperTest.__ex_unit__/2
+
+
+
+115) test format_system_notification/1 raises for system without required fields (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:219
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+116) test convert_color/1 returns integer color values unchanged (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:113
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+117) test to_discord_format/1 converts a generic notification to Discord format (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:225
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+118) test format_system_notification/1 formats a k-space system notification correctly (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:215
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+119) test format_kill_notification/1 handles killmail with missing or partial data (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:172
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+120) test format_kill_notification/1 formats a killmail notification correctly (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:133
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+121) test convert_color/1 converts hex strings to integer values (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:118
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+122) test format_system_status_message/8 formats a system status message correctly (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:260
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+123) test convert_color/1 returns default color for invalid inputs (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:124
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+124) test format_character_notification/1 handles character without corporation data (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:205
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+125) test format_system_notification/1 formats a wormhole system notification correctly (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:211
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+126) test format_system_status_message/8 handles startup message without uptime (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:354
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+127) test colors/0 returns a map of color constants (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:89
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+
+128) test convert_color/1 converts atom color names to integer values (WandererNotifier.Notifiers.StructuredFormatterTest)
+     test/wanderer_notifier/notifiers/structured_formatter_test.exs:105
+     ** (ArgumentError) unknown function get_single_killmail/1 for mock WandererNotifier.Api.ZKill.ServiceMock
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:681: Mox.add_expectation!/4
+       (mox 1.2.0) lib/mox.ex:598: Mox.stub/3
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:38: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit_setup_1/1
+       test/wanderer_notifier/notifiers/structured_formatter_test.exs:1: WandererNotifier.Notifiers.StructuredFormatterTest.__ex_unit__/2
+
+
+Finished in 2.3 seconds (2.1s async, 0.1s sync)
+155 tests, 128 failures

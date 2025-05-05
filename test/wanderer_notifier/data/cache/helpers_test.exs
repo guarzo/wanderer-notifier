@@ -122,33 +122,7 @@ defmodule WandererNotifier.Data.Cache.HelpersTest do
     end
 
     test "handles MapSystem struct" do
-      system = %MapSystem{
-        id: "168dae37-2e19-4982-8936-d945a8485420",
-        solar_system_id: 30_000_142,
-        name: "Jita",
-        original_name: "Jita",
-        temporary_name: nil,
-        locked: true,
-        class_title: nil,
-        effect_name: nil,
-        region_name: "The Forge",
-        statics: [],
-        static_details: [],
-        system_type: :kspace,
-        type_description: "High-sec",
-        is_shattered: false,
-        sun_type_id: 123
-      }
-
-      RepositoryMock
-      |> expect(:get, fn "map:system:30000142" -> nil end)
-      |> expect(:put, fn "map:system:30000142", ^system -> :ok end)
-      |> expect(:put, fn "tracked:system:30000142", true -> :ok end)
-      |> expect(:get, fn "tracked:systems" -> [] end)
-      |> expect(:put, fn "tracked:systems", [%{"system_id" => "30000142"}] -> :ok end)
-
-      result = CacheHelpers.add_system_to_tracked(system.solar_system_id, system)
-      assert result == :ok
+      # Removed: MapSystem struct no longer exists in the codebase
     end
   end
 

@@ -1,64 +1,29 @@
-defmodule WandererNotifier.MockZKillClient do
-  @moduledoc """
-  Mock implementation of the ZKillboard client for testing.
-  """
-
-  @behaviour WandererNotifier.Killmail.ZKillClient
-
-  @impl true
-  def get_single_killmail(_kill_id), do: {:ok, []}
-
-  @impl true
-  def get_recent_kills(_limit \\ 10), do: {:ok, []}
-
-  @impl true
-  def get_system_kills(_system_id, _limit \\ 5), do: {:ok, []}
-
-  @impl true
-  def get_character_kills(_character_id, _limit \\ 25, _page \\ 1), do: {:ok, []}
-end
-
 defmodule WandererNotifier.MockESI do
   @moduledoc """
   Mock implementation of the ESI service for testing.
   """
 
-  @behaviour WandererNotifier.Api.ESI.ServiceBehaviour
-
-  @impl true
   def get_killmail(_kill_id, _hash), do: {:ok, %{}}
 
-  @impl true
   def get_character_info(_character_id), do: {:ok, %{}}
 
-  @impl true
   def get_corporation_info(_corporation_id), do: {:ok, %{}}
 
-  @impl true
   def get_alliance_info(_alliance_id), do: {:ok, %{}}
 
-  @impl true
   def get_system_info(_system_id), do: {:ok, %{}}
 
-  @impl true
   def get_type_info(_type_id), do: {:ok, %{}}
 
-  @impl true
   def get_system(_system_id), do: {:ok, %{}}
 
-  @impl true
   def get_character(_character_id), do: {:ok, %{}}
 
-  @impl true
   def get_type(_type_id), do: {:ok, %{}}
 
-  @impl true
   def get_ship_type_name(_ship_type_id), do: {:ok, %{"name" => "Test Ship"}}
 
-  @impl true
-  def get_system_kills(_system_id, _limit) do
-    {:ok, []}
-  end
+  def get_system_kills(_system_id, _limit), do: {:ok, []}
 end
 
 defmodule WandererNotifier.Test.Support.Mocks do
@@ -73,10 +38,8 @@ defmodule WandererNotifier.Test.Support.Mocks do
 
   # -- Cache Implementation --
 
-  @impl true
   def get(key), do: {:ok, Process.get({:cache, key})}
 
-  @impl true
   def set(key, value, _ttl) do
     AppLogger.cache_debug("Setting cache value with TTL",
       key: key,
@@ -87,19 +50,16 @@ defmodule WandererNotifier.Test.Support.Mocks do
     {:ok, value}
   end
 
-  @impl true
   def put(key, value) do
     Process.put({:cache, key}, value)
     {:ok, value}
   end
 
-  @impl true
   def delete(key) do
     Process.delete({:cache, key})
     :ok
   end
 
-  @impl true
   def clear do
     # This is a simplified clear that only clears cache-related process dictionary entries
     Process.get_keys()
@@ -112,7 +72,6 @@ defmodule WandererNotifier.Test.Support.Mocks do
     :ok
   end
 
-  @impl true
   def get_and_update(key, update_fun) do
     current = Process.get({:cache, key})
     {current_value, new_value} = update_fun.(current)
@@ -120,7 +79,6 @@ defmodule WandererNotifier.Test.Support.Mocks do
     {:ok, {current_value, new_value}}
   end
 
-  @impl true
   def get_recent_kills do
     case get(Keys.zkill_recent_kills()) do
       {:ok, kills} when is_list(kills) -> kills
@@ -137,30 +95,20 @@ defmodule WandererNotifier.MockRepository do
   Mock implementation of the repository for testing.
   """
 
-  @behaviour WandererNotifier.Data.Cache.RepositoryBehaviour
-
-  @impl true
   def delete(_key), do: :ok
 
-  @impl true
   def exists?(_key), do: false
 
-  @impl true
   def get(_key), do: nil
 
-  @impl true
   def get_and_update(_key, _fun), do: {nil, nil}
 
-  @impl true
   def get_tracked_characters, do: []
 
-  @impl true
   def put(_key, _value), do: :ok
 
-  @impl true
   def set(_key, _value, _ttl), do: :ok
 
-  @impl true
   def clear, do: :ok
 end
 
@@ -186,18 +134,12 @@ defmodule WandererNotifier.MockConfig do
   Mock for the config module.
   """
 
-  @behaviour WandererNotifier.Config.Behaviour
-
-  @impl true
   def character_tracking_enabled?, do: true
 
-  @impl true
   def character_notifications_enabled?, do: true
 
-  @impl true
   def system_notifications_enabled?, do: true
 
-  @impl true
   def get_feature_status do
     %{
       notifications_enabled: true,
@@ -213,7 +155,6 @@ defmodule WandererNotifier.MockConfig do
     }
   end
 
-  @impl true
   def discord_channel_id_for(channel) do
     case channel do
       :main -> "123456789"
@@ -225,7 +166,6 @@ defmodule WandererNotifier.MockConfig do
     end
   end
 
-  @impl true
   def get_map_config do
     %{
       url: "https://wanderer.ltd",
@@ -235,7 +175,6 @@ defmodule WandererNotifier.MockConfig do
     }
   end
 
-  @impl true
   def get_env(key, default) do
     case key do
       :webhook_url -> "https://discord.com/api/webhooks/123/abc"
@@ -247,34 +186,24 @@ defmodule WandererNotifier.MockConfig do
     end
   end
 
-  @impl true
   def static_info_cache_ttl, do: 3600
 
-  @impl true
   def map_url, do: "https://wanderer.ltd"
 
-  @impl true
   def map_name, do: "TestMap"
 
-  @impl true
   def map_token, do: "test-token"
 
-  @impl true
   def map_csrf_token, do: "test-csrf-token"
 
-  @impl true
   def license_key, do: "test-license-key"
 
-  @impl true
   def license_manager_api_url, do: "https://license.example.com"
 
-  @impl true
   def license_manager_api_key, do: "test-api-key"
 
-  @impl true
   def notifier_api_token, do: "test-api-token"
 
-  @impl true
   def track_kspace_systems?, do: true
 end
 
@@ -283,32 +212,15 @@ defmodule WandererNotifier.MockCacheHelpers do
   Mock implementation of cache helpers for testing.
   """
 
-  @behaviour WandererNotifier.Data.Cache.HelpersBehaviour
+  def get_cached_kills(_id), do: {:ok, []}
 
-  @impl true
-  def get_cached_kills(_id) do
-    {:ok, []}
-  end
+  def get_tracked_systems, do: []
 
-  @impl true
-  def get_tracked_systems do
-    []
-  end
+  def get_tracked_characters, do: []
 
-  @impl true
-  def get_tracked_characters do
-    []
-  end
+  def get_ship_name(_ship_type_id), do: {:ok, "Test Ship"}
 
-  @impl true
-  def get_ship_name(_ship_type_id) do
-    {:ok, "Test Ship"}
-  end
-
-  @impl true
-  def get_character_name(_character_id) do
-    {:ok, "Test Character"}
-  end
+  def get_character_name(_character_id), do: {:ok, "Test Character"}
 end
 
 defmodule WandererNotifier.TestHelpers.Mocks do
@@ -350,5 +262,3 @@ Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
   for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
 )
-
-Mox.defmock(WandererNotifier.MockZKillClient, for: WandererNotifier.Killmail.ZKillClient)

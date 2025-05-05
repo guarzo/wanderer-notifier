@@ -1,0 +1,31 @@
+Walkthrough
+This change represents a major refactor and simplification of the codebase, removing all database persistence, chart service, and related API modules. All Ash resource modules, PostgreSQL setup, chart generation services (including the Node.js chart-service), and associated configuration files are deleted. The configuration system is consolidated and refactored, with many previously modular config files removed in favor of a single, centralized configuration module. API controllers and helpers are rewritten or removed to reflect the absence of persistence and chart features. Docker, environment, and devcontainer files are updated to eliminate database and chart-service dependencies. The CI/CD pipeline and documentation are updated accordingly.
+
+Changes
+Files/Paths	Change Summary
+.devcontainer/..., docker-compose-*.yml, .env.template, env.example, Dockerfile, Makefile, VERSION	Remove all PostgreSQL and chart-service related setup: delete DB/chart-service scripts, services, ports, volumes, and environment variables from devcontainer, Docker Compose, and Makefile; remove chart-service dependencies and build steps from Dockerfile; delete version file and environment templates.
+chart-service/...	Entire chart-service (Node.js) directory deleted, including the chart generator, package manifest, and documentation.
+docs/..., NOTIFICATION_TROUBLESHOOTING_PLAN.md	Remove documentation for killmail processing, action items, and chart/persistence features; add a new notification troubleshooting plan.
+config/*.exs, config/runtime.exs	Refactor and simplify configuration: remove all Ash/database/persistence/chart-service config, update logger module names, simplify environment variable handling, and remove legacy/compatibility logic.
+lib/wanderer_notifier/api/...	Remove all API modules related to persistence, chart-service, map/character/system API clients, HTTP clients/behaviours, ZKill/ESI clients, and response/error handlers. Refactor and simplify remaining controllers and pipelines to use new helpers and drop persistence/chart features. Add new API helpers and pipelines for JSON responses.
+lib/wanderer_notifier/chart_service/...	Remove all chart-service modules: adapters, config, error types, chart types, service manager, and node adapter.
+lib/wanderer_notifier/config/...	Remove all modular configuration files (Application, Database, Features, Notifications, Web, Timings, etc.) and behaviours. Replace with a centralized WandererNotifier.Config module with grouped configuration functions.
+lib/wanderer_notifier/cache/...	Add new cache key management and behaviour modules. Refactor Cachex implementation to new location and interface, update error handling and return values.
+lib/wanderer_notifier/application.ex	Simplify application startup: remove all multi-mode logic, configuration validation, and environment detection; retain only metric registry initialization and basic environment accessors.
+.github/actions/common-versioning/action.yml, .github/workflows/*.yml, cicd.txt	Refactor CI/CD: add new build-and-test workflow, update release workflow with output validation and debug steps, improve versioning action, and document new pipeline design.
+README.md, index.md	Update documentation to reflect new configuration variable names and removed features.
+lib/wanderer_notifier/api/api_pipeline.ex, lib/wanderer_notifier/api/helpers.ex, lib/wanderer_notifier/api/controller.ex	Add new API pipeline and helpers for standardized JSON response handling; add deprecated controller for backward compatibility.
+Changes Table
+Files/Paths (Grouped)	Change Summary
+.devcontainer/..., docker-compose-*.yml, .env.template, env.example, Dockerfile, Makefile, VERSION	Remove all PostgreSQL and chart-service related setup, scripts, services, environment variables, and build steps.
+chart-service/...	Delete entire chart-service codebase and documentation.
+docs/..., NOTIFICATION_TROUBLESHOOTING_PLAN.md	Remove persistence/chart-related docs; add notification troubleshooting plan.
+config/*.exs, config/runtime.exs	Refactor configuration, remove persistence/chart-service config, simplify env handling.
+lib/wanderer_notifier/api/...	Remove persistence/chart-service/map/character/system API modules; refactor controllers and add new helpers.
+lib/wanderer_notifier/chart_service/...	Remove all chart-service modules and adapters.
+lib/wanderer_notifier/config/...	Remove modular config files and behaviours; introduce centralized config module.
+lib/wanderer_notifier/cache/...	Add cache key management and behaviour modules; refactor Cachex implementation.
+lib/wanderer_notifier/application.ex	Simplify startup logic; remove multi-mode config and validation.
+.github/actions/..., .github/workflows/..., cicd.txt	Refactor CI/CD workflows, add new build-and-test pipeline, update versioning and release steps.
+README.md, index.md	Update documentation for new config variables and removed features.
+lib/wanderer_notifier/api/api_pipeline.ex, lib/wanderer_notifier/api/helpers.ex, lib/wanderer_notifier/api/controller.ex	Add new API pipeline, helpers, and deprecated controller for JSON response handling
