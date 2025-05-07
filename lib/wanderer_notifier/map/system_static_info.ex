@@ -1,4 +1,9 @@
 defmodule WandererNotifier.Map.SystemStaticInfo do
+  alias WandererNotifier.Map.MapSystem
+  alias WandererNotifier.Config
+  alias WandererNotifier.HttpClient
+  alias WandererNotifier.AppLogger
+
   @moduledoc """
   Client for fetching static information about EVE systems from the map API.
   Provides clean access to detailed system information for wormholes and other systems.
@@ -68,7 +73,6 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Config
 
   @doc """
   Fetches static information for a specific solar system.
@@ -124,7 +128,9 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
 
       {:ok, %{status_code: 200, body: body}} when is_binary(body) ->
         case Jason.decode(body) do
-          {:ok, parsed_response} -> {:ok, parsed_response}
+          {:ok, parsed_response} ->
+            {:ok, parsed_response}
+
           {:error, reason} ->
             AppLogger.api_error("[SystemStaticInfo] Failed to parse JSON", error: inspect(reason))
             {:error, {:json_parse_error, reason}}
@@ -151,113 +157,130 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
     - {:ok, system} on failure but returns the original system
   """
   def enrich_system(system) do
-    alias WandererNotifier.Map.MapSystem
-
     try do
-      # Only try to enrich if the system has a valid ID
-      if system.solar_system_id && system.solar_system_id > 0 do
-        # Try to get static info with proper error handling
-        result = get_system_static_info(system.solar_system_id)
-        AppLogger.api_debug("[SystemStaticInfo] get_system_static_info result (FULL RAW)",
-          system_id: system.solar_system_id,
-          raw_result: inspect(result, pretty: true, limit: 2000)
-        )
-        AppLogger.api_debug("[SystemStaticInfo] get_system_static_info result",
-          system_id: system.solar_system_id,
-          result: inspect(result, pretty: true, limit: 1000)
-        )
-        case result do
-          {:ok, static_info} ->
-            # Merge only the inner data map if present
-            data_to_merge =
-              case static_info do
-                %{"data" => data_map} when is_map(data_map) -> data_map
-                other -> other
-              end
-            AppLogger.api_debug("[SystemStaticInfo] Got static info for enrichment",
-              system_name: system.name,
-              static_info_keys: Map.keys(data_to_merge),
-              static_info: inspect(data_to_merge, pretty: true, limit: 1000)
-            )
-
-            # Update the map system with static information
-            enhanced_system = MapSystem.update_with_static_info(system, data_to_merge)
-
-            # Convert "security" to :security_status (float) and add to struct
-            security_status =
-              case Map.get(data_to_merge, "security") do
-                nil -> 0.0
-                val when is_binary(val) ->
-                  case Float.parse(val) do
-                    {f, _} -> f
-                    :error -> 0.0
-                  end
-                val when is_number(val) -> val
-                _ -> 0.0
-              end
-            enhanced_system = Map.put(enhanced_system, :security_status, security_status)
-
-            # Map expected string keys to atom keys, handling optional fields
-            expected_fields = [
-              :statics, :effect_name, :class_title, :effect_power, :is_shattered, :region_id,
-              :region_name, :system_class, :triglavian_invasion_status, :type_description,
-              :constellation_id, :constellation_name, :static_details, :sun_type_id
-            ]
-            enhanced_system = Enum.reduce(expected_fields, enhanced_system, fn field, acc ->
-              string_key = Atom.to_string(field)
-              value = Map.get(data_to_merge, string_key)
-              # For statics and static_details, default to [] if not present
-              default = if field in [:statics, :static_details], do: [], else: nil
-              Map.put(acc, field, (if value == nil, do: default, else: value))
-            end)
-
-            AppLogger.api_debug("[SystemStaticInfo] Enriched system result",
-              enriched_system: inspect(enhanced_system, pretty: true, limit: 1000)
-            )
-            {:ok, enhanced_system}
-
-          {:error, reason} ->
-            # Log error but continue with original system
-            AppLogger.api_warn(
-              "[SystemStaticInfo] Could not enrich system",
-              system_name: system.name,
-              error: inspect(reason),
-              system: inspect(system, pretty: true, limit: 1000)
-            )
-
-            # Return original system - IMPORTANT: Don't error out!
-            AppLogger.api_debug("[SystemStaticInfo] Returning original system after enrichment failure",
-              system: inspect(system, pretty: true, limit: 1000)
-            )
-            {:ok, system}
-        end
+      with true <- valid_system_id?(system),
+           {:ok, static_info} <- get_system_static_info(system.solar_system_id),
+           data_to_merge <- extract_data_from_static_info(static_info),
+           enhanced_system <- update_system_with_static_info(system, data_to_merge) do
+        {:ok, enhanced_system}
       else
-        # Invalid system ID - log and return original
-        AppLogger.api_warn(
-          "[SystemStaticInfo] Cannot enrich system with invalid ID",
-          system_name: system.name,
-          system_id: system.solar_system_id,
-          system: inspect(system, pretty: true, limit: 1000)
-        )
+        false ->
+          log_invalid_system_id(system)
+          {:ok, system}
 
-        # Still return original system
-        AppLogger.api_debug("[SystemStaticInfo] Returning original system due to invalid ID",
-          system: inspect(system, pretty: true, limit: 1000)
-        )
-        {:ok, system}
+        {:error, reason} ->
+          log_enrichment_failure(system, reason)
+          {:ok, system}
       end
     rescue
       e ->
-        log_message = [
-          "[SystemStaticInfo] Exception during system enrichment:",
-          "Error: #{Exception.message(e)}",
-          "System: #{inspect(system, pretty: true, limit: 1000)}",
-          "Stacktrace:\n#{Exception.format_stacktrace(__STACKTRACE__)}"
-        ] |> Enum.join("\n")
-
-        AppLogger.api_error(log_message)
+        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+        log_enrichment_exception(system, e, stacktrace)
         {:ok, system}
     end
+  end
+
+  # Helper functions for system enrichment
+
+  defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_integer(id), do: id > 0
+
+  defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed_id, _} -> parsed_id > 0
+      :error -> false
+    end
+  end
+
+  defp valid_system_id?(_), do: false
+
+  defp extract_data_from_static_info(%{"data" => data}) when is_map(data), do: data
+  defp extract_data_from_static_info(data) when is_map(data), do: data
+  defp extract_data_from_static_info(_), do: %{}
+
+  defp update_system_with_static_info(system, data_to_merge) do
+    # First update with basic static info
+    enhanced_system = MapSystem.update_with_static_info(system, data_to_merge)
+
+    # Then handle special cases
+    enhanced_system
+    |> update_security_status(data_to_merge)
+    |> update_optional_fields(data_to_merge)
+  end
+
+  defp update_security_status(system, data) do
+    security_status = parse_security_status(Map.get(data, "security"))
+    Map.put(system, :security_status, security_status)
+  end
+
+  defp parse_security_status(nil), do: 0.0
+
+  defp parse_security_status(val) when is_binary(val) do
+    case Float.parse(val) do
+      {f, _} -> f
+      :error -> 0.0
+    end
+  end
+
+  defp parse_security_status(val) when is_number(val), do: val
+  defp parse_security_status(_), do: 0.0
+
+  defp update_optional_fields(system, data) do
+    optional_fields = [
+      :statics,
+      :effect_name,
+      :class_title,
+      :effect_power,
+      :is_shattered,
+      :region_id,
+      :region_name,
+      :system_class,
+      :triglavian_invasion_status,
+      :type_description,
+      :constellation_id,
+      :constellation_name,
+      :static_details,
+      :sun_type_id
+    ]
+
+    Enum.reduce(optional_fields, system, fn field, acc ->
+      string_key = Atom.to_string(field)
+      value = Map.get(data, string_key)
+      default = if field in [:statics, :static_details], do: [], else: nil
+      Map.put(acc, field, value || default)
+    end)
+  end
+
+  # Logging helper functions
+
+  defp log_invalid_system_id(system) do
+    AppLogger.api_warn(
+      "[SystemStaticInfo] Cannot enrich system with invalid ID",
+      system_name: system.name,
+      system_id: system.solar_system_id,
+      system: inspect(system, pretty: true, limit: 1000)
+    )
+  end
+
+  defp log_enrichment_failure(system, reason) do
+    AppLogger.api_warn(
+      "[SystemStaticInfo] Could not enrich system",
+      system_name: system.name,
+      error: inspect(reason),
+      system: inspect(system, pretty: true, limit: 1000)
+    )
+  end
+
+  defp log_enrichment_exception(system, exception, stacktrace) do
+    log_message =
+      [
+        "[SystemStaticInfo] Exception during system enrichment:",
+        "Error: #{Exception.message(exception)}",
+        "System: #{inspect(system, pretty: true, limit: 1000)}",
+        "Stacktrace:\n#{stacktrace}"
+      ]
+      |> Enum.join("\n")
+
+    AppLogger.api_error(log_message)
   end
 
   defp get_auth_headers do

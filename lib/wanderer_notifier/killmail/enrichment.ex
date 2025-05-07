@@ -17,183 +17,31 @@ defmodule WandererNotifier.Killmail.Enrichment do
     - {:error, reason} on failure
   """
   def enrich_killmail_data(%Killmail{killmail_id: killmail_id, zkb: %{"hash" => hash}} = killmail) do
+    with {:ok, esi_data} <- get_killmail_data(killmail_id, hash),
+         {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
+         {:ok, victim_info} <- get_victim_info(esi_data["victim"]),
+         {:ok, ship_info} <- get_ship_info(esi_data["victim"]["ship_type_id"]),
+         {:ok, attackers} <- enrich_attackers(esi_data["attackers"], killmail_id) do
+      enriched_killmail =
+        build_enriched_killmail(
+          killmail,
+          esi_data,
+          system_name,
+          victim_info,
+          ship_info,
+          attackers
+        )
+
+      {:ok, enriched_killmail}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_killmail_data(killmail_id, hash) do
     case WandererNotifier.ESI.Service.get_killmail(killmail_id, hash) do
       {:ok, esi_data} ->
-        # Attach esi_data to the killmail
-        killmail = %Killmail{killmail | esi_data: esi_data}
-
-        # Extract victim info
-        victim_id = get_in(esi_data, ["victim", "character_id"])
-        ship_type_id = get_in(esi_data, ["victim", "ship_type_id"])
-        system_id = Map.get(esi_data, "solar_system_id")
-
-        # Get system name first and handle any errors
-        case WandererNotifier.ESI.Service.get_system(system_id) do
-          {:ok, %{"name" => system_name}} ->
-            # Enrich attackers
-            attackers =
-              esi_data
-              |> Map.get("attackers", [])
-              |> Enum.map(fn attacker ->
-                character_id = Map.get(attacker, "character_id")
-                corporation_id = Map.get(attacker, "corporation_id")
-                alliance_id = Map.get(attacker, "alliance_id")
-                ship_type_id = Map.get(attacker, "ship_type_id")
-                weapon_type_id = Map.get(attacker, "weapon_type_id")
-                damage_done = Map.get(attacker, "damage_done")
-                final_blow = Map.get(attacker, "final_blow", false)
-                security_status = Map.get(attacker, "security_status")
-                faction_id = Map.get(attacker, "faction_id")
-
-                # Enrich names (optional, can be async/cached in future)
-                character_name =
-                  case get_character_info(character_id) do
-                    {:ok, info} -> info["name"]
-                    _ -> nil
-                  end
-
-                corporation_name =
-                  if is_nil(corporation_id) do
-                    AppLogger.kill_warn("Attacker missing corporation_id", %{
-                      killmail_id: killmail_id,
-                      attacker: attacker
-                    })
-
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-                      {:ok, %{"name" => name}} -> name
-                      _ -> nil
-                    end
-                  end
-
-                alliance_name =
-                  if is_nil(alliance_id) do
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
-                      {:ok, %{"name" => name}} -> name
-                      _ -> nil
-                    end
-                  end
-
-                corporation_ticker =
-                  if is_nil(corporation_id) do
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-                      {:ok, %{"ticker" => ticker}} -> ticker
-                      _ -> nil
-                    end
-                  end
-
-                alliance_ticker =
-                  if is_nil(alliance_id) do
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
-                      {:ok, %{"ticker" => ticker}} -> ticker
-                      _ -> nil
-                    end
-                  end
-
-                ship_type_name =
-                  if is_nil(ship_type_id) do
-                    AppLogger.kill_warn("Attacker missing ship_type_id", %{
-                      killmail_id: killmail_id,
-                      attacker: attacker
-                    })
-
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
-                      {:ok, %{"name" => name}} -> name
-                      _ -> nil
-                    end
-                  end
-
-                weapon_type_name =
-                  if is_nil(weapon_type_id) do
-                    AppLogger.kill_warn("Attacker missing weapon_type_id", %{
-                      killmail_id: killmail_id,
-                      attacker: attacker
-                    })
-
-                    nil
-                  else
-                    case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
-                      {:ok, %{"name" => name}} -> name
-                      _ -> nil
-                    end
-                  end
-
-                %{
-                  character_id: character_id,
-                  character_name: character_name,
-                  corporation_id: corporation_id,
-                  corporation_name: corporation_name,
-                  corporation_ticker: corporation_ticker,
-                  alliance_id: alliance_id,
-                  alliance_name: alliance_name,
-                  alliance_ticker: alliance_ticker,
-                  ship_type_id: ship_type_id,
-                  ship_type_name: ship_type_name,
-                  weapon_type_id: weapon_type_id,
-                  weapon_type_name: weapon_type_name,
-                  damage_done: damage_done,
-                  final_blow: final_blow,
-                  security_status: security_status,
-                  faction_id: faction_id
-                }
-              end)
-
-            with {:ok, victim_info} <- get_character_info(victim_id),
-                 {:ok, ship_info} <- get_ship_info(ship_type_id) do
-              # Fetch victim corporation ticker if possible
-              victim_corp_ticker =
-                case victim_info["corporation_id"] do
-                  nil ->
-                    nil
-
-                  corp_id ->
-                    case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
-                      {:ok, %{"ticker" => ticker}} -> ticker
-                      _ -> nil
-                    end
-                end
-
-              enriched_killmail = %Killmail{
-                killmail
-                | victim_name: victim_info["name"],
-                  victim_corporation: victim_info["corporation_id"],
-                  victim_corp_ticker: victim_corp_ticker,
-                  victim_alliance: Map.get(victim_info, "alliance_id"),
-                  ship_name: ship_info["name"],
-                  system_id: system_id,
-                  system_name: system_name,
-                  attackers: attackers
-              }
-
-              {:ok, enriched_killmail}
-            else
-              {:error, reason} ->
-                AppLogger.api_error("Failed to enrich killmail", %{
-                  kill_id: killmail_id,
-                  error: inspect(reason)
-                })
-
-                {:error, reason}
-            end
-
-          {:error, reason} ->
-            AppLogger.api_error("Failed to get system info", %{
-              kill_id: killmail_id,
-              system_id: system_id,
-              error: inspect(reason)
-            })
-
-            {:error, reason}
-        end
+        {:ok, esi_data}
 
       {:error, reason} ->
         AppLogger.kill_warn("Failed to fetch ESI data for killmail", %{
@@ -203,6 +51,101 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
         {:error, :esi_data_missing}
     end
+  end
+
+  defp get_system_name(system_id) do
+    case WandererNotifier.ESI.Service.get_system(system_id) do
+      {:ok, %{"name" => name}} ->
+        {:ok, name}
+
+      {:error, reason} ->
+        AppLogger.api_error("Failed to get system info", %{
+          system_id: system_id,
+          error: inspect(reason)
+        })
+
+        {:error, reason}
+    end
+  end
+
+  defp get_victim_info(victim) do
+    with {:ok, character_info} <- get_character_info(victim["character_id"]),
+         {:ok, corp_ticker} <- get_corp_ticker(character_info["corporation_id"]) do
+      {:ok, Map.put(character_info, "corp_ticker", corp_ticker)}
+    end
+  end
+
+  defp get_corp_ticker(nil), do: {:ok, nil}
+
+  defp get_corp_ticker(corp_id) do
+    case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
+      {:ok, %{"ticker" => ticker}} -> {:ok, ticker}
+      _ -> {:ok, nil}
+    end
+  end
+
+  defp enrich_attackers(attackers, killmail_id) do
+    enriched = Enum.map(attackers, &enrich_attacker(&1, killmail_id))
+    {:ok, enriched}
+  end
+
+  defp enrich_attacker(attacker, _killmail_id) do
+    with {:ok, character_info} <- get_character_info(attacker["character_id"]),
+         {:ok, corp_info} <- get_corp_info(attacker["corporation_id"]),
+         {:ok, alliance_info} <- get_alliance_info(attacker["alliance_id"]),
+         {:ok, ship_info} <- get_ship_info(attacker["ship_type_id"]),
+         {:ok, weapon_info} <- get_weapon_info(attacker["weapon_type_id"]) do
+      build_attacker_info(
+        attacker,
+        character_info,
+        corp_info,
+        alliance_info,
+        ship_info,
+        weapon_info
+      )
+    end
+  end
+
+  defp build_attacker_info(
+         attacker,
+         character_info,
+         corp_info,
+         alliance_info,
+         ship_info,
+         weapon_info
+       ) do
+    %{
+      character_id: attacker["character_id"],
+      character_name: character_info["name"],
+      corporation_id: attacker["corporation_id"],
+      corporation_name: corp_info["name"],
+      corporation_ticker: corp_info["ticker"],
+      alliance_id: attacker["alliance_id"],
+      alliance_name: alliance_info["name"],
+      alliance_ticker: alliance_info["ticker"],
+      ship_type_id: attacker["ship_type_id"],
+      ship_type_name: ship_info["name"],
+      weapon_type_id: attacker["weapon_type_id"],
+      weapon_type_name: weapon_info["name"],
+      damage_done: attacker["damage_done"],
+      final_blow: attacker["final_blow"],
+      security_status: attacker["security_status"],
+      faction_id: attacker["faction_id"]
+    }
+  end
+
+  defp build_enriched_killmail(killmail, esi_data, system_name, victim_info, ship_info, attackers) do
+    %Killmail{
+      killmail
+      | victim_name: victim_info["name"],
+        victim_corporation: victim_info["corporation_id"],
+        victim_corp_ticker: victim_info["corp_ticker"],
+        victim_alliance: victim_info["alliance_id"],
+        ship_name: ship_info["name"],
+        system_id: esi_data["solar_system_id"],
+        system_name: system_name,
+        attackers: attackers
+    }
   end
 
   @doc """
@@ -317,6 +260,27 @@ defmodule WandererNotifier.Killmail.Enrichment do
     case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
       {:ok, info} -> {:ok, info}
       {:error, reason} -> {:error, {:ship_info_error, reason}}
+    end
+  end
+
+  defp get_corp_info(corporation_id) do
+    case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
+      {:ok, info} -> {:ok, info}
+      {:error, reason} -> {:error, {:corp_info_error, reason}}
+    end
+  end
+
+  defp get_alliance_info(alliance_id) do
+    case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
+      {:ok, info} -> {:ok, info}
+      {:error, reason} -> {:error, {:alliance_info_error, reason}}
+    end
+  end
+
+  defp get_weapon_info(weapon_type_id) do
+    case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
+      {:ok, info} -> {:ok, info}
+      {:error, reason} -> {:error, {:weapon_info_error, reason}}
     end
   end
 end

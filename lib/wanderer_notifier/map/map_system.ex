@@ -19,7 +19,6 @@ defmodule WandererNotifier.Map.MapSystem do
   - sun_type_id: Type ID of the system's sun
   - id: Alternative identifier for the system
   - security_status: Security status of the system
-  - effect_power: Power of the system's effect
   - region_id: ID of the system's region
   - triglavian_invasion_status: Invasion status of the system
   - constellation_id: ID of the system's constellation
@@ -91,32 +90,53 @@ defmodule WandererNotifier.Map.MapSystem do
   """
   @spec new(map()) :: t()
   def new(data) do
-    struct = %__MODULE__{
-      id: Map.get(data, :id) || Map.get(data, "id"),
-      name: Map.get(data, :name) || Map.get(data, "name"),
-      solar_system_id: Map.get(data, :solar_system_id) || Map.get(data, "solar_system_id"),
-      region_name: Map.get(data, :region_name) || Map.get(data, "region_name"),
-      statics: Map.get(data, :statics) || Map.get(data, "statics"),
-      static_details: Map.get(data, :static_details) || Map.get(data, "static_details"),
-      system_class: Map.get(data, :system_class) || Map.get(data, "system_class"),
-      class_title: Map.get(data, :class_title) || Map.get(data, "class_title"),
-      type_description: Map.get(data, :type_description) || Map.get(data, "type_description"),
-      is_shattered: Map.get(data, :is_shattered) || Map.get(data, "is_shattered"),
-      effect_name: Map.get(data, :effect_name) || Map.get(data, "effect_name"),
-      sun_type_id: Map.get(data, :sun_type_id) || Map.get(data, "sun_type_id"),
-      temporary_name: Map.get(data, :temporary_name) || Map.get(data, "temporary_name"),
-      original_name: Map.get(data, :original_name) || Map.get(data, "original_name"),
-      security_status: Map.get(data, :security_status) || Map.get(data, "security_status"),
-      effect_power: Map.get(data, :effect_power) || Map.get(data, "effect_power"),
-      region_id: Map.get(data, :region_id) || Map.get(data, "region_id"),
-      triglavian_invasion_status:
-        Map.get(data, :triglavian_invasion_status) || Map.get(data, "triglavian_invasion_status"),
-      constellation_id: Map.get(data, :constellation_id) || Map.get(data, "constellation_id"),
-      constellation_name:
-        Map.get(data, :constellation_name) || Map.get(data, "constellation_name")
-    }
+    # Define field mappings for extraction
+    field_mappings = [
+      # Required fields
+      {:solar_system_id, ["solar_system_id", :solar_system_id]},
+      {:name, ["name", :name]},
+      # Optional fields
+      {:id, ["id", :id]},
+      {:region_name, ["region_name", :region_name]},
+      {:statics, ["statics", :statics]},
+      {:static_details, ["static_details", :static_details]},
+      {:system_class, ["system_class", :system_class]},
+      {:class_title, ["class_title", :class_title]},
+      {:type_description, ["type_description", :type_description]},
+      {:is_shattered, ["is_shattered", :is_shattered]},
+      {:effect_name, ["effect_name", :effect_name]},
+      {:sun_type_id, ["sun_type_id", :sun_type_id]},
+      {:temporary_name, ["temporary_name", :temporary_name]},
+      {:original_name, ["original_name", :original_name]},
+      {:security_status, ["security_status", :security_status]},
+      {:effect_power, ["effect_power", :effect_power]},
+      {:region_id, ["region_id", :region_id]},
+      {:triglavian_invasion_status, ["triglavian_invasion_status", :triglavian_invasion_status]},
+      {:constellation_id, ["constellation_id", :constellation_id]},
+      {:constellation_name, ["constellation_name", :constellation_name]},
+      {:system_type, ["system_type", :system_type]}
+    ]
 
-    struct
+    # Extract fields using the mappings
+    attrs = extract_fields(data, field_mappings)
+
+    # Create the struct
+    struct(__MODULE__, attrs)
+  end
+
+  # Helper function to extract fields from data using mappings
+  defp extract_fields(data, mappings) do
+    Enum.reduce(mappings, %{}, fn {field, keys}, acc ->
+      value = get_first_valid_value(data, keys)
+      if value != nil, do: Map.put(acc, field, value), else: acc
+    end)
+  end
+
+  # Helper function to get the first valid value from a list of possible keys
+  defp get_first_valid_value(data, keys) do
+    Enum.find_value(keys, fn key ->
+      Map.get(data, key)
+    end)
   end
 
   @doc """
@@ -173,159 +193,105 @@ defmodule WandererNotifier.Map.MapSystem do
   """
   @spec validate_types(t()) :: :ok
   def validate_types(%__MODULE__{} = system) do
-    unless is_binary(system.name),
-      do: raise(ArgumentError, "MapSystem.name must be a string, got: #{inspect(system.name)}")
-
-    unless is_nil(system.original_name) or is_binary(system.original_name),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.original_name must be a string or nil, got: #{inspect(system.original_name)}"
-        )
-
-    unless is_nil(system.system_type) or is_binary(system.system_type) or
-             is_atom(system.system_type),
-           do:
-             raise(
-               ArgumentError,
-               "MapSystem.system_type must be a string, atom, or nil, got: #{inspect(system.system_type)}"
-             )
-
-    unless is_nil(system.type_description) or is_binary(system.type_description),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.type_description must be a string or nil, got: #{inspect(system.type_description)}"
-        )
-
-    unless is_nil(system.class_title) or is_binary(system.class_title),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.class_title must be a string or nil, got: #{inspect(system.class_title)}"
-        )
-
-    unless is_nil(system.effect_name) or is_binary(system.effect_name),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.effect_name must be a string or nil, got: #{inspect(system.effect_name)}"
-        )
-
-    unless is_nil(system.region_name) or is_binary(system.region_name),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.region_name must be a string or nil, got: #{inspect(system.region_name)}"
-        )
-
-    unless is_nil(system.static_details) or is_list(system.static_details),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.static_details must be a list or nil, got: #{inspect(system.static_details)}"
-        )
-
-    unless is_nil(system.statics) or is_list(system.statics),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.statics must be a list or nil, got: #{inspect(system.statics)}"
-        )
-
-    unless is_nil(system.sun_type_id) or is_integer(system.sun_type_id),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.sun_type_id must be an integer or nil, got: #{inspect(system.sun_type_id)}"
-        )
-
-    unless is_nil(system.solar_system_id) or is_integer(system.solar_system_id) or
-             is_binary(system.solar_system_id),
-           do:
-             raise(
-               ArgumentError,
-               "MapSystem.solar_system_id must be an integer, string, or nil, got: #{inspect(system.solar_system_id)}"
-             )
-
-    unless is_nil(system.id) or is_integer(system.id) or is_binary(system.id),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.id must be an integer, string, or nil, got: #{inspect(system.id)}"
-        )
-
-    unless is_nil(system.is_shattered) or is_boolean(system.is_shattered),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.is_shattered must be a boolean or nil, got: #{inspect(system.is_shattered)}"
-        )
-
-    unless is_nil(system.locked) or is_boolean(system.locked),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.locked must be a boolean or nil, got: #{inspect(system.locked)}"
-        )
-
-    unless is_nil(system.system_class) or is_binary(system.system_class),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.system_class must be a string or nil, got: #{inspect(system.system_class)}"
-        )
-
-    unless is_nil(system.temporary_name) or is_binary(system.temporary_name),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.temporary_name must be a string or nil, got: #{inspect(system.temporary_name)}"
-        )
-
-    unless is_nil(system.security_status) or is_float(system.security_status),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.security_status must be a float or nil, got: #{inspect(system.security_status)}"
-        )
-
-    unless is_nil(system.effect_power) or is_integer(system.effect_power),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.effect_power must be an integer or nil, got: #{inspect(system.effect_power)}"
-        )
-
-    unless is_nil(system.region_id) or is_integer(system.region_id),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.region_id must be an integer or nil, got: #{inspect(system.region_id)}"
-        )
-
-    unless is_nil(system.triglavian_invasion_status) or
-             is_binary(system.triglavian_invasion_status),
-           do:
-             raise(
-               ArgumentError,
-               "MapSystem.triglavian_invasion_status must be a string or nil, got: #{inspect(system.triglavian_invasion_status)}"
-             )
-
-    unless is_nil(system.constellation_id) or is_integer(system.constellation_id),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.constellation_id must be an integer or nil, got: #{inspect(system.constellation_id)}"
-        )
-
-    unless is_nil(system.constellation_name) or is_binary(system.constellation_name),
-      do:
-        raise(
-          ArgumentError,
-          "MapSystem.constellation_name must be a string or nil, got: #{inspect(system.constellation_name)}"
-        )
-
+    validate_string_fields(system)
+    validate_numeric_fields(system)
+    validate_boolean_fields(system)
+    validate_list_fields(system)
+    validate_optional_fields(system)
     :ok
+  end
+
+  # Required string fields
+  defp validate_string_fields(system) do
+    validate_field(system, :name, &is_binary/1, "string")
+  end
+
+  # Optional string fields
+  defp validate_optional_fields(system) do
+    optional_string_fields = [
+      :original_name,
+      :type_description,
+      :class_title,
+      :effect_name,
+      :region_name,
+      :system_class,
+      :temporary_name,
+      :triglavian_invasion_status,
+      :constellation_name
+    ]
+
+    Enum.each(optional_string_fields, fn field ->
+      validate_optional_field(system, field, &is_binary/1, "string")
+    end)
+
+    # Special case for system_type which can be string, atom, or nil
+    validate_optional_field(
+      system,
+      :system_type,
+      &(&1 == nil or is_binary(&1) or is_atom(&1)),
+      "string, atom, or nil"
+    )
+  end
+
+  # Numeric fields
+  defp validate_numeric_fields(system) do
+    # Integer fields
+    integer_fields = [:sun_type_id, :effect_power, :region_id, :constellation_id]
+
+    Enum.each(integer_fields, fn field ->
+      validate_optional_field(system, field, &is_integer/1, "integer")
+    end)
+
+    # Float fields
+    validate_optional_field(system, :security_status, &is_float/1, "float")
+
+    # Fields that can be integer or string
+    mixed_id_fields = [:solar_system_id, :id]
+
+    Enum.each(mixed_id_fields, fn field ->
+      validate_optional_field(
+        system,
+        field,
+        &(&1 == nil or is_integer(&1) or is_binary(&1)),
+        "integer or string"
+      )
+    end)
+  end
+
+  # Boolean fields
+  defp validate_boolean_fields(system) do
+    boolean_fields = [:is_shattered, :locked]
+
+    Enum.each(boolean_fields, fn field ->
+      validate_optional_field(system, field, &is_boolean/1, "boolean")
+    end)
+  end
+
+  # List fields
+  defp validate_list_fields(system) do
+    list_fields = [:static_details, :statics]
+
+    Enum.each(list_fields, fn field ->
+      validate_optional_field(system, field, &is_list/1, "list")
+    end)
+  end
+
+  # Helper function for required fields
+  defp validate_field(system, field, validator, expected_type) do
+    value = Map.get(system, field)
+
+    unless validator.(value) do
+      raise ArgumentError, "MapSystem.#{field} must be a #{expected_type}, got: #{inspect(value)}"
+    end
+  end
+
+  # Helper function for optional fields
+  defp validate_optional_field(system, field, validator, expected_type) do
+    value = Map.get(system, field)
+
+    unless value == nil or validator.(value) do
+      raise ArgumentError,
+            "MapSystem.#{field} must be a #{expected_type} or nil, got: #{inspect(value)}"
+    end
   end
 end

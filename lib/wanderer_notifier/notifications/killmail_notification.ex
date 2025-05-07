@@ -95,6 +95,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   # Process system notification if needed
   defp process_system_notification(enriched_killmail, _kill_id, has_tracked_system) do
     kill_id = enriched_killmail.killmail_id
+
     if has_tracked_system do
       # Prepare system notification
       system_generic_notification =
@@ -117,6 +118,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
          _tracked_characters
        ) do
     kill_id = enriched_killmail.killmail_id
+
     if has_tracked_characters do
       # For now, use the same notification format for character notifications
       character_generic_notification =
@@ -249,69 +251,43 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   def send_test do
     AppLogger.kill_info("Sending test kill notification...")
 
-    # Get recent kills using proper cache key
-    recent_kills_result = CacheRepo.get(CacheKeys.zkill_recent_kills())
+    with {:ok, recent_kill} <- get_recent_kill(),
+         kill_id = extract_kill_id(recent_kill),
+         killmail = ensure_data_killmail(recent_kill),
+         {:ok, enriched_kill} <- enrich_killmail(killmail),
+         :ok <- validate_killmail_data(enriched_kill) do
+      AppLogger.kill_info(
+        "TEST NOTIFICATION: Using normal notification flow for test kill notification"
+      )
 
-    recent_kills =
-      case recent_kills_result do
-        {:ok, kills} -> kills
-        _ -> []
-      end
-
-    AppLogger.kill_debug("Found #{length(recent_kills)} recent kills in shared cache repository")
-
-    if recent_kills == [] do
-      AppLogger.kill_warn("No recent kills found in shared cache repository")
-      {:error, :no_recent_kills}
+      send_kill_notification(enriched_kill, kill_id, true)
+      {:ok, kill_id}
     else
-      # Get the first kill
-      recent_kill = List.first(recent_kills)
+      {:error, :no_recent_kills} ->
+        AppLogger.kill_warn("No recent kills found in shared cache repository")
+        {:error, :no_recent_kills}
 
-      # Extract kill_id regardless of struct type
-      kill_id = extract_kill_id(recent_kill)
+      {:error, reason} ->
+        error_message = "Cannot send test notification: #{reason}"
+        AppLogger.kill_error(error_message)
+        Dispatcher.send_message(error_message)
+        {:error, error_message}
+    end
+  end
 
-      # Log what we're using for testing
-      AppLogger.kill_debug("Using kill data for test notification with kill_id: #{kill_id}")
+  # Private helper functions
 
-      # Create a Data.Killmail struct if needed
-      killmail = ensure_data_killmail(recent_kill)
+  defp get_recent_kill do
+    case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+      {:ok, [kill | _]} -> {:ok, kill}
+      _ -> {:error, :no_recent_kills}
+    end
+  end
 
-      # Make sure to enrich the killmail data before sending notification
-      # This will try to get real data from APIs first
-      case WandererNotifier.Killmail.Enrichment.enrich_killmail_data(killmail) do
-        {:ok, enriched_kill} ->
-          # Validate essential data is present - fail if not
-          case validate_killmail_data(enriched_kill) do
-            :ok ->
-              # Use the normal notification flow but bypass deduplication
-              AppLogger.kill_info(
-                "TEST NOTIFICATION: Using normal notification flow for test kill notification"
-              )
-
-              send_kill_notification(enriched_kill, kill_id, true)
-              {:ok, kill_id}
-
-            {:error, reason} ->
-              # Data validation failed, return error
-              error_message = "Cannot send test notification: #{reason}"
-              AppLogger.kill_error(error_message)
-
-              # Notify the user through Discord
-              Dispatcher.send_message(error_message)
-
-              {:error, error_message}
-          end
-
-        {:error, reason} ->
-          # Data enrichment failed, return error
-          error_message = "Cannot send test notification: #{reason}"
-          AppLogger.kill_error(error_message)
-
-          # Notify the user through Discord
-          Dispatcher.send_message(error_message)
-
-          {:error, error_message}
-      end
+  defp enrich_killmail(killmail) do
+    case WandererNotifier.Killmail.Enrichment.enrich_killmail_data(killmail) do
+      {:ok, enriched} -> {:ok, enriched}
+      error -> error
     end
   end
 

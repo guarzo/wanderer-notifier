@@ -36,12 +36,47 @@ config :wanderer_notifier, :websocket, %{
 config :logger,
   level: :info,
   format: "$time [$level] $message\n",
-  backends: [:console]
+  backends: [:console],
+  compile_time_metadata: [
+    :request_id,
+    :error,
+    :stacktrace,
+    :status,
+    :headers,
+    :body,
+    :kill_id,
+    :system_id,
+    :character_id
+  ],
+  metadata: [
+    :request_id,
+    :error,
+    :stacktrace,
+    :status,
+    :headers,
+    :body,
+    :kill_id,
+    :system_id,
+    :character_id
+  ]
 
 # Console logger configuration
 config :logger, :console,
-  format: "$time [$level] $message\n",
-  metadata: [:trace_id],
+  format: "$time $metadata[$level] $message\n",
+  metadata_filter: [
+    :request_id,
+    :error,
+    :stacktrace,
+    :status,
+    :headers,
+    :body,
+    :kill_id,
+    :system_id,
+    :character_id,
+    :system_name,
+    :type,
+    :url
+  ],
   colors: [
     debug: :cyan,
     info: :green,

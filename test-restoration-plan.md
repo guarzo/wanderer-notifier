@@ -159,3 +159,109 @@ Based on the latest coverage report, the following modules/files should be prior
 ---
 
 _This plan will be updated as progress is made and new information is discovered._
+
+## Progress Update
+
+### Completed
+
+1. Fixed `WandererNotifier.Killmail.EnrichmentTest`:
+   - Resolved issues with `enrich_killmail_data/1` error handling
+   - Fixed `recent_kills_for_system/2` test by properly mocking ESI service calls
+   - Improved test coverage for enrichment module to 72.2%
+
+### In Progress
+
+1. Killmail Processing Pipeline:
+
+   - Current coverage: 0.0%
+   - Priority: HIGH
+   - Next steps:
+     - Add tests for `WandererNotifier.Killmail.Pipeline.process_killmail/2`
+     - Test error handling and edge cases
+     - Verify integration with enrichment and notification systems
+
+2. ZKill Client:
+   - Current coverage: 13.0%
+   - Priority: HIGH
+   - Next steps:
+     - Add tests for `get_system_kills/2`
+     - Test error handling for API failures
+     - Verify caching behavior
+
+### Next Focus Areas
+
+1. Killmail Processor (6.0% coverage):
+
+   - Test `process_kill_data/2` function
+   - Verify error handling
+   - Test integration with notification system
+   - Priority: HIGH
+
+2. Notification System (0.0% coverage):
+
+   - Test `KillmailNotification.send_kill_notification/3`
+   - Test notification determination logic
+   - Test formatters
+   - Priority: MEDIUM
+
+3. Discord Integration (7.2% coverage):
+   - Test `DiscordNotifier.send_enriched_kill_embed/2`
+   - Test component building
+   - Test error handling
+   - Priority: MEDIUM
+
+## Test Coverage Goals
+
+1. Core Components:
+
+   - Killmail Processing: 80%+
+   - Enrichment: 80%+ (Current: 72.2%)
+   - ZKill Client: 80%+
+
+2. Notification System:
+
+   - Killmail Notification: 80%+
+   - Formatters: 80%+
+   - Determiners: 80%+
+
+3. Discord Integration:
+   - Notifier: 80%+
+   - Component Builder: 80%+
+
+## Implementation Strategy
+
+1. Focus on core functionality first:
+
+   - Complete killmail processing pipeline tests
+   - Improve ZKill client coverage
+   - Ensure proper error handling
+
+2. Then move to notification system:
+
+   - Test notification determination
+   - Test formatters
+   - Test integration with Discord
+
+3. Finally, improve Discord integration:
+   - Test component building
+   - Test error handling
+   - Test rate limiting
+
+## Next Steps
+
+1. Immediate:
+
+   - Complete killmail processing pipeline tests
+   - Improve ZKill client coverage
+   - Add tests for error cases
+
+2. Short-term:
+
+   - Implement notification system tests
+   - Add formatter tests
+   - Improve Discord integration tests
+
+3. Long-term:
+   - Achieve 80%+ coverage across all components
+   - Add integration tests
+   - Implement property-based tests for critical paths

@@ -93,16 +93,11 @@ defmodule WandererNotifier.Test.Support.Mocks do
 
   # -- Cache Implementation --
 
-  def get(key) do
-    cond do
-      is_binary(key) and String.starts_with?(key, "system:") ->
-        {:ok, %{"name" => "Jita", "system_id" => 500}}
-
-      true ->
-        case Process.get({:cache, key}) do
-          nil -> {:error, :not_found}
-          value -> {:ok, value}
-        end
+  def get(key, _opts \\ []) do
+    if key == "test_key" do
+      {:ok, "test_value"}
+    else
+      {:error, :not_found}
     end
   end
 

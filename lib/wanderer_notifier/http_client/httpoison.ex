@@ -66,10 +66,8 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   def handle_response(
         {:ok, %HTTPoison.Response{status_code: status, body: body, headers: headers}}
       ) do
-    Logger.warning("Non-2xx response",
-      status: status,
-      headers: inspect(headers),
-      body: inspect(body)
+    Logger.warning(
+      "Non-2xx response - Status: #{status}, Headers: #{inspect(headers)}, Body: #{inspect(body)}"
     )
 
     {:error, %{status_code: status, body: body}}

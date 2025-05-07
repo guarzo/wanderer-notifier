@@ -143,6 +143,62 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_info(:ws_disconnected, state) do
+    handle_websocket_disconnect(state)
+  end
+
+  @impl true
+  def handle_info(:reconnect_ws, state) do
+    handle_websocket_reconnect(state)
+  end
+
+  @impl true
+  def handle_info(:force_refresh_cache, state) do
+    handle_cache_refresh(state)
+  end
+
+  @impl true
+  def handle_info(:log_kill_stats, state) do
+    handle_kill_stats_logging(state)
+  end
+
+  @impl true
+  def handle_info(:update_tracked_data, state) do
+    handle_tracked_data_update(state)
+  end
+
+  @impl true
+  def handle_info({:debug_special_system, system_id}, state) do
+    handle_debug_system(system_id, state)
+  end
+
+  @impl true
+  def handle_info({:debug_special_character, character_id}, state) do
+    handle_debug_character(character_id, state)
+  end
+
+  @impl true
+  def handle_info({:EXIT, pid, reason}, state) do
+    handle_process_exit(pid, reason, state)
+  end
+
+  @impl true
+  def handle_info({:clear_dedup_key, key}, state) do
+    handle_dedup_key_clearance(key, state)
+  end
+
+  @impl true
+  def handle_info(:send_startup_notification, state) do
+    handle_startup_notification(state)
+  end
+
+  @impl true
+  def handle_info(:flush_batch_logs, state) do
+    handle_batch_logs_flush(state)
+  end
+
+  # Helper functions for message handling
+
+  defp handle_websocket_disconnect(state) do
     AppLogger.websocket_warn("Websocket disconnected, scheduling reconnect",
       reconnect_delay_ms: Config.websocket_reconnect_delay()
     )
@@ -151,9 +207,7 @@ defmodule WandererNotifier.Core.Application.Service do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:reconnect_ws, state) do
-    # Check if the websocket is enabled in config
+  defp handle_websocket_reconnect(state) do
     if Config.websocket_enabled?() do
       AppLogger.websocket_info("Attempting to reconnect WandererNotifier.Killmail.Websocket")
       new_state = reconnect_zkill_ws(state)
@@ -167,8 +221,7 @@ defmodule WandererNotifier.Core.Application.Service do
     end
   end
 
-  @impl true
-  def handle_info(:force_refresh_cache, state) do
+  defp handle_cache_refresh(state) do
     AppLogger.cache_warn(
       "Received force_refresh_cache message. Refreshing critical data after cache recovery"
     )
@@ -181,8 +234,7 @@ defmodule WandererNotifier.Core.Application.Service do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:log_kill_stats, state) do
+  defp handle_kill_stats_logging(state) do
     KillmailProcessor.log_stats()
     {:noreply, state}
   rescue
@@ -191,8 +243,7 @@ defmodule WandererNotifier.Core.Application.Service do
       {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:update_tracked_data, state) do
+  defp handle_tracked_data_update(state) do
     AppLogger.startup_debug("Running scheduled initial data update")
 
     try do
@@ -216,8 +267,7 @@ defmodule WandererNotifier.Core.Application.Service do
     end
   end
 
-  @impl true
-  def handle_info({:debug_special_system, system_id}, state) do
+  defp handle_debug_system(system_id, state) do
     # Get system name for better logging
     system_name = get_system_name(system_id)
 
@@ -236,33 +286,7 @@ defmodule WandererNotifier.Core.Application.Service do
     AppLogger.maintenance_info("Found tracked systems", count: length(tracked_systems))
 
     # Check if system is already tracked
-    found =
-      Enum.any?(tracked_systems, fn system ->
-        case system do
-          %{solar_system_id: id} when not is_nil(id) ->
-            id_str = to_string(id)
-            id_str == to_string(system_id)
-
-          %{"solar_system_id" => id} when not is_nil(id) ->
-            id_str = to_string(id)
-            id_str == to_string(system_id)
-
-          %{system_id: id} when not is_nil(id) ->
-            id_str = to_string(id)
-            id_str == to_string(system_id)
-
-          %{"system_id" => id} when not is_nil(id) ->
-            id_str = to_string(id)
-            id_str == to_string(system_id)
-
-          id when is_integer(id) or is_binary(id) ->
-            id_str = to_string(id)
-            id_str == to_string(system_id)
-
-          _ ->
-            false
-        end
-      end)
+    found = system_tracked?(tracked_systems, system_id)
 
     AppLogger.maintenance_info("System tracked status",
       system_id: system_id,
@@ -299,8 +323,7 @@ defmodule WandererNotifier.Core.Application.Service do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info({:debug_special_character, character_id}, state) do
+  defp handle_debug_character(character_id, state) do
     # Get character name for better logging
     character_name = get_character_name(character_id)
 
@@ -350,20 +373,18 @@ defmodule WandererNotifier.Core.Application.Service do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info({:EXIT, pid, reason}, state) when reason == :normal do
+  defp handle_process_exit(pid, reason, state) when reason == :normal do
     AppLogger.processor_debug("Linked process exited normally", pid: inspect(pid))
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info({:EXIT, pid, reason}, state) do
+  defp handle_process_exit(pid, reason, state) do
     AppLogger.processor_warn("Linked process exited abnormally",
       pid: inspect(pid),
       reason: inspect(reason)
     )
 
-    # Check if the crashed process is the Killmail websocket (now WandererNotifier.Killmail.Websocket)
+    # Check if the crashed process is the Killmail websocket
     if pid == state.ws_pid do
       AppLogger.websocket_warn(
         "Killmail websocket crashed. Scheduling reconnect (WandererNotifier.Killmail.Websocket)",
@@ -377,8 +398,7 @@ defmodule WandererNotifier.Core.Application.Service do
     end
   end
 
-  @impl true
-  def handle_info({:clear_dedup_key, key}, state) do
+  defp handle_dedup_key_clearance(key, state) do
     # Handle deduplication key expiration
     # Parse type and id from key (e.g., "system:123")
     case String.split(key, ":", parts: 2) do
@@ -388,25 +408,27 @@ defmodule WandererNotifier.Core.Application.Service do
             "system" -> :system
             "character" -> :character
             "kill" -> :kill
-            _ -> :system # default/fallback
+            # default/fallback
+            _ -> :system
           end
+
         Deduplication.clear_key(type, id)
+
       _ ->
         :noop
     end
+
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:send_startup_notification, state) when state.config_loaded == false do
+  defp handle_startup_notification(state) when state.config_loaded == false do
     # If config not loaded yet, schedule a retry
     AppLogger.startup_debug("Config not loaded yet, scheduling startup notification retry")
     Process.send_after(self(), :send_startup_notification, 1000)
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:send_startup_notification, state) do
+  defp handle_startup_notification(state) do
     AppLogger.startup_info("Sending startup notification", %{
       uptime: :os.system_time(:second) - state.service_start_time
     })
@@ -419,8 +441,7 @@ defmodule WandererNotifier.Core.Application.Service do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:flush_batch_logs, state) do
+  defp handle_batch_logs_flush(state) do
     # Flush any remaining batch logs
     WandererNotifier.Logger.Logger.flush_batch_logs()
     {:noreply, state}
@@ -430,10 +451,35 @@ defmodule WandererNotifier.Core.Application.Service do
       {:noreply, state}
   end
 
-  @impl true
-  def terminate(_reason, state) do
-    if is_map(state) and Map.get(state, :ws_pid), do: Process.exit(state.ws_pid, :normal)
-    :ok
+  # Helper functions for system tracking
+
+  defp system_tracked?(tracked_systems, system_id) do
+    Enum.any?(tracked_systems, fn system ->
+      case system do
+        %{solar_system_id: id} when not is_nil(id) ->
+          id_str = to_string(id)
+          id_str == to_string(system_id)
+
+        %{"solar_system_id" => id} when not is_nil(id) ->
+          id_str = to_string(id)
+          id_str == to_string(system_id)
+
+        %{system_id: id} when not is_nil(id) ->
+          id_str = to_string(id)
+          id_str == to_string(system_id)
+
+        %{"system_id" => id} when not is_nil(id) ->
+          id_str = to_string(id)
+          id_str == to_string(system_id)
+
+        id when is_integer(id) or is_binary(id) ->
+          id_str = to_string(id)
+          id_str == to_string(system_id)
+
+        _ ->
+          false
+      end
+    end)
   end
 
   # Schedule the next maintenance run
@@ -468,7 +514,9 @@ defmodule WandererNotifier.Core.Application.Service do
           AppLogger.websocket_error("❌ Failed to start websocket", error: inspect(reason))
 
           # Notify about the failure
-          WandererNotifier.Notifications.Dispatcher.send_message("Failed to start websocket: #{inspect(reason)}")
+          WandererNotifier.Notifications.Dispatcher.send_message(
+            "Failed to start websocket: #{inspect(reason)}"
+          )
 
           # Return state without websocket
           state
@@ -699,5 +747,4 @@ defmodule WandererNotifier.Core.Application.Service do
       :ok
     end
   end
-
 end

@@ -3,15 +3,16 @@ defmodule WandererNotifier.Schedulers.Registry do
   Finds all modules under WandererNotifier.Schedulers that implement the behaviour.
   """
 
+  @doc """
+  Returns a list of all registered schedulers.
+  """
   def all_schedulers do
-    :application.get_key(:wanderer_notifier, :modules)
-    |> elem(1)
-    |> Enum.filter(&String.starts_with?(Atom.to_string(&1), "Elixir.WandererNotifier.Schedulers."))
-    |> Enum.filter(&implements_scheduler?/1)
+    :code.all_loaded()
+    |> Enum.filter(&scheduler_module?/1)
+    |> Enum.map(&elem(&1, 0))
   end
 
-  defp implements_scheduler?(mod) do
-    behaviours = mod.module_info(:attributes)[:behaviour] || []
-    WandererNotifier.Schedulers.Scheduler in behaviours
+  defp scheduler_module?({mod, _}) do
+    mod |> to_string() |> String.contains?("Scheduler")
   end
 end

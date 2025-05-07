@@ -26,8 +26,6 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get kill details
   get "/kill/:kill_id" do
-    IO.inspect(cache_module(), label: "Controller cache_module at runtime")
-
     case cache_module().get_kill(kill_id) do
       {:ok, nil} -> send_error(conn, 404, "Kill not found")
       {:ok, kill} -> send_success(conn, kill)

@@ -44,7 +44,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
     victim_name = killmail.victim_name || Map.get(victim, "character_name", "Unknown Pilot")
     victim_ship = killmail.ship_name || Map.get(victim, "ship_type_name", "Unknown Ship")
-    victim_corp = killmail.victim_corporation || Map.get(victim, "corporation_name", "Unknown Corp")
+
+    victim_corp =
+      killmail.victim_corporation || Map.get(victim, "corporation_name", "Unknown Corp")
+
     victim_corp_ticker = killmail.victim_corp_ticker
     victim_alliance = killmail.victim_alliance || Map.get(victim, "alliance_name")
     victim_ship_type_id = Map.get(victim, "ship_type_id")
@@ -62,7 +65,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   end
 
   defp extract_kill_context(killmail) do
-    system_name = killmail.system_name || Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
+    system_name =
+      killmail.system_name ||
+        Map.get(killmail.esi_data || %{}, "solar_system_name", "Unknown System")
+
     system_id = killmail.system_id || Map.get(killmail.esi_data || %{}, "solar_system_id")
 
     security_status = get_system_security_status(system_id)
@@ -90,6 +96,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     # You may want to use your cache or static info here
     0.0
   end
+
   defp get_system_security_status(_), do: 0.0
 
   defp format_security_status(security_status) when is_float(security_status) do
@@ -99,92 +106,182 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       true -> "Null Sec"
     end
   end
+
   defp format_security_status(_), do: "Unknown"
 
   defp get_final_blow_details(killmail) do
     # Prefer enriched attackers if available
     attackers = killmail.attackers || Map.get(killmail.esi_data || %{}, "attackers", [])
     zkb = killmail.zkb || %{}
+
     final_blow_attacker =
       Enum.find(attackers, fn attacker ->
-        (Map.get(attacker, "final_blow") in [true, "true"]) or (attacker[:final_blow] == true)
+        Map.get(attacker, "final_blow") in [true, "true"] or attacker[:final_blow] == true
       end)
+
     is_npc_kill = Map.get(zkb, "npc", false) == true
     extract_final_blow_details(final_blow_attacker, is_npc_kill)
   end
 
   defp extract_final_blow_details(nil, true), do: %{text: "NPC", icon_url: nil}
   defp extract_final_blow_details(nil, _), do: %{text: "Unknown", icon_url: nil}
+
   defp extract_final_blow_details(attacker, _) do
-    character_id = Map.get(attacker, :character_id) || Map.get(attacker, "character_id")
-    character_name = Map.get(attacker, :character_name) || Map.get(attacker, "character_name") || "Unknown"
-    ship_name = Map.get(attacker, :ship_type_name) || Map.get(attacker, "ship_type_name") || "Unknown Ship"
-    corp = Map.get(attacker, :corporation_name) || Map.get(attacker, "corporation_name")
-    corp_id = Map.get(attacker, :corporation_id) || Map.get(attacker, "corporation_id")
-    corp_ticker = Map.get(attacker, :corporation_ticker) || Map.get(attacker, "corporation_ticker")
-    alliance = Map.get(attacker, :alliance_name) || Map.get(attacker, "alliance_name")
-    alliance_id = Map.get(attacker, :alliance_id) || Map.get(attacker, "alliance_id")
-    alliance_ticker = Map.get(attacker, :alliance_ticker) || Map.get(attacker, "alliance_ticker")
-    # Build zKillboard link for attacker
-    if character_id do
-      text = "[#{character_name}](https://zkillboard.com/character/#{character_id}/) ([#{ship_name}](https://zkillboard.com/ship/#{Map.get(attacker, :ship_type_id) || Map.get(attacker, "ship_type_id")}/))"
-      icon_url = "https://imageserver.eveonline.com/Character/#{character_id}_64.jpg"
-      details = %{text: text, icon_url: icon_url, character_id: character_id, name: character_name, ship: ship_name}
-      details = if corp_ticker && corp_id, do: Map.put(details, :corp_ticker, "[#{corp_ticker}](https://zkillboard.com/corporation/#{corp_id}/)"), else: details
-      details = if corp, do: Map.put(details, :corp, corp), else: details
-      details = if corp_id, do: Map.put(details, :corp_id, corp_id), else: details
-      details = if alliance_ticker && alliance_id, do: Map.put(details, :alliance_ticker, "[#{alliance_ticker}](https://zkillboard.com/alliance/#{alliance_id}/)"), else: details
-      details = if alliance, do: Map.put(details, :alliance, alliance), else: details
-      details = if alliance_id, do: Map.put(details, :alliance_id, alliance_id), else: details
-      details
+    base_details = build_base_attacker_details(attacker)
+    details_with_corp = add_corp_details(base_details, attacker)
+    details_with_alliance = add_alliance_details(details_with_corp, attacker)
+    add_character_link(details_with_alliance, attacker)
+  end
+
+  defp build_base_attacker_details(attacker) do
+    character_id = get_attacker_value(attacker, :character_id)
+    character_name = get_attacker_value(attacker, :character_name) || "Unknown"
+    ship_name = get_attacker_value(attacker, :ship_type_name) || "Unknown Ship"
+
+    %{
+      text: "#{character_name} (#{ship_name})",
+      icon_url:
+        if(character_id,
+          do: "https://imageserver.eveonline.com/Character/#{character_id}_64.jpg",
+          else: nil
+        ),
+      name: character_name,
+      ship: ship_name,
+      character_id: character_id
+    }
+  end
+
+  defp get_attacker_value(attacker, key) do
+    Map.get(attacker, key) || Map.get(attacker, to_string(key))
+  end
+
+  defp add_corp_details(details, attacker) do
+    corp = get_attacker_value(attacker, :corporation_name)
+    corp_id = get_attacker_value(attacker, :corporation_id)
+    corp_ticker = get_attacker_value(attacker, :corporation_ticker)
+
+    details
+    |> add_corp_ticker(corp_ticker, corp_id)
+    |> add_corp_name(corp)
+    |> add_corp_id(corp_id)
+  end
+
+  defp add_corp_ticker(details, ticker, corp_id)
+       when not is_nil(ticker) and not is_nil(corp_id) do
+    Map.put(details, :corp_ticker, "[#{ticker}](https://zkillboard.com/corporation/#{corp_id}/)")
+  end
+
+  defp add_corp_ticker(details, _, _), do: details
+
+  defp add_corp_name(details, corp) when not is_nil(corp), do: Map.put(details, :corp, corp)
+  defp add_corp_name(details, _), do: details
+
+  defp add_corp_id(details, corp_id) when not is_nil(corp_id),
+    do: Map.put(details, :corp_id, corp_id)
+
+  defp add_corp_id(details, _), do: details
+
+  defp add_alliance_details(details, attacker) do
+    alliance = get_attacker_value(attacker, :alliance_name)
+    alliance_id = get_attacker_value(attacker, :alliance_id)
+    alliance_ticker = get_attacker_value(attacker, :alliance_ticker)
+
+    details
+    |> add_alliance_ticker(alliance_ticker, alliance_id)
+    |> add_alliance_name(alliance)
+    |> add_alliance_id(alliance_id)
+  end
+
+  defp add_alliance_ticker(details, ticker, alliance_id)
+       when not is_nil(ticker) and not is_nil(alliance_id) do
+    Map.put(
+      details,
+      :alliance_ticker,
+      "[#{ticker}](https://zkillboard.com/alliance/#{alliance_id}/)"
+    )
+  end
+
+  defp add_alliance_ticker(details, _, _), do: details
+
+  defp add_alliance_name(details, alliance) when not is_nil(alliance),
+    do: Map.put(details, :alliance, alliance)
+
+  defp add_alliance_name(details, _), do: details
+
+  defp add_alliance_id(details, alliance_id) when not is_nil(alliance_id),
+    do: Map.put(details, :alliance_id, alliance_id)
+
+  defp add_alliance_id(details, _), do: details
+
+  defp add_character_link(details, attacker) do
+    if details.character_id do
+      char_link = "[#{details.name}](https://zkillboard.com/character/#{details.character_id}/)"
+
+      ship_link =
+        "[#{details.ship}](https://zkillboard.com/ship/#{get_attacker_value(attacker, :ship_type_id)}/)"
+
+      %{details | text: "#{char_link} (#{ship_link})"}
     else
-      details = %{text: "#{character_name} (#{ship_name})", icon_url: nil, name: character_name, ship: ship_name}
-      details = if corp_ticker && corp_id, do: Map.put(details, :corp_ticker, "[#{corp_ticker}](https://zkillboard.com/corporation/#{corp_id}/)"), else: details
-      details = if corp, do: Map.put(details, :corp, corp), else: details
-      details = if corp_id, do: Map.put(details, :corp_id, corp_id), else: details
-      details = if alliance_ticker && alliance_id, do: Map.put(details, :alliance_ticker, "[#{alliance_ticker}](https://zkillboard.com/alliance/#{alliance_id}/)"), else: details
-      details = if alliance, do: Map.put(details, :alliance, alliance), else: details
-      details = if alliance_id, do: Map.put(details, :alliance_id, alliance_id), else: details
       details
     end
   end
 
   defp build_kill_notification_fields(_victim_info, kill_context, final_blow_details) do
-    base_fields = [
-      %{name: "Value", value: kill_context.formatted_value, inline: true},
-      %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
-      %{name: "Final Blow", value: final_blow_details.text, inline: true}
-    ]
-
-    # Attacker Corp field
-    corp_field =
-      cond do
-        final_blow_details[:corp_ticker] ->
-          %{name: "Attacker Corp", value: final_blow_details.corp_ticker, inline: true}
-        final_blow_details[:corp] && final_blow_details[:corp_id] ->
-          %{name: "Attacker Corp", value: "[#{final_blow_details.corp}](https://zkillboard.com/corporation/#{final_blow_details.corp_id}/)", inline: true}
-        final_blow_details[:corp] ->
-          %{name: "Attacker Corp", value: final_blow_details.corp, inline: true}
-        true -> nil
-      end
-
-    # Attacker Alliance field
-    alliance_field =
-      cond do
-        final_blow_details[:alliance_ticker] ->
-          %{name: "Attacker Alliance", value: final_blow_details.alliance_ticker, inline: true}
-        final_blow_details[:alliance] && final_blow_details[:alliance_id] ->
-          %{name: "Attacker Alliance", value: "[#{final_blow_details.alliance}](https://zkillboard.com/alliance/#{final_blow_details.alliance_id}/)", inline: true}
-        final_blow_details[:alliance] ->
-          %{name: "Attacker Alliance", value: final_blow_details.alliance, inline: true}
-        true -> nil
-      end
+    base_fields = build_base_fields(kill_context, final_blow_details)
+    corp_field = build_corp_field(final_blow_details)
+    alliance_field = build_alliance_field(final_blow_details)
 
     fields = base_fields
     fields = if corp_field, do: fields ++ [corp_field], else: fields
     fields = if alliance_field, do: fields ++ [alliance_field], else: fields
     fields
   end
+
+  defp build_base_fields(kill_context, final_blow_details) do
+    [
+      %{name: "Value", value: kill_context.formatted_value, inline: true},
+      %{name: "Attackers", value: "#{kill_context.attackers_count}", inline: true},
+      %{name: "Final Blow", value: final_blow_details.text, inline: true}
+    ]
+  end
+
+  defp build_corp_field(%{corp_ticker: ticker}) when not is_nil(ticker) do
+    %{name: "Attacker Corp", value: ticker, inline: true}
+  end
+
+  defp build_corp_field(%{corp: corp, corp_id: corp_id})
+       when not is_nil(corp) and not is_nil(corp_id) do
+    %{
+      name: "Attacker Corp",
+      value: "[#{corp}](https://zkillboard.com/corporation/#{corp_id}/)",
+      inline: true
+    }
+  end
+
+  defp build_corp_field(%{corp: corp}) when not is_nil(corp) do
+    %{name: "Attacker Corp", value: corp, inline: true}
+  end
+
+  defp build_corp_field(_), do: nil
+
+  defp build_alliance_field(%{alliance_ticker: ticker}) when not is_nil(ticker) do
+    %{name: "Attacker Alliance", value: ticker, inline: true}
+  end
+
+  defp build_alliance_field(%{alliance: alliance, alliance_id: alliance_id})
+       when not is_nil(alliance) and not is_nil(alliance_id) do
+    %{
+      name: "Attacker Alliance",
+      value: "[#{alliance}](https://zkillboard.com/alliance/#{alliance_id}/)",
+      inline: true
+    }
+  end
+
+  defp build_alliance_field(%{alliance: alliance}) when not is_nil(alliance) do
+    %{name: "Attacker Alliance", value: alliance, inline: true}
+  end
+
+  defp build_alliance_field(_), do: nil
 
   defp build_kill_notification(
          kill_id,
@@ -194,55 +291,12 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
          final_blow_details,
          fields
        ) do
-
     title = "Kill Notification: #{victim_info.name}"
-    # Use ticker if present, otherwise full corp name
-    author_corp =
-      cond do
-        is_binary(victim_info.corp_ticker) and victim_info.corp_ticker != "" -> victim_info.corp_ticker
-        true -> victim_info.corp
-      end
-    author_name =
-      if victim_info.name == "Unknown Pilot" and author_corp == "Unknown Corp" do
-        "Kill in #{kill_context.system_name}"
-      else
-        "#{victim_info.name} [#{author_corp}]"
-      end
-    author_icon_url =
-      if victim_info.name == "Unknown Pilot" and author_corp == "Unknown Corp" do
-        "https://images.evetech.net/types/30_371/icon"
-      else
-        if victim_info.character_id do
-          "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
-        else
-          nil
-        end
-      end
-    thumbnail_url =
-      if victim_info.ship_type_id do
-        "https://images.evetech.net/types/#{victim_info.ship_type_id}/render"
-      else
-        nil
-      end
-    system_with_link =
-      if kill_context.system_id do
-        "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
-      else
-        kill_context.system_name
-      end
-    description = "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/) lost a #{victim_info.ship} in #{system_with_link}"
-    # Update Final Blow field in fields
-    updated_fields = Enum.map(fields, fn
-      %{name: "Final Blow"} = field ->
-        # If final_blow_details has character_id, make it a link
-        if final_blow_details[:character_id] do
-          char_link = "[#{final_blow_details[:name]}](https://zkillboard.com/character/#{final_blow_details[:character_id]}/)"
-          %{field | value: "#{char_link} (#{final_blow_details[:ship]})"}
-        else
-          field
-        end
-      other -> other
-    end)
+    author_info = build_author_info(victim_info, kill_context)
+    system_with_link = build_system_link(kill_context)
+    description = build_description(victim_info, system_with_link)
+    updated_fields = update_final_blow_field(fields, final_blow_details)
+
     %{
       type: :kill_notification,
       title: title,
@@ -254,14 +308,87 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
         text: "Kill ID: #{kill_id}"
       },
       thumbnail: %{
-        url: thumbnail_url
+        url: build_thumbnail_url(victim_info)
       },
-      author: %{
-        name: author_name,
-        icon_url: author_icon_url
-      },
+      author: author_info,
       fields: updated_fields
     }
+  end
+
+  defp build_author_info(victim_info, kill_context) do
+    author_corp = get_author_corp(victim_info)
+    author_name = get_author_name(victim_info, author_corp, kill_context)
+    author_icon_url = get_author_icon_url(victim_info, author_corp)
+
+    %{
+      name: author_name,
+      icon_url: author_icon_url
+    }
+  end
+
+  defp get_author_corp(victim_info) do
+    if is_binary(victim_info.corp_ticker) and victim_info.corp_ticker != "" do
+      victim_info.corp_ticker
+    else
+      victim_info.corp
+    end
+  end
+
+  defp get_author_name(victim_info, author_corp, kill_context) do
+    if victim_info.name == "Unknown Pilot" and author_corp == "Unknown Corp" do
+      "Kill in #{kill_context.system_name}"
+    else
+      "#{victim_info.name} [#{author_corp}]"
+    end
+  end
+
+  defp get_author_icon_url(victim_info, author_corp) do
+    if victim_info.name == "Unknown Pilot" and author_corp == "Unknown Corp" do
+      "https://images.evetech.net/types/30_371/icon"
+    else
+      if victim_info.character_id do
+        "https://imageserver.eveonline.com/Character/#{victim_info.character_id}_64.jpg"
+      else
+        nil
+      end
+    end
+  end
+
+  defp build_system_link(kill_context) do
+    if kill_context.system_id do
+      "[#{kill_context.system_name}](https://zkillboard.com/system/#{kill_context.system_id}/)"
+    else
+      kill_context.system_name
+    end
+  end
+
+  defp build_description(victim_info, system_with_link) do
+    "[#{victim_info.name}](https://zkillboard.com/character/#{victim_info.character_id}/) lost a #{victim_info.ship} in #{system_with_link}"
+  end
+
+  defp build_thumbnail_url(victim_info) do
+    if victim_info.ship_type_id do
+      "https://images.evetech.net/types/#{victim_info.ship_type_id}/render"
+    else
+      nil
+    end
+  end
+
+  defp update_final_blow_field(fields, final_blow_details) do
+    Enum.map(fields, fn
+      %{name: "Final Blow"} = field ->
+        if final_blow_details[:character_id] do
+          char_link =
+            "[#{final_blow_details[:name]}](https://zkillboard.com/character/#{final_blow_details[:character_id]}/)"
+
+          %{field | value: "#{char_link} (#{final_blow_details[:ship]})"}
+        else
+          field
+        end
+
+      other ->
+        other
+    end)
   end
 
   defp format_isk_value(value) when is_number(value) do

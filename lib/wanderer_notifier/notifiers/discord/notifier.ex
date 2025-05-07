@@ -198,9 +198,8 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       Stats.increment(:characters)
     rescue
       e ->
-        Logger.error("[Discord.Notifier] Exception in send_new_tracked_character_notification/1",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        Logger.error(
+          "[Discord.Notifier] Exception in send_new_tracked_character_notification/1: #{Exception.message(e)}\nStacktrace:\n#{Exception.format_stacktrace(__STACKTRACE__)}"
         )
 
         {:error, e}

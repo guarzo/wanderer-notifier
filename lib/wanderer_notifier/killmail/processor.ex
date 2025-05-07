@@ -36,37 +36,17 @@ defmodule WandererNotifier.Killmail.Processor do
     - new_state
   """
   def process_zkill_message(message, state) do
-    case decode_zkill_message(message) do
-      {:ok, kill_data} ->
-        # Early exit if not relevant
-        case WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data) do
-          {:ok, %{should_notify: true}} ->
-            process_kill_data(kill_data, state)
-
-          {:ok, %{should_notify: false, reason: reason}} ->
-            system_id = Map.get(kill_data, "solar_system_id")
-            killmail_id = Map.get(kill_data, "killmail_id")
-            system_name =
-              case WandererNotifier.ESI.Service.get_system(system_id) do
-                {:ok, %{"name" => name}} -> name
-                _ -> "Unknown"
-              end
-
-            AppLogger.processor_info(
-              "Skipping killmail: #{reason} (killmail_id=#{killmail_id}, system_id=#{system_id}, system_name=#{system_name})"
-            )
-            state
-
-          _ ->
-            AppLogger.processor_error(
-              "Skipping killmail: unexpected response from determine_should_notify"
-            )
-
-            state
-        end
-
+    with {:ok, kill_data} <- decode_zkill_message(message),
+         {:ok, should_notify, reason} <- determine_notification(kill_data) do
+      if should_notify do
+        process_kill_data(kill_data, state)
+      else
+        log_skipped_kill(kill_data, reason)
+        state
+      end
+    else
       {:error, reason} ->
-        AppLogger.error("Failed to decode ZKill message", %{
+        AppLogger.error("Failed to process ZKill message", %{
           error: inspect(reason),
           message: inspect(message)
         })
@@ -120,6 +100,31 @@ defmodule WandererNotifier.Killmail.Processor do
     case Jason.decode(message) do
       {:ok, decoded} -> {:ok, decoded}
       error -> error
+    end
+  end
+
+  defp determine_notification(kill_data) do
+    case WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data) do
+      {:ok, %{should_notify: true}} -> {:ok, true, nil}
+      {:ok, %{should_notify: false, reason: reason}} -> {:ok, false, reason}
+      _ -> {:error, :unexpected_response}
+    end
+  end
+
+  defp log_skipped_kill(kill_data, reason) do
+    system_id = Map.get(kill_data, "solar_system_id")
+    killmail_id = Map.get(kill_data, "killmail_id")
+    system_name = get_system_name(system_id)
+
+    AppLogger.processor_info(
+      "Skipping killmail: #{reason} (killmail_id=#{killmail_id}, system_id=#{system_id}, system_name=#{system_name})"
+    )
+  end
+
+  defp get_system_name(system_id) do
+    case WandererNotifier.ESI.Service.get_system(system_id) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "Unknown"
     end
   end
 

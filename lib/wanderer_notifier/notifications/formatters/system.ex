@@ -132,11 +132,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp format_statics_list([]), do: "N/A"
 
   defp format_statics_list(statics) when is_list(statics) do
-    Enum.map(statics, fn
-      m when is_map(m) -> m["name"] || m[:name] || inspect(m)
-      s -> to_string(s)
-    end)
-    |> Enum.join(", ")
+    Enum.map_join(statics, ", ", fn static -> static end)
   end
 
   defp format_statics_list(statics), do: to_string(statics)

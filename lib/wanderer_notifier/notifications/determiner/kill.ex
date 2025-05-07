@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifications.Helpers.Deduplication
+
   @doc """
   Determines if a notification should be sent for a kill.
 
@@ -104,17 +105,21 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the system is tracked
     - false otherwise
   """
-  def tracked_system?(system_id) when is_integer(system_id), do: tracked_system?(to_string(system_id))
+  def tracked_system?(system_id) when is_integer(system_id),
+    do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
     result = CacheRepo.get(CacheKeys.map_systems())
+
     case result do
       {:ok, systems} when is_list(systems) ->
         Enum.any?(systems, fn system ->
           id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
           to_string(id) == system_id_str
         end)
-      _ -> false
+
+      _ ->
+        false
     end
   end
 
@@ -157,15 +162,19 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp get_all_tracked_character_ids do
     case CacheRepo.get(CacheKeys.character_list()) do
       {:ok, all_characters} when is_list(all_characters) ->
-        Enum.map(all_characters, fn char ->
-          character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
-          if character_id, do: to_string(character_id), else: nil
-        end)
+        all_characters
+        |> Enum.map(&extract_character_id/1)
         |> Enum.reject(&is_nil/1)
 
       _ ->
         []
     end
+  end
+
+  # Extract character ID from character data
+  defp extract_character_id(char) do
+    character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
+    if character_id, do: to_string(character_id), else: nil
   end
 
   # Extract victim ID from kill data
@@ -332,31 +341,23 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the character is tracked
     - false otherwise
   """
-  def tracked_character?(character_id) when is_integer(character_id), do: tracked_character?(to_string(character_id))
+  def tracked_character?(character_id) when is_integer(character_id),
+    do: tracked_character?(to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
     result = CacheRepo.get(CacheKeys.character_list())
+
     case result do
       {:ok, characters} when is_list(characters) ->
         Enum.any?(characters, fn char ->
           id = Map.get(char, :character_id) || Map.get(char, "character_id")
           to_string(id) == character_id_str
         end)
-      _ -> false
+
+      _ ->
+        false
     end
   end
 
   def tracked_character?(_), do: false
-
-  # defp typeof(val) do
-  #   cond do
-  #     is_integer(val) -> :integer
-  #     is_binary(val) -> :binary
-  #     is_atom(val) -> :atom
-  #     is_float(val) -> :float
-  #     is_list(val) -> :list
-  #     is_map(val) -> :map
-  #     true -> :unknown
-  #   end
-  # end
 end
