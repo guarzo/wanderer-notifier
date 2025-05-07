@@ -135,21 +135,22 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
     test "returns {:error, reason} if victim info fails" do
       killmail = %Killmail{
         killmail_id: 1,
-        zkb: %{"hash" => "abc"},
-        esi_data: %{
-          "victim" => %{
-            "character_id" => 100,
-            "ship_type_id" => 200,
-            "corporation_id" => 300,
-            "alliance_id" => 400
-          },
-          "solar_system_id" => 500,
-          "attackers" => []
-        }
+        zkb: %{"hash" => "abc"}
+      }
+
+      esi_data = %{
+        "victim" => %{
+          "character_id" => 100,
+          "ship_type_id" => 200,
+          "corporation_id" => 300,
+          "alliance_id" => 400
+        },
+        "solar_system_id" => 500,
+        "attackers" => []
       }
 
       expect(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn 1, "abc", _opts ->
-        {:ok, killmail.esi_data}
+        {:ok, esi_data}
       end)
 
       expect(WandererNotifier.Api.ESI.ServiceMock, :get_system, fn _id, _opts ->
@@ -179,12 +180,24 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
         }
       }
 
-      expect(WandererNotifier.Api.ZKill.ServiceMock, :get_system_kills, fn ^system_id, _opts ->
+      Mox.stub(WandererNotifier.Api.ZKill.ServiceMock, :get_system_kills, fn ^system_id, _opts ->
         {:ok, [killmail]}
       end)
 
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn 1, "abc", _opts ->
+      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn _id, _hash, _opts ->
         {:ok, killmail["esi_data"]}
+      end)
+
+      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_system, fn _id, _opts ->
+        {:ok, %{"name" => "Jita"}}
+      end)
+
+      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_character_info, fn _id, _opts ->
+        {:ok, %{"name" => "Victim"}}
+      end)
+
+      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_type_info, fn _id, _opts ->
+        {:ok, %{"name" => "Victim Ship"}}
       end)
 
       result = Enrichment.recent_kills_for_system(system_id)
