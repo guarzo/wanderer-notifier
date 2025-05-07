@@ -10,7 +10,15 @@ defmodule WandererNotifier.MixProject do
       deps: deps(),
       releases: releases(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      overrides: overrides()
+      overrides: overrides(),
+      test_coverage: [tool: ExCoveralls],
+      preferred_cli_env: [
+        coveralls: :test,
+        "coveralls.html": :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.json": :test
+      ]
     ]
   end
 
@@ -46,7 +54,8 @@ defmodule WandererNotifier.MixProject do
       {:bunt, "~> 0.2.1"},
       {:exsync, "~> 0.2", only: :dev},
       {:mox, "~> 1.0", only: :test},
-      {:crontab, "~> 1.1"}
+      {:crontab, "~> 1.1"},
+      {:excoveralls, "~> 0.18", only: :test}
     ]
   end
 

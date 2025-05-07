@@ -142,7 +142,7 @@ defmodule WandererNotifier.Killmail.Processor do
   defp get_test_killmail do
     # Create a test killmail for testing notifications
     %Killmail{
-      killmail_id: 12345,
+      killmail_id: 12_345,
       zkb: %{
         "hash" => "abc123"
       },
@@ -150,12 +150,12 @@ defmodule WandererNotifier.Killmail.Processor do
         "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
         "solar_system_id" => 30_000_142,
         "victim" => %{
-          "character_id" => 98765,
+          "character_id" => 98_765,
           "ship_type_id" => 587
         },
         "attackers" => [
           %{
-            "character_id" => 54321,
+            "character_id" => 54_321,
             "ship_type_id" => 587,
             "final_blow" => true
           }

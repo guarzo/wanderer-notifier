@@ -4,15 +4,19 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
   alias WandererNotifier.ESI.Service
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
-  alias WandererNotifier.Cache.Repository, as: CacheRepo
+  alias WandererNotifier.Test.Support.Mocks, as: CacheMock
 
   # Make sure mocks are verified after each test
   setup :verify_on_exit!
 
   # Stub the Client module
   setup do
-    # Mock the ESI client
-    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
+    # Set the cache mock as the implementation
+    Application.put_env(:wanderer_notifier, :cache_repository, CacheMock)
+    CacheMock.clear()
+
+    # Set the ESI client mock as the implementation (unified)
+    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
     # Setup for character tests
     character_data = %{
@@ -56,21 +60,19 @@ defmodule WandererNotifier.ESI.ServiceTest do
       "region_id" => 10_000_002
     }
 
-    # Define mocks for ESI client calls
-    stub(WandererNotifier.ESI.Client, :get_character_info, fn 123_456, _opts ->
-      {:ok, character_data}
+    # Define mocks for ESI client calls (unified)
+    WandererNotifier.Api.ESI.ServiceMock
+    |> stub(:get_character_info, fn id, _opts ->
+      if id == 123_456, do: {:ok, character_data}, else: {:ok, %{}}
     end)
-
-    stub(WandererNotifier.ESI.Client, :get_corporation_info, fn 789_012, _opts ->
-      {:ok, corporation_data}
+    |> stub(:get_corporation_info, fn id, _opts ->
+      if id == 789_012, do: {:ok, corporation_data}, else: {:ok, %{}}
     end)
-
-    stub(WandererNotifier.ESI.Client, :get_alliance_info, fn 345_678, _opts ->
-      {:ok, alliance_data}
+    |> stub(:get_alliance_info, fn id, _opts ->
+      if id == 345_678, do: {:ok, alliance_data}, else: {:ok, %{}}
     end)
-
-    stub(WandererNotifier.ESI.Client, :get_solar_system, fn 30_000_142, _opts ->
-      {:ok, system_data}
+    |> stub(:get_system, fn id, _opts ->
+      if id == 30_000_142, do: {:ok, system_data}, else: {:ok, %{}}
     end)
 
     # Return test data for use in tests
@@ -83,9 +85,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   end
 
   describe "get_character_struct/2" do
-    test "returns a Character struct when successful", %{character_data: character_data} do
+    test "returns a Character struct when successful", %{character_data: _character_data} do
       # Ensure cache is empty for this test
-      CacheRepo.delete("character:123456")
+      CacheMock.delete(WandererNotifier.Cache.Keys.character(123_456))
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -102,12 +104,12 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
     test "uses cached data when available", %{character_data: character_data} do
       # Ensure the character is in the cache
-      CacheRepo.put("character:123456", character_data)
+      cache_key = WandererNotifier.Cache.Keys.character(123_456)
+      CacheMock.put(cache_key, character_data)
 
       # Stub the client to return an error, to verify we're using the cache
-      stub(WandererNotifier.ESI.Client, :get_character_info, fn _, _ ->
-        {:error, "Should not be called"}
-      end)
+      WandererNotifier.Api.ESI.ServiceMock
+      |> stub(:get_character_info, fn _character_id, _opts -> {:error, "Should not be called"} end)
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -120,9 +122,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   end
 
   describe "get_corporation_struct/2" do
-    test "returns a Corporation struct when successful", %{corporation_data: corporation_data} do
+    test "returns a Corporation struct when successful", %{corporation_data: _corporation_data} do
       # Ensure cache is empty for this test
-      CacheRepo.delete("corporation:789012")
+      CacheMock.delete("corporation:789012")
 
       # Get corporation struct from ESI service
       {:ok, corporation} = Service.get_corporation_struct(789_012)
@@ -140,9 +142,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   end
 
   describe "get_alliance_struct/2" do
-    test "returns an Alliance struct when successful", %{alliance_data: alliance_data} do
+    test "returns an Alliance struct when successful", %{alliance_data: _alliance_data} do
       # Ensure cache is empty for this test
-      CacheRepo.delete("alliance:345678")
+      CacheMock.delete("alliance:345678")
 
       # Get alliance struct from ESI service
       {:ok, alliance} = Service.get_alliance_struct(345_678)
@@ -160,9 +162,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
   end
 
   describe "get_system_struct/2" do
-    test "returns a SolarSystem struct when successful", %{system_data: system_data} do
+    test "returns a SolarSystem struct when successful", %{system_data: _system_data} do
       # Ensure cache is empty for this test
-      CacheRepo.delete("system:30000142")
+      CacheMock.delete("system:30000142")
 
       # Get solar system struct from ESI service
       {:ok, system} = Service.get_system_struct(30_000_142)

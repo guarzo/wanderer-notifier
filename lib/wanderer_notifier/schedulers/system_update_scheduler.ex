@@ -37,14 +37,14 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
       end)
 
     case Task.yield(task, 50_000) do
-      {:ok, { :ok, _new_systems, all_systems }} ->
+      {:ok, {:ok, _new_systems, all_systems }} ->
         AppLogger.api_info("🌍 Systems updated: #{length(ensure_list(all_systems))} systems synchronized")
         if primed? do
           handle_successful_system_update(all_systems)
         else
           CacheRepo.put(:map_systems_primed, true)
         end
-      {:ok, { :error, reason }} ->
+      {:ok, {:error, reason }} ->
         AppLogger.api_error("⚠️ System update failed", error: inspect(reason))
       nil ->
         Task.shutdown(task, :brutal_kill)
@@ -92,7 +92,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
     updated_cache = CacheRepo.get(:system_list)
     cache_list = ensure_list(updated_cache)
     if cache_list == [] do
-      cache_ttl = 60_000 # TODO: Replace with Config.systems_cache_ttl/0 if/when available
+      cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
       CacheRepo.set(:system_list, systems_list, cache_ttl)
     end
   end

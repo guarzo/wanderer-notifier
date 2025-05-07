@@ -1,0 +1,77 @@
+    warning: unused alias ESIClient
+    │
+  6 │   alias WandererNotifier.ESI.Client, as: ESIClient
+    │   ~
+    │
+    └─ lib/wanderer_notifier/killmail/enrichment.ex:6:3
+
+     warning: redefining module WandererNotifier.MockDiscordNotifier (current version loaded from _build/test/lib/wanderer_notifier/ebin/Elixir.WandererNotifier.MockDiscordNotifier.beam)
+     │
+ 491 │     Module.create(name, [info | body], Macro.Env.location(__ENV__))
+     │     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ deps/mox/lib/mox.ex:491: WandererNotifier.MockDiscordNotifier (module)
+
+     warning: redefining module WandererNotifier.MockNotifierFactory (current version loaded from _build/test/lib/wanderer_notifier/ebin/Elixir.WandererNotifier.MockNotifierFactory.beam)
+     │
+ 491 │     Module.create(name, [info | body], Macro.Env.location(__ENV__))
+     │     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ deps/mox/lib/mox.ex:491: WandererNotifier.MockNotifierFactory (module)
+
+Running ExUnit with seed: 417283, max_cases: 48
+
+............................................[TestNotifier] Sending test kill notification
+.........................
+
+  1) test recent_kills_for_system/2 returns formatted strings for kills (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:164
+     ** (FunctionClauseError) no function clause matching in anonymous fn/3 in WandererNotifier.Killmail.EnrichmentTest."test recent_kills_for_system/2 returns formatted strings for kills"/1
+
+     The following arguments were given to anonymous fn/3 in WandererNotifier.Killmail.EnrichmentTest."test recent_kills_for_system/2 returns formatted strings for kills"/1:
+
+         # 1
+         126905675
+
+         # 2
+         "91b8f59f30fc534278fd6264c487b6bc218dcd57"
+
+         # 3
+         [max_attempts: 3, base_timeout: 1000, max_timeout: 5000]
+
+     code: result = Enrichment.recent_kills_for_system(system_id)
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:186: anonymous fn/3 in WandererNotifier.Killmail.EnrichmentTest."test recent_kills_for_system/2 returns formatted strings for kills"/1
+       (wanderer_notifier 1.0.10) lib/wanderer_notifier/esi/service.ex:34: WandererNotifier.ESI.Service.get_killmail/2
+       (wanderer_notifier 1.0.10) lib/wanderer_notifier/killmail/enrichment.ex:230: WandererNotifier.Killmail.Enrichment.enrich_killmail_for_system/1
+       (elixir 1.18.3) lib/enum.ex:1714: Enum."-map/2-lists^map/1-1-"/2
+       (wanderer_notifier 1.0.10) lib/wanderer_notifier/killmail/enrichment.ex:216: WandererNotifier.Killmail.Enrichment.recent_kills_for_system/2
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:190: (test)
+
+
+
+  2) test enrich_killmail_data/1 returns {:error, reason} if victim info fails (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:135
+     match (=) failed
+     code:  assert {:error, :system_not_found} = Enrichment.enrich_killmail_data(killmail)
+     left:  {:error, :system_not_found}
+     right: {:ok,
+             %WandererNotifier.Killmail.Killmail{
+               killmail_id: 1,
+               zkb: %{"hash" => "abc"},
+               esi_data: %{"attackers" => [], "solar_system_id" => 500, "victim" => %{"alliance_id" => 400, "character_id" => 100, "corporation_id" => 300, "ship_type_id" => 200}},
+               victim_name: "Victim",
+               victim_corporation: 300,
+               victim_corp_ticker: "VC",
+               victim_alliance: 400,
+               ship_name: "Victim Ship",
+               system_name: nil,
+               system_id: 500,
+               attackers: []
+             }}
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:159: (test)
+
+.........
+Finished in 2.5 seconds (2.4s async, 0.1s sync)
+80 tests, 2 failures

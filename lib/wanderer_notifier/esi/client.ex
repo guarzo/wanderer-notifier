@@ -3,11 +3,14 @@ defmodule WandererNotifier.ESI.Client do
   Client for interacting with the EVE Online ESI API.
   """
 
-  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @base_url "https://esi.evetech.net/latest"
   @user_agent "WandererNotifier/1.0"
+
+  defp http_client do
+    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
+  end
 
   @doc """
   Gets killmail information from ESI.
@@ -22,7 +25,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_killmail"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         AppLogger.api_debug("ESI killmail response", %{
           kill_id: kill_id,
@@ -61,7 +64,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_character_info"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -95,7 +98,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_corporation_info"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -129,7 +132,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_alliance_info"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -163,7 +166,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_universe_type"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -204,7 +207,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "search_inventory_type"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -238,7 +241,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_solar_system"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
@@ -273,7 +276,7 @@ defmodule WandererNotifier.ESI.Client do
       method: "get_system_kills"
     })
 
-    case HttpClient.get(url, headers) do
+    case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 

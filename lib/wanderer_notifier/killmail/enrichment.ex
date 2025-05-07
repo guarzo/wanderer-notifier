@@ -27,6 +27,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
         victim_id = get_in(esi_data, ["victim", "character_id"])
         ship_type_id = get_in(esi_data, ["victim", "ship_type_id"])
         system_id = Map.get(esi_data, "solar_system_id")
+
         system_name =
           case WandererNotifier.ESI.Service.get_system(system_id) do
             {:ok, %{"name" => name}} -> name
@@ -57,7 +58,11 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
             corporation_name =
               if is_nil(corporation_id) do
-                AppLogger.kill_warn("Attacker missing corporation_id", %{killmail_id: killmail_id, attacker: attacker})
+                AppLogger.kill_warn("Attacker missing corporation_id", %{
+                  killmail_id: killmail_id,
+                  attacker: attacker
+                })
+
                 nil
               else
                 case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
@@ -98,7 +103,11 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
             ship_type_name =
               if is_nil(ship_type_id) do
-                AppLogger.kill_warn("Attacker missing ship_type_id", %{killmail_id: killmail_id, attacker: attacker})
+                AppLogger.kill_warn("Attacker missing ship_type_id", %{
+                  killmail_id: killmail_id,
+                  attacker: attacker
+                })
+
                 nil
               else
                 case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
@@ -109,7 +118,11 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
             weapon_type_name =
               if is_nil(weapon_type_id) do
-                AppLogger.kill_warn("Attacker missing weapon_type_id", %{killmail_id: killmail_id, attacker: attacker})
+                AppLogger.kill_warn("Attacker missing weapon_type_id", %{
+                  killmail_id: killmail_id,
+                  attacker: attacker
+                })
+
                 nil
               else
                 case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
@@ -143,13 +156,16 @@ defmodule WandererNotifier.Killmail.Enrichment do
           # Fetch victim corporation ticker if possible
           victim_corp_ticker =
             case victim_info["corporation_id"] do
-              nil -> nil
+              nil ->
+                nil
+
               corp_id ->
                 case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
                   {:ok, %{"ticker" => ticker}} -> ticker
                   _ -> nil
                 end
             end
+
           enriched_killmail = %Killmail{
             killmail
             | victim_name: victim_info["name"],
@@ -169,10 +185,16 @@ defmodule WandererNotifier.Killmail.Enrichment do
               kill_id: killmail_id,
               error: inspect(reason)
             })
+
             {:error, reason}
         end
+
       {:error, reason} ->
-        AppLogger.kill_warn("Failed to fetch ESI data for killmail", %{killmail_id: killmail_id, reason: inspect(reason)})
+        AppLogger.kill_warn("Failed to fetch ESI data for killmail", %{
+          killmail_id: killmail_id,
+          reason: inspect(reason)
+        })
+
         {:error, :esi_data_missing}
     end
   end
@@ -195,13 +217,16 @@ defmodule WandererNotifier.Killmail.Enrichment do
         |> Enum.map(&format_kill_for_system/1)
         |> Enum.filter(&is_binary/1)
         |> Enum.reject(&(&1 == ""))
-      _ -> []
+
+      _ ->
+        []
     end
   end
 
   defp enrich_killmail_for_system(kill) do
     kill_id = Map.get(kill, "killmail_id")
     hash = get_in(kill, ["zkb", "hash"])
+
     case WandererNotifier.ESI.Service.get_killmail(kill_id, hash) do
       {:ok, esi_data} -> Map.put(kill, "esi_data", esi_data)
       _ -> kill
@@ -243,17 +268,21 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   defp format_time_ago(nil), do: "?"
+
   defp format_time_ago(kill_time) do
     case DateTime.from_iso8601(kill_time) do
       {:ok, dt, _} ->
         now = DateTime.utc_now()
         diff = DateTime.diff(now, dt, :second)
+
         cond do
           diff < 3600 -> "<1h"
           diff < 86_400 -> "#{div(diff, 3600)}h"
           true -> "#{div(diff, 86_400)}d"
         end
-      _ -> "?"
+
+      _ ->
+        "?"
     end
   end
 
@@ -272,14 +301,14 @@ defmodule WandererNotifier.Killmail.Enrichment do
     do: {:ok, %{"name" => "Unknown", "corporation_id" => nil, "alliance_id" => nil}}
 
   defp get_character_info(character_id) do
-    case ESIClient.get_character_info(character_id) do
+    case WandererNotifier.ESI.Service.get_character_info(character_id) do
       {:ok, info} -> {:ok, info}
       {:error, reason} -> {:error, {:character_info_error, reason}}
     end
   end
 
   defp get_ship_info(ship_type_id) do
-    case ESIClient.get_universe_type(ship_type_id) do
+    case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
       {:ok, info} -> {:ok, info}
       {:error, reason} -> {:error, {:ship_info_error, reason}}
     end

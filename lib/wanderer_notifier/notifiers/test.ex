@@ -103,4 +103,10 @@ defmodule WandererNotifier.Notifiers.Test do
 
   @impl true
   def notify(_msg), do: :ok
+
+  @impl true
+  def send_discord_embed(_embed), do: {:ok, %{status_code: 200}}
+
+  @impl true
+  def send_notification(_type, _data), do: {:ok, %{status_code: 200}}
 end

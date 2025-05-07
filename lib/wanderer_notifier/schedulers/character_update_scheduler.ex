@@ -114,7 +114,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     updated_cache = CacheRepo.get(CacheKeys.character_list())
     cache_list = ensure_list(updated_cache)
     if cache_list == [] do
-      cache_ttl = 60_000 # TODO: Replace with Config.characters_cache_ttl/0 if/when available
+      cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
       CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)
     end
   end

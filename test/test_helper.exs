@@ -1,6 +1,13 @@
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 
+# Ensure the killmail cache module is always the test mock
+Application.put_env(
+  :wanderer_notifier,
+  :killmail_cache_module,
+  WandererNotifier.Test.Support.Mocks
+)
+
 # Disable all external services and background processes in test
 Application.put_env(:wanderer_notifier, :discord_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_enabled, false)
@@ -57,6 +64,11 @@ Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.S
 
 # Define mocks for external dependencies
 Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HttpClient.Behaviour)
+Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
+
+Mox.defmock(WandererNotifier.MockDiscordNotifier,
+  for: WandererNotifier.Notifiers.Discord.Behaviour
+)
 
 # Configure application to use mocks
 Application.put_env(:wanderer_notifier, :discord_notifier, WandererNotifier.MockDiscordNotifier)
@@ -84,7 +96,7 @@ System.put_env("LICENSE_MANAGER_API_URL", "http://test.license.url")
 System.put_env("DISCORD_WEBHOOK_URL", "http://test.discord.url")
 
 # Configure logger level for tests
-Logger.configure(level: :warn)
+Logger.configure(level: :warning)
 
 # Helper functions for tests
 defmodule WandererNotifier.TestHelpers do
@@ -116,3 +128,7 @@ defmodule WandererNotifier.TestHelpers do
     {:error, reason}
   end
 end
+
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
+)

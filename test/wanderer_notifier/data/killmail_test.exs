@@ -97,7 +97,6 @@ defmodule WandererNotifier.Killmail.KillmailTest do
 
     test "pop removes a field value", %{killmail: killmail} do
       {victim, updated_killmail} = Access.pop(killmail, "victim")
-
       assert victim == %{"character_id" => 93_847_759, "ship_type_id" => 33_470}
       assert updated_killmail["victim"] == nil
     end
@@ -144,7 +143,6 @@ defmodule WandererNotifier.Killmail.KillmailTest do
     end
 
     test "from_map creates killmail from map", %{killmail: killmail} do
-      # Convert to map and back
       map = %{
         "killmail_id" => killmail.killmail_id,
         "zkb" => killmail.zkb,

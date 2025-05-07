@@ -3,27 +3,82 @@ defmodule WandererNotifier.MockESI do
   Mock implementation of the ESI service for testing.
   """
 
+  # Test data for ESI.ServiceTest
+  @character_data %{
+    "character_id" => 123_456,
+    "name" => "Test Character",
+    "corporation_id" => 789_012,
+    "alliance_id" => 345_678,
+    "security_status" => 0.5,
+    "birthday" => "2020-01-01T00:00:00Z"
+  }
+  @corporation_data %{
+    "corporation_id" => 789_012,
+    "name" => "Test Corporation",
+    "ticker" => "TSTC",
+    "member_count" => 100,
+    "alliance_id" => 345_678,
+    "description" => "A test corporation",
+    "date_founded" => "2020-01-01T00:00:00Z"
+  }
+  @alliance_data %{
+    "alliance_id" => 345_678,
+    "name" => "Test Alliance",
+    "ticker" => "TSTA",
+    "executor_corporation_id" => 789_012,
+    "creator_id" => 123_456,
+    "date_founded" => "2020-01-01T00:00:00Z",
+    "faction_id" => 555_555
+  }
+  @system_data %{
+    "system_id" => 30_000_142,
+    "name" => "Jita",
+    "constellation_id" => 20_000_020,
+    "security_status" => 0.9,
+    "security_class" => "B",
+    "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
+    "star_id" => 40_000_001,
+    "planets" => [%{"planet_id" => 50_000_001}],
+    "region_id" => 10_000_002
+  }
+
   def get_killmail(_kill_id, _hash), do: {:ok, %{}}
+  def get_killmail(_kill_id, _hash, _opts), do: {:ok, %{}}
 
-  def get_character_info(_character_id), do: {:ok, %{}}
+  def get_character_info(123_456), do: {:ok, @character_data}
+  def get_character_info(_), do: {:ok, %{}}
+  def get_character_info(id, _opts), do: get_character_info(id)
 
-  def get_corporation_info(_corporation_id), do: {:ok, %{}}
+  def get_corporation_info(789_012), do: {:ok, @corporation_data}
+  def get_corporation_info(_), do: {:ok, %{}}
+  def get_corporation_info(id, _opts), do: get_corporation_info(id)
 
-  def get_alliance_info(_alliance_id), do: {:ok, %{}}
+  def get_alliance_info(345_678), do: {:ok, @alliance_data}
+  def get_alliance_info(_), do: {:ok, %{}}
+  def get_alliance_info(id, _opts), do: get_alliance_info(id)
 
-  def get_system_info(_system_id), do: {:ok, %{}}
+  def get_system_info(30_000_142), do: {:ok, @system_data}
+  def get_system_info(_), do: {:ok, %{}}
+  def get_system_info(id, _opts), do: get_system_info(id)
 
   def get_type_info(_type_id), do: {:ok, %{}}
+  def get_type_info(type_id, _opts), do: get_type_info(type_id)
 
-  def get_system(_system_id), do: {:ok, %{}}
+  def get_system(30_000_142), do: {:ok, @system_data}
+  def get_system(_), do: {:ok, %{}}
+  def get_system(id, _opts), do: get_system(id)
 
   def get_character(_character_id), do: {:ok, %{}}
+  def get_character(character_id, _opts), do: get_character(character_id)
 
   def get_type(_type_id), do: {:ok, %{}}
+  def get_type(type_id, _opts), do: get_type(type_id)
 
   def get_ship_type_name(_ship_type_id), do: {:ok, %{"name" => "Test Ship"}}
+  def get_ship_type_name(ship_type_id, _opts), do: get_ship_type_name(ship_type_id)
 
   def get_system_kills(_system_id, _limit), do: {:ok, []}
+  def get_system_kills(system_id, limit, _opts), do: get_system_kills(system_id, limit)
 end
 
 defmodule WandererNotifier.Test.Support.Mocks do
@@ -38,7 +93,18 @@ defmodule WandererNotifier.Test.Support.Mocks do
 
   # -- Cache Implementation --
 
-  def get(key), do: {:ok, Process.get({:cache, key})}
+  def get(key) do
+    cond do
+      is_binary(key) and String.starts_with?(key, "system:") ->
+        {:ok, %{"name" => "Jita", "system_id" => 500}}
+
+      true ->
+        case Process.get({:cache, key}) do
+          nil -> {:error, :not_found}
+          value -> {:ok, value}
+        end
+    end
+  end
 
   def set(key, value, _ttl) do
     AppLogger.cache_debug("Setting cache value with TTL",
@@ -47,12 +113,12 @@ defmodule WandererNotifier.Test.Support.Mocks do
     )
 
     Process.put({:cache, key}, value)
-    {:ok, value}
+    :ok
   end
 
   def put(key, value) do
     Process.put({:cache, key}, value)
-    {:ok, value}
+    :ok
   end
 
   def delete(key) do
@@ -61,7 +127,6 @@ defmodule WandererNotifier.Test.Support.Mocks do
   end
 
   def clear do
-    # This is a simplified clear that only clears cache-related process dictionary entries
     Process.get_keys()
     |> Enum.filter(fn
       {:cache, _} -> true
@@ -76,7 +141,7 @@ defmodule WandererNotifier.Test.Support.Mocks do
     current = Process.get({:cache, key})
     {current_value, new_value} = update_fun.(current)
     Process.put({:cache, key}, new_value)
-    {:ok, {current_value, new_value}}
+    {:ok, current_value}
   end
 
   def get_recent_kills do
@@ -85,6 +150,8 @@ defmodule WandererNotifier.Test.Support.Mocks do
       _ -> []
     end
   end
+
+  def init_batch_logging, do: :ok
 
   # -- Other Mock Implementations --
   # Add other mock implementations here as needed
@@ -247,10 +314,26 @@ defmodule WandererNotifier.TestHelpers.Mocks do
     """
 
     @callback get_character_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_character_info(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
+    @callback get_corporation_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_corporation_info(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
+    @callback get_alliance_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_alliance_info(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system_info(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
+    @callback get_system(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_system(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
     @callback get_type_info(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_type_info(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
     @callback get_ship_type_name(String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_ship_type_name(String.t(), keyword()) :: {:ok, map()} | {:error, any()}
     @callback get_system_kills(String.t(), integer()) :: {:ok, list()} | {:error, any()}
+    @callback get_system_kills(String.t(), integer(), keyword()) ::
+                {:ok, list()} | {:error, any()}
     @callback get_killmail(String.t(), String.t()) :: {:ok, map()} | {:error, any()}
+    @callback get_killmail(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, any()}
+    @callback get_universe_type(type_id :: integer(), opts :: keyword()) ::
+                {:ok, map()} | {:error, any()}
   end
 end
 

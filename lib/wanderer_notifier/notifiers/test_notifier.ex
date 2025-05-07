@@ -22,7 +22,6 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   """
   @spec deliver(map()) :: :ok | {:error, term()}
   def deliver(notification) when is_map(notification) do
-    IO.inspect({:test_notification, notification}, label: "[TestNotifier] Delivering notification")
     :ok
   end
 

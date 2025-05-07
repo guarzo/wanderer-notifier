@@ -50,6 +50,11 @@ defmodule WandererNotifier.Web.Router do
   forward("/api/notifications", to: NotificationController)
   forward("/api/debug", to: WebController)
 
+  # Return 404 for /api/web/schedulers
+  get "/api/web/schedulers" do
+    send_resp(conn, 404, "Not found")
+  end
+
   # React app routes
   get "/schedulers" do
     send_file(conn, 200, "priv/static/app/index.html")

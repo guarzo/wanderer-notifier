@@ -5,16 +5,12 @@ defmodule WandererNotifier.HttpTest do
   setup :verify_on_exit!
 
   test "mocks HTTP client successfully" do
-    # Set up mock expectation
     WandererNotifier.MockHTTP
-    |> expect(:get, fn _url, _headers, _options ->
+    |> expect(:get, fn _url ->
       {:ok, %{status: 200, body: %{"message" => "Test successful"}, headers: []}}
     end)
 
-    # Verify that the mock works when called
-    result = WandererNotifier.MockHTTP.get("https://example.com", [], [])
-
-    # Assert the result matches our expectation
+    result = WandererNotifier.MockHTTP.get("https://example.com")
     assert {:ok, %{status: 200, body: %{"message" => "Test successful"}}} = result
   end
 end

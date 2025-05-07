@@ -25,10 +25,13 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   def format_system_notification(%MapSystem{} = system) do
     validate_system_fields(system)
 
-    is_wormhole = MapSystem.is_wormhole?(system)
-    display_name = system.name # Only use the system name for the title
+    is_wormhole = MapSystem.wormhole?(system)
+    # Only use the system name for the title
+    display_name = system.name
 
-    formatted_statics = format_statics_list(Map.get(system, :static_details) || Map.get(system, :statics))
+    formatted_statics =
+      format_statics_list(Map.get(system, :static_details) || Map.get(system, :statics))
+
     system_name_with_link = create_system_name_link(system, display_name)
 
     {title, description, _color, icon_url} =
@@ -56,12 +59,16 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     }
   rescue
     e ->
-      Logger.error("[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}")
+      Logger.error(
+        "[SystemFormatter] Exception formatting system notification: #{Exception.message(e)}\nStruct: #{inspect(system)}\nFields: #{inspect(Map.from_struct(system))}"
+      )
+
       AppLogger.processor_error("[SystemFormatter] Error formatting system notification",
         system: system.name,
         error: Exception.message(e),
         stacktrace: Exception.format_stacktrace(__STACKTRACE__)
       )
+
       reraise e, __STACKTRACE__
   end
 
@@ -69,6 +76,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     if is_nil(system.solar_system_id) do
       raise "Cannot format system notification: solar_system_id is missing in MapSystem struct"
     end
+
     if is_nil(system.name) do
       raise "Cannot format system notification: name is missing in MapSystem struct"
     end
@@ -76,7 +84,10 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp generate_notification_elements(system, is_wormhole, display_name) do
     title = generate_system_title(display_name)
-    description = generate_system_description(is_wormhole, system.class_title, system.type_description)
+
+    description =
+      generate_system_description(is_wormhole, system.class_title, system.type_description)
+
     system_color = determine_system_color(system.type_description, is_wormhole)
     icon_url = determine_system_icon(is_wormhole, system.type_description, system.sun_type_id)
     {title, description, system_color, icon_url}
@@ -86,9 +97,14 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp generate_system_description(is_wormhole, class_title, type_description) do
     cond do
-      is_wormhole -> "A new wormhole system (#{class_title || "Unknown Class"}) has been added to tracking."
-      type_description -> "A new #{type_description} system has been added to tracking."
-      true -> "A new system has been added to tracking."
+      is_wormhole ->
+        "A new wormhole system (#{class_title || "Unknown Class"}) has been added to tracking."
+
+      type_description ->
+        "A new #{type_description} system has been added to tracking."
+
+      true ->
+        "A new system has been added to tracking."
     end
   end
 
@@ -114,6 +130,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
 
   defp format_statics_list(nil), do: "N/A"
   defp format_statics_list([]), do: "N/A"
+
   defp format_statics_list(statics) when is_list(statics) do
     Enum.map(statics, fn
       m when is_map(m) -> m["name"] || m[:name] || inspect(m)
@@ -121,17 +138,21 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     end)
     |> Enum.join(", ")
   end
+
   defp format_statics_list(statics), do: to_string(statics)
 
   defp create_system_name_link(system, display_name) do
     has_numeric_id =
       is_integer(system.solar_system_id) ||
         (is_binary(system.solar_system_id) && Integer.parse(system.solar_system_id) != :error)
+
     if has_numeric_id do
       system_id_str = to_string(system.solar_system_id)
+
       has_temp_and_original =
         Map.get(system, :temporary_name) && Map.get(system, :temporary_name) != "" &&
           Map.get(system, :original_name) && Map.get(system, :original_name) != ""
+
       if has_temp_and_original do
         "[#{system.temporary_name} (#{system.original_name})](https://zkillboard.com/system/#{system_id_str}/)"
       else
@@ -142,7 +163,12 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     end
   end
 
-  defp build_rich_system_notification_fields(system, is_wormhole, formatted_statics, system_name_with_link) do
+  defp build_rich_system_notification_fields(
+         system,
+         is_wormhole,
+         formatted_statics,
+         system_name_with_link
+       ) do
     fields = [%{name: "System", value: to_string(system_name_with_link), inline: true}]
     fields = add_shattered_field(fields, is_wormhole, Map.get(system, :is_shattered))
     fields = add_statics_field(fields, is_wormhole, formatted_statics)
@@ -155,24 +181,35 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     end)
   end
 
-  defp add_shattered_field(fields, true, true), do: fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
+  defp add_shattered_field(fields, true, true),
+    do: fields ++ [%{name: "Shattered", value: "Yes", inline: true}]
+
   defp add_shattered_field(fields, _, _), do: fields
 
-  defp add_statics_field(fields, true, statics) when statics != "N/A", do: fields ++ [%{name: "Statics", value: to_string(statics), inline: true}]
+  defp add_statics_field(fields, true, statics) when statics != "N/A",
+    do: fields ++ [%{name: "Statics", value: to_string(statics), inline: true}]
+
   defp add_statics_field(fields, _, _), do: fields
 
-  defp add_region_field(fields, region_name) when not is_nil(region_name), do: fields ++ [%{name: "Region", value: to_string(region_name), inline: true}]
+  defp add_region_field(fields, region_name) when not is_nil(region_name),
+    do: fields ++ [%{name: "Region", value: to_string(region_name), inline: true}]
+
   defp add_region_field(fields, _), do: fields
 
-  defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name), do: fields ++ [%{name: "Effect", value: to_string(effect_name), inline: true}]
+  defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name),
+    do: fields ++ [%{name: "Effect", value: to_string(effect_name), inline: true}]
+
   defp add_effect_field(fields, _, _), do: fields
 
   defp add_zkill_system_kills(fields, system_id) do
     system_id_int = parse_system_id(system_id)
+
     if is_nil(system_id_int) do
       fields
     else
-      recent_kills = WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3)
+      recent_kills =
+        WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3)
+
       if recent_kills != [] do
         fields ++ [%{name: "Recent Kills", value: Enum.join(recent_kills, "\n"), inline: false}]
       else
@@ -187,6 +224,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
       :error -> nil
     end
   end
+
   defp parse_system_id(id) when is_integer(id), do: id
   defp parse_system_id(_), do: nil
 

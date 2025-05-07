@@ -109,10 +109,13 @@ defmodule WandererNotifier.Map.MapSystem do
       security_status: Map.get(data, :security_status) || Map.get(data, "security_status"),
       effect_power: Map.get(data, :effect_power) || Map.get(data, "effect_power"),
       region_id: Map.get(data, :region_id) || Map.get(data, "region_id"),
-      triglavian_invasion_status: Map.get(data, :triglavian_invasion_status) || Map.get(data, "triglavian_invasion_status"),
+      triglavian_invasion_status:
+        Map.get(data, :triglavian_invasion_status) || Map.get(data, "triglavian_invasion_status"),
       constellation_id: Map.get(data, :constellation_id) || Map.get(data, "constellation_id"),
-      constellation_name: Map.get(data, :constellation_name) || Map.get(data, "constellation_name")
+      constellation_name:
+        Map.get(data, :constellation_name) || Map.get(data, "constellation_name")
     }
+
     struct
   end
 
@@ -126,8 +129,8 @@ defmodule WandererNotifier.Map.MapSystem do
     - true if the system is a wormhole system
     - false otherwise
   """
-  @spec is_wormhole?(t()) :: boolean()
-  def is_wormhole?(%__MODULE__{system_type: type}) do
+  @spec wormhole?(t()) :: boolean()
+  def wormhole?(%__MODULE__{system_type: type}) do
     type in [:wormhole, "wormhole", "Wormhole"]
   end
 
@@ -170,28 +173,159 @@ defmodule WandererNotifier.Map.MapSystem do
   """
   @spec validate_types(t()) :: :ok
   def validate_types(%__MODULE__{} = system) do
-    unless is_binary(system.name), do: raise(ArgumentError, "MapSystem.name must be a string, got: #{inspect(system.name)}")
-    unless is_nil(system.original_name) or is_binary(system.original_name), do: raise(ArgumentError, "MapSystem.original_name must be a string or nil, got: #{inspect(system.original_name)}")
-    unless is_nil(system.system_type) or is_binary(system.system_type) or is_atom(system.system_type), do: raise(ArgumentError, "MapSystem.system_type must be a string, atom, or nil, got: #{inspect(system.system_type)}")
-    unless is_nil(system.type_description) or is_binary(system.type_description), do: raise(ArgumentError, "MapSystem.type_description must be a string or nil, got: #{inspect(system.type_description)}")
-    unless is_nil(system.class_title) or is_binary(system.class_title), do: raise(ArgumentError, "MapSystem.class_title must be a string or nil, got: #{inspect(system.class_title)}")
-    unless is_nil(system.effect_name) or is_binary(system.effect_name), do: raise(ArgumentError, "MapSystem.effect_name must be a string or nil, got: #{inspect(system.effect_name)}")
-    unless is_nil(system.region_name) or is_binary(system.region_name), do: raise(ArgumentError, "MapSystem.region_name must be a string or nil, got: #{inspect(system.region_name)}")
-    unless is_nil(system.static_details) or is_list(system.static_details), do: raise(ArgumentError, "MapSystem.static_details must be a list or nil, got: #{inspect(system.static_details)}")
-    unless is_nil(system.statics) or is_list(system.statics), do: raise(ArgumentError, "MapSystem.statics must be a list or nil, got: #{inspect(system.statics)}")
-    unless is_nil(system.sun_type_id) or is_integer(system.sun_type_id), do: raise(ArgumentError, "MapSystem.sun_type_id must be an integer or nil, got: #{inspect(system.sun_type_id)}")
-    unless is_nil(system.solar_system_id) or is_integer(system.solar_system_id) or is_binary(system.solar_system_id), do: raise(ArgumentError, "MapSystem.solar_system_id must be an integer, string, or nil, got: #{inspect(system.solar_system_id)}")
-    unless is_nil(system.id) or is_integer(system.id) or is_binary(system.id), do: raise(ArgumentError, "MapSystem.id must be an integer, string, or nil, got: #{inspect(system.id)}")
-    unless is_nil(system.is_shattered) or is_boolean(system.is_shattered), do: raise(ArgumentError, "MapSystem.is_shattered must be a boolean or nil, got: #{inspect(system.is_shattered)}")
-    unless is_nil(system.locked) or is_boolean(system.locked), do: raise(ArgumentError, "MapSystem.locked must be a boolean or nil, got: #{inspect(system.locked)}")
-    unless is_nil(system.system_class) or is_binary(system.system_class), do: raise(ArgumentError, "MapSystem.system_class must be a string or nil, got: #{inspect(system.system_class)}")
-    unless is_nil(system.temporary_name) or is_binary(system.temporary_name), do: raise(ArgumentError, "MapSystem.temporary_name must be a string or nil, got: #{inspect(system.temporary_name)}")
-    unless is_nil(system.security_status) or is_float(system.security_status), do: raise(ArgumentError, "MapSystem.security_status must be a float or nil, got: #{inspect(system.security_status)}")
-    unless is_nil(system.effect_power) or is_integer(system.effect_power), do: raise(ArgumentError, "MapSystem.effect_power must be an integer or nil, got: #{inspect(system.effect_power)}")
-    unless is_nil(system.region_id) or is_integer(system.region_id), do: raise(ArgumentError, "MapSystem.region_id must be an integer or nil, got: #{inspect(system.region_id)}")
-    unless is_nil(system.triglavian_invasion_status) or is_binary(system.triglavian_invasion_status), do: raise(ArgumentError, "MapSystem.triglavian_invasion_status must be a string or nil, got: #{inspect(system.triglavian_invasion_status)}")
-    unless is_nil(system.constellation_id) or is_integer(system.constellation_id), do: raise(ArgumentError, "MapSystem.constellation_id must be an integer or nil, got: #{inspect(system.constellation_id)}")
-    unless is_nil(system.constellation_name) or is_binary(system.constellation_name), do: raise(ArgumentError, "MapSystem.constellation_name must be a string or nil, got: #{inspect(system.constellation_name)}")
+    unless is_binary(system.name),
+      do: raise(ArgumentError, "MapSystem.name must be a string, got: #{inspect(system.name)}")
+
+    unless is_nil(system.original_name) or is_binary(system.original_name),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.original_name must be a string or nil, got: #{inspect(system.original_name)}"
+        )
+
+    unless is_nil(system.system_type) or is_binary(system.system_type) or
+             is_atom(system.system_type),
+           do:
+             raise(
+               ArgumentError,
+               "MapSystem.system_type must be a string, atom, or nil, got: #{inspect(system.system_type)}"
+             )
+
+    unless is_nil(system.type_description) or is_binary(system.type_description),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.type_description must be a string or nil, got: #{inspect(system.type_description)}"
+        )
+
+    unless is_nil(system.class_title) or is_binary(system.class_title),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.class_title must be a string or nil, got: #{inspect(system.class_title)}"
+        )
+
+    unless is_nil(system.effect_name) or is_binary(system.effect_name),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.effect_name must be a string or nil, got: #{inspect(system.effect_name)}"
+        )
+
+    unless is_nil(system.region_name) or is_binary(system.region_name),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.region_name must be a string or nil, got: #{inspect(system.region_name)}"
+        )
+
+    unless is_nil(system.static_details) or is_list(system.static_details),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.static_details must be a list or nil, got: #{inspect(system.static_details)}"
+        )
+
+    unless is_nil(system.statics) or is_list(system.statics),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.statics must be a list or nil, got: #{inspect(system.statics)}"
+        )
+
+    unless is_nil(system.sun_type_id) or is_integer(system.sun_type_id),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.sun_type_id must be an integer or nil, got: #{inspect(system.sun_type_id)}"
+        )
+
+    unless is_nil(system.solar_system_id) or is_integer(system.solar_system_id) or
+             is_binary(system.solar_system_id),
+           do:
+             raise(
+               ArgumentError,
+               "MapSystem.solar_system_id must be an integer, string, or nil, got: #{inspect(system.solar_system_id)}"
+             )
+
+    unless is_nil(system.id) or is_integer(system.id) or is_binary(system.id),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.id must be an integer, string, or nil, got: #{inspect(system.id)}"
+        )
+
+    unless is_nil(system.is_shattered) or is_boolean(system.is_shattered),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.is_shattered must be a boolean or nil, got: #{inspect(system.is_shattered)}"
+        )
+
+    unless is_nil(system.locked) or is_boolean(system.locked),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.locked must be a boolean or nil, got: #{inspect(system.locked)}"
+        )
+
+    unless is_nil(system.system_class) or is_binary(system.system_class),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.system_class must be a string or nil, got: #{inspect(system.system_class)}"
+        )
+
+    unless is_nil(system.temporary_name) or is_binary(system.temporary_name),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.temporary_name must be a string or nil, got: #{inspect(system.temporary_name)}"
+        )
+
+    unless is_nil(system.security_status) or is_float(system.security_status),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.security_status must be a float or nil, got: #{inspect(system.security_status)}"
+        )
+
+    unless is_nil(system.effect_power) or is_integer(system.effect_power),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.effect_power must be an integer or nil, got: #{inspect(system.effect_power)}"
+        )
+
+    unless is_nil(system.region_id) or is_integer(system.region_id),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.region_id must be an integer or nil, got: #{inspect(system.region_id)}"
+        )
+
+    unless is_nil(system.triglavian_invasion_status) or
+             is_binary(system.triglavian_invasion_status),
+           do:
+             raise(
+               ArgumentError,
+               "MapSystem.triglavian_invasion_status must be a string or nil, got: #{inspect(system.triglavian_invasion_status)}"
+             )
+
+    unless is_nil(system.constellation_id) or is_integer(system.constellation_id),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.constellation_id must be an integer or nil, got: #{inspect(system.constellation_id)}"
+        )
+
+    unless is_nil(system.constellation_name) or is_binary(system.constellation_name),
+      do:
+        raise(
+          ArgumentError,
+          "MapSystem.constellation_name must be a string or nil, got: #{inspect(system.constellation_name)}"
+        )
+
     :ok
   end
 end

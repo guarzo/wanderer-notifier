@@ -5,7 +5,14 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   use WandererNotifier.Api.ApiPipeline
   import WandererNotifier.Api.Helpers
 
-  alias WandererNotifier.Killmail.Cache
+  defp cache_module,
+    do:
+      Application.get_env(
+        :wanderer_notifier,
+        :killmail_cache_module,
+        WandererNotifier.Killmail.Cache
+      )
+
   alias WandererNotifier.Killmail.Processor
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
@@ -19,7 +26,10 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get kill details
   get "/kill/:kill_id" do
-    case Cache.get_kill(kill_id) do
+    IO.inspect(cache_module(), label: "Controller cache_module at runtime")
+
+    case cache_module().get_kill(kill_id) do
+      {:ok, nil} -> send_error(conn, 404, "Kill not found")
       {:ok, kill} -> send_success(conn, kill)
       {:error, :not_cached} -> send_error(conn, 404, "Kill not found in cache")
       {:error, :not_found} -> send_error(conn, 404, "Kill not found")
@@ -29,7 +39,7 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get killmail list
   get "/kills" do
-    kills = Cache.get_latest_killmails()
+    kills = cache_module().get_latest_killmails()
     send_success(conn, kills)
   end
 
