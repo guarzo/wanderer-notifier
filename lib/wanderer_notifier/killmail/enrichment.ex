@@ -4,9 +4,13 @@ defmodule WandererNotifier.Killmail.Enrichment do
   """
 
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.ESI.Service, as: ESIService
   require Logger
 
+  @esi_service Application.compile_env(
+                 :wanderer_notifier,
+                 :esi_service,
+                 WandererNotifier.ESI.Service
+               )
   @zkill_client Application.compile_env(
                   :wanderer_notifier,
                   :zkill_client,
@@ -97,7 +101,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   defp get_killmail_data(killmail_id, hash) do
-    case ESIService.get_killmail(killmail_id, hash) do
+    case @esi_service.get_killmail(killmail_id, hash) do
       {:ok, esi_data} -> {:ok, esi_data}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       {:error, :not_found} -> {:error, :esi_data_missing}
@@ -108,7 +112,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_system_name(nil), do: {:ok, "Unknown System"}
 
   defp get_system_name(system_id) when is_integer(system_id) or is_binary(system_id) do
-    case ESIService.get_system(system_id, []) do
+    case @esi_service.get_system(system_id, []) do
       {:ok, %{"name" => name}} -> {:ok, name}
       {:error, :not_found} -> {:error, :system_not_found}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
@@ -139,7 +143,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_ship_info(nil), do: {:error, :esi_data_missing}
 
   defp get_ship_info(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
-    case ESIService.get_type_info(ship_type_id, []) do
+    case @esi_service.get_type_info(ship_type_id, []) do
       {:ok, %{"name" => name}} -> {:ok, %{"name" => name}}
       {:ok, ship} -> {:ok, ship}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
@@ -150,7 +154,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_ship_info(_), do: {:error, :esi_data_missing}
 
   defp get_character_info(character_id) when is_integer(character_id) do
-    case ESIService.get_character_info(character_id, []) do
+    case @esi_service.get_character_info(character_id, []) do
       {:ok, info} -> {:ok, info}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       {:error, _} -> {:error, :esi_data_missing}
@@ -161,7 +165,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_character_info(_), do: {:error, :esi_data_missing}
 
   defp get_corporation_info(corporation_id) when is_integer(corporation_id) do
-    case ESIService.get_corporation_info(corporation_id, []) do
+    case @esi_service.get_corporation_info(corporation_id, []) do
       {:ok, info} -> {:ok, info}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       {:error, _} -> {:error, :esi_data_missing}
@@ -171,7 +175,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_corporation_info(_), do: {:error, :esi_data_missing}
 
   defp get_alliance_info(alliance_id) when is_integer(alliance_id) do
-    case ESIService.get_alliance_info(alliance_id, []) do
+    case @esi_service.get_alliance_info(alliance_id, []) do
       {:ok, info} -> {:ok, info}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       {:error, _} -> {:error, :esi_data_missing}
@@ -240,7 +244,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
     kill_id = Map.get(kill, "killmail_id")
     hash = get_in(kill, ["zkb", "hash"])
 
-    case ESIService.get_killmail(kill_id, hash) do
+    case @esi_service.get_killmail(kill_id, hash) do
       {:ok, esi_data} -> Map.put(kill, "esi_data", esi_data)
       {:error, _} -> kill
     end

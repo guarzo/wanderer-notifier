@@ -62,6 +62,11 @@ Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
   for: WandererNotifier.Notifications.DiscordNotifierBehaviour
 )
 
+# Define ESI ClientMock using the proper behavior
+Mox.defmock(WandererNotifier.Api.ESI.ClientMock,
+  for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
+)
+
 # Configure application to use mocks
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Killmail.ZKillClientMock)
@@ -140,10 +145,6 @@ end
 
 Mox.defmock(WandererNotifier.MockNotifierFactory,
   for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
-)
-
-Mox.defmock(WandererNotifier.Api.ESI.ClientMock,
-  for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
 )
 
 # Set up default stubs for random killmail requests
