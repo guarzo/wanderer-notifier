@@ -35,10 +35,16 @@ defmodule WandererNotifier.Application do
       {Metrics, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Application.Service, []},
-      WandererNotifier.Schedulers.Supervisor
-      # Add other children here
+      {WandererNotifier.Core.Application.Service, []}
     ]
+
+    # Only add scheduler supervisor if enabled
+    children =
+      if Application.get_env(:wanderer_notifier, :scheduler_supervisor_enabled, false) do
+        children ++ [WandererNotifier.Schedulers.Supervisor]
+      else
+        children
+      end
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     Supervisor.start_link(children, opts)
@@ -71,15 +77,8 @@ defmodule WandererNotifier.Application do
   @doc """
   Gets a configuration value for the given key.
   """
-  def get_env(key, default \\ nil) do
+  def get_config(key, default \\ nil) do
     Application.get_env(:wanderer_notifier, key, default)
-  end
-
-  @doc """
-  Gets a configuration value for the given key and module.
-  """
-  def get_env(module, key, default) do
-    Application.get_env(module, key, default)
   end
 
   @doc """

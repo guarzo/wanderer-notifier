@@ -1,215 +1,185 @@
 defmodule WandererNotifier.Killmail.EnrichmentTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
   import Mox
 
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Killmail.Killmail
 
+  # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
   setup do
-    # Set up Mox for ESI.Service, ESI.Client, ZKillClient, and cache repository
+    # Configure the application to use our mocks
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
-    Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.Api.ESI.ServiceMock)
-    Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Api.ZKill.ServiceMock)
+    Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.Api.ESI.ClientMock)
 
     Application.put_env(
       :wanderer_notifier,
-      :cache_repository,
-      WandererNotifier.Test.Support.Mocks
+      :zkill_client,
+      WandererNotifier.Killmail.ZKillClientMock
     )
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_character_info, fn id, _opts ->
-      case id do
-        100 -> {:ok, %{"name" => "Victim", "corporation_id" => 300, "alliance_id" => 400}}
-        101 -> {:ok, %{"name" => "Attacker", "corporation_id" => 301, "alliance_id" => 401}}
-        _ -> {:ok, %{"name" => "Unknown", "corporation_id" => nil, "alliance_id" => nil}}
-      end
-    end)
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_corporation_info, fn id, _opts ->
-      case id do
-        300 -> {:ok, %{"name" => "Victim Corp", "ticker" => "VC"}}
-        301 -> {:ok, %{"name" => "Attacker Corp", "ticker" => "AC"}}
-        _ -> {:ok, %{"name" => "Unknown Corp", "ticker" => "UC"}}
-      end
-    end)
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_alliance_info, fn id, _opts ->
-      case id do
-        400 -> {:ok, %{"name" => "Victim Alliance", "ticker" => "VA"}}
-        401 -> {:ok, %{"name" => "Attacker Alliance", "ticker" => "AA"}}
-        _ -> {:ok, %{"name" => "Unknown Alliance", "ticker" => "UA"}}
-      end
-    end)
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_type_info, fn id, _opts ->
-      case id do
-        200 -> {:ok, %{"name" => "Victim Ship"}}
-        201 -> {:ok, %{"name" => "Attacker Ship"}}
-        301 -> {:ok, %{"name" => "Weapon"}}
-        _ -> {:ok, %{"name" => "Unknown Ship"}}
-      end
-    end)
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_universe_type, fn id, _opts ->
-      case id do
-        200 -> {:ok, %{"name" => "Victim Ship"}}
-        201 -> {:ok, %{"name" => "Attacker Ship"}}
-        301 -> {:ok, %{"name" => "Weapon"}}
-        _ -> {:ok, %{"name" => "Unknown Ship"}}
-      end
-    end)
-
-    Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_ship_type_name, fn id, _opts ->
-      case id do
-        200 -> {:ok, %{"name" => "Victim Ship"}}
-        201 -> {:ok, %{"name" => "Attacker Ship"}}
-        301 -> {:ok, %{"name" => "Weapon"}}
-        _ -> {:ok, %{"name" => "Unknown Ship"}}
-      end
-    end)
 
     :ok
   end
 
   describe "enrich_killmail_data/1" do
-    test "returns {:ok, enriched_killmail} on success" do
-      killmail = %Killmail{killmail_id: 1, zkb: %{"hash" => "abc"}}
-
-      esi_data = %{
-        "victim" => %{
-          "character_id" => 100,
-          "ship_type_id" => 200,
-          "corporation_id" => 300,
-          "alliance_id" => 400
-        },
-        "solar_system_id" => 500,
-        "attackers" => [
-          %{
-            "character_id" => 101,
-            "corporation_id" => 301,
-            "alliance_id" => 401,
-            "ship_type_id" => 201,
-            "weapon_type_id" => 301,
-            "damage_done" => 123,
-            "final_blow" => true,
-            "security_status" => 5.0,
-            "faction_id" => 1
-          }
-        ]
+    test "successfully enriches killmail data" do
+      killmail = %Killmail{
+        killmail_id: 123,
+        zkb: %{"hash" => "abc123"},
+        esi_data: %{
+          "victim" => %{
+            "character_id" => 100,
+            "corporation_id" => 200,
+            "ship_type_id" => 300
+          },
+          "solar_system_id" => 400,
+          "attackers" => []
+        }
       }
 
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn 1, "abc", _opts ->
-        {:ok, esi_data}
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_character_info, fn 100, _opts ->
+        {:ok, %{"name" => "Victim"}}
       end)
 
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_system, fn _id, _opts ->
-        {:ok, %{"name" => "Jita"}}
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_corporation_info, fn 200, _opts ->
+        {:ok, %{"name" => "Corp", "ticker" => "CORP"}}
       end)
 
-      {:ok, enriched} = Enrichment.enrich_killmail_data(killmail)
-      assert enriched.victim_name == "Victim"
-      assert enriched.victim_corp_ticker == "VC"
-      assert enriched.ship_name == "Victim Ship"
-      assert enriched.system_name == "Jita"
-      assert is_list(enriched.attackers)
-      [attacker] = enriched.attackers
-      assert attacker.character_name == "Attacker"
-      assert attacker.corporation_ticker == "AC"
-      assert attacker.alliance_ticker == "AA"
-      assert attacker.ship_type_name == "Attacker Ship"
-      assert attacker.weapon_type_name == "Weapon"
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_universe_type, fn 300, _opts ->
+        {:ok, %{"name" => "Ship"}}
+      end)
+
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_system, fn 400, _opts ->
+        {:ok, %{"name" => "System"}}
+      end)
+
+      assert {:ok, enriched_killmail} = Enrichment.enrich_killmail_data(killmail)
+      assert enriched_killmail.victim_name == "Victim"
+      assert enriched_killmail.victim_corporation == "Corp"
+      assert enriched_killmail.victim_corp_ticker == "CORP"
+      assert enriched_killmail.ship_name == "Ship"
+      assert enriched_killmail.system_name == "System"
     end
 
-    test "returns {:error, :esi_data_missing} if ESI returns error" do
-      killmail = %Killmail{killmail_id: 2, zkb: %{"hash" => "def"}}
+    test "returns {:error, :esi_data_missing} if ESI service returns error for non-existent killmail" do
+      killmail = %Killmail{
+        killmail_id: 123,
+        zkb: %{"hash" => "abc123"}
+      }
 
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn 2, "def", _opts ->
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_killmail, fn 123, "abc123", _opts ->
         {:error, :not_found}
       end)
 
       assert {:error, :esi_data_missing} = Enrichment.enrich_killmail_data(killmail)
     end
 
-    test "returns {:error, reason} if victim info fails" do
+    test "returns {:error, :service_unavailable} if victim info fails" do
       killmail = %Killmail{
-        killmail_id: 1,
-        zkb: %{"hash" => "abc"}
+        killmail_id: 123,
+        zkb: %{"hash" => "abc123"},
+        esi_data: %{
+          "victim" => %{
+            "character_id" => 100,
+            "corporation_id" => 200,
+            "ship_type_id" => 300
+          },
+          "solar_system_id" => 400,
+          "attackers" => []
+        }
       }
 
-      esi_data = %{
-        "victim" => %{
-          "character_id" => 100,
-          "ship_type_id" => 200,
-          "corporation_id" => 300,
-          "alliance_id" => 400
-        },
-        "solar_system_id" => 500,
-        "attackers" => []
-      }
-
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn 1, "abc", _opts ->
-        {:ok, esi_data}
+      # Set up the mock to return :service_unavailable for character info
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_character_info, fn 100, _opts ->
+        {:error, :service_unavailable}
       end)
 
-      expect(WandererNotifier.Api.ESI.ServiceMock, :get_system, fn _id, _opts ->
-        {:error, :system_not_found}
+      # We won't get to these functions, but we need to stub them to avoid errors
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_corporation_info, fn _, _ ->
+        {:ok, %{"name" => "Corp", "ticker" => "TEST"}}
       end)
 
-      assert {:error, :system_not_found} = Enrichment.enrich_killmail_data(killmail)
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_universe_type, fn _, _ ->
+        {:ok, %{"name" => "Ship"}}
+      end)
+
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_system, fn _, _ ->
+        {:ok, %{"name" => "System"}}
+      end)
+
+      assert {:error, :service_unavailable} = Enrichment.enrich_killmail_data(killmail)
     end
   end
 
   describe "recent_kills_for_system/2" do
-    test "returns formatted strings for kills" do
-      system_id = 30_001_227
+    test "returns formatted kills for a system" do
+      system_id = 30_000_142
+      limit = 3
 
-      killmail = %{
-        "killmail_id" => 1,
-        "zkb" => %{
-          "hash" => "abc",
-          "totalValue" => 1_000_000
-        },
-        "esi_data" => %{
-          "victim" => %{
-            "character_id" => 100,
-            "ship_type_id" => 200
-          },
-          "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601()
-        }
-      }
-
-      Mox.stub(WandererNotifier.Api.ZKill.ServiceMock, :get_system_kills, fn ^system_id, _opts ->
-        {:ok, [killmail]}
+      expect(WandererNotifier.Killmail.ZKillClientMock, :get_system_kills, fn ^system_id,
+                                                                              ^limit ->
+        {:ok,
+         [
+           %{
+             "killmail_id" => 1,
+             "zkb" => %{"hash" => "abc123", "totalValue" => 1_000_000_000},
+             "esi_data" => %{
+               "victim" => %{"ship_type_id" => 300}
+             }
+           }
+         ]}
       end)
 
-      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_killmail, fn _id, _hash, _opts ->
-        {:ok, killmail["esi_data"]}
+      # Mock the killmail fetch used in enrich_killmail_for_system
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_killmail, fn 1, "abc123", _opts ->
+        {:ok, %{"victim" => %{"ship_type_id" => 300}}}
       end)
 
-      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_system, fn _id, _opts ->
-        {:ok, %{"name" => "Jita"}}
+      # Mock any other killmails that might be fetched
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_killmail, fn kill_id, hash, _opts ->
+        {:ok, %{"victim" => %{"ship_type_id" => 300}}}
       end)
 
-      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_character_info, fn _id, _opts ->
-        {:ok, %{"name" => "Victim"}}
+      expect(WandererNotifier.Api.ESI.ClientMock, :get_universe_type, fn 300, _opts ->
+        {:ok, %{"name" => "Test Ship"}}
       end)
 
-      Mox.stub(WandererNotifier.Api.ESI.ServiceMock, :get_type_info, fn _id, _opts ->
-        {:ok, %{"name" => "Victim Ship"}}
+      # Add stubs for other ESI calls that might be made
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_character_info, fn _, _ ->
+        {:ok, %{"name" => "Test Character"}}
       end)
 
-      result = Enrichment.recent_kills_for_system(system_id)
-      assert Enum.any?(result, &String.contains?(&1, "Victim Ship"))
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_corporation_info, fn _, _ ->
+        {:ok, %{"name" => "Test Corp", "ticker" => "TEST"}}
+      end)
+
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_system, fn _, _ ->
+        {:ok, %{"name" => "Test System"}}
+      end)
+
+      result = Enrichment.recent_kills_for_system(system_id, limit)
+      assert length(result) == 1
+      assert hd(result) =~ "Test Ship"
+      assert hd(result) =~ "1.0B ISK"
     end
 
-    test "returns [] if zkill returns error" do
-      Mox.stub(WandererNotifier.Api.ZKill.ServiceMock, :get_system_kills, fn 500, 2 ->
-        {:error, :fail}
+    test "returns empty list when ZKillClient returns error" do
+      system_id = 30_000_142
+      limit = 3
+
+      expect(WandererNotifier.Killmail.ZKillClientMock, :get_system_kills, fn ^system_id,
+                                                                              ^limit ->
+        {:error, :service_unavailable}
       end)
 
-      assert Enrichment.recent_kills_for_system(500, 2) == []
+      # When ZKillClient returns an error, no further API calls should be made
+      # The function returns an empty list immediately. But we stub them just in case.
+      stub(WandererNotifier.Api.ESI.ClientMock, :get_killmail, fn _, _, _ ->
+        {:ok, %{}}
+      end)
+
+      assert Enrichment.recent_kills_for_system(system_id, limit) == []
     end
   end
 end

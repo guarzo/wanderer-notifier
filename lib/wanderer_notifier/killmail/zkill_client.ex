@@ -3,6 +3,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   Client for interacting with the ZKillboard API.
   """
 
+  @behaviour WandererNotifier.Killmail.ZKillClientBehaviour
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
 
@@ -12,6 +14,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   @max_retries 3
   @retry_backoff_ms 2000
 
+  @impl true
   @doc """
   Gets a single killmail by its ID.
   """
@@ -34,6 +37,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end)
   end
 
+  @impl true
   @doc """
   Gets recent kills with an optional limit.
   """
@@ -54,6 +58,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end
   end
 
+  @impl true
   @doc """
   Gets kills for a specific system with an optional limit.
   """
@@ -69,6 +74,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end
   end
 
+  @impl true
   @doc """
   Gets kills for a specific character.
 
@@ -130,6 +136,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp make_http_request(url, headers) do
     # Increase timeout for debugging
     options = [recv_timeout: 10_000, timeout: 10_000]
+
     case HttpClient.get(url, headers, options) do
       {:ok, %{status_code: 200, body: body}} ->
         {:ok, body}

@@ -3,19 +3,16 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
   import Mox
 
   alias WandererNotifier.Core.Application.Service
-  alias WandererNotifier.MockDiscordNotifier, as: DiscordNotifier
+  alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
 
   setup :verify_on_exit!
 
   setup do
-    stub(DiscordNotifier, :send_discord_embed, fn _embed ->
-      {:ok, %{status_code: 200}}
-    end)
-
-    stub(DiscordNotifier, :send_notification, fn _type, _data ->
-      {:ok, %{status_code: 200}}
-    end)
+    # Mock DiscordNotifier
+    DiscordNotifierMock
+    |> stub(:send_kill_notification, fn _killmail, _type, _options -> :ok end)
+    |> stub(:send_discord_embed, fn _embed -> :ok end)
 
     stub(NotifierFactory, :notify, fn
       :send_discord_embed_to_channel, [_channel_id, _embed] -> :ok
@@ -24,7 +21,7 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
     end)
 
     # Stub the missing ESI.ServiceMock.get_system/2 call
-    WandererNotifier.ESI.ServiceMock
+    WandererNotifier.Api.ESI.ServiceMock
     |> stub(:get_system, fn _id, _opts -> {:ok, %{"name" => "Test System"}} end)
 
     :ok

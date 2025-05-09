@@ -35,11 +35,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
         # Log system name and ID for skipped killmails
         system_id = Map.get(zkb_data, "solar_system_id")
         _killmail_id = Map.get(zkb_data, "killmail_id")
+
         _system_name =
-          case WandererNotifier.ESI.Service.get_system(system_id) do
+          case ESIService.get_system(system_id) do
             {:ok, %{"name" => name}} -> name
             _ -> "Unknown"
           end
+
         log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
         {:ok, :skipped}
 
@@ -216,9 +218,5 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # Extract kill ID safely from various data structures
   defp get_kill_id(%{killmail_id: id}) when is_binary(id) or is_integer(id), do: id
   defp get_kill_id(%{"killmail_id" => id}) when is_binary(id) or is_integer(id), do: id
-
-  defp get_kill_id(map) when is_map(map),
-    do: Map.get(map, :killmail_id) || Map.get(map, "killmail_id")
-
   defp get_kill_id(_), do: "unknown"
 end

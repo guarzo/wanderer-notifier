@@ -4,12 +4,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   Handles all kill-related notification decision logic.
   """
 
+  @behaviour WandererNotifier.Notifications.Determiner.KillBehaviour
+
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifications.Helpers.Deduplication
 
+  @impl true
   @doc """
   Determines if a notification should be sent for a kill.
 
@@ -38,6 +41,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     notifications_enabled && system_notifications_enabled
   end
 
+  defp check_tracking(nil, killmail) do
+    # If no system ID, only check for tracked characters
+    has_tracked_char = has_tracked_character?(killmail)
+    has_tracked_char
+  end
+
   defp check_tracking(system_id, killmail) do
     is_tracked_system = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
@@ -62,6 +71,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
+  @impl true
   @doc """
   Gets the system ID from a kill.
   """
@@ -92,9 +102,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp extract_system_id(_), do: "unknown"
 
   defp extract_system_id_from_map(kill) do
-    Map.get(kill, "solar_system_id", "unknown")
+    case Map.get(kill, "solar_system_id") do
+      nil -> nil
+      id when is_integer(id) -> id
+      id when is_binary(id) -> id
+      _ -> nil
+    end
   end
 
+  @impl true
   @doc """
   Checks if a system is being tracked.
 
@@ -105,6 +121,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - true if the system is tracked
     - false otherwise
   """
+  def tracked_system?(nil), do: false
+
   def tracked_system?(system_id) when is_integer(system_id),
     do: tracked_system?(to_string(system_id))
 
@@ -125,8 +143,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   def tracked_system?(_), do: false
 
+  @impl true
   @doc """
-  Checks if a killmail involves a tracked character (as victim or attacker).
+  Checks if a killmail involves a tracked character.
 
   ## Parameters
     - killmail: The killmail data to check
@@ -247,21 +266,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.any?(&check_direct_victim_tracking/1)
   end
 
-  @doc """
-  Determines if a kill is in a tracked system.
-
-  ## Parameters
-    - killmail: The killmail to check
-
-  ## Returns
-    - true if the kill happened in a tracked system
-    - false otherwise
-  """
-  def tracked_in_system?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    tracked_system?(system_id)
-  end
-
+  @impl true
   @doc """
   Gets the list of tracked characters involved in a kill.
 
@@ -279,6 +284,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     Enum.filter(all_character_ids, fn char_id -> tracked_character?(char_id) end)
   end
 
+  @impl true
   @doc """
   Determines if tracked characters are victims in a kill.
 
@@ -331,6 +337,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     |> Enum.filter(fn id -> not is_nil(id) end)
   end
 
+  @impl true
   @doc """
   Checks if a character is being tracked.
 

@@ -37,46 +37,35 @@ config :logger,
   level: :info,
   format: "$time [$level] $message\n",
   backends: [:console],
-  compile_time_metadata: [
-    :request_id,
-    :error,
-    :stacktrace,
-    :status,
-    :headers,
-    :body,
-    :kill_id,
-    :system_id,
-    :character_id
-  ],
-  metadata: [
-    :request_id,
-    :error,
-    :stacktrace,
-    :status,
-    :headers,
-    :body,
-    :kill_id,
-    :system_id,
-    :character_id
-  ]
+  metadata: %{
+    request_id: nil,
+    error: nil,
+    stacktrace: nil,
+    status: nil,
+    headers: nil,
+    body: nil,
+    kill_id: nil,
+    system_id: nil,
+    character_id: nil
+  }
 
 # Console logger configuration
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata_filter: [
-    :request_id,
-    :error,
-    :stacktrace,
-    :status,
-    :headers,
-    :body,
-    :kill_id,
-    :system_id,
-    :character_id,
-    :system_name,
-    :type,
-    :url
-  ],
+  metadata: %{
+    request_id: nil,
+    error: nil,
+    stacktrace: nil,
+    status: nil,
+    headers: nil,
+    body: nil,
+    kill_id: nil,
+    system_id: nil,
+    character_id: nil,
+    system_name: nil,
+    type: nil,
+    url: nil
+  },
   colors: [
     debug: :cyan,
     info: :green,

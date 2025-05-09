@@ -61,6 +61,11 @@ defmodule WandererNotifier.MockESI do
   def get_system_info(_), do: {:ok, %{}}
   def get_system_info(id, _opts), do: get_system_info(id)
 
+  def get_universe_type(200, _opts), do: {:ok, %{"name" => "Victim Ship"}}
+  def get_universe_type(201, _opts), do: {:ok, %{"name" => "Attacker Ship"}}
+  def get_universe_type(301, _opts), do: {:ok, %{"name" => "Weapon"}}
+  def get_universe_type(_, _opts), do: {:ok, %{"name" => "Unknown Ship"}}
+
   def get_type_info(_type_id), do: {:ok, %{}}
   def get_type_info(type_id, _opts), do: get_type_info(type_id)
 
@@ -77,7 +82,9 @@ defmodule WandererNotifier.MockESI do
   def get_ship_type_name(_ship_type_id), do: {:ok, %{"name" => "Test Ship"}}
   def get_ship_type_name(ship_type_id, _opts), do: get_ship_type_name(ship_type_id)
 
-  def get_system_kills(_system_id, _limit), do: {:ok, []}
+  def get_system_kills(system_id, limit \\ 3)
+  def get_system_kills(30_000_142, _limit), do: {:ok, []}
+  def get_system_kills(_system_id, _limit), do: {:error, :service_unavailable}
   def get_system_kills(system_id, limit, _opts), do: get_system_kills(system_id, limit)
 end
 
@@ -340,3 +347,30 @@ Mox.defmock(WandererNotifier.Api.ZKill.ServiceMock,
 Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
   for: WandererNotifier.TestHelpers.Mocks.ESIBehavior
 )
+
+defmodule WandererNotifier.Mocks do
+  @moduledoc """
+  Defines all mocks used in tests.
+  """
+
+  defmacro __using__(_opts) do
+    quote do
+      import Mox
+
+      # Define mocks
+      defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.Service)
+
+      defmock(WandererNotifier.Notifications.Determiner.KillMock,
+        for: WandererNotifier.Notifications.Determiner.KillBehaviour
+      )
+
+      # Define mocks for Discord notifier
+      defmock(WandererNotifier.Notifications.DiscordNotifierMock,
+        for: WandererNotifier.Notifications.DiscordNotifier
+      )
+
+      # Define mocks for cache repository
+      defmock(WandererNotifier.Test.Support.Mocks, for: WandererNotifier.Cache.Repository)
+    end
+  end
+end

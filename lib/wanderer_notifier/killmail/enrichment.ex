@@ -3,8 +3,15 @@ defmodule WandererNotifier.Killmail.Enrichment do
   Handles enrichment of killmail data with additional information from ESI.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.ESI.Service, as: ESIService
+  require Logger
+
+  @zkill_client Application.compile_env(
+                  :wanderer_notifier,
+                  :zkill_client,
+                  WandererNotifier.Killmail.ZKillClient
+                )
 
   @doc """
   Enriches killmail data with additional information from ESI.
@@ -16,136 +23,193 @@ defmodule WandererNotifier.Killmail.Enrichment do
     - {:ok, enriched_killmail} on success
     - {:error, reason} on failure
   """
-  def enrich_killmail_data(%Killmail{killmail_id: killmail_id, zkb: %{"hash" => hash}} = killmail) do
-    with {:ok, esi_data} <- get_killmail_data(killmail_id, hash),
-         {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
-         {:ok, victim_info} <- get_victim_info(esi_data["victim"]),
-         {:ok, ship_info} <- get_ship_info(esi_data["victim"]["ship_type_id"]),
-         {:ok, attackers} <- enrich_attackers(esi_data["attackers"], killmail_id) do
-      enriched_killmail =
-        build_enriched_killmail(
-          killmail,
-          esi_data,
-          system_name,
-          victim_info,
-          ship_info,
-          attackers
-        )
+  def enrich_killmail_data(
+        %Killmail{killmail_id: _killmail_id, zkb: %{"hash" => _hash}, esi_data: esi_data} =
+          killmail
+      )
+      when map_size(esi_data) > 0 do
+    case get_victim_info(esi_data["victim"]) do
+      {:error, :service_unavailable} = error ->
+        error
 
-      {:ok, enriched_killmail}
-    else
-      {:error, reason} -> {:error, reason}
+      {:error, _} ->
+        {:error, :esi_data_missing}
+
+      {:ok, victim_info} ->
+        with {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
+             {:ok, attackers} <- enrich_attackers(esi_data["attackers"]) do
+          enriched_killmail = %{
+            killmail
+            | victim_name: victim_info.character_name,
+              victim_corporation: victim_info.corporation_name,
+              victim_corp_ticker: victim_info.corporation_ticker,
+              ship_name: victim_info.ship_name,
+              system_name: system_name,
+              attackers: attackers
+          }
+
+          {:ok, enriched_killmail}
+        else
+          {:error, :service_unavailable} = error -> error
+          {:error, _} -> {:error, :esi_data_missing}
+        end
+    end
+  end
+
+  def enrich_killmail_data(%Killmail{killmail_id: killmail_id, zkb: %{"hash" => hash}} = killmail) do
+    case get_killmail_data(killmail_id, hash) do
+      {:error, :service_unavailable} = error ->
+        error
+
+      {:error, _} ->
+        {:error, :esi_data_missing}
+
+      {:ok, esi_data} ->
+        case get_victim_info(esi_data["victim"]) do
+          {:error, :service_unavailable} = error ->
+            error
+
+          {:error, _} ->
+            {:error, :esi_data_missing}
+
+          {:ok, victim_info} ->
+            with {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
+                 {:ok, attackers} <- enrich_attackers(esi_data["attackers"]) do
+              enriched_killmail = %{
+                killmail
+                | esi_data: esi_data,
+                  victim_name: victim_info.character_name,
+                  victim_corporation: victim_info.corporation_name,
+                  victim_corp_ticker: victim_info.corporation_ticker,
+                  ship_name: victim_info.ship_name,
+                  system_name: system_name,
+                  system_id: esi_data["solar_system_id"],
+                  attackers: attackers
+              }
+
+              {:ok, enriched_killmail}
+            else
+              {:error, :service_unavailable} = error -> error
+              {:error, _} -> {:error, :esi_data_missing}
+            end
+        end
     end
   end
 
   defp get_killmail_data(killmail_id, hash) do
-    case WandererNotifier.ESI.Service.get_killmail(killmail_id, hash) do
-      {:ok, esi_data} ->
-        {:ok, esi_data}
-
-      {:error, reason} ->
-        AppLogger.kill_warn("Failed to fetch ESI data for killmail", %{
-          killmail_id: killmail_id,
-          reason: inspect(reason)
-        })
-
-        {:error, :esi_data_missing}
+    case ESIService.get_killmail(killmail_id, hash) do
+      {:ok, esi_data} -> {:ok, esi_data}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, :not_found} -> {:error, :esi_data_missing}
+      {:error, _} -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_system_name(system_id) do
-    case WandererNotifier.ESI.Service.get_system(system_id) do
-      {:ok, %{"name" => name}} ->
-        {:ok, name}
+  defp get_system_name(nil), do: {:ok, "Unknown System"}
 
-      {:error, reason} ->
-        AppLogger.api_error("Failed to get system info", %{
-          system_id: system_id,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
+  defp get_system_name(system_id) when is_integer(system_id) or is_binary(system_id) do
+    case ESIService.get_system(system_id, []) do
+      {:ok, %{"name" => name}} -> {:ok, name}
+      {:error, :not_found} -> {:error, :system_not_found}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, _} -> {:error, :esi_data_missing}
     end
   end
+
+  defp get_system_name(_), do: {:ok, "Unknown System"}
 
   defp get_victim_info(victim) do
     with {:ok, character_info} <- get_character_info(victim["character_id"]),
-         {:ok, corp_ticker} <- get_corp_ticker(character_info["corporation_id"]) do
-      {:ok, Map.put(character_info, "corp_ticker", corp_ticker)}
+         {:ok, corporation_info} <- get_corporation_info(victim["corporation_id"]),
+         {:ok, ship_info} <- get_ship_info(victim["ship_type_id"]) do
+      {:ok,
+       %{
+         character_name: character_info["name"],
+         corporation_name: corporation_info["name"],
+         corporation_ticker: corporation_info["ticker"],
+         alliance_name: nil,
+         ship_name: ship_info["name"]
+       }}
+    else
+      {:error, :service_unavailable} = error -> error
+      {:error, _} -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_corp_ticker(nil), do: {:ok, nil}
+  defp get_ship_info(nil), do: {:error, :esi_data_missing}
 
-  defp get_corp_ticker(corp_id) do
-    case WandererNotifier.ESI.Service.get_corporation_info(corp_id) do
-      {:ok, %{"ticker" => ticker}} -> {:ok, ticker}
-      _ -> {:ok, nil}
+  defp get_ship_info(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
+    case ESIService.get_type_info(ship_type_id, []) do
+      {:ok, %{"name" => name}} -> {:ok, %{"name" => name}}
+      {:ok, ship} -> {:ok, ship}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, _} -> {:error, :esi_data_missing}
     end
   end
 
-  defp enrich_attackers(attackers, killmail_id) do
-    enriched = Enum.map(attackers, &enrich_attacker(&1, killmail_id))
-    {:ok, enriched}
+  defp get_ship_info(_), do: {:error, :esi_data_missing}
+
+  defp get_character_info(character_id) when is_integer(character_id) do
+    case ESIService.get_character_info(character_id, []) do
+      {:ok, info} -> {:ok, info}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, _} -> {:error, :esi_data_missing}
+    end
   end
 
-  defp enrich_attacker(attacker, _killmail_id) do
+  defp get_character_info(nil), do: {:error, :esi_data_missing}
+  defp get_character_info(_), do: {:error, :esi_data_missing}
+
+  defp get_corporation_info(corporation_id) when is_integer(corporation_id) do
+    case ESIService.get_corporation_info(corporation_id, []) do
+      {:ok, info} -> {:ok, info}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, _} -> {:error, :esi_data_missing}
+    end
+  end
+
+  defp get_corporation_info(_), do: {:error, :esi_data_missing}
+
+  defp get_alliance_info(alliance_id) when is_integer(alliance_id) do
+    case ESIService.get_alliance_info(alliance_id, []) do
+      {:ok, info} -> {:ok, info}
+      {:error, :service_unavailable} -> {:error, :service_unavailable}
+      {:error, _} -> {:error, :esi_data_missing}
+    end
+  end
+
+  defp get_alliance_info(_), do: {:ok, %{"name" => "Unknown"}}
+
+  defp enrich_attackers(nil), do: {:ok, []}
+
+  defp enrich_attackers(attackers) when is_list(attackers) do
+    # Process each attacker and collect results
+    results = Enum.map(attackers, &enrich_attacker/1)
+
+    # Check if any errors occurred
+    case Enum.find(results, &match?({:error, _}, &1)) do
+      nil -> {:ok, Enum.map(results, fn {:ok, attacker} -> attacker end)}
+      error -> error
+    end
+  end
+
+  defp enrich_attacker(attacker) do
     with {:ok, character_info} <- get_character_info(attacker["character_id"]),
-         {:ok, corp_info} <- get_corp_info(attacker["corporation_id"]),
+         {:ok, corporation_info} <- get_corporation_info(attacker["corporation_id"]),
          {:ok, alliance_info} <- get_alliance_info(attacker["alliance_id"]),
-         {:ok, ship_info} <- get_ship_info(attacker["ship_type_id"]),
-         {:ok, weapon_info} <- get_weapon_info(attacker["weapon_type_id"]) do
-      build_attacker_info(
-        attacker,
-        character_info,
-        corp_info,
-        alliance_info,
-        ship_info,
-        weapon_info
-      )
+         {:ok, ship_info} <- get_ship_info(attacker["ship_type_id"]) do
+      {:ok,
+       Map.merge(attacker, %{
+         "character_name" => character_info["name"],
+         "corporation_name" => corporation_info["name"],
+         "corporation_ticker" => corporation_info["ticker"],
+         "alliance_name" => alliance_info["name"],
+         "ship_name" => ship_info["name"]
+       })}
+    else
+      {:error, :service_unavailable} = error -> error
+      {:error, _} -> {:error, :esi_data_missing}
     end
-  end
-
-  defp build_attacker_info(
-         attacker,
-         character_info,
-         corp_info,
-         alliance_info,
-         ship_info,
-         weapon_info
-       ) do
-    %{
-      character_id: attacker["character_id"],
-      character_name: character_info["name"],
-      corporation_id: attacker["corporation_id"],
-      corporation_name: corp_info["name"],
-      corporation_ticker: corp_info["ticker"],
-      alliance_id: attacker["alliance_id"],
-      alliance_name: alliance_info["name"],
-      alliance_ticker: alliance_info["ticker"],
-      ship_type_id: attacker["ship_type_id"],
-      ship_type_name: ship_info["name"],
-      weapon_type_id: attacker["weapon_type_id"],
-      weapon_type_name: weapon_info["name"],
-      damage_done: attacker["damage_done"],
-      final_blow: attacker["final_blow"],
-      security_status: attacker["security_status"],
-      faction_id: attacker["faction_id"]
-    }
-  end
-
-  defp build_enriched_killmail(killmail, esi_data, system_name, victim_info, ship_info, attackers) do
-    %Killmail{
-      killmail
-      | victim_name: victim_info["name"],
-        victim_corporation: victim_info["corporation_id"],
-        victim_corp_ticker: victim_info["corp_ticker"],
-        victim_alliance: victim_info["alliance_id"],
-        ship_name: ship_info["name"],
-        system_id: esi_data["solar_system_id"],
-        system_name: system_name,
-        attackers: attackers
-    }
   end
 
   @doc """
@@ -159,7 +223,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
     - List of formatted strings for each kill
   """
   def recent_kills_for_system(system_id, limit \\ 3) do
-    case WandererNotifier.Killmail.ZKillClient.get_system_kills(system_id, limit) do
+    case @zkill_client.get_system_kills(system_id, limit) do
       {:ok, kills} when is_list(kills) ->
         kills
         |> Enum.map(&enrich_killmail_for_system/1)
@@ -167,7 +231,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
         |> Enum.filter(&is_binary/1)
         |> Enum.reject(&(&1 == ""))
 
-      _ ->
+      {:error, _} ->
         []
     end
   end
@@ -176,111 +240,36 @@ defmodule WandererNotifier.Killmail.Enrichment do
     kill_id = Map.get(kill, "killmail_id")
     hash = get_in(kill, ["zkb", "hash"])
 
-    case WandererNotifier.ESI.Service.get_killmail(kill_id, hash) do
+    case ESIService.get_killmail(kill_id, hash) do
       {:ok, esi_data} -> Map.put(kill, "esi_data", esi_data)
-      _ -> kill
+      {:error, _} -> kill
     end
   end
 
   defp format_kill_for_system(kill) do
     kill_id = Map.get(kill, "killmail_id")
-    esi_data = Map.get(kill, "esi_data", %{})
-    victim = Map.get(esi_data, "victim", %{})
-    ship_type_id = Map.get(victim, "ship_type_id")
-    character_id = Map.get(victim, "character_id")
-    kill_time = Map.get(esi_data, "killmail_time")
     value = get_in(kill, ["zkb", "totalValue"]) || 0
-
-    # Get ship name from ESI
-    ship_name =
-      case WandererNotifier.ESI.Service.get_ship_type_name(ship_type_id) do
-        {:ok, %{"name" => name}} -> name
-        _ -> "Unknown Ship"
-      end
-
-    # Get victim name from ESI
-    victim_name =
-      case WandererNotifier.ESI.Service.get_character_info(character_id) do
-        {:ok, %{"name" => name}} -> name
-        _ -> "Unknown"
-      end
-
-    # Format time since kill
-    time_ago = format_time_ago(kill_time)
     formatted_value = format_isk_value(value)
+    # TODO: Implement time formatting
+    time_ago = "? ago"
 
-    if kill_id && ship_name && victim_name do
-      "[#{ship_name}](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value} ISK, #{time_ago} ago"
-    else
-      ""
-    end
-  end
-
-  defp format_time_ago(nil), do: "?"
-
-  defp format_time_ago(kill_time) do
-    case DateTime.from_iso8601(kill_time) do
-      {:ok, dt, _} ->
-        now = DateTime.utc_now()
-        diff = DateTime.diff(now, dt, :second)
-
-        cond do
-          diff < 3600 -> "<1h"
-          diff < 86_400 -> "#{div(diff, 3600)}h"
-          true -> "#{div(diff, 86_400)}d"
-        end
+    case get_ship_info(get_in(kill, ["esi_data", "victim", "ship_type_id"])) do
+      {:ok, %{"name" => name}} ->
+        "[#{name}](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value}, #{time_ago}"
 
       _ ->
-        "?"
+        nil
     end
   end
 
   defp format_isk_value(value) when is_number(value) do
     cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
-      true -> "#{Float.round(value, 0)}"
+      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
+      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
+      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
+      true -> "#{Float.round(value, 1)} ISK"
     end
   end
 
-  # Private helper functions
-
-  defp get_character_info(nil),
-    do: {:ok, %{"name" => "Unknown", "corporation_id" => nil, "alliance_id" => nil}}
-
-  defp get_character_info(character_id) do
-    case WandererNotifier.ESI.Service.get_character_info(character_id) do
-      {:ok, info} -> {:ok, info}
-      {:error, reason} -> {:error, {:character_info_error, reason}}
-    end
-  end
-
-  defp get_ship_info(ship_type_id) do
-    case WandererNotifier.ESI.Service.get_type_info(ship_type_id) do
-      {:ok, info} -> {:ok, info}
-      {:error, reason} -> {:error, {:ship_info_error, reason}}
-    end
-  end
-
-  defp get_corp_info(corporation_id) do
-    case WandererNotifier.ESI.Service.get_corporation_info(corporation_id) do
-      {:ok, info} -> {:ok, info}
-      {:error, reason} -> {:error, {:corp_info_error, reason}}
-    end
-  end
-
-  defp get_alliance_info(alliance_id) do
-    case WandererNotifier.ESI.Service.get_alliance_info(alliance_id) do
-      {:ok, info} -> {:ok, info}
-      {:error, reason} -> {:error, {:alliance_info_error, reason}}
-    end
-  end
-
-  defp get_weapon_info(weapon_type_id) do
-    case WandererNotifier.ESI.Service.get_type_info(weapon_type_id) do
-      {:ok, info} -> {:ok, info}
-      {:error, reason} -> {:error, {:weapon_info_error, reason}}
-    end
-  end
+  defp format_isk_value(_), do: "0 ISK"
 end

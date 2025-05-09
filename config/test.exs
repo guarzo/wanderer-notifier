@@ -30,7 +30,7 @@ config :wanderer_notifier,
     status_messages_disabled: true,
     track_kspace_systems: true
   },
-  cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
+  cache_repository: WandererNotifier.Cache.CachexImpl,
   esi_service: WandererNotifier.ESI.ServiceMock
 
 # Configure cache
@@ -39,3 +39,32 @@ config :wanderer_notifier, :cache_dir, "test/cache"
 # Logger configuration for tests
 config :logger, level: :warning
 config :logger, :console, format: "[$level] $message\n"
+
+# Configure the test environment
+config :wanderer_notifier,
+  env: :test,
+  schedulers_enabled: false,
+  scheduler_supervisor_enabled: false
+
+# Configure the logger
+config :logger, :console,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id]
+
+# Configure the cache
+config :wanderer_notifier, :cache,
+  backend: WandererNotifier.Cache.CachexImpl,
+  ttl: 3600
+
+# Configure the ESI service
+config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock
+
+# Configure the notification service
+config :wanderer_notifier, :notifications, service: WandererNotifier.Notifiers.TestNotifier
+
+# Configure the kill determiner
+config :wanderer_notifier, :kill_determiner,
+  service: WandererNotifier.Notifications.Determiner.KillMock
+
+# Configure Mox
+config :mox, :global, true

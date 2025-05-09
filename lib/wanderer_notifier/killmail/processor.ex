@@ -1,13 +1,11 @@
 defmodule WandererNotifier.Killmail.Processor do
   @moduledoc """
-  Handles processing of killmail data and scheduling of killmail-related tasks.
+  Processes killmails and handles notifications.
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Killmail.Enrichment
-  alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Killmail.Cache, as: KillmailCache
   alias WandererNotifier.Notifications.KillmailNotification
+  alias WandererNotifier.Killmail.{Pipeline, Context}
 
   @doc """
   Initializes the killmail processor.
@@ -71,26 +69,72 @@ defmodule WandererNotifier.Killmail.Processor do
     - {:error, reason} on failure
   """
   def get_recent_kills do
-    KillmailCache.get_recent_kills()
+    case WandererNotifier.Cache.CachexImpl.get(WandererNotifier.Cache.Keys.zkill_recent_kills()) do
+      {:ok, [kill | _]} -> {:ok, kill}
+      _ -> {:error, :no_recent_kills}
+    end
+  end
+
+  @doc """
+  Processes a kill notification.
+
+  ## Parameters
+    - kill_data: The kill data to process
+    - context: The context for processing
+
+  ## Returns
+    - {:ok, kill_id} on success
+    - {:error, reason} on failure
+  """
+  def process_kill_data(kill_data, context) do
+    kill_id = Map.get(kill_data, "killmail_id", "unknown")
+
+    AppLogger.kill_info("Processing kill data", %{kill_id: kill_id})
+
+    with {:ok, enriched_kill} <- Pipeline.process_killmail(kill_data, context) do
+      AppLogger.kill_info("Kill data processed successfully", %{kill_id: kill_id})
+      KillmailNotification.send_kill_notification(enriched_kill, "kill", %{})
+      {:ok, kill_id}
+    else
+      {:ok, :skipped} ->
+        AppLogger.kill_info("Kill data skipped", %{kill_id: kill_id})
+        {:ok, kill_id}
+
+      {:error, reason} = error ->
+        AppLogger.kill_error("Failed to process kill data", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        error
+    end
   end
 
   @doc """
   Sends a test kill notification.
-
-  ## Returns
-    - :ok on success
-    - {:error, reason} on failure
   """
   def send_test_kill_notification do
-    killmail = get_test_killmail()
+    AppLogger.kill_info("Sending test kill notification...")
 
-    case Enrichment.enrich_killmail_data(killmail) do
-      {:ok, enriched_kill} ->
-        KillmailNotification.send_kill_notification(enriched_kill, :test)
+    with {:ok, recent_kill} <- get_recent_kills(),
+         kill_id = extract_kill_id(recent_kill),
+         killmail = ensure_data_killmail(recent_kill),
+         {:ok, enriched_kill} <- Pipeline.process_killmail(killmail, %Context{}) do
+      AppLogger.kill_info(
+        "TEST NOTIFICATION: Using normal notification flow for test kill notification"
+      )
+
+      KillmailNotification.send_kill_notification(enriched_kill, "test", %{})
+      {:ok, kill_id}
+    else
+      {:error, :no_recent_kills} ->
+        AppLogger.kill_warn("No recent kills found in shared cache repository")
+        {:error, :no_recent_kills}
 
       {:error, reason} ->
-        AppLogger.error("Failed to enrich test killmail", error: inspect(reason))
-        {:error, reason}
+        error_message = "Cannot send test notification: #{reason}"
+        AppLogger.kill_error(error_message)
+        {:error, error_message}
     end
   end
 
@@ -128,44 +172,33 @@ defmodule WandererNotifier.Killmail.Processor do
     end
   end
 
-  defp process_kill_data(kill_data, state) do
-    killmail = Killmail.from_map(kill_data)
+  defp extract_kill_id(killmail) do
+    cond do
+      is_map(killmail) && Map.has_key?(killmail, :killmail_id) ->
+        killmail.killmail_id
 
-    case Enrichment.enrich_killmail_data(killmail) do
-      {:ok, enriched_kill} ->
-        KillmailNotification.send_kill_notification(enriched_kill, :zkill)
-        # Increment kill notification count
-        WandererNotifier.Core.Stats.increment(:kills)
-        state
+      is_map(killmail) && Map.has_key?(killmail, "killmail_id") ->
+        killmail["killmail_id"]
 
-      {:error, reason} ->
-        AppLogger.error("Failed to enrich killmail", error: inspect(reason))
-        {:error, reason}
+      true ->
+        "unknown"
     end
   end
 
-  defp get_test_killmail do
-    # Create a test killmail for testing notifications
-    %Killmail{
-      killmail_id: 12_345,
-      zkb: %{
-        "hash" => "abc123"
-      },
-      esi_data: %{
-        "killmail_time" => DateTime.utc_now() |> DateTime.to_iso8601(),
-        "solar_system_id" => 30_000_142,
-        "victim" => %{
-          "character_id" => 98_765,
-          "ship_type_id" => 587
-        },
-        "attackers" => [
-          %{
-            "character_id" => 54_321,
-            "ship_type_id" => 587,
-            "final_blow" => true
-          }
-        ]
-      }
-    }
+  defp ensure_data_killmail(killmail) do
+    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
+      killmail
+    else
+      # Try to convert map to struct
+      if is_map(killmail) do
+        struct(WandererNotifier.Killmail.Killmail, Map.delete(killmail, :__struct__))
+      else
+        # Fallback empty struct with required fields
+        %WandererNotifier.Killmail.Killmail{
+          killmail_id: "unknown",
+          zkb: %{}
+        }
+      end
+    end
   end
 end

@@ -12,11 +12,17 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   @impl true
   def init(_) do
-    children =
-      Registry.all_schedulers()
-      |> Enum.map(&scheduler_child_spec/1)
+    # Only start schedulers if enabled
+    if Application.get_env(:wanderer_notifier, :schedulers_enabled, false) do
+      children =
+        Registry.all_schedulers()
+        |> Enum.map(&scheduler_child_spec/1)
 
-    Supervisor.init(children, strategy: :one_for_one)
+      Supervisor.init(children, strategy: :one_for_one)
+    else
+      # Return empty children list if schedulers are disabled
+      Supervisor.init([], strategy: :one_for_one)
+    end
   end
 
   defp scheduler_child_spec(mod) do
@@ -28,12 +34,15 @@ defmodule WandererNotifier.Schedulers.Supervisor do
   end
 
   def start_scheduler(mod) do
-    %{type: type, spec: spec} = mod.config()
+    # Only start if schedulers are enabled
+    if Application.get_env(:wanderer_notifier, :schedulers_enabled, false) do
+      %{type: type, spec: spec} = mod.config()
 
-    case type do
-      :interval ->
-        :timer.send_interval(spec, {:run, mod})
-        loop(mod)
+      case type do
+        :interval ->
+          :timer.send_interval(spec, {:run, mod})
+          loop(mod)
+      end
     end
   end
 
@@ -47,18 +56,34 @@ defmodule WandererNotifier.Schedulers.Supervisor do
 
   defp execute(mod) do
     start = System.monotonic_time()
+
     case mod.run() do
       :ok ->
         :telemetry.execute([:wanderer_notifier, :scheduler, :success], %{}, %{module: mod})
+
       {:error, reason} ->
-        :telemetry.execute([
-          :wanderer_notifier, :scheduler, :failure
-        ], %{}, %{module: mod, error: inspect(reason)})
+        :telemetry.execute(
+          [
+            :wanderer_notifier,
+            :scheduler,
+            :failure
+          ],
+          %{},
+          %{module: mod, error: inspect(reason)}
+        )
     end
+
     duration = System.monotonic_time() - start
-    :telemetry.execute([
-      :wanderer_notifier, :scheduler, :duration
-    ], %{duration: duration}, %{module: mod})
+
+    :telemetry.execute(
+      [
+        :wanderer_notifier,
+        :scheduler,
+        :duration
+      ],
+      %{duration: duration},
+      %{module: mod}
+    )
   end
 
   def child_spec(opts) do

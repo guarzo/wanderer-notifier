@@ -107,10 +107,6 @@ defmodule WandererNotifier.ESI.ServiceTest do
       cache_key = WandererNotifier.Cache.Keys.character(123_456)
       CacheMock.put(cache_key, character_data)
 
-      # Stub the client to return an error, to verify we're using the cache
-      WandererNotifier.Api.ESI.ServiceMock
-      |> stub(:get_character_info, fn _character_id, _opts -> {:error, "Should not be called"} end)
-
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
 

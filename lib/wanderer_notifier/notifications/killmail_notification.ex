@@ -8,9 +8,9 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
-  alias WandererNotifier.Notifications.Dispatcher
-  alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
+  alias WandererNotifier.Notifications.Types.Notification
+  alias WandererNotifier.Notifications.NotificationService
 
   @doc """
   Creates a notification from a killmail.
@@ -45,203 +45,15 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @doc """
   Sends a kill notification.
   """
-  def send_kill_notification(enriched_killmail, _kill_id, _bypass_dedup \\ false) do
-    kill_id = enriched_killmail.killmail_id
-    AppLogger.kill_info("Sending kill notification", %{kill_id: kill_id})
-
-    # Check if the kill is relevant for system and/or character channels
-    has_tracked_system = KillDeterminer.tracked_in_system?(enriched_killmail)
-    tracked_characters = KillDeterminer.get_tracked_characters(enriched_killmail)
-    has_tracked_characters = length(tracked_characters) > 0
-
-    # Log what was detected
-    log_notification_relevance(
-      kill_id,
-      has_tracked_system,
-      has_tracked_characters,
-      tracked_characters
-    )
-
-    # Send notifications to appropriate channels
-    system_result = process_system_notification(enriched_killmail, kill_id, has_tracked_system)
-
-    character_result =
-      process_character_notification(
-        enriched_killmail,
-        kill_id,
-        has_tracked_characters,
-        tracked_characters
-      )
-
-    # Return combined result
-    combine_notification_results(system_result, character_result, kill_id)
-  end
-
-  # Log relevance information for debugging
-  defp log_notification_relevance(
-         kill_id,
-         has_tracked_system,
-         has_tracked_characters,
-         tracked_characters
-       ) do
-    AppLogger.kill_debug("Notification relevance", %{
-      kill_id: kill_id,
-      has_tracked_system: has_tracked_system,
-      has_tracked_characters: has_tracked_characters,
-      num_tracked_characters: length(tracked_characters)
-    })
-  end
-
-  # Process system notification if needed
-  defp process_system_notification(enriched_killmail, _kill_id, has_tracked_system) do
-    kill_id = enriched_killmail.killmail_id
-
-    if has_tracked_system do
-      # Prepare system notification
-      system_generic_notification =
-        KillmailFormatter.format_kill_notification(enriched_killmail)
-
-      system_discord_format = CommonFormatter.to_discord_format(system_generic_notification)
-
-      # Send system notification
-      send_system_notification(system_discord_format, kill_id)
+  def send_kill_notification(killmail, notification_type, notification_data) do
+    with {:ok, enriched_killmail} <- enrich_killmail(killmail),
+         {:ok, _should_notify} <- check_notification_requirements(enriched_killmail),
+         {:ok, notification} <-
+           create_notification(enriched_killmail, notification_type, notification_data),
+         {:ok, sent_notification} <- send_notification(notification) do
+      {:ok, sent_notification}
     else
-      {:ok, :skipped_system}
-    end
-  end
-
-  # Process character notification if needed
-  defp process_character_notification(
-         enriched_killmail,
-         _kill_id,
-         has_tracked_characters,
-         _tracked_characters
-       ) do
-    kill_id = enriched_killmail.killmail_id
-
-    if has_tracked_characters do
-      # For now, use the same notification format for character notifications
-      character_generic_notification =
-        KillmailFormatter.format_kill_notification(enriched_killmail)
-
-      character_discord_format = CommonFormatter.to_discord_format(character_generic_notification)
-
-      # Send character notification
-      send_character_notification(character_discord_format, kill_id)
-    else
-      {:ok, :skipped_character}
-    end
-  end
-
-  # Send system notification and handle result
-  defp send_system_notification(notification, kill_id) do
-    case Dispatcher.send_message(notification) do
-      {:ok, :sent} ->
-        AppLogger.kill_info("System kill notification sent", %{kill_id: kill_id})
-        {:ok, :system_sent}
-
-      {:error, reason} = error ->
-        AppLogger.kill_error("Failed to send system kill notification", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
-        error
-    end
-  end
-
-  # Send character notification and handle result
-  defp send_character_notification(notification, kill_id) do
-    case Dispatcher.send_message(notification) do
-      {:ok, :sent} ->
-        AppLogger.kill_info("Character kill notification sent", %{kill_id: kill_id})
-        {:ok, :character_sent}
-
-      {:error, reason} = error ->
-        AppLogger.kill_error("Failed to send character kill notification", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
-        error
-    end
-  end
-
-  # Combine results from system and character notifications
-  defp combine_notification_results(system_result, character_result, kill_id) do
-    case {system_result, character_result} do
-      {{:ok, _}, {:ok, _}} ->
-        AppLogger.kill_info("All kill notifications sent successfully", %{kill_id: kill_id})
-        {:ok, :all_sent}
-
-      {{:ok, _}, {:error, reason}} ->
-        AppLogger.kill_error("Character notification failed but system notification succeeded", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
-
-      {{:error, reason}, {:ok, _}} ->
-        AppLogger.kill_error("System notification failed but character notification succeeded", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
-
-      {{:error, reason}, {:error, _}} ->
-        AppLogger.kill_error("Both notifications failed", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
-        {:error, reason}
-
-      {{:ok, :skipped_system}, {:ok, :skipped_character}} ->
-        AppLogger.kill_info("No notifications needed", %{kill_id: kill_id})
-        {:ok, :skipped}
-
-      {result_a, result_b} ->
-        AppLogger.kill_info("Mixed notification results", %{
-          kill_id: kill_id,
-          system_result: inspect(result_a),
-          character_result: inspect(result_b)
-        })
-
-        {:ok, :partial}
-    end
-  end
-
-  # Ensure we have a proper Data.Killmail struct
-  defp ensure_data_killmail(killmail) do
-    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
-      killmail
-    else
-      # Try to convert map to struct
-      if is_map(killmail) do
-        struct(WandererNotifier.Killmail.Killmail, Map.delete(killmail, :__struct__))
-      else
-        # Fallback empty struct with required fields
-        %WandererNotifier.Killmail.Killmail{
-          killmail_id: "unknown",
-          zkb: %{}
-        }
-      end
-    end
-  end
-
-  # Validate killmail has essential data
-  defp validate_killmail_data(killmail) do
-    cond do
-      is_nil(killmail.esi_data) ->
-        {:error, "Missing ESI data"}
-
-      is_nil(killmail.killmail_id) ->
-        {:error, "Missing killmail ID"}
-
-      true ->
-        :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -260,7 +72,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
         "TEST NOTIFICATION: Using normal notification flow for test kill notification"
       )
 
-      send_kill_notification(enriched_kill, kill_id, true)
+      send_kill_notification(enriched_kill, "test", %{})
       {:ok, kill_id}
     else
       {:error, :no_recent_kills} ->
@@ -270,7 +82,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       {:error, reason} ->
         error_message = "Cannot send test notification: #{reason}"
         AppLogger.kill_error(error_message)
-        Dispatcher.send_message(error_message)
         {:error, error_message}
     end
   end
@@ -302,6 +113,67 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
       true ->
         "unknown"
+    end
+  end
+
+  defp check_notification_requirements(enriched_killmail) do
+    # Check if the killmail meets notification requirements
+    has_tracked_system = KillDeterminer.tracked_system?(enriched_killmail)
+    has_tracked_character = KillDeterminer.has_tracked_character?(enriched_killmail)
+
+    if has_tracked_system || has_tracked_character do
+      {:ok, true}
+    else
+      {:error, "No tracked systems or characters involved"}
+    end
+  end
+
+  defp create_notification(killmail, notification_type, notification_data) do
+    notification = %Notification{
+      type: notification_type,
+      data:
+        Map.merge(notification_data, %{
+          killmail: killmail,
+          system_id: KillDeterminer.get_kill_system_id(killmail)
+        })
+    }
+
+    {:ok, notification}
+  end
+
+  defp send_notification(notification) do
+    NotificationService.send(notification)
+  end
+
+  # Ensure we have a proper Data.Killmail struct
+  defp ensure_data_killmail(killmail) do
+    if is_struct(killmail, WandererNotifier.Killmail.Killmail) do
+      killmail
+    else
+      # Try to convert map to struct
+      if is_map(killmail) do
+        struct(WandererNotifier.Killmail.Killmail, Map.delete(killmail, :__struct__))
+      else
+        # Fallback empty struct with required fields
+        %WandererNotifier.Killmail.Killmail{
+          killmail_id: "unknown",
+          zkb: %{}
+        }
+      end
+    end
+  end
+
+  # Validate killmail has essential data
+  defp validate_killmail_data(killmail) do
+    cond do
+      is_nil(killmail.esi_data) ->
+        {:error, "Missing ESI data"}
+
+      is_nil(killmail.killmail_id) ->
+        {:error, "Missing killmail ID"}
+
+      true ->
+        :ok
     end
   end
 end

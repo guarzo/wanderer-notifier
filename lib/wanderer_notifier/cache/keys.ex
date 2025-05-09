@@ -57,7 +57,9 @@ defmodule WandererNotifier.Cache.Keys do
       iex> WandererNotifier.Cache.Keys.system(30004759)
       "map:system:30004759"
   """
-  @spec system(integer() | String.t()) :: String.t()
+  @spec system(integer() | String.t() | nil) :: String.t() | nil
+  def system(nil), do: nil
+
   def system(id) when is_integer(id) or is_binary(id) do
     join_parts([@prefix_map, @entity_system, to_string(id)])
   end

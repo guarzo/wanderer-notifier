@@ -1,0 +1,201 @@
+Compiling 1 file (.ex)
+Generated wanderer_notifier app
+     warning: redefining module WandererNotifier.MockNotifierFactory (current version loaded from _build/test/lib/wanderer_notifier/ebin/Elixir.WandererNotifier.MockNotifierFactory.beam)
+     │
+ 491 │     Module.create(name, [info | body], Macro.Env.location(__ENV__))
+     │     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     │
+     └─ deps/mox/lib/mox.ex:491: WandererNotifier.MockNotifierFactory (module)
+
+Running ExUnit with seed: 670780, max_cases: 48
+
+..........................................[TestNotifier] Sending test kill notification
+
+
+  1) test enrich_killmail_data/1 returns {:error, :esi_data_missing} if ESI returns error (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:60
+     match (=) failed
+     code:  assert {:error, :esi_data_missing} = Enrichment.enrich_killmail_data(killmail)
+     left:  {:error, :esi_data_missing}
+     right: {:ok,
+             %WandererNotifier.Killmail.Killmail{
+               killmail_id: 12345,
+               zkb: %{"hash" => "invalid_hash"},
+               esi_data: %{},
+               victim_name: "Unknown",
+               victim_corporation: "Unknown",
+               victim_corp_ticker: "???",
+               victim_alliance: nil,
+               ship_name: "Unknown Ship",
+               system_name: "Unknown System",
+               system_id: nil,
+               attackers: []
+             }}
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:72: (test)
+
+     The following output was logged:
+     00:55:12.916 [error] [API] ESI killmail error response
+     00:55:12.917 [error] [API] ESI type info error response
+     00:55:12.918 [error] [API] ESI type info failed
+     00:55:12.918 [error] [API] ESI search failed
+     00:55:12.921 [error] Attempted to track unregistered metric
+     00:55:12.921 [error] [API] ESI search error response
+     00:55:12.922 [error] [API] ESI corporation info failed
+     00:55:12.926 [error] [API] ESI alliance info failed
+     00:55:12.926 [error] [API] ESI character info failed
+     00:55:12.926 [error] [API] ESI alliance info error response
+     00:55:12.927 [error] [API] ESI system kills failed
+     00:55:12.927 [error] [API] ESI character info error response
+     00:55:12.928 [error] [API] ESI solar system error response
+     00:55:12.928 [error] [API] ESI solar system failed
+     00:55:12.929 [error] [API] ESI system kills error response
+     00:55:12.929 [error] [API] ESI killmail failed
+     00:55:12.930 [error] [API] ESI corporation info error response
+     
+
+
+  2) test process_killmail/2 process_killmail/2 skips processing when notification is not needed (WandererNotifier.Killmail.PipelineTest)
+     test/wanderer_notifier/killmail/pipeline_test.exs:114
+     ** (Mox.VerificationError) error while verifying mocks for #PID<0.456.0>:
+
+       * expected WandererNotifier.ESI.ServiceMock.get_character_info/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_corporation_info/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_killmail/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_system/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_type_info/2 to be invoked once but it was invoked 0 times
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:862: Mox.__verify_mock_or_all__/2
+       (mox 1.2.0) lib/mox.ex:819: anonymous fn/1 in Mox.verify_on_exit!/1
+       (ex_unit 1.18.3) lib/ex_unit/on_exit_handler.ex:136: ExUnit.OnExitHandler.exec_callback/1
+       (ex_unit 1.18.3) lib/ex_unit/on_exit_handler.ex:122: ExUnit.OnExitHandler.on_exit_runner_loop/0
+
+     The following output was logged:
+     00:55:12.916 [error] [API] ESI killmail error response
+     00:55:12.917 [error] [API] ESI type info error response
+     00:55:12.918 [error] [API] ESI type info failed
+     00:55:12.918 [error] [API] ESI search failed
+     00:55:12.921 [error] Attempted to track unregistered metric
+     00:55:12.921 [error] [API] ESI search error response
+     00:55:12.922 [error] [API] ESI corporation info failed
+     00:55:12.926 [error] [API] ESI alliance info failed
+     00:55:12.926 [error] [API] ESI character info failed
+     00:55:12.926 [error] [API] ESI alliance info error response
+     00:55:12.927 [error] [API] ESI system kills failed
+     00:55:12.927 [error] [API] ESI character info error response
+     00:55:12.928 [error] [API] ESI solar system error response
+     00:55:12.928 [error] [API] ESI solar system failed
+     00:55:12.929 [error] [API] ESI system kills error response
+     00:55:12.929 [error] [API] ESI killmail failed
+     00:55:12.930 [error] [API] ESI corporation info error response
+     00:55:12.983 [error] Attempted to track unregistered metric
+     
+..
+
+  3) test process_killmail/2 process_killmail/2 handles enrichment errors (WandererNotifier.Killmail.PipelineTest)
+     test/wanderer_notifier/killmail/pipeline_test.exs:165
+     match (=) failed
+     code:  assert {:error, :enrichment_failed} = Pipeline.process_killmail(zkb_data, context)
+     left:  {:error, :enrichment_failed}
+     right: {:ok, :skipped}
+     stacktrace:
+       test/wanderer_notifier/killmail/pipeline_test.exs:204: (test)
+
+     The following output was logged:
+     00:55:12.991 [error] Attempted to track unregistered metric
+     00:55:13.003 [error] Attempted to track unregistered metric
+     
+
+
+  4) test process_killmail/2 process_killmail/2 successfully processes a valid killmail (WandererNotifier.Killmail.PipelineTest)
+     test/wanderer_notifier/killmail/pipeline_test.exs:58
+     ** (Mox.VerificationError) error while verifying mocks for #PID<0.573.0>:
+
+       * expected WandererNotifier.ESI.ServiceMock.get_character_info/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_corporation_info/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_killmail/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_system/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.ESI.ServiceMock.get_type_info/2 to be invoked once but it was invoked 0 times
+       * expected WandererNotifier.Notifications.DiscordNotifierMock.send_kill_notification/3 to be invoked once but it was invoked 0 times
+     stacktrace:
+       (mox 1.2.0) lib/mox.ex:862: Mox.__verify_mock_or_all__/2
+       (mox 1.2.0) lib/mox.ex:819: anonymous fn/1 in Mox.verify_on_exit!/1
+       (ex_unit 1.18.3) lib/ex_unit/on_exit_handler.ex:136: ExUnit.OnExitHandler.exec_callback/1
+       (ex_unit 1.18.3) lib/ex_unit/on_exit_handler.ex:122: ExUnit.OnExitHandler.on_exit_runner_loop/0
+
+     The following output was logged:
+     00:55:13.004 [error] Attempted to track unregistered metric
+     00:55:13.004 [error] Attempted to track unregistered metric
+     
+.......................
+
+  5) test recent_kills_for_system/2 returns formatted strings for kills (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:106
+     Expected truthy, got false
+     code: assert Enum.any?(result, &String.contains?(&1, "Victim Ship"))
+     arguments:
+
+         # 1
+         ["[Unknown Ship](https://zkillboard.com/kill/126938081/) - 10.0K ISK, ? ago", "[Unknown Ship](https://zkillboard.com/kill/126938024/) - 7.7M ISK, ? ago", "[Unknown Ship](https://zkillboard.com/kill/126937895/) - 21.7K ISK, ? ago"]
+
+         # 2
+         #Function<15.55494454/1 in WandererNotifier.Killmail.EnrichmentTest."test recent_kills_for_system/2 returns formatted strings for kills"/1>
+
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:148: (test)
+
+     The following output was logged:
+     00:55:12.991 [error] Attempted to track unregistered metric
+     00:55:13.003 [error] Attempted to track unregistered metric
+     00:55:13.004 [error] Attempted to track unregistered metric
+     00:55:13.004 [error] Attempted to track unregistered metric
+     
+
+
+  6) test recent_kills_for_system/2 returns [] if zkill returns error (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:151
+     Assertion with == failed
+     code:  assert Enrichment.recent_kills_for_system(system_id) == []
+     left:  ["[Unknown Ship](https://zkillboard.com/kill/126938081/) - 10.0K ISK, ? ago", "[Unknown Ship](https://zkillboard.com/kill/126938024/) - 7.7M ISK, ? ago", "[Unknown Ship](https://zkillboard.com/kill/126937895/) - 21.7K ISK, ? ago"]
+     right: []
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:159: (test)
+
+
+
+  7) test enrich_killmail_data/1 returns {:error, :service_unavailable} if victim info fails (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:75
+     match (=) failed
+     code:  assert {:error, :service_unavailable} = Enrichment.enrich_killmail_data(killmail)
+     left:  {:error, :service_unavailable}
+     right: {:ok,
+             %WandererNotifier.Killmail.Killmail{
+               killmail_id: 12345,
+               zkb: %{"hash" => "test_hash"},
+               esi_data: %{},
+               victim_name: "Unknown",
+               victim_corporation: "Unknown",
+               victim_corp_ticker: "???",
+               victim_alliance: nil,
+               ship_name: "Unknown Ship",
+               system_name: "Unknown System",
+               system_id: nil,
+               attackers: []
+             }}
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:101: (test)
+
+
+
+  8) test enrich_killmail_data/1 returns {:ok, enriched_killmail} on success (WandererNotifier.Killmail.EnrichmentTest)
+     test/wanderer_notifier/killmail/processing/enrichment_test.exs:17
+     Assertion with == failed
+     code:  assert enriched_killmail.victim_name == "Victim"
+     left:  "Unknown"
+     right: "Victim"
+     stacktrace:
+       test/wanderer_notifier/killmail/processing/enrichment_test.exs:53: (test)
+
+........
+Finished in 3.2 seconds (3.1s async, 0.1s sync)
+83 tests, 8 failures
