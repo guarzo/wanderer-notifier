@@ -265,3 +265,64 @@ _This plan will be updated as progress is made and new information is discovered
    - Achieve 80%+ coverage across all components
    - Add integration tests
    - Implement property-based tests for critical paths
+
+## Progress Update 2024-06-18
+
+### Current Coverage Status
+
+Based on the latest coverage report, the overall test coverage is now **21.7%** (increased from 15.3%).
+
+#### Key Module Coverage:
+
+| Module                                                 | Coverage | Previous | Change  |
+| ------------------------------------------------------ | -------- | -------- | ------- |
+| lib/wanderer_notifier/esi/client.ex                    | 100.0%   | 0.0%     | +100.0% |
+| lib/wanderer_notifier/esi/entities/alliance.ex         | 81.2%    | ~0%      | +81.2%  |
+| lib/wanderer_notifier/esi/entities/character.ex        | 86.6%    | ~0%      | +86.6%  |
+| lib/wanderer_notifier/esi/entities/corporation.ex      | 81.2%    | ~0%      | +81.2%  |
+| lib/wanderer_notifier/esi/entities/solar_system.ex     | 96.1%    | ~0%      | +96.1%  |
+| lib/wanderer_notifier/killmail/enrichment.ex           | 58.5%    | ~0%      | +58.5%  |
+| lib/wanderer_notifier/killmail/killmail.ex             | 62.0%    | ~0%      | +62.0%  |
+| lib/wanderer_notifier/killmail/metric_registry.ex      | 100.0%   | ~0%      | +100.0% |
+| lib/wanderer_notifier/notifications/formatter/embed.ex | 89.8%    | ~0%      | +89.8%  |
+
+### Areas That Still Need Improvement:
+
+1. **API Controllers (0-75% coverage):**
+
+   - lib/wanderer_notifier/api/controllers/killmail.ex (0%)
+   - Several API controllers have very low coverage
+
+2. **Cache Implementation (5.3% coverage):**
+
+   - lib/wanderer_notifier/cache/cachex_impl.ex needs significant test improvements
+
+3. **Killmail Processing:**
+
+   - lib/wanderer_notifier/killmail/cache.ex (0%)
+   - lib/wanderer_notifier/killmail/notification.ex (0%)
+   - lib/wanderer_notifier/killmail/processor.ex (3.4%)
+   - lib/wanderer_notifier/killmail/websocket.ex (14.8%)
+
+4. **Notifications System:**
+
+   - Most notification formatters and determiners have low or no coverage
+   - Discord notifier implementation has only 7.1% coverage
+
+5. **Map Functionality (0% coverage across all files)**
+
+### Recent Fixes:
+
+1. Addressed ESI.ServiceMock warnings by creating a proper mock implementation that satisfies the ServiceBehaviour interface with all required functions.
+
+### Next Steps:
+
+1. Focus on improving coverage for the killmail processing pipeline
+2. Add tests for notification formatters and determiners
+3. Improve coverage for API controllers
+4. Address remaining low-coverage areas systematically
+
+### Metrics History:
+
+- June 9, 2024: 15.3% overall coverage
+- June 18, 2024: 21.7% overall coverage (+6.4%)
