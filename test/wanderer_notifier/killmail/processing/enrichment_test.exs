@@ -4,6 +4,7 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
 
   alias WandererNotifier.Killmail.Enrichment
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.HttpClient.HttpoisonMock
 
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
@@ -11,11 +12,13 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
   setup do
     # Configure the application to use our mocks
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+    Application.put_env(:wanderer_notifier, :http_client, HttpoisonMock)
 
+    # Need ZKillClient to use real implementation but with mocked HTTP client
     Application.put_env(
       :wanderer_notifier,
       :zkill_client,
-      WandererNotifier.Killmail.ZKillClientMock
+      WandererNotifier.Killmail.ZKillClient
     )
 
     # Set up stubs for all possible ESI calls
@@ -125,31 +128,44 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
     end
   end
 
-  # Test recent_kills_for_system with stubs only - no verification
+  # Test recent_kills_for_system with HTTP mock
   describe "recent_kills_for_system/2" do
     test "formats system kills correctly" do
-      # Set up ZKillClient mock to return test data
-      stub(WandererNotifier.Killmail.ZKillClientMock, :get_system_kills, fn _system_id, _limit ->
-        {:ok,
-         [
-           %{
-             "killmail_id" => 111,
-             "zkb" => %{"hash" => "test-hash", "totalValue" => 1_000_000_000}
-           }
-         ]}
+      system_id = 30_000_142
+      url = "https://zkillboard.com/api/kills/systemID/#{system_id}/"
+
+      headers = [
+        {"Accept", "application/json"},
+        {"User-Agent", "WandererNotifier/1.0"},
+        {"Cache-Control", "no-cache"}
+      ]
+
+      # Mock HTTP response with test data
+      response_data = [
+        %{
+          "killmail_id" => 111,
+          "zkb" => %{"hash" => "test-hash", "totalValue" => 1_000_000_000}
+        }
+      ]
+
+      encoded_json = Jason.encode!(response_data)
+
+      # Expect the HTTP client to be called
+      expect(HttpoisonMock, :get, fn ^url, ^headers, _opts ->
+        {:ok, %{status_code: 200, body: encoded_json}}
       end)
 
-      # Set up ESI to return valid data
-      stub(WandererNotifier.ESI.ServiceMock, :get_killmail, fn _id, _hash ->
+      # Set up ESI service expectations for the killmail lookup
+      expect(WandererNotifier.ESI.ServiceMock, :get_killmail, fn 111, "test-hash" ->
         {:ok, %{"victim" => %{"ship_type_id" => 222}}}
       end)
 
-      stub(WandererNotifier.ESI.ServiceMock, :get_type_info, fn _id, _opts ->
+      expect(WandererNotifier.ESI.ServiceMock, :get_type_info, fn 222, _opts ->
         {:ok, %{"name" => "Test Ship"}}
       end)
 
       # Test success case
-      success_result = Enrichment.recent_kills_for_system(30_000_142, 3)
+      success_result = Enrichment.recent_kills_for_system(system_id, 3)
       assert length(success_result) > 0
 
       assert Enum.any?(success_result, fn string ->
@@ -158,13 +174,22 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
     end
 
     test "handles error from ZKillClient correctly" do
-      # Mock ZKill to return an error
-      stub(WandererNotifier.Killmail.ZKillClientMock, :get_system_kills, fn _system_id, _limit ->
+      system_id = 30_000_143
+      url = "https://zkillboard.com/api/kills/systemID/#{system_id}/"
+
+      headers = [
+        {"Accept", "application/json"},
+        {"User-Agent", "WandererNotifier/1.0"},
+        {"Cache-Control", "no-cache"}
+      ]
+
+      # Use stub instead of expect to allow multiple calls
+      stub(HttpoisonMock, :get, fn ^url, ^headers, _opts ->
         {:error, :service_unavailable}
       end)
 
       # Test error case
-      error_result = Enrichment.recent_kills_for_system(30_000_143, 3)
+      error_result = Enrichment.recent_kills_for_system(system_id, 3)
       # Only check if the list is empty, without comparing exact values
       assert is_list(error_result)
       assert Enum.empty?(error_result)

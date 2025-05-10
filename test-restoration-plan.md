@@ -487,4 +487,115 @@ This prioritization approach:
 - June 18, 2024: 21.7% overall coverage (+6.4%)
 - June 20, 2024: 25.3% overall coverage (+3.6%)
 
-The coverage improvement has begun to slow as expected, but we're making steady progress. The successful testing of core killmail processing components is particularly significant as these represent the central business logic of the application.
+## Progress Update 2024-06-22
+
+### Current Coverage Status
+
+Based on the latest coverage report, the overall test coverage is now **29.3%** (increased from 25.3%).
+
+### Test Suite Status
+
+- **Tests:** 109 tests
+- **Failures:** 0 failures
+
+### Key Module Coverage Improvements:
+
+| Module                                                  | Current | Previous | Change |
+| ------------------------------------------------------- | ------- | -------- | ------ |
+| lib/wanderer_notifier/killmail/zkill_client.ex          | 70.8%   | 13.0%    | +57.8% |
+| lib/wanderer_notifier/killmail/processor.ex             | 85.4%   | 83.8%    | +1.6%  |
+| lib/wanderer_notifier/killmail/pipeline.ex              | 45.3%   | ~25%     | +20.3% |
+| lib/wanderer_notifier/api/controllers/health.ex         | 100.0%  | ~75%     | +25.0% |
+| lib/wanderer_notifier/api/controllers/notification.ex   | 75.0%   | ~50%     | +25.0% |
+| lib/wanderer_notifier/notifications/determiner_stats.ex | 50.4%   | ~30%     | +20.4% |
+
+### Areas With Perfect Coverage (100%):
+
+- lib/wanderer_notifier/esi/client.ex
+- lib/wanderer_notifier/killmail/context.ex
+- lib/wanderer_notifier/killmail/metric_registry.ex
+- lib/wanderer_notifier/killmail/mode.ex
+- lib/wanderer_notifier/killmail/notification.ex
+- lib/wanderer_notifier/api/controllers/health.ex
+
+### Areas With Good Coverage (>70%):
+
+- lib/wanderer_notifier/esi/entities/\* (>80%)
+- lib/wanderer_notifier/killmail/cache.ex (84.0%)
+- lib/wanderer_notifier/killmail/processor.ex (85.4%)
+- lib/wanderer_notifier/killmail/zkill_client.ex (70.8%)
+- lib/wanderer_notifier/notifications/formatter/embed.ex (89.8%)
+
+### Areas Still Needing Improvement:
+
+1. **API Controllers:**
+
+   - lib/wanderer_notifier/api/controllers/killmail.ex (0%)
+   - lib/wanderer_notifier/api/controllers/websocket.ex (37.5%)
+
+2. **Cache Implementation:**
+
+   - lib/wanderer_notifier/cache/cachex_impl.ex (17.8%)
+   - lib/wanderer_notifier/cache/keys.ex (17.8%)
+
+3. **Notifiers & Notification Components:**
+
+   - Discord notifier implementation (7.1%)
+   - Most formatters and determiners (0-50%)
+
+4. **Map Functionality:**
+
+   - All map-related modules (10-23%)
+
+5. **Schedulers:**
+   - Most scheduler modules (0-23%)
+
+### Next Steps:
+
+1. **Focus on API Controllers:**
+
+   - Add tests for the killmail controller (highest priority)
+   - Improve websocket controller coverage
+
+2. **Improve Discord Notifier Coverage:**
+
+   - Test notification delivery
+   - Test component building
+   - Test error handling
+
+3. **Target Cache Implementation:**
+
+   - Add tests for cachex implementation
+   - Test key generation and manipulation
+
+4. **Address Map Functionality:**
+   - Prioritize map system tests
+   - Test character mapping functionality
+
+### Immediate Testing Priorities
+
+1. **Killmail Controller (0%):**
+
+   - Test API endpoints for killmail lookup and processing
+   - Test response formatting and error handling
+   - Test integration with the killmail processing pipeline
+
+2. **Discord Notifier (7.1%):**
+
+   - Test notification formatting and delivery
+   - Test rate limiting and error handling
+   - Test integration with notification determination
+
+3. **Cache Implementation (17.8%):**
+   - Test cache initialization and configuration
+   - Test cache hit/miss scenarios
+   - Test key generation and manipulation
+
+### Metrics History:
+
+- June 9, 2024: 15.3% overall coverage
+- June 18, 2024: 21.7% overall coverage (+6.4%)
+- June 20, 2024: 25.3% overall coverage (+3.6%)
+- June 22, 2024: 29.3% overall coverage (+4.0%)
+
+The test coverage continues to improve at a steady pace. The significant improvements in the zkill client and pipeline modules indicate that the core functionality of the application is becoming well-tested. Focus should now shift to user-facing components (API controllers) and notification delivery mechanisms (Discord notifier).

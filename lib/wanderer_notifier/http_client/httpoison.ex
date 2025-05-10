@@ -8,6 +8,9 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   @default_headers [{"Content-Type", "application/json"}]
 
+  @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
+              {:ok, map()} | {:error, any()}
+
   @impl true
   def get(url, headers \\ @default_headers) do
     HTTPoison.get(url, headers)
@@ -16,6 +19,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   def get(url, headers, options) do
     HTTPoison.get(url, headers, options)
+    |> handle_response()
   end
 
   @impl true
@@ -56,9 +60,13 @@ defmodule WandererNotifier.HttpClient.Httpoison do
       when status in 200..299 do
     case Jason.decode(body) do
       {:ok, decoded} ->
+        # Log the decoded response for debugging
+        Logger.info("HTTP request successful, decoded body: #{inspect(decoded, limit: 1000)}")
         {:ok, %{status_code: status, body: decoded}}
 
       {:error, _reason} ->
+        # Return the raw body if it can't be decoded as JSON
+        Logger.info("HTTP request successful, non-JSON body: #{inspect(body, limit: 100)}")
         {:ok, %{status_code: status, body: body}}
     end
   end

@@ -370,3 +370,6 @@ defmodule WandererNotifier.Mocks do
     for: WandererNotifier.Notifications.Determiner.KillBehaviour
   )
 end
+
+# Replace the last line with Mox.defmock
+Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Httpoison)
