@@ -1,19 +1,22 @@
 defmodule WandererNotifier.Notifications.Determiner.KillBehaviour do
   @moduledoc """
-  Defines the behaviour for kill notification determination.
+  Behaviour for killmail notification determination.
+  Defines the contract for modules that determine if a kill should trigger a notification.
   """
 
   @doc """
-  Determines if a notification should be sent for a kill.
+  Determines if a kill notification should be sent.
 
   ## Parameters
-    - killmail: The killmail to check
+  - kill_data: The killmail data to evaluate
 
   ## Returns
-    - {:ok, %{should_notify: boolean(), reason: String.t()}} with tracking information
+  - {:ok, %{should_notify: boolean, reason: String.t() | nil}} indicating if notification should be sent
+  - {:error, reason} on error
   """
-  @callback should_notify?(killmail :: struct() | map()) ::
-              {:ok, %{should_notify: boolean(), reason: String.t() | nil}} | {:error, term()}
+  @callback should_notify?(kill_data :: map()) ::
+              {:ok, %{should_notify: boolean(), reason: String.t() | nil}}
+              | {:error, term()}
 
   @doc """
   Gets the system ID from a kill.

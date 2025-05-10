@@ -3,10 +3,6 @@ defmodule WandererNotifier.Killmail.Notification do
   Handles sending notifications for killmails.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Dispatcher
-  alias WandererNotifier.Notifications.KillmailNotification
-
   @doc """
   Sends a notification for a killmail.
 
@@ -21,28 +17,30 @@ defmodule WandererNotifier.Killmail.Notification do
   def send_kill_notification(killmail, kill_id) do
     try do
       # Create the notification using the KillmailNotification module
-      notification = KillmailNotification.create(killmail)
+      notification = killmail_notification_module().create(killmail)
 
-      # Send the notification through the factory
-      case Dispatcher.send_message(notification) do
+      # Send the notification through the dispatcher
+      case dispatcher_module().send_message(notification) do
         {:ok, :sent} ->
-          AppLogger.notification_info("Kill notification sent successfully", %{
+          logger_module().notification_info("Kill notification sent successfully", %{
             kill_id: kill_id,
-            victim: killmail.victim_name,
-            attacker: killmail.attacker_name
+            victim: killmail.victim_name
           })
 
           {:ok, notification}
 
         {:error, :notifications_disabled} ->
-          AppLogger.notification_info("Kill notification skipped - notifications disabled", %{
-            kill_id: kill_id
-          })
+          logger_module().notification_info(
+            "Kill notification skipped - notifications disabled",
+            %{
+              kill_id: kill_id
+            }
+          )
 
           {:ok, :disabled}
 
         {:error, reason} = error ->
-          AppLogger.notification_error("Failed to send kill notification", %{
+          logger_module().notification_error("Failed to send kill notification", %{
             kill_id: kill_id,
             error: inspect(reason)
           })
@@ -51,7 +49,7 @@ defmodule WandererNotifier.Killmail.Notification do
       end
     rescue
       e ->
-        AppLogger.notification_error("Exception sending kill notification", %{
+        logger_module().notification_error("Exception sending kill notification", %{
           kill_id: kill_id,
           error: Exception.message(e),
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
@@ -59,5 +57,30 @@ defmodule WandererNotifier.Killmail.Notification do
 
         {:error, :notification_failed}
     end
+  end
+
+  # Get the appropriate module from application config or use the default
+  defp killmail_notification_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_notification_module,
+      WandererNotifier.Notifications.KillmailNotification
+    )
+  end
+
+  defp dispatcher_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :dispatcher_module,
+      WandererNotifier.Notifications.Dispatcher
+    )
+  end
+
+  defp logger_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :logger_module,
+      WandererNotifier.Logger.Logger
+    )
   end
 end

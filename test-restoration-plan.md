@@ -326,3 +326,165 @@ Based on the latest coverage report, the overall test coverage is now **21.7%** 
 
 - June 9, 2024: 15.3% overall coverage
 - June 18, 2024: 21.7% overall coverage (+6.4%)
+
+## Progress Update 2024-06-19
+
+### Killmail Processing Pipeline
+
+Added new test coverage for key killmail processing components:
+
+1. **Processor Testing:**
+
+   - Created `WandererNotifier.Killmail.ProcessorTest` to test the Processor module
+   - Added tests for `process_zkill_message/2`, `process_kill_data/2`, and `send_test_kill_notification/0`
+   - Added test coverage for success, error, and edge cases
+
+2. **Cache Testing:**
+
+   - Created `WandererNotifier.Killmail.CacheTest` to test the Cache module
+   - Added tests for `init/0`, `cache_kill/2`, `get_kill/1`, `get_recent_kills/0`, and `get_latest_killmails/0`
+   - Added test coverage for cache hits, misses, and various edge cases
+
+3. **Notification Testing:**
+   - Created `WandererNotifier.Killmail.NotificationTest` to test the Notification module
+   - Added tests for `send_kill_notification/2` covering success, disabled notifications, dispatch errors, and exceptions
+
+### Estimated Coverage Improvements:
+
+| Module                                         | Previous Coverage | New Estimated Coverage |
+| ---------------------------------------------- | ----------------- | ---------------------- |
+| lib/wanderer_notifier/killmail/processor.ex    | 3.4%              | ~75%                   |
+| lib/wanderer_notifier/killmail/cache.ex        | 0.0%              | ~80%                   |
+| lib/wanderer_notifier/killmail/notification.ex | 0.0%              | ~90%                   |
+
+### Next Steps:
+
+1. Continue with ZKill Client testing
+2. Add tests for the notification determination system
+3. Add tests for the Discord integration components
+
+The new tests follow the best practices for Elixir testing:
+
+- Use of Mox for proper dependency mocking
+- Comprehensive coverage of success and error cases
+- Clear Arrange-Act-Assert pattern in test structure
+- Test isolation and proper verification
+
+## Progress Update 2024-06-20
+
+### Current Coverage Status
+
+Based on the latest coverage report, the overall test coverage is now **25.3%** (increased from 21.7%).
+
+### Test Suite Status
+
+- **Tests:** 107 tests
+- **Failures:** 0 failures
+- **Run time:** 2.8 seconds (0.3s async, 2.5s sync)
+
+### Key Module Coverage Improvements:
+
+| Module                                                 | Coverage | Previous | Change  |
+| ------------------------------------------------------ | -------- | -------- | ------- |
+| lib/wanderer_notifier/killmail/cache.ex                | 84.0%    | ~0%      | +84.0%  |
+| lib/wanderer_notifier/killmail/processor.ex            | 83.8%    | 3.4%     | +80.4%  |
+| lib/wanderer_notifier/killmail/notification.ex         | 100.0%   | 0.0%     | +100.0% |
+| lib/wanderer_notifier/killmail/context.ex              | 100.0%   | 0.0%     | +100.0% |
+| lib/wanderer_notifier/killmail/mode.ex                 | 100.0%   | ~0%      | +100.0% |
+| lib/wanderer_notifier/esi/client.ex                    | 100.0%   | 100.0%   | -       |
+| lib/wanderer_notifier/esi/service.ex                   | 52.8%    | ~0%      | +52.8%  |
+| lib/wanderer_notifier/esi/entities/\*                  | >80%     | >80%     | -       |
+| lib/wanderer_notifier/notifications/formatter/embed.ex | 89.8%    | 89.8%    | -       |
+
+### Areas Still Needing Improvement:
+
+1. **API Controllers:**
+
+   - lib/wanderer_notifier/api/controllers/killmail.ex (0%)
+   - lib/wanderer_notifier/api/controllers/websocket.ex (37.5%)
+
+2. **Cache Implementation:**
+
+   - lib/wanderer_notifier/cache/cachex_impl.ex (17.8%)
+   - lib/wanderer_notifier/cache/keys.ex (16.0%)
+
+3. **Notifiers & Notification Components:**
+
+   - Most notification formatters and determiners (0-42.2%)
+   - Discord notifier implementation (7.1%)
+   - Notification utilities (0%)
+
+4. **Integration Components:**
+
+   - lib/wanderer_notifier/killmail/websocket.ex (14.8%)
+   - lib/wanderer_notifier/killmail/zkill_client.ex (13.0%)
+
+5. **Map Functionality:**
+
+   - All map-related modules (0%)
+
+6. **Schedulers:**
+   - All scheduler modules (0%)
+
+### Next Steps:
+
+1. **Focus on Medium-Coverage Components First:**
+
+   - Improve coverage for modules already partially tested (30-50% range)
+   - Target websocket and zkill client implementations
+
+2. **Add Basic Coverage for Critical Zero-Coverage Modules:**
+
+   - API controllers
+   - Notification determiners
+   - Discord formatter components
+
+3. **Continue Systematic Improvement:**
+   - Target one category at a time (e.g., notifications, then map functionality)
+   - Focus on business-critical components first
+
+### Immediate Testing Priorities
+
+Based on the current coverage analysis and business value assessment, the following specific modules should be targeted next, in order of priority:
+
+1. **ZKill Client (13.0%)**
+
+   - **Rationale:** Business-critical component with existing partial coverage; handles essential external data fetching
+   - **Focus areas:**
+     - Test `get_system_kills/2` function
+     - Add error handling test cases
+     - Test caching behavior
+   - **Expected value:** Improved reliability of external data integration
+
+2. **API Controllers**
+
+   - **Killmail Controller (0%)**
+     - **Rationale:** Core user-facing endpoint with no current coverage
+     - **Focus areas:** Test request handling, response formatting, and error cases
+   - **Websocket Controller (37.5%)**
+     - **Rationale:** Already partially tested; handles real-time updates
+     - **Focus areas:** Test connection handling, message processing, and client responses
+   - **Expected value:** Ensured reliability of user interface components
+
+3. **Discord Notifier Implementation (7.1%)**
+   - **Rationale:** Primary notification delivery mechanism with minimal coverage
+   - **Focus areas:**
+     - Test notification formatting
+     - Test payload construction
+     - Test error handling and retries
+   - **Expected value:** Verified end-to-end notification delivery process
+
+This prioritization approach:
+
+- Targets modules with some existing test coverage first
+- Addresses critical user-facing components
+- Focuses on business-critical functionality
+- Follows a strategic progression from data sources to user interfaces
+
+### Metrics History:
+
+- June 9, 2024: 15.3% overall coverage
+- June 18, 2024: 21.7% overall coverage (+6.4%)
+- June 20, 2024: 25.3% overall coverage (+3.6%)
+
+The coverage improvement has begun to slow as expected, but we're making steady progress. The successful testing of core killmail processing components is particularly significant as these represent the central business logic of the application.

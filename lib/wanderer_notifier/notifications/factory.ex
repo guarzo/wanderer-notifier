@@ -3,6 +3,7 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   Dispatcher for creating and sending notifications.
   Provides a unified interface for sending notifications of various types.
   """
+  @behaviour WandererNotifier.Notifications.DispatcherBehaviour
 
   require Logger
   alias WandererNotifier.Config

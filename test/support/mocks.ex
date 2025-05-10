@@ -350,27 +350,23 @@ Mox.defmock(WandererNotifier.Api.ESI.ServiceMock,
 
 defmodule WandererNotifier.Mocks do
   @moduledoc """
-  Defines all mocks used in tests.
+  Defines mocks for behaviors used in the application.
   """
 
-  defmacro __using__(_opts) do
-    quote do
-      import Mox
+  # Mocks for behaviors
+  Mox.defmock(WandererNotifier.Notifications.KillmailNotificationMock,
+    for: WandererNotifier.Notifications.KillmailNotificationBehaviour
+  )
 
-      # Define mocks
-      defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.Service)
+  Mox.defmock(WandererNotifier.Notifications.DispatcherMock,
+    for: WandererNotifier.Notifications.DispatcherBehaviour
+  )
 
-      defmock(WandererNotifier.Notifications.Determiner.KillMock,
-        for: WandererNotifier.Notifications.Determiner.KillBehaviour
-      )
+  Mox.defmock(WandererNotifier.Logger.LoggerMock,
+    for: WandererNotifier.Logger.LoggerBehaviour
+  )
 
-      # Define mocks for Discord notifier
-      defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-        for: WandererNotifier.Notifications.DiscordNotifier
-      )
-
-      # Define mocks for cache repository
-      defmock(WandererNotifier.Test.Support.Mocks, for: WandererNotifier.Cache.Repository)
-    end
-  end
+  Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
+    for: WandererNotifier.Notifications.Determiner.KillBehaviour
+  )
 end

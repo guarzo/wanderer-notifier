@@ -4,8 +4,7 @@ defmodule WandererNotifier.Killmail.Processor do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.KillmailNotification
-  alias WandererNotifier.Killmail.{Pipeline, Context}
+  alias WandererNotifier.Killmail.Context
 
   @doc """
   Initializes the killmail processor.
@@ -69,7 +68,7 @@ defmodule WandererNotifier.Killmail.Processor do
     - {:error, reason} on failure
   """
   def get_recent_kills do
-    case WandererNotifier.Cache.CachexImpl.get(WandererNotifier.Cache.Keys.zkill_recent_kills()) do
+    case cache_repo().get(WandererNotifier.Cache.Keys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
       _ -> {:error, :no_recent_kills}
     end
@@ -91,14 +90,21 @@ defmodule WandererNotifier.Killmail.Processor do
 
     AppLogger.kill_info("Processing kill data", %{kill_id: kill_id})
 
-    with {:ok, enriched_kill} <- Pipeline.process_killmail(kill_data, context) do
+    with {:ok, enriched_kill} <- killmail_pipeline().process_killmail(kill_data, context) do
       AppLogger.kill_info("Kill data processed successfully", %{kill_id: kill_id})
-      KillmailNotification.send_kill_notification(enriched_kill, "kill", %{})
-      {:ok, kill_id}
+
+      # Handle the case when the pipeline returns :skipped
+      if enriched_kill == :skipped do
+        {:ok, :skipped}
+      else
+        # Only try to send notification if we got actual killmail data
+        killmail_notification().send_kill_notification(enriched_kill, "kill", %{})
+        {:ok, kill_id}
+      end
     else
       {:ok, :skipped} ->
         AppLogger.kill_info("Kill data skipped", %{kill_id: kill_id})
-        {:ok, kill_id}
+        {:ok, :skipped}
 
       {:error, reason} = error ->
         AppLogger.kill_error("Failed to process kill data", %{
@@ -119,12 +125,12 @@ defmodule WandererNotifier.Killmail.Processor do
     with {:ok, recent_kill} <- get_recent_kills(),
          kill_id = extract_kill_id(recent_kill),
          killmail = ensure_data_killmail(recent_kill),
-         {:ok, enriched_kill} <- Pipeline.process_killmail(killmail, %Context{}) do
+         {:ok, enriched_kill} <- killmail_pipeline().process_killmail(killmail, %Context{}) do
       AppLogger.kill_info(
         "TEST NOTIFICATION: Using normal notification flow for test kill notification"
       )
 
-      KillmailNotification.send_kill_notification(enriched_kill, "test", %{})
+      killmail_notification().send_kill_notification(enriched_kill, "test", %{})
       {:ok, kill_id}
     else
       {:error, :no_recent_kills} ->
@@ -200,5 +206,30 @@ defmodule WandererNotifier.Killmail.Processor do
         }
       end
     end
+  end
+
+  # Get dependencies from application config
+  defp killmail_pipeline do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_pipeline,
+      WandererNotifier.Killmail.Pipeline
+    )
+  end
+
+  defp killmail_notification do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_notification,
+      WandererNotifier.Notifications.KillmailNotification
+    )
+  end
+
+  defp cache_repo do
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_repo,
+      WandererNotifier.Cache.CachexImpl
+    )
   end
 end

@@ -168,7 +168,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       }
 
       # Set up the stub to force an error response for this specific killmail
-      stub(ServiceMock, :get_killmail, fn 54321, "error_hash" ->
+      stub(ServiceMock, :get_killmail, fn 54_321, "error_hash" ->
         {:error, :service_unavailable}
       end)
 

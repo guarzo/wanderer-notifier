@@ -207,7 +207,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
           format_type: format_type
         })
 
-        {:error, {:domain_error, :zkill, {:unexpected_format, format_type}}}
+        {:error, {:json_decode_error, "Unexpected format: #{format_type}"}}
     end
   end
 
@@ -227,7 +227,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         {:ok, kills}
 
       {:ok, _non_list} ->
-        {:error, {:domain_error, :zkill, :invalid_kills_format}}
+        {:error, {:json_decode_error, "Expected list of kills"}}
 
       {:error, reason} ->
         {:error, {:json_decode_error, reason}}

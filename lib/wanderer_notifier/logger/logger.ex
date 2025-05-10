@@ -69,6 +69,7 @@ defmodule WandererNotifier.Logger.Logger do
 
   Metadata is properly normalized regardless of format (map or keyword list).
   """
+  @behaviour WandererNotifier.Logger.LoggerBehaviour
 
   require Logger
 

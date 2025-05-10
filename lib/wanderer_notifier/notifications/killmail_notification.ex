@@ -3,6 +3,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Specialized module for processing kill notifications.
   Encapsulates all the notification handling logic for kills.
   """
+  @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
