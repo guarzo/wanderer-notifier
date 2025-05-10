@@ -86,6 +86,24 @@ defmodule WandererNotifier.MockESI do
   def get_system_kills(30_000_142, _limit), do: {:ok, []}
   def get_system_kills(_system_id, _limit), do: {:error, :service_unavailable}
   def get_system_kills(system_id, limit, _opts), do: get_system_kills(system_id, limit)
+
+  def get_recent_kills do
+    kills = Process.get({:cache, "zkill:recent_kills"}) || []
+
+    if is_list(kills) && length(kills) > 0 do
+      # Process kills into a map format expected by the controller - return directly, not in a tuple
+      kills
+      |> Enum.map(fn id ->
+        key = "zkill:recent_kills:#{id}"
+        {id, Process.get({:cache, key})}
+      end)
+      |> Enum.reject(fn {_, v} -> is_nil(v) end)
+      |> Enum.into(%{})
+    else
+      # Return empty map directly
+      %{}
+    end
+  end
 end
 
 defmodule WandererNotifier.Test.Support.Mocks do
@@ -93,7 +111,6 @@ defmodule WandererNotifier.Test.Support.Mocks do
   Mock implementations for testing.
   """
 
-  alias WandererNotifier.Cache.Keys
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @behaviour WandererNotifier.Cache.Behaviour
@@ -146,11 +163,32 @@ defmodule WandererNotifier.Test.Support.Mocks do
     {:ok, current_value}
   end
 
-  def get_recent_kills do
-    case get(Keys.zkill_recent_kills()) do
-      {:ok, kills} when is_list(kills) -> kills
-      _ -> []
+  @doc """
+  Get a specific kill by ID. Used by the KillController.
+  """
+  def get_kill(kill_id) do
+    key = "zkill:recent_kills:#{kill_id}"
+
+    case Process.get({:cache, key}) do
+      nil -> {:error, :not_cached}
+      value -> {:ok, value}
     end
+  end
+
+  @doc """
+  Get latest killmails as a list. Used by the KillController.
+  """
+  def get_latest_killmails do
+    # Get the list of kill IDs
+    kill_ids = Process.get({:cache, "zkill:recent_kills"}) || []
+
+    # Convert to a list of killmails
+    kill_ids
+    |> Enum.map(fn id ->
+      kill = Process.get({:cache, "zkill:recent_kills:#{id}"})
+      if kill, do: Map.put(kill, "id", id), else: nil
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   def init_batch_logging, do: :ok

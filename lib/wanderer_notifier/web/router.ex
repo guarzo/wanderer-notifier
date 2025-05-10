@@ -7,6 +7,7 @@ defmodule WandererNotifier.Web.Router do
 
   alias WandererNotifier.Api.Controllers.{
     HealthController,
+    KillController,
     NotificationController,
     WebController
   }
@@ -49,6 +50,9 @@ defmodule WandererNotifier.Web.Router do
   forward("/api/health", to: HealthController)
   forward("/api/notifications", to: NotificationController)
   forward("/api/debug", to: WebController)
+
+  # Add kill routes
+  forward("/api/kill", to: KillController)
 
   # Return 404 for /api/web/schedulers
   get "/api/web/schedulers" do

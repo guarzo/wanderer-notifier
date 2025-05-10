@@ -47,7 +47,10 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Private functions
   defp get_recent_kills() do
-    {:ok, Processor.get_recent_kills()}
+    case Processor.get_recent_kills() do
+      {:error, _} = error_tuple -> error_tuple
+      result -> {:ok, result}
+    end
   rescue
     error ->
       AppLogger.api_error("Error getting recent kills", %{
