@@ -16,7 +16,8 @@ defmodule WandererNotifier.Cache.CachexImpl do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Cache.Keys
 
-  @cache_name Application.compile_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+  # Cache name is retrieved at runtime to allow different environments to use different caches
+  defp cache_name, do: Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
 
   @impl true
   def init_batch_logging do
@@ -25,7 +26,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
 
   @impl true
   def get(key) do
-    case Cachex.get(@cache_name, key) do
+    case Cachex.get(cache_name(), key) do
       {:ok, nil} -> {:error, :not_found}
       {:ok, value} -> {:ok, value}
       {:error, reason} -> {:error, reason}
@@ -49,9 +50,9 @@ defmodule WandererNotifier.Cache.CachexImpl do
 
     result =
       if is_nil(ttl) do
-        Cachex.put(@cache_name, key, value)
+        Cachex.put(cache_name(), key, value)
       else
-        Cachex.put(@cache_name, key, value, ttl: :timer.seconds(ttl))
+        Cachex.put(cache_name(), key, value, ttl: :timer.seconds(ttl))
       end
 
     case result do
@@ -75,7 +76,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
     # For high-volume sets, we'll use batch logging
     AppLogger.count_batch_event(:cache_set, %{key_pattern: get_key_pattern(key)})
 
-    case Cachex.put(@cache_name, key, value) do
+    case Cachex.put(cache_name(), key, value) do
       {:ok, true} -> :ok
       {:ok, false} -> {:error, :set_failed}
       {:error, reason} -> {:error, reason}
@@ -94,7 +95,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
   def delete(key) do
     AppLogger.cache_debug("Deleting cache key", key: key)
 
-    case Cachex.del(@cache_name, key) do
+    case Cachex.del(cache_name(), key) do
       {:ok, true} -> :ok
       {:ok, false} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
@@ -113,7 +114,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
   def clear do
     AppLogger.cache_info("Clearing entire cache")
 
-    case Cachex.clear(@cache_name) do
+    case Cachex.clear(cache_name()) do
       {:ok, true} -> :ok
       {:ok, false} -> {:error, :clear_failed}
       {:error, reason} -> {:error, reason}
@@ -130,7 +131,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
   @impl true
   def get_and_update(key, update_fun) do
     try do
-      Cachex.get_and_update(@cache_name, key, fn
+      Cachex.get_and_update(cache_name(), key, fn
         nil ->
           {current, updated} = update_fun.(nil)
           {current, updated}

@@ -6,9 +6,19 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
 
   @max_rich 5
 
+  # Get the license service implementation - can be mocked in tests
+  defp license_service do
+    Application.get_env(
+      :wanderer_notifier,
+      :license_service,
+      WandererNotifier.License.Service
+    )
+  end
+
   def should_send_rich?(type) when type in [:system, :character, :killmail] do
-    license = WandererNotifier.License.Service.status()
-    count = WandererNotifier.License.Service.get_notification_count(type)
+    license = license_service().status()
+    count = license_service().get_notification_count(type)
+
     if license.valid do
       true
     else
@@ -17,9 +27,10 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
   end
 
   def increment(type) when type in [:system, :character, :killmail] do
-    license = WandererNotifier.License.Service.status()
+    license = license_service().status()
+
     unless license.valid do
-      WandererNotifier.License.Service.increment_notification_count(type)
+      license_service().increment_notification_count(type)
     end
   end
 end
