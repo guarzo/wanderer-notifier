@@ -26,12 +26,10 @@ defmodule WandererNotifier.Application do
   def start(_type, _args) do
     AppLogger.startup_info("Starting WandererNotifier")
 
-    # Initialize metric registry (not as a supervised child)
-    initialize_metric_registry()
-
     children = [
       {WandererNotifier.NoopConsumer, []},
       {Cachex, name: :wanderer_cache},
+      {Task, fn -> initialize_metric_registry() end},
       {Metrics, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
@@ -86,19 +84,29 @@ defmodule WandererNotifier.Application do
   """
   def reload(modules) do
     AppLogger.config_info("Reloading modules", modules: inspect(modules))
+
+    # Save current compiler options
+    original_compiler_options = Code.compiler_options()
+
+    # Set ignore_module_conflict to true
     Code.compiler_options(ignore_module_conflict: true)
 
-    Enum.each(modules, fn module ->
-      :code.purge(module)
-      :code.delete(module)
-      :code.load_file(module)
-    end)
+    try do
+      Enum.each(modules, fn module ->
+        :code.purge(module)
+        :code.delete(module)
+        :code.load_file(module)
+      end)
 
-    AppLogger.config_info("Module reload complete")
-    {:ok, modules}
-  rescue
-    error ->
-      AppLogger.config_error("Error reloading modules", error: inspect(error))
-      {:error, error}
+      AppLogger.config_info("Module reload complete")
+      {:ok, modules}
+    rescue
+      error ->
+        AppLogger.config_error("Error reloading modules", error: inspect(error))
+        {:error, error}
+    after
+      # Restore original compiler options
+      Code.compiler_options(original_compiler_options)
+    end
   end
 end

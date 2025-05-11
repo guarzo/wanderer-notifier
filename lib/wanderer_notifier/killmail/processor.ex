@@ -120,15 +120,11 @@ defmodule WandererNotifier.Killmail.Processor do
   Sends a test kill notification.
   """
   def send_test_kill_notification do
-    AppLogger.kill_info("Sending test kill notification...")
 
     with {:ok, recent_kill} <- get_recent_kills(),
          kill_id = extract_kill_id(recent_kill),
          killmail = ensure_data_killmail(recent_kill),
          {:ok, enriched_kill} <- killmail_pipeline().process_killmail(killmail, %Context{}) do
-      AppLogger.kill_info(
-        "TEST NOTIFICATION: Using normal notification flow for test kill notification"
-      )
 
       killmail_notification().send_kill_notification(enriched_kill, "test", %{})
       {:ok, kill_id}

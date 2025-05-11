@@ -42,7 +42,6 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   """
   @spec send_test_kill_notification() :: {:ok, :sent}
   def send_test_kill_notification do
-    IO.puts("[TestNotifier] Sending test kill notification")
     {:ok, :sent}
   end
 
@@ -51,7 +50,6 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   """
   @spec send_test_character_notification() :: {:ok, :sent}
   def send_test_character_notification do
-    IO.puts("[TestNotifier] Sending test character notification")
     {:ok, :sent}
   end
 
@@ -60,7 +58,6 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   """
   @spec send_test_system_notification() :: {:ok, :sent}
   def send_test_system_notification do
-    IO.puts("[TestNotifier] Sending test system notification")
     {:ok, :sent}
   end
 end

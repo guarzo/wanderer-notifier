@@ -46,7 +46,7 @@ defmodule WandererNotifier.MockCache do
     end
   end
 
-  defp get_by_key_type("tracked_character:" <> character_id) do
+  defp get_by_key_type("tracked:character:" <> character_id) do
     case :ets.lookup(:mock_cache, {:direct_character, character_id}) do
       [{{:direct_character, ^character_id}, data}] -> {:ok, data}
       _ -> {:error, :not_found}
@@ -462,12 +462,15 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       # Configure the mock with empty character list but a direct character lookup
       MockCache.configure([], [])
 
+      # Configure direct character tracking for victim
       MockCache.configure_direct_character("1000001", %{
         character_id: "1000001",
         name: "Test Victim"
       })
 
+      # Execute
       result = Kill.has_tracked_character?(killmail)
+
       assert result == true
     end
   end

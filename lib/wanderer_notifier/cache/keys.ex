@@ -109,7 +109,7 @@ defmodule WandererNotifier.Cache.Keys do
   """
   @spec tracked_character(integer() | String.t()) :: String.t()
   def tracked_character(id) when is_integer(id) or is_binary(id) do
-    "tracked_character:#{id}"
+    join_parts([@prefix_tracked, @entity_character, to_string(id)])
   end
 
   def tracked_character(id) when is_map(id) or is_struct(id) do
@@ -554,9 +554,4 @@ defmodule WandererNotifier.Cache.Keys do
   def ship_type(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
     join_parts([@prefix_esi, "ship_type", to_string(ship_type_id)])
   end
-
-  @doc """
-  Returns the cache key for a system by delegating to the system/1 function.
-  """
-  def system_key(system_id) when is_integer(system_id), do: system(system_id)
 end

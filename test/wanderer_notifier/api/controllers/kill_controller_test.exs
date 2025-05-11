@@ -4,8 +4,10 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
 
   alias WandererNotifier.Web.Router
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Api.Controllers.KillController
 
   @opts Router.init([])
+  @controller_opts KillController.init([])
   @mock_kill_id "12345678"
   @unknown_kill_id "999999999"
   @mock_zkb %{"hash" => "hash123", "totalValue" => 1_000_000.0}
@@ -34,9 +36,51 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
     :ok
   end
 
-  describe "GET /api/kill/kill/:kill_id" do
+  describe "Testing controller directly" do
+    test "GET /kill/:kill_id returns kill details when found in cache" do
+      # Test the controller directly
+      conn =
+        conn(:get, "/kill/#{@mock_kill_id}")
+        |> KillController.call(@controller_opts)
+
+      # Assert: Check for JSON response with successful status
+      assert conn.status == 200
+      response = Jason.decode!(conn.resp_body)
+      # The controller returns the kill object directly, no data wrapper
+      assert is_map(response)
+      assert response["killmail_id"] == @mock_kill_id
+    end
+
+    test "GET /kill/:kill_id returns 404 for unknown killmail" do
+      # Test the controller directly
+      conn =
+        conn(:get, "/kill/#{@unknown_kill_id}")
+        |> KillController.call(@controller_opts)
+
+      # Assert: Check for JSON error response
+      assert conn.status == 404
+      response = Jason.decode!(conn.resp_body)
+      assert Map.has_key?(response, "error")
+      assert response["error"] in ["Kill not found", "Kill not found in cache"]
+    end
+
+    test "GET /kills returns list of latest killmails" do
+      # Test the controller directly
+      conn =
+        conn(:get, "/kills")
+        |> KillController.call(@controller_opts)
+
+      # Assert: Check for JSON response with successful status
+      assert conn.status == 200
+      response = Jason.decode!(conn.resp_body)
+      # The controller returns the kills list directly
+      assert is_list(response)
+    end
+  end
+
+  describe "Testing through router" do
     test "returns kill details when found in cache" do
-      # Act: Make the request - the route pattern is /api/kill/kill/:kill_id
+      # Act: Make the request through the router
       conn = conn(:get, "/api/kill/kill/#{@mock_kill_id}") |> Router.call(@opts)
 
       # Assert: Check for JSON response with successful status
@@ -60,9 +104,7 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
       # depending on the implementation, so accept either
       assert response["error"] in ["Kill not found", "Kill not found in cache"]
     end
-  end
 
-  describe "GET /api/kill/kills" do
     test "returns list of latest killmails" do
       # Act: Make the request
       conn = conn(:get, "/api/kill/kills") |> Router.call(@opts)
@@ -73,9 +115,7 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
       # The controller returns the kills list directly
       assert is_list(response)
     end
-  end
 
-  describe "Non-existent endpoints" do
     test "returns 404 for unknown routes" do
       # Act: Make the request to a non-existent endpoint
       conn = conn(:get, "/api/kill/unknown_endpoint") |> Router.call(@opts)

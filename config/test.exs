@@ -1,9 +1,10 @@
 import Config
 
 # Environment-specific configuration
-config :wanderer_notifier, :test_env, true
-config :wanderer_notifier, :env, :test
-config :wanderer_notifier, :disable_status_messages, true
+config :wanderer_notifier,
+  test_env: true,
+  env: :test,
+  disable_status_messages: true
 
 # Test mode configuration
 config :nostrum, token: "test_discord_token"
@@ -33,20 +34,16 @@ config :wanderer_notifier,
   cache_repository: WandererNotifier.Cache.CachexImpl,
   esi_service: WandererNotifier.ESI.ServiceMock
 
-# Configure cache
-config :wanderer_notifier, :cache_dir, "test/cache"
-
 # Logger configuration for tests
 config :logger, level: :warning
 config :logger, :console, format: "[$level] $message\n"
 
 # Configure the test environment
 config :wanderer_notifier,
-  env: :test,
   schedulers_enabled: false,
   scheduler_supervisor_enabled: false
 
-# Configure the logger
+# Configure the logger (combined configuration)
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]

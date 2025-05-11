@@ -1,6 +1,7 @@
 defmodule WandererNotifier.Api.Controllers.WebController do
   @moduledoc """
-  Controller for debug-related endpoints.
+  Controller for web-related endpoints and application status management.
+  Provides endpoints for service status, statistics, and scheduler management.
   """
   use WandererNotifier.Api.ApiPipeline
   import WandererNotifier.Api.Helpers
@@ -151,7 +152,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     error ->
       AppLogger.api_error("Error in debug status", %{
         error: inspect(error),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
 
       {:error, "An unexpected error occurred"}
@@ -175,7 +176,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     error ->
       AppLogger.api_error("Error getting stats", %{
         error: inspect(error),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
 
       create_default_stats()

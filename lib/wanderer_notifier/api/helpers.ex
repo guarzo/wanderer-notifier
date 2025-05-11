@@ -28,8 +28,20 @@ defmodule WandererNotifier.Api.Helpers do
     do: send_json_response(conn, status, %{@error_key => message})
 
   @doc """
-  Parses the JSON body from the connection (assumes Plug.Parsers ran).
-  Returns the parsed body params map.
+  Parses the JSON body from the connection.
+  Checks if body_params has been populated by Plug.Parsers middleware,
+  and returns the parsed body or an error tuple if the body hasn't been parsed.
   """
-  def parse_body(conn), do: conn.body_params
+  def parse_body(conn) do
+    case Map.get(conn, :body_params) do
+      %Plug.Conn.Unfetched{aspect: :body_params} ->
+        {:error, :unparsed_body}
+
+      nil ->
+        {:error, :no_body_params}
+
+      params when is_map(params) ->
+        {:ok, params}
+    end
+  end
 end

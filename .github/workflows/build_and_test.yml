@@ -1,10 +1,8 @@
-name: Build and Test (DRY)
+name: Build and Test
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "mix.exs"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -26,7 +24,7 @@ on:
 # Anchors for common steps
 x-checkout-cache: &checkout-cache
   - name: Checkout code
-    uses: actions/checkout@v3
+    uses: actions/checkout@v4
   - name: Common Checkout and Cache
     uses: ./.github/actions/common-checkout-cache
     with:
@@ -78,13 +76,11 @@ jobs:
     env:
       MIX_ENV: test
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
-      DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
       WANDERER_DISCORD_BOT_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-      CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
         with:
@@ -105,12 +101,10 @@ jobs:
           mix deps.compile
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
-        continue-on-error: true
       - name: Run tests
         run: mix test
       - name: Generate test coverage
         run: mix test --cover
-        continue-on-error: true
 
   lint:
     name: Lint code
@@ -120,7 +114,7 @@ jobs:
       MIX_ENV: dev
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
         with:
@@ -144,7 +138,6 @@ jobs:
         run: mix format --check-formatted
       - name: Run code quality checks
         run: mix credo --strict
-        continue-on-error: true
 
   docker:
     name: Validate Docker image
@@ -154,7 +147,7 @@ jobs:
       MIX_ENV: prod
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Checkout and Cache
         uses: ./.github/actions/common-checkout-cache
         with:
@@ -190,9 +183,9 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
           MAP_URL_WITH_NAME: "http://example.com/map?name=testmap"
-          MAP_TOKEN: "test-map-token"
-          DISCORD_CHANNEL_ID: "123456789"
-          LICENSE_KEY: "test-license-key"
+          MAP_TOKEN: ${{ secrets.MAP_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
         run: |
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
@@ -214,7 +207,7 @@ jobs:
       MIX_ENV: prod
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version
@@ -248,7 +241,7 @@ jobs:
       MIX_ENV: prod
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version
@@ -282,7 +275,7 @@ jobs:
       MIX_ENV: prod
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Common Versioning
         uses: ./.github/actions/common-versioning
         id: version

@@ -176,15 +176,42 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
   def has_tracked_character?(killmail) do
     kill_data = extract_kill_data(killmail)
-    all_character_ids = get_all_tracked_character_ids()
 
-    # Check if victim is tracked
-    victim_tracked = check_victim_tracked(kill_data, all_character_ids)
+    # Check victim first
+    victim_id_str = extract_victim_id(kill_data)
+    victim_tracked = check_character_tracked(victim_id_str)
 
     if victim_tracked do
       true
     else
-      check_attackers_tracked(kill_data, all_character_ids)
+      # Then check attackers
+      attackers = extract_attackers(kill_data)
+
+      attackers
+      |> Enum.map(&extract_attacker_id/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.any?(&check_character_tracked/1)
+    end
+  end
+
+  # Check if a character is tracked (either in list or direct tracking)
+  defp check_character_tracked(nil), do: false
+
+  defp check_character_tracked(character_id) do
+    # First check in the list of tracked characters
+    all_character_ids = get_all_tracked_character_ids()
+    in_list = Enum.member?(all_character_ids, character_id)
+
+    # If not in list, try direct tracking
+    if !in_list do
+      direct_cache_key = CacheKeys.tracked_character(character_id)
+
+      case cache_repo().get(direct_cache_key) do
+        {:ok, _} -> true
+        _ -> false
+      end
+    else
+      true
     end
   end
 
@@ -223,67 +250,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     if victim_id, do: to_string(victim_id), else: nil
   end
 
-  # Check if victim is tracked through direct cache lookup
-  defp check_direct_victim_tracking(victim_id_str) do
-    direct_cache_key = CacheKeys.tracked_character(victim_id_str)
-
-    tracked =
-      case cache_repo().get(direct_cache_key) do
-        {:ok, _} -> true
-        _ -> false
-      end
-
-    tracked
-  end
-
-  # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(kill_data, all_character_ids) do
-    victim_id_str = extract_victim_id(kill_data)
-    victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
-
-    if !victim_tracked && victim_id_str do
-      check_direct_victim_tracking(victim_id_str)
-    else
-      victim_tracked
-    end
-  end
-
   # Extract attackers from kill data
   defp extract_attackers(kill_data) do
     Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
-  end
-
-  # Check if any attacker is tracked
-  defp check_attackers_tracked(kill_data, all_character_ids) do
-    attackers = extract_attackers(kill_data)
-
-    if attacker_in_tracked_list?(attackers, all_character_ids) do
-      true
-    else
-      attacker_directly_tracked?(attackers)
-    end
-  end
-
-  # Check if any attacker is in our tracked characters list
-  defp attacker_in_tracked_list?(attackers, all_character_ids) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(fn attacker_id -> Enum.member?(all_character_ids, attacker_id) end)
   end
 
   # Extract attacker ID from attacker data
   defp extract_attacker_id(attacker) do
     attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
     if attacker_id, do: to_string(attacker_id), else: nil
-  end
-
-  # Check if any attacker is directly tracked
-  defp attacker_directly_tracked?(attackers) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(&check_direct_victim_tracking/1)
   end
 
   @impl true

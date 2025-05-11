@@ -56,7 +56,7 @@ WANDERER_DISCORD_BOT_TOKEN=your_discord_bot_token
 WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 
 # Map Configuration
-WANDERER_MAP_URL_WITH_NAME="https://wanderer.ltd/<yourmap>"
+WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
 WANDERER_MAP_TOKEN=your_map_api_token
 
 # Note: Premium features are enabled with your map subscription
@@ -69,7 +69,6 @@ WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
 # WANDERER_DISABLE_STATUS_MESSAGES=false # Disable startup and status notifications
 # WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
 ```
-
 
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
 
@@ -94,7 +93,15 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:4000/health",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

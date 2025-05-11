@@ -78,7 +78,7 @@ config :logger, :console,
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
   "WandererNotifier.Core.Maintenance.Scheduler" => :info,
-  "WandererNotifier.Config.Config" => :info,
+  "WandererNotifier.Config" => :info,
   "WandererNotifier.Config.Timings" => :info,
   "WandererNotifier.ESI.Client" => :warn,
   "WandererNotifier.Map.Client" => :info,

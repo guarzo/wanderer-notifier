@@ -11,7 +11,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
 
   # Get notification settings
   get "/settings" do
-    case get_notification_settings(conn) do
+    case get_notification_settings() do
       {:ok, settings} -> send_success(conn, settings)
       _error -> send_error(conn, 404, "Notification settings not found or could not be retrieved")
     end
@@ -40,7 +40,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   end
 
   # Private functions
-  defp get_notification_settings(_conn) do
+  defp get_notification_settings do
     settings = %{
       channels: Config.discord_channel_id(),
       features: Config.features(),
@@ -52,7 +52,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
     error ->
       AppLogger.api_error("Error getting notification settings", %{
         error: inspect(error),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
 
       {:error, "An unexpected error occurred"}

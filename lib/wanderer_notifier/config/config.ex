@@ -50,9 +50,23 @@ defmodule WandererNotifier.Config do
 
   def map_slug do
     url = map_url_with_name()
-    uri = URI.parse(url || "")
-    slug = uri.path |> String.trim("/") |> String.split("/") |> List.last()
-    slug
+
+    if url == nil or url == "" do
+      # Return nil for missing URL
+      nil
+    else
+      uri = URI.parse(url)
+
+      # Check if URI has a path
+      if uri.path != nil and uri.path != "" do
+        uri.path |> String.trim("/") |> String.split("/") |> List.last()
+      else
+        # Log warning and return nil for missing path
+        require Logger
+        Logger.warning("No path in map URL: #{url}")
+        nil
+      end
+    end
   end
 
   def map_api_key, do: get(:map_api_key, "")
@@ -209,8 +223,22 @@ defmodule WandererNotifier.Config do
   # Add a function to return the base URL portion of map_url_with_name
   def base_map_url do
     url = map_url_with_name()
-    uri = URI.parse(url || "")
-    base_url = "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-    base_url
+
+    if url == nil or url == "" do
+      # Return a default or nil for missing URL
+      nil
+    else
+      uri = URI.parse(url)
+
+      # Check for valid scheme and host
+      if uri.scheme != nil and uri.host != nil do
+        "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
+      else
+        # Log warning and return nil for invalid URL
+        require Logger
+        Logger.warning("Invalid map URL format: #{url}")
+        nil
+      end
+    end
   end
 end

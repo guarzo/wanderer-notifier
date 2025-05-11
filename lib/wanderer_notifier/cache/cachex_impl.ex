@@ -48,11 +48,37 @@ defmodule WandererNotifier.Cache.CachexImpl do
       ttl_seconds: ttl
     )
 
+    # Validate TTL if present
+    validated_ttl =
+      cond do
+        is_nil(ttl) ->
+          nil
+
+        is_integer(ttl) and ttl > 0 ->
+          ttl
+
+        is_integer(ttl) and ttl <= 0 ->
+          AppLogger.cache_warn("Non-positive TTL value provided, using default",
+            key: key,
+            ttl_seconds: ttl
+          )
+
+          nil
+
+        true ->
+          AppLogger.cache_warn("Invalid TTL value provided, using default",
+            key: key,
+            ttl_seconds: ttl
+          )
+
+          nil
+      end
+
     result =
-      if is_nil(ttl) do
+      if is_nil(validated_ttl) do
         Cachex.put(cache_name(), key, value)
       else
-        Cachex.put(cache_name(), key, value, ttl: :timer.seconds(ttl))
+        Cachex.put(cache_name(), key, value, ttl: :timer.seconds(validated_ttl))
       end
 
     case result do
@@ -131,15 +157,8 @@ defmodule WandererNotifier.Cache.CachexImpl do
   @impl true
   def get_and_update(key, update_fun) do
     try do
-      Cachex.get_and_update(cache_name(), key, fn
-        nil ->
-          {current, updated} = update_fun.(nil)
-          {current, updated}
-
-        existing ->
-          {current, updated} = update_fun.(existing)
-          {current, updated}
-      end)
+      # Pass update_fun directly to Cachex.get_and_update
+      Cachex.get_and_update(cache_name(), key, update_fun)
     rescue
       e ->
         AppLogger.cache_error("Error in get_and_update",

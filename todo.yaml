@@ -1,0 +1,4 @@
+- test basic functionality - kills (character/system)/systems/characters
+- update UI to match new code
+- review cicd
+- add discord commands -- /notifier system <system name>, /notifier signature type -- ideally as a private message

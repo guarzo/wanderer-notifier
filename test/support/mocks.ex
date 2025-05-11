@@ -91,17 +91,20 @@ defmodule WandererNotifier.MockESI do
     kills = Process.get({:cache, "zkill:recent_kills"}) || []
 
     if is_list(kills) && length(kills) > 0 do
-      # Process kills into a map format expected by the controller - return directly, not in a tuple
-      kills
-      |> Enum.map(fn id ->
-        key = "zkill:recent_kills:#{id}"
-        {id, Process.get({:cache, key})}
-      end)
-      |> Enum.reject(fn {_, v} -> is_nil(v) end)
-      |> Enum.into(%{})
+      # Process kills into a map format expected by the controller - return in a tuple
+      kills_map =
+        kills
+        |> Enum.map(fn id ->
+          key = "zkill:recent_kills:#{id}"
+          {id, Process.get({:cache, key})}
+        end)
+        |> Enum.reject(fn {_, v} -> is_nil(v) end)
+        |> Enum.into(%{})
+
+      {:ok, kills_map}
     else
-      # Return empty map directly
-      %{}
+      # Return empty map in a tuple
+      {:ok, %{}}
     end
   end
 end
@@ -183,12 +186,40 @@ defmodule WandererNotifier.Test.Support.Mocks do
     kill_ids = Process.get({:cache, "zkill:recent_kills"}) || []
 
     # Convert to a list of killmails
-    kill_ids
-    |> Enum.map(fn id ->
-      kill = Process.get({:cache, "zkill:recent_kills:#{id}"})
-      if kill, do: Map.put(kill, "id", id), else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
+    kills =
+      kill_ids
+      |> Enum.map(fn id ->
+        kill = Process.get({:cache, "zkill:recent_kills:#{id}"})
+        if kill, do: Map.put(kill, "id", id), else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    # Format return value to match controller expectation
+    {:ok, kills}
+  end
+
+  @doc """
+  Get recent kills. Used by the KillController.
+  """
+  def get_recent_kills do
+    kills = Process.get({:cache, "zkill:recent_kills"}) || []
+
+    if is_list(kills) && length(kills) > 0 do
+      # Process kills into a map format expected by the controller - return in a tuple
+      kills_map =
+        kills
+        |> Enum.map(fn id ->
+          key = "zkill:recent_kills:#{id}"
+          {id, Process.get({:cache, key})}
+        end)
+        |> Enum.reject(fn {_, v} -> is_nil(v) end)
+        |> Enum.into(%{})
+
+      {:ok, kills_map}
+    else
+      # Return empty map in a tuple
+      {:ok, %{}}
+    end
   end
 
   def init_batch_logging, do: :ok

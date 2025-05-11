@@ -9,25 +9,32 @@ end
 # Load .env file and get all env vars as a map
 env_vars = source!(".env")
 
-# Explicitly set all .env variables in the process environment
-Enum.each(env_vars, fn {k, v} -> System.put_env(k, v) end)
+# Set .env variables only if they aren't already present in the environment
+Enum.each(env_vars, fn {k, v} ->
+  if System.get_env(k) == nil do
+    System.put_env(k, v)
+  end
+end)
 
-# Helper to parse boolean env vars
+# Helper to parse boolean env vars using a map lookup for efficiency
 parse_bool = fn var, default ->
   val = System.get_env(var)
 
-  case String.downcase(val || "") do
-    "true" -> true
-    "1" -> true
-    "yes" -> true
-    "on" -> true
-    "false" -> false
-    "0" -> false
-    "no" -> false
-    "off" -> false
-    "" -> default
-    nil -> default
-    _ -> default
+  # If nil or empty, return the default
+  if val == nil or val == "" do
+    default
+  else
+    # Use a map lookup for constant-time comparison
+    %{
+      "true" => true,
+      "1" => true,
+      "yes" => true,
+      "on" => true,
+      "false" => false,
+      "0" => false,
+      "no" => false,
+      "off" => false
+    }[String.downcase(val)] || default
   end
 end
 
