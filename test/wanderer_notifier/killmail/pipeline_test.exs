@@ -6,6 +6,55 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.Notifications.DiscordNotifierMock
 
+  # Define MockConfig for testing
+  defmodule MockConfig do
+    def notifications_enabled?, do: true
+    def system_notifications_enabled?, do: true
+    def character_notifications_enabled?, do: true
+  end
+
+  # Define MockCache for the tests
+  defmodule MockCache do
+    def get("map:systems") do
+      {:ok, [%{solar_system_id: "30000142", name: "Test System"}]}
+    end
+
+    def get("character:list") do
+      {:ok, [%{character_id: "100", name: "Victim"}]}
+    end
+
+    def get("tracked_character:" <> _) do
+      {:error, :not_found}
+    end
+
+    def get(_), do: {:error, :not_found}
+    def put(_key, _value), do: {:ok, :mock}
+    def put(_key, _value, _ttl), do: {:ok, :mock}
+    def delete(_key), do: {:ok, :mock}
+    def clear(), do: {:ok, :mock}
+    def get_and_update(_key, _fun), do: {:ok, :mock, :mock}
+    def set(_key, _value, _opts), do: {:ok, :mock}
+    def init_batch_logging(), do: :ok
+    def get_recent_kills(), do: []
+  end
+
+  # Define MockDeduplication for the tests
+  defmodule MockDeduplication do
+    def check(:kill, _id), do: {:ok, :new}
+    def clear_key(_type, _id), do: {:ok, :cleared}
+  end
+
+  # Define MockMetrics for the tests
+  defmodule MockMetrics do
+    def track_processing_start(_), do: :ok
+    def track_processing_end(_, _), do: :ok
+    def track_error(_, _), do: :ok
+    def track_notification_sent(_, _), do: :ok
+    def track_skipped_notification(_, _), do: :ok
+    def track_zkill_webhook_received(), do: :ok
+    def track_zkill_processing_status(_, _), do: :ok
+  end
+
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
@@ -18,6 +67,16 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       :discord_notifier,
       WandererNotifier.Notifications.DiscordNotifierMock
     )
+
+    # Set up config module
+    Application.put_env(:wanderer_notifier, :config, MockConfig)
+
+    # Set up cache and deduplication modules
+    Application.put_env(:wanderer_notifier, :cache_repo, MockCache)
+    Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
+
+    # Set up metrics module
+    Application.put_env(:wanderer_notifier, :metrics, MockMetrics)
 
     # Set up default stubs
     ServiceMock
@@ -149,7 +208,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     test "process_killmail/2 handles enrichment errors" do
       zkb_data = %{
         # Different ID from other tests
-        "killmail_id" => 54321,
+        "killmail_id" => 54_321,
         # Different hash
         "zkb" => %{"hash" => "error_hash"},
         "solar_system_id" => 30_000_142

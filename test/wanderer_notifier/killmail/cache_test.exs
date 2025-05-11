@@ -35,7 +35,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
     # Add sample killmail data to the test context
     sample_killmail = %{
-      "killmail_id" => 12345,
+      "killmail_id" => 12_345,
       "killmail_time" => "2023-01-01T12:00:00Z",
       "solar_system_id" => 30_000_142,
       "victim" => %{

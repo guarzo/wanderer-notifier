@@ -30,9 +30,9 @@ defmodule WandererNotifier.ESI.ServiceMock do
   }
 
   # Special test IDs for error cases
-  @error_id 99999
-  @not_found_id 88888
-  @service_unavailable_id 77777
+  @error_id 99_999
+  @not_found_id 88_888
+  @service_unavailable_id 77_777
 
   # Implement behaviour functions
   @impl true

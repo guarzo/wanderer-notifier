@@ -65,9 +65,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     method = Keyword.get(opts, :method, "get_single_killmail")
     log_info(method, opts)
 
-    with {:ok, decoded} <- request_and_decode(url),
-         {:ok, result} <- decode_single(decoded, Keyword.get(opts, :kill_id)) do
-      {:ok, result}
+    with {:ok, decoded} <- request_and_decode(url) do
+      decode_single(decoded, Keyword.get(opts, :kill_id))
     end
   end
 
@@ -129,7 +128,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   end
 
   defp decode_single([single] = _list, _id) when is_map(single), do: {:ok, single}
-  defp decode_single(single = %{}, _id), do: {:ok, single}
+  defp decode_single(%{} = single, _id), do: {:ok, single}
 
   defp decode_single([], id) do
     AppLogger.api_warn("No killmail found", %{kill_id: id})

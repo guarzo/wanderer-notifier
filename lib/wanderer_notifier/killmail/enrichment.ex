@@ -254,8 +254,10 @@ defmodule WandererNotifier.Killmail.Enrichment do
     kill_id = Map.get(kill, "killmail_id")
     value = get_in(kill, ["zkb", "totalValue"]) || 0
     formatted_value = format_isk_value(value)
-    # TODO: Implement time formatting
-    time_ago = "? ago"
+
+    # Get kill timestamp and format time ago
+    kill_time = get_kill_timestamp(kill)
+    time_ago = format_time_ago(kill_time)
 
     case get_ship_info(get_in(kill, ["esi_data", "victim", "ship_type_id"])) do
       {:ok, %{"name" => name}} ->
@@ -263,6 +265,33 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
       _ ->
         nil
+    end
+  end
+
+  defp get_kill_timestamp(kill) do
+    case get_in(kill, ["esi_data", "killmail_time"]) do
+      nil ->
+        # Fallback to zkillboard time if available
+        unix_time = get_in(kill, ["zkb", "unixtime"])
+        if unix_time, do: DateTime.from_unix!(unix_time), else: DateTime.utc_now()
+
+      time_string ->
+        {:ok, datetime, _} = DateTime.from_iso8601(time_string)
+        datetime
+    end
+  end
+
+  defp format_time_ago(timestamp) do
+    now = DateTime.utc_now()
+    diff_seconds = DateTime.diff(now, timestamp)
+
+    cond do
+      diff_seconds < 3600 -> "<1hr"
+      diff_seconds < 7200 -> "1hr"
+      diff_seconds < 86_400 -> "#{div(diff_seconds, 3600)}hr"
+      diff_seconds < 172_800 -> "1d"
+      diff_seconds < 604_800 -> "#{div(diff_seconds, 86_400)}d"
+      true -> "#{div(diff_seconds, 604_800)}w"
     end
   end
 

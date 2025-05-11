@@ -32,7 +32,7 @@ defmodule WandererNotifier.Killmail.ZKillClientTest do
             "character_id" => 789,
             "corporation_id" => 456,
             "alliance_id" => 123,
-            "ship_type_id" => 12345
+            "ship_type_id" => 12_345
           },
           "zkb" => %{
             "awox" => false,

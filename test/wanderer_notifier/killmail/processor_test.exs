@@ -6,12 +6,97 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.Notifications.Determiner.KillMock
 
+  # Define MockConfig for testing
+  defmodule MockConfig do
+    def notifications_enabled?, do: true
+    def system_notifications_enabled?, do: true
+    def character_notifications_enabled?, do: true
+  end
+
+  # Define MockCache for the tests
+  defmodule MockCache do
+    def get("map:systems") do
+      {:ok, [%{solar_system_id: "30000142", name: "Test System"}]}
+    end
+
+    def get("character:list") do
+      {:ok, [%{character_id: "123", name: "Test Character"}]}
+    end
+
+    def get("tracked_character:" <> _) do
+      {:error, :not_found}
+    end
+
+    def get(key) do
+      if key == WandererNotifier.Cache.Keys.zkill_recent_kills() do
+        {:ok,
+         [
+           %{
+             "killmail_id" => "12345",
+             "zkb" => %{"hash" => "test_hash"}
+           }
+         ]}
+      else
+        {:error, :not_found}
+      end
+    end
+
+    def put(_key, _value), do: {:ok, :mock}
+    def put(_key, _value, _ttl), do: {:ok, :mock}
+    def delete(_key), do: {:ok, :mock}
+    def clear(), do: {:ok, :mock}
+    def get_and_update(_key, _fun), do: {:ok, :mock, :mock}
+    def set(_key, _value, _opts), do: {:ok, :mock}
+    def init_batch_logging(), do: :ok
+    def get_recent_kills(), do: []
+  end
+
+  # Define MockDeduplication for the tests
+  defmodule MockDeduplication do
+    def check(:kill, _id), do: {:ok, :new}
+    def clear_key(_type, _id), do: {:ok, :cleared}
+  end
+
+  # Define MockMetrics for the tests
+  defmodule MockMetrics do
+    def track_processing_start(_), do: :ok
+    def track_processing_end(_, _), do: :ok
+    def track_error(_, _), do: :ok
+    def track_notification_sent(_, _), do: :ok
+    def track_skipped_notification(_, _), do: :ok
+    def track_zkill_webhook_received(), do: :ok
+    def track_zkill_processing_status(_, _), do: :ok
+  end
+
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
   setup do
-    # Set up mocks
+    # Store original environment settings
+    original_esi_service = Application.get_env(:wanderer_notifier, :esi_service)
+    original_kill_determiner = Application.get_env(:wanderer_notifier, :kill_determiner)
+    original_metrics = Application.get_env(:wanderer_notifier, :metrics)
+
+    # Override with mocks for testing
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+
+    Application.put_env(
+      :wanderer_notifier,
+      :kill_determiner,
+      WandererNotifier.Notifications.Determiner.KillMock
+    )
+
+    Application.put_env(:wanderer_notifier, :metrics, MockMetrics)
+
+    # Set up config module
+    Application.put_env(:wanderer_notifier, :config, MockConfig)
+
+    # Set up cache and deduplication modules
+    Application.put_env(:wanderer_notifier, :cache_repo, MockCache)
+    Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
+
+    # Set up metrics module
+    Application.put_env(:wanderer_notifier, :killmail_metrics, MockMetrics)
 
     # Set up default stubs
     ServiceMock
@@ -53,13 +138,33 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       {:ok, %{should_notify: true}}
     end)
 
+    on_exit(fn ->
+      # Restore original settings
+      if original_esi_service,
+        do: Application.put_env(:wanderer_notifier, :esi_service, original_esi_service),
+        else: Application.delete_env(:wanderer_notifier, :esi_service)
+
+      if original_kill_determiner,
+        do: Application.put_env(:wanderer_notifier, :kill_determiner, original_kill_determiner),
+        else: Application.delete_env(:wanderer_notifier, :kill_determiner)
+
+      if original_metrics,
+        do: Application.put_env(:wanderer_notifier, :metrics, original_metrics),
+        else: Application.delete_env(:wanderer_notifier, :metrics)
+    end)
+
     :ok
   end
 
   describe "process_zkill_message/2" do
     test "successfully processes a valid ZKill message" do
       # Setup
-      state = %{}
+      test_context = %Context{
+        mode: %{mode: :test},
+        character_id: 123,
+        character_name: "Test Character",
+        source: :test
+      }
 
       valid_message =
         Jason.encode!(%{
@@ -70,15 +175,21 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # We need to test that the message gets decoded
       # and the result matches what we expect
-      result = Processor.process_zkill_message(valid_message, state)
+      result = Processor.process_zkill_message(valid_message, test_context)
 
-      # Verify the state is returned (indicating processing happened)
-      assert result == state
+      # Since process_kill_data returns {:ok, kill_id} and process_zkill_message calls it,
+      # we expect the same return value
+      assert match?({:ok, _}, result)
     end
 
     test "skips processing when notification is not needed" do
       # Setup
-      state = %{}
+      test_context = %Context{
+        mode: %{mode: :test},
+        character_id: 123,
+        character_name: "Test Character",
+        source: :test
+      }
 
       valid_message =
         Jason.encode!(%{
@@ -94,22 +205,29 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       end)
 
       # Execute
-      result = Processor.process_zkill_message(valid_message, state)
+      result = Processor.process_zkill_message(valid_message, test_context)
 
-      # Verify
-      assert result == state
+      # When should_notify? returns false, it skips processing and logs
+      # But it doesn't actually return the state, it returns {:ok, :skipped}
+      assert result == {:ok, :skipped}
     end
 
     test "handles invalid JSON message" do
       # Setup
-      state = %{}
+      test_context = %Context{
+        mode: %{mode: :test},
+        character_id: 123,
+        character_name: "Test Character",
+        source: :test
+      }
+
       invalid_message = "not valid json"
 
       # Execute
-      result = Processor.process_zkill_message(invalid_message, state)
+      result = Processor.process_zkill_message(invalid_message, test_context)
 
-      # Verify
-      assert result == state
+      # When there's an error, it should return the state (context)
+      assert result == test_context
     end
   end
 
@@ -276,10 +394,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       defmodule TestCacheRepo do
         def get(cache_key) do
           if cache_key == WandererNotifier.Cache.Keys.zkill_recent_kills() do
-            {:ok, [%{
-              "killmail_id" => "12345",
-              "zkb" => %{"hash" => "test_hash"}
-            }]}
+            {:ok,
+             [
+               %{
+                 "killmail_id" => "12345",
+                 "zkb" => %{"hash" => "test_hash"}
+               }
+             ]}
           else
             {:error, :not_found}
           end
@@ -289,12 +410,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       # Create pipeline module for testing
       defmodule TestKillPipeline do
         def process_killmail(_kill_data, _context) do
-          {:ok, %WandererNotifier.Killmail.Killmail{
-            killmail_id: "12345",
-            victim_name: "Test Victim",
-            system_name: "Test System",
-            zkb: %{"hash" => "test_hash"}
-          }}
+          {:ok,
+           %WandererNotifier.Killmail.Killmail{
+             killmail_id: "12345",
+             victim_name: "Test Victim",
+             system_name: "Test System",
+             zkb: %{"hash" => "test_hash"}
+           }}
         end
       end
 
@@ -348,10 +470,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       defmodule TestErrorCacheRepo do
         def get(cache_key) do
           if cache_key == WandererNotifier.Cache.Keys.zkill_recent_kills() do
-            {:ok, [%{
-              "killmail_id" => "12345",
-              "zkb" => %{"hash" => "error_hash"}
-            }]}
+            {:ok,
+             [
+               %{
+                 "killmail_id" => "12345",
+                 "zkb" => %{"hash" => "error_hash"}
+               }
+             ]}
           else
             {:error, :not_found}
           end

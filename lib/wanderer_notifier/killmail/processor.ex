@@ -30,7 +30,9 @@ defmodule WandererNotifier.Killmail.Processor do
     - state: The current state
 
   ## Returns
-    - new_state
+    - {:ok, kill_id} if processed successfully
+    - {:ok, :skipped} if processing was skipped
+    - state on error or when notification is not needed
   """
   def process_zkill_message(message, state) do
     with {:ok, kill_data} <- decode_zkill_message(message),
@@ -39,6 +41,7 @@ defmodule WandererNotifier.Killmail.Processor do
         process_kill_data(kill_data, state)
       else
         log_skipped_kill(kill_data, reason)
+        # Return state when notification is not needed, to match the documentation
         state
       end
     else
@@ -90,21 +93,18 @@ defmodule WandererNotifier.Killmail.Processor do
 
     AppLogger.kill_info("Processing kill data", %{kill_id: kill_id})
 
-    with {:ok, enriched_kill} <- killmail_pipeline().process_killmail(kill_data, context) do
-      AppLogger.kill_info("Kill data processed successfully", %{kill_id: kill_id})
+    case killmail_pipeline().process_killmail(kill_data, context) do
+      {:ok, enriched_kill} ->
+        AppLogger.kill_info("Kill data processed successfully", %{kill_id: kill_id})
 
-      # Handle the case when the pipeline returns :skipped
-      if enriched_kill == :skipped do
-        {:ok, :skipped}
-      else
-        # Only try to send notification if we got actual killmail data
-        killmail_notification().send_kill_notification(enriched_kill, "kill", %{})
-        {:ok, kill_id}
-      end
-    else
-      {:ok, :skipped} ->
-        AppLogger.kill_info("Kill data skipped", %{kill_id: kill_id})
-        {:ok, :skipped}
+        # Handle the case when the pipeline returns :skipped
+        if enriched_kill == :skipped do
+          {:ok, :skipped}
+        else
+          # Only try to send notification if we got actual killmail data
+          killmail_notification().send_kill_notification(enriched_kill, "kill", %{})
+          {:ok, kill_id}
+        end
 
       {:error, reason} = error ->
         AppLogger.kill_error("Failed to process kill data", %{

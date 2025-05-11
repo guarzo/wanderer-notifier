@@ -6,11 +6,17 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   @behaviour WandererNotifier.Notifications.Determiner.KillBehaviour
 
-  alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.Notifications.Helpers.Deduplication
+
+  # Get the configured cache repo at runtime, not compile time
+  defp cache_repo, do: Application.get_env(:wanderer_notifier, :cache_repo)
+
+  # Get the configured deduplication module at runtime, not compile time
+  defp deduplication_module do
+    Application.get_env(:wanderer_notifier, :deduplication_module) ||
+      WandererNotifier.Notifications.Helpers.Deduplication
+  end
 
   @impl true
   @doc """
@@ -26,19 +32,33 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_id = get_kill_system_id(killmail)
     kill_id = get_kill_id(killmail)
 
-    with true <- check_notifications_enabled(kill_id),
-         true <- check_tracking(system_id, killmail) do
-      check_deduplication_and_decide(kill_id)
-    else
-      false -> {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
-      _ -> {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+    cond do
+      not check_notifications_enabled() ->
+        {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+
+      not check_tracking(system_id, killmail) ->
+        {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
+
+      true ->
+        check_deduplication_and_decide(kill_id)
     end
   end
 
-  defp check_notifications_enabled(_kill_id) do
-    notifications_enabled = Config.notifications_enabled?()
-    system_notifications_enabled = Config.system_notifications_enabled?()
-    notifications_enabled && system_notifications_enabled
+  defp check_notifications_enabled do
+    # Get the config module from application environment at runtime
+    config_module = Application.get_env(:wanderer_notifier, :config)
+
+    # Check if config_module is nil or is a valid module
+    if config_module == nil do
+      # Default to enabled if config_module is nil
+      true
+    else
+      # Call the config functions
+      notifications_enabled = config_module.notifications_enabled?()
+      system_notifications_enabled = config_module.system_notifications_enabled?()
+
+      notifications_enabled && system_notifications_enabled
+    end
   end
 
   defp check_tracking(nil, killmail) do
@@ -54,7 +74,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_deduplication_and_decide(kill_id) do
-    case Deduplication.check(:kill, kill_id) do
+    case deduplication_module().check(:kill, kill_id) do
       {:ok, :new} -> {:ok, %{should_notify: true, reason: nil}}
       {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
       {:error, _reason} -> {:ok, %{should_notify: true, reason: nil}}
@@ -127,7 +147,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    result = CacheRepo.get(CacheKeys.map_systems())
+    result = cache_repo().get(CacheKeys.map_systems())
 
     case result do
       {:ok, systems} when is_list(systems) ->
@@ -179,7 +199,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Get all tracked character IDs
   defp get_all_tracked_character_ids do
-    case CacheRepo.get(CacheKeys.character_list()) do
+    case cache_repo().get(CacheKeys.character_list()) do
       {:ok, all_characters} when is_list(all_characters) ->
         all_characters
         |> Enum.map(&extract_character_id/1)
@@ -208,7 +228,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     direct_cache_key = CacheKeys.tracked_character(victim_id_str)
 
     tracked =
-      case CacheRepo.get(direct_cache_key) do
+      case cache_repo().get(direct_cache_key) do
         {:ok, _} -> true
         _ -> false
       end
@@ -352,7 +372,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     do: tracked_character?(to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    result = CacheRepo.get(CacheKeys.character_list())
+    result = cache_repo().get(CacheKeys.character_list())
 
     case result do
       {:ok, characters} when is_list(characters) ->

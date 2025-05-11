@@ -16,9 +16,10 @@ defmodule WandererNotifier.Killmail.Pipeline do
   @doc """
   Process a killmail through the pipeline.
   """
-  @spec process_killmail(map(), Context.t()) :: result()
+  @spec process_killmail(map(), Context.t() | map()) :: result()
   def process_killmail(zkb_data, ctx) do
-    Metrics.track_processing_start(ctx)
+    # Only track metrics if ctx is a proper Context struct
+    try_track_processing_start(ctx)
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- create_killmail(zkb_data),
@@ -26,12 +27,12 @@ defmodule WandererNotifier.Killmail.Pipeline do
          {:ok, tracked} <- check_tracking(enriched),
          {:ok, should_notify, reason} <- check_notification(tracked, ctx),
          {:ok, result} <- maybe_send_notification(tracked, should_notify, ctx) do
-      Metrics.track_processing_complete(ctx, {:ok, result})
+      try_track_processing_complete(ctx, {:ok, result})
       log_killmail_outcome(result, ctx, persisted: true, notified: should_notify, reason: reason)
       {:ok, result}
     else
       {:error, {:skipped, reason}} ->
-        Metrics.track_processing_skipped(ctx)
+        try_track_processing_skipped(ctx)
         # Log system name and ID for skipped killmails
         system_id = Map.get(zkb_data, "solar_system_id")
         _killmail_id = Map.get(zkb_data, "killmail_id")
@@ -46,7 +47,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
         {:ok, :skipped}
 
       error ->
-        Metrics.track_processing_error(ctx)
+        try_track_processing_error(ctx)
         log_killmail_error(zkb_data, ctx, error)
         error
     end
@@ -219,4 +220,37 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp get_kill_id(%{killmail_id: id}) when is_binary(id) or is_integer(id), do: id
   defp get_kill_id(%{"killmail_id" => id}) when is_binary(id) or is_integer(id), do: id
   defp get_kill_id(_), do: "unknown"
+
+  # Helper functions to safely track metrics
+  defp try_track_processing_start(ctx) do
+    if is_struct(ctx, Context) and function_exported?(Metrics, :track_processing_start, 1) do
+      Metrics.track_processing_start(ctx)
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp try_track_processing_complete(ctx, result) do
+    if is_struct(ctx, Context) and function_exported?(Metrics, :track_processing_complete, 2) do
+      Metrics.track_processing_complete(ctx, result)
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp try_track_processing_skipped(ctx) do
+    if is_struct(ctx, Context) and function_exported?(Metrics, :track_processing_skipped, 1) do
+      Metrics.track_processing_skipped(ctx)
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp try_track_processing_error(ctx) do
+    if is_struct(ctx, Context) and function_exported?(Metrics, :track_processing_error, 1) do
+      Metrics.track_processing_error(ctx)
+    end
+  rescue
+    _ -> :ok
+  end
 end
