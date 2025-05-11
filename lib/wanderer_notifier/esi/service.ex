@@ -11,13 +11,35 @@ defmodule WandererNotifier.ESI.Service do
 
   @behaviour WandererNotifier.ESI.ServiceBehaviour
 
-  defp cache_repo,
-    do:
+  defp cache_repo do
+    repo =
       Application.get_env(
         :wanderer_notifier,
-        :cache_repository,
+        :cache_repo,
         WandererNotifier.Cache.CachexImpl
       )
+
+    # Ensure the module is loaded and available
+    if Code.ensure_loaded?(repo) do
+      repo
+    else
+      # Log this only once per minute to avoid log spam
+      cache_error_key = :esi_cache_repo_error_logged
+      last_logged = Process.get(cache_error_key)
+      now = System.monotonic_time(:second)
+
+      if is_nil(last_logged) || now - last_logged > 60 do
+        AppLogger.api_warn(
+          "Cache repository module #{inspect(repo)} not available in ESI Service, using fallback"
+        )
+
+        Process.put(cache_error_key, now)
+      end
+
+      # Return a dummy cache module that won't crash
+      SafeCache
+    end
+  end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash) do
@@ -299,6 +321,25 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   defp esi_client do
-    Application.get_env(:wanderer_notifier, :esi_client, WandererNotifier.MockESI)
+    client = Application.get_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.Client)
+
+    if Code.ensure_loaded?(client) do
+      client
+    else
+      # Fallback to the real client if the module is not available
+      AppLogger.api_warn(
+        "ESI client module #{inspect(client)} not available, falling back to WandererNotifier.ESI.Client"
+      )
+
+      WandererNotifier.ESI.Client
+    end
+  end
+
+  # Fallback module that returns safe defaults to prevent crashes
+  defmodule SafeCache do
+    def get(_key), do: {:error, :cache_not_available}
+    def put(_key, _value), do: {:error, :cache_not_available}
+    def delete(_key), do: {:error, :cache_not_available}
+    def exists?(_key), do: false
   end
 end

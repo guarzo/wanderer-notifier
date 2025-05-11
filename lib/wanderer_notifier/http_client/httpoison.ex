@@ -61,7 +61,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     case Jason.decode(body) do
       {:ok, decoded} ->
         # Log the decoded response for debugging
-        Logger.info("HTTP request successful, decoded body: #{inspect(decoded, limit: 1000)}")
+        # Logger.info("HTTP request successful, decoded body: #{inspect(decoded, limit: 1000)}")
         {:ok, %{status_code: status, body: decoded}}
 
       {:error, _reason} ->

@@ -10,7 +10,33 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   alias WandererNotifier.Killmail.Killmail
 
   # Get the configured cache repo at runtime, not compile time
-  defp cache_repo, do: Application.get_env(:wanderer_notifier, :cache_repo)
+  defp cache_repo do
+    repo =
+      Application.get_env(
+        :wanderer_notifier,
+        :cache_repo,
+        WandererNotifier.Cache.CachexImpl
+      )
+
+    # Ensure the module is loaded and available
+    if Code.ensure_loaded?(repo) do
+      repo
+    else
+      # Log this only once per minute to avoid log spam
+      cache_error_key = :determiner_cache_repo_error_logged
+      last_logged = Process.get(cache_error_key)
+      now = System.monotonic_time(:second)
+
+      if is_nil(last_logged) || now - last_logged > 60 do
+        require Logger
+        Logger.error("Cache repository module #{inspect(repo)} not configured in Kill Determiner")
+        Process.put(cache_error_key, now)
+      end
+
+      # Return a dummy cache module that won't crash
+      SafeCache
+    end
+  end
 
   # Get the configured deduplication module at runtime, not compile time
   defp deduplication_module do
@@ -29,18 +55,32 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     - {:ok, %{should_notify: boolean(), reason: String.t()}} with tracking information
   """
   def should_notify?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    kill_id = get_kill_id(killmail)
+    try do
+      system_id = get_kill_system_id(killmail)
+      kill_id = get_kill_id(killmail)
 
-    cond do
-      not check_notifications_enabled() ->
-        {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+      cond do
+        not check_notifications_enabled() ->
+          {:ok, %{should_notify: false, reason: "Notifications disabled"}}
 
-      not check_tracking(system_id, killmail) ->
-        {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
+        not check_tracking(system_id, killmail) ->
+          {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
 
-      true ->
-        check_deduplication_and_decide(kill_id)
+        true ->
+          check_deduplication_and_decide(kill_id)
+      end
+    rescue
+      error ->
+        require Logger
+
+        Logger.error("Error determining if notification should be sent for kill", %{
+          error: inspect(error),
+          killmail_id: extract_killmail_id(killmail),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        # Default to not notifying when errors occur
+        {:ok, %{should_notify: false, reason: "Error determining notification status"}}
     end
   end
 
@@ -147,16 +187,29 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    result = cache_repo().get(CacheKeys.map_systems())
+    try do
+      result = cache_repo().get(CacheKeys.map_systems())
 
-    case result do
-      {:ok, systems} when is_list(systems) ->
-        Enum.any?(systems, fn system ->
-          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-          to_string(id) == system_id_str
-        end)
+      case result do
+        {:ok, systems} when is_list(systems) ->
+          Enum.any?(systems, fn system ->
+            id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+            to_string(id) == system_id_str
+          end)
 
-      _ ->
+        _ ->
+          # Cache may not be initialized yet, default to false
+          false
+      end
+    rescue
+      error ->
+        require Logger
+
+        Logger.error("Error checking tracked system", %{
+          error: inspect(error),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
         false
     end
   end
@@ -198,20 +251,33 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp check_character_tracked(nil), do: false
 
   defp check_character_tracked(character_id) do
-    # First check in the list of tracked characters
-    all_character_ids = get_all_tracked_character_ids()
-    in_list = Enum.member?(all_character_ids, character_id)
+    try do
+      # First check in the list of tracked characters
+      all_character_ids = get_all_tracked_character_ids()
+      in_list = Enum.member?(all_character_ids, character_id)
 
-    # If not in list, try direct tracking
-    if !in_list do
-      direct_cache_key = CacheKeys.tracked_character(character_id)
+      # If not in list, try direct tracking
+      if !in_list do
+        direct_cache_key = CacheKeys.tracked_character(character_id)
 
-      case cache_repo().get(direct_cache_key) do
-        {:ok, _} -> true
-        _ -> false
+        case cache_repo().get(direct_cache_key) do
+          {:ok, _} -> true
+          _ -> false
+        end
+      else
+        true
       end
-    else
-      true
+    rescue
+      error ->
+        require Logger
+
+        Logger.error("Error checking if character is tracked", %{
+          error: inspect(error),
+          character_id: character_id,
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
+        false
     end
   end
 
@@ -226,13 +292,25 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Get all tracked character IDs
   defp get_all_tracked_character_ids do
-    case cache_repo().get(CacheKeys.character_list()) do
-      {:ok, all_characters} when is_list(all_characters) ->
-        all_characters
-        |> Enum.map(&extract_character_id/1)
-        |> Enum.reject(&is_nil/1)
+    try do
+      case cache_repo().get(CacheKeys.character_list()) do
+        {:ok, all_characters} when is_list(all_characters) ->
+          all_characters
+          |> Enum.map(&extract_character_id/1)
+          |> Enum.reject(&is_nil/1)
 
-      _ ->
+        _ ->
+          []
+      end
+    rescue
+      error ->
+        require Logger
+
+        Logger.error("Error getting tracked characters", %{
+          error: inspect(error),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
         []
     end
   end
@@ -347,19 +425,49 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     do: tracked_character?(to_string(character_id))
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    result = cache_repo().get(CacheKeys.character_list())
+    try do
+      result = cache_repo().get(CacheKeys.character_list())
 
-    case result do
-      {:ok, characters} when is_list(characters) ->
-        Enum.any?(characters, fn char ->
-          id = Map.get(char, :character_id) || Map.get(char, "character_id")
-          to_string(id) == character_id_str
-        end)
+      case result do
+        {:ok, characters} when is_list(characters) ->
+          Enum.any?(characters, fn char ->
+            id = Map.get(char, :character_id) || Map.get(char, "character_id")
+            to_string(id) == character_id_str
+          end)
 
-      _ ->
+        _ ->
+          false
+      end
+    rescue
+      error ->
+        require Logger
+
+        Logger.error("Error checking if character is directly tracked", %{
+          error: inspect(error),
+          character_id: character_id_str,
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
         false
     end
   end
 
   def tracked_character?(_), do: false
+
+  # Safely extract killmail_id for error logging
+  defp extract_killmail_id(killmail) do
+    try do
+      get_kill_id(killmail)
+    rescue
+      _ -> "unknown"
+    end
+  end
+
+  # Fallback module that returns safe defaults to prevent crashes
+  defmodule SafeCache do
+    def get(_key), do: {:error, :cache_not_available}
+    def put(_key, _value), do: {:error, :cache_not_available}
+    def delete(_key), do: {:error, :cache_not_available}
+    def exists?(_key), do: false
+  end
 end

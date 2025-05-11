@@ -120,12 +120,10 @@ defmodule WandererNotifier.Killmail.Processor do
   Sends a test kill notification.
   """
   def send_test_kill_notification do
-
     with {:ok, recent_kill} <- get_recent_kills(),
          kill_id = extract_kill_id(recent_kill),
          killmail = ensure_data_killmail(recent_kill),
          {:ok, enriched_kill} <- killmail_pipeline().process_killmail(killmail, %Context{}) do
-
       killmail_notification().send_kill_notification(enriched_kill, "test", %{})
       {:ok, kill_id}
     else
@@ -168,9 +166,37 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp get_system_name(system_id) do
-    case WandererNotifier.ESI.Service.get_system(system_id) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "Unknown"
+    # First check the process dict cache to avoid repeated ESI calls for the same system
+    process_cache_key = {:system_name_cache, system_id}
+    cached_name = Process.get(process_cache_key)
+
+    if cached_name do
+      cached_name
+    else
+      try do
+        case WandererNotifier.ESI.Service.get_system(system_id) do
+          {:ok, %{"name" => name}} ->
+            # Only cache successful results
+            Process.put(process_cache_key, name)
+            name
+
+          {:error, _} ->
+            # Don't cache failures - return a temporary value
+            "Unknown (#{system_id})"
+
+          _ ->
+            "Unknown (#{system_id})"
+        end
+      rescue
+        e ->
+          AppLogger.api_error("Failed to get system name",
+            system_id: system_id,
+            error: Exception.message(e)
+          )
+
+          # Don't cache errors
+          "Unknown (#{system_id})"
+      end
     end
   end
 
@@ -222,10 +248,40 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp cache_repo do
-    Application.get_env(
-      :wanderer_notifier,
-      :cache_repo,
-      WandererNotifier.Cache.CachexImpl
-    )
+    repo =
+      Application.get_env(
+        :wanderer_notifier,
+        :cache_repo,
+        WandererNotifier.Cache.CachexImpl
+      )
+
+    # Ensure the module is loaded and available
+    if Code.ensure_loaded?(repo) do
+      repo
+    else
+      # Log this only once per minute to avoid log spam
+      cache_error_key = :cache_repo_error_logged
+      last_logged = Process.get(cache_error_key)
+      now = System.monotonic_time(:second)
+
+      if is_nil(last_logged) || now - last_logged > 60 do
+        AppLogger.error(
+          "Cache repository module #{inspect(repo)} not available or not configured"
+        )
+
+        Process.put(cache_error_key, now)
+      end
+
+      # Return a dummy cache module that won't crash
+      SafeCache
+    end
+  end
+
+  # Fallback module that returns safe defaults to prevent crashes
+  defmodule SafeCache do
+    def get(_key), do: {:error, :cache_not_available}
+    def put(_key, _value), do: {:error, :cache_not_available}
+    def delete(_key), do: {:error, :cache_not_available}
+    def exists?(_key), do: false
   end
 end

@@ -245,6 +245,14 @@ defmodule WandererNotifier.ESI.Client do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
+      {:ok, %{status_code: status}} when status == 404 ->
+        AppLogger.api_debug("ESI solar system not found", %{
+          system_id: system_id,
+          status: status
+        })
+
+        {:error, {:system_not_found, system_id}}
+
       {:ok, %{status_code: status}} ->
         AppLogger.api_error("ESI solar system error response", %{
           system_id: system_id,
@@ -296,6 +304,14 @@ defmodule WandererNotifier.ESI.Client do
 
         {:error, reason}
     end
+  end
+
+  @doc """
+  Gets solar system information from ESI.
+  Alias for backward compatibility with get_solar_system.
+  """
+  def get_system(system_id, opts \\ []) do
+    get_solar_system(system_id, opts)
   end
 
   # Private helper functions
