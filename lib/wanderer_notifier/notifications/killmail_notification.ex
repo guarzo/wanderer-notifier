@@ -52,34 +52,36 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   def send_kill_notification(killmail, notification_type, notification_data) do
     kill_id = extract_kill_id(killmail)
 
+    require Logger
+    Logger.info("DEBUG: KillmailNotification.send_kill_notification called for #{kill_id}")
+
     AppLogger.kill_info("Starting kill notification process", %{
       kill_id: kill_id,
       type: notification_type
     })
 
     with {:ok, enriched_killmail} <- enrich_killmail(killmail),
-         # Get system_id first for better logging
-         system_id = KillDeterminer.get_kill_system_id(enriched_killmail),
-         # Check if this is a tracked system
-         tracked_system_result = KillDeterminer.tracked_system?(system_id),
-         # Check if any tracked characters are involved
-         tracked_character_result = KillDeterminer.has_tracked_character?(enriched_killmail),
          _ =
-           AppLogger.kill_info("Tracking check results", %{
+           AppLogger.kill_info("Killmail enriched successfully", %{
              kill_id: kill_id,
-             system_id: system_id,
-             system_tracked: tracked_system_result,
-             character_tracked: tracked_character_result
-           }) do
-      if tracked_system_result || tracked_character_result do
-        # Notification requirements met, proceed with sending
-        AppLogger.kill_info("Kill notification requirements met", %{
-          kill_id: kill_id,
-          system_id: system_id
-        })
+             struct_type: inspect(enriched_killmail.__struct__)
+           }),
+         # Actually check notification requirements - don't skip this logic!
+         {:ok, should_notify} <- check_notification_requirements(enriched_killmail) do
+      if should_notify do
+        AppLogger.kill_info(
+          "Kill notification requirements met, proceeding to send",
+          %{kill_id: kill_id}
+        )
 
         with {:ok, notification} <-
                create_notification(enriched_killmail, notification_type, notification_data),
+             _ =
+               AppLogger.kill_info("Notification created", %{
+                 kill_id: kill_id,
+                 notification_type: notification_type,
+                 notification_data_keys: Map.keys(notification)
+               }),
              {:ok, sent_notification} <- send_notification(notification) do
           AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
           {:ok, sent_notification}
@@ -93,13 +95,11 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
             {:error, reason}
         end
       else
-        # Log this as info since it's an expected condition
-        AppLogger.kill_info("Kill notification requirements not met", %{
-          kill_id: kill_id,
-          system_id: system_id
+        AppLogger.kill_info("Kill notification requirements not met, skipping notification", %{
+          kill_id: kill_id
         })
 
-        {:error, "No tracked systems or characters involved"}
+        {:ok, :skipped}
       end
     else
       {:error, reason} ->
@@ -201,7 +201,8 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
         system_id: system_id
       })
 
-      {:error, "No tracked systems or characters involved"}
+      # Return {:ok, false} instead of error to allow proper flow
+      {:ok, false}
     end
   end
 

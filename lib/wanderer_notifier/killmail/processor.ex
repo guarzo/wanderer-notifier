@@ -88,10 +88,20 @@ defmodule WandererNotifier.Killmail.Processor do
     - {:ok, kill_id} on success
     - {:error, reason} on failure
   """
-  def process_kill_data(kill_data, context) do
+  def process_kill_data(kill_data, service_state) do
     kill_id = Map.get(kill_data, "killmail_id", "unknown")
 
     AppLogger.kill_info("Processing kill data", %{kill_id: kill_id})
+
+    # Create a proper Context struct from the service state
+    # This ensures the pipeline receives the correct type
+    context =
+      WandererNotifier.Killmail.Context.new(
+        nil,
+        nil,
+        :zkill_websocket,
+        %{original_state: service_state}
+      )
 
     case killmail_pipeline().process_killmail(kill_data, context) do
       {:ok, enriched_kill} ->
@@ -99,9 +109,13 @@ defmodule WandererNotifier.Killmail.Processor do
 
         # Handle the case when the pipeline returns :skipped
         if enriched_kill == :skipped do
+          AppLogger.kill_info("Killmail processing was skipped", %{kill_id: kill_id})
           {:ok, :skipped}
         else
-          # Only try to send notification if we got actual killmail data
+          AppLogger.kill_info("About to send kill notification", %{
+            kill_id: kill_id
+          })
+
           case killmail_notification().send_kill_notification(enriched_kill, "kill", %{}) do
             {:ok, _notification} ->
               AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
@@ -160,9 +174,14 @@ defmodule WandererNotifier.Killmail.Processor do
 
   defp determine_notification(kill_data) do
     case WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data) do
-      {:ok, %{should_notify: true}} -> {:ok, true, nil}
-      {:ok, %{should_notify: false, reason: reason}} -> {:ok, false, reason}
-      _ -> {:error, :unexpected_response}
+      {:ok, %{should_notify: true}} ->
+        {:ok, true, nil}
+
+      {:ok, %{should_notify: false, reason: reason}} ->
+        {:ok, false, reason}
+
+      _ ->
+        {:error, :unexpected_response}
     end
   end
 

@@ -116,7 +116,7 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
 
     final_blow_attacker =
       Enum.find(attackers, fn attacker ->
-        Map.get(attacker, "final_blow") in [true, "true"] or attacker[:final_blow] == true
+        get_attacker_value(attacker, :final_blow) in [true, "true"]
       end)
 
     is_npc_kill = Map.get(zkb, "npc", false) == true
@@ -136,7 +136,10 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
   defp build_base_attacker_details(attacker) do
     character_id = get_attacker_value(attacker, :character_id)
     character_name = get_attacker_value(attacker, :character_name) || "Unknown"
-    ship_name = get_attacker_value(attacker, :ship_type_name) || "Unknown Ship"
+
+    ship_name =
+      get_attacker_value(attacker, :ship_name) || get_attacker_value(attacker, :ship_type_name) ||
+        "Unknown Ship"
 
     %{
       text: "#{character_name} (#{ship_name})",
@@ -217,8 +220,11 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     if details.character_id do
       char_link = "[#{details.name}](https://zkillboard.com/character/#{details.character_id}/)"
 
+      ship_type_id =
+        get_attacker_value(attacker, :ship_id) || get_attacker_value(attacker, :ship_type_id)
+
       ship_link =
-        "[#{details.ship}](https://zkillboard.com/ship/#{get_attacker_value(attacker, :ship_type_id)}/)"
+        "[#{details.ship}](https://zkillboard.com/ship/#{ship_type_id}/)"
 
       %{details | text: "#{char_link} (#{ship_link})"}
     else

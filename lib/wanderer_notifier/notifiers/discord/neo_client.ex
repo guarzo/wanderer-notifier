@@ -331,9 +331,19 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   defp normalize_channel_id(channel_id) do
     case channel_id do
-      channel_id when is_binary(channel_id) -> String.to_integer(channel_id)
-      channel_id when is_integer(channel_id) -> channel_id
-      nil -> nil
+      channel_id when is_binary(channel_id) and channel_id != "" ->
+        String.to_integer(channel_id)
+
+      channel_id when is_binary(channel_id) and channel_id == "" ->
+        # Fall back to default channel if kill channel is empty
+        String.to_integer(Config.discord_channel_id())
+
+      channel_id when is_integer(channel_id) ->
+        channel_id
+
+      nil ->
+        # Fall back to default channel if nil
+        String.to_integer(Config.discord_channel_id())
     end
   end
 

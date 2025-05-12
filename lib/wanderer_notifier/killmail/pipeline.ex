@@ -8,7 +8,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Killmail.{Context, Killmail, Metrics, Enrichment, Notification}
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
 
   @type killmail :: Killmail.t()
   @type result :: {:ok, killmail()} | {:error, term()}
@@ -35,7 +34,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
         try_track_processing_skipped(ctx)
         # Log system name and ID for skipped killmails
         system_id = Map.get(zkb_data, "solar_system_id")
-        _killmail_id = Map.get(zkb_data, "killmail_id")
+        killmail_id = Map.get(zkb_data, "killmail_id")
+
+        AppLogger.kill_info("Skipping kill in process_killmail", %{
+          kill_id: killmail_id,
+          system_id: system_id,
+          reason: reason
+        })
 
         _system_name =
           case ESIService.get_system(system_id) do
@@ -44,6 +49,12 @@ defmodule WandererNotifier.Killmail.Pipeline do
           end
 
         log_killmail_outcome(zkb_data, ctx, persisted: false, notified: false, reason: reason)
+
+        AppLogger.kill_info("Pipeline returning :skipped for kill", %{
+          killmail_id: Map.get(zkb_data, "killmail_id", "unknown"),
+          reason: reason
+        })
+
         {:ok, :skipped}
 
       error ->
@@ -63,9 +74,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
          killmail <- Killmail.new(kill_id, zkb_map, esi_data) do
       {:ok, killmail}
     else
+      {:error, reason} = error ->
+        log_killmail_error(zkb_data, nil, {:error, reason})
+        error
+
       error ->
         log_killmail_error(zkb_data, nil, error)
-        error
+        {:error, :create_killmail_failed}
     end
   end
 
@@ -82,53 +97,69 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   @spec check_tracking(killmail()) :: result()
   defp check_tracking(killmail) do
-    # Track system in debug logs only, don't make system 122 special
-    system_id =
+    # Handle case where killmail might be in a tuple
+    actual_killmail =
       case killmail do
-        %{esi_data: %{"solar_system_id" => id}} when not is_nil(id) -> id
-        %{"solar_system_id" => id} when not is_nil(id) -> id
-        _ -> nil
+        {:ok, km} when is_struct(km, Killmail) -> km
+        km when is_struct(km, Killmail) -> km
+        _ -> killmail
       end
 
-    case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: true}} ->
-        # Log at debug level when tracking check passes
-        AppLogger.kill_debug(
-          "Tracking check passed for kill",
-          %{system_id: system_id, kill_id: get_kill_id(killmail)}
-        )
+    # Skip duplicate tracking checks since should_notify? was already called in processor.ex
+    # This corrects the double check issue and prevents valid killmails from being skipped
+    kill_id = get_kill_id(actual_killmail)
 
-        {:ok, killmail}
+    AppLogger.kill_info("Pipeline skipping duplicate tracking check for kill", %{
+      kill_id: kill_id
+    })
 
-      {:ok, %{should_notify: false, reason: reason}} ->
-        # Log at debug level when tracking check fails
-        AppLogger.kill_debug(
-          "Tracking check failed for kill",
-          %{system_id: system_id, reason: reason, kill_id: get_kill_id(killmail)}
-        )
-
-        {:error, {:skipped, reason}}
-    end
+    # Simply pass through the killmail that already passed the should_notify check
+    {:ok, actual_killmail}
   end
 
   @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
   defp check_notification(killmail, _ctx) do
-    # Always notify if the kill matches notification rules
-    case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: should_notify, reason: reason}} ->
-        # We always consider messages to be in realtime mode now
-        {:ok, should_notify, reason}
+    # Handle case where killmail might be in a tuple
+    actual_killmail =
+      case killmail do
+        {:ok, km} when is_struct(km, Killmail) -> km
+        km when is_struct(km, Killmail) -> km
+        _ -> killmail
+      end
 
-      error ->
-        error
-    end
+    # Safe extraction for logging
+    kill_id = get_kill_id(actual_killmail)
+
+    # Skip redundant notification check - killmail has already passed notification check in processor.ex
+    AppLogger.kill_info("Pipeline skipping duplicate notification check for kill", %{
+      kill_id: kill_id
+    })
+
+    # Always indicate should notify as true since it already passed initial determination
+    {:ok, true, nil}
   end
 
   @spec maybe_send_notification(killmail(), boolean(), Context.t()) :: result()
   defp maybe_send_notification(killmail, true, ctx) do
     case Notification.send_kill_notification(killmail, killmail.killmail_id) do
       {:ok, _} ->
-        Metrics.track_notification_sent(ctx)
+        # Only track metrics if ctx is a proper Context struct
+        cond do
+          is_struct(ctx, Context) ->
+            Metrics.track_notification_sent(ctx)
+
+          is_map(ctx) and Map.has_key?(ctx, :__struct__) ->
+            AppLogger.kill_warn("Skipping metrics tracking - context is not a Context struct", %{
+              context_type: inspect(ctx.__struct__)
+            })
+
+          true ->
+            # Handle case where ctx is not a map or doesn't have __struct__
+            AppLogger.kill_warn("Skipping metrics tracking - invalid context type", %{
+              context_type: inspect(ctx)
+            })
+        end
+
         {:ok, killmail}
 
       error ->
@@ -148,8 +179,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
          notified: notified,
          reason: reason
        ) do
-    kill_id = get_kill_id(killmail)
-    kill_time = Map.get(killmail, "killmail_time")
+    # Handle error tuples that might be passed as killmail
+    kill_id = get_kill_id_safely(killmail)
+    kill_time = get_kill_time_safely(killmail)
 
     # Safely extract context values with nil-safe access
     character_id = if is_map(ctx), do: Map.get(ctx, :character_id)
@@ -177,9 +209,28 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
     # Use debug level for skipped and duplicates, info for others
     if status in ["skipped", "duplicate"] do
-      AppLogger.kill_debug(message, updated_metadata)
+      AppLogger.kill_info(message, updated_metadata)
     else
       AppLogger.kill_info(message, updated_metadata)
+    end
+  end
+
+  # Safe extraction of kill_id that handles error tuples
+  defp get_kill_id_safely(killmail) do
+    case killmail do
+      {:error, _} -> "unknown"
+      {:ok, km} when is_map(km) -> get_kill_id(km)
+      km -> get_kill_id(km)
+    end
+  end
+
+  # Safe extraction of kill_time that handles error tuples
+  defp get_kill_time_safely(killmail) do
+    case killmail do
+      {:error, _} -> nil
+      {:ok, km} when is_map(km) -> Map.get(km, "killmail_time")
+      km when is_map(km) -> Map.get(km, "killmail_time")
+      _ -> nil
     end
   end
 
