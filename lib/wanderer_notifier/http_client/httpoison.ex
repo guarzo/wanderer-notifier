@@ -67,6 +67,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
       {:error, _reason} ->
         # Return the raw body if it can't be decoded as JSON
+        AppLogger.info("HTTP request successful, non-JSON body: #{inspect(body, limit: 100)}")
         {:ok, %{status_code: status, body: body}}
     end
   end
