@@ -6,7 +6,8 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   @behaviour WandererNotifier.Schedulers.Scheduler
 
   @impl true
-  def config, do: %{type: :interval, spec: WandererNotifier.Config.character_update_scheduler_interval()}
+  def config,
+    do: %{type: :interval, spec: WandererNotifier.Config.character_update_scheduler_interval()}
 
   @impl true
   def run do
@@ -34,13 +35,16 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     task =
       Task.async(fn ->
         try do
-          Client.update_tracked_characters(cached_characters_safe)
+          Client.update_tracked_characters(cached_characters_safe,
+            suppress_notifications: !primed?
+          )
         rescue
           e ->
             AppLogger.maintenance_error("⚠️ Exception in character update task",
               error: Exception.message(e),
               stacktrace: inspect(Process.info(self(), :current_stacktrace))
             )
+
             {:error, :exception}
         end
       end)
@@ -50,18 +54,23 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         AppLogger.maintenance_info(
           "👥 Characters updated: #{length(ensure_list(characters))} characters synchronized"
         )
+
         if primed? do
           handle_successful_character_update(characters)
         else
           CacheRepo.put(:character_list_primed, true)
         end
+
       {:ok, {:error, :feature_disabled}} ->
         :ok
+
       {:ok, {:error, reason}} ->
         AppLogger.maintenance_error("⚠️ Character update failed", error: inspect(reason))
+
       nil ->
         Task.shutdown(task, :brutal_kill)
         AppLogger.maintenance_error("⚠️ Character update timed out after 10 seconds")
+
       {:exit, reason} ->
         AppLogger.maintenance_error("⚠️ Character update crashed", reason: inspect(reason))
     end
@@ -88,6 +97,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     alias WandererNotifier.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
     alias WandererNotifier.Logger.Logger, as: AppLogger
+
     task =
       Task.async(fn ->
         try do
@@ -99,8 +109,11 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
             )
         end
       end)
+
     case Task.yield(task, 5_000) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       nil ->
         Task.shutdown(task, :brutal_kill)
         AppLogger.maintenance_error("⚠️ Character cache verification timed out after 5 seconds")
@@ -113,6 +126,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     characters_list = ensure_list(characters)
     updated_cache = CacheRepo.get(CacheKeys.character_list())
     cache_list = ensure_list(updated_cache)
+
     if cache_list == [] do
       cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
       CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)

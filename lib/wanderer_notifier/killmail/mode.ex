@@ -1,9 +1,12 @@
 defmodule WandererNotifier.Killmail.Mode do
   @moduledoc """
   Defines the processing modes for killmail processing.
+
+  Note: This module is deprecated as the historical/realtime distinction is no longer used.
+  It is maintained for backwards compatibility.
   """
 
-  @type t :: :historical | :realtime
+  @type t :: :historical | :realtime | :default
 
   @type options :: %{
           optional(:batch_size) => pos_integer(),
@@ -16,6 +19,8 @@ defmodule WandererNotifier.Killmail.Mode do
 
   @doc """
   Creates a new mode struct with the given mode and options.
+
+  Note: This function is deprecated but maintained for compatibility.
   """
   @spec new(t(), options()) :: %__MODULE__{}
   def new(mode, options \\ %{}) do
@@ -27,6 +32,8 @@ defmodule WandererNotifier.Killmail.Mode do
 
   @doc """
   Returns the default options for a given mode.
+
+  Note: This function is deprecated but maintained for compatibility.
   """
   @spec default_options(t()) :: options()
   def default_options(:historical) do
@@ -39,6 +46,15 @@ defmodule WandererNotifier.Killmail.Mode do
   end
 
   def default_options(:realtime) do
+    %{
+      batch_size: 1,
+      concurrency: 1,
+      retry_attempts: 3,
+      retry_delay: 1000
+    }
+  end
+
+  def default_options(:default) do
     %{
       batch_size: 1,
       concurrency: 1,

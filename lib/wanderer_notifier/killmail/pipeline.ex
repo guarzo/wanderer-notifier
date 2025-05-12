@@ -82,18 +82,41 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   @spec check_tracking(killmail()) :: result()
   defp check_tracking(killmail) do
+    # Track system in debug logs only, don't make system 122 special
+    system_id =
+      case killmail do
+        %{esi_data: %{"solar_system_id" => id}} when not is_nil(id) -> id
+        %{"solar_system_id" => id} when not is_nil(id) -> id
+        _ -> nil
+      end
+
     case KillDeterminer.should_notify?(killmail) do
-      {:ok, %{should_notify: true}} -> {:ok, killmail}
-      {:ok, %{should_notify: false, reason: reason}} -> {:error, {:skipped, reason}}
+      {:ok, %{should_notify: true}} ->
+        # Log at debug level when tracking check passes
+        AppLogger.kill_debug(
+          "Tracking check passed for kill",
+          %{system_id: system_id, kill_id: get_kill_id(killmail)}
+        )
+
+        {:ok, killmail}
+
+      {:ok, %{should_notify: false, reason: reason}} ->
+        # Log at debug level when tracking check fails
+        AppLogger.kill_debug(
+          "Tracking check failed for kill",
+          %{system_id: system_id, reason: reason, kill_id: get_kill_id(killmail)}
+        )
+
+        {:error, {:skipped, reason}}
     end
   end
 
   @spec check_notification(killmail(), Context.t()) :: {:ok, boolean(), String.t()}
-  defp check_notification(killmail, ctx) do
-    # Only send notifications for realtime processing
+  defp check_notification(killmail, _ctx) do
+    # Always notify if the kill matches notification rules
     case KillDeterminer.should_notify?(killmail) do
       {:ok, %{should_notify: should_notify, reason: reason}} ->
-        should_notify = Context.realtime?(ctx) and should_notify
+        # We always consider messages to be in realtime mode now
         {:ok, should_notify, reason}
 
       error ->
@@ -132,7 +155,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
     character_id = if is_map(ctx), do: Map.get(ctx, :character_id)
     character_name = if is_map(ctx), do: Map.get(ctx, :character_name, "unknown")
     batch_id = if is_map(ctx), do: Map.get(ctx, :batch_id, "unknown")
-    processing_mode = if is_map(ctx) and is_map(ctx[:mode]), do: ctx.mode[:mode]
+
+    processing_mode =
+      if is_map(ctx) and is_map(Map.get(ctx, :mode)), do: Map.get(ctx.mode, :mode, :default)
 
     metadata = %{
       kill_id: kill_id,
@@ -183,7 +208,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
     character_id = if is_map(ctx), do: Map.get(ctx, :character_id)
     character_name = if is_map(ctx), do: Map.get(ctx, :character_name, "unknown")
     batch_id = if is_map(ctx), do: Map.get(ctx, :batch_id, "unknown")
-    processing_mode = if is_map(ctx) and is_map(ctx[:mode]), do: ctx.mode[:mode]
+
+    processing_mode =
+      if is_map(ctx) and is_map(Map.get(ctx, :mode)), do: Map.get(ctx.mode, :mode, :default)
 
     # Create base metadata
     metadata = %{

@@ -3,57 +3,69 @@ defmodule WandererNotifier.Killmail.ContextTest do
 
   alias WandererNotifier.Killmail.Context
 
-  describe "new_historical/5" do
-    test "creates a context struct for historical processing" do
-      context = Context.new_historical(123, "Alice", :zkill_api, "batch-1", %{foo: :bar})
-      assert %Context{} = context
-      assert context.character_id == 123
-      assert context.character_name == "Alice"
-      assert context.source == :zkill_api
-      assert context.batch_id == "batch-1"
-      assert context.options == %{foo: :bar}
-      assert context.mode.mode == :historical
-    end
+  test "creates a context with custom options" do
+    context = Context.new(123, "Alice", :zkill_api, %{foo: :bar})
 
-    test "defaults options to empty map if not provided" do
-      context = Context.new_historical(123, "Alice", :zkill_api, "batch-1")
-      assert context.options == %{}
-    end
+    assert %Context{} = context
+    assert context.character_id == 123
+    assert context.character_name == "Alice"
+    assert context.source == :zkill_api
+    assert context.options == %{foo: :bar}
   end
 
-  describe "new_realtime/4" do
-    test "creates a context struct for realtime processing" do
-      context = Context.new_realtime(456, "Bob", :zkill_websocket, %{baz: :qux})
-      assert %Context{} = context
-      assert context.character_id == 456
-      assert context.character_name == "Bob"
-      assert context.source == :zkill_websocket
-      assert context.batch_id == nil
-      assert context.options == %{baz: :qux}
-      assert context.mode.mode == :realtime
-    end
+  test "creates a context with default options" do
+    context = Context.new(123, "Alice", :zkill_api)
 
-    test "defaults options to empty map if not provided" do
-      context = Context.new_realtime(456, "Bob", :zkill_websocket)
-      assert context.options == %{}
-    end
+    assert context.character_id == 123
+    assert context.character_name == "Alice"
+    assert context.source == :zkill_api
+    assert context.options == %{}
   end
 
-  describe "historical?/1 and realtime?/1" do
-    test "returns true for historical context, false for realtime" do
-      hist = Context.new_historical(1, "A", :zkill_api, "b")
-      real = Context.new_realtime(2, "B", :zkill_websocket)
-      assert Context.historical?(hist)
-      refute Context.historical?(real)
-      refute Context.realtime?(hist)
-      assert Context.realtime?(real)
-    end
+  test "creates a context with custom source" do
+    context = Context.new(456, "Bob", :zkill_websocket, %{baz: :qux})
 
-    test "returns false for non-context structs" do
-      refute Context.historical?(%{})
-      refute Context.realtime?(%{})
-      refute Context.historical?(nil)
-      refute Context.realtime?(nil)
-    end
+    assert context.character_id == 456
+    assert context.character_name == "Bob"
+    assert context.source == :zkill_websocket
+    assert context.options == %{baz: :qux}
+  end
+
+  test "creates a context with default source" do
+    context = Context.new(456, "Bob", :zkill_websocket)
+
+    assert context.character_id == 456
+    assert context.character_name == "Bob"
+    assert context.source == :zkill_websocket
+    assert context.options == %{}
+  end
+
+  test "Access behavior implementation" do
+    ctx = Context.new(42, "test", :zkill_api, %{test: true})
+
+    # Test fetch
+    assert {:ok, 42} = Access.fetch(ctx, :character_id)
+    assert :error = Access.fetch(ctx, :not_a_field)
+
+    # Test get via Access protocol
+    assert Access.get(ctx, :character_id) == 42
+    assert Access.get(ctx, :not_a_field) == nil
+    assert Access.get(ctx, :not_a_field, :default) == :default
+
+    # Test get_and_update
+    {old, new} = Access.get_and_update(ctx, :character_id, fn current -> {current, 99} end)
+    assert old == 42
+    assert new.character_id == 99
+
+    # Test pop
+    {val, new_ctx} = Access.pop(ctx, :character_id)
+    assert val == 42
+    assert new_ctx.character_id == nil
+
+    # Test direct access via dot notation
+    assert ctx.mode == %{mode: :default}
+
+    # Test realtime? function
+    assert Context.realtime?(ctx) == true
   end
 end

@@ -102,8 +102,19 @@ defmodule WandererNotifier.Killmail.Processor do
           {:ok, :skipped}
         else
           # Only try to send notification if we got actual killmail data
-          killmail_notification().send_kill_notification(enriched_kill, "kill", %{})
-          {:ok, kill_id}
+          case killmail_notification().send_kill_notification(enriched_kill, "kill", %{}) do
+            {:ok, _notification} ->
+              AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+              {:ok, kill_id}
+
+            {:error, reason} ->
+              AppLogger.kill_error("Failed to send kill notification", %{
+                kill_id: kill_id,
+                error: inspect(reason)
+              })
+
+              {:error, {:notification_failed, reason}}
+          end
         end
 
       {:error, reason} = error ->

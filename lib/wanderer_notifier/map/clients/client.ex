@@ -73,17 +73,18 @@ defmodule WandererNotifier.Map.Clients.Client do
 
   ## Parameters
     - cached_characters: Optional list of cached characters for comparison
+    - opts: Options to pass to CharactersClient.update_tracked_characters
 
   ## Returns
     - {:ok, characters} on success
     - {:error, reason} on failure
   """
-  def update_tracked_characters(cached_characters \\ nil) do
+  def update_tracked_characters(cached_characters \\ nil, opts \\ []) do
     AppLogger.api_debug("Starting character update")
     current_characters = cached_characters || CacheRepo.get("map:characters") || []
     current_characters_list = ensure_list(current_characters)
 
-    CharactersClient.update_tracked_characters(current_characters_list)
+    CharactersClient.update_tracked_characters(current_characters_list, opts)
   end
 
   # Helper function to ensure we're working with a list

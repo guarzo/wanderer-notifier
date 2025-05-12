@@ -38,7 +38,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
         error: Exception.message(e)
       )
 
-      {:error, e}
+      {:error, {:exception, Exception.message(e)}}
   end
 
   @impl true

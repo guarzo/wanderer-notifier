@@ -7,6 +7,9 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
 
   @behaviour WandererNotifier.Notifications.Notification
 
+  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+
   @doc """
   Stub implementation for determine/1 for test notifier.
   """
@@ -30,6 +33,41 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   """
   @spec notify(map()) :: :ok | {:error, term()}
   def notify(notification), do: deliver(notification)
+
+  @doc """
+  Generic function to handle sending notifications in test mode.
+  """
+  @spec send_notification(atom(), list()) :: {:ok, :sent} | {:error, term()}
+  def send_notification(:send_discord_embed, [embed]) do
+    AppLogger.info("TestNotifier: send_notification :send_discord_embed", %{
+      embed_type: Map.get(embed, :type, "unknown"),
+      title: Map.get(embed, :title, "untitled")
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(:send_discord_embed_to_channel, [_channel_id, embed]) do
+    AppLogger.info("TestNotifier: send_notification :send_discord_embed_to_channel", %{
+      embed_type: Map.get(embed, :type, "unknown"),
+      title: Map.get(embed, :title, "untitled")
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(:send_message, [message]) when is_binary(message) do
+    AppLogger.info("TestNotifier: send_notification :send_message", %{
+      message: String.slice(message, 0, 50)
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(type, data) do
+    AppLogger.info("TestNotifier: send_notification", %{type: type, data: inspect(data)})
+    {:ok, :sent}
+  end
 
   # Utility: ensure_list/1 (if needed elsewhere, move to a shared helper)
   @doc false

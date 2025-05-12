@@ -146,7 +146,6 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
    - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
    - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
-   - `WANDERER_DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
 
 2. **License Configuration**
 

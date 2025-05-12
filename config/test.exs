@@ -32,22 +32,21 @@ config :wanderer_notifier,
     status_messages_disabled: true,
     track_kspace_systems: true
   },
-  cache_repository: WandererNotifier.Cache.CachexImpl,
-  esi_service: WandererNotifier.ESI.ServiceMock
+  cache_repository: WandererNotifier.Cache.CachexImpl
 
 # Logger configuration for tests
 config :logger, level: :warning
-config :logger, :console, format: "[$level] $message\n"
 
 # Configure the test environment
 config :wanderer_notifier,
   schedulers_enabled: false,
   scheduler_supervisor_enabled: false
 
-# Configure the logger (combined configuration)
+# Configure the logger (simple format for tests)
 config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  format: "[$level] $message\n",
+  metadata: [:pid, :module],
+  level: :warning
 
 # Configure the cache
 config :wanderer_notifier, :cache,

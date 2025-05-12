@@ -4,16 +4,14 @@ defmodule WandererNotifier.Map.MapCharacterTest do
   alias WandererNotifier.Map.MapCharacter
 
   describe "new/1" do
-    test "creates a character from valid map data with nested character" do
+    test "creates a character from valid map data" do
       map_data = %{
-        "character" => %{
-          "name" => "Test Character",
-          "corporation_id" => 123_456,
-          "corporation_ticker" => "TEST",
-          "alliance_id" => 789_012,
-          "alliance_ticker" => "ALLI",
-          "eve_id" => "1000001"
-        },
+        "name" => "Test Character",
+        "corporation_id" => 123_456,
+        "corporation_ticker" => "TEST",
+        "alliance_id" => 789_012,
+        "alliance_ticker" => "ALLI",
+        "eve_id" => "1000001",
         "tracked" => true
       }
 
@@ -31,31 +29,12 @@ defmodule WandererNotifier.Map.MapCharacterTest do
 
     test "creates a character from valid map data with integer eve_id" do
       map_data = %{
-        "character" => %{
-          "name" => "Test Character",
-          "corporation_id" => 123_456,
-          "corporation_ticker" => "TEST",
-          "alliance_id" => 789_012,
-          "alliance_ticker" => "ALLI",
-          "eve_id" => 1_000_001
-        },
-        "tracked" => true
-      }
-
-      character = MapCharacter.new(map_data)
-
-      assert %MapCharacter{} = character
-      assert character.character_id == "1000001"
-    end
-
-    test "falls back to character_id when eve_id is not present" do
-      map_data = %{
-        "character" => %{
-          "name" => "Test Character",
-          "corporation_id" => 123_456,
-          "corporation_ticker" => "TEST"
-        },
-        "character_id" => "1000001",
+        "name" => "Test Character",
+        "corporation_id" => 123_456,
+        "corporation_ticker" => "TEST",
+        "alliance_id" => 789_012,
+        "alliance_ticker" => "ALLI",
+        "eve_id" => 1_000_001,
         "tracked" => true
       }
 
@@ -67,14 +46,12 @@ defmodule WandererNotifier.Map.MapCharacterTest do
 
     test "handles nil alliance_id and alliance_ticker" do
       map_data = %{
-        "character" => %{
-          "name" => "Test Character",
-          "corporation_id" => 123_456,
-          "corporation_ticker" => "TEST",
-          "alliance_id" => nil,
-          "alliance_ticker" => nil,
-          "eve_id" => "1000001"
-        },
+        "name" => "Test Character",
+        "corporation_id" => 123_456,
+        "corporation_ticker" => "TEST",
+        "alliance_id" => nil,
+        "alliance_ticker" => nil,
+        "eve_id" => "1000001",
         "tracked" => true
       }
 
@@ -85,23 +62,22 @@ defmodule WandererNotifier.Map.MapCharacterTest do
       assert character.alliance_ticker == nil
     end
 
-    test "raises ArgumentError when character_id is missing" do
+    test "raises ArgumentError when eve_id is missing" do
       map_data = %{
-        "character" => %{
-          "name" => "Test Character"
-        }
+        "name" => "Test Character",
+        "corporation_id" => 123_456
       }
 
-      assert_raise ArgumentError, fn ->
-        MapCharacter.new(map_data)
-      end
+      assert_raise ArgumentError,
+                   "Missing required character identification (eve_id or character_id)",
+                   fn ->
+                     MapCharacter.new(map_data)
+                   end
     end
 
     test "raises ArgumentError when name is missing" do
       map_data = %{
-        "character" => %{
-          "eve_id" => "1000001"
-        }
+        "eve_id" => "1000001"
       }
 
       assert_raise ArgumentError, fn ->
@@ -111,14 +87,12 @@ defmodule WandererNotifier.Map.MapCharacterTest do
 
     test "converts corporation_id and alliance_id strings to integers" do
       map_data = %{
-        "character" => %{
-          "name" => "Test Character",
-          "corporation_id" => "123456",
-          "corporation_ticker" => "TEST",
-          "alliance_id" => "789012",
-          "alliance_ticker" => "ALLI",
-          "eve_id" => "1000001"
-        },
+        "name" => "Test Character",
+        "corporation_id" => "123456",
+        "corporation_ticker" => "TEST",
+        "alliance_id" => "789012",
+        "alliance_ticker" => "ALLI",
+        "eve_id" => "1000001",
         "tracked" => true
       }
 
@@ -222,6 +196,45 @@ defmodule WandererNotifier.Map.MapCharacterTest do
       assert character["corporationName"] == "TEST"
       assert character["allianceID"] == 789_012
       assert character["allianceName"] == "ALLI"
+    end
+  end
+
+  describe "has_corporation?/1" do
+    test "returns true when character has corporation_id and corporation_ticker" do
+      character = %MapCharacter{
+        character_id: "1000001",
+        name: "Test Character",
+        corporation_id: 123_456,
+        corporation_ticker: "TEST"
+      }
+
+      assert MapCharacter.has_corporation?(character) == true
+    end
+
+    test "returns false when corporation_id is nil" do
+      character = %MapCharacter{
+        character_id: "1000001",
+        name: "Test Character",
+        corporation_id: nil,
+        corporation_ticker: "TEST"
+      }
+
+      assert MapCharacter.has_corporation?(character) == false
+    end
+
+    test "returns false when corporation_ticker is nil" do
+      character = %MapCharacter{
+        character_id: "1000001",
+        name: "Test Character",
+        corporation_id: 123_456,
+        corporation_ticker: nil
+      }
+
+      assert MapCharacter.has_corporation?(character) == false
+    end
+
+    test "returns false for non-MapCharacter struct" do
+      assert MapCharacter.has_corporation?(%{}) == false
     end
   end
 end

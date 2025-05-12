@@ -105,7 +105,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     |> Enum.filter(fn %{enabled: enabled} -> enabled end)
     |> Enum.each(fn %{module: module} ->
       # Start a supervised background task for each scheduler
-      Task.Supervisor.async_nolink(
+      Task.Supervisor.start_child(
         WandererNotifier.TaskSupervisor,
         fn ->
           AppLogger.api_info("Running scheduler in background", %{module: inspect(module)})

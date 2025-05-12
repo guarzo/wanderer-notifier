@@ -36,38 +36,12 @@ config :wanderer_notifier, :websocket, %{
 config :logger,
   level: :info,
   format: "$time [$level] $message\n",
-  backends: [:console],
-  metadata: %{
-    request_id: nil,
-    error: nil,
-    stacktrace: nil,
-    status: nil,
-    headers: nil,
-    body: nil,
-    body_preview: nil,
-    kill_id: nil,
-    system_id: nil,
-    character_id: nil
-  }
+  backends: [:console]
 
 # Console logger configuration
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: %{
-    request_id: nil,
-    error: nil,
-    stacktrace: nil,
-    status: nil,
-    headers: nil,
-    body: nil,
-    body_preview: nil,
-    kill_id: nil,
-    system_id: nil,
-    character_id: nil,
-    system_name: nil,
-    type: nil,
-    url: nil
-  },
+  metadata: [:pid, :module, :file, :line],
   colors: [
     debug: :cyan,
     info: :green,
@@ -81,7 +55,6 @@ config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
   "WandererNotifier.Core.Maintenance.Scheduler" => :info,
   "WandererNotifier.Config" => :info,
-  "WandererNotifier.Config.Timings" => :info,
   "WandererNotifier.ESI.Client" => :warn,
   "WandererNotifier.Map.Client" => :info,
   "WandererNotifier.Map.SystemsClient" => :info,
@@ -90,8 +63,6 @@ config :logger, :module_levels, %{
   "WandererNotifier.Application" => :info,
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
-  "WandererNotifier.Data.Cache.Helpers" => :warn,
-  "WandererNotifier.Data.Cache" => :warn,
   "WandererNotifier.Core.Application.Service" => :info,
   "WandererNotifier.Services.KillProcessor" => :debug,
   "WandererNotifier.Services.NotificationDeterminer" => :debug,

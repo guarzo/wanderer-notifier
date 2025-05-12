@@ -24,7 +24,10 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   """
   def create(killmail) do
     # Format the kill notification using the CommonFormatter
-    KillmailFormatter.format_kill_notification(killmail)
+    formatted = KillmailFormatter.format_kill_notification(killmail)
+
+    # Add the required data structure with killmail field expected by the Dispatcher
+    Map.put(formatted, :data, %{killmail: killmail})
   end
 
   @doc """
@@ -47,14 +50,65 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   Sends a kill notification.
   """
   def send_kill_notification(killmail, notification_type, notification_data) do
+    kill_id = extract_kill_id(killmail)
+
+    AppLogger.kill_info("Starting kill notification process", %{
+      kill_id: kill_id,
+      type: notification_type
+    })
+
     with {:ok, enriched_killmail} <- enrich_killmail(killmail),
-         {:ok, _should_notify} <- check_notification_requirements(enriched_killmail),
-         {:ok, notification} <-
-           create_notification(enriched_killmail, notification_type, notification_data),
-         {:ok, sent_notification} <- send_notification(notification) do
-      {:ok, sent_notification}
+         # Get system_id first for better logging
+         system_id = KillDeterminer.get_kill_system_id(enriched_killmail),
+         # Check if this is a tracked system
+         tracked_system_result = KillDeterminer.tracked_system?(system_id),
+         # Check if any tracked characters are involved
+         tracked_character_result = KillDeterminer.has_tracked_character?(enriched_killmail),
+         _ =
+           AppLogger.kill_info("Tracking check results", %{
+             kill_id: kill_id,
+             system_id: system_id,
+             system_tracked: tracked_system_result,
+             character_tracked: tracked_character_result
+           }) do
+      if tracked_system_result || tracked_character_result do
+        # Notification requirements met, proceed with sending
+        AppLogger.kill_info("Kill notification requirements met", %{
+          kill_id: kill_id,
+          system_id: system_id
+        })
+
+        with {:ok, notification} <-
+               create_notification(enriched_killmail, notification_type, notification_data),
+             {:ok, sent_notification} <- send_notification(notification) do
+          AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+          {:ok, sent_notification}
+        else
+          {:error, reason} ->
+            AppLogger.kill_error("Failed to send kill notification", %{
+              kill_id: kill_id,
+              error: inspect(reason)
+            })
+
+            {:error, reason}
+        end
+      else
+        # Log this as info since it's an expected condition
+        AppLogger.kill_info("Kill notification requirements not met", %{
+          kill_id: kill_id,
+          system_id: system_id
+        })
+
+        {:error, "No tracked systems or characters involved"}
+      end
     else
-      {:error, reason} -> {:error, reason}
+      {:error, reason} ->
+        AppLogger.kill_error("Failed to process kill notification", %{
+          kill_id: kill_id,
+          error: inspect(reason)
+        })
+
+        {:error, reason}
     end
   end
 
@@ -103,7 +157,7 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     end
   end
 
-  # Extract kill_id from various killmail formats
+  # Helper function to extract kill ID from various data structures
   defp extract_kill_id(killmail) do
     cond do
       is_map(killmail) && Map.has_key?(killmail, :killmail_id) ->
@@ -112,6 +166,13 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       is_map(killmail) && Map.has_key?(killmail, "killmail_id") ->
         killmail["killmail_id"]
 
+      # Check ESI data structure
+      is_map(killmail) && is_map(Map.get(killmail, :esi_data)) ->
+        Map.get(killmail.esi_data, "killmail_id", "unknown")
+
+      is_map(killmail) && is_map(Map.get(killmail, "esi_data")) ->
+        Map.get(killmail["esi_data"], "killmail_id", "unknown")
+
       true ->
         "unknown"
     end
@@ -119,12 +180,27 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   defp check_notification_requirements(enriched_killmail) do
     # Check if the killmail meets notification requirements
-    has_tracked_system = KillDeterminer.tracked_system?(enriched_killmail)
+    system_id = KillDeterminer.get_kill_system_id(enriched_killmail)
+    has_tracked_system = KillDeterminer.tracked_system?(system_id)
     has_tracked_character = KillDeterminer.has_tracked_character?(enriched_killmail)
+
+    kill_id = extract_kill_id(enriched_killmail)
+
+    AppLogger.kill_info("Checking notification requirements", %{
+      kill_id: kill_id,
+      system_id: system_id,
+      has_tracked_system: has_tracked_system,
+      has_tracked_character: has_tracked_character
+    })
 
     if has_tracked_system || has_tracked_character do
       {:ok, true}
     else
+      AppLogger.kill_info("Kill notification requirements not met", %{
+        kill_id: kill_id,
+        system_id: system_id
+      })
+
       {:error, "No tracked systems or characters involved"}
     end
   end

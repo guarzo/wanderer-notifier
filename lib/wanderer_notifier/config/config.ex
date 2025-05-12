@@ -74,7 +74,8 @@ defmodule WandererNotifier.Config do
 
   # --- Debug config ---
   def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
-  def toggle_debug_logging, do: set(:debug_logging_enabled, !debug_logging_enabled?())
+  def enable_debug_logging, do: set(:debug_logging_enabled, true)
+  def disable_debug_logging, do: set(:debug_logging_enabled, false)
   def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
   defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
@@ -133,7 +134,22 @@ defmodule WandererNotifier.Config do
   def license_manager_api_key, do: get(:license_manager_api_key)
 
   # --- Web/server ---
-  def port, do: get(:port, 4000)
+  def port do
+    case get(:port, 4000) do
+      port when is_integer(port) ->
+        port
+
+      port when is_binary(port) ->
+        case Integer.parse(port) do
+          {int_port, _} -> int_port
+          :error -> 4000
+        end
+
+      _ ->
+        4000
+    end
+  end
+
   def host, do: get(:host, "localhost")
   def scheme, do: get(:scheme, "http")
   def public_url, do: get(:public_url)

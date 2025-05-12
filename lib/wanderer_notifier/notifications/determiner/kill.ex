@@ -110,6 +110,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp check_tracking(system_id, killmail) do
     is_tracked_system = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
+
     is_tracked_system || has_tracked_char
   end
 
@@ -187,26 +188,60 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     do: tracked_system?(to_string(system_id))
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
+    require Logger
+
+    Logger.debug("Checking if system is tracked", %{
+      system_id: system_id_str
+    })
+
     try do
       result = cache_repo().get(CacheKeys.map_systems())
 
       case result do
         {:ok, systems} when is_list(systems) ->
-          Enum.any?(systems, fn system ->
-            id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-            to_string(id) == system_id_str
-          end)
+          # Log the list of systems for debugging
+          Logger.debug("Found tracked systems", %{
+            count: length(systems),
+            system_ids:
+              Enum.map(systems, fn system ->
+                Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+              end)
+          })
 
-        _ ->
+          # Check if our system is in the list
+          is_tracked =
+            Enum.any?(systems, fn system ->
+              id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+              to_string(id) == system_id_str
+            end)
+
+          Logger.debug("System tracked status", %{
+            system_id: system_id_str,
+            is_tracked: is_tracked
+          })
+
+          is_tracked
+
+        {:error, reason} ->
+          Logger.error("Failed to get tracked systems from cache", %{
+            reason: inspect(reason)
+          })
+
+          false
+
+        unexpected ->
+          Logger.error("Unexpected response from cache when getting tracked systems", %{
+            response: inspect(unexpected)
+          })
+
           # Cache may not be initialized yet, default to false
           false
       end
     rescue
       error ->
-        require Logger
-
         Logger.error("Error checking tracked system", %{
           error: inspect(error),
+          system_id: system_id_str,
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         })
 

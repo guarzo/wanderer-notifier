@@ -1,6 +1,23 @@
 import Config
 import Dotenvy
 
+# Helper to safely parse port number from environment variable
+safe_parse_port = fn
+  port_str, default when is_binary(port_str) ->
+    case Integer.parse(port_str) do
+      {port, ""} when port > 0 and port < 65_536 ->
+        port
+
+      _ ->
+        require Logger
+        Logger.warning("Invalid PORT value: '#{port_str}', using default: #{default}")
+        default
+    end
+
+  _nil_or_other, default ->
+    default
+end
+
 # Helper to fetch required env vars or raise
 fetch_env! = fn var ->
   System.get_env(var) || raise("Missing ENV: #{var}")
@@ -29,8 +46,10 @@ env_vars =
 
 # Set .env variables only if they aren't already present in the environment
 Enum.each(env_vars, fn {k, v} ->
-  if System.get_env(k) == nil do
-    System.put_env(k, v)
+  case System.get_env(k) do
+    nil -> System.put_env(k, v)
+    # Skip if env var is already set, even to empty string
+    _ -> :ok
   end
 end)
 
@@ -47,10 +66,14 @@ parse_bool = fn var, default ->
       "true" => true,
       "1" => true,
       "yes" => true,
+      "y" => true,
+      "t" => true,
       "on" => true,
       "false" => false,
       "0" => false,
       "no" => false,
+      "n" => false,
+      "f" => false,
       "off" => false
     }[String.downcase(val)] || default
   end
@@ -65,7 +88,7 @@ config :wanderer_notifier,
   license_key: fetch_env!.("WANDERER_LICENSE_KEY"),
   map_url_with_name: fetch_env!.("WANDERER_MAP_URL"),
   discord_channel_id: fetch_env!.("WANDERER_DISCORD_CHANNEL_ID"),
-  port: (System.get_env("PORT") || "4000") |> String.to_integer(),
+  port: safe_parse_port.(System.get_env("PORT"), 4000),
   discord_system_kill_channel_id: System.get_env("WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID") || "",
   discord_character_kill_channel_id: System.get_env("WANDERER_CHARACTER_KILL_CHANNEL_ID") || "",
   discord_system_channel_id: System.get_env("WANDERER_SYSTEM_CHANNEL_ID") || "",

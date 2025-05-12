@@ -33,22 +33,40 @@ defmodule WandererNotifier.Api.Controllers.KillController do
     # Convert kill_id to integer to ensure key type matches cache keys
     kill_id_int =
       case Integer.parse(kill_id) do
-        {id, _} ->
+        {id, ""} ->
           id
 
+        {_, _remainder} ->
+          AppLogger.api_debug("Kill ID contains non-numeric characters", %{kill_id: kill_id})
+          send_error(conn, 400, "Invalid kill ID format")
+          halt(conn)
+
         :error ->
-          # If we can't parse it as an integer, we'll still try with the original string
-          # but add a debug log since this might indicate an issue
+          # If we can't parse it as an integer, we'll return a 400 error
           AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
-          kill_id
+          send_error(conn, 400, "Invalid kill ID format")
+          halt(conn)
       end
 
     case cache_module().get_kill(kill_id_int) do
-      {:ok, nil} -> send_error(conn, 404, "Kill not found")
-      {:ok, kill} -> send_success(conn, kill)
-      {:error, :not_cached} -> send_error(conn, 404, "Kill not found in cache")
-      {:error, :not_found} -> send_error(conn, 404, "Kill not found")
-      {:error, reason} -> send_error(conn, 500, reason)
+      {:ok, kill} when not is_nil(kill) ->
+        send_success(conn, kill)
+
+      {:ok, nil} ->
+        send_error(conn, 404, "Kill not found")
+
+      {:error, :not_cached} ->
+        send_error(conn, 404, "Kill not found in cache")
+
+      {:error, :not_found} ->
+        send_error(conn, 404, "Kill not found")
+
+      {:error, reason} ->
+        send_error(conn, 500, reason)
+
+      _ ->
+        # Catch any unexpected response format
+        send_error(conn, 500, "Unexpected error retrieving kill data")
     end
   end
 
@@ -84,56 +102,17 @@ defmodule WandererNotifier.Api.Controllers.KillController do
         message: Exception.message(e)
       })
 
-      {:error, "Temporary service unavailable: invalid response format"}
+      {:error, "Temporary service unavailable"}
 
-    # Handle general Cachex errors
-    e in RuntimeError ->
-      message = Exception.message(e)
+    e in Cachex.Error ->
+      AppLogger.api_error("Cache error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
 
-      if String.contains?(message, ["cachex", "cache"]) do
-        AppLogger.api_error("Cache error getting recent kills", %{
-          error_type: e.__struct__,
-          message: message
-        })
+      {:error, "Temporary service unavailable"}
 
-        {:error, "Temporary service unavailable: cache error"}
-      else
-        # Re-raise non-cache related runtime errors
-        reraise e, __STACKTRACE__
-      end
-
-    # For CaseClauseError and MatchError, check the message content separately
-    e in CaseClauseError ->
-      message = Exception.message(e)
-
-      if String.contains?(message, ["timeout", "unreachable", "econnrefused", "nxdomain"]) do
-        AppLogger.api_error("Network error in case clause getting recent kills", %{
-          error_type: e.__struct__,
-          message: message
-        })
-
-        {:error, "Network error: service temporarily unavailable"}
-      else
-        # Re-raise non-network related case clause errors
-        reraise e, __STACKTRACE__
-      end
-
-    e in MatchError ->
-      message = Exception.message(e)
-
-      if String.contains?(message, ["timeout", "unreachable", "econnrefused", "nxdomain"]) do
-        AppLogger.api_error("Network error in match error getting recent kills", %{
-          error_type: e.__struct__,
-          message: message
-        })
-
-        {:error, "Network error: service temporarily unavailable"}
-      else
-        # Re-raise non-network related match errors
-        reraise e, __STACKTRACE__
-      end
-
-    # For unknown errors, log and re-raise to allow proper supervision
+    # For unknown errors, log and re-raise to let supervisor handle restart
     error ->
       AppLogger.api_error("Unexpected error getting recent kills", %{
         error: inspect(error),
