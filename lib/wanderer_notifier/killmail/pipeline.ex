@@ -128,14 +128,20 @@ defmodule WandererNotifier.Killmail.Pipeline do
     kill_id = get_kill_id(killmail)
     kill_time = Map.get(killmail, "killmail_time")
 
+    # Safely extract context values with nil-safe access
+    character_id = if is_map(ctx), do: Map.get(ctx, :character_id)
+    character_name = if is_map(ctx), do: Map.get(ctx, :character_name, "unknown")
+    batch_id = if is_map(ctx), do: Map.get(ctx, :batch_id, "unknown")
+    processing_mode = if is_map(ctx) and is_map(ctx[:mode]), do: ctx.mode[:mode]
+
     metadata = %{
       kill_id: kill_id,
       kill_time: kill_time,
-      character_id: ctx && ctx.character_id,
-      character_name: ctx && ctx.character_name,
-      batch_id: ctx && ctx.batch_id,
+      character_id: character_id,
+      character_name: character_name || "unknown",
+      batch_id: batch_id || "unknown",
       reason: reason,
-      processing_mode: ctx && ctx.mode && ctx.mode.mode
+      processing_mode: processing_mode
     }
 
     # Determine status and message based on outcomes
@@ -173,19 +179,19 @@ defmodule WandererNotifier.Killmail.Pipeline do
     kill_id = get_kill_id(killmail)
     kill_time = Map.get(killmail, "killmail_time")
 
-    # Safely extract context values with default fallbacks
-    character_id = ctx && ctx.character_id
-    character_name = (ctx && ctx.character_name) || "unknown"
-    batch_id = (ctx && ctx.batch_id) || "unknown"
-    processing_mode = ctx && ctx.mode && ctx.mode.mode
+    # Safely extract context values with nil-safe access
+    character_id = if is_map(ctx), do: Map.get(ctx, :character_id)
+    character_name = if is_map(ctx), do: Map.get(ctx, :character_name, "unknown")
+    batch_id = if is_map(ctx), do: Map.get(ctx, :batch_id, "unknown")
+    processing_mode = if is_map(ctx) and is_map(ctx[:mode]), do: ctx.mode[:mode]
 
     # Create base metadata
     metadata = %{
       kill_id: kill_id,
       kill_time: kill_time,
       character_id: character_id,
-      character_name: character_name,
-      batch_id: batch_id,
+      character_name: character_name || "unknown",
+      batch_id: batch_id || "unknown",
       status: "error",
       processing_mode: processing_mode
     }

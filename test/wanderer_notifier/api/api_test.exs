@@ -7,12 +7,10 @@ defmodule WandererNotifier.ApiTest do
 
   test "uses fixtures for API testing" do
     WandererNotifier.MockHTTP
-    |> expect(:get, fn url ->
-      assert String.contains?(url, "/systems")
+    |> expect(:get, fn "https://api.example.com/systems" ->
       {:ok, %{status: 200, body: ApiResponses.map_systems_response(), headers: []}}
     end)
-    |> expect(:get, fn url ->
-      assert String.contains?(url, "/characters")
+    |> expect(:get, fn "https://api.example.com/characters" ->
       {:ok, %{status: 200, body: ApiResponses.esi_character_response(), headers: []}}
     end)
 

@@ -6,7 +6,7 @@ defmodule WandererNotifier.HttpTest do
 
   test "mocks HTTP client successfully" do
     WandererNotifier.MockHTTP
-    |> expect(:get, fn _url ->
+    |> expect(:get, fn "https://example.com" ->
       {:ok, %{status: 200, body: %{"message" => "Test successful"}, headers: []}}
     end)
 

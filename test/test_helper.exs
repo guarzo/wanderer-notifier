@@ -46,7 +46,38 @@ if :ets.whereis(:locks_table) == :undefined do
 end
 
 # Define mocks for external dependencies
-Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HttpClient.Behaviour)
+# First, redefine the behavior to include the get/1 function
+defmodule WandererNotifier.HttpClient.TestBehaviour do
+  @moduledoc """
+  Modified behavior for HTTP clients in tests
+  """
+  @callback get(url :: String.t()) :: {:ok, map()} | {:error, term()}
+  @callback get(url :: String.t(), headers :: list()) :: {:ok, map()} | {:error, term()}
+  @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
+              {:ok, map()} | {:error, term()}
+  @callback post(url :: String.t(), body :: any(), headers :: list()) ::
+              {:ok, map()} | {:error, term()}
+  @callback post_json(url :: String.t(), body :: any(), headers :: list(), options :: keyword()) ::
+              {:ok, map()} | {:error, term()}
+  @callback request(
+              method :: atom(),
+              url :: String.t(),
+              headers :: list(),
+              body :: any(),
+              options :: keyword()
+            ) :: {:ok, map()} | {:error, term()}
+  @callback handle_response(response :: term()) :: {:ok, map()} | {:error, term()}
+end
+
+# Use the new behavior for the mock
+Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HttpClient.TestBehaviour)
+# Set up the implementation for MockHTTP
+Application.put_env(
+  :wanderer_notifier,
+  :http_client_impl,
+  WandererNotifier.Test.Support.HttpClientMock
+)
+
 Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
 
 Mox.defmock(WandererNotifier.Killmail.ZKillClientMock,

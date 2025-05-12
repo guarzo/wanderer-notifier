@@ -224,21 +224,73 @@ defmodule WandererNotifier.Config do
   def base_map_url do
     url = map_url_with_name()
 
-    if url == nil or url == "" do
-      # Return a default or nil for missing URL
-      nil
+    # Return early for nil or empty URL
+    if nil_or_empty?(url) do
+      log_invalid_url("Missing map URL")
+      return_empty_string()
     else
-      uri = URI.parse(url)
-
-      # Check for valid scheme and host
-      if uri.scheme != nil and uri.host != nil do
-        "#{uri.scheme}://#{uri.host}#{if uri.port, do: ":#{uri.port}", else: ""}"
-      else
-        # Log warning and return nil for invalid URL
-        require Logger
-        Logger.warning("Invalid map URL format: #{url}")
-        nil
-      end
+      build_base_url(url)
     end
+  end
+
+  # Helper to check for nil or empty string
+  defp nil_or_empty?(str), do: str == nil or str == ""
+
+  # Helper to log invalid URL warning
+  defp log_invalid_url(message) do
+    require Logger
+    Logger.warning(message)
+  end
+
+  # Return empty string for invalid URLs
+  defp return_empty_string, do: ""
+
+  # Build base URL from full URL
+  defp build_base_url(url) do
+    uri = URI.parse(url)
+
+    if has_valid_scheme_and_host?(uri) do
+      build_url_from_components(uri)
+    else
+      log_invalid_url("Invalid map URL format: #{url}")
+      return_empty_string()
+    end
+  end
+
+  # Check if URI has valid scheme and host
+  defp has_valid_scheme_and_host?(uri) do
+    uri.scheme != nil and uri.host != nil
+  end
+
+  # Build URL string from URI components
+  defp build_url_from_components(uri) do
+    port_part = if uri.port, do: ":#{uri.port}", else: ""
+    "#{uri.scheme}://#{uri.host}#{port_part}"
+  end
+
+  # --- Map Config Diagnostics ---
+  @doc """
+  Returns a diagnostic map of all map-related configuration.
+  Useful for troubleshooting map API issues.
+  """
+  def map_config_diagnostics do
+    url = map_url_with_name()
+    token = map_token()
+
+    %{
+      map_url_with_name: url,
+      map_url_with_name_present: !nil_or_empty?(url),
+      map_token: token,
+      map_token_present: !nil_or_empty?(token),
+      map_token_length: if(token, do: String.length(token), else: 0),
+      map_name: map_name(),
+      map_name_present: !nil_or_empty?(map_name()),
+      map_slug: map_slug(),
+      map_slug_present: !nil_or_empty?(map_slug()),
+      base_map_url: base_map_url(),
+      base_map_url_present: !nil_or_empty?(base_map_url()),
+      system_tracking_enabled: system_tracking_enabled?(),
+      track_kspace_systems: track_kspace_systems?()
+    }
   end
 end

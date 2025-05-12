@@ -256,16 +256,17 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       all_character_ids = get_all_tracked_character_ids()
       in_list = Enum.member?(all_character_ids, character_id)
 
-      # If not in list, try direct tracking
-      if !in_list do
+      # If already in list, return true immediately
+      if in_list do
+        true
+      else
+        # Otherwise, try direct tracking
         direct_cache_key = CacheKeys.tracked_character(character_id)
 
         case cache_repo().get(direct_cache_key) do
           {:ok, _} -> true
           _ -> false
         end
-      else
-        true
       end
     rescue
       error ->
@@ -465,6 +466,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Fallback module that returns safe defaults to prevent crashes
   defmodule SafeCache do
+    @moduledoc """
+    A fallback module that provides safe access to cache functions when the real cache is unavailable.
+    Returns default values to prevent application crashes when cache access fails.
+    """
     def get(_key), do: {:error, :cache_not_available}
     def put(_key, _value), do: {:error, :cache_not_available}
     def delete(_key), do: {:error, :cache_not_available}

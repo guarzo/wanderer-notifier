@@ -4,7 +4,8 @@ import Config
 config :wanderer_notifier,
   test_env: true,
   env: :test,
-  disable_status_messages: true
+  disable_status_messages: true,
+  cache_name: :wanderer_cache
 
 # Test mode configuration
 config :nostrum, token: "test_discord_token"

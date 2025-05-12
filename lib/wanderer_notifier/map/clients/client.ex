@@ -48,9 +48,9 @@ defmodule WandererNotifier.Map.Clients.Client do
   """
   def update_systems_with_cache(cached_systems) do
     if WandererNotifier.Config.system_tracking_enabled?() do
-      # Updated to work with new SystemsClient module that returns MapSystem structs
+      # Updated to work with new SystemsClient module that returns {:ok, new_systems, all_systems}
       case SystemsClient.update_systems(cached_systems) do
-        {:ok, systems} -> {:ok, systems}
+        {:ok, _new_systems, all_systems} -> {:ok, all_systems}
         error -> error
       end
     else

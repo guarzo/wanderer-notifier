@@ -48,32 +48,48 @@ defmodule WandererNotifier.Cache.CachexImpl do
       ttl_seconds: ttl
     )
 
-    # Validate TTL if present
-    validated_ttl =
-      cond do
-        is_nil(ttl) ->
-          nil
+    validated_ttl = validate_ttl(key, ttl)
+    perform_cache_set(key, value, validated_ttl)
+  rescue
+    e ->
+      AppLogger.cache_error("Error setting value with TTL",
+        key: key,
+        ttl_seconds: ttl,
+        error: Exception.message(e)
+      )
 
-        is_integer(ttl) and ttl > 0 ->
-          ttl
+      {:error, e}
+  end
 
-        is_integer(ttl) and ttl <= 0 ->
-          AppLogger.cache_warn("Non-positive TTL value provided, using default",
-            key: key,
-            ttl_seconds: ttl
-          )
+  # Helper function to validate TTL value
+  defp validate_ttl(key, ttl) do
+    cond do
+      is_nil(ttl) ->
+        nil
 
-          nil
+      is_integer(ttl) and ttl > 0 ->
+        ttl
 
-        true ->
-          AppLogger.cache_warn("Invalid TTL value provided, using default",
-            key: key,
-            ttl_seconds: ttl
-          )
+      is_integer(ttl) and ttl <= 0 ->
+        AppLogger.cache_warn("Non-positive TTL value provided, using default",
+          key: key,
+          ttl_seconds: ttl
+        )
 
-          nil
-      end
+        nil
 
+      true ->
+        AppLogger.cache_warn("Invalid TTL value provided, using default",
+          key: key,
+          ttl_seconds: ttl
+        )
+
+        nil
+    end
+  end
+
+  # Helper function to perform the actual cache set operation
+  defp perform_cache_set(key, value, validated_ttl) do
     result =
       if is_nil(validated_ttl) do
         Cachex.put(cache_name(), key, value)
@@ -86,15 +102,6 @@ defmodule WandererNotifier.Cache.CachexImpl do
       {:ok, false} -> {:error, :set_failed}
       {:error, reason} -> {:error, reason}
     end
-  rescue
-    e ->
-      AppLogger.cache_error("Error setting value with TTL",
-        key: key,
-        ttl_seconds: ttl,
-        error: Exception.message(e)
-      )
-
-      {:error, e}
   end
 
   @impl true
@@ -103,9 +110,25 @@ defmodule WandererNotifier.Cache.CachexImpl do
     AppLogger.count_batch_event(:cache_set, %{key_pattern: get_key_pattern(key)})
 
     case Cachex.put(cache_name(), key, value) do
-      {:ok, true} -> :ok
-      {:ok, false} -> {:error, :set_failed}
-      {:error, reason} -> {:error, reason}
+      {:ok, true} ->
+        :ok
+
+      {:ok, false} ->
+        # Log the failure but return a more specific reason
+        AppLogger.cache_warn("Cache put returned false",
+          key: key
+        )
+
+        {:error, :cachex_put_returned_false}
+
+      {:error, reason} ->
+        # Return the actual error reason from Cachex for better debugging
+        AppLogger.cache_error("Cache put failed with specific reason",
+          key: key,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
     end
   rescue
     e ->
@@ -114,7 +137,7 @@ defmodule WandererNotifier.Cache.CachexImpl do
         error: Exception.message(e)
       )
 
-      {:error, e}
+      {:error, {:exception, Exception.message(e)}}
   end
 
   @impl true

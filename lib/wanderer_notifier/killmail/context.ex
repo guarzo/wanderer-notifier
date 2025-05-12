@@ -26,6 +26,29 @@ defmodule WandererNotifier.Killmail.Context do
     :options
   ]
 
+  # Implement the Access behaviour for the Context struct
+  @behaviour Access
+
+  @impl Access
+  def fetch(struct, key) do
+    Map.fetch(struct, key)
+  end
+
+  # This is not part of the Access behaviour, but a helpful utility function
+  def get(struct, key, default \\ nil) do
+    Map.get(struct, key, default)
+  end
+
+  @impl Access
+  def get_and_update(struct, key, fun) do
+    Map.get_and_update(struct, key, fun)
+  end
+
+  @impl Access
+  def pop(struct, key) do
+    Map.pop(struct, key)
+  end
+
   @doc """
   Creates a new context for historical processing.
   """

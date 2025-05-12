@@ -30,7 +30,20 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get kill details
   get "/kill/:kill_id" do
-    case cache_module().get_kill(kill_id) do
+    # Convert kill_id to integer to ensure key type matches cache keys
+    kill_id_int =
+      case Integer.parse(kill_id) do
+        {id, _} ->
+          id
+
+        :error ->
+          # If we can't parse it as an integer, we'll still try with the original string
+          # but add a debug log since this might indicate an issue
+          AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
+          kill_id
+      end
+
+    case cache_module().get_kill(kill_id_int) do
       {:ok, nil} -> send_error(conn, 404, "Kill not found")
       {:ok, kill} -> send_success(conn, kill)
       {:error, :not_cached} -> send_error(conn, 404, "Kill not found in cache")
@@ -56,12 +69,77 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   defp get_recent_kills() do
     Processor.get_recent_kills()
   rescue
+    # Catch specific known transient errors that can be handled gracefully
+    e in HTTPoison.Error ->
+      AppLogger.api_error("HTTP error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
+
+      {:error, "Temporary service unavailable"}
+
+    e in Jason.DecodeError ->
+      AppLogger.api_error("JSON decode error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
+
+      {:error, "Temporary service unavailable: invalid response format"}
+
+    # Handle general Cachex errors
+    e in RuntimeError ->
+      message = Exception.message(e)
+
+      if String.contains?(message, ["cachex", "cache"]) do
+        AppLogger.api_error("Cache error getting recent kills", %{
+          error_type: e.__struct__,
+          message: message
+        })
+
+        {:error, "Temporary service unavailable: cache error"}
+      else
+        # Re-raise non-cache related runtime errors
+        reraise e, __STACKTRACE__
+      end
+
+    # For CaseClauseError and MatchError, check the message content separately
+    e in CaseClauseError ->
+      message = Exception.message(e)
+
+      if String.contains?(message, ["timeout", "unreachable", "econnrefused", "nxdomain"]) do
+        AppLogger.api_error("Network error in case clause getting recent kills", %{
+          error_type: e.__struct__,
+          message: message
+        })
+
+        {:error, "Network error: service temporarily unavailable"}
+      else
+        # Re-raise non-network related case clause errors
+        reraise e, __STACKTRACE__
+      end
+
+    e in MatchError ->
+      message = Exception.message(e)
+
+      if String.contains?(message, ["timeout", "unreachable", "econnrefused", "nxdomain"]) do
+        AppLogger.api_error("Network error in match error getting recent kills", %{
+          error_type: e.__struct__,
+          message: message
+        })
+
+        {:error, "Network error: service temporarily unavailable"}
+      else
+        # Re-raise non-network related match errors
+        reraise e, __STACKTRACE__
+      end
+
+    # For unknown errors, log and re-raise to allow proper supervision
     error ->
-      AppLogger.api_error("Error getting recent kills", %{
+      AppLogger.api_error("Unexpected error getting recent kills", %{
         error: inspect(error),
         stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
 
-      {:error, "An unexpected error occurred"}
+      reraise error, __STACKTRACE__
   end
 end

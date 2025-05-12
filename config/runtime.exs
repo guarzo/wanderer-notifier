@@ -7,7 +7,25 @@ fetch_env! = fn var ->
 end
 
 # Load .env file and get all env vars as a map
-env_vars = source!(".env")
+env_vars =
+  try do
+    # Use source instead of source! to avoid crashing if .env file is missing
+    # Handle the {:ok, map} tuple that source/1 returns
+    case source(".env") do
+      {:ok, env_map} when is_map(env_map) -> env_map
+      _ -> %{}
+    end
+  rescue
+    # Handle any errors gracefully for production environments
+    e ->
+      require Logger
+
+      Logger.info(
+        "No .env file found or error loading it: #{Exception.message(e)}. Using existing environment variables."
+      )
+
+      %{}
+  end
 
 # Set .env variables only if they aren't already present in the environment
 Enum.each(env_vars, fn {k, v} ->

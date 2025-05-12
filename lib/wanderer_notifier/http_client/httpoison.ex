@@ -17,6 +17,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     |> handle_response()
   end
 
+  @impl true
   def get(url, headers, options) do
     HTTPoison.get(url, headers, options)
     |> handle_response()
@@ -74,15 +75,32 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   def handle_response(
         {:ok, %HTTPoison.Response{status_code: status, body: body, headers: headers}}
       ) do
-    Logger.warning(
-      "Non-2xx response - Status: #{status}, Headers: #{inspect(headers)}, Body: #{inspect(body)}"
+    Logger.error(
+      "HTTP client non-2xx response",
+      status: status,
+      body_preview: String.slice("#{body}", 0, 500),
+      headers: inspect(headers),
+      error_details:
+        "Status: #{status}, Headers: #{inspect(headers)}, Body preview: #{String.slice("#{body}", 0, 100)}"
     )
 
-    {:error, %{status_code: status, body: body}}
+    # For HTTP errors, attempt to parse the body as JSON for more detailed error info
+    decoded_body =
+      case Jason.decode(body) do
+        {:ok, json} -> json
+        _ -> body
+      end
+
+    # Keep the original response format expected by callers
+    {:ok, %{status_code: status, body: decoded_body}}
   end
 
   def handle_response({:error, %HTTPoison.Error{reason: reason}}) do
-    Logger.error("HTTP request failed: #{inspect(reason)}")
+    Logger.error("HTTP request failed",
+      error: inspect(reason),
+      error_details: "HTTPoison error: #{inspect(reason)}"
+    )
+
     {:error, reason}
   end
 

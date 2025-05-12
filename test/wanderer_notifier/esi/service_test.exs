@@ -18,6 +18,9 @@ defmodule WandererNotifier.ESI.ServiceTest do
     # Set the ESI client mock as the implementation (unified)
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
+    # Set HTTP client mock
+    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.MockHTTP)
+
     # Setup for character tests
     character_data = %{
       "character_id" => 123_456,
@@ -73,6 +76,27 @@ defmodule WandererNotifier.ESI.ServiceTest do
     end)
     |> stub(:get_system, fn id, _opts ->
       if id == 30_000_142, do: {:ok, system_data}, else: {:ok, %{}}
+    end)
+
+    # Add mock expectations for HTTP client calls
+    WandererNotifier.MockHTTP
+    |> stub(:get, fn url, _headers ->
+      cond do
+        String.contains?(url, "characters/123456") ->
+          {:ok, %{status_code: 200, body: character_data}}
+
+        String.contains?(url, "corporations/789012") ->
+          {:ok, %{status_code: 200, body: corporation_data}}
+
+        String.contains?(url, "alliances/345678") ->
+          {:ok, %{status_code: 200, body: alliance_data}}
+
+        String.contains?(url, "systems/30000142") ->
+          {:ok, %{status_code: 200, body: system_data}}
+
+        true ->
+          {:ok, %{status_code: 404, body: %{"error" => "Not found"}}}
+      end
     end)
 
     # Return test data for use in tests

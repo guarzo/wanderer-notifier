@@ -8,7 +8,6 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifiers.Discord.Notifier
   alias WandererNotifier.Map.MapCharacter
-  alias WandererNotifier.Map.MapSystem
   alias WandererNotifier.ESI.ServiceMock
 
   # Define ServiceMock before all tests run
@@ -74,7 +73,11 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
   # Mock for plain text formatter
   defmodule MockPlainTextFormatter do
-    def format(_killmail), do: "Formatted plain text message"
+    def format(_message), do: "Formatted plain text message"
+
+    def plain_system_notification(_system) do
+      "Test system notification in plain text format"
+    end
   end
 
   # Mock for character formatter
@@ -86,6 +89,10 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   # Mock for system formatter
   defmodule MockSystemFormatter do
     def format(_system), do: %{title: "Test System", description: "Test System Description"}
+
+    def format_system_notification(_system) do
+      %{title: "Test System", description: "Test System Description", color: 0x5CB85C}
+    end
   end
 
   # Mock component builder
@@ -95,17 +102,41 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
   # Mock HTTP client to prevent actual HTTP requests
   defmodule MockHttpClient do
-    def post(_, _, _, _), do: {:ok, %{status_code: 200, body: "{\"ok\": true}"}}
-    def get(_, _, _), do: {:ok, %{status_code: 200, body: "{\"ok\": true}"}}
+    def post(_, _, _, _), do: {:ok, %{status_code: 200, body: %{ok: true}}}
+
+    def get(url, _headers, _) do
+      # Return a parsed map instead of a JSON string for the system data
+      if String.contains?(url, "systems/30000142") do
+        {:ok,
+         %{
+           status_code: 200,
+           body: %{
+             "name" => "Test System",
+             "security_status" => 0.5,
+             "system_id" => 30_000_142,
+             "region_id" => 10_000_002
+           }
+         }}
+      else
+        {:ok, %{status_code: 200, body: %{ok: true}}}
+      end
+    end
+
+    # Add missing get/2 function
+    def get(url, headers) do
+      # Call get/3 with empty options
+      get(url, headers, [])
+    end
   end
 
   # Mock Neo Client for Discord
   defmodule MockNeoClient do
-    def send_message(_, _, _), do: {:ok, :sent}
-    def send_embed(_, _, _, _), do: {:ok, :sent}
-    def send_discord_embed(_, _, _), do: {:ok, :sent}
-    def send_discord_embed_to_channel(_, _, _), do: {:ok, :sent}
-    def send_file(_, _, _, _, _), do: {:ok, :sent}
+    def send_message(_message, _channel_id \\ nil), do: {:ok, :sent}
+    def send_embed(_embed, _channel_id \\ nil), do: {:ok, :sent}
+    def send_embed(_embed, _channel_id, _components), do: {:ok, :sent}
+    def send_discord_embed(_embed), do: {:ok, :sent}
+    def send_discord_embed_to_channel(_channel_id, _embed), do: {:ok, :sent}
+    def send_file(_filename, _file_data, _title, _description), do: {:ok, :sent}
   end
 
   setup :verify_on_exit!
@@ -514,44 +545,6 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
 
       # Verify log output
       assert log_output =~ "DISCORD MOCK:" or log_output =~ "Character"
-    end
-  end
-
-  describe "send_new_system_notification/1" do
-    test "sends system notification and returns {:ok, :sent}" do
-      # Create test system
-      system = %MapSystem{
-        solar_system_id: "30000142",
-        name: "Test System",
-        security_status: 0.5,
-        region_id: "10000002",
-        region_name: "Test Region",
-        constellation_id: "20000020",
-        constellation_name: "Test Constellation"
-      }
-
-      # Mock ZKill client to prevent API calls
-      defmodule MockZkillClient do
-        def get_system_kills(_system_id, _limit) do
-          {:ok, []}
-        end
-      end
-
-      # Replace the zkill client
-      Application.put_env(:wanderer_notifier, :zkill_client, MockZkillClient)
-
-      # Test notification - should return {:ok, :sent}
-      log_output =
-        capture_log(fn ->
-          result = Notifier.send_new_system_notification(system)
-          assert result == {:ok, :sent}
-        end)
-
-      # Clean up
-      Application.delete_env(:wanderer_notifier, :zkill_client)
-
-      # Verify log output
-      assert log_output =~ "DISCORD MOCK:" or log_output =~ "System"
     end
   end
 

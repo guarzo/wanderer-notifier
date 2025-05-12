@@ -98,6 +98,39 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     # Set up metrics module
     Application.put_env(:wanderer_notifier, :killmail_metrics, MockMetrics)
 
+    # Set up HTTP client mock
+    Application.put_env(
+      :wanderer_notifier,
+      :http_client,
+      WandererNotifier.HttpClient.HttpoisonMock
+    )
+
+    # Add mock for HttpClient.HttpoisonMock.get/2
+    WandererNotifier.HttpClient.HttpoisonMock
+    |> stub(:get, fn url, _headers ->
+      if String.contains?(url, "killmails/12345/test_hash") do
+        {:ok,
+         %{
+           status_code: 200,
+           body: %{
+             "killmail_id" => 12_345,
+             "victim" => %{
+               "character_id" => 123,
+               "corporation_id" => 456,
+               "ship_type_id" => 789
+             },
+             "attackers" => [
+               %{"character_id" => 321, "corporation_id" => 654, "ship_type_id" => 987}
+             ],
+             "solar_system_id" => 30_000_142,
+             "killmail_time" => "2023-01-01T00:00:00Z"
+           }
+         }}
+      else
+        {:ok, %{status_code: 404, body: %{"error" => "Not found"}}}
+      end
+    end)
+
     # Set up default stubs
     ServiceMock
     |> stub(:get_system, fn system_id, _opts ->

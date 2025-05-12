@@ -166,12 +166,20 @@ defmodule WandererNotifier.ESI.ClientTest do
       assert {:ok, %{system_name: "Test System"}} = Client.get_solar_system(42)
     end
 
-    test "returns {:error, {:http_error, status}} on non-2xx response" do
+    test "returns {:error, {:system_not_found, system_id}} on 404 response" do
       Mox.expect(WandererNotifier.MockHTTP, :get, fn _url, _headers ->
         {:ok, %{status_code: 404}}
       end)
 
-      assert {:error, {:http_error, 404}} = Client.get_solar_system(42)
+      assert {:error, {:system_not_found, 42}} = Client.get_solar_system(42)
+    end
+
+    test "returns {:error, {:http_error, status}} on other non-2xx responses" do
+      Mox.expect(WandererNotifier.MockHTTP, :get, fn _url, _headers ->
+        {:ok, %{status_code: 500}}
+      end)
+
+      assert {:error, {:http_error, 500}} = Client.get_solar_system(42)
     end
 
     test "returns {:error, reason} on network error" do

@@ -337,6 +337,10 @@ defmodule WandererNotifier.ESI.Service do
 
   # Fallback module that returns safe defaults to prevent crashes
   defmodule SafeCache do
+    @moduledoc """
+    A fallback module that provides safe access to cache functions when the real cache is unavailable.
+    Returns default values to prevent application crashes when cache access fails.
+    """
     def get(_key), do: {:error, :cache_not_available}
     def put(_key, _value), do: {:error, :cache_not_available}
     def delete(_key), do: {:error, :cache_not_available}

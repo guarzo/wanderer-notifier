@@ -100,12 +100,31 @@ defmodule WandererNotifier.Api.Controllers.WebController do
 
   # Execute all schedulers
   post "/schedulers/execute" do
+    # Create supervised tasks for each enabled scheduler
     WandererNotifier.Schedulers.Registry.all_schedulers()
-    |> Enum.each(fn %{module: module, enabled: enabled} ->
-      if enabled, do: module.run()
+    |> Enum.filter(fn %{enabled: enabled} -> enabled end)
+    |> Enum.each(fn %{module: module} ->
+      # Start a supervised background task for each scheduler
+      Task.Supervisor.async_nolink(
+        WandererNotifier.TaskSupervisor,
+        fn ->
+          AppLogger.api_info("Running scheduler in background", %{module: inspect(module)})
+
+          try do
+            module.run()
+          rescue
+            e ->
+              AppLogger.api_error("Scheduler failed", %{
+                module: inspect(module),
+                error: Exception.message(e),
+                stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+              })
+          end
+        end
+      )
     end)
 
-    send_success(conn, %{message: "All schedulers execution triggered"})
+    send_success(conn, %{message: "All schedulers execution triggered in background"})
   end
 
   match _ do

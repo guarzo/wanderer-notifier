@@ -11,9 +11,22 @@ defmodule WandererNotifier.Api.Helpers do
   Sends a JSON response with the given status and data.
   """
   def send_json_response(conn, status, data) do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(status, Jason.encode!(data))
+    case Jason.encode(data) do
+      {:ok, json} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(status, json)
+
+      {:error, reason} ->
+        # Log the error
+        require Logger
+        Logger.error("JSON encoding failed: #{inspect(reason)}, data: #{inspect(data)}")
+
+        # Send a 500 error with a safe message
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{error: "Internal server error: JSON encoding failed"}))
+    end
   end
 
   @doc """
