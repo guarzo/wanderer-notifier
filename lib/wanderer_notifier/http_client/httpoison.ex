@@ -4,7 +4,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   """
   @behaviour WandererNotifier.HttpClient.Behaviour
 
-  require Logger
+  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @default_headers [{"Content-Type", "application/json"}]
 
@@ -62,12 +62,11 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     case Jason.decode(body) do
       {:ok, decoded} ->
         # Log the decoded response for debugging
-        # Logger.info("HTTP request successful, decoded body: #{inspect(decoded, limit: 1000)}")
+        # AppLogger.info("HTTP request successful, decoded body: #{inspect(decoded, limit: 1000)}")
         {:ok, %{status_code: status, body: decoded}}
 
       {:error, _reason} ->
         # Return the raw body if it can't be decoded as JSON
-        Logger.info("HTTP request successful, non-JSON body: #{inspect(body, limit: 100)}")
         {:ok, %{status_code: status, body: body}}
     end
   end
@@ -75,13 +74,10 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   def handle_response(
         {:ok, %HTTPoison.Response{status_code: status, body: body, headers: headers}}
       ) do
-    Logger.error(
-      "HTTP client non-2xx response",
+    AppLogger.error("HTTP client non-2xx response",
       status: status,
       body_preview: String.slice("#{body}", 0, 500),
-      headers: inspect(headers),
-      error_details:
-        "Status: #{status}, Headers: #{inspect(headers)}, Body preview: #{String.slice("#{body}", 0, 100)}"
+      headers: inspect(headers)
     )
 
     # For HTTP errors, attempt to parse the body as JSON for more detailed error info
@@ -96,9 +92,8 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   end
 
   def handle_response({:error, %HTTPoison.Error{reason: reason}}) do
-    Logger.error("HTTP request failed",
-      error: inspect(reason),
-      error_details: "HTTPoison error: #{inspect(reason)}"
+    AppLogger.error("HTTP request failed",
+      error: inspect(reason)
     )
 
     {:error, reason}
