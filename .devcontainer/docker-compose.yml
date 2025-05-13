@@ -21,7 +21,9 @@ services:
     command: sleep infinity
     user: elixir
     ports:
-      - "4001:4000" # Main application
+      - "4000:4000" # Backend API
+      - "4001:4001" # Phoenix LiveDashboard
+      - "5173:5173" # Vite dev server
     # This allows the container to access host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"

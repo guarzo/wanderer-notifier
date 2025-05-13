@@ -33,7 +33,8 @@ defmodule WandererNotifier.Application do
       {Metrics, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
-      {WandererNotifier.Core.Application.Service, []}
+      {WandererNotifier.Core.Application.Service, []},
+      {WandererNotifier.Web.Server, []}
     ]
 
     # Only add scheduler supervisor if enabled

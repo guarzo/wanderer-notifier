@@ -1,5 +1,5 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch
+.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch ui.dev backend server-status
 
 # ============================
 # BUILD TASKS
@@ -44,6 +44,9 @@ shell:
 run:
 	@mix run
 
+backend:
+	@iex -S mix
+
 # ============================
 # FRONTEND DEVELOPMENT TASKS
 # ============================
@@ -54,6 +57,10 @@ build.frontend:
 	@echo "Building frontend assets..."
 	@cd renderer && npm run build
 
+# Run the frontend in development mode
+ui.dev:
+	@echo "Starting Vite development server..."
+	@cd renderer && npm run dev
 
 # Development commands with automatic asset rebuilding
 dev: build.npm
@@ -108,5 +115,21 @@ version.update:
 # ============================
 # Alias for watch with initial clean+compile and npm build
 s: clean compile build.npm
-	@echo "Starting watchers for both Elixir and frontend with auto-sync..."
+	@echo "Starting application with frontend sync..."
+	@echo "For better development experience, you can also run:"
+	@echo "make backend    - Start only the backend server"
+	@echo "make ui.dev     - Start Vite dev server (enables hot reload)"
 	@(cd renderer && npm run sync) & (iex -S mix)
+
+# ============================
+# DIAGNOSTIC TOOLS
+# ============================
+# Check web server status and connectivity
+server-status:
+	@echo "Checking web server connectivity..."
+	@echo "Attempting to connect to localhost:4000..."
+	@curl -s http://localhost:4000/health > /dev/null && echo "✅ HTTP server is responsive" || echo "❌ Cannot connect to HTTP server"
+	@echo "\nChecking port bindings:"
+	@netstat -tulpn 2>/dev/null | grep 4000 || ss -tulpn 2>/dev/null | grep 4000 || echo "No process found listening on port 4000"
+	@echo "\nDetailed health info:"
+	@curl -s http://localhost:4000/health/details || echo "Cannot fetch detailed health info"

@@ -147,7 +147,8 @@ defmodule WandererNotifier.Api.Controllers.WebController do
       details: license_result.details,
       error: license_result.error,
       error_message: license_result.error_message,
-      last_validated: license_result.last_validated
+      last_validated: license_result.last_validated,
+      status: if(license_result.valid, do: "valid", else: "invalid")
     }
 
     # Get stats safely
@@ -159,9 +160,18 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     features = Config.features()
     limits = Config.get_all_limits()
 
+    # Extract services from stats for easier UI access
+    services =
+      Map.get(stats, :services, %{
+        backend: "running",
+        notifications: "running",
+        api: "running"
+      })
+
     # Build response
     {:ok,
      %{
+       services: services,
        license: license_status,
        stats: stats,
        features: features,
@@ -206,11 +216,48 @@ defmodule WandererNotifier.Api.Controllers.WebController do
       notifications: %{
         total: 0,
         success: 0,
-        error: 0
+        error: 0,
+        kills: 0,
+        systems: 0,
+        characters: 0
       },
       websocket: %{
         connected: false,
-        last_message: nil
+        last_message: nil,
+        reconnects: 0
+      },
+      uptime: "0s",
+      uptime_seconds: 0,
+      processing: %{
+        kills_processed: 0,
+        kills_notified: 0
+      },
+      services: %{
+        backend: "running",
+        notifications: "running",
+        api: "running"
+      },
+      license: %{
+        status: "unknown",
+        expires_in: nil,
+        valid: false,
+        bot_assigned: false,
+        details: %{},
+        last_validated: DateTime.utc_now() |> DateTime.to_string()
+      },
+      features: %{
+        debug: true,
+        notifications_enabled: true,
+        character_notifications_enabled: true,
+        system_notifications_enabled: true,
+        character_tracking_enabled: true,
+        system_tracking_enabled: true,
+        kill_notifications_enabled: true
+      },
+      limits: %{
+        tracked_systems: 1000,
+        tracked_characters: 1000,
+        notification_history: 1000
       }
     }
   end

@@ -30,6 +30,21 @@ defmodule WandererNotifier.Config do
   # --- General Application config ---
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
 
+  # --- Version access ---
+  @doc """
+  Returns the application version string.
+  """
+  def version do
+    WandererNotifier.Config.Version.version()
+  end
+
+  @doc """
+  Returns detailed version information.
+  """
+  def version_info do
+    WandererNotifier.Config.Version.version_info()
+  end
+
   # --- Map config ---
   def map_url do
     raise "map_url/0 is deprecated. Use map_url_with_name/0 and parse as needed."

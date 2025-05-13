@@ -18,7 +18,21 @@
   },
 
   // Add port forwarding configuration
-  "forwardPorts": [4001],
+  "forwardPorts": [4000, 4001, 5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend Dev Server",
+      "onAutoForward": "notify"
+    },
+    "4000": {
+      "label": "Backend Server",
+      "onAutoForward": "notify"
+    },
+    "4001": {
+      "label": "Phoenix LiveDashboard",
+      "onAutoForward": "notify"
+    }
+  },
 
   "remoteUser": "elixir",
   "updateRemoteUserUID": false,

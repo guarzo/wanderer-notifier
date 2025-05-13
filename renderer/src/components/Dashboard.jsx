@@ -3,28 +3,58 @@ import React, { useEffect, useState } from "react";
 import {
   FaSync,
   FaCheckCircle,
-  FaPowerOff,
   FaCloud,
   FaHeart,
   FaTimes,
   FaCircleNotch,
   FaExclamationTriangle,
   FaBell,
-  FaSkullCrossbones,
+  FaInfo,
+  FaServer,
+  FaCog,
+  FaClock,
+  FaUserAlt,
+  FaGlobe,
+  FaChartLine,
+  FaNetworkWired,
   FaChartBar
 } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { DataCard } from "../components/ui/Card";
+import { GridLayout, TwoColumnGrid } from "../components/ui/GridLayout";
+import { StatusCard } from "../components/ui/StatusCard";
 
 export default function Dashboard() {
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState({
+    services: { backend: "Unknown", notifications: "Unknown", api: "Unknown" },
+    license: { status: "Unknown", expires_in: null },
+    features: {},
+    limits: { tracked_systems: 0, tracked_characters: 0, notification_history: 0 },
+    stats: {
+      characters_count: 0,
+      systems_count: 0,
+      uptime: "0s",
+      notifications: { total: 0, characters: 0, kills: 0, systems: 0 },
+      processing: { kills_processed: 0, kills_notified: 0 },
+      websocket: { connected: false, connecting: false, last_message: null }
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [testMessage, setTestMessage] = useState(null);
-  const [dbStats, setDbStats] = useState(null);
+  const [features, setFeatures] = useState({});
+  const [retryCount, setRetryCount] = useState(0);
 
   // On mount, fetch dashboard status
   useEffect(() => {
     fetchStatus();
+    
+    // Set up automatic refresh every 30 seconds
+    const intervalId = setInterval(() => {
+      fetchStatus();
+    }, 30000);
+    
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId);
   }, []);
 
   // Fetch the status data
@@ -33,49 +63,75 @@ export default function Dashboard() {
       setLoading(true);
       console.log("Fetching status data from API...");
       const response = await fetch("/api/debug/status");
+      
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      const data = await response.json();
+      
+      // Try to parse the response as JSON
+      const text = await response.text();
+      let data;
+      
+      try {
+        data = JSON.parse(text);
+      } catch (jsonError) {
+        console.error("Failed to parse JSON:", text);
+        throw new Error("Invalid response from server. Backend may be misconfigured.");
+      }
+      
       console.log("Status data received:", data);
-      setStatus(data.data);
+      
+      // The data is directly in the response, not nested under "data"
+      // Just extract what we need directly from the root object
+      const statusData = {
+        services: data.services || { backend: "Unknown", notifications: "Unknown", api: "Unknown" },
+        license: data.license || { status: "Unknown", expires_in: null },
+        features: data.features || {},
+        limits: data.limits || { tracked_systems: 0, tracked_characters: 0, notification_history: 0 },
+        stats: data.stats || {
+          characters_count: 0,
+          systems_count: 0,
+          uptime: "0s",
+          notifications: { total: 0, characters: 0, kills: 0, systems: 0 },
+          processing: { kills_processed: 0, kills_notified: 0 }
+        },
+        websocket: data.stats?.websocket || { connected: false, connecting: false, last_message: null }
+      };
+      
+      // Set the state with the data from the API
+      setStatus(statusData);
+      setFeatures(statusData.features || {});
       setError(null);
-
-      // Always fetch database stats
-      await fetchDbStats();
+      setRetryCount(0);
     } catch (err) {
       console.error("Error fetching status:", err);
+      
+      // Implement retry logic with exponential backoff
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(`Retrying in ${delay}ms... (attempt ${retryCount + 1})`);
+        
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          fetchStatus();
+        }, delay);
+        
+        return;
+      }
+      
       setError("Failed to load dashboard data. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Fetch database statistics
-  async function fetchDbStats() {
-    try {
-      console.log("Fetching database statistics...");
-      const response = await fetch("/api/debug/db-stats");
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log("Database stats received:", data);
-      if (data.status === "ok") {
-        setDbStats(data.data);
-      } else {
-        console.warn("Failed to get database stats:", data.message);
-      }
-    } catch (err) {
-      console.error("Error fetching database stats:", err);
-      // We don't set the main error state here to avoid blocking the entire dashboard
-    }
-  }
-
   // Toolbar actions
   async function handleRefreshPage() {
+    setRetryCount(0);
     await fetchStatus();
     setTestMessage("Dashboard refreshed!");
+    // Clear the message after 3 seconds
+    setTimeout(() => setTestMessage(null), 3000);
   }
 
   async function handleRevalidateLicense() {
@@ -97,76 +153,14 @@ export default function Dashboard() {
       
       // Refresh the status display
       fetchStatus();
+      
+      // Clear the message after 3 seconds
+      setTimeout(() => setTestMessage(null), 3000);
     } catch (err) {
       console.error("Error revalidating license:", err);
       setTestMessage("Error revalidating license");
-    }
-  }
-
-  // Test notification actions
-  async function testKillNotification() {
-    try {
-      console.log("Sending test kill notification request...");
-      const response = await fetch("/api/notifications/test", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'kill' })
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log("Kill notification response:", data);
-      setTestMessage(data.message || "Kill notification sent!");
-    } catch (err) {
-      console.error("Error sending kill notification:", err);
-      setTestMessage("Error sending kill notification");
-    }
-  }
-
-  async function testSystemNotification() {
-    try {
-      console.log("Sending test system notification request...");
-      const response = await fetch("/api/notifications/test", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'system' })
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log("System notification response:", data);
-      setTestMessage(data.message || "System notification sent!");
-    } catch (err) {
-      console.error("Error sending system notification:", err);
-      setTestMessage("Error sending system notification");
-    }
-  }
-
-  async function testCharacterNotification() {
-    try {
-      console.log("Sending test character notification request...");
-      const response = await fetch("/api/notifications/test", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'character' })
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log("Character notification response:", data);
-      setTestMessage(data.message || "Character notification sent!");
-    } catch (err) {
-      console.error("Error sending character notification:", err);
-      setTestMessage("Error sending character notification");
+      // Clear the message after 3 seconds
+      setTimeout(() => setTestMessage(null), 3000);
     }
   }
 
@@ -185,9 +179,18 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="flex items-center space-x-3 bg-red-50 border border-red-200 text-red-600 p-4 rounded-md">
-          <FaExclamationTriangle className="text-red-600" />
-          <span>{error}</span>
+        <div className="flex flex-col space-y-4 items-center max-w-md">
+          <div className="flex items-center space-x-3 bg-red-50 border border-red-200 text-red-600 p-4 rounded-md w-full">
+            <FaExclamationTriangle className="text-red-600 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={handleRefreshPage}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+          >
+            <FaSync className="mr-2 inline" />
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -197,23 +200,29 @@ export default function Dashboard() {
    * Main Dashboard UI
    * ------------------------*/
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-blue-50 to-white page-transition">
       {/* Outer container with spacing */}
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-8">
         {/* Title & Toolbar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6">
           <h1 className="flex items-center text-2xl font-bold text-indigo-800 space-x-2 mb-4 sm:mb-0">
-            <FaBell />
+            <FaBell className="text-indigo-700" />
             <span>Wanderer Notifier Dashboard</span>
           </h1>
           <div className="flex space-x-2">
+            {/* System Uptime Display */}
+            <div className="bg-white px-3 py-2 border border-indigo-100 rounded-lg shadow-sm flex items-center mr-4 card-hover-effect">
+              <FaClock className="text-indigo-500 mr-2" />
+              <span className="text-gray-700 font-medium">Uptime: {status?.stats?.uptime || "Unknown"}</span>
+            </div>
+            
             {/* Button: Refresh */}
             <div className="relative group">
               <button
-                className="p-2 bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors"
+                className="p-2 bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors shadow-sm card-hover-effect"
                 onClick={handleRefreshPage}
               >
-                <FaSync />
+                <FaSync className={retryCount > 0 ? "animate-spin" : ""} />
               </button>
               {/* Tooltip */}
               <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 -top-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
@@ -224,7 +233,7 @@ export default function Dashboard() {
             {/* Button: Revalidate License */}
             <div className="relative group">
               <button
-                className="p-2 bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors"
+                className="p-2 bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors shadow-sm card-hover-effect"
                 onClick={handleRevalidateLicense}
               >
                 <FaCheckCircle />
@@ -240,401 +249,190 @@ export default function Dashboard() {
         {/* Test Message Banner */}
         {testMessage && (
           <div className={`${testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error') 
-                           ? 'bg-red-50 border border-red-200' 
-                           : 'bg-green-50 border border-green-200'} 
-                          p-3 rounded-md flex items-center justify-between`}>
+                          ? 'bg-red-50 border border-red-200' 
+                          : 'bg-green-50 border border-green-200'} 
+                          p-3 rounded-md flex items-center justify-between shadow-sm mb-6 page-transition`}>
             <div className={`${testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error')
-                           ? 'text-red-700' 
-                           : 'text-green-700'} flex items-center space-x-2`}>
+                          ? 'text-red-700' 
+                          : 'text-green-700'} flex items-center space-x-2`}>
               {testMessage.toLowerCase().includes('failed') || testMessage.toLowerCase().includes('error') 
-               ? <FaExclamationTriangle /> 
-               : <FaCheckCircle />}
-              <span className="font-medium">{testMessage}</span>
+                ? <FaExclamationTriangle /> 
+                : <FaCheckCircle />}
+              <span>{testMessage}</span>
             </div>
-            <button
-              onClick={() => setTestMessage(null)}
-              className="ml-4 text-gray-500 hover:text-gray-700"
+            <button 
+              onClick={() => setTestMessage(null)} 
+              className="text-gray-400 hover:text-gray-600"
             >
               <FaTimes />
             </button>
           </div>
         )}
-
-        {/* Notification Statistics */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-            <FaSkullCrossbones className="text-sky-600" />
-            <span>Notification Statistics</span>
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                Total Notifications
-              </h4>
-              <p className="text-2xl font-bold text-gray-700">
-                {status?.stats?.notifications?.total || 0}
-              </p>
-            </div>
-
-            {/* Kill Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                Kill Notifications
-              </h4>
-              <p className="text-2xl font-bold text-gray-700">
-                {status?.stats?.notifications?.kills || 0}
-              </p>
-            </div>
-
-            {/* Character Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                Character Notifications
-              </h4>
-              <p className="text-2xl font-bold text-gray-700">
-                {status?.stats?.notifications?.characters || 0}
-              </p>
-            </div>
-
-            {/* System Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                System Notifications
-              </h4>
-              <p className="text-2xl font-bold text-gray-700">
-                {status?.stats?.notifications?.systems || 0}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Database Statistics */}
-        {dbStats && dbStats.db_health.status !== "disabled" && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-              <FaChartBar className="text-purple-600" />
-              <span>Database Statistics</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Total Tracked Characters */}
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                  Tracked Characters in Database
-                </h4>
-                <p className="text-2xl font-bold text-gray-700">
-                  {dbStats?.killmail?.tracked_characters || 0}
-                </p>
-              </div>
-
-              {/* Total Killmails */}
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                  Total Killmails Stored
-                </h4>
-                <p className="text-2xl font-bold text-gray-700">
-                  {dbStats?.killmail?.total_kills || 0}
-                </p>
-              </div>
-
-              {/* Database Health */}
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-600 mb-1">
-                  Database Connection
-                </h4>
-                {dbStats?.db_health ? (
-                  <div>
-                    <p className="flex items-center mt-1">
-                      {dbStats.db_health.status === "connected" ? (
-                        <>
-                          <FaCheckCircle className="text-green-500 mr-2" />
-                          <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                            Connected
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <FaTimes className="text-red-500 mr-2" />
-                          <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded">
-                            Error
-                          </span>
-                        </>
-                      )}
-                    </p>
-                    {dbStats.db_health.ping_ms && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        Ping: {dbStats.db_health.ping_ms}ms
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="flex items-center mt-1">
-                    <FaCircleNotch className="text-gray-400 mr-2 animate-spin" />
-                    <span className="text-gray-500">Checking...</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* License Status */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-            <FaCheckCircle className="text-green-600" />
-            <span>License Status</span>
-          </h2>
-          <div className="bg-white p-5 rounded-md shadow-sm border border-gray-100">
-            <div className="bg-gray-50 p-4 rounded-md border border-gray-200 space-y-2">
+        
+        {/* Key Metrics Summary - Top Row Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-xl shadow-md p-4 card-hover-effect">
+            <div className="flex items-center justify-between">
               <div>
-                <strong>Valid: </strong>
-                {status?.license?.valid ? "Yes" : "No"}
+                <p className="text-indigo-100 text-sm font-medium">Tracked Characters</p>
+                <p className="text-3xl font-bold">{status?.stats?.characters_count || 0}</p>
+                <p className="text-xs mt-1 text-indigo-200">Limit: {status?.limits?.tracked_characters || 0}</p>
               </div>
-              {status?.license?.bot_assigned && (
-                <div>
-                  <strong>Bot Assigned: </strong>Yes
-                </div>
-              )}
-              {status?.license?.details && (
-                <div>
-                  <strong>License Name: </strong>
-                  {status.license.details.license_name}
-                </div>
-              )}
-              {status?.license?.error_message && (
-                <div className="text-red-600">
-                  <strong>Error: </strong>
-                  {status.license.error_message}
-                </div>
-              )}
-              <div className="mt-3 text-sm text-gray-500">
-                <p>
-                  {status?.license?.valid 
-                    ? "Your license is active and valid."
-                    : "Your license is not valid. Please check your license key in the configuration."}
-                </p>
-                {!status?.license?.valid && (
-                  <p className="mt-1">
-                    Try clicking the "Revalidate License" button in the top-right corner to retry validation.
-                  </p>
-                )}
+              <div className="bg-indigo-500 bg-opacity-40 p-3 rounded-lg">
+                <FaUserAlt className="h-6 w-6" />
               </div>
             </div>
           </div>
-        </section>
-
-        {/* Feature Status */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-            <FaBell className="text-pink-500" />
-            <span>Feature Status</span>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Kill Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-              <span className="font-medium text-gray-700">Kill Notifications</span>
-              <div className="flex items-center space-x-2">
-                <span
-                  className={
-                    status?.features?.kill_notifications_enabled
-                      ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
-                      : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
-                  }
-                >
-                  {status?.features?.kill_notifications_enabled
-                    ? "Enabled"
-                    : "Disabled"}
-                </span>
-                {/* Icon button */}
-                <button
-                  className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                  onClick={testKillNotification}
-                >
-                  <FaSkullCrossbones />
-                  {/* Tooltip */}
-                  <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                    Test Kill Notification
-                  </div>
-                </button>
+          
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-xl shadow-md p-4 card-hover-effect">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-medium">Tracked Systems</p>
+                <p className="text-3xl font-bold">{status?.stats?.systems_count || 0}</p>
+                <p className="text-xs mt-1 text-blue-200">Limit: {status?.limits?.tracked_systems || 0}</p>
+              </div>
+              <div className="bg-blue-500 bg-opacity-40 p-3 rounded-lg">
+                <FaGlobe className="h-6 w-6" />
               </div>
             </div>
-
-            {/* System Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-              <span className="font-medium text-gray-700">System Notifications</span>
-              <div className="flex items-center space-x-2">
-                <span
-                  className={
-                    status?.features?.system_notifications_enabled
-                      ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
-                      : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
-                  }
-                >
-                  {status?.features?.system_notifications_enabled
-                    ? "Enabled"
-                    : "Disabled"}
-                </span>
-                <button
-                  className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                  onClick={testSystemNotification}
-                >
-                  <FaCloud />
-                  <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                    Test System Notification
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Character Notifications */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-              <span className="font-medium text-gray-700">Character Notifications</span>
-              <div className="flex items-center space-x-2">
-                <span
-                  className={
-                    status?.features?.character_notifications_enabled
-                      ? "bg-green-100 text-green-800 text-sm px-2 py-1 rounded"
-                      : "bg-red-100 text-red-800 text-sm px-2 py-1 rounded"
-                  }
-                >
-                  {status?.features?.character_notifications_enabled
-                    ? "Enabled"
-                    : "Disabled"}
-                </span>
-                <button
-                  className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                  onClick={testCharacterNotification}
-                >
-                  <FaHeart />
-                  <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                    Test Character Notification
-                  </div>
-                </button>
-              </div>
-            </div>
-            
-            {/* Map Charts */}
-            {status?.features?.map_charts && (
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Map Charts</span>
-                <div className="flex items-center space-x-2">
-                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                    Enabled
-                  </span>
-                  <Link
-                    to="/charts"
-                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    <FaChartBar />
-                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Map Charts
-                    </div>
-                  </Link>
-                </div>
-              </div>
-            )}
-            
-            {/* Kill Charts */}
-            {status?.features?.kill_charts && (
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-medium text-gray-700">Kill Charts</span>
-                <div className="flex items-center space-x-2">
-                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                    Enabled
-                  </span>
-                  <Link
-                    to="/charts"
-                    className="relative group p-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    <FaChartBar />
-                    <div className="absolute hidden group-hover:block bg-black text-white text-xs rounded py-1 px-2 bottom-full mb-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      View Kill Charts
-                    </div>
-                  </Link>
-                </div>
-              </div>
-            )}
-            
-            {/* Add any other features here */}
           </div>
-        </section>
-
-        {/* Usage Statistics */}
-        {status?.features?.usage && (
-          <section>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-              <FaSync className="text-yellow-500" />
-              <span>Usage Statistics</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Tracked Systems */}
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-600 mb-2">
-                  Tracked Systems
-                </h4>
-                <p className="mb-2 text-gray-800">
-                  {status.features.usage.tracked_systems.current}
-                </p>
+          
+          <div className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-xl shadow-md p-4 card-hover-effect">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-100 text-sm font-medium">Total Notifications</p>
+                <p className="text-3xl font-bold">{status?.stats?.notifications?.total || 0}</p>
+                <p className="text-xs mt-1 text-purple-200">History Limit: {status?.limits?.notification_history || 0}</p>
               </div>
+              <div className="bg-purple-500 bg-opacity-40 p-3 rounded-lg">
+                <FaBell className="h-6 w-6" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-indigo-700 to-purple-600 text-white rounded-xl shadow-md p-4 card-hover-effect">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-sm font-medium">Killmail Stats</p>
+                <p className="text-3xl font-bold">{status?.stats?.processing?.kills_notified || 0}</p>
+                <p className="text-xs mt-1 text-indigo-200">Processed: {status?.stats?.processing?.kills_processed || 0}</p>
+              </div>
+              <div className="bg-indigo-500 bg-opacity-40 p-3 rounded-lg">
+                <FaChartLine className="h-6 w-6" />
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Status Summary */}
+        <DataCard title="System Status" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
+          <TwoColumnGrid>
+            <StatusCard 
+              title="Backend Service" 
+              status={status?.services?.backend || "Unknown"} 
+              icon={<FaServer className="h-5 w-5" />}
+              description="Main notification processing service" 
+              className="border border-gray-100 shadow-sm"
+            />
+            <StatusCard 
+              title="License Status" 
+              status={status?.license?.status || "Unknown"} 
+              icon={<FaHeart className="h-5 w-5" />}
+              description={status?.license?.valid 
+                ? `License is valid` 
+                : "License information"} 
+              className="border border-gray-100 shadow-sm"
+            />
+            <StatusCard 
+              title="Notification Service" 
+              status={status?.services?.notifications || "Unknown"} 
+              icon={<FaBell className="h-5 w-5" />}
+              description="Responsible for sending notifications" 
+              className="border border-gray-100 shadow-sm"
+            />
+            <StatusCard 
+              title="API Connection" 
+              status={status?.services?.api || "Unknown"} 
+              icon={<FaCloud className="h-5 w-5" />}
+              description="Connection to EVE Online API" 
+              className="border border-gray-100 shadow-sm"
+            />
+          </TwoColumnGrid>
+        </DataCard>
 
-              {/* Tracked Characters */}
-              <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-600 mb-2">
-                  Tracked Characters
-                </h4>
-                <p className="mb-2 text-gray-800">
-                  {status.features.usage.tracked_characters.current}
+        {/* Notification Stats */}
+        <DataCard title="Notification Statistics" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100 flex flex-col items-center card-hover-effect">
+              <div className="rounded-full bg-blue-100 p-3 mb-2">
+                <FaUserAlt className="text-blue-600" />
+              </div>
+              <p className="text-lg font-bold text-blue-700">{status?.stats?.notifications?.characters || 0}</p>
+              <p className="text-sm text-blue-600">Character Notifications</p>
+            </div>
+            
+            <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 flex flex-col items-center card-hover-effect">
+              <div className="rounded-full bg-purple-100 p-3 mb-2">
+                <FaChartBar className="text-purple-600" />
+              </div>
+              <p className="text-lg font-bold text-purple-700">{status?.stats?.notifications?.kills || 0}</p>
+              <p className="text-sm text-purple-600">Kill Notifications</p>
+            </div>
+            
+            <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100 flex flex-col items-center card-hover-effect">
+              <div className="rounded-full bg-indigo-100 p-3 mb-2">
+                <FaGlobe className="text-indigo-600" />
+              </div>
+              <p className="text-lg font-bold text-indigo-700">{status?.stats?.notifications?.systems || 0}</p>
+              <p className="text-sm text-indigo-600">System Notifications</p>
+            </div>
+          </div>
+        </DataCard>
+
+        {/* WebSocket Status */}
+        <DataCard title="WebSocket Connection" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
+          <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-100">
+            <div className="flex items-center space-x-3">
+              <div className={`h-3 w-3 rounded-full ${status?.websocket?.connected ? 'bg-green-500 status-indicator online' : 'bg-red-500 status-indicator offline'}`}></div>
+              <div>
+                <p className="font-medium">
+                  {status?.websocket?.connected 
+                    ? "Connected to Killstream" 
+                    : status?.websocket?.connecting 
+                      ? "Connecting..." 
+                      : "Disconnected"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {status?.websocket?.connected 
+                    ? `Last message: ${new Date(status?.websocket?.last_message || Date.now()).toLocaleTimeString()}` 
+                    : "No recent messages"}
                 </p>
               </div>
             </div>
-          </section>
-        )}
-
-        {/* System Status */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-            <FaPowerOff className="text-purple-500" />
-            <span>System Status</span>
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Uptime */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">Uptime</h4>
-              <p className="text-gray-800">{status?.stats?.uptime || "Unknown"}</p>
-            </div>
-            {/* WebSocket */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">WebSocket</h4>
-              <p>
-                {status?.stats?.websocket?.connected ? (
-                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                    Connected
-                  </span>
-                ) : (
-                  <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded">
-                    Disconnected
-                  </span>
-                )}
-              </p>
-            </div>
-            {/* Last Message */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">Last Message</h4>
-              <p className="text-gray-800">
-                {status?.stats?.websocket?.last_message
-                  ? new Date(status.stats.websocket.last_message).toLocaleTimeString()
-                  : "Never"}
-              </p>
-            </div>
-            {/* Reconnects */}
-            <div className="bg-white p-4 rounded-md shadow-sm border border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-600 mb-1">Reconnects</h4>
-              <p className="text-gray-800">
-                {status?.stats?.websocket?.reconnects || 0}
-              </p>
+            <div className="bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+              <FaNetworkWired className="text-indigo-500 h-5 w-5" />
             </div>
           </div>
-        </section>
+        </DataCard>
+
+        {/* Features Configuration */}
+        <DataCard title="Configuration" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(features).map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 shadow-sm card-hover-effect">
+                <div className="flex items-center">
+                  <FaCog className="text-indigo-500 mr-3" />
+                  <span className="capitalize text-gray-700">{key.replace(/_/g, ' ')}</span>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs ${
+                  value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {value ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </DataCard>
       </div>
     </div>
   );
