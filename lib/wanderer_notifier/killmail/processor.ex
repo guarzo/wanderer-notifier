@@ -23,7 +23,7 @@ defmodule WandererNotifier.Killmail.Processor do
     :ok
   end
 
-  @spec process_zkill_message(String.t(), state) :: state | {:ok, kill_id | :skipped}
+  @spec process_zkill_message(String.t(), state) :: {:ok, kill_id | :skipped} | {:error, term()}
   def process_zkill_message(raw_message, state) do
     case Jason.decode(raw_message) do
       {:error, reason} ->
@@ -32,7 +32,7 @@ defmodule WandererNotifier.Killmail.Processor do
           message: raw_message
         )
 
-        state
+        {:error, {:decode_error, reason}}
 
       {:ok, kill_data} ->
         case should_notify?(kill_data) do
@@ -41,7 +41,7 @@ defmodule WandererNotifier.Killmail.Processor do
 
           {:ok, false, reason} ->
             log_skipped(kill_data, reason)
-            state
+            {:ok, :skipped}
 
           unexpected ->
             AppLogger.error("Unexpected response from notification determiner", %{
@@ -49,7 +49,7 @@ defmodule WandererNotifier.Killmail.Processor do
               response: inspect(unexpected)
             })
 
-            state
+            {:error, {:invalid_notification_response, unexpected}}
         end
     end
   end
