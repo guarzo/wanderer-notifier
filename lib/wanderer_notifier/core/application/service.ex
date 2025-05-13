@@ -41,9 +41,6 @@ defmodule WandererNotifier.Core.Application.Service do
   @doc "Get the list of recent kills (for API)"
   defdelegate get_recent_kills(), to: KillmailProcessor
 
-  @doc "Send a test kill notification (for API)"
-  defdelegate send_test_kill_notification(), to: KillmailProcessor
-
   ## GenServer callbacks
 
   @impl true
@@ -226,53 +223,7 @@ defmodule WandererNotifier.Core.Application.Service do
     )
 
     # Check if we need to force a reconnect
-    needs_reconnect =
-      cond do
-        # No process ID for websocket
-        state.ws_pid == nil ->
-          AppLogger.websocket_warn("Health check found nil websocket PID")
-          true
-
-        # PID exists but process is dead
-        not Process.alive?(state.ws_pid) ->
-          AppLogger.websocket_warn("Health check found dead websocket process",
-            pid: inspect(state.ws_pid)
-          )
-
-          true
-
-        # Everything looks connected in stats
-        ws_status.connected ->
-          false
-
-        # We're already in connecting state
-        ws_status.connecting ->
-          # If we've been connecting for over 30 seconds, force reconnect
-          case ws_status.last_disconnect do
-            nil ->
-              false
-
-            timestamp ->
-              diff = DateTime.diff(DateTime.utc_now(), timestamp, :second)
-
-              if diff > 30 do
-                AppLogger.websocket_warn("Health check found stalled reconnect",
-                  seconds_since_disconnect: diff
-                )
-
-                true
-              else
-                false
-              end
-          end
-
-        # Not connected or connecting - force reconnect
-        true ->
-          AppLogger.websocket_warn("Health check found disconnected websocket")
-          true
-      end
-
-    if needs_reconnect do
+    if websocket_needs_reconnect?(state, ws_status) do
       # Send a reconnect message
       AppLogger.websocket_info("Health check initiating websocket reconnect")
       self() |> send(:reconnect_ws)
@@ -448,6 +399,54 @@ defmodule WandererNotifier.Core.Application.Service do
         )
 
         %State{service_start_time: System.system_time(:second)}
+    end
+  end
+
+  # Helper function to determine if websocket needs reconnection
+  defp websocket_needs_reconnect?(state, ws_status) do
+    cond do
+      # No process ID for websocket
+      state.ws_pid == nil ->
+        AppLogger.websocket_warn("Health check found nil websocket PID")
+        true
+
+      # PID exists but process is dead
+      not Process.alive?(state.ws_pid) ->
+        AppLogger.websocket_warn("Health check found dead websocket process",
+          pid: inspect(state.ws_pid)
+        )
+
+        true
+
+      # Everything looks connected in stats
+      ws_status.connected ->
+        false
+
+      # We're already in connecting state
+      ws_status.connecting ->
+        stalled_reconnect?(ws_status.last_disconnect)
+
+      # Not connected or connecting - force reconnect
+      true ->
+        AppLogger.websocket_warn("Health check found disconnected websocket")
+        true
+    end
+  end
+
+  # Helper to determine if a reconnect attempt has stalled
+  defp stalled_reconnect?(nil), do: false
+
+  defp stalled_reconnect?(timestamp) do
+    diff = DateTime.diff(DateTime.utc_now(), timestamp, :second)
+
+    if diff > 30 do
+      AppLogger.websocket_warn("Health check found stalled reconnect",
+        seconds_since_disconnect: diff
+      )
+
+      true
+    else
+      false
     end
   end
 end

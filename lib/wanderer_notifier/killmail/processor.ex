@@ -19,7 +19,6 @@ defmodule WandererNotifier.Killmail.Processor do
 
   @spec schedule_tasks() :: :ok
   def schedule_tasks do
-    AppLogger.info("Scheduling killmail tasks")
     :ok
   end
 
@@ -70,9 +69,8 @@ defmodule WandererNotifier.Killmail.Processor do
   @spec process_kill_data(kill_data, state) ::
           {:ok, kill_id | :skipped} | {:error, term()}
   def process_kill_data(kill_data, state) do
-    kill_id = kill_data["killmail_id"] || "unknown"
-    system_id = kill_data["solar_system_id"]
-    AppLogger.kill_info("Processing kill data", kill_id: kill_id)
+    kill_id = Map.get(kill_data, "killmail_id", "unknown")
+    system_id = Map.get(kill_data, "solar_system_id")
 
     # Create a context with relevant information
     system_name = get_system_name(system_id)
@@ -90,13 +88,9 @@ defmodule WandererNotifier.Killmail.Processor do
 
     # Process through pipeline and let it handle notification
     case killmail_pipeline().process_killmail(kill_data, context) do
-      {:ok, final_killmail} ->
+      {:ok, _final_killmail} ->
         # Successfully processed and notified in pipeline
         {:ok, kill_id}
-
-      {:ok, :skipped} ->
-        # Kill was skipped in pipeline
-        {:ok, :skipped}
 
       error ->
         # Handle pipeline errors
@@ -163,32 +157,11 @@ defmodule WandererNotifier.Killmail.Processor do
       end
   end
 
-  defp extract_kill_id(%{"killmail_id" => id}), do: id
-  defp extract_kill_id(%{killmail_id: id}), do: id
-  defp extract_kill_id(_), do: "unknown"
-
-  defp ensure_structured_killmail(%WandererNotifier.Killmail.Killmail{} = k), do: k
-
-  defp ensure_structured_killmail(map) when is_map(map) do
-    struct(WandererNotifier.Killmail.Killmail, Map.delete(map, :__struct__))
-  end
-
-  defp ensure_structured_killmail(_),
-    do: %WandererNotifier.Killmail.Killmail{killmail_id: "unknown", zkb: %{}}
-
   defp killmail_pipeline do
     Application.get_env(
       :wanderer_notifier,
       :killmail_pipeline,
       WandererNotifier.Killmail.Pipeline
-    )
-  end
-
-  defp killmail_notification do
-    Application.get_env(
-      :wanderer_notifier,
-      :killmail_notification,
-      WandererNotifier.Notifications.KillmailNotification
     )
   end
 

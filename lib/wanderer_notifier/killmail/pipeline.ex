@@ -21,9 +21,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
     maybe_track(:start)
     Stats.increment(:kill_processed)
 
-    kill_id = Map.get(zkb_data, "killmail_id", "unknown")
-    system_id = Map.get(zkb_data, "solar_system_id")
-
     with {:ok, killmail} <- build_killmail(zkb_data),
          {:ok, enriched} <- enrich(killmail),
          {:ok, final_killmail} <- dispatch_notification(enriched, true, ctx) do
@@ -64,7 +61,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — enrich/1 — delegates to your enrichment logic
   @spec enrich(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
   defp enrich(killmail) do
-    system_id_before = Map.get(killmail, :system_id)
     esi_system_id = get_in(killmail, [:esi_data, "solar_system_id"])
 
     case Enrichment.enrich_killmail_data(killmail) do
@@ -72,6 +68,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
         system_id_after = Map.get(enriched, :system_id)
         esi_system_id_after = get_in(enriched, [:esi_data, "solar_system_id"])
 
+        # Restore system_id if it was lost during enrichment
         enriched =
           if is_nil(system_id_after) && (esi_system_id_after || esi_system_id) do
             Map.put(enriched, :system_id, esi_system_id_after || esi_system_id)
@@ -111,14 +108,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Logging & metrics helpers ———————————————————————————————————————————
 
-  defp log_outcome(killmail, _ctx, opts) do
-    AppLogger.kill_info("Pipeline processed killmail", %{
-      kill_id: killmail.killmail_id,
-      persisted: Keyword.get(opts, :persisted, false),
-      notified: Keyword.get(opts, :notified, false),
-      reason: Keyword.get(opts, :reason)
-    })
-
+  defp log_outcome(_killmail, _ctx, _opts) do
     :ok
   end
 

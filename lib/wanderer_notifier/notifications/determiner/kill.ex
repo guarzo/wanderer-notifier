@@ -127,47 +127,32 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp extract_kill_data(%Killmail{esi_data: %{} = d}), do: d
 
   defp extract_kill_data(%Killmail{} = killmail) do
-    Logger.info("Found Killmail struct without ESI data: #{inspect(killmail)}")
-
-    # Even if the killmail doesn't have full ESI data, try to get the system_id
-    # from the struct itself as it may have been set during enrichment
+    # If the killmail doesn't have full ESI data, try to get the system_id
+    # from the struct itself if it's been set during enrichment
     if Map.has_key?(killmail, :system_id) && killmail.system_id do
-      Logger.info("Extracted system_id #{killmail.system_id} from Killmail struct")
       %{"solar_system_id" => killmail.system_id}
     else
       %{}
     end
   end
 
-  defp extract_kill_data(map) when is_map(map) do
-    # Log format of incoming data to help debug the pipeline vs processor issue
-    map
-  end
+  defp extract_kill_data(map) when is_map(map), do: map
+  defp extract_kill_data(_), do: %{}
 
-  defp extract_kill_data(other) do
-    Logger.info("Unexpected data format in extract_kill_data: #{inspect(other)}")
-    %{}
-  end
-
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id) do
+  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id) or is_binary(id) do
     to_string(id)
   end
 
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id) do
-    id
-  end
-
-  defp extract_sys_id(other) do
-    Logger.debug("Could not extract system_id from: #{inspect(other)}")
+  defp extract_sys_id(_) do
     nil
   end
 
   defp extract_kill_id(%Killmail{killmail_id: id}) when is_binary(id), do: id
+  defp extract_kill_id(%Killmail{killmail_id: id}), do: to_string(id)
 
   defp extract_kill_id(map) when is_map(map) do
-    Map.get(map, "killmail_id") ||
-      Map.get(map, :killmail_id) ||
-      "unknown"
+    map_id = Map.get(map, "killmail_id") || Map.get(map, :killmail_id)
+    if map_id, do: to_string(map_id), else: "unknown"
   end
 
   defp extract_kill_id(_), do: "unknown"
@@ -201,16 +186,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
     case cache_repo().get(CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
-        result =
-          Enum.any?(systems, fn sys ->
-            sys_id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
-            to_string(sys_id) == id_str
-          end)
+        Enum.any?(systems, fn sys ->
+          sys_id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
+          to_string(sys_id) == id_str
+        end)
 
-        result
-
-      other ->
-        Logger.info("Unexpected cache response for systems: #{inspect(other)}")
+      _ ->
         false
     end
   rescue

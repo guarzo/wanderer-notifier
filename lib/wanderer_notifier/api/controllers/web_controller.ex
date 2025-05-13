@@ -134,12 +134,9 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   # Private functions
 
   defp get_service_status() do
-    AppLogger.api_info("Starting status endpoint processing")
 
     # Get license status safely
-    AppLogger.api_info("Fetching license status")
     license_result = License.validate()
-    AppLogger.api_info("License status result", %{result: inspect(license_result)})
 
     license_status = %{
       valid: license_result.valid,
@@ -152,11 +149,9 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     }
 
     # Get stats safely
-    AppLogger.api_info("Fetching stats")
     stats = get_stats_safely()
 
     # Get features and limits
-    AppLogger.api_info("Fetching features and limits")
     features = Config.features()
     limits = Config.get_all_limits()
 
@@ -198,7 +193,6 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         create_default_stats()
 
       stats ->
-        AppLogger.api_info("Stats retrieved successfully", %{stats: inspect(stats)})
         stats
     end
   rescue

@@ -32,8 +32,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
           killmail
       )
       when map_size(esi_data) > 0 do
-    # Important debug to see if solar_system_id is preserved
-    Logger.info("Enriching killmail with ESI data, system_id=#{esi_data["solar_system_id"]}")
+    Logger.debug("Enriching killmail with ESI data, system_id=#{esi_data["solar_system_id"]}")
 
     case get_victim_info(esi_data["victim"]) do
       {:error, :service_unavailable} = error ->
@@ -56,7 +55,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
               attackers: attackers
           }
 
-          Logger.info("Killmail enriched, system_id preserved: #{enriched_killmail.system_id}")
           {:ok, enriched_killmail}
         else
           {:error, :service_unavailable} = error -> error

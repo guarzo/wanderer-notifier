@@ -26,29 +26,15 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
   def check(type, id)
       when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
     cache_key = dedup_key(type, id)
-    ttl = dedup_ttl(type)
-
-    require Logger
-    Logger.info("DEDUPLICATION CHECK: type=#{type}, id=#{id}, key=#{cache_key}")
-
     try do
       case CacheRepo.get(cache_key) do
         {:ok, _} ->
-          Logger.info(
-            "DEDUPLICATION: Found existing entry for #{cache_key}, marking as duplicate"
-          )
-
           {:ok, :duplicate}
-
         _ ->
-          Logger.info("DEDUPLICATION: No existing entry for #{cache_key}, marking as new")
-          result = CacheRepo.set(cache_key, true, ttl)
-          Logger.info("DEDUPLICATION: Set result: #{inspect(result)}")
           {:ok, :new}
       end
     rescue
       e ->
-        Logger.error("DEDUPLICATION ERROR: #{Exception.message(e)}")
         {:error, Exception.message(e)}
     end
   end
@@ -67,5 +53,4 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
   defp dedup_key(:character, id), do: "character:#{id}"
   defp dedup_key(:kill, id), do: "kill:#{id}"
 
-  defp dedup_ttl(_type), do: @default_ttl
 end

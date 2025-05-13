@@ -246,7 +246,6 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:validate, _from, state) do
-    AppLogger.config_info("Validating license...")
     # Get the license key from configuration
     license_key = Config.license_key()
     # Get the API token from configuration
@@ -424,8 +423,6 @@ defmodule WandererNotifier.License.Service do
         # Extract error message if provided
         message = response["message"]
         if license_valid do
-          AppLogger.config_info("License and bot validation successful")
-          # If valid, return success state
           %{
             valid: true,
             bot_assigned: true,
