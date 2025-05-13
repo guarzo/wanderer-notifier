@@ -34,6 +34,45 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @doc """
+  Track the start of killmail processing.
+  """
+  def track_processing_start do
+    increment(:killmail_processing_start)
+  end
+
+  @doc """
+  Track the completion of killmail processing.
+  """
+  def track_processing_complete(result) do
+    increment(:killmail_processing_complete)
+
+    # Also track success or error specifically
+    status = if match?({:ok, _}, result), do: :success, else: :error
+    increment(:"killmail_processing_complete_#{status}")
+  end
+
+  @doc """
+  Track a skipped killmail.
+  """
+  def track_processing_skipped do
+    increment(:killmail_processing_skipped)
+  end
+
+  @doc """
+  Track a processing error.
+  """
+  def track_processing_error do
+    increment(:killmail_processing_error)
+  end
+
+  @doc """
+  Track a notification being sent.
+  """
+  def track_notification_sent do
+    increment(:notification_sent)
+  end
+
+  @doc """
   Returns the current statistics.
   """
   def get_stats do
@@ -90,6 +129,13 @@ defmodule WandererNotifier.Core.Stats do
     kills_processed = processing.kills_processed
     kills_notified = processing.kills_notified
 
+    # Format killmail metrics
+    metrics = stats.metrics || %{}
+    processing_start = Map.get(metrics, :killmail_processing_start, 0)
+    processing_complete = Map.get(metrics, :killmail_processing_complete, 0)
+    processing_skipped = Map.get(metrics, :killmail_processing_skipped, 0)
+    processing_error = Map.get(metrics, :killmail_processing_error, 0)
+
     # Format websocket status
     websocket = stats.websocket
     connected = if websocket.connected, do: "connected", else: "disconnected"
@@ -105,6 +151,7 @@ defmodule WandererNotifier.Core.Stats do
     Uptime: #{uptime}
     Notifications: #{total_notifications} total (#{kills_notified} kills, #{systems_notified} systems, #{characters_notified} characters)
     Processing: #{kills_processed} kills processed, #{kills_notified} kills notified
+    Killmail Metrics: #{processing_start} started, #{processing_complete} completed, #{processing_skipped} skipped, #{processing_error} errors
     WebSocket: #{connected}, last message #{last_message}")
   end
 
@@ -146,7 +193,9 @@ defmodule WandererNotifier.Core.Stats do
          kill: true,
          character: true,
          system: true
-       }
+       },
+       # Added for killmail metrics
+       metrics: %{}
      }}
   end
 
@@ -160,6 +209,20 @@ defmodule WandererNotifier.Core.Stats do
       :kill_notified ->
         processing = Map.update(state.processing, :kills_notified, 1, &(&1 + 1))
         {:noreply, %{state | processing: processing}}
+
+      type
+      when type in [
+             :killmail_processing_start,
+             :killmail_processing_complete,
+             :killmail_processing_complete_success,
+             :killmail_processing_complete_error,
+             :killmail_processing_skipped,
+             :killmail_processing_error,
+             :notification_sent
+           ] ->
+        # Handle the killmail metrics
+        metrics = Map.update(state.metrics || %{}, type, 1, &(&1 + 1))
+        {:noreply, %{state | metrics: metrics}}
 
       _ ->
         notifications = Map.update(state.notifications, type, 1, &(&1 + 1))
@@ -200,6 +263,7 @@ defmodule WandererNotifier.Core.Stats do
         :systems -> :systems_count
         :characters -> :characters_count
       end
+
     {:noreply, Map.put(state, key, count)}
   end
 
@@ -219,6 +283,7 @@ defmodule WandererNotifier.Core.Stats do
   defp maybe_update(state, key, value), do: Map.put(state, key, value)
 
   defp maybe_update_notifications(state, nil), do: state
+
   defp maybe_update_notifications(state, count) do
     notifications = Map.put(state.notifications, :total, count)
     %{state | notifications: notifications}
@@ -241,7 +306,8 @@ defmodule WandererNotifier.Core.Stats do
       first_notifications: Map.get(state, :first_notifications, %{}),
       processing: state.processing,
       systems_count: Map.get(state, :systems_count, 0),
-      characters_count: Map.get(state, :characters_count, 0)
+      characters_count: Map.get(state, :characters_count, 0),
+      metrics: state.metrics || %{}
     }
 
     {:reply, stats, state}

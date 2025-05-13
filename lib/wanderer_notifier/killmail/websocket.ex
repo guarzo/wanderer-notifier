@@ -221,22 +221,33 @@ defmodule WandererNotifier.Killmail.Websocket do
         )
     end
 
-    case Jason.decode(raw_msg, keys: :strings) do
-      {:ok, json_data} ->
-        message_type = classify_message_type(json_data)
-        AppLogger.count_batch_event(:websocket_message, %{type: message_type})
+    try do
+      case Jason.decode(raw_msg, keys: :strings) do
+        {:ok, json_data} ->
+          message_type = classify_message_type(json_data)
+          AppLogger.count_batch_event(:websocket_message, %{type: message_type})
 
-        if is_pid(state.parent) and Process.alive?(state.parent) do
-          send(state.parent, {:zkill_message, raw_msg})
-          {:ok, state}
-        else
-          AppLogger.websocket_warn("Parent process unavailable, message dropped")
-          {:ok, state}
-        end
+          if is_pid(state.parent) and Process.alive?(state.parent) do
+            send(state.parent, {:zkill_message, raw_msg})
+            {:ok, state}
+          else
+            AppLogger.websocket_warn("Parent process unavailable, message dropped")
+            {:ok, state}
+          end
 
-      {:error, decode_err} ->
-        AppLogger.websocket_error("Error decoding JSON frame",
-          error: inspect(decode_err),
+        {:error, decode_err} ->
+          AppLogger.websocket_error("Error decoding JSON frame",
+            error: inspect(decode_err),
+            raw_message: String.slice(raw_msg, 0, 100)
+          )
+
+          {:ok, state}
+      end
+    rescue
+      e ->
+        AppLogger.websocket_error("Critical error in websocket message processing",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__),
           raw_message: String.slice(raw_msg, 0, 100)
         )
 

@@ -193,7 +193,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     test "successfully processes a valid ZKill message" do
       # Setup
       test_context = %Context{
-        mode: %{mode: :test},
         character_id: 123,
         character_name: "Test Character",
         source: :test
@@ -245,7 +244,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     test "skips processing when notification is not needed" do
       # Setup
       test_context = %Context{
-        mode: %{mode: :test},
         character_id: 123,
         character_name: "Test Character",
         source: :test
@@ -288,7 +286,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     test "handles invalid JSON message" do
       # Setup
       test_context = %Context{
-        mode: %{mode: :test},
         character_id: 123,
         character_name: "Test Character",
         source: :test

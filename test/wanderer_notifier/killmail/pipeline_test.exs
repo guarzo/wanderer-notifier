@@ -179,7 +179,6 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       }
 
       context = %Context{
-        mode: %{mode: :test},
         character_id: 100,
         character_name: "Test Character",
         source: :test,
@@ -220,7 +219,6 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       }
 
       context = %Context{
-        mode: %{mode: :test},
         character_id: 999,
         character_name: "Other Character",
         source: :test,
@@ -276,7 +274,6 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       }
 
       context = %Context{
-        mode: %{mode: :test},
         character_id: 100,
         character_name: "Test Character",
         source: :test,

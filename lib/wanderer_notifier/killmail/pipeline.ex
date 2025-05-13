@@ -1,12 +1,11 @@
 defmodule WandererNotifier.Killmail.Pipeline do
   @moduledoc """
   Standardized pipeline for processing killmails.
-  Handles both realtime and historical modes.
   """
 
   alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Killmail.{Context, Killmail, Metrics, Enrichment, Notification}
+  alias WandererNotifier.Killmail.{Context, Killmail, Enrichment, Notification}
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
@@ -18,7 +17,8 @@ defmodule WandererNotifier.Killmail.Pipeline do
   """
   @spec process_killmail(zkb_data, Context.t() | map()) :: result
   def process_killmail(zkb_data, ctx) do
-    maybe_track(:start, ctx)
+    ctx = ensure_context(ctx)
+    maybe_track(:start)
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- build_killmail(zkb_data),
@@ -30,12 +30,12 @@ defmodule WandererNotifier.Killmail.Pipeline do
         {:ok, %{should_notify: true, reason: _reason}} ->
           case dispatch_notification(enriched, true, ctx) do
             {:ok, final_killmail} ->
-              maybe_track(:complete, ctx, {:ok, final_killmail})
+              maybe_track(:complete, {:ok, final_killmail})
               log_outcome(final_killmail, ctx, persisted: true, notified: true, reason: nil)
               {:ok, final_killmail}
 
             error ->
-              maybe_track(:error, ctx)
+              maybe_track(:error)
               log_error(zkb_data, ctx, error)
               error
           end
@@ -49,11 +49,15 @@ defmodule WandererNotifier.Killmail.Pipeline do
       end
     else
       {:error, reason} ->
-        maybe_track(:error, ctx)
+        maybe_track(:error)
         log_error(zkb_data, ctx, reason)
         {:error, reason}
     end
   end
+
+  # Helper to ensure a proper Context struct
+  defp ensure_context(%Context{} = ctx), do: ctx
+  defp ensure_context(_), do: Context.new()
 
   # — build_killmail/1 — fetches ESI and wraps in your Killmail struct
   @spec build_killmail(zkb_data) :: {:ok, Killmail.t()} | {:error, term()}
@@ -83,11 +87,11 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — dispatch_notification/3 — actually sends or skips the notify step
   @spec dispatch_notification(Killmail.t(), boolean(), Context.t() | map()) ::
           {:ok, Killmail.t()} | {:error, term()}
-  defp dispatch_notification(killmail, true, ctx) do
+  defp dispatch_notification(killmail, true, _ctx) do
     Notification.send_kill_notification(killmail, killmail.killmail_id)
     |> case do
       {:ok, _} ->
-        maybe_track(:notify, ctx)
+        maybe_track(:notify)
         {:ok, killmail}
 
       error ->
@@ -99,13 +103,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp dispatch_notification(killmail, _, _), do: {:ok, killmail}
 
   # — handle_skip/3 — logs and tracks a skipped event
-  defp handle_skip(zkb_data, ctx, reason) do
+  defp handle_skip(zkb_data, _ctx, reason) do
     AppLogger.kill_info("Pipeline skipping killmail", %{
       kill_id: Map.get(zkb_data, "killmail_id", "unknown"),
       reason: reason
     })
 
-    maybe_track(:skipped, ctx)
+    maybe_track(:skipped)
     {:ok, :skipped}
   end
 
@@ -120,15 +124,32 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # — Logging & metrics helpers ———————————————————————————————————————————
 
-  defp log_outcome(_killmail, _ctx, _opts), do: :ok
-  defp log_error(_data, _ctx, _reason), do: :ok
+  defp log_outcome(killmail, _ctx, opts) do
+    AppLogger.kill_info("Pipeline processed killmail", %{
+      kill_id: killmail.killmail_id,
+      persisted: Keyword.get(opts, :persisted, false),
+      notified: Keyword.get(opts, :notified, false),
+      reason: Keyword.get(opts, :reason)
+    })
 
-  defp maybe_track(:start, ctx), do: if_ctx(ctx, &Metrics.track_processing_start/1)
-  defp maybe_track(:error, ctx), do: if_ctx(ctx, &Metrics.track_processing_error/1)
-  defp maybe_track(:skipped, ctx), do: if_ctx(ctx, &Metrics.track_processing_skipped/1)
-  defp maybe_track(:notify, ctx), do: if_ctx(ctx, &Metrics.track_notification_sent/1)
-  defp maybe_track(:complete, ctx, r), do: if_ctx(ctx, &Metrics.track_processing_complete(&1, r))
+    :ok
+  end
 
-  defp if_ctx(%Context{} = c, fun), do: fun.(c)
-  defp if_ctx(_, _), do: :ok
+  defp log_error(data, _ctx, reason) do
+    kill_id = if is_map(data), do: Map.get(data, "killmail_id", "unknown"), else: "unknown"
+
+    AppLogger.kill_error("Pipeline error processing killmail", %{
+      kill_id: kill_id,
+      error: inspect(reason)
+    })
+
+    :ok
+  end
+
+  # Helper functions to track metrics using Stats instead of Metrics
+  defp maybe_track(:start), do: Stats.track_processing_start()
+  defp maybe_track(:error), do: Stats.track_processing_error()
+  defp maybe_track(:skipped), do: Stats.track_processing_skipped()
+  defp maybe_track(:notify), do: Stats.track_notification_sent()
+  defp maybe_track(:complete, result), do: Stats.track_processing_complete(result)
 end

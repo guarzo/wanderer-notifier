@@ -144,41 +144,53 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
    - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
    - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
-   - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+   - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
+   - `WANDERER_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
+   - `WANDERER_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
+   - `WANDERER_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
 
 2. **License Configuration**
 
    - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
-   - `WANDERER_LICENSE_MANAGER_URL`: URL for the license manager service (defaults to production service)
+   - `WANDERER_LICENSE_MANAGER_URL`: URL for the license manager service
 
 3. **Map API Configuration**
 
    - `WANDERER_MAP_URL`: URL for the wanderer map
    - `WANDERER_MAP_TOKEN`: Authentication token for map API
+   - `WANDERER_NOTIFIER_API_TOKEN`: API token for the notifier
 
 4. **Web Server Configuration**
 
-   - `WANDERER_WEB_PORT`: Port for the web server (default: 4000)
-   - `WANDERER_WEB_HOST`: Host for the web server (default: localhost)
+   - `PORT`: Port for the web server (default: 4000)
+   - `WANDERER_HOST`: Host for the web server (default: localhost)
+   - `WANDERER_SCHEME`: HTTP scheme to use (default: http)
    - `WANDERER_PUBLIC_URL`: Public URL for the web interface
 
 5. **WebSocket Configuration**
 
-   - `WANDERER_WEBSOCKET_ENABLED`: Enable/disable websocket connection (default: true)
    - `WANDERER_WEBSOCKET_RECONNECT_DELAY`: Delay between reconnection attempts in ms (default: 5000)
+   - `WANDERER_WEBSOCKET_MAX_RECONNECTS`: Maximum number of reconnection attempts (default: 20)
+   - `WANDERER_WEBSOCKET_RECONNECT_WINDOW`: Window for reconnection attempts in seconds (default: 3600)
 
 6. **Feature Flags**
 
-   - `WANDERER_FEATURE_KILL_NOTIFICATIONS`: Enable kill notifications (default: true)
-   - `WANDERER_FEATURE_SYSTEM_NOTIFICATIONS`: Enable system notifications (default: true)
-   - `WANDERER_FEATURE_CHARACTER_NOTIFICATIONS`: Enable character notifications (default: true)
-   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: false)
+   - `WANDERER_NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
+   - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
+   - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
+   - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
+   - `WANDERER_CHARACTER_TRACKING_ENABLED`: Enable character tracking (default: true)
+   - `WANDERER_SYSTEM_TRACKING_ENABLED`: Enable system tracking (default: true)
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
 
 7. **Character Configuration**
 
    - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
+
+8. **Caching Configuration**
+
+   - `WANDERER_CACHE_DIR`: Directory for caching data (default: /app/data/cache)
 
 ## Development
 

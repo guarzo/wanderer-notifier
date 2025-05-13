@@ -55,19 +55,48 @@ Create a `.env` file in your working directory with the following content. Repla
 WANDERER_DISCORD_BOT_TOKEN=your_discord_bot_token
 WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 
+# Optional Discord Channel Configuration
+# WANDERER_DISCORD_KILL_CHANNEL_ID=your_kill_channel_id
+# WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
+# WANDERER_CHARACTER_KILL_CHANNEL_ID=your_character_kill_channel_id
+# WANDERER_SYSTEM_CHANNEL_ID=your_system_channel_id
+# WANDERER_CHARACTER_CHANNEL_ID=your_character_channel_id
+
 # Map Configuration
 WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
 WANDERER_MAP_TOKEN=your_map_api_token
+WANDERER_NOTIFIER_API_TOKEN=your_notifier_api_token
 
-# Note: Premium features are enabled with your map subscription
+# License Configuration
 WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
+WANDERER_LICENSE_MANAGER_URL=license_manager_url
 
 # Feature Flags (default values shown below)
-# WANDERER_FEATURE_KILL_NOTIFICATIONS=true
-# WANDERER_FEATURE_CHARACTER_NOTIFICATIONS=true
-# WANDERER_FEATURE_SYSTEM_NOTIFICATIONS=true
-# WANDERER_DISABLE_STATUS_MESSAGES=false # Disable startup and status notifications
-# WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
+# WANDERER_NOTIFICATIONS_ENABLED=true
+# WANDERER_KILL_NOTIFICATIONS_ENABLED=true
+# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true
+# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true
+# WANDERER_CHARACTER_TRACKING_ENABLED=true
+# WANDERER_SYSTEM_TRACKING_ENABLED=true
+# WANDERER_DISABLE_STATUS_MESSAGES=false
+# WANDERER_FEATURE_TRACK_KSPACE=true
+
+# Server Configuration
+# PORT=4000
+# WANDERER_HOST=localhost
+# WANDERER_SCHEME=http
+# WANDERER_PUBLIC_URL=your_public_url
+
+# WebSocket Configuration
+# WANDERER_WEBSOCKET_RECONNECT_DELAY=5000
+# WANDERER_WEBSOCKET_MAX_RECONNECTS=20
+# WANDERER_WEBSOCKET_RECONNECT_WINDOW=3600
+
+# Caching Configuration
+# WANDERER_CACHE_DIR=/app/data/cache
+
+# Character Configuration
+# WANDERER_CHARACTER_EXCLUDE_LIST=character_id1,character_id2
 ```
 
 > **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.

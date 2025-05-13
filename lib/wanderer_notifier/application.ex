@@ -18,7 +18,6 @@ defmodule WandererNotifier.Application do
   use Application
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Killmail.Metrics
 
   @doc """
   Starts the WandererNotifier application.
@@ -29,8 +28,6 @@ defmodule WandererNotifier.Application do
     children = [
       {WandererNotifier.NoopConsumer, []},
       {Cachex, name: :wanderer_cache},
-      {Task, fn -> initialize_metric_registry() end},
-      {Metrics, []},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
@@ -47,23 +44,6 @@ defmodule WandererNotifier.Application do
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     Supervisor.start_link(children, opts)
-  end
-
-  defp initialize_metric_registry do
-    case WandererNotifier.Killmail.MetricRegistry.initialize() do
-      {:ok, atoms} ->
-        AppLogger.log_startup_state_change(
-          :metric_registry,
-          "Metric registry initialized successfully",
-          %{metric_count: length(atoms)}
-        )
-
-        :ok
-
-      error ->
-        AppLogger.startup_error("Failed to initialize metric registry", error: inspect(error))
-        error
-    end
   end
 
   @doc """

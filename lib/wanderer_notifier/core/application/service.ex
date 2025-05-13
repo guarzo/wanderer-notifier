@@ -196,6 +196,29 @@ defmodule WandererNotifier.Core.Application.Service do
     handle_batch_logs_flush(state)
   end
 
+  # Add handler for :DOWN messages from monitored processes
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
+    # Check if the process that went down is our websocket
+    if pid == state.ws_pid do
+      AppLogger.websocket_warn(
+        "Killmail websocket process went down. Scheduling reconnect",
+        reason: inspect(reason),
+        reconnect_delay_ms: Config.websocket_reconnect_delay()
+      )
+
+      Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
+      {:noreply, %{state | ws_pid: nil}}
+    else
+      AppLogger.processor_warn("Monitored process went down",
+        pid: inspect(pid),
+        reason: inspect(reason)
+      )
+
+      {:noreply, state}
+    end
+  end
+
   # Helper functions for message handling
 
   defp handle_websocket_disconnect(state) do
@@ -508,6 +531,9 @@ defmodule WandererNotifier.Core.Application.Service do
       case KillmailWebsocket.start_link(self()) do
         {:ok, pid} ->
           AppLogger.websocket_info("🔌 WandererNotifier.Killmail.Websocket ready")
+          # Explicitly monitor the websocket process to ensure we get notifications if it crashes
+          Process.monitor(pid)
+          # Store PID in state
           %{state | ws_pid: pid}
 
         {:error, reason} ->
@@ -517,6 +543,9 @@ defmodule WandererNotifier.Core.Application.Service do
           WandererNotifier.Notifications.Dispatcher.send_message(
             "Failed to start websocket: #{inspect(reason)}"
           )
+
+          # Schedule a retry
+          Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
 
           # Return state without websocket
           state
@@ -535,6 +564,9 @@ defmodule WandererNotifier.Core.Application.Service do
           AppLogger.websocket_info("Reconnected to WandererNotifier.Killmail.Websocket",
             pid: inspect(pid)
           )
+
+          # Explicitly monitor the websocket process
+          Process.monitor(pid)
 
           %{state | ws_pid: pid}
 

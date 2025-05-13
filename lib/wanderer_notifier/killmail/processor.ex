@@ -74,7 +74,17 @@ defmodule WandererNotifier.Killmail.Processor do
     kill_id = kill_data["killmail_id"] || "unknown"
     AppLogger.kill_info("Processing kill data", kill_id: kill_id)
 
-    context = Context.new(nil, nil, :zkill_websocket, %{original_state: state})
+    # Create a context with relevant information
+    context =
+      Context.new(
+        nil,
+        nil,
+        :zkill_websocket,
+        %{
+          original_state: state,
+          processing_started_at: DateTime.utc_now()
+        }
+      )
 
     killmail_pipeline()
     |> then(& &1.process_killmail(kill_data, context))
@@ -84,10 +94,13 @@ defmodule WandererNotifier.Killmail.Processor do
 
   @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
   def send_test_kill_notification do
+    # Create a test context
+    context = Context.new(nil, nil, :zkill_api, %{test: true})
+
     with {:ok, recent} <- get_recent_kills(),
          kill_id <- extract_kill_id(recent),
          structured <- ensure_structured_killmail(recent),
-         {:ok, enriched} <- killmail_pipeline().process_killmail(structured, %Context{}) do
+         {:ok, enriched} <- killmail_pipeline().process_killmail(structured, context) do
       killmail_notification().send_kill_notification(enriched, "test", %{})
       {:ok, kill_id}
     else

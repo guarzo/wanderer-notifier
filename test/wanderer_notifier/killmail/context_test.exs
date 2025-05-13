@@ -61,11 +61,5 @@ defmodule WandererNotifier.Killmail.ContextTest do
     {val, new_ctx} = Access.pop(ctx, :character_id)
     assert val == 42
     assert new_ctx.character_id == nil
-
-    # Test direct access via dot notation
-    assert ctx.mode == %{mode: :default}
-
-    # Test realtime? function
-    assert Context.realtime?(ctx) == true
   end
 end

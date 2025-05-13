@@ -1,13 +1,17 @@
 defmodule WandererNotifier.Killmail.Context do
   @moduledoc """
   Defines the context for killmail processing, containing all necessary information
-  for processing a killmail.
+  for processing a killmail through the pipeline.
+
+  This module implements the Access behavior, allowing field access with pattern matching
+  and providing a consistent interface for passing processing context through the
+  killmail pipeline.
   """
 
   @type source :: :zkill_websocket | :zkill_api
 
   @type t :: %__MODULE__{
-          mode: map(),
+          # All contexts use default mode, so we keep it simple
           character_id: pos_integer() | nil,
           character_name: String.t() | nil,
           source: source(),
@@ -16,7 +20,6 @@ defmodule WandererNotifier.Killmail.Context do
         }
 
   defstruct [
-    :mode,
     :character_id,
     :character_name,
     :source,
@@ -51,12 +54,29 @@ defmodule WandererNotifier.Killmail.Context do
   end
 
   @doc """
-  Creates a new context.
+  Creates a new context with the provided parameters.
+
+  ## Parameters
+
+  - `character_id` - The character ID associated with the killmail
+  - `character_name` - The character name associated with the killmail
+  - `source` - The source of the killmail (`:zkill_websocket` or `:zkill_api`)
+  - `options` - Additional options to be included in the context
+
+  ## Examples
+
+      iex> Context.new(123, "Player", :zkill_websocket, %{processing_info: "test"})
+      %Context{
+        character_id: 123,
+        character_name: "Player",
+        source: :zkill_websocket,
+        batch_id: nil,
+        options: %{processing_info: "test"}
+      }
   """
   @spec new(pos_integer() | nil, String.t() | nil, source() | nil, map()) :: t()
   def new(character_id \\ nil, character_name \\ nil, source \\ nil, options \\ %{}) do
     %__MODULE__{
-      mode: %{mode: :default},
       character_id: character_id,
       character_name: character_name,
       source: source || :zkill_api,
@@ -64,12 +84,4 @@ defmodule WandererNotifier.Killmail.Context do
       options: options
     }
   end
-
-  @doc """
-  Helper function to check if the context is for realtime processing.
-  Always returns true as the system now only operates in realtime mode.
-  Kept for compatibility with existing code.
-  """
-  @spec realtime?(t()) :: boolean()
-  def realtime?(_ctx), do: true
 end

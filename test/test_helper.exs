@@ -133,11 +133,13 @@ System.put_env("DISCORD_WEBHOOK_URL", "http://test.discord.url")
 # Configure logger level for tests
 Logger.configure(level: :warning)
 
-# Initialize metric registry for tests
-{:ok, _} = WandererNotifier.Killmail.MetricRegistry.initialize()
+# Start Stats service for tests if needed
+if :ets.whereis(:stats_table) == :undefined do
+  :ets.new(:stats_table, [:named_table, :public, :set])
+end
 
-# Start the metrics agent for tests if not already started
-case Agent.start_link(fn -> %{counters: %{}} end, name: :killmail_metrics_agent) do
+# Initialize test state for Stats
+case GenServer.start_link(WandererNotifier.Core.Stats, [], name: WandererNotifier.Core.Stats) do
   {:ok, pid} -> {:ok, pid}
   {:error, {:already_started, pid}} -> {:ok, pid}
   error -> error
