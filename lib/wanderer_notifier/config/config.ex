@@ -208,6 +208,7 @@ defmodule WandererNotifier.Config do
   # --- Cache TTLs ---
   @doc "Returns the characters cache TTL in seconds."
   def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
+  def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
 
   # --- Tracking Data Feature ---
   @doc "Returns true if tracking data should be loaded."
