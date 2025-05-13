@@ -21,32 +21,15 @@ defmodule WandererNotifier.Killmail.Pipeline do
     maybe_track(:start)
     Stats.increment(:kill_processed)
 
+    kill_id = Map.get(zkb_data, "killmail_id", "unknown")
+    system_id = Map.get(zkb_data, "solar_system_id")
+
     with {:ok, killmail} <- build_killmail(zkb_data),
-         {:ok, enriched} <- enrich(killmail) do
-      # Check if notification is needed using configurable determiner
-      notification_result = notification_determiner().should_notify?(enriched)
-
-      case notification_result do
-        {:ok, %{should_notify: true, reason: _reason}} ->
-          case dispatch_notification(enriched, true, ctx) do
-            {:ok, final_killmail} ->
-              maybe_track(:complete, {:ok, final_killmail})
-              log_outcome(final_killmail, ctx, persisted: true, notified: true, reason: nil)
-              {:ok, final_killmail}
-
-            error ->
-              maybe_track(:error)
-              log_error(zkb_data, ctx, error)
-              error
-          end
-
-        {:ok, %{should_notify: false, reason: reason}} ->
-          handle_skip(zkb_data, ctx, reason)
-
-        _ ->
-          # Handle unexpected notification determiner results
-          handle_skip(zkb_data, ctx, "Unknown notification status")
-      end
+         {:ok, enriched} <- enrich(killmail),
+         {:ok, final_killmail} <- dispatch_notification(enriched, true, ctx) do
+      maybe_track(:complete, {:ok, final_killmail})
+      log_outcome(final_killmail, ctx, persisted: true, notified: true, reason: nil)
+      {:ok, final_killmail}
     else
       {:error, reason} ->
         maybe_track(:error)
@@ -66,7 +49,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
     case ESIService.get_killmail(id, hash) do
       {:ok, esi_data} ->
-        {:ok, Killmail.new(id, Map.get(zkb_data, "zkb", %{}), esi_data)}
+        zkb_data = Map.get(zkb_data, "zkb", %{})
+        killmail = Killmail.new(id, zkb_data, esi_data)
+        {:ok, killmail}
 
       error ->
         log_error(zkb_data, nil, error)
@@ -79,16 +64,38 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # — enrich/1 — delegates to your enrichment logic
   @spec enrich(Killmail.t()) :: {:ok, Killmail.t()} | {:error, term()}
   defp enrich(killmail) do
-    {:ok, Enrichment.enrich_killmail_data(killmail)}
+    system_id_before = Map.get(killmail, :system_id)
+    esi_system_id = get_in(killmail, [:esi_data, "solar_system_id"])
+
+    case Enrichment.enrich_killmail_data(killmail) do
+      {:ok, enriched} ->
+        system_id_after = Map.get(enriched, :system_id)
+        esi_system_id_after = get_in(enriched, [:esi_data, "solar_system_id"])
+
+        enriched =
+          if is_nil(system_id_after) && (esi_system_id_after || esi_system_id) do
+            Map.put(enriched, :system_id, esi_system_id_after || esi_system_id)
+          else
+            enriched
+          end
+
+        {:ok, enriched}
+
+      error ->
+        error
+    end
   rescue
-    _ -> {:error, :enrichment_failed}
+    error ->
+      AppLogger.error("Error during enrichment: #{inspect(error)}")
+      {:error, :enrichment_failed}
   end
 
   # — dispatch_notification/3 — actually sends or skips the notify step
   @spec dispatch_notification(Killmail.t(), boolean(), Context.t() | map()) ::
           {:ok, Killmail.t()} | {:error, term()}
   defp dispatch_notification(killmail, true, _ctx) do
-    Notification.send_kill_notification(killmail, killmail.killmail_id)
+    killmail
+    |> Notification.send_kill_notification(killmail.killmail_id)
     |> case do
       {:ok, _} ->
         maybe_track(:notify)
@@ -101,26 +108,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp dispatch_notification({:error, _reason} = error, _, _), do: error
   defp dispatch_notification(killmail, _, _), do: {:ok, killmail}
-
-  # — handle_skip/3 — logs and tracks a skipped event
-  defp handle_skip(zkb_data, _ctx, reason) do
-    AppLogger.kill_info("Pipeline skipping killmail", %{
-      kill_id: Map.get(zkb_data, "killmail_id", "unknown"),
-      reason: reason
-    })
-
-    maybe_track(:skipped)
-    {:ok, :skipped}
-  end
-
-  # Get the notification determiner module from application config
-  defp notification_determiner do
-    Application.get_env(
-      :wanderer_notifier,
-      :notification_determiner,
-      WandererNotifier.Notifications.Determiner.Kill
-    )
-  end
 
   # — Logging & metrics helpers ———————————————————————————————————————————
 
@@ -149,7 +136,6 @@ defmodule WandererNotifier.Killmail.Pipeline do
   # Helper functions to track metrics using Stats instead of Metrics
   defp maybe_track(:start), do: Stats.track_processing_start()
   defp maybe_track(:error), do: Stats.track_processing_error()
-  defp maybe_track(:skipped), do: Stats.track_processing_skipped()
   defp maybe_track(:notify), do: Stats.track_notification_sent()
   defp maybe_track(:complete, result), do: Stats.track_processing_complete(result)
 end

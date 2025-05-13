@@ -20,9 +20,20 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def should_notify?(raw) do
     try do
       data = extract_kill_data(raw)
-      system_id = extract_sys_id(data)
+
+      # If we're dealing with a Killmail struct, try to get the system_id directly
+      system_id =
+        case raw do
+          %Killmail{system_id: sid} when not is_nil(sid) ->
+            to_string(sid)
+
+          _ ->
+            extract_sys_id(data)
+        end
+
       kill_id = extract_kill_id(raw)
 
+      # First check if notifications are enabled
       with true <- notifications_enabled?(),
            true <- tracked?(system_id, data) do
         check_deduplication(kill_id)
@@ -89,7 +100,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp tracked?(nil, data), do: has_tracked_character?(data)
-  defp tracked?(sys, data), do: tracked_system?(sys) || has_tracked_character?(data)
+
+  defp tracked?(sys, data) do
+    is_tracked_system = tracked_system?(sys)
+    has_tracked_chars = has_tracked_character?(data)
+    is_tracked_system || has_tracked_chars
+  end
 
   defp reason_for_disable(system_id) do
     cond do
@@ -109,12 +125,42 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # ——— Extractors ——————————————————————————————————————————————————————
 
   defp extract_kill_data(%Killmail{esi_data: %{} = d}), do: d
-  defp extract_kill_data(map) when is_map(map), do: map
-  defp extract_kill_data(_), do: %{}
 
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id), do: to_string(id)
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id), do: id
-  defp extract_sys_id(_), do: nil
+  defp extract_kill_data(%Killmail{} = killmail) do
+    Logger.info("Found Killmail struct without ESI data: #{inspect(killmail)}")
+
+    # Even if the killmail doesn't have full ESI data, try to get the system_id
+    # from the struct itself as it may have been set during enrichment
+    if Map.has_key?(killmail, :system_id) && killmail.system_id do
+      Logger.info("Extracted system_id #{killmail.system_id} from Killmail struct")
+      %{"solar_system_id" => killmail.system_id}
+    else
+      %{}
+    end
+  end
+
+  defp extract_kill_data(map) when is_map(map) do
+    # Log format of incoming data to help debug the pipeline vs processor issue
+    map
+  end
+
+  defp extract_kill_data(other) do
+    Logger.info("Unexpected data format in extract_kill_data: #{inspect(other)}")
+    %{}
+  end
+
+  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id) do
+    to_string(id)
+  end
+
+  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id) do
+    id
+  end
+
+  defp extract_sys_id(other) do
+    Logger.debug("Could not extract system_id from: #{inspect(other)}")
+    nil
+  end
 
   defp extract_kill_id(%Killmail{killmail_id: id}) when is_binary(id), do: id
 
@@ -155,12 +201,16 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
     case cache_repo().get(CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
-        Enum.any?(systems, fn sys ->
-          sys_id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
-          to_string(sys_id) == id_str
-        end)
+        result =
+          Enum.any?(systems, fn sys ->
+            sys_id = Map.get(sys, :solar_system_id) || Map.get(sys, "solar_system_id")
+            to_string(sys_id) == id_str
+          end)
 
-      _ ->
+        result
+
+      other ->
+        Logger.info("Unexpected cache response for systems: #{inspect(other)}")
         false
     end
   rescue

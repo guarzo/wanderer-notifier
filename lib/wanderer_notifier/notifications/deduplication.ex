@@ -28,17 +28,28 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
     cache_key = dedup_key(type, id)
     ttl = dedup_ttl(type)
 
+    require Logger
+    Logger.info("DEDUPLICATION CHECK: type=#{type}, id=#{id}, key=#{cache_key}")
+
     try do
       case CacheRepo.get(cache_key) do
         {:ok, _} ->
+          Logger.info(
+            "DEDUPLICATION: Found existing entry for #{cache_key}, marking as duplicate"
+          )
+
           {:ok, :duplicate}
 
         _ ->
-          CacheRepo.set(cache_key, true, ttl)
+          Logger.info("DEDUPLICATION: No existing entry for #{cache_key}, marking as new")
+          result = CacheRepo.set(cache_key, true, ttl)
+          Logger.info("DEDUPLICATION: Set result: #{inspect(result)}")
           {:ok, :new}
       end
     rescue
-      e -> {:error, Exception.message(e)}
+      e ->
+        Logger.error("DEDUPLICATION ERROR: #{Exception.message(e)}")
+        {:error, Exception.message(e)}
     end
   end
 
