@@ -104,27 +104,11 @@ function App() {
                   <FaBell className="text-2xl text-indigo-300" />
                   <div className="text-xl font-bold">Wanderer Notifier</div>
                 </div>
-                <div className="flex space-x-6">
-                  <Link to="/" className="flex items-center space-x-2 py-1 border-b-2 border-transparent hover:border-indigo-300 transition-colors">
-                    <FaHome className="text-indigo-300" />
-                    <span>Dashboard</span>
-                  </Link>
-                  {debugEnabled && (
-                  <Link to="/schedulers" className="flex items-center space-x-2 py-1 border-b-2 border-transparent hover:border-indigo-300 transition-colors">
-                    <FaCalendarAlt className="text-indigo-300" />
-                    <span>Schedulers</span>
-                  </Link>
-                  )}
-                </div>
               </div>
             </nav>
             
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route 
-                path="/schedulers" 
-                element={debugEnabled ? <SchedulerDashboard /> : <Navigate to="/" replace />} 
-              />
             </Routes>
           </div>
         </Router>

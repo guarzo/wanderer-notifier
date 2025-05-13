@@ -425,40 +425,41 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
   end
 
   describe "has_tracked_character?/1" do
-    test "returns true when victim is tracked", %{killmail_struct: killmail} do
+    test "returns true when victim is tracked", %{killmail_struct: _killmail} do
       # Configure the mock with a tracked victim character
       MockCache.configure([], [%{character_id: "1000001", name: "Test Victim"}])
 
-      result = Kill.has_tracked_character?(killmail)
-      assert result == true
+      # Test by character ID instead of the full killmail
+      assert Kill.tracked_character?("1000001") == true
     end
 
-    test "returns true when attacker is tracked", %{killmail_struct: killmail} do
+    test "returns true when attacker is tracked", %{killmail_struct: _killmail} do
       # Configure the mock with a tracked attacker character
       MockCache.configure([], [%{character_id: "1000002", name: "Test Attacker"}])
 
-      result = Kill.has_tracked_character?(killmail)
-      assert result == true
+      # Test by character ID instead of the full killmail
+      assert Kill.tracked_character?("1000002") == true
     end
 
-    test "returns false when no characters are tracked", %{killmail_struct: killmail} do
+    test "returns false when no characters are tracked", %{killmail_struct: _killmail} do
       # Configure the mock with empty tracking lists
       MockCache.configure([], [])
 
-      result = Kill.has_tracked_character?(killmail)
-      assert result == false
+      # Test by character ID instead of the full killmail
+      assert Kill.tracked_character?("1000001") == false
     end
 
-    test "returns false when tracked characters cache returns error", %{killmail_struct: killmail} do
+    test "returns false when tracked characters cache returns error", %{
+      killmail_struct: _killmail
+    } do
       # Force an error by using a nil key
       MockCache.configure([], nil)
 
-      # Run the test
-      result = Kill.has_tracked_character?(killmail)
-      assert result == false
+      # Test by character ID instead of the full killmail
+      assert Kill.tracked_character?("1000001") == false
     end
 
-    test "checks direct character tracking when not in list", %{killmail_struct: killmail} do
+    test "checks direct character tracking when not in list", %{killmail_struct: _killmail} do
       # Configure the mock with empty character list but a direct character lookup
       MockCache.configure([], [])
 
@@ -468,10 +469,34 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         name: "Test Victim"
       })
 
-      # Execute
-      result = Kill.has_tracked_character?(killmail)
+      # Test by character ID instead of the full killmail
+      assert Kill.tracked_character?("1000001") == true
+    end
 
-      assert result == true
+    test "properly detects a tracked character in killmail victim", %{killmail_struct: killmail} do
+      # Configure the mock with a tracked victim character
+      MockCache.configure([], [%{character_id: "1000001", name: "Test Victim"}])
+
+      # Test with the full ESI data
+      assert Kill.has_tracked_character?(killmail.esi_data) == true
+    end
+
+    test "properly detects a tracked character in killmail attackers", %{
+      killmail_struct: killmail
+    } do
+      # Configure the mock with a tracked attacker character
+      MockCache.configure([], [%{character_id: "1000002", name: "Test Attacker"}])
+
+      # Test with the full ESI data
+      assert Kill.has_tracked_character?(killmail.esi_data) == true
+    end
+
+    test "returns false when no tracked characters in killmail", %{killmail_struct: killmail} do
+      # Configure the mock with an unrelated character
+      MockCache.configure([], [%{character_id: "9999999", name: "Unrelated Character"}])
+
+      # Test with the full ESI data
+      assert Kill.has_tracked_character?(killmail.esi_data) == false
     end
   end
 end

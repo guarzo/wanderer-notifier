@@ -10,7 +10,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
-  @type result   :: {:ok, Killmail.t() | :skipped} | {:error, term()}
+  @type result :: {:ok, Killmail.t() | :skipped} | {:error, term()}
 
   @doc """
   Main entry point: runs the killmail through creation, enrichment,
@@ -21,17 +21,33 @@ defmodule WandererNotifier.Killmail.Pipeline do
     maybe_track(:start, ctx)
     Stats.increment(:kill_processed)
 
-    with {:ok, killmail}      <- build_killmail(zkb_data),
-         {:ok, enriched}      <- enrich(killmail),
-         {:ok, should_notify, reason} <- {:ok, true, nil},  # removed redundant checks
-         {:ok, final_killmail} <- dispatch_notification(enriched, should_notify, ctx) do
-      maybe_track(:complete, ctx, {:ok, final_killmail})
-      log_outcome(final_killmail, ctx, persisted: true, notified: should_notify, reason: reason)
-      {:ok, final_killmail}
-    else
-      {:error, :skipped, reason} ->
-        handle_skip(zkb_data, ctx, reason)
+    with {:ok, killmail} <- build_killmail(zkb_data),
+         {:ok, enriched} <- enrich(killmail) do
+      # Check if notification is needed using configurable determiner
+      notification_result = notification_determiner().should_notify?(enriched)
 
+      case notification_result do
+        {:ok, %{should_notify: true, reason: _reason}} ->
+          case dispatch_notification(enriched, true, ctx) do
+            {:ok, final_killmail} ->
+              maybe_track(:complete, ctx, {:ok, final_killmail})
+              log_outcome(final_killmail, ctx, persisted: true, notified: true, reason: nil)
+              {:ok, final_killmail}
+
+            error ->
+              maybe_track(:error, ctx)
+              log_error(zkb_data, ctx, error)
+              error
+          end
+
+        {:ok, %{should_notify: false, reason: reason}} ->
+          handle_skip(zkb_data, ctx, reason)
+
+        _ ->
+          # Handle unexpected notification determiner results
+          handle_skip(zkb_data, ctx, "Unknown notification status")
+      end
+    else
       {:error, reason} ->
         maybe_track(:error, ctx)
         log_error(zkb_data, ctx, reason)
@@ -52,6 +68,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
         {:error, :create_failed}
     end
   end
+
   defp build_killmail(_), do: {:error, :invalid_payload}
 
   # — enrich/1 — delegates to your enrichment logic
@@ -63,7 +80,8 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   # — dispatch_notification/3 — actually sends or skips the notify step
-  @spec dispatch_notification(Killmail.t(), boolean(), Context.t() | map()) :: {:ok, Killmail.t()} | {:error, term()}
+  @spec dispatch_notification(Killmail.t(), boolean(), Context.t() | map()) ::
+          {:ok, Killmail.t()} | {:error, term()}
   defp dispatch_notification(killmail, true, ctx) do
     Notification.send_kill_notification(killmail, killmail.killmail_id)
     |> case do
@@ -75,7 +93,9 @@ defmodule WandererNotifier.Killmail.Pipeline do
         error
     end
   end
-  defp dispatch_notification(killmail, false, _), do: {:ok, killmail}
+
+  defp dispatch_notification(error = {:error, _reason}, _, _), do: error
+  defp dispatch_notification(killmail, _, _), do: {:ok, killmail}
 
   # — handle_skip/3 — logs and tracks a skipped event
   defp handle_skip(zkb_data, ctx, reason) do
@@ -88,17 +108,26 @@ defmodule WandererNotifier.Killmail.Pipeline do
     {:ok, :skipped}
   end
 
+  # Get the notification determiner module from application config
+  defp notification_determiner do
+    Application.get_env(
+      :wanderer_notifier,
+      :notification_determiner,
+      WandererNotifier.Notifications.Determiner.Kill
+    )
+  end
+
   # — Logging & metrics helpers ———————————————————————————————————————————
 
   defp log_outcome(_killmail, _ctx, _opts), do: :ok
-  defp log_error(_data, _ctx, _reason),            do: :ok
+  defp log_error(_data, _ctx, _reason), do: :ok
 
-  defp maybe_track(:start, ctx),       do: if_ctx(ctx, &Metrics.track_processing_start/1)
-  defp maybe_track(:error, ctx),       do: if_ctx(ctx, &Metrics.track_processing_error/1)
-  defp maybe_track(:skipped, ctx),     do: if_ctx(ctx, &Metrics.track_processing_skipped/1)
-  defp maybe_track(:notify, ctx),      do: if_ctx(ctx, &Metrics.track_notification_sent/1)
+  defp maybe_track(:start, ctx), do: if_ctx(ctx, &Metrics.track_processing_start/1)
+  defp maybe_track(:error, ctx), do: if_ctx(ctx, &Metrics.track_processing_error/1)
+  defp maybe_track(:skipped, ctx), do: if_ctx(ctx, &Metrics.track_processing_skipped/1)
+  defp maybe_track(:notify, ctx), do: if_ctx(ctx, &Metrics.track_notification_sent/1)
   defp maybe_track(:complete, ctx, r), do: if_ctx(ctx, &Metrics.track_processing_complete(&1, r))
 
-  defp if_ctx(%Context{} = c, fun),    do: fun.(c)
-  defp if_ctx(_, _),                   do: :ok
+  defp if_ctx(%Context{} = c, fun), do: fun.(c)
+  defp if_ctx(_, _), do: :ok
 end

@@ -276,7 +276,6 @@ export default function Dashboard() {
               <div>
                 <p className="text-indigo-100 text-sm font-medium">Tracked Characters</p>
                 <p className="text-3xl font-bold">{status?.stats?.characters_count || 0}</p>
-                <p className="text-xs mt-1 text-indigo-200">Limit: {status?.limits?.tracked_characters || 0}</p>
               </div>
               <div className="bg-indigo-500 bg-opacity-40 p-3 rounded-lg">
                 <FaUserAlt className="h-6 w-6" />
@@ -289,7 +288,6 @@ export default function Dashboard() {
               <div>
                 <p className="text-blue-100 text-sm font-medium">Tracked Systems</p>
                 <p className="text-3xl font-bold">{status?.stats?.systems_count || 0}</p>
-                <p className="text-xs mt-1 text-blue-200">Limit: {status?.limits?.tracked_systems || 0}</p>
               </div>
               <div className="bg-blue-500 bg-opacity-40 p-3 rounded-lg">
                 <FaGlobe className="h-6 w-6" />
@@ -302,7 +300,6 @@ export default function Dashboard() {
               <div>
                 <p className="text-purple-100 text-sm font-medium">Total Notifications</p>
                 <p className="text-3xl font-bold">{status?.stats?.notifications?.total || 0}</p>
-                <p className="text-xs mt-1 text-purple-200">History Limit: {status?.limits?.notification_history || 0}</p>
               </div>
               <div className="bg-purple-500 bg-opacity-40 p-3 rounded-lg">
                 <FaBell className="h-6 w-6" />

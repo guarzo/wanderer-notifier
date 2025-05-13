@@ -19,9 +19,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   @spec should_notify?(Killmail.t() | map()) :: result
   def should_notify?(raw) do
     try do
-      data      = extract_kill_data(raw)
+      data = extract_kill_data(raw)
       system_id = extract_sys_id(data)
-      kill_id   = extract_kill_id(raw)
+      kill_id = extract_kill_id(raw)
 
       with true <- notifications_enabled?(),
            true <- tracked?(system_id, data) do
@@ -51,7 +51,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
   @spec get_kill_system_id(Killmail.t() | map() | any()) :: String.t() | nil
   def get_kill_system_id(raw) do
-    extract_sys_id(extract_kill_data(raw))
+    extract_sys_id(extract_kill_data(raw)) || "unknown"
   end
 
   @impl true
@@ -60,8 +60,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   """
   @spec get_tracked_characters(Killmail.t() | map()) :: [String.t()]
   def get_tracked_characters(raw) do
-    data         = extract_kill_data(raw)
-    victim_id    = extract_victim_id(data)
+    data = extract_kill_data(raw)
+    victim_id = extract_victim_id(data)
     attacker_ids = extract_attackers(data)
 
     (List.wrap(victim_id) ++ attacker_ids)
@@ -88,40 +88,42 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  defp tracked?(nil, data),    do: has_tracked_character?(data)
-  defp tracked?(sys, data),    do: tracked_system?(sys) || has_tracked_character?(data)
+  defp tracked?(nil, data), do: has_tracked_character?(data)
+  defp tracked?(sys, data), do: tracked_system?(sys) || has_tracked_character?(data)
 
   defp reason_for_disable(system_id) do
     cond do
       not notifications_enabled?() -> "Notifications disabled"
-      not tracked?(system_id, %{})  -> "Not tracked by any character or system"
+      not tracked?(system_id, %{}) -> "Not tracked by any character or system"
     end
   end
 
   defp check_deduplication(kill_id) do
     case deduplication_module().check(:kill, kill_id) do
-      {:ok, :new}       -> {:ok, %{should_notify: true,  reason: nil}}
+      {:ok, :new} -> {:ok, %{should_notify: true, reason: nil}}
       {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
-      {:error, _}       -> {:ok, %{should_notify: true,  reason: nil}}
+      {:error, _} -> {:ok, %{should_notify: true, reason: nil}}
     end
   end
 
   # ——— Extractors ——————————————————————————————————————————————————————
 
   defp extract_kill_data(%Killmail{esi_data: %{} = d}), do: d
-  defp extract_kill_data(map) when is_map(map),      do: map
-  defp extract_kill_data(_),                        do: %{}
+  defp extract_kill_data(map) when is_map(map), do: map
+  defp extract_kill_data(_), do: %{}
 
   defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id), do: to_string(id)
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id),  do: id
-  defp extract_sys_id(_),                                           do: nil
+  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id), do: id
+  defp extract_sys_id(_), do: nil
 
   defp extract_kill_id(%Killmail{killmail_id: id}) when is_binary(id), do: id
+
   defp extract_kill_id(map) when is_map(map) do
     Map.get(map, "killmail_id") ||
       Map.get(map, :killmail_id) ||
       "unknown"
   end
+
   defp extract_kill_id(_), do: "unknown"
 
   defp extract_victim_id(data) do
@@ -135,6 +137,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     data
     |> Map.get("attackers", [])
     |> Enum.map(&Map.get(&1, "character_id"))
+    |> Enum.reject(&is_nil/1)
     |> Enum.map(&maybe_to_string/1)
   end
 
@@ -157,7 +160,8 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
           to_string(sys_id) == id_str
         end)
 
-      _ -> false
+      _ ->
+        false
     end
   rescue
     error ->
@@ -170,10 +174,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_id = extract_victim_id(data)
     attacker_ids = extract_attackers(data)
 
-    Enum.any?(
-      List.wrap(victim_id) ++ attacker_ids,
-      &tracked_character?/1
-    )
+    ids_to_check =
+      ([victim_id] ++ attacker_ids)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    Enum.any?(ids_to_check, &tracked_character?/1)
   end
 
   @impl true
@@ -181,14 +187,10 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   @impl true
   def tracked_character?(id_str) when is_binary(id_str) do
-    case cache_repo().get(CacheKeys.character_list()) do
-      {:ok, chars} when is_list(chars) ->
-        Enum.any?(chars, fn c ->
-          cid = Map.get(c, :character_id) || Map.get(c, "character_id")
-          to_string(cid) == id_str
-        end)
-
-      _ -> false
+    # First check direct tracking
+    case check_direct_tracking(id_str) do
+      true -> true
+      _ -> check_character_list(id_str)
     end
   rescue
     error ->
@@ -199,11 +201,31 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   @impl true
   def tracked_character?(_), do: false
 
+  defp check_direct_tracking(id_str) do
+    case cache_repo().get("tracked:character:" <> id_str) do
+      {:ok, _char_data} -> true
+      _ -> false
+    end
+  end
+
+  defp check_character_list(id_str) do
+    case cache_repo().get(CacheKeys.character_list()) do
+      {:ok, chars} when is_list(chars) ->
+        Enum.any?(chars, fn c ->
+          cid = Map.get(c, :character_id) || Map.get(c, "character_id")
+          to_string(cid) == id_str
+        end)
+
+      _ ->
+        false
+    end
+  end
+
   # ——— Runtime dependencies ————————————————————————————————————————————
 
   defp cache_repo do
     Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache.CachexImpl)
-    |> then(& if Code.ensure_loaded?(&1), do: &1, else: SafeCache)
+    |> then(&if Code.ensure_loaded?(&1), do: &1, else: SafeCache)
   end
 
   defp deduplication_module do
@@ -218,9 +240,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   defmodule SafeCache do
     @moduledoc false
-    def get(_),     do: {:error, :cache_not_available}
-    def put(_, _),  do: {:error, :cache_not_available}
-    def delete(_),  do: {:error, :cache_not_available}
+    def get(_), do: {:error, :cache_not_available}
+    def put(_, _), do: {:error, :cache_not_available}
+    def delete(_), do: {:error, :cache_not_available}
     def exists?(_), do: false
   end
 end

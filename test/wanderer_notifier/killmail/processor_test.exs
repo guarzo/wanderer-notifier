@@ -206,9 +206,36 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
           "solar_system_id" => 30_000_142
         })
 
+      # Create test dependencies
+      defmodule TestMessagePipeline do
+        def process_killmail(_data, _ctx) do
+          {:ok,
+           %WandererNotifier.Killmail.Killmail{
+             killmail_id: "12345",
+             victim_name: "Test Victim",
+             system_name: "Test System",
+             zkb: %{}
+           }}
+        end
+      end
+
+      defmodule TestMessageNotification do
+        def send_kill_notification(_killmail, _type, _opts) do
+          {:ok, :sent}
+        end
+      end
+
+      # Set up dependencies
+      Application.put_env(:wanderer_notifier, :killmail_pipeline, TestMessagePipeline)
+      Application.put_env(:wanderer_notifier, :killmail_notification, TestMessageNotification)
+
       # We need to test that the message gets decoded
       # and the result matches what we expect
       result = Processor.process_zkill_message(valid_message, test_context)
+
+      # Cleanup
+      Application.delete_env(:wanderer_notifier, :killmail_pipeline)
+      Application.delete_env(:wanderer_notifier, :killmail_notification)
 
       # Since process_kill_data returns {:ok, kill_id} and process_zkill_message calls it,
       # we expect the same return value
@@ -237,8 +264,21 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         {:ok, %{should_notify: false, reason: "Test skip reason"}}
       end)
 
+      # Create test dependencies
+      defmodule TestSkipPipeline do
+        def process_killmail(_data, _ctx) do
+          {:ok, :skipped}
+        end
+      end
+
+      # Set up dependencies
+      Application.put_env(:wanderer_notifier, :killmail_pipeline, TestSkipPipeline)
+
       # Execute
       result = Processor.process_zkill_message(valid_message, test_context)
+
+      # Cleanup
+      Application.delete_env(:wanderer_notifier, :killmail_pipeline)
 
       # When should_notify? returns false, it skips processing and logs
       # But it doesn't actually return the state, it returns {:ok, :skipped}
@@ -392,11 +432,8 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # Create a process pipeline module for testing
       defmodule TestPipelineError do
-        def process_killmail(data, _ctx) do
-          case data do
-            %{"zkb" => %{"hash" => "error_hash"}} -> {:error, :test_error}
-            _ -> {:ok, :valid}
-          end
+        def process_killmail(_data, _ctx) do
+          {:error, :test_error}
         end
       end
 
@@ -410,7 +447,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       Application.delete_env(:wanderer_notifier, :killmail_pipeline)
 
       # Verify the result shows error
-      assert match?({:error, :test_error}, result)
+      assert {:error, :test_error} = result
     end
   end
 

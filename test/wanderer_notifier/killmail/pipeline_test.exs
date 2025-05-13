@@ -175,8 +175,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       zkb_data = %{
         "killmail_id" => 12_345,
         "zkb" => %{"hash" => "test_hash"},
-        "solar_system_id" => 30_000_142,
-        "esi_data" => esi_data
+        "solar_system_id" => 30_000_142
       }
 
       context = %Context{
@@ -217,8 +216,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       zkb_data = %{
         "killmail_id" => 12_345,
         "zkb" => %{"hash" => "test_hash"},
-        "solar_system_id" => 30_000_142,
-        "esi_data" => esi_data
+        "solar_system_id" => 30_000_142
       }
 
       context = %Context{
@@ -238,7 +236,34 @@ defmodule WandererNotifier.Killmail.PipelineTest do
         {:ok, esi_data}
       end)
 
-      assert {:ok, :skipped} = Pipeline.process_killmail(zkb_data, context)
+      # Override the notification determiner for this test
+      original_notification_module =
+        Application.get_env(:wanderer_notifier, :notification_determiner)
+
+      defmodule TestDeterminer do
+        def should_notify?(_) do
+          {:ok, %{should_notify: false, reason: "Test reason"}}
+        end
+      end
+
+      Application.put_env(:wanderer_notifier, :notification_determiner, TestDeterminer)
+
+      # Set up specific mock for dispatch_notification
+      result = Pipeline.process_killmail(zkb_data, context)
+
+      # Restore original module
+      if original_notification_module do
+        Application.put_env(
+          :wanderer_notifier,
+          :notification_determiner,
+          original_notification_module
+        )
+      else
+        Application.delete_env(:wanderer_notifier, :notification_determiner)
+      end
+
+      # We should get a skip result
+      assert {:ok, :skipped} = result
     end
 
     test "process_killmail/2 handles enrichment errors" do

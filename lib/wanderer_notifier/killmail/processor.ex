@@ -7,8 +7,8 @@ defmodule WandererNotifier.Killmail.Processor do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Context
 
-  @type state     :: term()
-  @type kill_id   :: String.t()
+  @type state :: term()
+  @type kill_id :: String.t()
   @type kill_data :: map()
 
   @spec init() :: :ok
@@ -84,10 +84,10 @@ defmodule WandererNotifier.Killmail.Processor do
 
   @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
   def send_test_kill_notification do
-    with {:ok, recent}       <- get_recent_kills(),
-         kill_id             <- extract_kill_id(recent),
-         structured          <- ensure_structured_killmail(recent),
-         {:ok, enriched}     <- killmail_pipeline().process_killmail(structured, %Context{}) do
+    with {:ok, recent} <- get_recent_kills(),
+         kill_id <- extract_kill_id(recent),
+         structured <- ensure_structured_killmail(recent),
+         {:ok, enriched} <- killmail_pipeline().process_killmail(structured, %Context{}) do
       killmail_notification().send_kill_notification(enriched, "test", %{})
       {:ok, kill_id}
     else
@@ -151,6 +151,15 @@ defmodule WandererNotifier.Killmail.Processor do
     end
   end
 
+  defp maybe_notify({:error, reason}, kill_id) do
+    AppLogger.kill_error("Failed to process kill data for notification",
+      kill_id: kill_id,
+      error: inspect(reason)
+    )
+
+    {:error, reason}
+  end
+
   defp get_system_name(system_id) do
     key = {:system_name, system_id}
 
@@ -166,8 +175,8 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp extract_kill_id(%{"killmail_id" => id}), do: id
-  defp extract_kill_id(%{killmail_id: id}),    do: id
-  defp extract_kill_id(_),                     do: "unknown"
+  defp extract_kill_id(%{killmail_id: id}), do: id
+  defp extract_kill_id(_), do: "unknown"
 
   defp ensure_structured_killmail(%WandererNotifier.Killmail.Killmail{} = k), do: k
 
@@ -179,7 +188,11 @@ defmodule WandererNotifier.Killmail.Processor do
     do: %WandererNotifier.Killmail.Killmail{killmail_id: "unknown", zkb: %{}}
 
   defp killmail_pipeline do
-    Application.get_env(:wanderer_notifier, :killmail_pipeline, WandererNotifier.Killmail.Pipeline)
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_pipeline,
+      WandererNotifier.Killmail.Pipeline
+    )
   end
 
   defp killmail_notification do

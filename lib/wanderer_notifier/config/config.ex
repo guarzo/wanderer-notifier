@@ -197,13 +197,13 @@ defmodule WandererNotifier.Config do
 
   # --- Timings and Intervals ---
   @doc "Returns the character update scheduler interval in ms."
-  def character_update_scheduler_interval, do: get(:character_update_scheduler_interval, 60_000)
+  def character_update_scheduler_interval, do: get(:character_update_scheduler_interval, 30_000)
 
   @doc "Returns the system update scheduler interval in ms."
-  def system_update_scheduler_interval, do: get(:system_update_scheduler_interval, 60_000)
+  def system_update_scheduler_interval, do: get(:system_update_scheduler_interval, 30_000)
 
   @doc "Returns the license refresh interval in ms."
-  def license_refresh_interval, do: get(:license_refresh_interval, 600_000)
+  def license_refresh_interval, do: get(:license_refresh_interval, 1_200_000)
 
   # --- Cache TTLs ---
   @doc "Returns the characters cache TTL in seconds."
