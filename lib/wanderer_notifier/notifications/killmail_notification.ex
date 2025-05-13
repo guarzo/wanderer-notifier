@@ -159,24 +159,26 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
 
   # Helper function to extract kill ID from various data structures
   defp extract_kill_id(killmail) do
-    cond do
-      is_map(killmail) && Map.has_key?(killmail, :killmail_id) ->
-        killmail.killmail_id
+    extract_from_direct_keys(killmail) ||
+      extract_from_esi_data(killmail) ||
+      "unknown"
+  end
 
-      is_map(killmail) && Map.has_key?(killmail, "killmail_id") ->
-        killmail["killmail_id"]
+  defp extract_from_direct_keys(killmail) when is_map(killmail) do
+    killmail[:killmail_id] || killmail["killmail_id"]
+  end
 
-      # Check ESI data structure
-      is_map(killmail) && is_map(Map.get(killmail, :esi_data)) ->
-        Map.get(killmail.esi_data, "killmail_id", "unknown")
+  defp extract_from_direct_keys(_), do: nil
 
-      is_map(killmail) && is_map(Map.get(killmail, "esi_data")) ->
-        Map.get(killmail["esi_data"], "killmail_id", "unknown")
+  defp extract_from_esi_data(killmail) when is_map(killmail) do
+    esi_data = killmail[:esi_data] || killmail["esi_data"]
 
-      true ->
-        "unknown"
+    if is_map(esi_data) do
+      esi_data["killmail_id"]
     end
   end
+
+  defp extract_from_esi_data(_), do: nil
 
   defp check_notification_requirements(enriched_killmail) do
     # Check if the killmail meets notification requirements

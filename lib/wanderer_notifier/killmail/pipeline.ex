@@ -60,9 +60,10 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp build_killmail(%{"killmail_id" => id} = zkb_data) do
     hash = get_in(zkb_data, ["zkb", "hash"])
 
-    with {:ok, esi_data} <- ESIService.get_killmail(id, hash) do
-      {:ok, Killmail.new(id, Map.get(zkb_data, "zkb", %{}), esi_data)}
-    else
+    case ESIService.get_killmail(id, hash) do
+      {:ok, esi_data} ->
+        {:ok, Killmail.new(id, Map.get(zkb_data, "zkb", %{}), esi_data)}
+
       error ->
         log_error(zkb_data, nil, error)
         {:error, :create_failed}
@@ -94,7 +95,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     end
   end
 
-  defp dispatch_notification(error = {:error, _reason}, _, _), do: error
+  defp dispatch_notification({:error, _reason} = error, _, _), do: error
   defp dispatch_notification(killmail, _, _), do: {:ok, killmail}
 
   # — handle_skip/3 — logs and tracks a skipped event
