@@ -25,6 +25,10 @@ inputs:
   cache-to:
     description: "Cache-to configuration"
     required: false
+  no-cache:
+    description: "Do not use cache when building the image (true/false)"
+    required: false
+    default: "false"
   docker_username:
     description: "Docker Hub username (required if pushing)"
     required: false
@@ -70,3 +74,4 @@ runs:
         build-args: ${{ inputs.build-args }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
+        no-cache: ${{ inputs.no-cache }}

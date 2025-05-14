@@ -67,7 +67,7 @@ jobs:
         continue-on-error: true
 
       - name: Run tests
-        run: mix test 
+        run: mix test
 
       - name: Generate test coverage
         run: mix test --cover
@@ -142,6 +142,7 @@ jobs:
           push: false
           load: true
           tags: wanderer-notifier:pr-${{ steps.sha.outputs.short_sha }}
+          no-cache: true
           build-args: |
             APP_VERSION=0.0.0-ci-test
             WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
