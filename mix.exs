@@ -11,6 +11,7 @@ defmodule WandererNotifier.MixProject do
       releases: releases(),
       elixirc_paths: elixirc_paths(Mix.env()),
       overrides: overrides(),
+      validate_compile_env: false,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
         coveralls: :test,
