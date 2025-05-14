@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: version_from_file(),
+      version: get_version(),
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -27,9 +27,18 @@ defmodule WandererNotifier.MixProject do
     ]
   end
 
-  # Read version from VERSION file
-  defp version_from_file do
-    File.read!("VERSION") |> String.trim()
+  # Get version - check for VERSION file first, then try MixVersion
+  defp get_version do
+    cond do
+      # Try to read from VERSION file first
+      File.exists?("VERSION") ->
+        File.read!("VERSION") |> String.trim()
+
+      # For Docker builds or other environments where mix_version may not be available
+      true ->
+        # Default version when neither source is available
+        System.get_env("APP_VERSION") || "0.1.0"
+    end
   end
 
   # Specifies which paths to compile per environment

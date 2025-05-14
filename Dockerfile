@@ -7,6 +7,9 @@ FROM elixir:1.18.3-otp-27-slim AS deps
 
 WORKDIR /app
 
+# Set a default version for builds - will be overridden by build args
+ENV APP_VERSION=0.1.0-docker
+
 # Install build tools
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -16,8 +19,10 @@ RUN apt-get update \
   && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy and fetch only prod deps (cached)
+# Copy mix files
 COPY mix.exs mix.lock ./
+
+# Copy and fetch only prod deps (cached)
 RUN mix local.hex --force \
   && mix local.rebar --force \
   && mix deps.get --only prod \
@@ -28,6 +33,9 @@ RUN mix local.hex --force \
 ###############################################################################
 FROM deps AS build
 
+# Accept build arg for versioning
+ARG APP_VERSION=0.1.0-docker
+ENV APP_VERSION=${APP_VERSION}
 ENV MIX_ENV=prod
 
 # Install Node.js for asset compilation
