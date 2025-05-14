@@ -4,37 +4,35 @@ import Config
 # Runtime configuration is handled by WandererNotifier.ConfigProvider
 # for releases, and by loading this file (with potential .env) in development.
 
-if Mix.env() == :dev or Mix.env() == :test do
-  # In development, load environment variables from .env file
-  # but do not override existing environment variables
-  import Dotenvy
+# Load environment variables from .env file if it exists
+# but do not override existing environment variables
+import Dotenvy
 
-  # Load .env file and get all env vars as a map
-  env_vars =
-    try do
-      case source(".env") do
-        {:ok, env_map} when is_map(env_map) -> env_map
-        _ -> %{}
-      end
-    rescue
-      e ->
-        require Logger
-
-        Logger.info(
-          "No .env file found or error loading it: #{Exception.message(e)}. Using existing environment variables."
-        )
-
-        %{}
+# Load .env file and get all env vars as a map
+env_vars =
+  try do
+    case source(".env") do
+      {:ok, env_map} when is_map(env_map) -> env_map
+      _ -> %{}
     end
+  rescue
+    e ->
+      require Logger
 
-  # Set .env variables only if they aren't already present in the environment
-  Enum.each(env_vars, fn {k, v} ->
-    case System.get_env(k) do
-      nil -> System.put_env(k, v)
-      _ -> :ok
-    end
-  end)
-end
+      Logger.info(
+        "No .env file found or error loading it: #{Exception.message(e)}. Using existing environment variables."
+      )
+
+      %{}
+  end
+
+# Set .env variables only if they aren't already present in the environment
+Enum.each(env_vars, fn {k, v} ->
+  case System.get_env(k) do
+    nil -> System.put_env(k, v)
+    _ -> :ok
+  end
+end)
 
 # Base configuration with defaults
 # These will be used in dev/test and as fallbacks in production
