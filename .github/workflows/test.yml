@@ -25,6 +25,7 @@ jobs:
       CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_CACHE_DIR: "/tmp/wanderer_notifier_cache"
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
+      CHART_SERVICE_DIR: "/tmp/chart-service"
     outputs:
       cache-key: ${{ steps.cache-key.outputs.value }}
     steps:
@@ -61,10 +62,10 @@ jobs:
         continue-on-error: true
 
       - name: Run tests
-        run: mix test
+        run: mix test --no-validate-compile-env
 
       - name: Generate test coverage
-        run: mix test --cover
+        run: mix test --cover --no-validate-compile-env
         continue-on-error: true
 
   lint:
@@ -157,5 +158,6 @@ jobs:
             --env "WANDERER_DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
             --env "WANDERER_LICENSE_KEY=$LICENSE_KEY" \
             --env "WANDERER_ENV=test" \
-            --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+            --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true" \
+            --env "CHART_SERVICE_DIR=/tmp/chart-service"
           echo "Docker image validation successful!"

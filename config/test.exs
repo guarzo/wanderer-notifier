@@ -5,7 +5,8 @@ config :wanderer_notifier,
   test_env: true,
   env: :test,
   disable_status_messages: true,
-  cache_name: :test_cache
+  cache_name: :test_cache,
+  chart_service_dir: System.get_env("CHART_SERVICE_DIR", "/workspace/chart-service")
 
 # Test mode configuration
 config :nostrum, token: "test_discord_token"

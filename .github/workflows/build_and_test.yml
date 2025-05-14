@@ -21,54 +21,7 @@ on:
         required: false
         default: "main"
 
-# Anchors for common steps
-x-checkout-cache: &checkout-cache
-  - name: Checkout code
-    uses: actions/checkout@v4
-  - name: Common Checkout and Cache
-    uses: ./.github/actions/common-checkout-cache
-    with:
-      branch: ${{ github.event.inputs.branch || 'main' }}
-      cache-key-prefix: mix
-      cache-paths: |
-        deps
-        _build
-        priv/static
-
-x-elixir-setup: &elixir-setup
-  - name: Common Elixir Setup
-    uses: ./.github/actions/common-elixir-setup
-    with:
-      elixir-version: "1.18"
-      otp-version: "27"
-
-x-node-setup: &node-setup
-  - name: Common Node.js Setup
-    uses: ./.github/actions/common-node-setup
-    with:
-      node_version: "20"
-      cache_dependency_path: "renderer/package-lock.json"
-  - name: Install frontend dependencies and build
-    run: |
-      cd renderer
-      npm ci
-      npm run build
-      cd ..
-
-x-docker-build: &docker-build
-  - name: Build Docker image (SHA tagged)
-    uses: ./.github/actions/common-docker-build
-    with:
-      context: .
-      push: false
-      load: true
-      tags: guarzo/wanderer-notifier:sha-${{ github.sha }}
-      build-args: |
-        APP_VERSION=0.0.0-ci-test
-        WANDERER_NOTIFIER_API_TOKEN=${{ secrets.NOTIFIER_API_TOKEN }}
-      cache-from: type=registry,ref=guarzo/wanderer-notifier:latest
-      cache-to: type=inline
-
+# Common steps defined directly in each job
 jobs:
   test:
     name: Build and Test
@@ -167,6 +120,12 @@ jobs:
         with:
           node_version: "20"
           cache_dependency_path: "renderer/package-lock.json"
+      - name: Install frontend dependencies and build
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
@@ -219,6 +178,12 @@ jobs:
         with:
           node_version: "20"
           cache_dependency_path: "renderer/package-lock.json"
+      - name: Install frontend dependencies and build
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
@@ -253,6 +218,12 @@ jobs:
         with:
           node_version: "20"
           cache_dependency_path: "renderer/package-lock.json"
+      - name: Install frontend dependencies and build
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
@@ -286,6 +257,12 @@ jobs:
         with:
           node_version: "20"
           cache_dependency_path: "renderer/package-lock.json"
+      - name: Install frontend dependencies and build
+        run: |
+          cd renderer
+          npm ci
+          npm run build
+          cd ..
       - name: Build Docker image (SHA tagged)
         uses: ./.github/actions/common-docker-build
         with:
