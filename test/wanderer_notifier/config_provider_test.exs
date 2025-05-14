@@ -5,7 +5,7 @@ defmodule WandererNotifier.ConfigProviderTest do
 
   describe "init/1" do
     test "returns config unchanged" do
-      config = %{test: :value}
+      config = [test: :value]
       assert ConfigProvider.init(config) == config
     end
   end
@@ -13,7 +13,7 @@ defmodule WandererNotifier.ConfigProviderTest do
   describe "load/1" do
     test "delegates to load/2 with empty options" do
       # Test directly with a simple configuration
-      config = %{sample: :config}
+      config = [sample: :config]
 
       # Add something to the environment we can detect
       System.put_env("WANDERER_SAMPLE_TEST", "test_value")
@@ -62,7 +62,7 @@ defmodule WandererNotifier.ConfigProviderTest do
 
     test "correctly parses PORT" do
       System.put_env("PORT", "8080")
-      config = %{}
+      config = []
 
       result = ConfigProvider.load(config, [])
 
@@ -71,7 +71,7 @@ defmodule WandererNotifier.ConfigProviderTest do
 
     test "correctly handles invalid PORT" do
       System.put_env("PORT", "invalid")
-      config = %{}
+      config = []
 
       result = ConfigProvider.load(config, [])
 
@@ -103,7 +103,7 @@ defmodule WandererNotifier.ConfigProviderTest do
       Enum.each(test_cases, fn {input, expected} ->
         System.delete_env("WANDERER_NOTIFICATIONS_ENABLED")
         System.put_env("WANDERER_NOTIFICATIONS_ENABLED", input)
-        config = %{}
+        config = []
 
         result = ConfigProvider.load(config, [])
 
@@ -115,7 +115,7 @@ defmodule WandererNotifier.ConfigProviderTest do
 
     test "correctly splits comma-separated values" do
       System.put_env("WANDERER_CHARACTER_EXCLUDE_LIST", "character1, character2,character3")
-      config = %{}
+      config = []
 
       result = ConfigProvider.load(config, [])
 
@@ -128,7 +128,7 @@ defmodule WandererNotifier.ConfigProviderTest do
 
     test "applies default values when env var is not present" do
       System.delete_env("PORT")
-      config = %{}
+      config = []
 
       result = ConfigProvider.load(config, [])
 
