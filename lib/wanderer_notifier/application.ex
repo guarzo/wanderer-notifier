@@ -27,7 +27,7 @@ defmodule WandererNotifier.Application do
 
     children = [
       {WandererNotifier.NoopConsumer, []},
-      {Cachex, name: :wanderer_cache},
+      {Cachex, name: Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)},
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},

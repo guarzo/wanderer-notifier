@@ -18,8 +18,8 @@ defmodule WandererNotifier.Killmail.CacheTest do
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 
     # Ensure Cachex is started for tests
-    Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
-    {:ok, _} = Cachex.start_link(name: :wanderer_test_cache)
+    Application.put_env(:wanderer_notifier, :cache_name, :test_cache)
+    {:ok, _} = Cachex.start_link(name: :test_cache)
 
     # Set up ESI Service mock for system name lookups
     ServiceMock
