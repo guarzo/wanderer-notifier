@@ -280,7 +280,7 @@ defmodule WandererNotifier.Map.MapSystem do
   defp validate_field(system, field, validator, expected_type) do
     value = Map.get(system, field)
 
-    unless validator.(value) do
+    if !validator.(value) do
       raise ArgumentError, "MapSystem.#{field} must be a #{expected_type}, got: #{inspect(value)}"
     end
   end
@@ -289,7 +289,7 @@ defmodule WandererNotifier.Map.MapSystem do
   defp validate_optional_field(system, field, validator, expected_type) do
     value = Map.get(system, field)
 
-    unless value == nil or validator.(value) do
+    if !(value == nil or validator.(value)) do
       raise ArgumentError,
             "MapSystem.#{field} must be a #{expected_type} or nil, got: #{inspect(value)}"
     end

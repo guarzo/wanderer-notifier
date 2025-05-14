@@ -21,15 +21,15 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   """
   @spec update_systems(opts :: Keyword.t()) :: update_result()
   def update_systems(opts \\ []) do
-    url     = systems_url()
+    url = systems_url()
     headers = auth_header()
 
     result =
       with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
-           {:ok, decoded}                       <- decode_body(body),
+           {:ok, decoded} <- decode_body(body),
            systems_list when is_list(systems_list) <- extract_systems(decoded),
-           structs                              <- to_structs(systems_list),
-           filtered                             <- filter_systems(structs) do
+           structs <- to_structs(systems_list),
+           filtered <- filter_systems(structs) do
         process_new_systems(filtered, opts)
       end
 
@@ -68,23 +68,24 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
 
   ### — JSON Decoding
 
-  @spec decode_body(body :: String.t() | map()) :: {:ok, map()} | {:error, :json_decode_error | :invalid_body}
+  @spec decode_body(body :: String.t() | map()) ::
+          {:ok, map()} | {:error, :json_decode_error | :invalid_body}
   defp decode_body(body) when is_binary(body) do
     case Jason.decode(body) do
       {:ok, decoded} -> {:ok, decoded}
-      _              -> {:error, :json_decode_error}
+      _ -> {:error, :json_decode_error}
     end
   end
 
   defp decode_body(body) when is_map(body), do: {:ok, body}
-  defp decode_body(_),                 do: {:error, :invalid_body}
+  defp decode_body(_), do: {:error, :invalid_body}
 
   ### — Extracting the systems list
 
   @spec extract_systems(data :: map()) :: [map()] | {:error, :no_systems}
   defp extract_systems(%{"data" => %{"systems" => sys}}), do: sys
-  defp extract_systems(%{"systems" => sys}),             do: sys
-  defp extract_systems(_),                              do: {:error, :no_systems}
+  defp extract_systems(%{"systems" => sys}), do: sys
+  defp extract_systems(_), do: {:error, :no_systems}
 
   defp to_structs(maps), do: Enum.map(maps, &MapSystem.new/1)
 
@@ -97,7 +98,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   end
 
   defp kspace?(%MapSystem{system_class: cls}), do: cls in ["K", "HS", "LS", "NS"]
-  defp kspace?(map),                     do: Map.get(map, :system_class) in ["K", "HS", "LS", "NS"]
+  defp kspace?(map), do: Map.get(map, :system_class) in ["K", "HS", "LS", "NS"]
 
   ### — Processing & Caching
 
@@ -106,7 +107,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     cached =
       case CachexImpl.get(Keys.map_systems()) do
         {:ok, val} when is_list(val) -> val
-        _                             -> []
+        _ -> []
       end
 
     new_systems = find_new(cached, systems)
@@ -125,7 +126,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   end
 
   defp maybe_notify(new_systems, opts) do
-    unless Keyword.get(opts, :suppress_notifications, false) do
+    if !Keyword.get(opts, :suppress_notifications, false) do
       Enum.each(new_systems, &notify/1)
     end
   end
@@ -133,7 +134,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   defp fallback_to_cached_systems(reason) do
     case CachexImpl.get(Keys.map_systems()) do
       {:ok, sys} when is_list(sys) and sys != [] -> {:ok, [], sys}
-      _                                          -> {:error, reason}
+      _ -> {:error, reason}
     end
   end
 
@@ -153,12 +154,15 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
     enriched =
       case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
         {:ok, e} -> e
-        _        -> system
+        _ -> system
       end
 
     final = if is_struct(enriched, MapSystem), do: enriched, else: MapSystem.new(enriched)
 
-    if WandererNotifier.Notifications.Determiner.System.should_notify?(final.solar_system_id, final) do
+    if WandererNotifier.Notifications.Determiner.System.should_notify?(
+         final.solar_system_id,
+         final
+       ) do
       WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(final)
     end
 
@@ -169,6 +173,7 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         error: Exception.message(e),
         system: inspect(system)
       )
+
       :error
   end
 end

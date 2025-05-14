@@ -153,7 +153,6 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   # Main processing pipeline: detect new, cache, notify
   defp process_and_cache(chars, cached, opts) do
-
     # Log a sample of the data for debugging
     if length(chars) > 0 do
       sample_char = List.first(chars)
@@ -216,7 +215,9 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     ttl = Config.characters_cache_ttl()
     key = Keys.character_list()
 
-    Logger.api_debug("Caching #{length(chars)} characters with TTL: #{ttl}s, key: #{inspect(key)}")
+    Logger.api_debug(
+      "Caching #{length(chars)} characters with TTL: #{ttl}s, key: #{inspect(key)}"
+    )
 
     case CachexImpl.set(key, chars, ttl) do
       :ok ->

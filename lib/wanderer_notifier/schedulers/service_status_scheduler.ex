@@ -39,6 +39,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
           "WandererNotifier Service Status",
           "Automated periodic status report."
         )
+
       {:ok, :duplicate} ->
         AppLogger.maintenance_info("Service status notification skipped (duplicate)",
           action: "skipping_duplicate"
@@ -55,6 +56,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     case :erlang.statistics(:wall_clock) do
       {total_wall_clock, _} ->
         div(total_wall_clock, 1000)
+
       _ ->
         0
     end

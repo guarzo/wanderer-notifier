@@ -29,7 +29,7 @@ defmodule WandererNotifier.Notifications.LicenseLimiter do
   def increment(type) when type in [:system, :character, :killmail] do
     license = license_service().status()
 
-    unless license.valid do
+    if !license.valid do
       license_service().increment_notification_count(type)
     end
   end

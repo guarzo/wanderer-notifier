@@ -229,21 +229,21 @@ defmodule WandererNotifier.Killmail.EnrichmentTest do
     end
   end
 
-    test "successfully enriches killmail data" do
+  test "successfully enriches killmail data" do
     # Create a test killmail with ESI data already present
-      killmail = %Killmail{
-        killmail_id: 123,
-        zkb: %{"hash" => "abc123"},
-        esi_data: %{
-          "victim" => %{
-            "character_id" => 100,
-            "corporation_id" => 200,
-            "ship_type_id" => 300
-          },
-          "solar_system_id" => 400,
-          "attackers" => []
-        }
+    killmail = %Killmail{
+      killmail_id: 123,
+      zkb: %{"hash" => "abc123"},
+      esi_data: %{
+        "victim" => %{
+          "character_id" => 100,
+          "corporation_id" => 200,
+          "ship_type_id" => 300
+        },
+        "solar_system_id" => 400,
+        "attackers" => []
       }
+    }
 
     # Call the function being tested but using our TestEnrichment module
     {:ok, enriched} = TestEnrichment.enrich_killmail_data(killmail)

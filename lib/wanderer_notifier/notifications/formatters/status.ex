@@ -54,6 +54,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
   end
 
   defp format_uptime(nil), do: "🚀 Just started"
+
   defp format_uptime(uptime) do
     days = div(uptime, 86_400)
     hours = div(rem(uptime, 86_400), 3600)
@@ -78,13 +79,17 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
     primary_features = %{
       kill_notifications: Map.get(features_status, :kill_notifications_enabled, true),
       tracked_systems_notifications: Map.get(features_status, :system_tracking_enabled, true),
-      tracked_characters_notifications: Map.get(features_status, :character_tracking_enabled, true),
+      tracked_characters_notifications:
+        Map.get(features_status, :character_tracking_enabled, true)
     }
 
     [
       format_feature_item("Kill Notifications", primary_features.kill_notifications),
       format_feature_item("System Notifications", primary_features.tracked_systems_notifications),
-      format_feature_item("Character Notifications", primary_features.tracked_characters_notifications),
+      format_feature_item(
+        "Character Notifications",
+        primary_features.tracked_characters_notifications
+      )
     ]
     |> Enum.join("\n")
   end
@@ -138,8 +143,10 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
 
   defp get_icon_by_connection_state(%{connected: false}), do: "🔴"
   defp get_icon_by_connection_state(%{connected: true, last_message: nil}), do: "🟡"
+
   defp get_icon_by_connection_state(%{connected: true, last_message: last_message}) do
     time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
+
     cond do
       time_diff < 60 -> "🟢"
       time_diff < 300 -> "🟡"

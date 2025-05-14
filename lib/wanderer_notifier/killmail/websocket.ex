@@ -11,31 +11,29 @@ defmodule WandererNotifier.Killmail.Websocket do
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @heartbeat_interval :timer.minutes(1)
-  @subscribe_delay    100
+  @subscribe_delay 100
 
-  defstruct [
-    parent:        nil,
-    url:           nil,
-    connected:     false,
-    reconnects:    0,
-    history:       [],
-    circuit_open:  false,
-    startup_time:  0
-  ]
+  defstruct parent: nil,
+            url: nil,
+            connected: false,
+            reconnects: 0,
+            history: [],
+            circuit_open: false,
+            startup_time: 0
 
   @type state :: %__MODULE__{
-          parent:        pid(),
-          url:           String.t(),
-          connected:     boolean(),
-          reconnects:    non_neg_integer(),
-          history:       [integer()],
-          circuit_open:  boolean(),
-          startup_time:  integer()
+          parent: pid(),
+          url: String.t(),
+          connected: boolean(),
+          reconnects: non_neg_integer(),
+          history: [integer()],
+          circuit_open: boolean(),
+          startup_time: integer()
         }
 
   @spec start_link(pid(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(parent, opts \\ []) do
-    url     = opts[:url] || default_url()
+    url = opts[:url] || default_url()
     initial = %__MODULE__{parent: parent, url: url, startup_time: System.system_time(:second)}
 
     AppLogger.websocket_info("Connecting to zKillboard WS", url: url)
@@ -52,12 +50,12 @@ defmodule WandererNotifier.Killmail.Websocket do
     AppLogger.websocket_info("WebSocket connected")
 
     Stats.update_websocket(%{
-      connected:     true,
-      connecting:    false,
-      last_message:  DateTime.utc_now(),
-      startup_time:  DateTime.from_unix!(state.startup_time),
-      reconnects:    state.reconnects,
-      url:           state.url
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now(),
+      startup_time: DateTime.from_unix!(state.startup_time),
+      reconnects: state.reconnects,
+      url: state.url
     })
 
     Process.send_after(self(), :subscribe, @subscribe_delay)
@@ -118,44 +116,55 @@ defmodule WandererNotifier.Killmail.Websocket do
   end
 
   defp update_stats_on_message(state) do
-    Stats.update_websocket(%{connected: true, connecting: false, last_message: DateTime.utc_now()})
+    Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now()
+    })
+
     state
   end
 
   defp dispatch(raw, %__MODULE__{parent: parent}) do
     with {:ok, data} <- Jason.decode(raw),
-         _type         <- classify(data),
-         true         <- Process.alive?(parent) do
+         _type <- classify(data),
+         true <- Process.alive?(parent) do
       send(parent, {:zkill_message, raw})
     else
-      {:error, _} -> AppLogger.websocket_error("JSON decode failed", snippet: String.slice(raw, 0, 100))
-      false       -> AppLogger.websocket_warn("Parent down, dropping message")
-      _           -> :noop
+      {:error, _} ->
+        AppLogger.websocket_error("JSON decode failed", snippet: String.slice(raw, 0, 100))
+
+      false ->
+        AppLogger.websocket_warn("Parent down, dropping message")
+
+      _ ->
+        :noop
     end
   end
 
-  defp classify(%{"action" => "tqStatus"}),      do: "tq_status"
-  defp classify(%{"zkb" => _}),                  do: "killmail"
-  defp classify(%{"killmail_id" => _}),          do: "killmail"
-  defp classify(_),                              do: "unknown"
+  defp classify(%{"action" => "tqStatus"}), do: "tq_status"
+  defp classify(%{"zkb" => _}), do: "killmail"
+  defp classify(%{"killmail_id" => _}), do: "killmail"
+  defp classify(_), do: "unknown"
 
   @impl true
   def handle_disconnect(reason, state) do
-    now        = System.system_time(:second)
-    window     = reconnect_window()
-    history    = [now | state.history] |> Enum.filter(&(&1 >= now - window))
+    now = System.system_time(:second)
+    window = reconnect_window()
+    history = [now | state.history] |> Enum.filter(&(&1 >= now - window))
     reconnects = state.reconnects + 1
-    new_state  = %{state | history: history, reconnects: reconnects}
+    new_state = %{state | history: history, reconnects: reconnects}
 
     if length(history) >= max_reconnects() do
       AppLogger.websocket_error("Circuit open, halting reconnects", reason: inspect(reason))
       {:error, %{new_state | circuit_open: true}}
     else
       delay = calc_delay(reconnects)
+
       AppLogger.websocket_warn("Disconnected, will reconnect",
-        reason:   inspect(reason),
-        attempt:  reconnects,
-        delay:    delay
+        reason: inspect(reason),
+        attempt: reconnects,
+        delay: delay
       )
 
       {:reconnect, %{new_state | connected: false}, delay}
@@ -163,9 +172,9 @@ defmodule WandererNotifier.Killmail.Websocket do
   end
 
   defp calc_delay(count) do
-    base   = 500
+    base = 500
     jitter = :rand.uniform() - 0.5
-    delay  = :math.pow(1.5, min(count, 10)) * base * (1 + jitter)
+    delay = :math.pow(1.5, min(count, 10)) * base * (1 + jitter)
     trunc(min(delay, 120_000))
   end
 
@@ -177,7 +186,7 @@ defmodule WandererNotifier.Killmail.Websocket do
   @impl true
   def terminate(reason, state) do
     AppLogger.websocket_info("WebSocket terminating",
-      reason:    inspect(reason),
+      reason: inspect(reason),
       connected: state.connected
     )
 

@@ -5,7 +5,8 @@ defmodule WandererNotifier.Notifications.Determiner.KillBehaviour do
 
   @type kill_data :: map() | WandererNotifier.Killmail.Killmail.t()
 
-  @callback should_notify?(kill_data) :: {:ok, %{should_notify: boolean(), reason: String.t() | nil}}
+  @callback should_notify?(kill_data) ::
+              {:ok, %{should_notify: boolean(), reason: String.t() | nil}}
   @callback get_kill_system_id(kill_data) :: String.t() | nil
   @callback tracked_system?(system_id :: String.t() | integer() | nil) :: boolean()
   @callback has_tracked_character?(data :: map()) :: boolean()
