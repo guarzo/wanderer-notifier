@@ -27,6 +27,7 @@ jobs:
       WANDERER_NOTIFIER_API_TOKEN: ${{ secrets.NOTIFIER_API_TOKEN }}
       WANDERER_MAP_TOKEN: "empty-token"
       WANDERER_LICENSE_KEY: "empty-license-key"
+      WANDERER_MAP_URL: "http://example.com/map?name=testmap"
 
     outputs:
       cache-key: ${{ steps.cache-key.outputs.value }}
