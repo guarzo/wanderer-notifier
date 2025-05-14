@@ -28,6 +28,7 @@ jobs:
       WANDERER_MAP_TOKEN: "empty-token"
       WANDERER_LICENSE_KEY: "empty-license-key"
       WANDERER_MAP_URL: "http://example.com/map?name=testmap"
+      WANDERER_DISCORD_CHANNEL_ID: "123456789"
 
     outputs:
       cache-key: ${{ steps.cache-key.outputs.value }}
