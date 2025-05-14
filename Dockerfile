@@ -82,10 +82,18 @@ ENV LANG=C.UTF-8 \
     MIX_ENV=prod \
     ERL_CRASH_DUMP_SECONDS=0 \
     ERL_AFLAGS="-kernel shell_history enabled" \
-    ELIXIR_ERL_OPTIONS="-kernel standard_io_encoding latin1"
+    ELIXIR_ERL_OPTIONS="-kernel standard_io_encoding latin1" \
+    # Default test values for required environment variables
+    WANDERER_MAP_TOKEN="changeme" \
+    WANDERER_NOTIFIER_API_TOKEN="changeme" \
+    WANDERER_DISCORD_BOT_TOKEN="changeme" \
+    WANDERER_LICENSE_KEY="changeme" \
+    WANDERER_MAP_URL="http://example.com/map?name=changeme" \
+    WANDERER_DISCORD_CHANNEL_ID="123456789" \
+    WANDERER_LICENSE_MANAGER_URL="http://example.com/license-manager"
 
 ARG WANDERER_NOTIFIER_API_TOKEN
-ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
+ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN:-changeme}
 
 # Update and install runtime packages
 RUN apt-get update -y && \

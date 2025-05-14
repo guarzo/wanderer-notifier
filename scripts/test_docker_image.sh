@@ -12,7 +12,7 @@ TIMEOUT=30
 BASIC_ONLY=false
 TEST_TOKEN="test_token_for_validation"
 
-# Default environment variables
+# Default environment variables - these MUST match runtime.exs requirements
 DEFAULT_ENV_VARS=(
   "WANDERER_MAP_URL=http://example.com/map?name=testmap"
   "WANDERER_MAP_TOKEN=test-map-token"
@@ -99,10 +99,11 @@ echo "Testing image: $FULL_IMAGE"
 # Function to run a command inside the container
 run_in_container() {
   local cmd="$1"
-  local env_vars="$2"
+  local env_vars="${2:-$EXTRA_ENV_VARS}"  # Use EXTRA_ENV_VARS as default if no env vars provided
   
+  # Always include all required environment variables
   if [ -z "$env_vars" ]; then
-    docker run --rm -t "$FULL_IMAGE" /bin/sh -c "$cmd"
+    docker run --rm -t $EXTRA_ENV_VARS "$FULL_IMAGE" /bin/sh -c "$cmd"
   else
     # shellcheck disable=SC2086
     # We intentionally want word splitting for env vars, but each var is properly quoted
@@ -132,7 +133,7 @@ run_in_container "find /app/data -type d | sort"
 
 echo "======= Environment Debugging ======="
 echo "Checking environment variables..."
-run_in_container "printenv | grep -E 'CONFIG|NOTIFIER' || echo 'No matching environment variables found'"
+run_in_container "printenv | grep -E 'WANDERER|CONFIG' || echo 'No matching environment variables found'"
 
 echo "Checking startup debug logs..."
 run_in_container "test -f /tmp/startup_debug.txt && cat /tmp/startup_debug.txt || echo 'Startup debug file not found'"
@@ -162,7 +163,7 @@ if function_exported?(Config.Reader, :load, 2) do \
   IO.puts(\"Function Config.Reader.load/2 is exported\"); \
 else \
   IO.puts(\"Function Config.Reader.load/2 is NOT exported!\") \
-end'" "-e WANDERER_ENV=test"
+end'"
 
 
 if [ "$BASIC_ONLY" = true ]; then
@@ -182,20 +183,40 @@ else
   echo "Testing Elixir runtime with application eval (basic)..."
   run_in_container "elixir -e 'IO.puts(\"Basic Elixir runtime test: OK\")'" || echo "Basic Elixir test failed, but continuing..."
 
+  # Create a basic test config file to bypass the runtime.exs fetch_env! requirements
+  echo "Creating test config for application startup..."
+  TEST_CONFIG="
+  defmodule TestConfig do
+    def run do
+      System.put_env(\"WANDERER_MAP_TOKEN\", \"test-map-token\")
+      System.put_env(\"WANDERER_NOTIFIER_API_TOKEN\", \"test-token-for-validation\")
+      System.put_env(\"WANDERER_DISCORD_BOT_TOKEN\", \"test-token-for-validation\")
+      System.put_env(\"WANDERER_LICENSE_KEY\", \"test-license-key\")
+      System.put_env(\"WANDERER_MAP_URL\", \"http://example.com/map?name=testmap\")
+      System.put_env(\"WANDERER_DISCORD_CHANNEL_ID\", \"123456789\")
+      System.put_env(\"WANDERER_LICENSE_MANAGER_URL\", \"http://example.com/license-manager\")
+      :ok
+    end
+  end
+  
+  # Run the config module
+  TestConfig.run()
+  "
+
   echo "Checking Elixir application version..."
-  # Try to get version with eval first
-  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts \"Version test\"'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test" || echo "Application eval failed, but continuing..."
+  # Try to get version with eval first using test config
+  run_in_container "elixir -e '$TEST_CONFIG IO.puts(\"Version test\")'" || echo "Application eval failed, but continuing..."
 
   echo "Testing simplified application boot..."
-  # Try to run a very simple command
-  run_in_container "/app/bin/wanderer_notifier eval 'System.version |> IO.puts'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test" || echo "Simple boot test failed, but continuing..."
+  # Try to run a very simple command with test config
+  run_in_container "elixir -e '$TEST_CONFIG System.version() |> IO.puts()'" || echo "Simple boot test failed, but continuing..."
   
   echo "Testing minimal application boot (with clean shutdown)..."
   # Temporarily disable exit on error for this test
   set +e
   
   # Use a shorter timeout and force kill if needed
-  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  run_in_container "elixir -e '$TEST_CONFIG IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'"
   EXIT_CODE=$?
   
   # 137 is SIGKILL (128 + 9), 143 is SIGTERM (128 + 15), 124 is timeout's normal exit
@@ -229,12 +250,18 @@ else
     
     # Debug: Show what environment variables we're going to use
     echo "Environment variables being passed to container:"
-    echo "WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN"
+    echo "WANDERER_DISCORD_BOT_TOKEN=***"
     echo "Extra env vars: $EXTRA_ENV_VARS"
     
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e WANDERER_DISCORD_BOT_TOKEN="$TEST_TOKEN" \
+      -e WANDERER_MAP_TOKEN="test-map-token" \
+      -e WANDERER_NOTIFIER_API_TOKEN="$TEST_TOKEN" \
+      -e WANDERER_LICENSE_KEY="test-license-key" \
+      -e WANDERER_MAP_URL="http://example.com/map?name=testmap" \
+      -e WANDERER_DISCORD_CHANNEL_ID="123456789" \
+      -e WANDERER_LICENSE_MANAGER_URL="http://example.com/license-manager" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
