@@ -38,13 +38,14 @@ ARG APP_VERSION=0.1.0-docker
 ENV APP_VERSION=${APP_VERSION}
 ENV MIX_ENV=prod
 
-# Install Node.js for asset compilation
+# Install Node.js and npm for asset compilation
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        curl \
        ca-certificates \
   && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
   && apt-get install -y nodejs \
+  && npm install -g npm@latest \
   && rm -rf /var/lib/apt/lists/*
 
 # 2a. Frontend: cache npm install
