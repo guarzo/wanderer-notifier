@@ -62,10 +62,10 @@ jobs:
         continue-on-error: true
 
       - name: Run tests
-        run: mix test --no-validate-compile-env
+        run: mix test 
 
       - name: Generate test coverage
-        run: mix test --cover --no-validate-compile-env
+        run: mix test --cover
         continue-on-error: true
 
   lint:
