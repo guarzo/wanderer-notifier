@@ -221,7 +221,7 @@ else
     
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
-    
+    export WANDERER_DISCORD_BOT_TOKEN=$DISCORD_TOKEN
     # Debug: Show what environment variables we're going to use
     echo "Environment variables being passed to container:"
     echo "DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
