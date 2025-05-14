@@ -115,7 +115,7 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 COPY --from=builder /app/priv/static /app/priv/static
 
 # Copy runtime scripts and set executable permissions
-COPY scripts/start.sh /app/bin/
+COPY scripts/start.sh /app/bin/start.sh
 RUN chmod +x /app/bin/*.sh
 
 COPY scripts/validate_and_start.sh /app/bin/validate_and_start.sh
