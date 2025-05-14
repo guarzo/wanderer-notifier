@@ -149,25 +149,21 @@ jobs:
 
       - name: Full Docker validation with web server
         env:
-          DISCORD_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
-          MAP_URL_WITH_NAME: "http://example.com/map?name=testmap"
-          MAP_TOKEN: "test-map-token"
-          DISCORD_CHANNEL_ID: "123456789"
-          LICENSE_KEY: "test-license-key"
-          LICENSE_MANAGER_URL: "http://example.com/license-manager"
+          TEST_TOKEN: ${{ secrets.FAKE_DISCORD_TOKEN }}
+          NOTIFIER_API_TOKEN: "test_token_for_validation"
         run: |
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} \
-            --discord-token "$DISCORD_TOKEN" \
-            --env "WANDERER_DISCORD_BOT_TOKEN=$DISCORD_TOKEN" \
-            --env "WANDERER_MAP_URL=$MAP_URL_WITH_NAME" \
-            --env "WANDERER_MAP_TOKEN=$MAP_TOKEN" \
-            --env "WANDERER_DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
-            --env "WANDERER_LICENSE_KEY=$LICENSE_KEY" \
-            --env "WANDERER_LICENSE_MANAGER_URL=$LICENSE_MANAGER_URL" \
+            --discord-token "$TEST_TOKEN" \
+            --env "WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN" \
+            --env "WANDERER_MAP_URL=http://example.com/map?name=testmap" \
+            --env "WANDERER_MAP_TOKEN=test-map-token" \
+            --env "WANDERER_DISCORD_CHANNEL_ID=123456789" \
+            --env "WANDERER_LICENSE_KEY=test-license-key" \
+            --env "WANDERER_LICENSE_MANAGER_URL=http://example.com/license-manager" \
             --env "WANDERER_ENV=test" \
             --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true" \
-            --env "CHART_SERVICE_DIR=/tmp/chart-service"
-            --env "WANDERER_NOTIFIER_API_TOKEN=test_token_for_validation" \
+            --env "CHART_SERVICE_DIR=/tmp/chart-service" \
+            --env "WANDERER_NOTIFIER_API_TOKEN=$NOTIFIER_API_TOKEN"
           echo "Docker image validation successful!"

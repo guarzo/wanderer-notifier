@@ -10,18 +10,19 @@ IMAGE_NAME="guarzo/wanderer-notifier"
 TAG="latest"
 TIMEOUT=30
 BASIC_ONLY=false
-DISCORD_TOKEN="test_token_for_validation"
+TEST_TOKEN="test_token_for_validation"
 
 # Default environment variables
 DEFAULT_ENV_VARS=(
-  "MAP_URL_WITH_NAME=http://example.com/map?name=testmap"
-  "MAP_TOKEN=test-map-token"
-  "DISCORD_CHANNEL_ID=123456789"
-  "LICENSE_KEY=test-license-key"
+  "WANDERER_MAP_URL=http://example.com/map?name=testmap"
+  "WANDERER_MAP_TOKEN=test-map-token"
+  "WANDERER_DISCORD_CHANNEL_ID=123456789"
+  "WANDERER_LICENSE_KEY=test-license-key"
   "WANDERER_ENV=test"
   "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
-  "WANDERER_DISCORD_BOT_TOKEN=test_token_for_validation"
-  "WANDERER_NOTIFIER_API_TOKEN=test_token_for_validation"
+  "WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN"
+  "WANDERER_NOTIFIER_API_TOKEN=$TEST_TOKEN"
+  "WANDERER_LICENSE_MANAGER_URL=http://example.com/license-manager"
 )
 
 # Initialize EXTRA_ENV_VARS with defaults
@@ -39,7 +40,7 @@ show_help() {
   echo "  -i, --image IMAGE_NAME   Docker image name (default: $IMAGE_NAME)"
   echo "  -t, --tag TAG            Docker image tag (default: $TAG)"
   echo "  -b, --basic              Run only basic validation tests without starting the app"
-  echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: test_token_for_validation)"
+  echo "  -d, --discord-token TOK  Set a test Discord token for validation (default: $TEST_TOKEN)"
   echo "  -e, --env VAR=VALUE      Add/override environment variable (can be used multiple times)"
   echo "  -h, --help               Display this help message"
   echo
@@ -66,7 +67,9 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -d|--discord-token)
-      DISCORD_TOKEN="$2"
+      TEST_TOKEN="$2"
+      # Update the WANDERER_DISCORD_BOT_TOKEN in EXTRA_ENV_VARS
+      EXTRA_ENV_VARS=$(echo "$EXTRA_ENV_VARS" | sed -E "s#-e WANDERER_DISCORD_BOT_TOKEN=[^ ]*#-e WANDERER_DISCORD_BOT_TOKEN=$2#")
       shift 2
       ;;
     -e|--env)
@@ -181,18 +184,18 @@ else
 
   echo "Checking Elixir application version..."
   # Try to get version with eval first
-  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts \"Version test\"'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test" || echo "Application eval failed, but continuing..."
+  run_in_container "/app/bin/wanderer_notifier eval 'IO.puts \"Version test\"'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test" || echo "Application eval failed, but continuing..."
 
   echo "Testing simplified application boot..."
   # Try to run a very simple command
-  run_in_container "/app/bin/wanderer_notifier eval 'System.version |> IO.puts'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test" || echo "Simple boot test failed, but continuing..."
+  run_in_container "/app/bin/wanderer_notifier eval 'System.version |> IO.puts'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test" || echo "Simple boot test failed, but continuing..."
   
   echo "Testing minimal application boot (with clean shutdown)..."
   # Temporarily disable exit on error for this test
   set +e
   
   # Use a shorter timeout and force kill if needed
-  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e DISCORD_BOT_TOKEN=$DISCORD_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
+  run_in_container "timeout --kill-after=5s 10s /app/bin/wanderer_notifier eval 'IO.puts(\"Application started\"); Process.sleep(1000); :init.stop()'" "-e WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN -e WANDERER_ENV=test -e WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
   EXIT_CODE=$?
   
   # 137 is SIGKILL (128 + 9), 143 is SIGTERM (128 + 15), 124 is timeout's normal exit
@@ -223,15 +226,15 @@ else
     
     # Create a unique container name for this test
     CONTAINER_NAME="wanderer-test-$(date +%s)"
-    export WANDERER_DISCORD_BOT_TOKEN=$DISCORD_TOKEN
+    
     # Debug: Show what environment variables we're going to use
     echo "Environment variables being passed to container:"
-    echo "DISCORD_BOT_TOKEN=$DISCORD_TOKEN"
+    echo "WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN"
     echo "Extra env vars: $EXTRA_ENV_VARS"
     
     # Start the container in the background with all required environment variables
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
-      -e DISCORD_BOT_TOKEN="$DISCORD_TOKEN" \
+      -e WANDERER_DISCORD_BOT_TOKEN="$TEST_TOKEN" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
