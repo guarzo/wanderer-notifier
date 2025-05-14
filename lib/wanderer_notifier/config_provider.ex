@@ -15,6 +15,11 @@ defmodule WandererNotifier.ConfigProvider do
   Required by the Config.Provider behaviour.
   """
   def load(config, _opts) do
+    # Ensure we received a keyword list
+    unless Keyword.keyword?(config) do
+      raise ArgumentError, "Config provider expects a keyword list, got: #{inspect(config)}"
+    end
+
     # Ensure config has the basic structure needed
     config = ensure_config_structure(config)
 
@@ -52,12 +57,12 @@ defmodule WandererNotifier.ConfigProvider do
   # Ensure config has required structure to avoid "nil value" errors with put_in
   defp ensure_config_structure(config) do
     # Initialize base app configs
-    config = ensure_app_config(config, :nostrum, %{})
+    config = Keyword.put_new(config, :nostrum, %{})
 
     # Initialize main app config with default values
-    base_config = Map.get(config, :wanderer_notifier, %{})
-    base_config = Map.put_new(base_config, :port, 4000)
-    config = Map.put(config, :wanderer_notifier, base_config)
+    base_config = Keyword.get(config, :wanderer_notifier, %{})
+    base_config = Keyword.put_new(base_config, :port, 4000)
+    config = Keyword.put(config, :wanderer_notifier, base_config)
 
     # Ensure nested configs exist
     config
@@ -66,23 +71,30 @@ defmodule WandererNotifier.ConfigProvider do
     |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
   end
 
-  # Ensure an app config exists
-  defp ensure_app_config(config, app, default) do
-    if config[app] do
+  # Ensure a nested configuration exists
+  defp ensure_nested_config(config, [key | rest], default) do
+    current = Keyword.get(config, key, %{})
+    updated = ensure_nested_config(current, rest, default)
+    Keyword.put(config, key, updated)
+  end
+
+  defp ensure_nested_config(config, [], default) when is_map(config) do
+    if map_size(config) > 0 do
       config
     else
-      Map.put(config, app, default)
+      default
     end
   end
 
-  # Ensure a nested configuration exists
-  defp ensure_nested_config(config, path, default) do
-    if get_in(config, path) do
+  defp ensure_nested_config(config, [], default) when is_list(config) do
+    if length(config) > 0 do
       config
     else
-      put_in(config, path, default)
+      default
     end
   end
+
+  defp ensure_nested_config(_, [], default), do: default
 
   # Load environment variables from .env file
   defp load_env_file do
@@ -161,19 +173,14 @@ defmodule WandererNotifier.ConfigProvider do
       )
 
   defp apply_env(config, "WANDERER_NOTIFICATIONS_ENABLED", val),
-    do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :notifications_enabled],
-        parse_bool(val, true)
-      )
+    do: put_in(config, [:wanderer_notifier, :features, :notifications_enabled], val != "false")
 
   defp apply_env(config, "WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", val),
     do:
       put_in(
         config,
         [:wanderer_notifier, :features, :character_notifications_enabled],
-        parse_bool(val, true)
+        val != "false"
       )
 
   defp apply_env(config, "WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", val),
@@ -181,56 +188,28 @@ defmodule WandererNotifier.ConfigProvider do
       put_in(
         config,
         [:wanderer_notifier, :features, :system_notifications_enabled],
-        parse_bool(val, true)
+        val != "false"
       )
 
   defp apply_env(config, "WANDERER_KILL_NOTIFICATIONS_ENABLED", val),
     do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :kill_notifications_enabled],
-        parse_bool(val, true)
-      )
+      put_in(config, [:wanderer_notifier, :features, :kill_notifications_enabled], val != "false")
 
   defp apply_env(config, "WANDERER_CHARACTER_TRACKING_ENABLED", val),
     do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :character_tracking_enabled],
-        parse_bool(val, true)
-      )
+      put_in(config, [:wanderer_notifier, :features, :character_tracking_enabled], val != "false")
 
   defp apply_env(config, "WANDERER_SYSTEM_TRACKING_ENABLED", val),
-    do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :system_tracking_enabled],
-        parse_bool(val, true)
-      )
+    do: put_in(config, [:wanderer_notifier, :features, :system_tracking_enabled], val != "false")
 
   defp apply_env(config, "WANDERER_DISABLE_STATUS_MESSAGES", val),
-    do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :status_messages_disabled],
-        parse_bool(val, false)
-      )
+    do: put_in(config, [:wanderer_notifier, :features, :status_messages_disabled], val == "true")
 
   defp apply_env(config, "WANDERER_FEATURE_TRACK_KSPACE", val),
-    do:
-      put_in(
-        config,
-        [:wanderer_notifier, :features, :track_kspace_systems],
-        parse_bool(val, true)
-      )
+    do: put_in(config, [:wanderer_notifier, :features, :track_kspace_systems], val != "false")
 
   defp apply_env(config, "WANDERER_CHARACTER_EXCLUDE_LIST", val),
-    do:
-      put_in(
-        config,
-        [:wanderer_notifier, :character_exclude_list],
-        parse_character_list(val)
-      )
+    do: put_in(config, [:wanderer_notifier, :character_exclude_list], parse_character_list(val))
 
   defp apply_env(config, "WANDERER_WEBSOCKET_RECONNECT_DELAY", val),
     do: put_in(config, [:wanderer_notifier, :websocket, :reconnect_delay], parse_int(val, 5000))
@@ -284,36 +263,11 @@ defmodule WandererNotifier.ConfigProvider do
   defp parse_port(_, default), do: default
 
   # Parse a comma-separated list of characters
-  defp parse_character_list(val) when is_binary(val) and val != "" do
+  defp parse_character_list(val) when is_binary(val) do
     val
     |> String.split(",", trim: true)
     |> Enum.map(&String.trim/1)
   end
 
   defp parse_character_list(_), do: []
-
-  # Parse boolean with lookup map for efficiency
-  defp parse_bool(val, default) do
-    bool_lookup_map = %{
-      "true" => true,
-      "1" => true,
-      "yes" => true,
-      "y" => true,
-      "t" => true,
-      "on" => true,
-      "false" => false,
-      "0" => false,
-      "no" => false,
-      "n" => false,
-      "f" => false,
-      "off" => false
-    }
-
-    if val == nil or val == "" do
-      default
-    else
-      # Convert to lowercase for case-insensitive comparison
-      Map.get(bool_lookup_map, String.downcase(val), default)
-    end
-  end
 end
