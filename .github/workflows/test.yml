@@ -169,4 +169,5 @@ jobs:
             --env "WANDERER_ENV=test" \
             --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true" \
             --env "CHART_SERVICE_DIR=/tmp/chart-service"
+            --env "WANDERER_NOTIFIER_API_TOKEN=test_token_for_validation" \
           echo "Docker image validation successful!"
