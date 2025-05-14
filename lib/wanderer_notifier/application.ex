@@ -27,23 +27,30 @@ defmodule WandererNotifier.Application do
 
     children = [
       {WandererNotifier.NoopConsumer, []},
-      {Cachex, name: :wanderer_cache},
+      create_cache_child_spec(),
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
       {WandererNotifier.Web.Server, []}
     ]
 
-    # Only add scheduler supervisor if enabled
+    # Conditionally add scheduler supervisor if enabled
     children =
-      if Application.get_env(:wanderer_notifier, :scheduler_supervisor_enabled, false) do
-        children ++ [WandererNotifier.Schedulers.Supervisor]
-      else
-        children
-      end
+      children ++
+        if Application.get_env(:wanderer_notifier, :scheduler_supervisor_enabled, false) do
+          [WandererNotifier.Schedulers.Supervisor]
+        else
+          []
+        end
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Private helper to create the cache child spec
+  defp create_cache_child_spec do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    {Cachex, name: cache_name}
   end
 
   @doc """

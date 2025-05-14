@@ -95,5 +95,5 @@
     }
   },
 
-  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && cd renderer && npm install"
+  "postCreateCommand": "mix local.hex --force && mix local.rebar --force && mix deps.get && if [ -d \"renderer\" ]; then cd renderer && npm install; fi"
 }

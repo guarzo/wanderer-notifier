@@ -83,16 +83,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   def send_message(notification) when is_map(notification) do
     # Check for string keys from JSON conversions (specifically for CommonFormatter.to_discord_format output)
     if Map.has_key?(notification, "title") && Map.has_key?(notification, "description") do
-      # Handle status notification with string keys (from CommonFormatter.to_discord_format)
-      AppLogger.info(
-        "Sending notification with string keys",
-        %{title: Map.get(notification, "title", "Unknown")}
-      )
-
       send_discord_embed(notification)
     else
-      # Handle notifications with atom keys
-      # Route to appropriate handler based on notification type
       handle_notification_by_type(notification)
     end
   end

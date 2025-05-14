@@ -17,6 +17,16 @@ defmodule WandererNotifier.Killmail.CacheTest do
     # Set up mocks
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 
+    # Ensure Cachex is started for tests
+    Application.put_env(:wanderer_notifier, :cache_name, :test_cache)
+
+    # Try to start Cachex - if it's already started, that's fine
+    case Cachex.start_link(name: :test_cache) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      error -> raise "Failed to start Cachex: #{inspect(error)}"
+    end
+
     # Set up ESI Service mock for system name lookups
     ServiceMock
     |> stub(:get_system, fn system_id, _opts ->
@@ -182,6 +192,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
       # Verify the structure of the response
       assert is_list(latest_kills)
+      assert length(latest_kills) > 0
       first_kill = List.first(latest_kills)
       assert is_map(first_kill)
       assert Map.has_key?(first_kill, "id")

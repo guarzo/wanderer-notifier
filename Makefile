@@ -1,5 +1,5 @@
 # Common Mix tasks for an Elixir project
-.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch ui.dev backend server-status
+.PHONY: compile clean test test.% format shell run deps.get deps.update build.npm dev watch ui.dev server-status
 
 # ============================
 # BUILD TASKS
@@ -43,9 +43,6 @@ shell:
 
 run:
 	@mix run
-
-backend:
-	@iex -S mix
 
 # ============================
 # FRONTEND DEVELOPMENT TASKS
@@ -117,7 +114,7 @@ version.update:
 s: clean compile build.npm
 	@echo "Starting application with frontend sync..."
 	@echo "For better development experience, you can also run:"
-	@echo "make backend    - Start only the backend server"
+	@echo "make shell      - Start only the backend server"
 	@echo "make ui.dev     - Start Vite dev server (enables hot reload)"
 	@(cd renderer && npm run sync) & (iex -S mix)
 

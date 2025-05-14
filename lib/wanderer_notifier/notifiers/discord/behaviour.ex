@@ -50,6 +50,10 @@ defmodule WandererNotifier.Notifiers.Discord.Behaviour do
   @doc "Sends a kill notification"
   @callback send_kill_notification(kill_data :: map()) :: :ok | {:error, term()}
 
+  @doc "Sends a kill notification with type and options"
+  @callback send_kill_notification(killmail :: map(), type :: atom(), opts :: keyword()) ::
+              :ok | {:error, term()}
+
   @doc "Sends a Discord embed (test support)"
   @callback send_discord_embed(embed :: map()) :: {:ok, map()} | {:error, term()}
 

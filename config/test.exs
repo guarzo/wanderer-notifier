@@ -5,7 +5,8 @@ config :wanderer_notifier,
   test_env: true,
   env: :test,
   disable_status_messages: true,
-  cache_name: :wanderer_cache
+  cache_name: :test_cache,
+  chart_service_dir: System.get_env("CHART_SERVICE_DIR", "/workspace/chart-service")
 
 # Test mode configuration
 config :nostrum, token: "test_discord_token"
@@ -34,24 +35,22 @@ config :wanderer_notifier,
   },
   cache_repository: WandererNotifier.Cache.CachexImpl
 
-# Logger configuration for tests
-config :logger, level: :warning
-
 # Configure the test environment
 config :wanderer_notifier,
   schedulers_enabled: false,
   scheduler_supervisor_enabled: false
 
 # Configure the logger (simple format for tests)
+config :logger, level: :warning
+
 config :logger, :console,
   format: "[$level] $message\n",
-  metadata: [:pid, :module],
-  level: :warning
+  metadata: [:pid, :module]
 
 # Configure the cache
 config :wanderer_notifier, :cache,
   backend: WandererNotifier.Cache.CachexImpl,
-  ttl: 3600
+  ttl: 60
 
 # Configure the ESI service
 config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock

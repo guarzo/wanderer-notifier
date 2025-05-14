@@ -71,21 +71,25 @@ defmodule WandererNotifier.Cache.Keys do
       iex> WandererNotifier.Cache.Keys.character(12345)
       "map:character:12345"
   """
-  @spec character(integer() | String.t()) :: String.t()
-  def character(nil) do
+  @spec character(integer() | String.t() | nil) :: String.t() | nil
+  def character(character_id) do
     require Logger
-    Logger.warning("Cache.Keys.character/1 called with nil")
-    nil
-  end
 
-  def character(character_id) when is_integer(character_id) or is_binary(character_id) do
-    join_parts([@prefix_esi, @entity_character, to_string(character_id)])
-  end
+    cond do
+      is_nil(character_id) ->
+        Logger.warning("Cache.Keys.character/1 called with nil")
+        nil
 
-  def character(other) do
-    require Logger
-    Logger.warning("Cache.Keys.character/1 called with unexpected value: #{inspect(other)}")
-    nil
+      is_integer(character_id) or is_binary(character_id) ->
+        join_parts([@prefix_esi, @entity_character, to_string(character_id)])
+
+      true ->
+        Logger.warning(
+          "Cache.Keys.character/1 called with unexpected value: #{inspect(character_id)}"
+        )
+
+        nil
+    end
   end
 
   @doc """
@@ -107,7 +111,13 @@ defmodule WandererNotifier.Cache.Keys do
       iex> WandererNotifier.Cache.Keys.tracked_character(12345)
       "tracked:character:12345"
   """
-  @spec tracked_character(integer() | String.t()) :: String.t()
+  @spec tracked_character(integer() | String.t() | nil) :: String.t() | nil
+  def tracked_character(nil) do
+    require Logger
+    Logger.warning("Cache.Keys.tracked_character/1 called with nil")
+    nil
+  end
+
   def tracked_character(id) when is_integer(id) or is_binary(id) do
     join_parts([@prefix_tracked, @entity_character, to_string(id)])
   end

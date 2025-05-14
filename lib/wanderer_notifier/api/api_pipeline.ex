@@ -8,12 +8,15 @@ defmodule WandererNotifier.Api.ApiPipeline do
       use Plug.Router
       import Plug.Conn
 
-      plug :match
-      plug Plug.Parsers,
+      plug(:match)
+
+      plug(Plug.Parsers,
         parsers: [:json],
         pass: ["application/json"],
         json_decoder: Jason
-      plug :dispatch
+      )
+
+      plug(:dispatch)
     end
   end
 end

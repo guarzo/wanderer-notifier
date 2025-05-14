@@ -46,9 +46,12 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   """
   def system_changed?(system_id, _system_data) do
     cache_key = CacheKeys.system(system_id)
+
     case CacheRepo.get(cache_key) do
-      {:ok, _cached} -> false  # Already exists, not new
-      _ -> true               # Not in cache, so it's new
+      # Already exists, not new
+      {:ok, _cached} -> false
+      # Not in cache, so it's new
+      _ -> true
     end
   end
 

@@ -200,6 +200,8 @@ defmodule WandererNotifier.License.Service do
   @impl true
   def init(_opts) do
     schedule_refresh()
+    AppLogger.config_info("License Service starting up")
+
     # Initialize state with all necessary keys to avoid KeyError
     initial_state = %{
       valid: false,
@@ -210,13 +212,32 @@ defmodule WandererNotifier.License.Service do
       last_validated: :os.system_time(:second),
       notification_counts: %{system: 0, character: 0, killmail: 0}
     }
+
     {:ok, initial_state, {:continue, :initial_validation}}
   end
 
   @impl true
   def handle_continue(:initial_validation, state) do
     # Perform initial license validation at startup
+    AppLogger.config_info("License Service performing initial validation")
+
+    license_key = Config.license_key()
+
+    AppLogger.config_info("License key presence",
+      present: is_binary(license_key) && String.length(license_key) > 0
+    )
+
+    notifier_api_token = Config.api_token()
+
+    AppLogger.config_info("API token presence",
+      present: is_binary(notifier_api_token) && String.length(notifier_api_token) > 0
+    )
+
+    license_manager_url = Config.license_manager_api_url()
+    AppLogger.config_info("License manager URL", url: license_manager_url)
+
     new_state = do_validate(state)
+
     if new_state.valid do
       AppLogger.config_info(
         "License validated successfully: #{new_state.details["status"] || "valid"}"
@@ -225,12 +246,14 @@ defmodule WandererNotifier.License.Service do
       error_msg = new_state.error_message || "No error message provided"
       AppLogger.config_warn("License validation warning: #{error_msg}")
     end
+
     {:noreply, new_state}
   rescue
     e ->
       AppLogger.config_error(
         "License validation failed, continuing with invalid license state: #{inspect(e)}"
       )
+
       # Return invalid license state but don't crash
       invalid_state = %{
         valid: false,
@@ -239,14 +262,15 @@ defmodule WandererNotifier.License.Service do
         error: :exception,
         error_message: "License validation error: #{inspect(e)}",
         last_validated: :os.system_time(:second),
-        notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+        notification_counts:
+          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
       }
+
       {:noreply, invalid_state}
   end
 
   @impl true
   def handle_call(:validate, _from, state) do
-    AppLogger.config_info("Validating license...")
     # Get the license key from configuration
     license_key = Config.license_key()
     # Get the API token from configuration
@@ -260,6 +284,7 @@ defmodule WandererNotifier.License.Service do
         end),
         3000
       )
+
     # Process the validation result
     {valid, bot_assigned, details, error, error_message} =
       case validation_result do
@@ -272,6 +297,17 @@ defmodule WandererNotifier.License.Service do
             nil,
             nil
           }
+
+        {:error, :rate_limited} ->
+          # Handle rate limiting error
+          {
+            false,
+            false,
+            nil,
+            :rate_limited,
+            "License validation failed: Rate limit exceeded"
+          }
+
         {:error, reason} ->
           # Handle validation error
           {
@@ -282,6 +318,7 @@ defmodule WandererNotifier.License.Service do
             "License validation failed: #{inspect(reason)}"
           }
       end
+
     # Update state with validation results, preserving notification_counts
     new_state = %{
       valid: valid,
@@ -292,10 +329,12 @@ defmodule WandererNotifier.License.Service do
       last_validated: :os.system_time(:second),
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
+
     {:reply, new_state, new_state}
   catch
     :exit, {:timeout, _} ->
       AppLogger.config_error("License validation HTTP request timed out")
+
       error_state = %{
         valid: false,
         bot_assigned: false,
@@ -303,13 +342,17 @@ defmodule WandererNotifier.License.Service do
         error: :timeout,
         error_message: "License validation timed out",
         last_validated: :os.system_time(:second),
-        notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+        notification_counts:
+          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
       }
+
       {:reply, error_state, error_state}
+
     type, reason ->
       AppLogger.config_error(
         "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
       )
+
       error_state = %{
         valid: false,
         bot_assigned: false,
@@ -317,8 +360,10 @@ defmodule WandererNotifier.License.Service do
         error_message: "License validation error: #{inspect(reason)}",
         details: nil,
         last_validated: :os.system_time(:second),
-        notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+        notification_counts:
+          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
       }
+
       {:reply, error_state, error_state}
   end
 
@@ -342,7 +387,7 @@ defmodule WandererNotifier.License.Service do
 
   @impl true
   def handle_call(:premium, _from, state) do
-    AppLogger.config_debug("Premium check: not premium (premium tier removed)")
+    AppLogger.config_info("Premium check: not premium (premium tier removed)")
     {:reply, false, state}
   end
 
@@ -381,7 +426,7 @@ defmodule WandererNotifier.License.Service do
         check_features_list(feature, details["features"])
 
       _ ->
-        AppLogger.config_debug("Feature check: #{feature} - disabled (invalid license)")
+        AppLogger.config_info("Feature check: #{feature} - disabled (invalid license)")
         false
     end
   end
@@ -398,13 +443,13 @@ defmodule WandererNotifier.License.Service do
     if is_list(features) do
       enabled = Enum.member?(features, to_string(feature))
 
-      AppLogger.config_debug(
+      AppLogger.config_info(
         "Feature check: #{feature} - #{if enabled, do: "enabled", else: "disabled"}"
       )
 
       enabled
     else
-      AppLogger.config_debug("Feature check: #{feature} - disabled (features not a list)")
+      AppLogger.config_info("Feature check: #{feature} - disabled (features not a list)")
       false
     end
   end
@@ -416,52 +461,144 @@ defmodule WandererNotifier.License.Service do
   defp do_validate(state) do
     license_key = Config.license_key()
     notifier_api_token = Config.api_token()
-    # Validate the license with the license manager
-    case LicenseClient.validate_bot(notifier_api_token, license_key) do
-      {:ok, response} ->
-        # Check if the license is valid from the response
-        license_valid = response["license_valid"] || false
-        # Extract error message if provided
-        message = response["message"]
-        if license_valid do
-          AppLogger.config_info("License and bot validation successful")
-          # If valid, return success state
-          %{
-            valid: true,
-            bot_assigned: true,
-            details: response,
-            error: nil,
-            error_message: nil,
-            last_validated: :os.system_time(:second),
-            notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-          }
-        else
-          # For invalid license, return error state with message
-          error_msg = message || "License is not valid"
-          AppLogger.config_error("License validation failed - #{error_msg}")
-          %{
-            valid: false,
-            bot_assigned: false,
-            details: response,
-            error: :invalid_license,
-            error_message: error_msg,
-            last_validated: :os.system_time(:second),
-            notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-          }
-        end
-      {:error, reason} ->
-        error_message = error_reason_to_message(reason)
-        AppLogger.config_error("License/bot validation failed: #{error_message}")
-        %{
-          valid: false,
-          bot_assigned: false,
-          error: reason,
-          error_message: error_message,
-          details: nil,
-          last_validated: :os.system_time(:second),
-          notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-        }
+    license_manager_url = Config.license_manager_api_url()
+
+    # Log detailed debugging information
+    log_validation_parameters(license_key, notifier_api_token, license_manager_url)
+
+    if should_use_dev_mode?(license_key, notifier_api_token) do
+      create_dev_mode_state(state)
+    else
+      validate_with_api(state, notifier_api_token, license_key)
     end
+  end
+
+  defp log_validation_parameters(license_key, notifier_api_token, license_manager_url) do
+    AppLogger.config_info("License validation parameters",
+      license_key_present: is_binary(license_key) && license_key != "",
+      api_token_present: is_binary(notifier_api_token) && notifier_api_token != "",
+      license_url: license_manager_url,
+      env: Application.get_env(:wanderer_notifier, :environment)
+    )
+  end
+
+  defp should_use_dev_mode?(license_key, notifier_api_token) do
+    Application.get_env(:wanderer_notifier, :environment) in [:dev, :test] &&
+      (is_nil(license_key) || license_key == "" || is_nil(notifier_api_token) ||
+         notifier_api_token == "")
+  end
+
+  defp create_dev_mode_state(state) do
+    AppLogger.config_info("Using development mode license validation")
+
+    dev_state = %{
+      valid: true,
+      bot_assigned: true,
+      details: %{"license_valid" => true, "valid" => true, "message" => "Development mode"},
+      error: nil,
+      error_message: nil,
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    AppLogger.config_info("Development license state", state: inspect(dev_state))
+    dev_state
+  end
+
+  defp validate_with_api(state, notifier_api_token, license_key) do
+    AppLogger.config_info("Performing license validation with API")
+
+    # Validate the license with the license manager
+    api_result = LicenseClient.validate_bot(notifier_api_token, license_key)
+    AppLogger.config_info("License API result", result: inspect(api_result))
+
+    process_api_result(api_result, state)
+  end
+
+  defp process_api_result({:ok, response}, state) do
+    # Check if the license is valid from the response
+    license_valid = response["license_valid"] || false
+    # Extract error message if provided
+    message = response["message"]
+
+    if license_valid do
+      create_valid_license_state(response, state)
+    else
+      create_invalid_license_state(response, message, state)
+    end
+  end
+
+  defp process_api_result({:error, :rate_limited}, state) do
+    error_message = "License server rate limit exceeded"
+    AppLogger.config_error("License validation rate limited: #{error_message}")
+
+    # When rate limited, use the previous state but update error info
+    rate_limited_state = %{
+      # Keep previous validation status
+      valid: state.valid,
+      bot_assigned: state.bot_assigned,
+      error: :rate_limited,
+      error_message: error_message,
+      # Keep previous details
+      details: state.details,
+      last_validated: :os.system_time(:second),
+      notification_counts: state.notification_counts
+    }
+
+    AppLogger.config_info("Rate limited license state", state: inspect(rate_limited_state))
+    rate_limited_state
+  end
+
+  defp process_api_result({:error, reason}, state) do
+    error_message = error_reason_to_message(reason)
+    AppLogger.config_error("License/bot validation failed: #{error_message}")
+
+    error_state = %{
+      valid: false,
+      bot_assigned: false,
+      error: reason,
+      error_message: error_message,
+      details: nil,
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    AppLogger.config_info("Error license state", state: inspect(error_state))
+    error_state
+  end
+
+  defp create_valid_license_state(response, state) do
+    valid_state = %{
+      valid: true,
+      bot_assigned: true,
+      details: response,
+      error: nil,
+      error_message: nil,
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    AppLogger.config_info("Valid license state", state: inspect(valid_state))
+    valid_state
+  end
+
+  defp create_invalid_license_state(response, message, state) do
+    # For invalid license, return error state with message
+    error_msg = message || "License is not valid"
+    AppLogger.config_error("License validation failed - #{error_msg}")
+
+    invalid_state = %{
+      valid: false,
+      bot_assigned: false,
+      details: response,
+      error: :invalid_license,
+      error_message: error_msg,
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    AppLogger.config_info("Invalid license state", state: inspect(invalid_state))
+    invalid_state
   end
 
   # Helper function to convert error reasons to human-readable messages

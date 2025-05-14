@@ -93,6 +93,19 @@ defmodule WandererNotifier.Notifiers.Test do
     :ok
   end
 
+  @impl WandererNotifier.Notifiers.Discord.Behaviour
+  def send_kill_notification(killmail, type, opts) do
+    kill_id = Map.get(killmail, "killmail_id") || Map.get(killmail, :killmail_id) || "unknown"
+
+    AppLogger.processor_debug("[TEST] Kill notification with type and options",
+      kill_id: kill_id,
+      type: type,
+      opts: inspect(opts)
+    )
+
+    :ok
+  end
+
   @doc """
   Sends a test notification for an activity chart.
   """

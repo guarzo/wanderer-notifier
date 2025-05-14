@@ -8,22 +8,17 @@ defmodule WandererNotifier.Killmail.Context do
   killmail pipeline.
   """
 
-  @type source :: :zkill_websocket | :zkill_api
-
   @type t :: %__MODULE__{
-          # All contexts use default mode, so we keep it simple
-          character_id: pos_integer() | nil,
-          character_name: String.t() | nil,
-          source: source(),
-          batch_id: String.t() | nil,
+          # Essential killmail data
+          killmail_id: String.t() | nil,
+          system_name: String.t() | nil,
+          # A simple map of additional options
           options: map()
         }
 
   defstruct [
-    :character_id,
-    :character_name,
-    :source,
-    :batch_id,
+    :killmail_id,
+    :system_name,
     :options
   ]
 
@@ -54,33 +49,26 @@ defmodule WandererNotifier.Killmail.Context do
   end
 
   @doc """
-  Creates a new context with the provided parameters.
+  Creates a new context with the provided kill information.
 
   ## Parameters
-
-  - `character_id` - The character ID associated with the killmail
-  - `character_name` - The character name associated with the killmail
-  - `source` - The source of the killmail (`:zkill_websocket` or `:zkill_api`)
-  - `options` - Additional options to be included in the context
+  - `killmail_id` - The ID of the killmail being processed
+  - `system_name` - The name of the system where the kill occurred
+  - `options` - Map containing additional context information
 
   ## Examples
-
-      iex> Context.new(123, "Player", :zkill_websocket, %{processing_info: "test"})
+      iex> Context.new("12345", "Jita", %{source: :zkill_websocket})
       %Context{
-        character_id: 123,
-        character_name: "Player",
-        source: :zkill_websocket,
-        batch_id: nil,
-        options: %{processing_info: "test"}
+        killmail_id: "12345",
+        system_name: "Jita",
+        options: %{source: :zkill_websocket}
       }
   """
-  @spec new(pos_integer() | nil, String.t() | nil, source() | nil, map()) :: t()
-  def new(character_id \\ nil, character_name \\ nil, source \\ nil, options \\ %{}) do
+  @spec new(String.t() | nil, String.t() | nil, map()) :: t()
+  def new(killmail_id \\ nil, system_name \\ nil, options \\ %{}) do
     %__MODULE__{
-      character_id: character_id,
-      character_name: character_name,
-      source: source || :zkill_api,
-      batch_id: nil,
+      killmail_id: killmail_id,
+      system_name: system_name,
       options: options
     }
   end

@@ -42,24 +42,25 @@ defmodule WandererNotifier.Cache.Behaviour do
   @doc """
   Puts a value in the cache without TTL.
   """
-  @callback put(key :: key(), value :: value()) :: :ok | {:ok, value()} | {:error, reason()}
+  @callback put(key :: key(), value :: value()) :: {:ok, value()} | {:error, reason()}
 
   @doc """
   Deletes a value from the cache by key.
   """
-  @callback delete(key :: key()) :: :ok | {:ok, value()} | {:error, reason()}
+  @callback delete(key :: key()) :: {:ok, value()} | {:error, reason()}
 
   @doc """
   Clears the entire cache.
   """
-  @callback clear() :: :ok | {:ok, value()} | {:error, reason()}
+  @callback clear() :: {:ok, value()} | {:error, reason()}
 
   @doc """
   Gets and updates a value atomically using the provided update function.
   The update function receives the current value (or nil) and should return {current_value, new_value}.
+  Returns {:ok, {current_value, new_value}} on success or {:error, reason} on failure.
   """
   @callback get_and_update(key :: key(), update_fun :: (value() -> {value(), value()})) ::
-              {:ok, value()} | {:error, reason()}
+              {:ok, {value(), value()}} | {:error, reason()}
 
   @doc """
   Gets recent kills from cache.

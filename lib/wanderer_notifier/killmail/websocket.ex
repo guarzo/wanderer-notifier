@@ -1,379 +1,213 @@
+# lib/wanderer_notifier/killmail/websocket.ex
 defmodule WandererNotifier.Killmail.Websocket do
   @moduledoc """
-  WebSocket client for zKillboard's WebSocket API.
-
-  - Immediately subscribes upon connection by scheduling a :subscribe message
-  - Uses heartbeat (pong) response after receiving a ping
-  - Returns {:reconnect, state} on disconnect to leverage built-in auto-reconnect
+  WebSocket client for zKillboard's killstream.
+  Handles subscription, heartbeat monitoring, and circuit-breaker reconnect logic.
   """
+
   use WebSockex
+
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  def init_batch_logging do
-    AppLogger.init_batch_logger()
-  end
+  @heartbeat_interval :timer.minutes(1)
+  @subscribe_delay 100
 
-  def get_config do
-    Application.get_env(:wanderer_notifier, :websocket, [])
-  end
+  defstruct parent: nil,
+            url: nil,
+            connected: false,
+            reconnects: 0,
+            history: [],
+            circuit_open: false,
+            startup_time: 0
 
-  def default_url, do: get_config()[:url] || "wss://zkillboard.com/websocket/"
-  def max_reconnects, do: get_config()[:max_reconnects] || 20
-  def reconnect_window, do: get_config()[:reconnect_window] || 3600
+  @type state :: %__MODULE__{
+          parent: pid(),
+          url: String.t(),
+          connected: boolean(),
+          reconnects: non_neg_integer(),
+          history: [integer()],
+          circuit_open: boolean(),
+          startup_time: integer()
+        }
 
-  def start_link(parent, url \\ nil) do
-    init_batch_logging()
-    url = url || default_url()
-    AppLogger.websocket_info("Starting WebSocket connection", url: url)
+  @spec start_link(pid(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def start_link(parent, opts \\ []) do
+    url = opts[:url] || default_url()
+    initial = %__MODULE__{parent: parent, url: url, startup_time: System.system_time(:second)}
 
-    case WebSockex.start_link(
-           url,
-           __MODULE__,
-           %{
-             parent: parent,
-             connected: false,
-             reconnects: 0,
-             reconnect_history: [],
-             circuit_open: false,
-             last_circuit_reset: System.os_time(:second),
-             url: url,
-             startup_time: System.os_time(:second)
-           },
-           retry_initial_connection: true
-         ) do
-      {:ok, pid} ->
-        AppLogger.websocket_info("🔌 WebSocket connected successfully")
-        {:ok, pid}
-
-      {:error, reason} ->
-        AppLogger.websocket_error("❌ Connection failed", error: inspect(reason))
-        {:error, reason}
-    end
+    AppLogger.websocket_info("Connecting to zKillboard WS", url: url)
+    WebSockex.start_link(url, __MODULE__, initial, retry_initial_connection: true)
   end
 
   def init(state) do
-    AppLogger.websocket_info("Initializing WebSocket client", url: state.url)
-
-    state =
-      Map.merge(state, %{
-        max_reconnects: max_reconnects(),
-        reconnect_window: reconnect_window()
-      })
-
-    update_startup_status()
-    Process.send_after(self(), :check_heartbeat, 60_000)
+    schedule_heartbeat()
     {:ok, state}
-  end
-
-  defp update_startup_status do
-    Stats.update_websocket(%{
-      connected: false,
-      connecting: true,
-      startup_time: DateTime.utc_now(),
-      last_message: nil,
-      reconnects: 0,
-      url: default_url()
-    })
-
-    :ok
-  rescue
-    e ->
-      AppLogger.websocket_warn("Stats service not ready for status update",
-        error: Exception.message(e)
-      )
-
-      :ok
-  catch
-    kind, error ->
-      AppLogger.websocket_warn("Stats service not ready for status update", error: {kind, error})
-      :ok
   end
 
   @impl true
   def handle_connect(_conn, state) do
-    AppLogger.websocket_info("Connected to killstream websocket")
-    now = DateTime.utc_now()
-    startup_time = state.startup_time || System.os_time(:second)
-    new_state = %{state | connected: true, startup_time: startup_time}
+    AppLogger.websocket_info("WebSocket connected")
 
     Stats.update_websocket(%{
       connected: true,
       connecting: false,
-      last_message: now,
-      startup_time: DateTime.from_unix!(startup_time),
-      reconnects: new_state.reconnects,
-      url: new_state.url,
-      last_disconnect: nil
+      last_message: DateTime.utc_now(),
+      startup_time: DateTime.from_unix!(state.startup_time),
+      reconnects: state.reconnects,
+      url: state.url
     })
 
-    Process.send_after(self(), :subscribe, 100)
-    {:ok, new_state}
+    Process.send_after(self(), :subscribe, @subscribe_delay)
+    {:ok, %{state | connected: true}}
   end
 
   @impl true
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
-    AppLogger.websocket_info("Subscribing to killstream channel")
+    AppLogger.websocket_info("Subscribing to killstream")
     {:reply, {:text, msg}, state}
   end
 
   @impl true
-  def handle_info(:check_heartbeat, state) do
-    stats = Stats.get_stats()
-    last_message_time = stats.websocket.last_message
-    now = DateTime.utc_now()
+  def handle_info(:heartbeat, state) do
+    schedule_heartbeat()
 
-    no_messages =
-      case last_message_time do
-        nil -> true
-        time -> DateTime.diff(now, time, :second) > 300
-      end
+    last_msg = Stats.get_stats().websocket.last_message
 
-    if no_messages && state.connected do
-      AppLogger.websocket_warn("No messages received in over 5 minutes",
-        status: "connection_stale"
-      )
+    cond do
+      last_msg == nil ->
+        force_reconnect(state)
 
-      AppLogger.websocket_debug("Sending manual ping to test connection")
+      DateTime.diff(DateTime.utc_now(), last_msg, :second) > 300 ->
+        AppLogger.websocket_warn("Stale connection (>5m), pinging")
+        {:reply, :ping, state}
 
-      case WebSockex.send_frame(self(), :ping) do
-        :ok ->
-          AppLogger.websocket_debug("Manual ping sent successfully")
-
-        {:error, reason} ->
-          AppLogger.websocket_error("Failed to send manual ping", error: inspect(reason))
-          Process.send_after(self(), :force_reconnect, 1000)
-      end
-    else
-      AppLogger.count_batch_event(:websocket_heartbeat, %{status: "ok"})
+      true ->
+        {:ok, state}
     end
+  end
 
-    Process.send_after(self(), :check_heartbeat, 60_000)
+  defp schedule_heartbeat do
+    Process.send_after(self(), :heartbeat, @heartbeat_interval)
+  end
+
+  @impl true
+  def handle_frame({:text, raw}, state) do
+    state = update_stats_on_message(state)
+    dispatch(raw, state)
     {:ok, state}
-  end
-
-  @impl true
-  def handle_info(:force_reconnect, state) do
-    AppLogger.websocket_warn("Forcing reconnection", reason: "heartbeat_failure")
-    {:close, state}
-  end
-
-  @impl true
-  def handle_frame(frame, state) do
-    case frame do
-      {:text, raw_msg} ->
-        process_text_frame(raw_msg, state)
-
-      {:binary, data} ->
-        AppLogger.count_batch_event(:websocket_binary_frame, %{size_bytes: byte_size(data)})
-        {:ok, state}
-
-      {:ping, ping_frame} ->
-        handle_ping_frame(ping_frame, state)
-
-      _ ->
-        AppLogger.websocket_debug("Received unexpected frame type", frame: inspect(frame))
-        {:ok, state}
-    end
   rescue
     e ->
-      AppLogger.websocket_error("Error processing frame",
-        error: Exception.message(e),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-      )
-
+      AppLogger.websocket_error("Frame processing failed", error: Exception.message(e))
       {:ok, state}
   end
 
-  defp handle_ping_frame(ping_frame, state) do
-    is_standard = ping_frame == "ping"
-
-    if is_standard do
-      AppLogger.count_batch_event(:websocket_ping, %{format: "standard"})
-    else
-      AppLogger.websocket_debug("Received non-standard ping", content: inspect(ping_frame))
-    end
-
-    payload = Jason.encode!(%{"action" => "pong"})
-    {:reply, {:text, payload}, state}
+  @impl true
+  def handle_frame({:ping, _}, state) do
+    AppLogger.websocket_info("Received ping → sending pong")
+    {:reply, {:text, Jason.encode!(%{"action" => "pong"})}, state}
   end
-
-  defp process_text_frame(raw_msg, state) do
-    now = DateTime.utc_now()
-
-    try do
-      current_stats = Stats.get_stats()
-
-      Stats.update_websocket(%{
-        connected: true,
-        connecting: false,
-        last_message: now,
-        startup_time: current_stats.websocket.startup_time || state.startup_time,
-        reconnects: state.reconnects,
-        url: state.url
-      })
-    rescue
-      e ->
-        AppLogger.websocket_error("Failed to update websocket status",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-    end
-
-    try do
-      case Jason.decode(raw_msg, keys: :strings) do
-        {:ok, json_data} ->
-          message_type = classify_message_type(json_data)
-          AppLogger.count_batch_event(:websocket_message, %{type: message_type})
-
-          if is_pid(state.parent) and Process.alive?(state.parent) do
-            send(state.parent, {:zkill_message, raw_msg})
-            {:ok, state}
-          else
-            AppLogger.websocket_warn("Parent process unavailable, message dropped")
-            {:ok, state}
-          end
-
-        {:error, decode_err} ->
-          AppLogger.websocket_error("Error decoding JSON frame",
-            error: inspect(decode_err),
-            raw_message: String.slice(raw_msg, 0, 100)
-          )
-
-          {:ok, state}
-      end
-    rescue
-      e ->
-        AppLogger.websocket_error("Critical error in websocket message processing",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__),
-          raw_message: String.slice(raw_msg, 0, 100)
-        )
-
-        {:ok, state}
-    end
-  end
-
-  defp classify_message_type(json_data) when is_map(json_data) do
-    cond do
-      Map.has_key?(json_data, "action") && json_data["action"] == "tqStatus" ->
-        "tq_status"
-
-      Map.has_key?(json_data, "zkb") ->
-        "killmail"
-
-      Map.has_key?(json_data, "killmail_id") ->
-        "killmail"
-
-      true ->
-        "unknown"
-    end
-  end
-
-  defp classify_message_type(_), do: "invalid"
 
   @impl true
-  def handle_disconnect(disconnect_map, state) do
-    new_state =
-      state
-      |> increment_reconnect_count
-      |> check_circuit_breaker
+  def handle_frame(other, state) do
+    AppLogger.websocket_debug("Unexpected frame", frame: inspect(other))
+    {:ok, state}
+  end
 
-    if new_state.circuit_open do
-      AppLogger.websocket_error("Circuit breaker open, reconnection stopped",
-        reason: inspect(disconnect_map),
-        reconnect_count: new_state.reconnects
-      )
+  defp update_stats_on_message(state) do
+    Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now()
+    })
 
-      Stats.update_websocket(%{
-        connected: false,
-        connecting: false,
-        last_message: state.last_message,
-        startup_time: state.startup_time,
-        reconnects: new_state.reconnects,
-        url: state.url,
-        last_disconnect: DateTime.utc_now()
-      })
+    state
+  end
 
-      {:error, new_state}
+  defp dispatch(raw, %__MODULE__{parent: parent}) do
+    with {:ok, data} <- Jason.decode(raw),
+         _type <- classify(data),
+         true <- Process.alive?(parent) do
+      send(parent, {:zkill_message, raw})
     else
-      delay = calculate_reconnect_delay(new_state.reconnects)
+      {:error, _} ->
+        AppLogger.websocket_error("JSON decode failed", snippet: String.slice(raw, 0, 100))
 
-      AppLogger.websocket_warn("Disconnected, reconnecting",
-        reason: inspect(disconnect_map),
-        reconnect_attempts: new_state.reconnects,
-        delay_ms: delay
-      )
+      false ->
+        AppLogger.websocket_warn("Parent down, dropping message")
 
-      Stats.update_websocket(%{
-        connected: false,
-        connecting: true,
-        last_message: state.last_message,
-        startup_time: state.startup_time,
-        reconnects: new_state.reconnects,
-        url: state.url,
-        last_disconnect: DateTime.utc_now()
-      })
-
-      {:reconnect, %{new_state | connected: false}}
+      _ ->
+        :noop
     end
   end
 
-  defp increment_reconnect_count(state) do
-    current_time = System.os_time(:second)
-    new_history = [current_time | state.reconnect_history]
-    window_start = current_time - state.reconnect_window
-    filtered_history = Enum.filter(new_history, fn time -> time >= window_start end)
-    %{state | reconnects: state.reconnects + 1, reconnect_history: filtered_history}
-  end
+  defp classify(%{"action" => "tqStatus"}), do: "tq_status"
+  defp classify(%{"zkb" => _}), do: "killmail"
+  defp classify(%{"killmail_id" => _}), do: "killmail"
+  defp classify(_), do: "unknown"
 
-  defp check_circuit_breaker(state) do
-    current_time = System.os_time(:second)
-    recent_reconnects = Enum.count(state.reconnect_history)
-    time_since_reset = current_time - state.last_circuit_reset
+  @impl true
+  def handle_disconnect(reason, state) do
+    now = System.system_time(:second)
+    window = reconnect_window()
+    history = [now | state.history] |> Enum.filter(&(&1 >= now - window))
+    reconnects = state.reconnects + 1
+    new_state = %{state | history: history, reconnects: reconnects}
 
-    should_open_circuit =
-      recent_reconnects >= max_reconnects() &&
-        time_since_reset >= 600
+    if length(history) >= max_reconnects() do
+      AppLogger.websocket_error("Circuit open, halting reconnects", reason: inspect(reason))
+      {:error, %{new_state | circuit_open: true}}
+    else
+      delay = calc_delay(reconnects)
 
-    if should_open_circuit do
-      AppLogger.websocket_error("Circuit breaker triggered",
-        reconnect_count: recent_reconnects,
-        minutes_since_reset: Float.round(time_since_reset / 60, 1)
+      AppLogger.websocket_warn("Disconnected, will reconnect",
+        reason: inspect(reason),
+        attempt: reconnects,
+        delay: delay
       )
 
-      %{state | circuit_open: true}
-    else
-      if time_since_reset >= 86_400 do
-        AppLogger.websocket_info("Resetting circuit breaker",
-          previous_reconnect_count: state.reconnects
-        )
-
-        %{state | reconnects: 0, last_circuit_reset: current_time}
-      else
-        state
-      end
+      {:reconnect, %{new_state | connected: false}, delay}
     end
   end
 
-  defp calculate_reconnect_delay(reconnect_count) do
-    base_delay = 500
-    delay = :math.pow(1.5, min(reconnect_count, 10)) * base_delay
-    jitter = :rand.uniform() * 0.5 - 0.25
-    delay_with_jitter = delay * (1 + jitter)
-    trunc(min(delay_with_jitter, 120_000))
+  defp calc_delay(count) do
+    base = 500
+    jitter = :rand.uniform() - 0.5
+    delay = :math.pow(1.5, min(count, 10)) * base * (1 + jitter)
+    trunc(min(delay, 120_000))
+  end
+
+  defp force_reconnect(state) do
+    AppLogger.websocket_warn("Forcing reconnect due to inactivity")
+    {:close, state}
   end
 
   @impl true
   def terminate(reason, state) do
     AppLogger.websocket_info("WebSocket terminating",
       reason: inspect(reason),
-      connected: state.connected,
-      reconnects: state.reconnects,
-      circuit_open: state.circuit_open
+      connected: state.connected
     )
 
     :ok
+  end
+
+  # Configuration helpers
+
+  defp get_config do
+    Application.get_env(:wanderer_notifier, :websocket, [])
+  end
+
+  defp default_url do
+    get_config()[:url] || "wss://zkillboard.com/websocket/"
+  end
+
+  defp max_reconnects do
+    get_config()[:max_reconnects] || 20
+  end
+
+  defp reconnect_window do
+    get_config()[:reconnect_window] || 3_600
   end
 end

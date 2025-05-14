@@ -32,6 +32,8 @@ defmodule WandererNotifier.Killmail.Enrichment do
           killmail
       )
       when map_size(esi_data) > 0 do
+    Logger.info("Enriching killmail with ESI data, system_id=#{esi_data["solar_system_id"]}")
+
     case get_victim_info(esi_data["victim"]) do
       {:error, :service_unavailable} = error ->
         error
@@ -49,6 +51,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
               victim_corp_ticker: victim_info.corporation_ticker,
               ship_name: victim_info.ship_name,
               system_name: system_name,
+              system_id: esi_data["solar_system_id"],
               attackers: attackers
           }
 
@@ -217,92 +220,40 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   @doc """
-  Fetches and formats recent kills for a system, suitable for system notifications.
+  Fetches and formats recent kills for a system.
+  Returns a formatted string that's safe to use in Discord.
 
   ## Parameters
     - system_id: The solar system ID
     - limit: Number of kills to fetch
 
   ## Returns
-    - List of formatted strings for each kill
+    - A string with formatted kill data with links
   """
   def recent_kills_for_system(system_id, limit \\ 3) do
-    case @zkill_client.get_system_kills(system_id, limit) do
-      {:ok, kills} when is_list(kills) ->
-        kills
-        |> Enum.map(&enrich_killmail_for_system/1)
-        |> Enum.map(&format_kill_for_system/1)
-        |> Enum.filter(&is_binary/1)
-        |> Enum.reject(&(&1 == ""))
+    try do
+      # Call ZKill client - response should be already formatted strings with links
+      case @zkill_client.get_system_kills(system_id, limit) do
+        {:ok, kill_strings} when is_list(kill_strings) and length(kill_strings) > 0 ->
+          # Join the pre-formatted strings with newlines
+          # The strings should already be formatted as markdown links
+          Enum.join(kill_strings, "\n")
 
-      {:error, _} ->
-        []
+        {:ok, []} ->
+          "No recent kills found"
+
+        {:error, reason} ->
+          Logger.warning("Error getting kills", %{details: inspect(reason)})
+          "Error retrieving kill data"
+
+        unexpected ->
+          Logger.warning("Unexpected response from ZKillClient", %{details: inspect(unexpected)})
+          "Unexpected kill data response"
+      end
+    rescue
+      e ->
+        Logger.error("Exception in recent_kills_for_system", %{details: Exception.message(e)})
+        "Error retrieving kill data"
     end
   end
-
-  defp enrich_killmail_for_system(kill) do
-    kill_id = Map.get(kill, "killmail_id")
-    hash = get_in(kill, ["zkb", "hash"])
-
-    case @esi_service.get_killmail(kill_id, hash) do
-      {:ok, esi_data} -> Map.put(kill, "esi_data", esi_data)
-      {:error, _} -> kill
-    end
-  end
-
-  defp format_kill_for_system(kill) do
-    kill_id = Map.get(kill, "killmail_id")
-    value = get_in(kill, ["zkb", "totalValue"]) || 0
-    formatted_value = format_isk_value(value)
-
-    # Get kill timestamp and format time ago
-    kill_time = get_kill_timestamp(kill)
-    time_ago = format_time_ago(kill_time)
-
-    case get_ship_info(get_in(kill, ["esi_data", "victim", "ship_type_id"])) do
-      {:ok, %{"name" => name}} ->
-        "[#{name}](https://zkillboard.com/kill/#{kill_id}/) - #{formatted_value}, #{time_ago}"
-
-      _ ->
-        nil
-    end
-  end
-
-  defp get_kill_timestamp(kill) do
-    case get_in(kill, ["esi_data", "killmail_time"]) do
-      nil ->
-        # Fallback to zkillboard time if available
-        unix_time = get_in(kill, ["zkb", "unixtime"])
-        if unix_time, do: DateTime.from_unix!(unix_time), else: DateTime.utc_now()
-
-      time_string ->
-        {:ok, datetime, _} = DateTime.from_iso8601(time_string)
-        datetime
-    end
-  end
-
-  defp format_time_ago(timestamp) do
-    now = DateTime.utc_now()
-    diff_seconds = DateTime.diff(now, timestamp)
-
-    cond do
-      diff_seconds < 3600 -> "<1hr"
-      diff_seconds < 7200 -> "1hr"
-      diff_seconds < 86_400 -> "#{div(diff_seconds, 3600)}hr"
-      diff_seconds < 172_800 -> "1d"
-      diff_seconds < 604_800 -> "#{div(diff_seconds, 86_400)}d"
-      true -> "#{div(diff_seconds, 604_800)}w"
-    end
-  end
-
-  defp format_isk_value(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
-      true -> "#{Float.round(value, 1)} ISK"
-    end
-  end
-
-  defp format_isk_value(_), do: "0 ISK"
 end

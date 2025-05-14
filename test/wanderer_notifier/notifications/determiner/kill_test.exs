@@ -207,12 +207,20 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
 
     on_exit(fn ->
       # Clean up ETS tables if they still exist
-      if :ets.info(:mock_cache) != :undefined do
-        :ets.delete(:mock_cache)
+      try do
+        if :ets.info(:mock_cache) != :undefined do
+          :ets.delete(:mock_cache)
+        end
+      catch
+        _, _ -> :ok
       end
 
-      if :ets.info(:mock_deduplication) != :undefined do
-        :ets.delete(:mock_deduplication)
+      try do
+        if :ets.info(:mock_deduplication) != :undefined do
+          :ets.delete(:mock_deduplication)
+        end
+      catch
+        _, _ -> :ok
       end
 
       # Restore original settings, or delete if they were not set
@@ -493,6 +501,19 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
 
     test "returns false when no tracked characters in killmail", %{killmail_struct: killmail} do
       # Configure the mock with an unrelated character
+      # Ensure tables exist
+      try do
+        if :ets.info(:mock_cache) == :undefined do
+          :ets.new(:mock_cache, [:set, :public, :named_table])
+        end
+
+        if :ets.info(:mock_deduplication) == :undefined do
+          :ets.new(:mock_deduplication, [:set, :public, :named_table])
+        end
+      catch
+        _, _ -> :ok
+      end
+
       MockCache.configure([], [%{character_id: "9999999", name: "Unrelated Character"}])
 
       # Test with the full ESI data

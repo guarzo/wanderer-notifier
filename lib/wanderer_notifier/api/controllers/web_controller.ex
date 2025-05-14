@@ -28,36 +28,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   # Get scheduler stats
   get "/scheduler-stats" do
     scheduler_info = WandererNotifier.Schedulers.Registry.all_schedulers()
-
-    # Transform scheduler info into a more friendly format
-    formatted_schedulers =
-      Enum.map(scheduler_info, fn %{module: module, enabled: enabled, config: config} ->
-        name =
-          module
-          |> to_string()
-          |> String.split(".")
-          |> List.last()
-          |> String.replace("Scheduler", "")
-
-        type = if Map.has_key?(config, :interval), do: "interval", else: "time"
-
-        %{
-          name: name,
-          type: type,
-          enabled: enabled,
-          interval: Map.get(config, :interval),
-          hour: Map.get(config, :hour),
-          minute: Map.get(config, :minute),
-          last_run: Map.get(config, :last_run),
-          next_run: Map.get(config, :next_run),
-          stats:
-            Map.get(config, :stats, %{
-              success_count: 0,
-              error_count: 0,
-              last_duration_ms: nil
-            })
-        }
-      end)
+    formatted_schedulers = format_schedulers(scheduler_info)
 
     send_success(conn, %{
       schedulers: formatted_schedulers,
@@ -81,14 +52,22 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         |> to_string()
         |> String.split(".")
         |> List.last()
-        |> String.replace("Scheduler", "") == scheduler_name
+        |> String.replace("Scheduler", "")
+        |> String.downcase() == String.downcase(scheduler_name)
       end)
 
     case scheduler_module do
       %{module: module, enabled: true} ->
-        # Execute the scheduler
-        module.run()
-        send_success(conn, %{message: "Scheduler execution triggered"})
+        # Execute the scheduler asynchronously
+        Task.Supervisor.start_child(
+          WandererNotifier.TaskSupervisor,
+          fn ->
+            AppLogger.api_info("Running scheduler in background", %{module: inspect(module)})
+            module.run()
+          end
+        )
+
+        send_success(conn, %{message: "Scheduler execution triggered in background"})
 
       %{enabled: false} ->
         send_error(conn, 400, "Scheduler is disabled")
@@ -117,7 +96,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
               AppLogger.api_error("Scheduler failed", %{
                 module: inspect(module),
                 error: Exception.message(e),
-                stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+                stacktrace: Exception.format(:error, e, __STACKTRACE__)
               })
           end
         end
@@ -134,12 +113,8 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   # Private functions
 
   defp get_service_status() do
-    AppLogger.api_info("Starting status endpoint processing")
-
     # Get license status safely
-    AppLogger.api_info("Fetching license status")
     license_result = License.validate()
-    AppLogger.api_info("License status result", %{result: inspect(license_result)})
 
     license_status = %{
       valid: license_result.valid,
@@ -152,11 +127,9 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     }
 
     # Get stats safely
-    AppLogger.api_info("Fetching stats")
     stats = get_stats_safely()
 
     # Get features and limits
-    AppLogger.api_info("Fetching features and limits")
     features = Config.features()
     limits = Config.get_all_limits()
 
@@ -179,7 +152,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
      }}
   rescue
     error ->
-      AppLogger.api_error("Error in debug status", %{
+      AppLogger.api_error("Error in service status", %{
         error: inspect(error),
         stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
@@ -198,7 +171,6 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         create_default_stats()
 
       stats ->
-        AppLogger.api_info("Stats retrieved successfully", %{stats: inspect(stats)})
         stats
     end
   rescue
@@ -260,5 +232,35 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         notification_history: 1000
       }
     }
+  end
+
+  defp format_schedulers(scheduler_info) do
+    Enum.map(scheduler_info, fn %{module: module, enabled: enabled, config: config} ->
+      name =
+        module
+        |> to_string()
+        |> String.split(".")
+        |> List.last()
+        |> String.replace("Scheduler", "")
+
+      type = if Map.has_key?(config, :interval), do: "interval", else: "time"
+
+      %{
+        name: name,
+        type: type,
+        enabled: enabled,
+        interval: Map.get(config, :interval),
+        hour: Map.get(config, :hour),
+        minute: Map.get(config, :minute),
+        last_run: Map.get(config, :last_run),
+        next_run: Map.get(config, :next_run),
+        stats:
+          Map.get(config, :stats, %{
+            success_count: 0,
+            error_count: 0,
+            last_duration_ms: nil
+          })
+      }
+    end)
   end
 end

@@ -63,6 +63,15 @@ defmodule WandererNotifier.ESI.ServiceMock do
   end
 
   @impl true
+  def get_character_info(@error_id), do: {:error, :unknown_error}
+  def get_character_info(@not_found_id), do: {:error, :not_found}
+  def get_character_info(@service_unavailable_id), do: {:error, :service_unavailable}
+
+  def get_character_info(_id) do
+    {:ok, @character_data}
+  end
+
+  @impl true
   def get_corporation_info(@error_id, _opts), do: {:error, :unknown_error}
   def get_corporation_info(@not_found_id, _opts), do: {:error, :not_found}
   def get_corporation_info(@service_unavailable_id, _opts), do: {:error, :service_unavailable}
@@ -72,11 +81,29 @@ defmodule WandererNotifier.ESI.ServiceMock do
   end
 
   @impl true
+  def get_corporation_info(@error_id), do: {:error, :unknown_error}
+  def get_corporation_info(@not_found_id), do: {:error, :not_found}
+  def get_corporation_info(@service_unavailable_id), do: {:error, :service_unavailable}
+
+  def get_corporation_info(_id) do
+    {:ok, @corporation_data}
+  end
+
+  @impl true
   def get_alliance_info(@error_id, _opts), do: {:error, :unknown_error}
   def get_alliance_info(@not_found_id, _opts), do: {:error, :not_found}
   def get_alliance_info(@service_unavailable_id, _opts), do: {:error, :service_unavailable}
 
   def get_alliance_info(_id, _opts) do
+    {:ok, @alliance_data}
+  end
+
+  @impl true
+  def get_alliance_info(@error_id), do: {:error, :unknown_error}
+  def get_alliance_info(@not_found_id), do: {:error, :not_found}
+  def get_alliance_info(@service_unavailable_id), do: {:error, :service_unavailable}
+
+  def get_alliance_info(_id) do
     {:ok, @alliance_data}
   end
 

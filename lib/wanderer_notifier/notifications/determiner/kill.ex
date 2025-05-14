@@ -20,9 +20,20 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def should_notify?(raw) do
     try do
       data = extract_kill_data(raw)
-      system_id = extract_sys_id(data)
+
+      # If we're dealing with a Killmail struct, try to get the system_id directly
+      system_id =
+        case raw do
+          %Killmail{system_id: sid} when not is_nil(sid) ->
+            to_string(sid)
+
+          _ ->
+            extract_sys_id(data)
+        end
+
       kill_id = extract_kill_id(raw)
 
+      # First check if notifications are enabled
       with true <- notifications_enabled?(),
            true <- tracked?(system_id, data) do
         check_deduplication(kill_id)
@@ -89,7 +100,12 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp tracked?(nil, data), do: has_tracked_character?(data)
-  defp tracked?(sys, data), do: tracked_system?(sys) || has_tracked_character?(data)
+
+  defp tracked?(sys, data) do
+    is_tracked_system = tracked_system?(sys)
+    has_tracked_chars = has_tracked_character?(data)
+    is_tracked_system || has_tracked_chars
+  end
 
   defp reason_for_disable(system_id) do
     cond do
@@ -109,19 +125,34 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   # ——— Extractors ——————————————————————————————————————————————————————
 
   defp extract_kill_data(%Killmail{esi_data: %{} = d}), do: d
+
+  defp extract_kill_data(%Killmail{} = killmail) do
+    # If the killmail doesn't have full ESI data, try to get the system_id
+    # from the struct itself if it's been set during enrichment
+    if Map.has_key?(killmail, :system_id) && killmail.system_id do
+      %{"solar_system_id" => killmail.system_id}
+    else
+      %{}
+    end
+  end
+
   defp extract_kill_data(map) when is_map(map), do: map
   defp extract_kill_data(_), do: %{}
 
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id), do: to_string(id)
-  defp extract_sys_id(%{"solar_system_id" => id}) when is_binary(id), do: id
-  defp extract_sys_id(_), do: nil
+  defp extract_sys_id(%{"solar_system_id" => id}) when is_integer(id) or is_binary(id) do
+    to_string(id)
+  end
+
+  defp extract_sys_id(_) do
+    nil
+  end
 
   defp extract_kill_id(%Killmail{killmail_id: id}) when is_binary(id), do: id
+  defp extract_kill_id(%Killmail{killmail_id: id}), do: to_string(id)
 
   defp extract_kill_id(map) when is_map(map) do
-    Map.get(map, "killmail_id") ||
-      Map.get(map, :killmail_id) ||
-      "unknown"
+    map_id = Map.get(map, "killmail_id") || Map.get(map, :killmail_id)
+    if map_id, do: to_string(map_id), else: "unknown"
   end
 
   defp extract_kill_id(_), do: "unknown"

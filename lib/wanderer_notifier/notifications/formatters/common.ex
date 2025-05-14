@@ -42,10 +42,12 @@ defmodule WandererNotifier.Notifications.Formatters.Common do
   """
   def convert_color(color) when is_atom(color), do: Map.get(colors(), color, @default_color)
   def convert_color(color) when is_integer(color), do: color
+
   def convert_color("#" <> hex) do
     {color, _} = Integer.parse(hex, 16)
     color
   end
+
   def convert_color(_color), do: @default_color
 
   @doc """
@@ -90,6 +92,7 @@ defmodule WandererNotifier.Notifications.Formatters.Common do
                 "inline" => Map.get(field, :inline, false)
               }
             end)
+
           _ ->
             []
         end

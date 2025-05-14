@@ -90,7 +90,7 @@ Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
 
 # Define DiscordNotifier mock
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifications.DiscordNotifierBehaviour
+  for: WandererNotifier.Notifiers.Discord.Behaviour
 )
 
 # Define ESI ClientMock using the proper behavior
@@ -101,6 +101,30 @@ Mox.defmock(WandererNotifier.Api.ESI.ClientMock,
 # Configure application to use mocks
 Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 Application.put_env(:wanderer_notifier, :zkill_client, WandererNotifier.Killmail.ZKillClientMock)
+
+# Set up a mock for the HTTP client to return valid license responses
+Application.put_env(
+  :wanderer_notifier,
+  :http_client_impl,
+  WandererNotifier.Test.Support.HttpClientMock
+)
+
+# Define license validation mock
+license_validation_success_response = %{
+  "license_valid" => true,
+  "valid" => true,
+  "bot_assigned" => true,
+  "status" => "active",
+  "features" => ["base"]
+}
+
+Mox.stub(WandererNotifier.MockHTTP, :post_json, fn url, _body, _headers, _opts ->
+  if String.contains?(url, "validate_bot") || String.contains?(url, "validate_license") do
+    {:ok, %{status_code: 200, body: license_validation_success_response}}
+  else
+    {:ok, %{status_code: 200, body: %{}}}
+  end
+end)
 
 Application.put_env(
   :wanderer_notifier,
@@ -140,6 +164,25 @@ end
 
 # Initialize test state for Stats
 case GenServer.start_link(WandererNotifier.Core.Stats, [], name: WandererNotifier.Core.Stats) do
+  {:ok, pid} -> {:ok, pid}
+  {:error, {:already_started, pid}} -> {:ok, pid}
+  error -> error
+end
+
+# Start and initialize license service with mock state for tests
+mock_license_response = %{
+  valid: true,
+  bot_assigned: true,
+  details: %{"license_valid" => true, "valid" => true},
+  error: nil,
+  error_message: nil,
+  last_validated: DateTime.utc_now() |> DateTime.to_string(),
+  notification_counts: %{system: 0, character: 0, killmail: 0}
+}
+
+case GenServer.start_link(WandererNotifier.License.Service, mock_license_response,
+       name: WandererNotifier.License.Service
+     ) do
   {:ok, pid} -> {:ok, pid}
   {:error, {:already_started, pid}} -> {:ok, pid}
   error -> error

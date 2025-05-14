@@ -8,6 +8,10 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   # Define a default for compile-time, but we'll use get_env at runtime
   @default_cache_module WandererNotifier.Killmail.Cache
 
+  alias WandererNotifier.Killmail.Processor
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias Cachex
+
   # Get the cache module at runtime to respect test configurations
   defp cache_module do
     Application.get_env(
@@ -16,9 +20,6 @@ defmodule WandererNotifier.Api.Controllers.KillController do
       @default_cache_module
     )
   end
-
-  alias WandererNotifier.Killmail.Processor
-  alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Get recent kills
   get "/recent" do
@@ -31,42 +32,40 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   # Get kill details
   get "/kill/:kill_id" do
     # Convert kill_id to integer to ensure key type matches cache keys
-    kill_id_int =
-      case Integer.parse(kill_id) do
-        {id, ""} ->
-          id
+    case Integer.parse(kill_id) do
+      {id, ""} ->
+        case cache_module().get_kill(id) do
+          {:ok, kill} when not is_nil(kill) ->
+            send_success(conn, kill)
 
-        {_, _remainder} ->
-          AppLogger.api_debug("Kill ID contains non-numeric characters", %{kill_id: kill_id})
-          send_error(conn, 400, "Invalid kill ID format")
-          halt(conn)
+          # Handle all 404 scenarios
+          {:ok, nil} ->
+            send_error(conn, 404, "Kill not found")
 
-        :error ->
-          # If we can't parse it as an integer, we'll return a 400 error
-          AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
-          send_error(conn, 400, "Invalid kill ID format")
-          halt(conn)
-      end
+          {:error, :not_cached} ->
+            send_error(conn, 404, "Kill not found")
 
-    case cache_module().get_kill(kill_id_int) do
-      {:ok, kill} when not is_nil(kill) ->
-        send_success(conn, kill)
+          {:error, :not_found} ->
+            send_error(conn, 404, "Kill not found")
 
-      {:ok, nil} ->
-        send_error(conn, 404, "Kill not found")
+          {:error, reason} ->
+            send_error(conn, 500, reason)
 
-      {:error, :not_cached} ->
-        send_error(conn, 404, "Kill not found in cache")
+          _ ->
+            # Catch any unexpected response format
+            send_error(conn, 500, "Unexpected error retrieving kill data")
+        end
 
-      {:error, :not_found} ->
-        send_error(conn, 404, "Kill not found")
+      {_, _remainder} ->
+        AppLogger.api_debug("Kill ID contains non-numeric characters", %{kill_id: kill_id})
+        send_error(conn, 400, "Invalid kill ID format")
+        halt(conn)
 
-      {:error, reason} ->
-        send_error(conn, 500, reason)
-
-      _ ->
-        # Catch any unexpected response format
-        send_error(conn, 500, "Unexpected error retrieving kill data")
+      :error ->
+        # If we can't parse it as an integer, we'll return a 400 error
+        AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
+        send_error(conn, 400, "Invalid kill ID format")
+        halt(conn)
     end
   end
 

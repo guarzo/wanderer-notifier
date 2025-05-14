@@ -132,7 +132,23 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp format_statics_list([]), do: "N/A"
 
   defp format_statics_list(statics) when is_list(statics) do
-    Enum.map_join(statics, ", ", fn static -> static end)
+    Enum.map_join(statics, ", ", fn
+      static when is_binary(static) ->
+        static
+
+      static when is_map(static) ->
+        name = Map.get(static, "name") || Map.get(static, :name) || "Unknown"
+
+        dest =
+          get_in(static, ["destination", "name"]) ||
+            get_in(static, [:destination, :name]) ||
+            "Unknown"
+
+        "#{name} (#{dest})"
+
+      other ->
+        inspect(other)
+    end)
   end
 
   defp format_statics_list(statics), do: to_string(statics)
@@ -159,21 +175,27 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     end
   end
 
+  # Ensure a value is safely converted to a string
+  defp safe_to_string(nil), do: ""
+  defp safe_to_string(val) when is_binary(val), do: val
+  defp safe_to_string(val), do: inspect(val)
+
   defp build_rich_system_notification_fields(
          system,
          is_wormhole,
          formatted_statics,
          system_name_with_link
        ) do
-    fields = [%{name: "System", value: to_string(system_name_with_link), inline: true}]
+    fields = [%{name: "System", value: safe_to_string(system_name_with_link), inline: true}]
     fields = add_shattered_field(fields, is_wormhole, Map.get(system, :is_shattered))
     fields = add_statics_field(fields, is_wormhole, formatted_statics)
     fields = add_region_field(fields, Map.get(system, :region_name))
     fields = add_effect_field(fields, is_wormhole, Map.get(system, :effect_name))
     fields = add_zkill_system_kills(fields, Map.get(system, :solar_system_id))
-    # Ensure all field values are strings
+
+    # Ensure all field values are valid strings
     Enum.map(fields, fn field ->
-      %{field | value: if(is_binary(field.value), do: field.value, else: inspect(field.value))}
+      %{field | value: safe_to_string(field.value)}
     end)
   end
 
@@ -183,17 +205,17 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   defp add_shattered_field(fields, _, _), do: fields
 
   defp add_statics_field(fields, true, statics) when statics != "N/A",
-    do: fields ++ [%{name: "Statics", value: to_string(statics), inline: true}]
+    do: fields ++ [%{name: "Statics", value: statics, inline: true}]
 
   defp add_statics_field(fields, _, _), do: fields
 
   defp add_region_field(fields, region_name) when not is_nil(region_name),
-    do: fields ++ [%{name: "Region", value: to_string(region_name), inline: true}]
+    do: fields ++ [%{name: "Region", value: safe_to_string(region_name), inline: true}]
 
   defp add_region_field(fields, _), do: fields
 
   defp add_effect_field(fields, true, effect_name) when not is_nil(effect_name),
-    do: fields ++ [%{name: "Effect", value: to_string(effect_name), inline: true}]
+    do: fields ++ [%{name: "Effect", value: safe_to_string(effect_name), inline: true}]
 
   defp add_effect_field(fields, _, _), do: fields
 
@@ -203,13 +225,27 @@ defmodule WandererNotifier.Notifications.Formatters.System do
     if is_nil(system_id_int) do
       fields
     else
-      recent_kills =
-        WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3)
+      # Get kill information from enrichment module
+      try do
+        # The response should now be safe strings we can directly use
+        case WandererNotifier.Killmail.Enrichment.recent_kills_for_system(system_id_int, 3) do
+          kills when is_binary(kills) and kills != "" ->
+            # Add as a field if we have kill data
+            fields ++ [%{name: "Recent Kills", value: kills, inline: false}]
 
-      if recent_kills != [] do
-        fields ++ [%{name: "Recent Kills", value: Enum.join(recent_kills, "\n"), inline: false}]
-      else
-        fields
+          _ ->
+            # No kill data
+            fields
+        end
+      rescue
+        e ->
+          # Log but don't crash
+          AppLogger.processor_warn("Error adding kills field",
+            error: Exception.message(e),
+            system_id: system_id
+          )
+
+          fields
       end
     end
   end

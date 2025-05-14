@@ -19,11 +19,10 @@ defmodule WandererNotifier.Killmail.Processor do
 
   @spec schedule_tasks() :: :ok
   def schedule_tasks do
-    AppLogger.info("Scheduling killmail tasks")
     :ok
   end
 
-  @spec process_zkill_message(String.t(), state) :: state | {:ok, kill_id | :skipped}
+  @spec process_zkill_message(String.t(), state) :: {:ok, kill_id | :skipped} | {:error, term()}
   def process_zkill_message(raw_message, state) do
     case Jason.decode(raw_message) do
       {:error, reason} ->
@@ -32,16 +31,16 @@ defmodule WandererNotifier.Killmail.Processor do
           message: raw_message
         )
 
-        state
+        {:error, {:decode_error, reason}}
 
       {:ok, kill_data} ->
         case should_notify?(kill_data) do
-          {:ok, true, _reason} ->
+          {:ok, %{should_notify: true}} ->
             process_kill_data(kill_data, state)
 
-          {:ok, false, reason} ->
+          {:ok, %{should_notify: false, reason: reason}} ->
             log_skipped(kill_data, reason)
-            state
+            {:ok, :skipped}
 
           unexpected ->
             AppLogger.error("Unexpected response from notification determiner", %{
@@ -49,14 +48,13 @@ defmodule WandererNotifier.Killmail.Processor do
               response: inspect(unexpected)
             })
 
-            state
+            {:error, {:invalid_notification_response, unexpected}}
         end
     end
   end
 
   @spec log_stats() :: :ok
   def log_stats do
-    AppLogger.info("Logging killmail stats")
     :ok
   end
 
@@ -68,109 +66,106 @@ defmodule WandererNotifier.Killmail.Processor do
     end
   end
 
+  @doc """
+  Sends a test notification using the most recent kill data.
+  This is useful for verifying that the notification system is working correctly.
+
+  ## Returns
+    - `{:ok, kill_id}` - Test notification was sent successfully
+    - `{:error, reason}` - Test notification failed
+  """
+  @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
+  def send_test_kill_notification do
+    with {:ok, kill_data} <- get_recent_kills(),
+         kill_id = Map.get(kill_data, "killmail_id", "unknown"),
+         context = %Context{
+           killmail_id: kill_id,
+           system_name: "Test System",
+           options: %{source: :test_notification}
+         },
+         {:ok, _} <- killmail_pipeline().process_killmail(kill_data, context) do
+      {:ok, kill_id}
+    else
+      {:error, :no_recent_kills} = error -> error
+      error -> error
+    end
+  end
+
   @spec process_kill_data(kill_data, state) ::
           {:ok, kill_id | :skipped} | {:error, term()}
   def process_kill_data(kill_data, state) do
-    kill_id = kill_data["killmail_id"] || "unknown"
-    AppLogger.kill_info("Processing kill data", kill_id: kill_id)
+    kill_id = Map.get(kill_data, "killmail_id", "unknown")
+    system_id = Map.get(kill_data, "solar_system_id")
 
     # Create a context with relevant information
+    system_name = get_system_name(system_id)
+
     context =
       Context.new(
-        nil,
-        nil,
-        :zkill_websocket,
+        kill_id,
+        system_name,
         %{
+          source: :zkill_websocket,
           original_state: state,
           processing_started_at: DateTime.utc_now()
         }
       )
 
-    killmail_pipeline()
-    |> then(& &1.process_killmail(kill_data, context))
-    |> handle_pipeline_result(kill_id)
-    |> maybe_notify(kill_id)
-  end
+    # Process through pipeline and let it handle notification
+    case killmail_pipeline().process_killmail(kill_data, context) do
+      {:ok, _final_killmail} ->
+        # Successfully processed and notified in pipeline
+        {:ok, kill_id}
 
-  @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
-  def send_test_kill_notification do
-    # Create a test context
-    context = Context.new(nil, nil, :zkill_api, %{test: true})
+      error ->
+        # Handle pipeline errors
+        AppLogger.kill_error("Failed to process kill data",
+          kill_id: kill_id,
+          error: inspect(error)
+        )
 
-    with {:ok, recent} <- get_recent_kills(),
-         kill_id <- extract_kill_id(recent),
-         structured <- ensure_structured_killmail(recent),
-         {:ok, enriched} <- killmail_pipeline().process_killmail(structured, context) do
-      killmail_notification().send_kill_notification(enriched, "test", %{})
-      {:ok, kill_id}
-    else
-      {:error, :no_recent_kills} ->
-        AppLogger.kill_warn("No recent kills found in shared cache")
-        {:error, :no_recent_kills}
-
-      {:error, reason} ->
-        AppLogger.kill_error("Cannot send test notification: #{inspect(reason)}")
-        {:error, reason}
+        error
     end
   end
 
   # -- Private helpers -------------------------------------------------------
 
   defp should_notify?(data) do
-    case WandererNotifier.Notifications.Determiner.Kill.should_notify?(data) do
-      {:ok, %{should_notify: notify, reason: reason}} -> {:ok, notify, reason}
-      other -> {:error, other}
+    kill_id = Map.get(data, "killmail_id", "unknown")
+    system_id = Map.get(data, "solar_system_id", "unknown")
+
+    # Check system directly
+    is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
+
+    # Get the determination from the Kill Determiner
+    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(data)
+
+    # Only log errors and inconsistencies
+    case result do
+      {:ok, %{should_notify: false, reason: reason}} ->
+        # Log inconsistency between tracking and deduplication
+        if is_system_tracked && reason == "Duplicate kill" do
+          AppLogger.error(
+            "PROCESSOR INCONSISTENCY: System is tracked but deduplication prevented notification: #{kill_id}"
+          )
+        end
+
+      {:ok, %{should_notify: true}} ->
+        :ok
+
+      _ ->
+        AppLogger.error("PROCESSOR: Unexpected result for kill_id=#{kill_id}: #{inspect(result)}")
     end
+
+    result
   end
 
   defp log_skipped(%{"killmail_id" => id, "solar_system_id" => sys}, reason) do
     name = get_system_name(sys)
 
     AppLogger.processor_info(
-      "Skipping killmail: #{reason} (killmail_id=#{id}, system_id=#{sys}, system_name=#{name})"
+      "Skipping killmail: #{reason} (killmail_id=#{id}, system_name=#{name})"
     )
-  end
-
-  defp handle_pipeline_result({:ok, :skipped}, _kill_id), do: {:skipped, nil}
-  defp handle_pipeline_result({:ok, enriched}, _kill_id), do: {:ok, enriched}
-
-  defp handle_pipeline_result({:error, reason}, kill_id) do
-    AppLogger.kill_error("Failed to process kill data",
-      kill_id: kill_id,
-      error: inspect(reason)
-    )
-
-    {:error, reason}
-  end
-
-  # Prefix unused arg with underscore to silence warning
-  defp maybe_notify({:skipped, _}, _), do: {:ok, :skipped}
-
-  defp maybe_notify({:ok, enriched}, kill_id) do
-    AppLogger.kill_info("About to send kill notification", kill_id: kill_id)
-
-    case killmail_notification().send_kill_notification(enriched, "kill", %{}) do
-      {:ok, _} ->
-        AppLogger.kill_info("Kill notification sent successfully", kill_id: kill_id)
-        {:ok, kill_id}
-
-      {:error, reason} ->
-        AppLogger.kill_error("Failed to send kill notification",
-          kill_id: kill_id,
-          error: inspect(reason)
-        )
-
-        {:error, {:notification_failed, reason}}
-    end
-  end
-
-  defp maybe_notify({:error, reason}, kill_id) do
-    AppLogger.kill_error("Failed to process kill data for notification",
-      kill_id: kill_id,
-      error: inspect(reason)
-    )
-
-    {:error, reason}
   end
 
   defp get_system_name(system_id) do
@@ -187,32 +182,11 @@ defmodule WandererNotifier.Killmail.Processor do
       end
   end
 
-  defp extract_kill_id(%{"killmail_id" => id}), do: id
-  defp extract_kill_id(%{killmail_id: id}), do: id
-  defp extract_kill_id(_), do: "unknown"
-
-  defp ensure_structured_killmail(%WandererNotifier.Killmail.Killmail{} = k), do: k
-
-  defp ensure_structured_killmail(map) when is_map(map) do
-    struct(WandererNotifier.Killmail.Killmail, Map.delete(map, :__struct__))
-  end
-
-  defp ensure_structured_killmail(_),
-    do: %WandererNotifier.Killmail.Killmail{killmail_id: "unknown", zkb: %{}}
-
   defp killmail_pipeline do
     Application.get_env(
       :wanderer_notifier,
       :killmail_pipeline,
       WandererNotifier.Killmail.Pipeline
-    )
-  end
-
-  defp killmail_notification do
-    Application.get_env(
-      :wanderer_notifier,
-      :killmail_notification,
-      WandererNotifier.Notifications.KillmailNotification
     )
   end
 
