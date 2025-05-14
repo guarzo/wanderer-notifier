@@ -58,6 +58,10 @@ defmodule WandererNotifier.License.Client do
         AppLogger.api_error("License Manager API request timed out")
         {:error, :request_failed}
 
+      {:error, :rate_limited} ->
+        AppLogger.api_error("License Manager API rate limit exceeded")
+        {:error, :rate_limited}
+
       {:error, reason} ->
         AppLogger.api_error("License Manager API request failed", error: inspect(reason))
         {:error, :request_failed}
@@ -65,7 +69,7 @@ defmodule WandererNotifier.License.Client do
   end
 
   # Process a successful validation response
-  defp process_successful_validation(decoded) do
+  defp process_successful_validation(decoded) when is_map(decoded) do
     # Additional logging for easier debugging without exposing sensitive data
     license_valid = decoded["license_valid"] || false
 
@@ -74,6 +78,19 @@ defmodule WandererNotifier.License.Client do
     # Ensure the response contains both formats for compatibility
     enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
     {:ok, enhanced_response}
+  end
+
+  # Handle case when response is not a map
+  defp process_successful_validation(decoded) do
+    AppLogger.api_error("Invalid license validation response format", response: inspect(decoded))
+
+    # Return a standardized error response
+    {:ok,
+     %{
+       "license_valid" => false,
+       "valid" => false,
+       "message" => "Invalid response format: #{inspect(decoded)}"
+     }}
   end
 
   # Log the validation result based on validity
@@ -146,6 +163,10 @@ defmodule WandererNotifier.License.Client do
       {:error, :timeout} ->
         AppLogger.api_error("License Manager API request timed out")
         {:error, "Request timed out"}
+
+      {:error, :rate_limited} ->
+        AppLogger.api_error("License Manager API rate limit exceeded")
+        {:error, "Rate limit exceeded"}
 
       {:error, reason} ->
         AppLogger.api_error("License Manager API request failed", error: inspect(reason))

@@ -145,9 +145,9 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
    - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
    - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
-   - `WANDERER_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
-   - `WANDERER_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
-   - `WANDERER_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+   - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
+   - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
+   - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
 
 2. **License Configuration**
 
@@ -182,7 +182,7 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_CHARACTER_TRACKING_ENABLED`: Enable character tracking (default: true)
    - `WANDERER_SYSTEM_TRACKING_ENABLED`: Enable system tracking (default: true)
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
-   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
+   - `WANDERER_TRACK_KSPACE_ENABLED`: Track K-Space systems in addition to wormholes (default: true)
 
 7. **Character Configuration**
 

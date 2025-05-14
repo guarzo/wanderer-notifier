@@ -32,9 +32,17 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     cached_characters = CacheRepo.get(CacheKeys.character_list())
     cached_characters_safe = ensure_list(cached_characters)
 
+    AppLogger.maintenance_info(
+      "Starting character update - cached count: #{length(cached_characters_safe)}"
+    )
+
     task =
       Task.async(fn ->
         try do
+          AppLogger.maintenance_debug(
+            "Calling update_tracked_characters with #{length(cached_characters_safe)} cached characters"
+          )
+
           Client.update_tracked_characters(cached_characters_safe,
             suppress_notifications: !primed?
           )
@@ -51,14 +59,17 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
     case Task.yield(task, 10_000) do
       {:ok, {:ok, characters}} ->
+        characters_list = ensure_list(characters)
+
         AppLogger.maintenance_info(
-          "👥 Characters updated: #{length(ensure_list(characters))} characters synchronized"
+          "👥 Characters updated: #{length(characters_list)} characters from API (cached before: #{length(cached_characters_safe)})"
         )
 
         if primed? do
           handle_successful_character_update(characters)
         else
           CacheRepo.put(:character_list_primed, true)
+          AppLogger.maintenance_info("Character cache primed for first time")
         end
 
       {:ok, {:error, :feature_disabled}} ->
@@ -123,13 +134,17 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   defp _perform_character_cache_verification(characters) do
     alias WandererNotifier.Cache.Keys, as: CacheKeys
     alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-    characters_list = ensure_list(characters)
-    updated_cache = CacheRepo.get(CacheKeys.character_list())
-    cache_list = ensure_list(updated_cache)
+    alias WandererNotifier.Logger.Logger, as: AppLogger
 
-    if cache_list == [] do
-      cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
-      CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)
-    end
+    characters_list = ensure_list(characters)
+
+    # Always update the cache with the latest characters from the API
+    # This ensures characters that are no longer present get removed
+    cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
+    CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)
+
+    AppLogger.maintenance_debug(
+      "Character cache updated with #{length(characters_list)} characters"
+    )
   end
 end

@@ -28,8 +28,10 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
     # Get memory information
     memory_info = :erlang.memory()
 
-    # Node uptime
-    uptime_ms = :erlang.statistics(:wall_clock) |> elem(0)
+    # Calculate uptime using monotonic_time
+    time_now = :erlang.monotonic_time(:millisecond)
+    time_start = :erlang.system_info(:start_time)
+    uptime_ms = time_now - time_start
     uptime_seconds = div(uptime_ms, 1000)
 
     detailed_status = %{
@@ -37,7 +39,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
       web_server: %{
         running: web_server_status,
         port: WandererNotifier.Config.port(),
-        bind_address: "0.0.0.0"
+        bind_address: WandererNotifier.Config.host()
       },
       system: %{
         uptime_seconds: uptime_seconds,

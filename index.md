@@ -58,9 +58,9 @@ WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 # Optional Discord Channel Configuration
 # WANDERER_DISCORD_KILL_CHANNEL_ID=your_kill_channel_id
 # WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
-# WANDERER_CHARACTER_KILL_CHANNEL_ID=your_character_kill_channel_id
-# WANDERER_SYSTEM_CHANNEL_ID=your_system_channel_id
-# WANDERER_CHARACTER_CHANNEL_ID=your_character_channel_id
+# WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID=your_character_kill_channel_id
+# WANDERER_DISCORD_SYSTEM_CHANNEL_ID=your_system_channel_id
+# WANDERER_DISCORD_CHARACTER_CHANNEL_ID=your_character_channel_id
 
 # Map Configuration
 WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
@@ -68,21 +68,26 @@ WANDERER_MAP_TOKEN=your_map_api_token
 WANDERER_NOTIFIER_API_TOKEN=your_notifier_api_token
 
 # License Configuration
-WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
-WANDERER_LICENSE_MANAGER_URL=license_manager_url
+WANDERER_LICENSE_KEY=your_license_key  # Provided with your map subscription
+WANDERER_LICENSE_MANAGER_URL="license_manager_url"
 
 # Feature Flags (default values shown below)
-# WANDERER_NOTIFICATIONS_ENABLED=true
-# WANDERER_KILL_NOTIFICATIONS_ENABLED=true
-# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true
-# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true
-# WANDERER_CHARACTER_TRACKING_ENABLED=true
-# WANDERER_SYSTEM_TRACKING_ENABLED=true
-# WANDERER_DISABLE_STATUS_MESSAGES=false
-# WANDERER_FEATURE_TRACK_KSPACE=true
+# General Settings
+# WANDERER_NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
+# WANDERER_DISABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
+
+# Notification-Related Flags
+# WANDERER_KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
+# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
+# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
+
+# Tracking-Related Flags
+# WANDERER_CHARACTER_TRACKING_ENABLED=true  # Enables character activity tracking
+# WANDERER_SYSTEM_TRACKING_ENABLED=true  # Enables system activity tracking
+# WANDERER_TRACK_KSPACE_ENABLED=true  # Controls whether K-Space systems are tracked
 
 # Server Configuration
-# PORT=4000
+# WANDERER_PORT=4000
 # WANDERER_HOST=localhost
 # WANDERER_SCHEME=http
 # WANDERER_PUBLIC_URL=your_public_url

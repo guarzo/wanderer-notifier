@@ -22,8 +22,17 @@ defmodule WandererNotifier.Config do
 
   defp parse_int(str, default) do
     case Integer.parse(str) do
-      {i, _} -> i
-      :error -> default
+      {i, _} ->
+        i
+
+      :error ->
+        require Logger
+
+        Logger.warning(
+          "Unable to parse integer from ENV value #{inspect(str)} – falling back to #{default}"
+        )
+
+        default
     end
   end
 
@@ -66,9 +75,9 @@ defmodule WandererNotifier.Config do
   def map_slug do
     url = map_url_with_name()
 
-    if url == nil or url == "" do
-      # Return nil for missing URL
-      nil
+    if nil_or_empty?(url) do
+      # Return empty string for missing URL
+      ""
     else
       uri = URI.parse(url)
 
@@ -76,10 +85,10 @@ defmodule WandererNotifier.Config do
       if uri.path != nil and uri.path != "" do
         uri.path |> String.trim("/") |> String.split("/") |> List.last()
       else
-        # Log warning and return nil for missing path
+        # Log warning and return empty string for missing path
         require Logger
         Logger.warning("No path in map URL: #{url}")
-        nil
+        ""
       end
     end
   end
@@ -268,7 +277,7 @@ defmodule WandererNotifier.Config do
   end
 
   # Helper to check for nil or empty string
-  defp nil_or_empty?(str), do: str == nil or str == ""
+  defp nil_or_empty?(str), do: is_nil(str) or str == ""
 
   # Helper to log invalid URL warning
   defp log_invalid_url(message) do
@@ -298,7 +307,14 @@ defmodule WandererNotifier.Config do
 
   # Build URL string from URI components
   defp build_url_from_components(uri) do
-    port_part = if uri.port, do: ":#{uri.port}", else: ""
+    port_part =
+      case {uri.scheme, uri.port} do
+        {"http", 80} -> ""
+        {"https", 443} -> ""
+        {_, nil} -> ""
+        {_, port} -> ":#{port}"
+      end
+
     "#{uri.scheme}://#{uri.host}#{port_part}"
   end
 

@@ -81,14 +81,22 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         |> to_string()
         |> String.split(".")
         |> List.last()
-        |> String.replace("Scheduler", "") == scheduler_name
+        |> String.replace("Scheduler", "")
+        |> String.downcase() == String.downcase(scheduler_name)
       end)
 
     case scheduler_module do
       %{module: module, enabled: true} ->
-        # Execute the scheduler
-        module.run()
-        send_success(conn, %{message: "Scheduler execution triggered"})
+        # Execute the scheduler asynchronously
+        Task.Supervisor.start_child(
+          WandererNotifier.TaskSupervisor,
+          fn ->
+            AppLogger.api_info("Running scheduler in background", %{module: inspect(module)})
+            module.run()
+          end
+        )
+
+        send_success(conn, %{message: "Scheduler execution triggered in background"})
 
       %{enabled: false} ->
         send_error(conn, 400, "Scheduler is disabled")
@@ -134,7 +142,6 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   # Private functions
 
   defp get_service_status() do
-
     # Get license status safely
     license_result = License.validate()
 
@@ -174,7 +181,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
      }}
   rescue
     error ->
-      AppLogger.api_error("Error in debug status", %{
+      AppLogger.api_error("Error in service status", %{
         error: inspect(error),
         stacktrace: Exception.format(:error, error, __STACKTRACE__)
       })
