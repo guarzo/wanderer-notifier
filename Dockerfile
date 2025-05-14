@@ -79,7 +79,10 @@ FROM elixir:1.18-otp-27-slim AS runtime
 
 ENV LANG=C.UTF-8 \
     HOME=/app \
-    MIX_ENV=prod
+    MIX_ENV=prod \
+    ERL_CRASH_DUMP_SECONDS=0 \
+    ERL_AFLAGS="-kernel shell_history enabled" \
+    ELIXIR_ERL_OPTIONS="-kernel standard_io_encoding latin1"
 
 ARG WANDERER_NOTIFIER_API_TOKEN
 ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
