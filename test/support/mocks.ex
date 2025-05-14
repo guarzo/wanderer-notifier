@@ -463,5 +463,19 @@ defmodule WandererNotifier.HttpClient.Behaviour do
   @callback handle_response(response :: any()) :: {:ok, map()} | {:error, any()}
 end
 
-# Define a proper mock with support for both get/2 and get/3
+# Define common mocks
+Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
+
+Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
+  for: WandererNotifier.Notifications.Determiner.KillBehaviour
+)
+
+Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
+  for: WandererNotifier.Notifiers.Discord.Behaviour
+)
+
 Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
+
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
+)

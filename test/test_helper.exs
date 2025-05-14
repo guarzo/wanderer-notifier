@@ -90,7 +90,7 @@ Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
 
 # Define DiscordNotifier mock
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
-  for: WandererNotifier.Notifications.DiscordNotifierBehaviour
+  for: WandererNotifier.Notifiers.Discord.Behaviour
 )
 
 # Define ESI ClientMock using the proper behavior

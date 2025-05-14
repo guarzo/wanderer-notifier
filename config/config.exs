@@ -3,6 +3,11 @@ import Config
 # Set environment based on MIX_ENV at compile time
 config :wanderer_notifier, env: config_env()
 
+# Enable schedulers by default
+config :wanderer_notifier,
+  schedulers_enabled: true,
+  scheduler_supervisor_enabled: true
+
 # Configure HTTP client
 config :wanderer_notifier, http_client: WandererNotifier.HttpClient.Httpoison
 

@@ -13,6 +13,24 @@ defmodule WandererNotifier.Schedulers.Registry do
   end
 
   defp scheduler_module?({mod, _}) do
-    mod |> to_string() |> String.contains?("Scheduler")
+    excluded = [
+      WandererNotifier.Schedulers.Supervisor,
+      WandererNotifier.Schedulers.Registry
+    ]
+
+    mod_str = to_string(mod)
+
+    String.contains?(mod_str, "Scheduler") and
+      mod not in excluded and
+      implements_behaviour?(mod, WandererNotifier.Schedulers.Scheduler)
+  end
+
+  defp implements_behaviour?(module, behaviour) do
+    try do
+      behaviours = module.module_info(:attributes)[:behaviour] || []
+      behaviour in behaviours
+    rescue
+      _ -> false
+    end
   end
 end

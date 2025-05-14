@@ -13,7 +13,7 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Killmail.Websocket
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @default_interval :timer.minutes(5)
+  @default_interval 30_000
 
   @typedoc "Internal state for the Service GenServer"
   @type state :: %__MODULE__.State{

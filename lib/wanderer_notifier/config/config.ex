@@ -209,6 +209,8 @@ defmodule WandererNotifier.Config do
   @doc "Returns the characters cache TTL in seconds."
   def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
   def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
+  @doc "Returns the notification deduplication TTL in seconds."
+  def notification_dedup_ttl, do: get(:notification_dedup_ttl, 3600)
 
   # --- Tracking Data Feature ---
   @doc "Returns true if tracking data should be loaded."

@@ -66,6 +66,31 @@ defmodule WandererNotifier.Killmail.Processor do
     end
   end
 
+  @doc """
+  Sends a test notification using the most recent kill data.
+  This is useful for verifying that the notification system is working correctly.
+
+  ## Returns
+    - `{:ok, kill_id}` - Test notification was sent successfully
+    - `{:error, reason}` - Test notification failed
+  """
+  @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
+  def send_test_kill_notification do
+    with {:ok, kill_data} <- get_recent_kills(),
+         kill_id = Map.get(kill_data, "killmail_id", "unknown"),
+         context = %Context{
+           killmail_id: kill_id,
+           system_name: "Test System",
+           options: %{source: :test_notification}
+         },
+         {:ok, _} <- killmail_pipeline().process_killmail(kill_data, context) do
+      {:ok, kill_id}
+    else
+      {:error, :no_recent_kills} = error -> error
+      error -> error
+    end
+  end
+
   @spec process_kill_data(kill_data, state) ::
           {:ok, kill_id | :skipped} | {:error, term()}
   def process_kill_data(kill_data, state) do

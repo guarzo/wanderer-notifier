@@ -6,6 +6,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   @behaviour WandererNotifier.Killmail.ZKillClientBehaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  require Logger
 
   @base_url Application.compile_env(
               :wanderer_notifier,
@@ -75,8 +76,27 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     log_info(method, opts)
 
     with {:ok, decoded} <- request_and_decode(url) do
-      list = if is_list(decoded), do: decoded, else: []
-      {:ok, Enum.take(list, Keyword.get(opts, :limit, 10))}
+      # At this point, decoded should either be already processed strings or an empty list
+      if is_list(decoded) do
+        # Just take the number of items we need
+        limit = Keyword.get(opts, :limit, 10)
+        result = Enum.take(decoded, limit)
+
+        # Log that we processed and limited the results
+        AppLogger.api_debug("ZKill processed list", %{
+          items: length(result),
+          method: method,
+          limit: limit
+        })
+
+        {:ok, result}
+      else
+        AppLogger.api_warn("Unexpected decoded data format", %{
+          format: inspect(decoded)
+        })
+
+        {:ok, []}
+      end
     end
   end
 
@@ -85,18 +105,224 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
     fn_request = fn -> make_http_request(url) end
 
-    make_request_with_retry(fn_request)
-    |> case do
-      {:ok, body} -> decode_response(body)
-      err -> err
+    case make_request_with_retry(fn_request) do
+      {:ok, response} ->
+        # Log response type for debugging
+        require Logger
+
+        response_type = typemap(response)
+        response_keys = if is_map(response), do: Map.keys(response), else: []
+
+        response_sample =
+          if is_map(response),
+            do: inspect(Map.get(response, :body, "no body")),
+            else: inspect(response)
+
+        Logger.info(
+          "ZKill response analysis: type=#{response_type}, keys=#{inspect(response_keys)}, sample=#{String.slice(response_sample, 0, 100)}"
+        )
+
+        # Process the response based on its type
+        process_zkill_response(response, url)
+
+      error ->
+        Logger.error("ZKill API error: #{inspect(error)}")
+        {:error, error}
     end
   end
+
+  # Helper function to process ZKill responses
+  defp process_zkill_response(response, url) do
+    if is_list(response) do
+      # Handle list type responses (direct JSON array)
+      # Take the limit from the URL if possible
+      limit =
+        case Regex.run(~r/limit\/(\d+)\//, url) do
+          [_, limit_str] -> String.to_integer(limit_str)
+          # Default limit
+          _ -> 10
+        end
+
+      # Only take the number we need before formatting
+      kills = Enum.take(response, limit)
+      kill_strings = format_kills_from_list(kills)
+      {:ok, kill_strings}
+    else
+      # Handle any other response types with a safe fallback
+      {:ok, ["ZKill API data unavailable at this time"]}
+    end
+  end
+
+  # Format a list of kill data maps into simple strings
+  defp format_kills_from_list(kills) when is_list(kills) do
+    require Logger
+
+    # Get the ESI service
+    esi_service = get_esi_service()
+
+    # Process each kill individually
+    kills
+    |> Enum.map(fn kill -> format_single_kill(kill, esi_service) end)
+  end
+
+  # Fallback for non-list inputs
+  defp format_kills_from_list(_), do: ["No kill data available"]
+
+  # Get the configured ESI service
+  defp get_esi_service do
+    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
+  end
+
+  # Format a single kill record into a formatted string
+  defp format_single_kill(kill, esi_service) do
+    require Logger
+
+    try do
+      # Extract the basic information we need
+      kill_id = Map.get(kill, "killmail_id", "Unknown")
+
+      # Get value from zkb object
+      zkb = Map.get(kill, "zkb", %{})
+      value = extract_kill_value(zkb)
+      hash = Map.get(zkb, "hash")
+
+      # Log for debugging
+      Logger.info("Processing kill: #{kill_id} with hash: #{hash}")
+
+      # Get kill details from ESI
+      kill_details = get_kill_details(kill_id, hash, esi_service)
+
+      # Extract ship and victim information
+      {ship_type_id, victim_id} = extract_ship_and_victim_ids(kill_details)
+
+      # Get ship and victim names
+      ship_name = get_ship_name(ship_type_id, esi_service)
+      victim_name = get_victim_name(victim_id, esi_service)
+
+      # Format time string
+      time_ago = format_kill_time(kill_details)
+
+      # Format the kill data into a detailed string with link
+      "[#{ship_name} (#{format_isk(value)})](https://zkillboard.com/kill/#{kill_id}/) - #{victim_name} #{time_ago}"
+    rescue
+      e ->
+        Logger.warning("Error formatting kill data: #{Exception.message(e)}")
+        "Unknown Ship (0 ISK) - Unknown"
+    end
+  end
+
+  # Extract the kill value from ZKB data
+  defp extract_kill_value(zkb) do
+    Map.get(zkb, "totalValue", 0) || Map.get(zkb, "destroyedValue", 0) || 0
+  end
+
+  # Get kill details from ESI
+  defp get_kill_details(_kill_id, nil, _esi_service), do: nil
+
+  defp get_kill_details(kill_id, hash, esi_service) do
+    case esi_service.get_killmail(kill_id, hash) do
+      {:ok, details} -> details
+      _ -> nil
+    end
+  end
+
+  # Extract ship type ID and victim ID from kill details
+  defp extract_ship_and_victim_ids(nil), do: {nil, nil}
+
+  defp extract_ship_and_victim_ids(kill_details) do
+    victim = Map.get(kill_details, "victim", %{})
+
+    {
+      Map.get(victim, "ship_type_id"),
+      Map.get(victim, "character_id")
+    }
+  end
+
+  # Get ship name from ship type ID
+  defp get_ship_name(nil, _esi_service), do: "Unknown Ship"
+
+  defp get_ship_name(ship_type_id, esi_service) do
+    case esi_service.get_ship_type_name(ship_type_id, []) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "Unknown Ship"
+    end
+  end
+
+  # Get victim name from victim ID
+  defp get_victim_name(nil, _esi_service), do: "Unknown"
+
+  defp get_victim_name(victim_id, esi_service) do
+    case esi_service.get_character_info(victim_id, []) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "Unknown"
+    end
+  end
+
+  # Format kill time into a relative time string
+  defp format_kill_time(nil), do: ""
+
+  defp format_kill_time(kill_details) do
+    kill_time = Map.get(kill_details, "killmail_time")
+    format_time_string(kill_time)
+  end
+
+  # Format time string from kill data
+  defp format_time_string(nil), do: ""
+
+  defp format_time_string(time_str) do
+    try do
+      case DateTime.from_iso8601(time_str) do
+        {:ok, datetime, _} ->
+          now = DateTime.utc_now()
+          diff_seconds = DateTime.diff(now, datetime)
+          format_time_diff(diff_seconds)
+
+        _ ->
+          ""
+      end
+    rescue
+      _ -> ""
+    end
+  end
+
+  # Format time difference
+  defp format_time_diff(seconds) when seconds < 60, do: "(just now)"
+  defp format_time_diff(seconds) when seconds < 3600, do: "(#{div(seconds, 60)}m ago)"
+  defp format_time_diff(seconds) when seconds < 86_400, do: "(#{div(seconds, 3600)}h ago)"
+  defp format_time_diff(seconds), do: "(#{div(seconds, 86_400)}d ago)"
+
+  # Format ISK value
+  defp format_isk(value) when is_number(value) do
+    cond do
+      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
+      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
+      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
+      true -> "#{trunc(value)} ISK"
+    end
+  end
+
+  defp format_isk(_), do: "0 ISK"
+
+  # Helper function to get the type of any value as a string
+  defp typemap(value) when is_binary(value), do: "binary"
+  defp typemap(value) when is_list(value), do: "list"
+  defp typemap(value) when is_map(value), do: "map"
+  defp typemap(value) when is_struct(value), do: "struct:#{inspect(value.__struct__)}"
+  defp typemap(value) when is_tuple(value), do: "tuple:#{tuple_size(value)}"
+  defp typemap(value) when is_atom(value), do: "atom:#{value}"
+  defp typemap(value) when is_integer(value), do: "integer:#{value}"
+  defp typemap(value) when is_float(value), do: "float:#{value}"
+  defp typemap(value) when is_function(value), do: "function"
+  defp typemap(value) when is_pid(value), do: "pid"
+  defp typemap(value) when is_port(value), do: "port"
+  defp typemap(value) when is_reference(value), do: "reference"
+  defp typemap(_), do: "unknown"
 
   defp log_info(method, meta) do
     AppLogger.api_info("ZKill #{method}", Map.new(meta))
   end
 
-  @spec make_http_request(String.t()) :: {:ok, String.t()} | {:error, any()}
+  @spec make_http_request(String.t()) :: {:ok, String.t() | map()} | {:error, any()}
   defp make_http_request(url) do
     headers = build_headers()
     opts = [recv_timeout: 10_000, timeout: 10_000]
@@ -116,19 +342,21 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end
   end
 
-  defp decode_response(body) do
-    case Jason.decode(body) do
-      {:ok, %{"error" => err}} ->
-        AppLogger.api_warn("ZKill returned error", %{error: err})
-        {:ok, []}
-
-      other ->
-        other
-    end
-  end
-
   defp decode_single([single] = _list, _id) when is_map(single), do: {:ok, single}
   defp decode_single(%{} = single, _id), do: {:ok, single}
+
+  defp decode_single(list, id) when is_list(list) and length(list) > 0 do
+    # The API sometimes returns a list of maps, try to extract the first one
+    case hd(list) do
+      %{"killmail_id" => _} = single ->
+        # If we have a killmail_id, it's a valid killmail response
+        {:ok, single}
+
+      _ ->
+        AppLogger.api_warn("No killmail found in list", %{kill_id: id})
+        {:error, {:not_found, id}}
+    end
+  end
 
   defp decode_single([], id) do
     AppLogger.api_warn("No killmail found", %{kill_id: id})
@@ -154,7 +382,14 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp format_date_range(%{start: s, end: e}),
     do: %{start_time: DateTime.to_iso8601(s), end_time: DateTime.to_iso8601(e)}
 
-  defp sample(body) when is_binary(body), do: String.slice(body, 0, 200)
+  defp sample(body) when is_binary(body) do
+    if String.valid?(body) do
+      String.slice(body, 0, 200)
+    else
+      inspect(binary_part(body, 0, min(200, byte_size(body))))
+    end
+  end
+
   defp sample(other), do: inspect(other)
 
   defp build_headers do

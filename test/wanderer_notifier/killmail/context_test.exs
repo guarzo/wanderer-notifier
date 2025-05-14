@@ -4,62 +4,58 @@ defmodule WandererNotifier.Killmail.ContextTest do
   alias WandererNotifier.Killmail.Context
 
   test "creates a context with custom options" do
-    context = Context.new(123, "Alice", :zkill_api, %{foo: :bar})
+    context = Context.new("123", "Alice", %{source: :zkill_api, foo: :bar})
 
     assert %Context{} = context
-    assert context.character_id == 123
-    assert context.character_name == "Alice"
-    assert context.source == :zkill_api
-    assert context.options == %{foo: :bar}
+    assert context.killmail_id == "123"
+    assert context.system_name == "Alice"
+    assert context.options == %{source: :zkill_api, foo: :bar}
   end
 
   test "creates a context with default options" do
-    context = Context.new(123, "Alice", :zkill_api)
+    context = Context.new("123", "Alice")
 
-    assert context.character_id == 123
-    assert context.character_name == "Alice"
-    assert context.source == :zkill_api
+    assert context.killmail_id == "123"
+    assert context.system_name == "Alice"
     assert context.options == %{}
   end
 
-  test "creates a context with custom source" do
-    context = Context.new(456, "Bob", :zkill_websocket, %{baz: :qux})
+  test "creates a context with custom source in options" do
+    context = Context.new("456", "Bob", %{source: :zkill_websocket, baz: :qux})
 
-    assert context.character_id == 456
-    assert context.character_name == "Bob"
-    assert context.source == :zkill_websocket
-    assert context.options == %{baz: :qux}
+    assert context.killmail_id == "456"
+    assert context.system_name == "Bob"
+    assert context.options == %{source: :zkill_websocket, baz: :qux}
   end
 
-  test "creates a context with default source" do
-    context = Context.new(456, "Bob", :zkill_websocket)
+  test "creates a context with default source in options" do
+    context = Context.new("456", "Bob", %{source: :zkill_websocket})
 
-    assert context.character_id == 456
-    assert context.character_name == "Bob"
-    assert context.source == :zkill_websocket
-    assert context.options == %{}
+    assert context.killmail_id == "456"
+    assert context.system_name == "Bob"
+    assert context.options == %{source: :zkill_websocket}
   end
 
   test "Access behavior implementation" do
-    ctx = Context.new(42, "test", :zkill_api, %{test: true})
+    ctx = Context.new("42", "test", %{source: :zkill_api, test: true})
 
     # Test fetch
-    assert {:ok, 42} = Access.fetch(ctx, :character_id)
+    assert {:ok, "42"} = Access.fetch(ctx, :killmail_id)
     assert :error = Access.fetch(ctx, :not_a_field)
 
     # Test get via Access protocol
-    assert Access.get(ctx, :character_id) == 42
+    assert Access.get(ctx, :killmail_id) == "42"
     assert Access.get(ctx, :not_a_field) == nil
     assert Access.get(ctx, :not_a_field, :default) == :default
 
     # Test get_and_update
-    {old, new} = Access.get_and_update(ctx, :character_id, fn current -> {current, 99} end)
-    assert old == 42
-    assert new.character_id == 99
+    {old, new} = Access.get_and_update(ctx, :killmail_id, fn current -> {current, "99"} end)
+    assert old == "42"
+    assert new.killmail_id == "99"
 
     # Test pop
-    {val, new_ctx} = Access.pop(ctx, :character_id)
-    assert val == 42
-    assert new_ctx.character_id == nil
+    {val, new_ctx} = Access.pop(ctx, :killmail_id)
+    assert val == "42"
+    assert new_ctx.killmail_id == nil
   end
 end
