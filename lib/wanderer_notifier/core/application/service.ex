@@ -119,7 +119,6 @@ defmodule WandererNotifier.Core.Application.Service do
     try do
       run_maintenance()
       # Log maintenance execution
-      AppLogger.scheduler_info("System maintenance executed successfully")
     rescue
       e ->
         AppLogger.scheduler_error("Maintenance error", error: Exception.message(e))

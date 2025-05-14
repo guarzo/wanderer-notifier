@@ -32,10 +32,6 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     cached_characters = CacheRepo.get(CacheKeys.character_list())
     cached_characters_safe = ensure_list(cached_characters)
 
-    AppLogger.maintenance_info(
-      "Starting character update - cached count: #{length(cached_characters_safe)}"
-    )
-
     task =
       Task.async(fn ->
         try do

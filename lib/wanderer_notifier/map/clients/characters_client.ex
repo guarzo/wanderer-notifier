@@ -31,16 +31,11 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     url = characters_url()
     headers = auth_header()
 
-    Logger.api_info("CharactersClient: fetching characters from API",
-      url: url,
-      opts: inspect(opts)
-    )
-
     result =
       with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
            {:ok, decoded} <- decode_body(body),
            chars when is_list(chars) <- extract_characters(decoded) do
-        Logger.api_info("API responded with #{length(chars)} characters")
+        Logger.api_debug("API responded with #{length(chars)} characters")
         process_and_cache(chars, cached, opts)
       else
         {:ok, %{status_code: status, body: body}} ->
@@ -144,7 +139,6 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     end
 
     characters = processed_groups |> Enum.flat_map(& &1["characters"])
-    Logger.api_info("Extracted #{length(characters)} total characters from API response")
 
     characters
   end
@@ -159,9 +153,6 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   # Main processing pipeline: detect new, cache, notify
   defp process_and_cache(chars, cached, opts) do
-    Logger.api_info(
-      "Processing characters from API - count: #{length(chars)}, cached count: #{length(cached)}"
-    )
 
     # Log a sample of the data for debugging
     if length(chars) > 0 do
@@ -172,7 +163,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     end
 
     new_chars = detect_new(chars, cached)
-    Logger.api_info("New characters detected: #{length(new_chars)}")
+    Logger.api_debug("New characters detected: #{length(new_chars)}")
 
     safe_cache(chars)
     maybe_notify_new(new_chars, cached, opts)
@@ -225,7 +216,7 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     ttl = Config.characters_cache_ttl()
     key = Keys.character_list()
 
-    Logger.api_info("Caching #{length(chars)} characters with TTL: #{ttl}s, key: #{inspect(key)}")
+    Logger.api_debug("Caching #{length(chars)} characters with TTL: #{ttl}s, key: #{inspect(key)}")
 
     case CachexImpl.set(key, chars, ttl) do
       :ok ->
