@@ -114,10 +114,6 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 # Copy static assets from builder (if needed)
 COPY --from=builder /app/priv/static /app/priv/static
 
-# Copy runtime scripts and set executable permissions
-COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
-RUN chmod +x /app/bin/*.sh
-
 COPY scripts/validate_and_start.sh /app/bin/validate_and_start.sh
 RUN chmod +x /app/bin/validate_and_start.sh
 
