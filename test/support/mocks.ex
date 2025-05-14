@@ -440,29 +440,6 @@ defmodule WandererNotifier.Mocks do
   )
 end
 
-# Replace the last line with Mox.defmock
-defmodule WandererNotifier.HttpClient.Behaviour do
-  @moduledoc """
-  Behaviour definition for HTTP clients to fix the test issues.
-  """
-
-  @callback get(url :: String.t(), headers :: list()) :: {:ok, map()} | {:error, any()}
-  @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
-              {:ok, map()} | {:error, any()}
-  @callback post(url :: String.t(), body :: any(), headers :: list()) ::
-              {:ok, map()} | {:error, any()}
-  @callback post_json(url :: String.t(), body :: map(), headers :: list(), options :: keyword()) ::
-              {:ok, map()} | {:error, any()}
-  @callback request(
-              method :: atom(),
-              url :: String.t(),
-              headers :: list(),
-              body :: any(),
-              opts :: list()
-            ) :: {:ok, map()} | {:error, any()}
-  @callback handle_response(response :: any()) :: {:ok, map()} | {:error, any()}
-end
-
 # Define common mocks
 Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
 
