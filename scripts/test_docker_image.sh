@@ -21,6 +21,7 @@ DEFAULT_ENV_VARS=(
   "WANDERER_ENV=test"
   "WANDERER_FEATURE_DISABLE_WEBSOCKET=true"
   "WANDERER_DISCORD_BOT_TOKEN=test_token_for_validation"
+  "WANDERER_NOTIFIER_API_TOKEN=test_token_for_validation"
 )
 
 # Initialize EXTRA_ENV_VARS with defaults
