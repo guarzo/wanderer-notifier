@@ -159,7 +159,7 @@ jobs:
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
           ./scripts/test_docker_image.sh -i wanderer-notifier -t pr-${{ steps.sha.outputs.short_sha }} \
-            --discord-token "$DISCORD_TOKEN" \
+            --WANDERER_DISCORD_BOT_TOKEN "$DISCORD_TOKEN" \
             --env "WANDERER_MAP_URL=$MAP_URL_WITH_NAME" \
             --env "WANDERER_MAP_TOKEN=$MAP_TOKEN" \
             --env "WANDERER_DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
