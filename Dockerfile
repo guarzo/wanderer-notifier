@@ -126,4 +126,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q -O- http://localhost:4000/health || exit 1
 
 ENTRYPOINT ["/app/bin/validate_and_start.sh"]
-CMD ["/app/bin/start_with_db.sh"]
+CMD ["/app/bin/validate_and_start.sh"]
