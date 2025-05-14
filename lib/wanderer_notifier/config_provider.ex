@@ -29,7 +29,8 @@ defmodule WandererNotifier.ConfigProvider do
     # This ensures system environment variables get correctly processed as well
     system_env_vars = [
       "WANDERER_CHARACTER_EXCLUDE_LIST",
-      "WANDERER_NOTIFICATIONS_ENABLED"
+      "WANDERER_NOTIFICATIONS_ENABLED",
+      "PORT"
     ]
 
     Enum.reduce(system_env_vars, config, fn key, config ->
@@ -50,9 +51,16 @@ defmodule WandererNotifier.ConfigProvider do
 
   # Ensure config has required structure to avoid "nil value" errors with put_in
   defp ensure_config_structure(config) do
+    # Initialize base app configs
+    config = ensure_app_config(config, :nostrum, %{})
+
+    # Initialize main app config with default values
+    base_config = Map.get(config, :wanderer_notifier, %{})
+    base_config = Map.put_new(base_config, :port, 4000)
+    config = Map.put(config, :wanderer_notifier, base_config)
+
+    # Ensure nested configs exist
     config
-    |> ensure_app_config(:nostrum, %{})
-    |> ensure_app_config(:wanderer_notifier, %{})
     |> ensure_nested_config([:wanderer_notifier, :features], %{})
     |> ensure_nested_config([:wanderer_notifier, :websocket], %{})
     |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
