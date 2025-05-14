@@ -29,6 +29,7 @@ jobs:
       WANDERER_LICENSE_KEY: "empty-license-key"
       WANDERER_MAP_URL: "http://example.com/map?name=testmap"
       WANDERER_DISCORD_CHANNEL_ID: "123456789"
+      WANDERER_LICENSE_MANAGER_URL: "http://example.com/license-manager"
 
     outputs:
       cache-key: ${{ steps.cache-key.outputs.value }}
@@ -152,6 +153,7 @@ jobs:
           MAP_TOKEN: "test-map-token"
           DISCORD_CHANNEL_ID: "123456789"
           LICENSE_KEY: "test-license-key"
+          LICENSE_MANAGER_URL: "http://example.com/license-manager"
         run: |
           echo "Running comprehensive Docker validation..."
           chmod +x ./scripts/test_docker_image.sh
@@ -161,6 +163,7 @@ jobs:
             --env "WANDERER_MAP_TOKEN=$MAP_TOKEN" \
             --env "WANDERER_DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID" \
             --env "WANDERER_LICENSE_KEY=$LICENSE_KEY" \
+            --env "WANDERER_LICENSE_MANAGER_URL=$LICENSE_MANAGER_URL" \
             --env "WANDERER_ENV=test" \
             --env "WANDERER_FEATURE_DISABLE_WEBSOCKET=true" \
             --env "CHART_SERVICE_DIR=/tmp/chart-service"
