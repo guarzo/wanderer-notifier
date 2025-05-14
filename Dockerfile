@@ -114,6 +114,10 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 # Copy static assets from builder (if needed)
 COPY --from=builder /app/priv/static /app/priv/static
 
+# Copy runtime scripts and set executable permissions
+COPY scripts/start.sh /app/bin/
+RUN chmod +x /app/bin/*.sh
+
 COPY scripts/validate_and_start.sh /app/bin/validate_and_start.sh
 RUN chmod +x /app/bin/validate_and_start.sh
 
@@ -126,4 +130,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q -O- http://localhost:4000/health || exit 1
 
 ENTRYPOINT ["/app/bin/validate_and_start.sh"]
-CMD ["/app/bin/validate_and_start.sh"]
+CMD ["/app/bin/start.sh"]
