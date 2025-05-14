@@ -5,10 +5,41 @@ set -e
 export ERL_CRASH_DUMP_SECONDS=0
 export ERL_AFLAGS="-kernel shell_history enabled"
 
+# Required environment variables and default values
+# These variables are required by runtime.exs and the application will crash if they're missing
+declare -A REQUIRED_VARS=(
+  ["WANDERER_MAP_TOKEN"]="test-map-token"
+  ["WANDERER_NOTIFIER_API_TOKEN"]="test-token-for-validation"
+  ["WANDERER_DISCORD_BOT_TOKEN"]="test-token-for-validation"
+  ["WANDERER_LICENSE_KEY"]="test-license-key"
+  ["WANDERER_MAP_URL"]="http://example.com/map?name=testmap"
+  ["WANDERER_DISCORD_CHANNEL_ID"]="123456789"
+  ["WANDERER_LICENSE_MANAGER_URL"]="http://example.com/license-manager"
+)
+
+# Ensure all required environment variables are set
+for var_name in "${!REQUIRED_VARS[@]}"; do
+  if [ -z "${!var_name}" ]; then
+    echo "Setting missing required environment variable $var_name to default value" >/proc/1/fd/1 2>/proc/1/fd/2
+    export "$var_name"="${REQUIRED_VARS[$var_name]}"
+  fi
+done
+
 # Display startup information
 echo "Starting Wanderer Notifier..." >/proc/1/fd/1 2>/proc/1/fd/2
 echo "Elixir version: $(elixir --version 2>/dev/null | head -n 1 || echo "version check failed")" >/proc/1/fd/1 2>/proc/1/fd/2
 echo "Node.js version: $(node --version 2>/dev/null || echo "version check failed")" >/proc/1/fd/1 2>/proc/1/fd/2
+
+# Debug environment variables
+echo "Environment variables:" >/proc/1/fd/1 2>/proc/1/fd/2
+for var_name in "${!REQUIRED_VARS[@]}"; do
+  # Print variable but mask tokens
+  if [[ "$var_name" == *"TOKEN"* ]] || [[ "$var_name" == *"KEY"* ]]; then
+    echo "$var_name=***" >/proc/1/fd/1 2>/proc/1/fd/2
+  else
+    echo "$var_name=${!var_name}" >/proc/1/fd/1 2>/proc/1/fd/2
+  fi
+done
 
 # In production, clear token environment variables to use baked-in values
 if [ "$MIX_ENV" = "prod" ]; then

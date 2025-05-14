@@ -125,6 +125,18 @@ RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
 # Copy static assets from builder (if needed)
 COPY --from=builder /app/priv/static /app/priv/static
 
+# Create environment variable debug script that will run before start.sh
+RUN mkdir -p /app/bin && echo '#!/bin/bash \n\
+echo "Wanderer Notifier Environment Variables:" \n\
+echo "WANDERER_MAP_TOKEN=${WANDERER_MAP_TOKEN:-NOT SET}" \n\
+echo "WANDERER_DISCORD_BOT_TOKEN=${WANDERER_DISCORD_BOT_TOKEN:-NOT SET}" \n\
+echo "WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN:-NOT SET}" \n\
+echo "WANDERER_LICENSE_KEY=${WANDERER_LICENSE_KEY:-NOT SET}" \n\
+echo "WANDERER_MAP_URL=${WANDERER_MAP_URL:-NOT SET}" \n\
+echo "WANDERER_DISCORD_CHANNEL_ID=${WANDERER_DISCORD_CHANNEL_ID:-NOT SET}" \n\
+echo "WANDERER_LICENSE_MANAGER_URL=${WANDERER_LICENSE_MANAGER_URL:-NOT SET}" \n\
+' > /app/bin/debug_env.sh && chmod +x /app/bin/debug_env.sh
+
 # Copy runtime script and set executable permissions
 COPY ./scripts/start.sh /app/bin/start.sh
 RUN chmod +x /app/bin/*.sh
@@ -137,4 +149,5 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q -O- http://localhost:4000/health || exit 1
 
-ENTRYPOINT ["/app/bin/start.sh"]
+# Run debug environment script first, then start the application
+ENTRYPOINT ["/bin/bash", "-c", "/app/bin/debug_env.sh && /app/bin/start.sh"]

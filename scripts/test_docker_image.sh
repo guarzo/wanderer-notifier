@@ -251,9 +251,24 @@ else
     # Debug: Show what environment variables we're going to use
     echo "Environment variables being passed to container:"
     echo "WANDERER_DISCORD_BOT_TOKEN=***"
+    echo "WANDERER_NOTIFIER_API_TOKEN=***"
     echo "Extra env vars: $EXTRA_ENV_VARS"
+
+    # Create a .env file to inject into the container to ensure all required variables are set
+    ENV_FILE="/tmp/wanderer_test_env_$CONTAINER_NAME"
+    cat > "$ENV_FILE" << EOL
+WANDERER_DISCORD_BOT_TOKEN=$TEST_TOKEN
+WANDERER_MAP_TOKEN=test-map-token
+WANDERER_NOTIFIER_API_TOKEN=$TEST_TOKEN
+WANDERER_LICENSE_KEY=test-license-key
+WANDERER_MAP_URL=http://example.com/map?name=testmap
+WANDERER_DISCORD_CHANNEL_ID=123456789
+WANDERER_LICENSE_MANAGER_URL=http://example.com/license-manager
+WANDERER_ENV=test
+WANDERER_FEATURE_DISABLE_WEBSOCKET=true
+EOL
     
-    # Start the container in the background with all required environment variables
+    # Start the container in the background with the environment variables file
     docker run --name "$CONTAINER_NAME" -d -p 4000:4000 \
       -e WANDERER_DISCORD_BOT_TOKEN="$TEST_TOKEN" \
       -e WANDERER_MAP_TOKEN="test-map-token" \
@@ -262,12 +277,20 @@ else
       -e WANDERER_MAP_URL="http://example.com/map?name=testmap" \
       -e WANDERER_DISCORD_CHANNEL_ID="123456789" \
       -e WANDERER_LICENSE_MANAGER_URL="http://example.com/license-manager" \
+      -e WANDERER_ENV="test" \
+      -e WANDERER_FEATURE_DISABLE_WEBSOCKET="true" \
+      -v "$ENV_FILE:/app/.env:ro" \
       $EXTRA_ENV_VARS \
       "$FULL_IMAGE"
     
     # Debug: Verify environment variables in the container
     echo "Verifying environment variables in container:"
     docker exec "$CONTAINER_NAME" env || echo "Could not check environment variables"
+    
+    # Check if required environment variables are available in the container
+    echo "Verifying required environment variables:"
+    docker exec "$CONTAINER_NAME" /bin/sh -c 'echo "WANDERER_NOTIFIER_API_TOKEN: ${WANDERER_NOTIFIER_API_TOKEN:=MISSING}"'
+    docker exec "$CONTAINER_NAME" /bin/sh -c 'echo "WANDERER_MAP_TOKEN: ${WANDERER_MAP_TOKEN:=MISSING}"'
     
     echo "Waiting for application to start (up to 20 seconds)..."
     MAX_ATTEMPTS=20
