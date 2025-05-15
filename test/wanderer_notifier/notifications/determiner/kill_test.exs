@@ -297,16 +297,27 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     end
 
     test "returns true for tracked character kills" do
-      # Configure character tracking
+      # Configure system tracking to return false
+      WandererNotifier.Map.MapSystemMock
+      |> stub(:is_tracked?, fn _ -> {:ok, false} end)
+
+      # Configure character tracking with a simple stub
       WandererNotifier.Map.MapCharacterMock
-      |> expect(:is_tracked?, fn "12345" -> {:ok, true} end)
-      |> expect(:is_tracked?, fn _ -> {:ok, false} end)
+      |> stub(:is_tracked?, fn
+        # Victim is tracked
+        "1000001" -> {:ok, true}
+        # All others are not tracked
+        _ -> {:ok, false}
+      end)
 
       killmail = %Killmail{
         killmail_id: "123",
         esi_data: %{
-          "victim" => %{"character_id" => "12345"},
-          "attackers" => []
+          "solar_system_id" => "30000142",
+          "victim" => %{"character_id" => "1000001"},
+          "attackers" => [
+            %{"character_id" => "1000002"}
+          ]
         },
         zkb: %{}
       }
@@ -318,6 +329,24 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       end
 
       Application.put_env(:wanderer_notifier, :config_module, TrackedCharacterConfig)
+
+      # Reset deduplication state for this test
+      WandererNotifier.MockDeduplication.configure(false)
+
+      # Reset the mock state and ensure it's properly configured
+      WandererNotifier.Map.MapCharacterMock
+      |> stub(:is_tracked?, fn
+        "1000001" -> {:ok, true}
+        _ -> {:ok, false}
+      end)
+
+      # Reset the mock state again right before the assertion
+      WandererNotifier.Map.MapCharacterMock
+      |> stub(:is_tracked?, fn
+        "1000001" -> {:ok, true}
+        _ -> {:ok, false}
+      end)
+
       assert {:ok, %{should_notify: true, reason: nil}} = Kill.should_notify?(killmail)
     end
   end

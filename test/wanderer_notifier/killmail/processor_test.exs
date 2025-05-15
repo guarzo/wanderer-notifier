@@ -4,6 +4,18 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
   alias WandererNotifier.Killmail.{Processor, Context}
 
+  # Define the ESI Client behaviour
+  defmodule ESIClientBehaviour do
+    @callback get_killmail(String.t(), String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
+    @callback get_character_info(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
+    @callback get_corporation_info(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
+    @callback get_universe_type(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
+    @callback get_system(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
+  end
+
+  # Define mocks
+  Mox.defmock(WandererNotifier.ESI.ClientMock, for: ESIClientBehaviour)
+
   # Define MockConfig for testing
   defmodule MockConfig do
     def notifications_enabled?, do: true
@@ -80,6 +92,9 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     original_system_module = Application.get_env(:wanderer_notifier, :system_module)
     original_character_module = Application.get_env(:wanderer_notifier, :character_module)
     original_deduplication_module = Application.get_env(:wanderer_notifier, :deduplication_module)
+    original_http_client = Application.get_env(:wanderer_notifier, :http_client)
+    original_esi_client = Application.get_env(:wanderer_notifier, :esi_client)
+    original_killmail_pipeline = Application.get_env(:wanderer_notifier, :killmail_pipeline)
 
     # Override configuration for testing
     Application.put_env(:wanderer_notifier, :config, MockConfig)
@@ -97,6 +112,29 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       :deduplication_module,
       WandererNotifier.MockDeduplication
     )
+
+    Application.put_env(
+      :wanderer_notifier,
+      :http_client,
+      WandererNotifier.HttpClient.HttpoisonMock
+    )
+
+    Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.ClientMock)
+
+    # Create a test pipeline module
+    defmodule TestPipeline do
+      def process_killmail(data, _ctx) do
+        case data do
+          %{"killmail_id" => id, "zkb" => %{"hash" => "test_hash"}} ->
+            {:ok, id}
+
+          _ ->
+            {:error, :esi_data_missing}
+        end
+      end
+    end
+
+    Application.put_env(:wanderer_notifier, :killmail_pipeline, TestPipeline)
 
     # Reset deduplication state
     WandererNotifier.MockDeduplication.configure(false)
@@ -120,6 +158,10 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         :deduplication_module,
         original_deduplication_module
       )
+
+      Application.put_env(:wanderer_notifier, :http_client, original_http_client)
+      Application.put_env(:wanderer_notifier, :esi_client, original_esi_client)
+      Application.put_env(:wanderer_notifier, :killmail_pipeline, original_killmail_pipeline)
 
       # Clean up ETS tables
       try do
@@ -169,13 +211,36 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
           }
         })
 
-      # Configure system tracking
+      # Configure system tracking to handle multiple calls
       WandererNotifier.Map.MapSystemMock
-      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
+      |> stub(:is_tracked?, fn "30000142" -> {:ok, true} end)
 
       # Configure character tracking
       WandererNotifier.Map.MapCharacterMock
-      |> expect(:is_tracked?, fn _ -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _ -> {:ok, false} end)
+
+      # Configure ESI client to return the killmail data
+      WandererNotifier.ESI.ClientMock
+      |> stub(:get_killmail, fn "12345", "test_hash", _opts ->
+        {:ok,
+         %{
+           "killmail_id" => 12345,
+           "killmail_time" => "2024-01-01T00:00:00Z",
+           "solar_system_id" => 30_000_142,
+           "victim" => %{
+             "character_id" => 1_000_001,
+             "corporation_id" => 2_000_001,
+             "ship_type_id" => 12345
+           },
+           "attackers" => [
+             %{
+               "character_id" => 1_000_002,
+               "corporation_id" => 2_000_002,
+               "final_blow" => true
+             }
+           ]
+         }}
+      end)
 
       # Create test context
       test_context = %Context{}
@@ -184,7 +249,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       result = Processor.process_zkill_message(valid_message, test_context)
 
       # Verify
-      assert {:ok, %{should_notify: true}} = result
+      assert {:ok, "12345"} = result
     end
 
     test "skips processing when notification is not needed" do
@@ -200,10 +265,10 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
 
       # Configure system and character tracking to return false
       WandererNotifier.Map.MapSystemMock
-      |> expect(:is_tracked?, fn _ -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _ -> {:ok, false} end)
 
       WandererNotifier.Map.MapCharacterMock
-      |> expect(:is_tracked?, fn _ -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _ -> {:ok, false} end)
 
       # Execute
       result = Processor.process_zkill_message(valid_message, test_context)
