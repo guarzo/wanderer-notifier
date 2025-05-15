@@ -455,8 +455,6 @@ Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
 
 Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
 
-
-
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """
   Mock module for system tracking functionality.

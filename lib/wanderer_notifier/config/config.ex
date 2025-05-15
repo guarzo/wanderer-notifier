@@ -163,29 +163,20 @@ defmodule WandererNotifier.Config do
     end
   end
 
-  def character_notifications_enabled? do
-    case Application.get_env(:wanderer_notifier, :config_module) do
-      nil -> true
-      mod -> mod.character_notifications_enabled?()
-    end
-  end
-
-  def system_notifications_enabled? do
-    case Application.get_env(:wanderer_notifier, :config_module) do
-      nil -> true
-      mod -> mod.system_notifications_enabled?()
-    end
-  end
-
   def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
-  def character_tracking_enabled?, do: feature_enabled?(:character_tracking_enabled)
-  def system_tracking_enabled?, do: feature_enabled?(:system_tracking_enabled)
+  def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
+  def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
+  def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
+  def track_kspace?, do: feature_enabled?(:track_kspace)
 
   def tracked_systems_notifications_enabled?,
     do: feature_enabled?(:tracked_systems_notifications_enabled)
 
   def tracked_characters_notifications_enabled?,
     do: feature_enabled?(:tracked_characters_notifications_enabled)
+
+  def character_tracking_enabled?, do: feature_enabled?(:character_tracking_enabled)
+  def system_tracking_enabled?, do: feature_enabled?(:system_tracking_enabled)
 
   def status_messages_disabled?, do: feature_enabled?(:status_messages_disabled)
   def track_kspace_systems?, do: feature_enabled?(:track_kspace_systems)

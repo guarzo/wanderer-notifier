@@ -40,7 +40,7 @@ defmodule WandererNotifier.ConfigProvider do
         system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
         character_notifications_enabled:
           parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
-        disable_status_messages: parse_bool("WANDERER_DISABLE_STATUS_MESSAGES", false),
+        status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
         track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
       }
     )

@@ -148,10 +148,6 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
    - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
 
-   > **Note:** The following variables have been deprecated and removed:
-   >
-   > - `WANDERER_DISCORD_KILL_CHANNEL_ID` (use specific kill channel IDs instead)
-
 2. **License Configuration**
 
    - `WANDERER_LICENSE_KEY`: Your license key for accessing premium features
@@ -168,19 +164,13 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_SCHEME`: HTTP scheme to use (default: http)
    - `WANDERER_PUBLIC_URL`: Public URL for the web interface
 
-5. **WebSocket Configuration**
-
-   - `WANDERER_WS_RECONNECT_DELAY_MS`: Delay between reconnection attempts in ms (default: 5000)
-   - `WANDERER_WS_MAX_RECONNECTS`: Maximum number of reconnection attempts (default: 20)
-   - `WANDERER_WS_RECONNECT_WINDOW_MS`: Window for reconnection attempts in seconds (default: 3600)
-
-6. **Feature Flags**
+5. **Feature Flags**
 
    - `WANDERER_NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
    - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
    - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
-   - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `WANDERER_ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: true)
    - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
 
    > **Note:** The following variables have been deprecated and removed:
@@ -188,13 +178,10 @@ All environment variables now use a standardized `WANDERER_` prefix.
    > - `WANDERER_CHARACTER_TRACKING_ENABLED` (use `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED` instead)
    > - `WANDERER_SYSTEM_TRACKING_ENABLED` (use `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED` instead)
 
-7. **Character Configuration**
+6. **Character Configuration**
 
    - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
 
-8. **Caching Configuration**
-
-   - `WANDERER_CACHE_DIR`: Directory for caching data (default: /app/data/cache)
 
 ## Development
 

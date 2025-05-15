@@ -56,7 +56,6 @@ WANDERER_DISCORD_BOT_TOKEN=your_discord_bot_token
 WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 
 # Optional Discord Channel Configuration
-# WANDERER_DISCORD_KILL_CHANNEL_ID=your_kill_channel_id
 # WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
 # WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID=your_character_kill_channel_id
 # WANDERER_DISCORD_SYSTEM_CHANNEL_ID=your_system_channel_id
@@ -72,7 +71,7 @@ WANDERER_LICENSE_KEY=your_license_key  # Provided with your map subscription
 # Feature Flags (default values shown below)
 # General Settings
 # WANDERER_NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
-# WANDERER_DISABLE_STATUS_MESSAGES=false  # Controls startup/status notifications
+# WANDERER_ENABLE_STATUS_MESSAGES=true  # Controls startup/status notifications
 
 # Notification-Related Flags
 # WANDERER_KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
@@ -80,23 +79,13 @@ WANDERER_LICENSE_KEY=your_license_key  # Provided with your map subscription
 # WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
 
 # Tracking-Related Flags
-# WANDERER_CHARACTER_TRACKING_ENABLED=true  # Enables character activity tracking
-# WANDERER_SYSTEM_TRACKING_ENABLED=true  # Enables system activity tracking
-# WANDERER_TRACK_KSPACE_ENABLED=true  # Controls whether K-Space systems are tracked
+# WANDERER_FEATURE_TRACK_KSPACE=true  # Controls whether K-Space systems are tracked
 
 # Server Configuration
 # WANDERER_PORT=4000
 # WANDERER_HOST=localhost
 # WANDERER_SCHEME=http
 # WANDERER_PUBLIC_URL=your_public_url
-
-# WebSocket Configuration
-# WANDERER_WEBSOCKET_RECONNECT_DELAY=5000
-# WANDERER_WEBSOCKET_MAX_RECONNECTS=20
-# WANDERER_WEBSOCKET_RECONNECT_WINDOW=3600
-
-# Caching Configuration
-# WANDERER_CACHE_DIR=/app/data/cache
 
 # Character Configuration
 # WANDERER_CHARACTER_EXCLUDE_LIST=character_id1,character_id2

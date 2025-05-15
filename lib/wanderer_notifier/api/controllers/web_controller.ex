@@ -129,8 +129,16 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     # Get stats safely
     stats = get_stats_safely()
 
-    # Get features and limits
-    features = Config.features() |> Map.new()
+    # Get features and transform them for the frontend
+    features =
+      Config.features()
+      |> Map.new()
+      |> Map.drop([:disable_status_messages])
+      |> Map.put(
+        :status_messages_enabled,
+        !Map.get(Config.features(), :disable_status_messages, false)
+      )
+
     limits = Config.get_all_limits()
 
     # Extract services from stats for easier UI access

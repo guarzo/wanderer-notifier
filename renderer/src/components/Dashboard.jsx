@@ -415,19 +415,28 @@ export default function Dashboard() {
         {/* Features Configuration */}
         <DataCard title="Configuration" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(features).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 shadow-sm card-hover-effect">
-                <div className="flex items-center">
-                  <FaCog className="text-indigo-500 mr-3" />
-                  <span className="capitalize text-gray-700">{key.replace(/_/g, ' ')}</span>
+            {Object.entries(features).map(([key, value]) => {
+              // Format the key for display
+              const displayName = key
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase())
+                .replace('Status Messages', 'Status Messages')
+                .replace('Track Kspace', 'Track K-Space');
+
+              return (
+                <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 shadow-sm card-hover-effect">
+                  <div className="flex items-center">
+                    <FaCog className="text-indigo-500 mr-3" />
+                    <span className="text-gray-700">{displayName}</span>
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {value ? 'Enabled' : 'Disabled'}
+                  </span>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs ${
-                  value ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {value ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </DataCard>
       </div>
