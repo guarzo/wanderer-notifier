@@ -16,6 +16,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   alias WandererNotifier.Notifications.Formatters.Character, as: CharacterFormatter
   alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
   alias WandererNotifier.Notifications.Formatters.PlainText, as: PlainTextFormatter
+  alias WandererNotifier.Config
   # Default embed colors
   @default_embed_color 0x3498DB
 
@@ -126,9 +127,12 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     # Format the kill notification
     formatted_embed = KillmailFormatter.format_kill_notification(enriched_killmail)
 
+    # Get features as a map
+    features = Map.new(Config.features())
+
     # Only add components if the feature flag is enabled
     enhanced_notification =
-      if FeatureFlags.components_enabled?() do
+      if Map.get(features, :discord_components, false) do
         # Add interactive components based on the killmail
         components = [ComponentBuilder.kill_action_row(kill_id)]
 
@@ -406,5 +410,4 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       struct(Killmail, Map.from_struct(kill_data))
     end
   end
-
 end

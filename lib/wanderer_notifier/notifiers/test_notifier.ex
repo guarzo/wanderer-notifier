@@ -5,8 +5,6 @@ defmodule WandererNotifier.Notifiers.TestNotifier do
   Implements the Notification behaviour.
   """
 
-  @behaviour WandererNotifier.Notifications.Notification
-
   require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 

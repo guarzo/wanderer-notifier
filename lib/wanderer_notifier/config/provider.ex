@@ -1,0 +1,146 @@
+defmodule WandererNotifier.ConfigProvider do
+  import Kernel, except: [get_in: 2]
+
+  @moduledoc """
+  Provides configuration values for the application.
+  """
+
+  @doc """
+  Initializes the configuration.
+  """
+  def init(config), do: config
+
+  @doc """
+  Loads configuration from environment variables.
+  """
+  def load(config), do: load(config, [])
+
+  @doc """
+  Loads configuration from environment variables with options.
+  """
+  def load(config, _opts) do
+    config =
+      case config do
+        nil -> %{}
+        [] -> %{}
+        list when is_list(list) -> Map.new(list)
+        map when is_map(map) -> map
+      end
+
+    config = Map.put(config, :wanderer_notifier, %{})
+    config = put_in(config, [:wanderer_notifier, :features], %{})
+
+    config
+    |> put_in([:wanderer_notifier, :port], parse_port())
+    |> put_in(
+      [:wanderer_notifier, :features, :notifications_enabled],
+      parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true)
+    )
+    |> put_in([:wanderer_notifier, :character_exclude_list], parse_character_exclude_list())
+  end
+
+  @doc """
+  Checks if notifications are enabled.
+  """
+  def notifications_enabled? do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+    Kernel.get_in(config, [:notifications_enabled])
+  end
+
+  @doc """
+  Checks if kill notifications are enabled.
+  """
+  def kill_notifications_enabled? do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+    Kernel.get_in(config, [:kill_notifications_enabled])
+  end
+
+  @doc """
+  Checks if system notifications are enabled.
+  """
+  def system_notifications_enabled? do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+    Kernel.get_in(config, [:system_notifications_enabled])
+  end
+
+  @doc """
+  Checks if character notifications are enabled.
+  """
+  def character_notifications_enabled? do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+    Kernel.get_in(config, [:character_notifications_enabled])
+  end
+
+  @doc """
+  Gets a configuration value using a list of keys.
+  """
+  def get_in(keys) do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+    Kernel.get_in(config, keys)
+  end
+
+  @doc """
+  Gets a configuration value using a list of keys with a default value.
+  """
+  def get_in(keys, default) do
+    config = Application.get_env(:wanderer_notifier, :features, %{})
+
+    case Kernel.get_in(config, keys) do
+      nil -> default
+      value -> value
+    end
+  end
+
+  # Private helper functions
+
+  defp parse_port do
+    case System.get_env("PORT") do
+      nil ->
+        4000
+
+      port_str ->
+        case Integer.parse(port_str) do
+          {port, _} -> port
+          :error -> 4000
+        end
+    end
+  end
+
+  defp parse_bool(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      value -> parse_bool_value(String.downcase(String.trim(value)), default)
+    end
+  end
+
+  defp parse_bool_value(value, default) do
+    boolean_values = %{
+      "true" => true,
+      "false" => false,
+      "1" => true,
+      "0" => false,
+      "yes" => true,
+      "no" => false,
+      "y" => true,
+      "n" => false,
+      "t" => true,
+      "f" => false,
+      "on" => true,
+      "off" => false
+    }
+
+    Map.get(boolean_values, value, default)
+  end
+
+  defp parse_character_exclude_list do
+    case System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") do
+      nil ->
+        []
+
+      value ->
+        value
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+    end
+  end
+end

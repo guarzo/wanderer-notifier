@@ -8,10 +8,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Notifiers.Discord.Notifier
   alias WandererNotifier.Map.MapCharacter
-  alias WandererNotifier.ESI.ServiceMock
-
-  # Define ServiceMock before all tests run
-  Mox.defmock(ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
+  alias WandererNotifier.ESI.ClientMock
 
   # Define mock modules for testing
   defmodule MockLicenseLimiter do
@@ -178,57 +175,29 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
     # Set the NeoClient module
     Application.put_env(:wanderer_notifier, :neo_client, MockNeoClient)
 
+    # Set the ESI client module
+    Application.put_env(:wanderer_notifier, :esi_client, ClientMock)
+
     # Implement all required functions for the mock
-    Mox.stub(ServiceMock, :get_system, fn _id ->
+    Mox.stub(ClientMock, :get_system, fn _id, _opts ->
       {:ok, %{"name" => "Test System", "security_status" => 0.5}}
     end)
 
-    Mox.stub(ServiceMock, :get_system_info, fn _id, _opts ->
-      {:ok, %{"name" => "Test System", "security_status" => 0.5}}
-    end)
-
-    Mox.stub(ServiceMock, :get_system, fn _id, _opts ->
-      {:ok, %{"name" => "Test System", "security_status" => 0.5}}
-    end)
-
-    # Add all other required functions
-    Mox.stub(ServiceMock, :get_killmail, fn _id, _hash ->
+    Mox.stub(ClientMock, :get_killmail, fn _id, _hash, _opts ->
       {:ok, %{}}
     end)
 
-    Mox.stub(ServiceMock, :get_character_info, fn _id, _opts ->
+    Mox.stub(ClientMock, :get_character_info, fn _id, _opts ->
       {:ok, %{}}
     end)
 
-    Mox.stub(ServiceMock, :get_corporation_info, fn _id, _opts ->
+    Mox.stub(ClientMock, :get_corporation_info, fn _id, _opts ->
       {:ok, %{}}
     end)
 
-    Mox.stub(ServiceMock, :get_alliance_info, fn _id, _opts ->
+    Mox.stub(ClientMock, :get_universe_type, fn _id, _opts ->
       {:ok, %{}}
     end)
-
-    Mox.stub(ServiceMock, :get_character, fn _id ->
-      {:ok, %{}}
-    end)
-
-    Mox.stub(ServiceMock, :get_type, fn _id ->
-      {:ok, %{}}
-    end)
-
-    Mox.stub(ServiceMock, :get_ship_type_name, fn _id ->
-      {:ok, %{"name" => "Test Ship"}}
-    end)
-
-    Mox.stub(ServiceMock, :get_type_info, fn _id, _opts ->
-      {:ok, %{}}
-    end)
-
-    Mox.stub(ServiceMock, :get_system_kills, fn _id, _limit ->
-      {:ok, []}
-    end)
-
-    Application.put_env(:wanderer_notifier, :esi_service, ServiceMock)
 
     # Set up test data with corrected fields
     test_killmail = %Killmail{
@@ -259,7 +228,7 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
       Application.put_env(:wanderer_notifier, :env, previous_env)
       Application.delete_env(:wanderer_notifier, :license_limiter)
       Application.delete_env(:wanderer_notifier, :notifications_license_limiter)
-      Application.delete_env(:wanderer_notifier, :esi_service)
+      Application.delete_env(:wanderer_notifier, :esi_client)
       Application.delete_env(:wanderer_notifier, :killmail_formatter)
       Application.delete_env(:wanderer_notifier, :plain_text_formatter)
       Application.delete_env(:wanderer_notifier, :character_formatter)
