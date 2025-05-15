@@ -55,7 +55,23 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   # Ensure config has required structure to avoid "nil value" errors with put_in
-  defp ensure_config_structure(config) do
+  defp ensure_config_structure(config) when is_map(config) do
+    # Initialize base app configs
+    config = Map.put_new(config, :nostrum, %{})
+
+    # Initialize main app config with default values
+    base_config = Map.get(config, :wanderer_notifier, %{})
+    base_config = Map.put_new(base_config, :port, 4000)
+    config = Map.put(config, :wanderer_notifier, base_config)
+
+    # Ensure nested configs exist
+    config
+    |> ensure_nested_config([:wanderer_notifier, :features], %{})
+    |> ensure_nested_config([:wanderer_notifier, :websocket], %{})
+    |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
+  end
+
+  defp ensure_config_structure(config) when is_list(config) do
     # Initialize base app configs
     config = Keyword.put_new(config, :nostrum, %{})
 
