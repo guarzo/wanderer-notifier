@@ -41,20 +41,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_enabled = Config.system_notifications_enabled?()
     character_enabled = Config.character_notifications_enabled?()
 
-    check_notification_requirements(
-      has_tracked_system,
-      has_tracked_character,
-      system_enabled,
-      character_enabled
-    )
-  end
-
-  defp check_notification_requirements(
-         has_tracked_system,
-         has_tracked_character,
-         system_enabled,
-         character_enabled
-       ) do
     cond do
       not has_tracked_system and not has_tracked_character ->
         {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
@@ -62,23 +48,15 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       not Config.notifications_enabled?() ->
         {:ok, %{should_notify: false, reason: "Notifications disabled"}}
 
-      should_notify_for_system?(has_tracked_system, system_enabled) ->
-        {:ok, %{should_notify: true, reason: nil}}
+      has_tracked_system and system_enabled ->
+        {:ok, %{should_notify: true, reason: nil, type: :system_kill}}
 
-      should_notify_for_character?(has_tracked_character, character_enabled) ->
-        {:ok, %{should_notify: true, reason: nil}}
+      has_tracked_character and character_enabled ->
+        {:ok, %{should_notify: true, reason: nil, type: :character_kill}}
 
       true ->
         {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}}
     end
-  end
-
-  defp should_notify_for_system?(has_tracked_system, system_enabled) do
-    has_tracked_system and system_enabled
-  end
-
-  defp should_notify_for_character?(has_tracked_character, character_enabled) do
-    has_tracked_character and character_enabled
   end
 
   @doc """

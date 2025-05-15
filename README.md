@@ -170,9 +170,9 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
 5. **WebSocket Configuration**
 
-   - `WANDERER_WEBSOCKET_RECONNECT_DELAY`: Delay between reconnection attempts in ms (default: 5000)
-   - `WANDERER_WEBSOCKET_MAX_RECONNECTS`: Maximum number of reconnection attempts (default: 20)
-   - `WANDERER_WEBSOCKET_RECONNECT_WINDOW`: Window for reconnection attempts in seconds (default: 3600)
+   - `WANDERER_WS_RECONNECT_DELAY_MS`: Delay between reconnection attempts in ms (default: 5000)
+   - `WANDERER_WS_MAX_RECONNECTS`: Maximum number of reconnection attempts (default: 20)
+   - `WANDERER_WS_RECONNECT_WINDOW_MS`: Window for reconnection attempts in seconds (default: 3600)
 
 6. **Feature Flags**
 
