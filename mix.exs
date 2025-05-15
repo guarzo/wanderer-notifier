@@ -4,7 +4,7 @@ defmodule WandererNotifier.MixProject do
   def project do
     [
       app: :wanderer_notifier,
-      version: "1.0.17",
+      version: "1.0.18",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
