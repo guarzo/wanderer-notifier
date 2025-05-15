@@ -166,6 +166,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     original_config = Application.get_env(:wanderer_notifier, :config)
     original_system_module = Application.get_env(:wanderer_notifier, :system_module)
     original_character_module = Application.get_env(:wanderer_notifier, :character_module)
+    original_deduplication_module = Application.get_env(:wanderer_notifier, :deduplication_module)
 
     # Override configuration for testing
     Application.put_env(:wanderer_notifier, :config, MockConfig)
@@ -175,6 +176,12 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       :wanderer_notifier,
       :character_module,
       WandererNotifier.Map.MapCharacterMock
+    )
+
+    Application.put_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.MockDeduplication
     )
 
     # Set up basic test data
@@ -221,6 +228,12 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       Application.put_env(:wanderer_notifier, :config, original_config)
       Application.put_env(:wanderer_notifier, :system_module, original_system_module)
       Application.put_env(:wanderer_notifier, :character_module, original_character_module)
+
+      Application.put_env(
+        :wanderer_notifier,
+        :deduplication_module,
+        original_deduplication_module
+      )
 
       # Clean up ETS tables
       try do
