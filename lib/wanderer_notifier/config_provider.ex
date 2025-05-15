@@ -72,7 +72,13 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   # Ensure a nested configuration exists
-  defp ensure_nested_config(config, [key | rest], default) do
+  defp ensure_nested_config(config, [key | rest], default) when is_map(config) do
+    current = Map.get(config, key, %{})
+    updated = ensure_nested_config(current, rest, default)
+    Map.put(config, key, updated)
+  end
+
+  defp ensure_nested_config(config, [key | rest], default) when is_list(config) do
     current = Keyword.get(config, key, %{})
     updated = ensure_nested_config(current, rest, default)
     Keyword.put(config, key, updated)
