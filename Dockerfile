@@ -39,11 +39,13 @@ ENV APP_VERSION=${APP_VERSION}
 ENV MIX_ENV=prod
 
 # Install Node.js and npm for asset compilation
-RUN apt-get update \
+RUN set -o pipefail \
+  && apt-get update \
   && apt-get install -y --no-install-recommends \
        curl \
        ca-certificates \
   && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+  && apt-get update \
   && apt-get install -y nodejs \
   && npm install -g npm@latest \
   && rm -rf /var/lib/apt/lists/*
@@ -81,8 +83,7 @@ RUN apt-get update \
 COPY --from=build --chown=app:app /app/_build/prod/rel/wanderer_notifier/. ./
 
 # Allow runtime config via ENV
-ENV REPLACE_OS_VARS=true \
-    HOME=/app
+ENV REPLACE_OS_VARS=true HOME=/app
 
 ARG BUILD_DATE
 ARG VCS_REF
@@ -98,4 +99,4 @@ ENTRYPOINT ["bin/wanderer_notifier"]
 CMD ["start"]
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q --spider http://localhost:4000/health || exit 1
+  CMD curl --fail --silent http://localhost:4000/health || exit 1
