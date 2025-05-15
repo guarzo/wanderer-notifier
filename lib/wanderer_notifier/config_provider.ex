@@ -213,18 +213,16 @@ defmodule WandererNotifier.ConfigProvider do
   defp apply_env(config, "WANDERER_SYSTEM_TRACKING_ENABLED", val),
     do: put_in(config, [:wanderer_notifier, :features, :system_tracking_enabled], parse_bool(val))
 
-  defp apply_env(config, "WANDERER_DISABLE_STATUS_MESSAGES", val),
-    do:
-      put_in(config, [:wanderer_notifier, :features, :status_messages_disabled], parse_bool(val))
-
   defp apply_env(config, "WANDERER_FEATURE_TRACK_KSPACE", val),
-    do: put_in(config, [:wanderer_notifier, :features, :track_kspace_systems], parse_bool(val))
+    do: put_in(config, [:wanderer_notifier, :features, :track_kspace], parse_bool(val))
 
-  defp apply_env(config, "WANDERER_CHAIN_KILLS_MODE", val),
-    do: put_in(config, [:wanderer_notifier, :features, :chain_kills_mode], parse_bool(val))
+  defp apply_env(config, "WANDERER_DISABLE_STATUS_MESSAGES", val),
+    do: put_in(config, [:wanderer_notifier, :features, :disable_status_messages], parse_bool(val))
 
-  defp apply_env(config, "WANDERER_CHARACTER_EXCLUDE_LIST", val),
-    do: put_in(config, [:wanderer_notifier, :character_exclude_list], parse_character_list(val))
+  defp apply_env(config, "WANDERER_CHARACTER_EXCLUDE_LIST", val) when is_binary(val) do
+    exclude_list = val |> String.split(",") |> Enum.map(&String.trim/1)
+    put_in(config, [:wanderer_notifier, :character_exclude_list], exclude_list)
+  end
 
   defp apply_env(config, "WANDERER_WEBSOCKET_RECONNECT_DELAY", val),
     do: put_in(config, [:wanderer_notifier, :websocket, :reconnect_delay], parse_int(val, 5000))
@@ -276,15 +274,6 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_port(_, default), do: default
-
-  # Parse a comma-separated list of characters
-  defp parse_character_list(val) when is_binary(val) do
-    val
-    |> String.split(",", trim: true)
-    |> Enum.map(&String.trim/1)
-  end
-
-  defp parse_character_list(_), do: []
 
   # Parse boolean with fallback
   defp parse_bool(val) when is_binary(val) do

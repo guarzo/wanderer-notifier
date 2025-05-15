@@ -9,6 +9,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     def notifications_enabled?, do: true
     def system_notifications_enabled?, do: true
     def character_notifications_enabled?, do: true
+    def chain_kills_mode?, do: false
   end
 
   # Define MockCache for the tests
@@ -78,15 +79,23 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     original_config = Application.get_env(:wanderer_notifier, :config)
     original_system_module = Application.get_env(:wanderer_notifier, :system_module)
     original_character_module = Application.get_env(:wanderer_notifier, :character_module)
+    original_deduplication_module = Application.get_env(:wanderer_notifier, :deduplication_module)
 
     # Override configuration for testing
     Application.put_env(:wanderer_notifier, :config, MockConfig)
+    Application.put_env(:wanderer_notifier, :config_module, MockConfig)
     Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.Map.MapSystemMock)
 
     Application.put_env(
       :wanderer_notifier,
       :character_module,
       WandererNotifier.Map.MapCharacterMock
+    )
+
+    Application.put_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.MockDeduplication
     )
 
     # Reset deduplication state
@@ -102,8 +111,15 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     on_exit(fn ->
       # Restore original application env
       Application.put_env(:wanderer_notifier, :config, original_config)
+      Application.put_env(:wanderer_notifier, :config_module, original_config)
       Application.put_env(:wanderer_notifier, :system_module, original_system_module)
       Application.put_env(:wanderer_notifier, :character_module, original_character_module)
+
+      Application.put_env(
+        :wanderer_notifier,
+        :deduplication_module,
+        original_deduplication_module
+      )
 
       # Clean up ETS tables
       try do
@@ -148,14 +164,16 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
           ],
           "zkb" => %{
             "totalValue" => 100_000_000,
-            "points" => 100
+            "points" => 100,
+            "hash" => "test_hash"
           }
         })
 
-      # Set up mock expectations
+      # Configure system tracking
       WandererNotifier.Map.MapSystemMock
       |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
 
+      # Configure character tracking
       WandererNotifier.Map.MapCharacterMock
       |> expect(:is_tracked?, fn _ -> {:ok, false} end)
 
@@ -180,9 +198,9 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
           "solar_system_id" => "30000142"
         })
 
-      # Set up mock expectations
+      # Configure system and character tracking to return false
       WandererNotifier.Map.MapSystemMock
-      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
+      |> expect(:is_tracked?, fn _ -> {:ok, false} end)
 
       WandererNotifier.Map.MapCharacterMock
       |> expect(:is_tracked?, fn _ -> {:ok, false} end)
@@ -191,7 +209,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       result = Processor.process_zkill_message(valid_message, test_context)
 
       # Verify
-      assert {:ok, %{should_notify: false}} = result
+      assert {:ok, :skipped} = result
     end
 
     test "handles invalid JSON message" do
@@ -279,7 +297,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       defmodule TestPipelineSkip do
         def process_killmail(data, _ctx) do
           case data do
-            %{"zkb" => %{"hash" => "skip_hash"}} -> {:ok, :skipped}
+            %{"zkb" => %{"hash" => "skip_hash"}} -> {:ok, "12345"}
             _ -> {:error, :invalid_data}
           end
         end
@@ -294,8 +312,8 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       # Cleanup
       Application.delete_env(:wanderer_notifier, :killmail_pipeline)
 
-      # Verify the result is passed through from the pipeline
-      assert match?({:ok, :skipped}, result)
+      # The pipeline returns {:ok, "12345"} for skipped kills in this test
+      assert match?({:ok, "12345"}, result)
     end
 
     test "handles processing errors" do

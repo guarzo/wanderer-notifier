@@ -5,7 +5,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   require Logger
   alias WandererNotifier.Config
-  alias WandererNotifier.Notifications.Helpers.Deduplication
   alias WandererNotifier.Killmail.Killmail
 
   @doc """
@@ -39,28 +38,25 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     system_id = get_kill_system_id(killmail)
     has_tracked_system = tracked_system?(system_id)
     has_tracked_character = has_tracked_character?(killmail)
+    system_enabled = Config.system_notifications_enabled?()
+    character_enabled = Config.character_notifications_enabled?()
 
+    # Always check tracking first for both system and character
     cond do
-      chain_kills_mode?() ->
-        handle_chain_kills_mode(has_tracked_system, has_tracked_character)
-
-      has_tracked_system or has_tracked_character ->
-        {:ok, %{should_notify: true, reason: nil}}
-
-      true ->
+      not has_tracked_system and not has_tracked_character ->
         {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
-    end
-  end
 
-  defp handle_chain_kills_mode(has_tracked_system, has_tracked_character) do
-    cond do
-      has_tracked_system and Config.system_notifications_enabled?() ->
+      not Config.notifications_enabled?() ->
+        {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+
+      has_tracked_system and system_enabled ->
         {:ok, %{should_notify: true, reason: nil}}
 
-      has_tracked_character and Config.character_notifications_enabled?() ->
+      has_tracked_character and character_enabled ->
         {:ok, %{should_notify: true, reason: nil}}
 
-      true ->
+      (has_tracked_system and not system_enabled) or
+          (has_tracked_character and not character_enabled) ->
         {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}}
     end
   end
@@ -96,6 +92,14 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     victim_tracked or attackers_tracked
   end
 
+  def has_tracked_character?(%{"victim" => victim}) do
+    tracked_character?(victim)
+  end
+
+  def has_tracked_character?(%{"attackers" => attackers}) do
+    Enum.any?(attackers, &tracked_character?/1)
+  end
+
   def has_tracked_character?(_), do: false
 
   @doc """
@@ -104,7 +108,21 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def tracked_character?(nil), do: false
   def tracked_character?(%{"character_id" => nil}), do: false
 
-  def tracked_character?(%{"character_id" => character_id}) do
+  def tracked_character?(%{"character_id" => character_id}) when is_binary(character_id) do
+    case character_module().is_tracked?(character_id) do
+      {:ok, true} -> true
+      _ -> false
+    end
+  end
+
+  def tracked_character?(%{"character_id" => character_id}) when is_integer(character_id) do
+    case character_module().is_tracked?(to_string(character_id)) do
+      {:ok, true} -> true
+      _ -> false
+    end
+  end
+
+  def tracked_character?(character_id) when is_binary(character_id) do
     case character_module().is_tracked?(character_id) do
       {:ok, true} -> true
       _ -> false
@@ -112,9 +130,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def tracked_character?(_), do: false
-
-  # Helper functions for configuration checks
-  defp chain_kills_mode?, do: Config.chain_kills_mode?()
 
   # Helper functions to get configured modules
   defp system_module, do: Application.get_env(:wanderer_notifier, :system_module)

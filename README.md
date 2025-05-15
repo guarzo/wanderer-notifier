@@ -182,7 +182,6 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
    - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
-   - `WANDERER_CHAIN_KILLS_MODE`: Enable chain kills mode for more granular kill notification control (default: false)
 
    > **Note:** The following variables have been deprecated and removed:
    >

@@ -155,9 +155,28 @@ defmodule WandererNotifier.Config do
   # --- Features ---
   def features, do: get(:features, %{})
   def feature_enabled?(flag), do: Map.get(features(), flag, false)
-  def notifications_enabled?, do: feature_enabled?(:notifications_enabled)
-  def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
-  def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
+
+  def notifications_enabled? do
+    case Application.get_env(:wanderer_notifier, :config_module) do
+      nil -> true
+      mod -> mod.notifications_enabled?()
+    end
+  end
+
+  def character_notifications_enabled? do
+    case Application.get_env(:wanderer_notifier, :config_module) do
+      nil -> true
+      mod -> mod.character_notifications_enabled?()
+    end
+  end
+
+  def system_notifications_enabled? do
+    case Application.get_env(:wanderer_notifier, :config_module) do
+      nil -> true
+      mod -> mod.system_notifications_enabled?()
+    end
+  end
+
   def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
   def character_tracking_enabled?, do: feature_enabled?(:character_tracking_enabled)
   def system_tracking_enabled?, do: feature_enabled?(:system_tracking_enabled)

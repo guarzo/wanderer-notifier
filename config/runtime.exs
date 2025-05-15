@@ -57,14 +57,13 @@ config :wanderer_notifier,
     System.get_env("WANDERER_LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd",
   features: %{
     notifications_enabled: System.get_env("WANDERER_NOTIFICATIONS_ENABLED") != "false",
-    character_notifications_enabled:
-      System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED") != "false",
+    kill_notifications_enabled: System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED") != "false",
     system_notifications_enabled:
       System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED") != "false",
-    kill_notifications_enabled: System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED") != "false",
-    status_messages_disabled: System.get_env("WANDERER_DISABLE_STATUS_MESSAGES") == "true",
-    track_kspace_systems: System.get_env("WANDERER_FEATURE_TRACK_KSPACE") != "false",
-    chain_kills_mode: System.get_env("WANDERER_CHAIN_KILLS_MODE") == "true"
+    character_notifications_enabled:
+      System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED") != "false",
+    disable_status_messages: System.get_env("WANDERER_DISABLE_STATUS_MESSAGES") == "true",
+    track_kspace: System.get_env("WANDERER_FEATURE_TRACK_KSPACE") != "false"
   },
   character_exclude_list:
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")
