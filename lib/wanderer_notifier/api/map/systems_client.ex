@@ -1,5 +1,81 @@
 defmodule WandererNotifier.Api.Map.SystemsClient do
   @moduledoc """
+
+  https://wanderer.zoolanders.space/api/maps/<map_name>/systems
+
+  {
+    "data": {
+      "connections": [
+        {
+          "id": "e7b61e01-310a-4944-b2a7-e4f618fcfb87",
+          "type": 0,
+          "inserted_at": "2025-05-15T03:49:16.930256Z",
+          "updated_at": "2025-05-15T03:49:16.930256Z",
+          "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+          "mass_status": 0,
+          "ship_size_type": 2,
+          "solar_system_source": 31001394,
+          "solar_system_target": 31001459,
+          "time_status": 0,
+          "wormhole_type": null
+        },
+        {
+          "id": "a926cef6-5751-4723-a3c0-04aa2984fa9f",
+          "type": 0,
+          "inserted_at": "2025-05-15T04:41:09.101333Z",
+          "updated_at": "2025-05-15T04:41:09.101333Z",
+          "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+          "mass_status": 0,
+          "ship_size_type": 2,
+          "solar_system_source": 31002447,
+          "solar_system_target": 31001915,
+          "time_status": 0,
+          "wormhole_type": null
+        }
+      ],
+      "systems": [
+        {
+          "id": "032f0fea-c1e1-4cae-af8d-31a229f54dcf",
+          "name": "111",
+          "status": 0,
+          "tag": null,
+          "visible": true,
+          "description": null,
+          "labels": "{\"customLabel\":\"\",\"labels\":[]}",
+          "inserted_at": "2025-01-23T01:20:16.812836Z",
+          "updated_at": "2025-05-15T04:41:17.484409Z",
+          "locked": false,
+          "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+          "solar_system_id": 31001915,
+          "custom_name": null,
+          "position_x": 714,
+          "position_y": 1020,
+          "temporary_name": "111",
+          "original_name": "J161032"
+        },
+        {
+          "id": "b79e71ef-8fd4-4bff-bd75-2e81b64ac9c0",
+          "name": "33A",
+          "status": 0,
+          "tag": null,
+          "visible": true,
+          "description": null,
+          "labels": "{\"customLabel\":\"\",\"labels\":[]}",
+          "inserted_at": "2025-05-06T20:33:16.812982Z",
+          "updated_at": "2025-05-14T21:55:59.737762Z",
+          "locked": false,
+          "map_id": "678c43cf-f71f-4e14-932d-0545465cdff0",
+          "solar_system_id": 30000205,
+          "custom_name": null,
+          "position_x": 714,
+          "position_y": 2448,
+          "temporary_name": "33A",
+          "original_name": "Obe"
+        }
+      ]
+    }
+  }
+
   Client for retrieving and processing system data from the map API.
   Uses structured data types and consistent parsing to simplify the logic.
   """
@@ -164,6 +240,13 @@ defmodule WandererNotifier.Api.Map.SystemsClient do
 
     result =
       case parsed_response do
+        %{"data" => %{"systems" => systems}} when is_list(systems) ->
+          AppLogger.api_debug("[SystemsClient] Found systems in data.systems field",
+            count: length(systems)
+          )
+
+          systems
+
         %{"data" => data} when is_list(data) ->
           AppLogger.api_debug("[SystemsClient] Found systems in data field", count: length(data))
           data
