@@ -90,3 +90,7 @@ For more details on the testing strategy and example implementations, see:
 - `docs/testing/testing-strategy.md`
 - `docs/testing/example-tests.md`
 - `docs/testing/getting-started.md`
+
+```
+mix archive.install hex bunt
+```

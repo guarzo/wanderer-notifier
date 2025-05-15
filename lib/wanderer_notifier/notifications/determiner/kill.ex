@@ -153,7 +153,14 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   # Helper functions to get configured modules
   defp system_module, do: Application.get_env(:wanderer_notifier, :system_module)
-  defp character_module, do: Application.get_env(:wanderer_notifier, :character_module)
+
+  defp character_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :character_module,
+      WandererNotifier.Map.MapCharacter
+    )
+  end
 
   defp deduplication_module do
     Application.get_env(

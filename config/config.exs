@@ -101,7 +101,10 @@ config :wanderer_notifier, cache_name: :wanderer_cache
 # Configure service modules
 config :wanderer_notifier,
   esi_service: WandererNotifier.ESI.Service,
-  cache_impl: WandererNotifier.Cache.CachexImpl
+  cache_impl: WandererNotifier.Cache.CachexImpl,
+  character_module: WandererNotifier.Map.MapCharacter,
+  system_module: WandererNotifier.Map.MapSystem,
+  deduplication_module: WandererNotifier.Notifications.Helpers.Deduplication
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

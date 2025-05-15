@@ -24,9 +24,12 @@ defmodule WandererNotifier.Map.MapCharacter do
     ]
   }
   ```
+
+  Also implements character tracking functionality.
   """
 
   @behaviour Access
+  @behaviour WandererNotifier.Map.CharacterBehaviour
 
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
@@ -49,10 +52,19 @@ defmodule WandererNotifier.Map.MapCharacter do
     :tracked
   ]
 
+  @impl true
+  def is_tracked?(character_id) when is_binary(character_id) do
+    # TODO: Implement actual character tracking logic
+    {:ok, false}
+  end
+
+  def is_tracked?(_), do: {:error, :invalid_character_id}
+
   @doc """
   Fetch a field via the Access behaviour (allows `struct["key"]` syntax).
   Supports special key mappings for compatibility with different API formats.
   """
+  @impl true
   @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
   def fetch(struct, key) when is_atom(key) do
     struct
@@ -86,9 +98,11 @@ defmodule WandererNotifier.Map.MapCharacter do
     end
   end
 
+  @impl true
   @doc "get_and_update not supported for immutable struct"
   def get_and_update(_struct, _key, _fun), do: raise("not implemented")
 
+  @impl true
   @doc "pop not supported for immutable struct"
   def pop(_struct, _key), do: raise("not implemented")
 
