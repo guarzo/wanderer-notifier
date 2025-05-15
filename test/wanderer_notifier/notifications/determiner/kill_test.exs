@@ -107,399 +107,457 @@ end
 # Now define the test module
 defmodule WandererNotifier.Notifications.Determiner.KillTest do
   use ExUnit.Case, async: false
+  import Mox
 
-  alias WandererNotifier.Notifications.Determiner.Kill
-  alias WandererNotifier.Killmail.Killmail
-  alias WandererNotifier.MockCache
-  alias WandererNotifier.MockDeduplication
+  # Define mocks
+  Mox.defmock(WandererNotifier.Map.MapSystemMock, for: WandererNotifier.Map.SystemBehaviour)
+  Mox.defmock(WandererNotifier.Map.MapCharacterMock, for: WandererNotifier.Map.CharacterBehaviour)
 
-  # Define MockConfig that will be consistent across all tests
+  # Setup mocks
+  setup :verify_on_exit!
+
+  # Test configuration modules
   defmodule MockConfig do
-    def notifications_enabled?, do: true
-    def system_notifications_enabled?, do: true
-    def character_notifications_enabled?, do: true
+    def chain_kills_mode?, do: false
+    def rich_notifications_enabled?, do: true
+    def feature_flags_enabled?, do: true
+    def enable_system_notifications?, do: true
+    def enable_character_notifications?, do: true
   end
 
-  # Disabled notifications config for specific tests
   defmodule DisabledNotificationsConfig do
-    def notifications_enabled?, do: false
-    def system_notifications_enabled?, do: true
-    def character_notifications_enabled?, do: true
+    def chain_kills_mode?, do: false
+    def rich_notifications_enabled?, do: true
+    def feature_flags_enabled?, do: true
+    def enable_system_notifications?, do: false
+    def enable_character_notifications?, do: false
   end
 
-  # Disabled system notifications config for specific tests
   defmodule DisabledSystemNotificationsConfig do
-    def notifications_enabled?, do: true
-    def system_notifications_enabled?, do: false
-    def character_notifications_enabled?, do: true
+    def chain_kills_mode?, do: false
+    def rich_notifications_enabled?, do: true
+    def feature_flags_enabled?, do: true
+    def enable_system_notifications?, do: false
+    def enable_character_notifications?, do: true
+  end
+
+  defmodule DisabledCharacterNotificationsConfig do
+    def chain_kills_mode?, do: false
+    def rich_notifications_enabled?, do: true
+    def feature_flags_enabled?, do: true
+    def enable_system_notifications?, do: true
+    def enable_character_notifications?, do: false
+  end
+
+  defmodule ChainKillsConfig do
+    def chain_kills_mode?, do: true
+    def rich_notifications_enabled?, do: true
+    def feature_flags_enabled?, do: true
+    def enable_system_notifications?, do: true
+    def enable_character_notifications?, do: true
   end
 
   setup do
-    # Create ETS table for mock cache - delete first if it exists
-    if :ets.info(:mock_cache) != :undefined do
-      :ets.delete(:mock_cache)
-    end
+    # Create ETS tables for mock caching and deduplication
+    :ets.new(:mock_cache, [:named_table, :public, :set])
+    :ets.new(:mock_deduplication, [:named_table, :public, :set])
 
-    :ets.new(:mock_cache, [:set, :public, :named_table])
-
-    # Create ETS table for mock deduplication - delete first if it exists
-    if :ets.info(:mock_deduplication) != :undefined do
-      :ets.delete(:mock_deduplication)
-    end
-
-    :ets.new(:mock_deduplication, [:set, :public, :named_table])
-    :ets.insert(:mock_deduplication, {:is_duplicate, false})
-
-    # Store original app environment settings to restore later
+    # Store original application env
     original_config = Application.get_env(:wanderer_notifier, :config)
-    original_cache_repo = Application.get_env(:wanderer_notifier, :cache_repo)
-    original_deduplication = Application.get_env(:wanderer_notifier, :deduplication_module)
+    original_system_module = Application.get_env(:wanderer_notifier, :system_module)
+    original_character_module = Application.get_env(:wanderer_notifier, :character_module)
 
-    # Override the config module for testing
+    # Override configuration for testing
     Application.put_env(:wanderer_notifier, :config, MockConfig)
+    Application.put_env(:wanderer_notifier, :system_module, WandererNotifier.Map.MapSystemMock)
 
-    # Use our simple mock modules
-    Application.put_env(:wanderer_notifier, :cache_repo, MockCache)
-    Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
+    Application.put_env(
+      :wanderer_notifier,
+      :character_module,
+      WandererNotifier.Map.MapCharacterMock
+    )
 
     # Set up basic test data
-    test_killmail = %Killmail{
+    killmail = %WandererNotifier.Killmail.Killmail{
       killmail_id: "12345",
-      zkb: %{"totalValue" => 1_000_000, "points" => 10},
+      system_id: "30000142",
       esi_data: %{
         "solar_system_id" => "30000142",
         "victim" => %{
           "character_id" => "1000001",
+          "character_name" => "Test Character",
           "corporation_id" => "2000001",
-          "ship_type_id" => "3000001"
+          "corporation_name" => "Test Corp",
+          "ship_type_id" => "12345",
+          "ship_type_name" => "Test Ship"
         },
         "attackers" => [
           %{
             "character_id" => "1000002",
+            "character_name" => "Attacker 1",
             "corporation_id" => "2000002",
-            "ship_type_id" => "3000002"
+            "corporation_name" => "Attacker Corp"
           }
         ]
+      },
+      zkb: %{
+        "totalValue" => 100_000_000,
+        "points" => 100
       }
     }
 
-    raw_killmail = %{
-      "killmail_id" => "12345",
-      "solar_system_id" => "30000142",
-      "victim" => %{
-        "character_id" => "1000001",
-        "corporation_id" => "2000001",
-        "ship_type_id" => "3000001"
-      },
-      "attackers" => [
-        %{
-          "character_id" => "1000002",
-          "corporation_id" => "2000002",
-          "ship_type_id" => "3000002"
-        }
-      ],
-      "zkb" => %{"totalValue" => 1_000_000, "points" => 10}
-    }
+    # Reset deduplication state
+    WandererNotifier.MockDeduplication.configure(false)
 
-    # Default configuration
-    MockCache.configure([], [])
-    MockDeduplication.configure(false)
+    # Set up default mock expectations
+    WandererNotifier.Map.MapSystemMock
+    |> stub(:is_tracked?, fn _ -> {:ok, false} end)
+
+    WandererNotifier.Map.MapCharacterMock
+    |> stub(:is_tracked?, fn _ -> {:ok, false} end)
 
     on_exit(fn ->
-      # Clean up ETS tables if they still exist
+      # Restore original application env
+      Application.put_env(:wanderer_notifier, :config, original_config)
+      Application.put_env(:wanderer_notifier, :system_module, original_system_module)
+      Application.put_env(:wanderer_notifier, :character_module, original_character_module)
+
+      # Clean up ETS tables
       try do
-        if :ets.info(:mock_cache) != :undefined do
-          :ets.delete(:mock_cache)
-        end
+        :ets.delete(:mock_cache)
+        :ets.delete(:mock_deduplication)
       catch
-        _, _ -> :ok
+        :error, :badarg -> :ok
       end
-
-      try do
-        if :ets.info(:mock_deduplication) != :undefined do
-          :ets.delete(:mock_deduplication)
-        end
-      catch
-        _, _ -> :ok
-      end
-
-      # Restore original settings, or delete if they were not set
-      if original_config,
-        do: Application.put_env(:wanderer_notifier, :config, original_config),
-        else: Application.delete_env(:wanderer_notifier, :config)
-
-      if original_cache_repo,
-        do: Application.put_env(:wanderer_notifier, :cache_repo, original_cache_repo),
-        else: Application.delete_env(:wanderer_notifier, :cache_repo)
-
-      if original_deduplication,
-        do:
-          Application.put_env(:wanderer_notifier, :deduplication_module, original_deduplication),
-        else: Application.delete_env(:wanderer_notifier, :deduplication_module)
     end)
 
-    {:ok, %{killmail_struct: test_killmail, killmail_map: raw_killmail}}
+    {:ok, %{killmail: killmail}}
   end
 
   describe "should_notify?/1" do
     setup do
-      # Delete and recreate the deduplication table for each test to ensure complete isolation
-      if :ets.info(:mock_deduplication) != :undefined do
-        :ets.delete(:mock_deduplication)
-      end
-
-      :ets.new(:mock_deduplication, [:set, :public, :named_table])
-      :ets.insert(:mock_deduplication, {:is_duplicate, false})
-
-      # Reset the MockCache table to ensure clean state
-      if :ets.info(:mock_cache) != :undefined do
-        :ets.delete(:mock_cache)
-      end
-
-      :ets.new(:mock_cache, [:set, :public, :named_table])
-      MockCache.configure([], [])
-
-      # Reset MockDeduplication for each test
-      MockDeduplication.configure(false)
+      # Reset deduplication state for each test
+      WandererNotifier.MockDeduplication.configure(false)
       :ok
     end
 
-    test "returns false when notifications are disabled", %{killmail_struct: killmail} do
-      # Configure the mock to make the system tracked and not duplicated
-      MockCache.configure([%{solar_system_id: "30000142", name: "Test System"}], [])
-
-      # Override the config module
+    test "returns false when notifications are disabled" do
+      # Override config for this test
       Application.put_env(:wanderer_notifier, :config, DisabledNotificationsConfig)
 
-      # Execute
-      result = Kill.should_notify?(killmail)
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
 
-      # Verify
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
       assert {:ok, %{should_notify: false, reason: "Notifications disabled"}} = result
     end
 
-    test "returns false when system notifications are disabled", %{killmail_struct: killmail} do
-      # Configure the mock to make the system tracked and not duplicated
-      MockCache.configure([%{solar_system_id: "30000142", name: "Test System"}], [])
+    test "returns true when tracked character and not duplicated" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
 
-      # Override the config module
-      Application.put_env(:wanderer_notifier, :config, DisabledSystemNotificationsConfig)
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
 
-      # Execute
-      result = Kill.should_notify?(killmail)
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
 
-      # Verify
-      assert {:ok, %{should_notify: false, reason: "Notifications disabled"}} = result
-    end
-
-    test "returns false when not tracked by any system or character", %{killmail_struct: killmail} do
-      # Configure the mock with empty tracking lists
-      MockCache.configure([], [])
-
-      # Make sure we're using the default config
-      Application.put_env(:wanderer_notifier, :config, MockConfig)
-
-      # Execute
-      result = Kill.should_notify?(killmail)
-
-      # Verify
-      expected_reason = "Not tracked by any character or system"
-      assert {:ok, %{should_notify: false, reason: ^expected_reason}} = result
-    end
-
-    test "returns true when tracked system and not duplicated", %{killmail_struct: killmail} do
-      # Configure the mock with tracked system
-      MockCache.configure([%{solar_system_id: "30000142", name: "Test System"}], [])
-
-      # Explicitly set deduplication to false for this test
-      MockDeduplication.configure(false)
-
-      # Make sure we're using the default config
-      Application.put_env(:wanderer_notifier, :config, MockConfig)
-
-      # Execute
-      result = Kill.should_notify?(killmail)
-
-      # Verify
       assert {:ok, %{should_notify: true, reason: nil}} = result
     end
 
-    test "returns true when tracked character and not duplicated", %{killmail_struct: killmail} do
-      # Configure the mock with tracked character
-      MockCache.configure([], [%{character_id: "1000001", name: "Test Character"}])
+    test "returns true when tracked system and not duplicated" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
 
-      # Explicitly set deduplication to false for this test
-      MockDeduplication.configure(false)
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
 
-      # Make sure we're using the default config
-      Application.put_env(:wanderer_notifier, :config, MockConfig)
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
 
-      # Execute
-      result = Kill.should_notify?(killmail)
-
-      # Verify
       assert {:ok, %{should_notify: true, reason: nil}} = result
     end
 
-    test "returns false for duplicate kill", %{killmail_struct: killmail} do
-      # Make a completely fresh state for this test
-      if :ets.info(:mock_deduplication) != :undefined do
-        :ets.delete(:mock_deduplication)
-      end
-
-      :ets.new(:mock_deduplication, [:set, :public, :named_table])
-      :ets.insert(:mock_deduplication, {:is_duplicate, true})
-
-      # Configure the mock with tracked system
-      MockCache.configure([%{solar_system_id: "30000142", name: "Test System"}], [])
-
-      # Make sure we're using the default config
-      Application.put_env(:wanderer_notifier, :config, MockConfig)
+    test "returns false for duplicate kill", %{killmail: killmail} do
+      # Set deduplication to true for this test
+      WandererNotifier.MockDeduplication.configure(true)
 
       # Execute
-      result = Kill.should_notify?(killmail)
+      result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
 
       # Verify
       assert {:ok, %{should_notify: false, reason: "Duplicate kill"}} = result
     end
+
+    test "notifies for system kills when system notifications are enabled" do
+      killmail = %WandererNotifier.Killmail.Killmail{
+        killmail_id: "123",
+        system_id: "456",
+        esi_data: %{"solar_system_id" => "456"},
+        zkb: %{"totalValue" => 1_000_000, "points" => 10}
+      }
+
+      # Mock tracked_system? to return true
+      expect(WandererNotifier.Map.MapSystemMock, :is_tracked?, fn "456" -> true end)
+      expect(WandererNotifier.Map.MapCharacterMock, :is_tracked?, fn _ -> false end)
+
+      assert {:ok, %{should_notify: true}} =
+               WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    end
+
+    test "does not notify for system kills when system notifications are disabled" do
+      # Update config to disable system notifications
+      config_mock = %{
+        notifications_enabled?: true,
+        system_notifications_enabled?: false,
+        character_notifications_enabled?: true,
+        chain_kills_mode?: true
+      }
+
+      Application.put_env(:wanderer_notifier, :config, config_mock)
+
+      killmail = %WandererNotifier.Killmail.Killmail{
+        killmail_id: "123",
+        system_id: "456",
+        esi_data: %{"solar_system_id" => "456"},
+        zkb: %{"totalValue" => 1_000_000, "points" => 10}
+      }
+
+      # Mock tracked_system? to return true
+      expect(WandererNotifier.Map.MapSystemMock, :is_tracked?, fn "456" -> true end)
+      expect(WandererNotifier.Map.MapCharacterMock, :is_tracked?, fn _ -> false end)
+
+      assert {:ok, %{should_notify: false}} =
+               WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    end
+
+    test "notifies for character kills when character notifications are enabled" do
+      killmail = %WandererNotifier.Killmail.Killmail{
+        killmail_id: "123",
+        esi_data: %{
+          "attackers" => [
+            %{"character_id" => "789"}
+          ]
+        },
+        zkb: %{"totalValue" => 1_000_000, "points" => 10}
+      }
+
+      # Mock tracked_system? to return false and tracked_character? to return true
+      expect(WandererNotifier.Map.MapSystemMock, :is_tracked?, fn _ -> false end)
+      expect(WandererNotifier.Map.MapCharacterMock, :is_tracked?, fn "789" -> true end)
+
+      assert {:ok, %{should_notify: true}} =
+               WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    end
+
+    test "does not notify for character kills when character notifications are disabled" do
+      # Update config to disable character notifications
+      config_mock = %{
+        notifications_enabled?: true,
+        system_notifications_enabled?: true,
+        character_notifications_enabled?: false,
+        chain_kills_mode?: true
+      }
+
+      Application.put_env(:wanderer_notifier, :config, config_mock)
+
+      killmail = %WandererNotifier.Killmail.Killmail{
+        killmail_id: "123",
+        esi_data: %{
+          "attackers" => [
+            %{"character_id" => "789"}
+          ]
+        },
+        zkb: %{"totalValue" => 1_000_000, "points" => 10}
+      }
+
+      # Mock tracked_system? to return false and tracked_character? to return true
+      expect(WandererNotifier.Map.MapSystemMock, :is_tracked?, fn _ -> false end)
+      expect(WandererNotifier.Map.MapCharacterMock, :is_tracked?, fn "789" -> true end)
+
+      assert {:ok, %{should_notify: false}} =
+               WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    end
+
+    test "does not notify when neither system nor character is tracked" do
+      killmail = %WandererNotifier.Killmail.Killmail{
+        killmail_id: "123",
+        system_id: "456",
+        esi_data: %{
+          "solar_system_id" => "456",
+          "attackers" => [
+            %{"character_id" => "789"}
+          ]
+        },
+        zkb: %{"totalValue" => 1_000_000, "points" => 10}
+      }
+
+      # Mock both tracked_system? and tracked_character? to return false
+      expect(WandererNotifier.Map.MapSystemMock, :is_tracked?, fn _ -> false end)
+      expect(WandererNotifier.Map.MapCharacterMock, :is_tracked?, fn _ -> false end)
+
+      assert {:ok, %{should_notify: false}} =
+               WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    end
   end
 
   describe "get_kill_system_id/1" do
-    test "extracts system ID from Killmail struct", %{killmail_struct: killmail} do
-      result = Kill.get_kill_system_id(killmail)
-      assert result == "30000142"
-    end
-
-    test "extracts system ID from map", %{killmail_map: killmail} do
-      result = Kill.get_kill_system_id(killmail)
+    test "extracts system ID from Killmail struct", %{killmail: killmail} do
+      result = WandererNotifier.Notifications.Determiner.Kill.get_kill_system_id(killmail)
       assert result == "30000142"
     end
 
     test "returns unknown for nil input" do
-      result = Kill.get_kill_system_id(nil)
+      result = WandererNotifier.Notifications.Determiner.Kill.get_kill_system_id(nil)
       assert result == "unknown"
     end
 
-    test "returns unknown for Killmail with nil esi_data", %{killmail_struct: killmail} do
+    test "returns unknown for Killmail with nil esi_data", %{killmail: killmail} do
       killmail = %{killmail | esi_data: nil}
-      result = Kill.get_kill_system_id(killmail)
+      result = WandererNotifier.Notifications.Determiner.Kill.get_kill_system_id(killmail)
       assert result == "unknown"
     end
   end
 
   describe "tracked_system?/1" do
-    test "returns false for nil system ID" do
-      # Configure the mock with empty tracking lists
-      MockCache.configure([], [])
-
-      result = Kill.tracked_system?(nil)
-      assert result == false
-    end
-
     test "returns true when system is tracked" do
-      # Configure the mock with a tracked system
-      MockCache.configure([%{solar_system_id: "30000142", name: "Test System"}], [])
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
 
-      # Test with string ID
-      result = Kill.tracked_system?("30000142")
+      result = WandererNotifier.Notifications.Determiner.Kill.tracked_system?("30000142")
       assert result == true
     end
 
     test "returns false when system is not tracked" do
-      # Configure the mock with a different tracked system
-      MockCache.configure([%{solar_system_id: "10000001", name: "Other System"}], [])
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
 
-      result = Kill.tracked_system?("30000142")
+      result = WandererNotifier.Notifications.Determiner.Kill.tracked_system?("30000142")
       assert result == false
     end
 
     test "returns false when tracked systems list is empty" do
-      # Configure the mock with empty tracking lists
-      MockCache.configure([], [])
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> false end)
 
-      result = Kill.tracked_system?("30000142")
+      result = WandererNotifier.Notifications.Determiner.Kill.tracked_system?("30000142")
       assert result == false
     end
 
     test "returns false when tracked systems cache returns error" do
-      # Force an error by using a nil key (which will return an error)
-      # This is a hack but it works for testing
-      MockCache.configure(nil, [])
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> false end)
 
-      # Run the test
-      result = Kill.tracked_system?("30000142")
+      result = WandererNotifier.Notifications.Determiner.Kill.tracked_system?("30000142")
       assert result == false
     end
   end
 
-  describe "has_tracked_character?/1" do
-    test "returns true when victim is tracked", %{killmail_struct: _killmail} do
+  describe "tracked_character?/1" do
+    setup do
+      # Reset deduplication state for each test
+      WandererNotifier.MockDeduplication.configure(false)
+      :ok
+    end
+
+    test "returns true when victim is tracked" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+
+      assert WandererNotifier.Notifications.Determiner.Kill.tracked_character?("1000001")
+    end
+
+    test "returns true when attacker is tracked" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000002" -> {:ok, true} end)
+
+      assert WandererNotifier.Notifications.Determiner.Kill.tracked_character?("1000002")
+    end
+
+    test "checks direct character tracking when not in list" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+
+      assert WandererNotifier.Notifications.Determiner.Kill.tracked_character?("1000001")
+    end
+
+    test "returns false when no characters are tracked" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
+
+      refute WandererNotifier.Notifications.Determiner.Kill.tracked_character?("1000001")
+    end
+
+    test "returns false when tracked characters cache returns error" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:error, :not_found} end)
+
+      refute WandererNotifier.Notifications.Determiner.Kill.tracked_character?("1000001")
+    end
+
+    test "properly detects a tracked character in killmail victim", %{killmail: killmail} do
       # Configure the mock with a tracked victim character
-      MockCache.configure([], [%{character_id: "1000001", name: "Test Victim"}])
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+      |> expect(:is_tracked?, fn "1000002" -> {:ok, false} end)
 
-      # Test by character ID instead of the full killmail
-      assert Kill.tracked_character?("1000001") == true
+      assert WandererNotifier.Notifications.Determiner.Kill.has_tracked_character?(
+               killmail.esi_data
+             )
     end
 
-    test "returns true when attacker is tracked", %{killmail_struct: _killmail} do
+    test "properly detects a tracked character in killmail attackers", %{killmail: killmail} do
       # Configure the mock with a tracked attacker character
-      MockCache.configure([], [%{character_id: "1000002", name: "Test Attacker"}])
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
+      |> expect(:is_tracked?, fn "1000002" -> {:ok, true} end)
 
-      # Test by character ID instead of the full killmail
-      assert Kill.tracked_character?("1000002") == true
+      assert WandererNotifier.Notifications.Determiner.Kill.has_tracked_character?(
+               killmail.esi_data
+             )
     end
 
-    test "returns false when no characters are tracked", %{killmail_struct: _killmail} do
-      # Configure the mock with empty tracking lists
-      MockCache.configure([], [])
-
-      # Test by character ID instead of the full killmail
-      assert Kill.tracked_character?("1000001") == false
-    end
-
-    test "returns false when tracked characters cache returns error", %{
-      killmail_struct: _killmail
-    } do
-      # Force an error by using a nil key
-      MockCache.configure([], nil)
-
-      # Test by character ID instead of the full killmail
-      assert Kill.tracked_character?("1000001") == false
-    end
-
-    test "checks direct character tracking when not in list", %{killmail_struct: _killmail} do
-      # Configure the mock with empty character list but a direct character lookup
-      MockCache.configure([], [])
-
-      # Configure direct character tracking for victim
-      MockCache.configure_direct_character("1000001", %{
-        character_id: "1000001",
-        name: "Test Victim"
-      })
-
-      # Test by character ID instead of the full killmail
-      assert Kill.tracked_character?("1000001") == true
-    end
-
-    test "properly detects a tracked character in killmail victim", %{killmail_struct: killmail} do
-      # Configure the mock with a tracked victim character
-      MockCache.configure([], [%{character_id: "1000001", name: "Test Victim"}])
-
-      # Test with the full ESI data
-      assert Kill.has_tracked_character?(killmail.esi_data) == true
-    end
-
-    test "properly detects a tracked character in killmail attackers", %{
-      killmail_struct: killmail
-    } do
-      # Configure the mock with a tracked attacker character
-      MockCache.configure([], [%{character_id: "1000002", name: "Test Attacker"}])
-
-      # Test with the full ESI data
-      assert Kill.has_tracked_character?(killmail.esi_data) == true
-    end
-
-    test "returns false when no tracked characters in killmail", %{killmail_struct: killmail} do
+    test "returns false when no tracked characters in killmail", %{killmail: killmail} do
       # Configure the mock with an unrelated character
       # Ensure tables exist
       try do
@@ -514,10 +572,148 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         _, _ -> :ok
       end
 
-      MockCache.configure([], [%{character_id: "9999999", name: "Unrelated Character"}])
+      WandererNotifier.MockCache.configure([], [
+        %{character_id: "9999999", name: "Unrelated Character"}
+      ])
 
       # Test with the full ESI data
-      assert Kill.has_tracked_character?(killmail.esi_data) == false
+      assert WandererNotifier.Notifications.Determiner.Kill.has_tracked_character?(
+               killmail.esi_data
+             ) == false
+    end
+  end
+
+  describe "should_notify?/1 with chain kills mode" do
+    setup do
+      # Override config for chain kills mode
+      Application.put_env(:wanderer_notifier, :config, ChainKillsConfig)
+      # Reset deduplication state for each test
+      WandererNotifier.MockDeduplication.configure(false)
+      :ok
+    end
+
+    test "notifies for system kills when system notifications are enabled" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
+
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
+      assert {:ok, %{should_notify: true}} = result
+    end
+
+    test "does not notify for system kills when system notifications are disabled" do
+      # Override config for this test
+      Application.put_env(:wanderer_notifier, :config, DisabledSystemNotificationsConfig)
+
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, true} end)
+
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
+      assert {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}} =
+               result
+    end
+
+    test "notifies for character kills when character notifications are enabled" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
+
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
+      assert {:ok, %{should_notify: true}} = result
+    end
+
+    test "does not notify for character kills when character notifications are disabled" do
+      # Override config for this test
+      Application.put_env(:wanderer_notifier, :config, DisabledCharacterNotificationsConfig)
+
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
+
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, true} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
+      assert {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}} =
+               result
+    end
+
+    test "does not notify when neither system nor character is tracked" do
+      # Set up mock expectations
+      WandererNotifier.Map.MapSystemMock
+      |> expect(:is_tracked?, fn "30000142" -> {:ok, false} end)
+
+      WandererNotifier.Map.MapCharacterMock
+      |> expect(:is_tracked?, fn "1000001" -> {:ok, false} end)
+
+      result =
+        WandererNotifier.Notifications.Determiner.Kill.should_notify?(
+          %WandererNotifier.Killmail.Killmail{
+            killmail_id: "12345",
+            esi_data: %{
+              "solar_system_id" => "30000142",
+              "victim" => %{"character_id" => "1000001"}
+            },
+            zkb: %{}
+          }
+        )
+
+      assert {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}} =
+               result
     end
   end
 end

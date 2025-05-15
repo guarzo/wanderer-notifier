@@ -137,8 +137,15 @@ defmodule WandererNotifier.Killmail.Processor do
     # Check system directly
     is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
 
+    # Convert map to Killmail struct
+    killmail = %WandererNotifier.Killmail.Killmail{
+      killmail_id: kill_id,
+      zkb: Map.get(data, "zkb", %{}),
+      esi_data: data
+    }
+
     # Get the determination from the Kill Determiner
-    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(data)
+    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
 
     # Only log errors and inconsistencies
     case result do

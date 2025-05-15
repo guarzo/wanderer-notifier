@@ -183,6 +183,47 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
+  @doc """
+  Sends a kill notification to a specific Discord channel.
+  """
+  def send_kill_notification_to_channel(kill_data, channel_id) do
+    if WandererNotifier.Config.rich_notifications_enabled?() do
+      # Send rich notification
+      send_rich_kill_notification(kill_data, channel_id)
+    else
+      # Send simple notification
+      send_simple_kill_notification(kill_data, channel_id)
+    end
+
+    # Handle feature flags
+    if WandererNotifier.Config.feature_flags_enabled?() do
+      # Additional feature flag handling
+      handle_feature_flags(kill_data, channel_id)
+    end
+  end
+
+  # Send a rich kill notification with embed
+  defp send_rich_kill_notification(kill_data, channel_id) do
+    killmail = ensure_killmail_struct(kill_data)
+    notification = KillmailFormatter.format_kill_notification(killmail)
+    NeoClient.send_embed(notification, channel_id)
+  end
+
+  # Send a simple text-based kill notification
+  defp send_simple_kill_notification(kill_data, channel_id) do
+    message = PlainTextFormatter.plain_killmail_notification(kill_data)
+    NeoClient.send_message(message, channel_id)
+  end
+
+  # Handle feature flags for kill notifications
+  defp handle_feature_flags(kill_data, channel_id) do
+    if FeatureFlags.components_enabled?() do
+      killmail = ensure_killmail_struct(kill_data)
+      components = [ComponentBuilder.kill_action_row(killmail.killmail_id)]
+      NeoClient.send_message_with_components(killmail.killmail_id, components, channel_id)
+    end
+  end
+
   def send_new_tracked_character_notification(character)
       when is_struct(character, WandererNotifier.Map.MapCharacter) do
     try do
@@ -356,4 +397,14 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
       send_to_discord(notification, :killmail)
     end
   end
+
+  # Ensure the input is a Killmail struct
+  defp ensure_killmail_struct(kill_data) do
+    if is_struct(kill_data, Killmail) do
+      kill_data
+    else
+      struct(Killmail, Map.from_struct(kill_data))
+    end
+  end
+
 end

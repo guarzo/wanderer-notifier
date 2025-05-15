@@ -456,3 +456,23 @@ Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.Htt
 Mox.defmock(WandererNotifier.MockNotifierFactory,
   for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
 )
+
+defmodule WandererNotifier.Map.MapSystemMock do
+  @moduledoc """
+  Mock module for system tracking functionality.
+  """
+  @behaviour WandererNotifier.Map.SystemBehaviour
+
+  @impl true
+  def is_tracked?(_system_id), do: false
+end
+
+defmodule WandererNotifier.Map.MapCharacterMock do
+  @moduledoc """
+  Mock module for character tracking functionality.
+  """
+  @behaviour WandererNotifier.Map.CharacterBehaviour
+
+  @impl true
+  def is_tracked?(_character_id), do: false
+end

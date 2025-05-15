@@ -143,11 +143,14 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
    - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
    - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `WANDERER_DISCORD_KILL_CHANNEL_ID`: Channel for kill notifications
    - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
    - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
    - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
    - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
+
+   > **Note:** The following variables have been deprecated and removed:
+   >
+   > - `WANDERER_DISCORD_KILL_CHANNEL_ID` (use specific kill channel IDs instead)
 
 2. **License Configuration**
 
@@ -177,10 +180,14 @@ All environment variables now use a standardized `WANDERER_` prefix.
    - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
    - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
-   - `WANDERER_CHARACTER_TRACKING_ENABLED`: Enable character tracking (default: true)
-   - `WANDERER_SYSTEM_TRACKING_ENABLED`: Enable system tracking (default: true)
    - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
-   - `WANDERER_TRACK_KSPACE_ENABLED`: Track K-Space systems in addition to wormholes (default: true)
+   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
+   - `WANDERER_CHAIN_KILLS_MODE`: Enable chain kills mode for more granular kill notification control (default: false)
+
+   > **Note:** The following variables have been deprecated and removed:
+   >
+   > - `WANDERER_CHARACTER_TRACKING_ENABLED` (use `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED` instead)
+   > - `WANDERER_SYSTEM_TRACKING_ENABLED` (use `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED` instead)
 
 7. **Character Configuration**
 

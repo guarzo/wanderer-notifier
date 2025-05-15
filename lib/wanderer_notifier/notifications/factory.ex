@@ -10,6 +10,7 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
   alias WandererNotifier.Notifiers.TestNotifier
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
 
   @doc """
   Sends a notification using the appropriate notifier based on the current configuration.
@@ -154,8 +155,26 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   # Separate function for dispatching kill notifications to different notifiers
   defp dispatch_kill_notification(DiscordNotifier, kill) do
-    # Use dynamic dispatch to avoid compiler warnings
-    apply(DiscordNotifier, :send_kill_notification, [kill.data.killmail])
+    killmail = kill.data.killmail
+    system_id = Map.get(killmail, :system_id)
+    has_tracked_system = KillDeterminer.tracked_system?(system_id)
+    has_tracked_character = KillDeterminer.has_tracked_character?(killmail)
+
+    # Determine which channel to use based on the kill type
+    channel_id =
+      cond do
+        has_tracked_character -> Config.discord_character_kill_channel_id()
+        has_tracked_system -> Config.discord_system_kill_channel_id()
+        true -> Config.discord_channel_id()
+      end
+
+    # Send to the appropriate channel
+    if channel_id do
+      apply(DiscordNotifier, :send_kill_notification_to_channel, [killmail, channel_id])
+    else
+      apply(DiscordNotifier, :send_kill_notification, [killmail])
+    end
+
     {:ok, :sent}
   end
 

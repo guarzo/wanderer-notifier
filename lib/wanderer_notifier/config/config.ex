@@ -118,6 +118,36 @@ defmodule WandererNotifier.Config do
   def max_notifications_per_minute, do: get(:max_notifications_per_minute, 10)
   def discord_kill_channel_id, do: get(:kill_channel_id)
 
+  @doc """
+  Returns whether chain kills mode is enabled.
+  """
+  def chain_kills_mode? do
+    case Application.get_env(:wanderer_notifier, :config) do
+      nil -> false
+      mod -> mod.chain_kills_mode?()
+    end
+  end
+
+  @doc """
+  Returns whether rich notifications are enabled.
+  """
+  def rich_notifications_enabled? do
+    case Application.get_env(:wanderer_notifier, :config) do
+      nil -> false
+      mod -> mod.rich_notifications_enabled?()
+    end
+  end
+
+  @doc """
+  Returns whether feature flags are enabled.
+  """
+  def feature_flags_enabled? do
+    case Application.get_env(:wanderer_notifier, :config) do
+      nil -> false
+      mod -> mod.feature_flags_enabled?()
+    end
+  end
+
   def character_exclude_list do
     get(:character_exclude_list, "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
   end

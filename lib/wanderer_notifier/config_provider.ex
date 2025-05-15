@@ -147,7 +147,7 @@ defmodule WandererNotifier.ConfigProvider do
     do: put_in(config, [:wanderer_notifier, :map_url_with_name], val)
 
   defp apply_env(config, "WANDERER_DISCORD_CHANNEL_ID", val),
-    do: put_in(config, [:wanderer_notifier, :discord_channel_id], val)
+    do: put_in(config, [:wanderer_notifier, :discord_channel_id], val || "")
 
   defp apply_env(config, "PORT", val),
     do: put_in(config, [:wanderer_notifier, :port], parse_port(val, 4000))
@@ -219,6 +219,9 @@ defmodule WandererNotifier.ConfigProvider do
 
   defp apply_env(config, "WANDERER_FEATURE_TRACK_KSPACE", val),
     do: put_in(config, [:wanderer_notifier, :features, :track_kspace_systems], parse_bool(val))
+
+  defp apply_env(config, "WANDERER_CHAIN_KILLS_MODE", val),
+    do: put_in(config, [:wanderer_notifier, :features, :chain_kills_mode], parse_bool(val))
 
   defp apply_env(config, "WANDERER_CHARACTER_EXCLUDE_LIST", val),
     do: put_in(config, [:wanderer_notifier, :character_exclude_list], parse_character_list(val))

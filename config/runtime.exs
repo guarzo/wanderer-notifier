@@ -53,7 +53,6 @@ config :wanderer_notifier,
   discord_character_kill_channel_id: System.get_env("WANDERER_CHARACTER_KILL_CHANNEL_ID") || "",
   discord_system_channel_id: System.get_env("WANDERER_SYSTEM_CHANNEL_ID") || "",
   discord_character_channel_id: System.get_env("WANDERER_CHARACTER_CHANNEL_ID") || "",
-  kill_channel_id: System.get_env("WANDERER_DISCORD_KILL_CHANNEL_ID") || "",
   license_manager_api_url:
     System.get_env("WANDERER_LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd",
   features: %{
@@ -63,10 +62,9 @@ config :wanderer_notifier,
     system_notifications_enabled:
       System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED") != "false",
     kill_notifications_enabled: System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED") != "false",
-    character_tracking_enabled: System.get_env("WANDERER_CHARACTER_TRACKING_ENABLED") != "false",
-    system_tracking_enabled: System.get_env("WANDERER_SYSTEM_TRACKING_ENABLED") != "false",
     status_messages_disabled: System.get_env("WANDERER_DISABLE_STATUS_MESSAGES") == "true",
-    track_kspace_systems: System.get_env("WANDERER_FEATURE_TRACK_KSPACE") != "false"
+    track_kspace_systems: System.get_env("WANDERER_FEATURE_TRACK_KSPACE") != "false",
+    chain_kills_mode: System.get_env("WANDERER_CHAIN_KILLS_MODE") == "true"
   },
   character_exclude_list:
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")

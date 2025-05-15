@@ -33,6 +33,18 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     )
   end
 
+  @doc """
+  Formats a killmail for notification.
+  """
+  def format(%Killmail{} = killmail) do
+    %{
+      title: "New Killmail",
+      description: format_description(killmail),
+      color: 0xFF0000,
+      fields: format_fields(killmail)
+    }
+  end
+
   defp log_killmail_data(killmail) do
     AppLogger.processor_debug(
       "[KillmailFormatter] Formatting killmail: #{inspect(killmail, limit: 200)}"
@@ -403,6 +415,52 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M"
       value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K"
       true -> "#{Float.round(value, 0)}"
+    end
+  end
+
+  def format_description(killmail) do
+    victim = killmail.esi_data["victim"]
+    attackers = killmail.esi_data["attackers"]
+
+    victim_name = victim["character_name"] || "Unknown"
+    victim_corp = victim["corporation_name"] || "Unknown"
+    attacker_name = List.first(attackers)["character_name"] || "Unknown"
+    attacker_corp = List.first(attackers)["corporation_name"] || "Unknown"
+
+    "#{victim_name} (#{victim_corp}) was killed by #{attacker_name} (#{attacker_corp})"
+  end
+
+  def format_victim(killmail) do
+    victim = killmail.esi_data["victim"]
+    victim_name = victim["character_name"] || "Unknown"
+    victim_corp = victim["corporation_name"] || "Unknown"
+    ship_name = victim["ship_type_name"] || "Unknown"
+
+    "#{victim_name} (#{victim_corp}) flying a #{ship_name}"
+  end
+
+  defp format_fields(%Killmail{} = killmail) do
+    [
+      %{
+        name: "Value",
+        value: format_value(killmail),
+        inline: true
+      },
+      %{
+        name: "Victim",
+        value: format_victim(killmail),
+        inline: true
+      }
+    ]
+  end
+
+  defp format_value(%Killmail{} = killmail) do
+    case killmail.zkb do
+      %{"totalValue" => value} when is_number(value) ->
+        :erlang.float_to_binary(value / 1_000_000, decimals: 2) <> "M ISK"
+
+      _ ->
+        "Unknown"
     end
   end
 end
