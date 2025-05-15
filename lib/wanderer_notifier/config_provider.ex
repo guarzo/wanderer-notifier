@@ -179,14 +179,14 @@ defmodule WandererNotifier.ConfigProvider do
       )
 
   defp apply_env(config, "WANDERER_NOTIFICATIONS_ENABLED", val),
-    do: put_in(config, [:wanderer_notifier, :features, :notifications_enabled], val != "false")
+    do: put_in(config, [:wanderer_notifier, :features, :notifications_enabled], parse_bool(val))
 
   defp apply_env(config, "WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", val),
     do:
       put_in(
         config,
         [:wanderer_notifier, :features, :character_notifications_enabled],
-        val != "false"
+        parse_bool(val)
       )
 
   defp apply_env(config, "WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", val),
@@ -194,25 +194,34 @@ defmodule WandererNotifier.ConfigProvider do
       put_in(
         config,
         [:wanderer_notifier, :features, :system_notifications_enabled],
-        val != "false"
+        parse_bool(val)
       )
 
   defp apply_env(config, "WANDERER_KILL_NOTIFICATIONS_ENABLED", val),
     do:
-      put_in(config, [:wanderer_notifier, :features, :kill_notifications_enabled], val != "false")
+      put_in(
+        config,
+        [:wanderer_notifier, :features, :kill_notifications_enabled],
+        parse_bool(val)
+      )
 
   defp apply_env(config, "WANDERER_CHARACTER_TRACKING_ENABLED", val),
     do:
-      put_in(config, [:wanderer_notifier, :features, :character_tracking_enabled], val != "false")
+      put_in(
+        config,
+        [:wanderer_notifier, :features, :character_tracking_enabled],
+        parse_bool(val)
+      )
 
   defp apply_env(config, "WANDERER_SYSTEM_TRACKING_ENABLED", val),
-    do: put_in(config, [:wanderer_notifier, :features, :system_tracking_enabled], val != "false")
+    do: put_in(config, [:wanderer_notifier, :features, :system_tracking_enabled], parse_bool(val))
 
   defp apply_env(config, "WANDERER_DISABLE_STATUS_MESSAGES", val),
-    do: put_in(config, [:wanderer_notifier, :features, :status_messages_disabled], val == "true")
+    do:
+      put_in(config, [:wanderer_notifier, :features, :status_messages_disabled], parse_bool(val))
 
   defp apply_env(config, "WANDERER_FEATURE_TRACK_KSPACE", val),
-    do: put_in(config, [:wanderer_notifier, :features, :track_kspace_systems], val != "false")
+    do: put_in(config, [:wanderer_notifier, :features, :track_kspace_systems], parse_bool(val))
 
   defp apply_env(config, "WANDERER_CHARACTER_EXCLUDE_LIST", val),
     do: put_in(config, [:wanderer_notifier, :character_exclude_list], parse_character_list(val))
@@ -276,4 +285,27 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_character_list(_), do: []
+
+  # Parse boolean with fallback
+  defp parse_bool(val) when is_binary(val) do
+    case String.downcase(val) do
+      "true" -> true
+      "t" -> true
+      "yes" -> true
+      "y" -> true
+      "1" -> true
+      "on" -> true
+      "false" -> false
+      "f" -> false
+      "no" -> false
+      "n" -> false
+      "0" -> false
+      "off" -> false
+      # default to true for any other value
+      _ -> true
+    end
+  end
+
+  # default to true for non-string values
+  defp parse_bool(_), do: true
 end
