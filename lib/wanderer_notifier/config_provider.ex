@@ -288,21 +288,15 @@ defmodule WandererNotifier.ConfigProvider do
 
   # Parse boolean with fallback
   defp parse_bool(val) when is_binary(val) do
-    case String.downcase(val) do
-      "true" -> true
-      "t" -> true
-      "yes" -> true
-      "y" -> true
-      "1" -> true
-      "on" -> true
-      "false" -> false
-      "f" -> false
-      "no" -> false
-      "n" -> false
-      "0" -> false
-      "off" -> false
+    val = String.downcase(val)
+    true_values = ["true", "t", "yes", "y", "1", "on"]
+    false_values = ["false", "f", "no", "n", "0", "off"]
+
+    cond do
+      val in true_values -> true
+      val in false_values -> false
       # default to true for any other value
-      _ -> true
+      true -> true
     end
   end
 
