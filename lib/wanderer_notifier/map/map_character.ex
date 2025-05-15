@@ -31,6 +31,9 @@ defmodule WandererNotifier.Map.MapCharacter do
   @behaviour Access
   @behaviour WandererNotifier.Map.CharacterBehaviour
 
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+
   @typedoc "Type representing a tracked character"
   @type t :: %__MODULE__{
           character_id: String.t(),
@@ -53,9 +56,22 @@ defmodule WandererNotifier.Map.MapCharacter do
   ]
 
   @impl true
-  def is_tracked?(character_id) when is_binary(character_id) do
-    # TODO: Implement actual character tracking logic
-    {:ok, false}
+  def is_tracked?(character_id) when is_integer(character_id) do
+    character_id_str = Integer.to_string(character_id)
+    is_tracked?(character_id_str)
+  end
+
+  def is_tracked?(character_id_str) when is_binary(character_id_str) do
+    case CacheRepo.get(CacheKeys.character_list()) do
+      {:ok, characters} when is_list(characters) ->
+        Enum.any?(characters, fn char ->
+          id = Map.get(char, :character_id) || Map.get(char, "character_id")
+          to_string(id) == character_id_str
+        end)
+
+      _ ->
+        {:ok, false}
+    end
   end
 
   def is_tracked?(_), do: {:error, :invalid_character_id}

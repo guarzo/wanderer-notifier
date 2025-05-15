@@ -455,9 +455,7 @@ Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
 
 Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
 
-Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
-)
+
 
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """

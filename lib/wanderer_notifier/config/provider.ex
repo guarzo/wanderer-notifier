@@ -33,8 +33,16 @@ defmodule WandererNotifier.ConfigProvider do
     config
     |> put_in([:wanderer_notifier, :port], parse_port())
     |> put_in(
-      [:wanderer_notifier, :features, :notifications_enabled],
-      parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true)
+      [:wanderer_notifier, :features],
+      %{
+        notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
+        kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
+        system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
+        character_notifications_enabled:
+          parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
+        disable_status_messages: parse_bool("WANDERER_DISABLE_STATUS_MESSAGES", false),
+        track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
+      }
     )
     |> put_in([:wanderer_notifier, :character_exclude_list], parse_character_exclude_list())
   end

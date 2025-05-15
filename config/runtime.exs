@@ -65,7 +65,14 @@ config :wanderer_notifier,
       Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED"), true),
     disable_status_messages:
       Helpers.parse_bool(System.get_env("WANDERER_DISABLE_STATUS_MESSAGES"), false),
-    track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true)
+    track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true),
+    character_tracking_enabled:
+      Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_TRACKING_ENABLED"), true),
+    tracked_characters_notifications_enabled:
+      Helpers.parse_bool(
+        System.get_env("WANDERER_TRACKED_CHARACTERS_NOTIFICATIONS_ENABLED"),
+        true
+      )
   },
   character_exclude_list:
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")
@@ -100,17 +107,3 @@ config :wanderer_notifier, :websocket, %{
 # Configure cache directory
 config :wanderer_notifier, :cache,
   directory: System.get_env("WANDERER_CACHE_DIR", "/app/data/cache")
-
-# Configure feature flags
-config :wanderer_notifier, :features,
-  notifications_enabled:
-    Helpers.parse_bool(System.get_env("WANDERER_NOTIFICATIONS_ENABLED"), true),
-  kill_notifications_enabled:
-    Helpers.parse_bool(System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED"), true),
-  system_notifications_enabled:
-    Helpers.parse_bool(System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED"), true),
-  character_notifications_enabled:
-    Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED"), true),
-  disable_status_messages:
-    Helpers.parse_bool(System.get_env("WANDERER_DISABLE_STATUS_MESSAGES"), false),
-  track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true)

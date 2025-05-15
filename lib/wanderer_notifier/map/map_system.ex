@@ -25,6 +25,8 @@ defmodule WandererNotifier.Map.MapSystem do
   - constellation_name: Name of the system's constellation
   """
 
+  @behaviour WandererNotifier.Map.SystemBehaviour
+
   @enforce_keys [:solar_system_id, :name]
   defstruct [
     :solar_system_id,
@@ -50,6 +52,30 @@ defmodule WandererNotifier.Map.MapSystem do
     :constellation_id,
     :constellation_name
   ]
+
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+
+  @impl true
+  def is_tracked?(system_id) when is_integer(system_id) do
+    system_id_str = Integer.to_string(system_id)
+    is_tracked?(system_id_str)
+  end
+
+  def is_tracked?(system_id_str) when is_binary(system_id_str) do
+    case CacheRepo.get(CacheKeys.map_systems()) do
+      {:ok, systems} when is_list(systems) ->
+        Enum.any?(systems, fn system ->
+          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
+          to_string(id) == system_id_str
+        end)
+
+      _ ->
+        false
+    end
+  end
+
+  def is_tracked?(_), do: false
 
   @type t :: %__MODULE__{
           solar_system_id: String.t() | integer(),

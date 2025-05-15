@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Helpers.Deduplication
+  alias WandererNotifier.Map.MapCharacter
 
   @doc """
   Determines if a notification should be sent for a character.
@@ -49,16 +50,9 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   end
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    # Get the current list of tracked characters from the cache
-    case CacheRepo.get(CacheKeys.character_list()) do
-      {:ok, characters} when is_list(characters) ->
-        Enum.any?(characters, fn char ->
-          id = Map.get(char, :character_id) || Map.get(char, "character_id")
-          to_string(id) == character_id_str
-        end)
-
-      _ ->
-        false
+    case MapCharacter.is_tracked?(character_id_str) do
+      {:ok, tracked} -> tracked
+      _ -> false
     end
   end
 

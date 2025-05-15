@@ -9,6 +9,7 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Helpers.Deduplication
+  alias WandererNotifier.Map.MapSystem
 
   @doc """
   Determines if a notification should be sent for a system.
@@ -71,17 +72,7 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   end
 
   def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    # Get the current list of tracked systems from the cache
-    case CacheRepo.get(CacheKeys.map_systems()) do
-      {:ok, systems} when is_list(systems) ->
-        Enum.any?(systems, fn system ->
-          id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
-          to_string(id) == system_id_str
-        end)
-
-      _ ->
-        false
-    end
+    MapSystem.is_tracked?(system_id_str)
   end
 
   def tracked_system?(_), do: false

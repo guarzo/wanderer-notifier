@@ -13,7 +13,6 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   def run do
     # Core job logic from previous implementation
     if WandererNotifier.Config.character_tracking_enabled?() ||
-         WandererNotifier.Config.tracked_characters_notifications_enabled?() ||
          WandererNotifier.Config.tracked_characters_notifications_enabled?() do
       update_tracked_characters()
       :ok
