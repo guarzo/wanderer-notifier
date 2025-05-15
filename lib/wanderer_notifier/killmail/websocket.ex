@@ -37,7 +37,11 @@ defmodule WandererNotifier.Killmail.Websocket do
     initial = %__MODULE__{parent: parent, url: url, startup_time: System.system_time(:second)}
 
     AppLogger.websocket_info("Connecting to zKillboard WS", url: url)
-    WebSockex.start_link(url, __MODULE__, initial, retry_initial_connection: true)
+
+    WebSockex.start_link(url, __MODULE__, initial,
+      name: __MODULE__,
+      retry_initial_connection: true
+    )
   end
 
   def init(state) do
