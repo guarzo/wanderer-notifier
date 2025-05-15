@@ -61,7 +61,7 @@ defmodule WandererNotifier.ConfigProvider do
 
     # Initialize main app config with default values
     base_config = Keyword.get(config, :wanderer_notifier, %{})
-    base_config = Keyword.put_new(base_config, :port, 4000)
+    base_config = Map.put_new(base_config, :port, 4000)
     config = Keyword.put(config, :wanderer_notifier, base_config)
 
     # Ensure nested configs exist
