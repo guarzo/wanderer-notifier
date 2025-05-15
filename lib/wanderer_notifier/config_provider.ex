@@ -69,16 +69,24 @@ defmodule WandererNotifier.ConfigProvider do
 
     # Ensure nested configs exist
     config
-    |> ensure_nested_config([:wanderer_notifier, :features], [])
-    |> ensure_nested_config([:wanderer_notifier, :websocket], [])
+    |> ensure_nested_config([:wanderer_notifier, :features], %{})
+    |> ensure_nested_config([:wanderer_notifier, :websocket], %{enabled: true})
     |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
   end
 
   # Ensure a nested configuration exists
   defp ensure_nested_config(config, [key | rest], default) when is_list(config) do
-    current = Keyword.get(config, key, [])
+    current = Keyword.get(config, key, default)
     updated = ensure_nested_config(current, rest, default)
     Keyword.put(config, key, updated)
+  end
+
+  defp ensure_nested_config(config, [], default) when is_map(config) do
+    if map_size(config) > 0 do
+      config
+    else
+      default
+    end
   end
 
   defp ensure_nested_config(config, [], default) when is_list(config) do
