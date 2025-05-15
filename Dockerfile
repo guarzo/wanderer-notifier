@@ -39,7 +39,7 @@ ENV APP_VERSION=${APP_VERSION}
 ENV MIX_ENV=prod
 
 # Install Node.js and npm for asset compilation
-RUN set -o pipefail \
+RUN bash -c 'set -o pipefail \
   && apt-get update \
   && apt-get install -y --no-install-recommends \
        curl \
@@ -48,7 +48,7 @@ RUN set -o pipefail \
   && apt-get update \
   && apt-get install -y nodejs \
   && npm install -g npm@latest \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*'
 
 # 2a. Frontend: cache npm install
 WORKDIR /app/renderer
