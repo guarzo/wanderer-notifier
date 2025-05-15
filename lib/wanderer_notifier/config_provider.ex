@@ -15,10 +15,13 @@ defmodule WandererNotifier.ConfigProvider do
   Required by the Config.Provider behaviour.
   """
   def load(config, _opts) do
-    # Ensure we received a keyword list
-    unless Keyword.keyword?(config) do
-      raise ArgumentError, "Config provider expects a keyword list, got: #{inspect(config)}"
-    end
+    # Convert config to keyword list if it's not already
+    config =
+      if is_list(config) and not Keyword.keyword?(config) do
+        Enum.map(config, fn {k, v} -> {k, v} end)
+      else
+        config
+      end
 
     # Ensure config has the basic structure needed
     config = ensure_config_structure(config)
@@ -55,57 +58,27 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   # Ensure config has required structure to avoid "nil value" errors with put_in
-  defp ensure_config_structure(config) when is_map(config) do
-    # Initialize base app configs
-    config = Map.put_new(config, :nostrum, %{})
-
-    # Initialize main app config with default values
-    base_config = Map.get(config, :wanderer_notifier, %{})
-    base_config = Map.put_new(base_config, :port, 4000)
-    config = Map.put(config, :wanderer_notifier, base_config)
-
-    # Ensure nested configs exist
-    config
-    |> ensure_nested_config([:wanderer_notifier, :features], %{})
-    |> ensure_nested_config([:wanderer_notifier, :websocket], %{})
-    |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
-  end
-
   defp ensure_config_structure(config) when is_list(config) do
     # Initialize base app configs
-    config = Keyword.put_new(config, :nostrum, %{})
+    config = Keyword.put_new(config, :nostrum, [])
 
     # Initialize main app config with default values
-    base_config = Keyword.get(config, :wanderer_notifier, %{})
-    base_config = Map.put_new(base_config, :port, 4000)
+    base_config = Keyword.get(config, :wanderer_notifier, [])
+    base_config = Keyword.put_new(base_config, :port, 4000)
     config = Keyword.put(config, :wanderer_notifier, base_config)
 
     # Ensure nested configs exist
     config
-    |> ensure_nested_config([:wanderer_notifier, :features], %{})
-    |> ensure_nested_config([:wanderer_notifier, :websocket], %{})
+    |> ensure_nested_config([:wanderer_notifier, :features], [])
+    |> ensure_nested_config([:wanderer_notifier, :websocket], [])
     |> ensure_nested_config([:wanderer_notifier, :character_exclude_list], [])
   end
 
   # Ensure a nested configuration exists
-  defp ensure_nested_config(config, [key | rest], default) when is_map(config) do
-    current = Map.get(config, key, %{})
-    updated = ensure_nested_config(current, rest, default)
-    Map.put(config, key, updated)
-  end
-
   defp ensure_nested_config(config, [key | rest], default) when is_list(config) do
-    current = Keyword.get(config, key, %{})
+    current = Keyword.get(config, key, [])
     updated = ensure_nested_config(current, rest, default)
     Keyword.put(config, key, updated)
-  end
-
-  defp ensure_nested_config(config, [], default) when is_map(config) do
-    if map_size(config) > 0 do
-      config
-    else
-      default
-    end
   end
 
   defp ensure_nested_config(config, [], default) when is_list(config) do
