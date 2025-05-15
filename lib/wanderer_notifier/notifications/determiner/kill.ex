@@ -29,7 +29,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
         {:ok, %{should_notify: false, reason: "Notifications disabled"}}
 
       error ->
-        Logger.error("Error in Kill Determiner", error: inspect(error))
+        Logger.error("Error in Kill Determiner #{inspect(error)}")
         {:ok, %{should_notify: false, reason: "Error determining notification"}}
     end
   end
@@ -37,11 +37,24 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   defp should_notify_for_kill?(killmail) do
     system_id = get_kill_system_id(killmail)
     has_tracked_system = tracked_system?(system_id)
-    has_tracked_character = has_tracked_character?(killmail)
+    has_tracked_character = has_tracked_character?(killmail.esi_data)
     system_enabled = Config.system_notifications_enabled?()
     character_enabled = Config.character_notifications_enabled?()
 
-    # Always check tracking first for both system and character
+    check_notification_requirements(
+      has_tracked_system,
+      has_tracked_character,
+      system_enabled,
+      character_enabled
+    )
+  end
+
+  defp check_notification_requirements(
+         has_tracked_system,
+         has_tracked_character,
+         system_enabled,
+         character_enabled
+       ) do
     cond do
       not has_tracked_system and not has_tracked_character ->
         {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
@@ -49,16 +62,23 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       not Config.notifications_enabled?() ->
         {:ok, %{should_notify: false, reason: "Notifications disabled"}}
 
-      has_tracked_system and system_enabled ->
+      should_notify_for_system?(has_tracked_system, system_enabled) ->
         {:ok, %{should_notify: true, reason: nil}}
 
-      has_tracked_character and character_enabled ->
+      should_notify_for_character?(has_tracked_character, character_enabled) ->
         {:ok, %{should_notify: true, reason: nil}}
 
-      (has_tracked_system and not system_enabled) or
-          (has_tracked_character and not character_enabled) ->
+      true ->
         {:ok, %{should_notify: false, reason: "Not tracked or notifications disabled"}}
     end
+  end
+
+  defp should_notify_for_system?(has_tracked_system, system_enabled) do
+    has_tracked_system and system_enabled
+  end
+
+  defp should_notify_for_character?(has_tracked_character, character_enabled) do
+    has_tracked_character and character_enabled
   end
 
   @doc """

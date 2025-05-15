@@ -146,6 +146,17 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     WandererNotifier.Map.MapCharacterMock
     |> stub(:is_tracked?, fn _ -> {:ok, false} end)
 
+    # Configure ESI client with all required stubs
+    WandererNotifier.ESI.ClientMock
+    |> stub(:get_system, fn _id, _opts ->
+      {:ok,
+       %{
+         "name" => "Test System",
+         "constellation_id" => 20_000_001,
+         "security_status" => 0.5
+       }}
+    end)
+
     on_exit(fn ->
       # Restore original application env
       Application.put_env(:wanderer_notifier, :config, original_config)
@@ -224,13 +235,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       |> stub(:get_killmail, fn "12345", "test_hash", _opts ->
         {:ok,
          %{
-           "killmail_id" => 12345,
+           "killmail_id" => 12_345,
            "killmail_time" => "2024-01-01T00:00:00Z",
            "solar_system_id" => 30_000_142,
            "victim" => %{
              "character_id" => 1_000_001,
              "corporation_id" => 2_000_001,
-             "ship_type_id" => 12345
+             "ship_type_id" => 12_345
            },
            "attackers" => [
              %{
