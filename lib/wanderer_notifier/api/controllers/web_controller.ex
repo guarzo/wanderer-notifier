@@ -130,7 +130,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     stats = get_stats_safely()
 
     # Get features and limits
-    features = Config.features()
+    features = Config.features() |> Map.new()
     limits = Config.get_all_limits()
 
     # Extract services from stats for easier UI access

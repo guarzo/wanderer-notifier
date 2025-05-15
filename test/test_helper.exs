@@ -84,10 +84,6 @@ Mox.defmock(WandererNotifier.Killmail.ZKillClientMock,
   for: WandererNotifier.Killmail.ZKillClientBehaviour
 )
 
-Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
-  for: WandererNotifier.Notifications.Determiner.KillBehaviour
-)
-
 # Define DiscordNotifier mock
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
   for: WandererNotifier.Notifiers.Discord.Behaviour
@@ -219,10 +215,6 @@ defmodule WandererNotifier.TestHelpers do
   end
 end
 
-Mox.defmock(WandererNotifier.MockNotifierFactory,
-  for: WandererNotifier.Notifiers.NotifierFactoryBehaviour
-)
-
 # Set up default stubs for random killmail requests
 Mox.stub(WandererNotifier.Api.ESI.ClientMock, :get_killmail, fn _, _, _ ->
   {:ok,
@@ -252,3 +244,12 @@ end)
 Mox.stub(WandererNotifier.Api.ESI.ClientMock, :get_system, fn _, _ ->
   {:ok, %{"name" => "Test System"}}
 end)
+
+# Define mocks
+Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
+  for: WandererNotifier.Notifications.DiscordNotifierBehaviour
+)
+
+Mox.defmock(WandererNotifier.MockNotifierFactory,
+  for: WandererNotifier.Notifications.DispatcherBehaviour
+)

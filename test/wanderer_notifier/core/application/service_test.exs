@@ -46,11 +46,9 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
     |> stub(:send_kill_notification, fn _killmail, _type, _options -> :ok end)
     |> stub(:send_discord_embed, fn _embed -> :ok end)
 
-    stub(NotifierFactory, :notify, fn
-      :send_discord_embed_to_channel, [_channel_id, _embed] -> :ok
-      :send_message, [_message] -> :ok
-      _type, _args -> :ok
-    end)
+    # Correctly stub send_message/1 for NotifierFactory
+    NotifierFactory
+    |> stub(:send_message, fn _notification -> :ok end)
 
     # Stub the missing ESI.ServiceMock.get_system/2 call
     WandererNotifier.Api.ESI.ServiceMock

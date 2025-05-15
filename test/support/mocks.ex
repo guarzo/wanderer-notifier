@@ -278,6 +278,8 @@ defmodule WandererNotifier.MockConfig do
 
   def system_notifications_enabled?, do: true
 
+  def notifications_enabled?, do: true
+
   def get_feature_status do
     %{
       notifications_enabled: true,

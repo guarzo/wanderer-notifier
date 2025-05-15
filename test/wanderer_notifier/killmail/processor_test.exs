@@ -66,6 +66,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   defmodule MockDeduplication do
     def check(:kill, _id), do: {:ok, :new}
     def clear_key(_type, _id), do: {:ok, :cleared}
+    def configure(_enabled), do: :ok
   end
 
   # Define MockMetrics for the tests
@@ -107,11 +108,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       WandererNotifier.Map.MapCharacterMock
     )
 
-    Application.put_env(
-      :wanderer_notifier,
-      :deduplication_module,
-      WandererNotifier.MockDeduplication
-    )
+    Application.put_env(:wanderer_notifier, :deduplication_module, MockDeduplication)
 
     Application.put_env(
       :wanderer_notifier,
@@ -189,7 +186,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   describe "process_zkill_message/2" do
     setup do
       # Reset deduplication state for each test
-      WandererNotifier.MockDeduplication.configure(false)
+      MockDeduplication.configure(false)
       :ok
     end
 
@@ -304,7 +301,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   describe "process_kill_data/2" do
     setup do
       # Reset deduplication state for each test
-      WandererNotifier.MockDeduplication.configure(false)
+      MockDeduplication.configure(false)
       :ok
     end
 

@@ -5,7 +5,6 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
   """
 
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  @behaviour WandererNotifier.Notifications.Helpers.DeduplicationBehaviour
 
   # Default TTL of 12 hours if not configured
   @default_ttl 12 * 60 * 60
@@ -23,7 +22,6 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
     - {:ok, :duplicate} if this is a duplicate notification
     - {:error, reason} on error
   """
-  @impl true
   def check(type, id)
       when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
     cache_key = dedup_key(type, id)
@@ -49,7 +47,6 @@ defmodule WandererNotifier.Notifications.Helpers.Deduplication do
   @doc """
   Clears a deduplication key from the cache (for testing or manual reset).
   """
-  @impl true
   def clear_key(type, id)
       when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
     cache_key = dedup_key(type, id)
