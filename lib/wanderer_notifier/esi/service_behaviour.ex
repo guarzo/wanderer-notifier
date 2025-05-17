@@ -9,6 +9,12 @@ defmodule WandererNotifier.ESI.ServiceBehaviour do
 
   @callback get_killmail(killmail_id :: integer() | String.t(), hash :: String.t()) ::
               {:ok, map()} | {:error, term()}
+  @callback get_killmail(
+              killmail_id :: integer() | String.t(),
+              hash :: String.t(),
+              opts :: keyword()
+            ) ::
+              {:ok, map()} | {:error, term()}
   @callback get_character_info(id :: integer()) :: {:ok, map()} | {:error, any()}
   @callback get_character_info(id :: integer(), opts :: keyword()) ::
               {:ok, map()} | {:error, any()}

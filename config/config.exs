@@ -9,7 +9,8 @@ config :wanderer_notifier,
   scheduler_supervisor_enabled: true
 
 # Configure HTTP client
-config :wanderer_notifier, http_client: WandererNotifier.HttpClient.Httpoison
+config :wanderer_notifier,
+  http_client: WandererNotifier.HTTP.HttpoisonImpl
 
 # Configure MIME types
 config :mime, :types, %{
@@ -104,7 +105,7 @@ config :wanderer_notifier,
   cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
-  deduplication_module: WandererNotifier.Notifications.Helpers.Deduplication
+  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

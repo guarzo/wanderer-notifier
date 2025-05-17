@@ -14,6 +14,7 @@ defmodule WandererNotifier.Config do
     - Web/server
     - API
   """
+  @behaviour WandererNotifier.Config.Behaviour
   # --- General ENV helpers ---
   def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
   def fetch(key, default \\ nil), do: System.get_env(key) || default
@@ -38,6 +39,16 @@ defmodule WandererNotifier.Config do
 
   # --- General Application config ---
   def get(key, default \\ nil), do: Application.get_env(:wanderer_notifier, key, default)
+
+  @impl true
+  def get_config do
+    %{
+      notifications_enabled: notifications_enabled?(),
+      kill_notifications_enabled: kill_notifications_enabled?(),
+      system_notifications_enabled: system_notifications_enabled?(),
+      character_notifications_enabled: character_notifications_enabled?()
+    }
+  end
 
   # --- Version access ---
   @doc """
@@ -153,19 +164,29 @@ defmodule WandererNotifier.Config do
   end
 
   # --- Features ---
-  def features, do: get(:features, %{})
-  def feature_enabled?(flag), do: Map.get(features(), flag, false)
+  def features, do: get(:features, [])
+  def feature_enabled?(flag), do: Keyword.get(features(), flag, false)
 
+  @impl true
   def notifications_enabled? do
-    case Application.get_env(:wanderer_notifier, :config_module) do
-      nil -> true
-      mod -> mod.notifications_enabled?()
-    end
+    get(:notifications_enabled, true)
   end
 
-  def kill_notifications_enabled?, do: feature_enabled?(:kill_notifications_enabled)
-  def system_notifications_enabled?, do: feature_enabled?(:system_notifications_enabled)
-  def character_notifications_enabled?, do: feature_enabled?(:character_notifications_enabled)
+  @impl true
+  def kill_notifications_enabled? do
+    get(:kill_notifications_enabled, true)
+  end
+
+  @impl true
+  def system_notifications_enabled? do
+    get(:system_notifications_enabled, true)
+  end
+
+  @impl true
+  def character_notifications_enabled? do
+    get(:character_notifications_enabled, true)
+  end
+
   def status_messages_enabled?, do: feature_enabled?(:status_messages_enabled)
   def track_kspace?, do: feature_enabled?(:track_kspace)
 

@@ -42,7 +42,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
-  def get_killmail(kill_id, killmail_hash) do
+  def get_killmail(kill_id, killmail_hash, opts \\ []) do
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
 
     case cache_repo().get(cache_key) do
@@ -53,7 +53,7 @@ defmodule WandererNotifier.ESI.Service do
       {:error, _} ->
         AppLogger.api_debug("🔍 ESI cache miss for killmail", kill_id: kill_id)
 
-        case esi_client().get_killmail(kill_id, killmail_hash, retry_opts()) do
+        case esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts)) do
           {:ok, data} = result ->
             cache_repo().put(cache_key, data)
             result

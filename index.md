@@ -114,15 +114,7 @@ services:
       restart_policy:
         condition: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:4000/health",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -132,12 +124,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    volumes:
-      - wanderer_data:/app/data
-
-volumes:
-  wanderer_data:
-    name: wanderer_data
 ```
 
 #### 4. Run It

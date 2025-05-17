@@ -6,6 +6,7 @@ defmodule WandererNotifier.Killmail.Processor do
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Killmail.Context
+  alias WandererNotifier.Killmail.Killmail
 
   @type state :: term()
   @type kill_id :: String.t()
@@ -113,6 +114,10 @@ defmodule WandererNotifier.Killmail.Processor do
 
     # Process through pipeline and let it handle notification
     case killmail_pipeline().process_killmail(kill_data, context) do
+      {:ok, :skipped} ->
+        # Pipeline indicated this should be skipped
+        {:ok, :skipped}
+
       {:ok, _final_killmail} ->
         # Successfully processed and notified in pipeline
         {:ok, kill_id}
@@ -130,7 +135,38 @@ defmodule WandererNotifier.Killmail.Processor do
 
   # -- Private helpers -------------------------------------------------------
 
-  defp should_notify?(data) do
+  defp should_notify?(%Killmail{} = killmail) do
+    system_id = WandererNotifier.Notifications.Determiner.Kill.get_kill_system_id(killmail)
+
+    # Check system directly
+    is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
+
+    # Get the determination from the Kill Determiner
+    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+
+    # Only log errors and inconsistencies
+    case result do
+      {:ok, %{should_notify: false, reason: reason}} ->
+        # Log inconsistency between tracking and deduplication
+        if is_system_tracked && reason == "Duplicate kill" do
+          AppLogger.error(
+            "PROCESSOR INCONSISTENCY: System is tracked but deduplication prevented notification: #{killmail.killmail_id}"
+          )
+        end
+
+      {:ok, %{should_notify: true}} ->
+        :ok
+
+      _ ->
+        AppLogger.error(
+          "PROCESSOR: Unexpected result for kill_id=#{killmail.killmail_id}: #{inspect(result)}"
+        )
+    end
+
+    result
+  end
+
+  defp should_notify?(data) when is_map(data) do
     kill_id = Map.get(data, "killmail_id", "unknown")
     system_id = Map.get(data, "solar_system_id", "unknown")
 
@@ -138,7 +174,7 @@ defmodule WandererNotifier.Killmail.Processor do
     is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
 
     # Convert map to Killmail struct
-    killmail = %WandererNotifier.Killmail.Killmail{
+    killmail = %Killmail{
       killmail_id: kill_id,
       zkb: Map.get(data, "zkb", %{}),
       esi_data: data
@@ -198,9 +234,10 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp cache_repo do
-    Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache.CachexImpl)
-    |> then(fn repo ->
-      if Code.ensure_loaded?(repo), do: repo, else: WandererNotifier.Cache.SafeCache
-    end)
+    Application.get_env(
+      :wanderer_notifier,
+      :cache_repo,
+      WandererNotifier.Cache
+    )
   end
 end

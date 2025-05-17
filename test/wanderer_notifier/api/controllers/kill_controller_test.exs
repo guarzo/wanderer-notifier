@@ -10,8 +10,8 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
   @controller_opts KillController.init([])
   @mock_kill_id "12345678"
   @unknown_kill_id "999999999"
-  @mock_zkb %{"hash" => "hash123", "totalValue" => 1_000_000.0}
-  @mock_esi_data %{"killmail_time" => "2023-06-15T12:34:56Z", "solar_system_id" => 30_000_142}
+  @mock_zkb [hash: "hash123", totalValue: 1_000_000.0]
+  @mock_esi_data [killmail_time: "2023-06-15T12:34:56Z", solar_system_id: 30_000_142]
 
   setup do
     # Configure the application to use our mock cache module

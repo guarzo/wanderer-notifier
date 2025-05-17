@@ -21,16 +21,16 @@ defmodule WandererNotifier.Killmail.NotificationTest do
       ship_name: "Test Ship",
       system_name: "Test System",
       attackers: [
-        %{
-          "character_name" => "Test Attacker",
-          "corporation_name" => "Test Attacker Corp",
-          "corporation_ticker" => "TAC"
-        }
+        [
+          character_name: "Test Attacker",
+          corporation_name: "Test Attacker Corp",
+          corporation_ticker: "TAC"
+        ]
       ],
-      zkb: %{
-        "totalValue" => 1_000_000,
-        "points" => 10
-      }
+      zkb: [
+        totalValue: 1_000_000,
+        points: 10
+      ]
     }
 
     # Set application env to use our mocks for dependency injection

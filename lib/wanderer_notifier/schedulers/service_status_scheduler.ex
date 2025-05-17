@@ -16,8 +16,7 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
   end
 
   defp generate_service_status_report do
-    alias WandererNotifier.Logger.Logger, as: AppLogger
-    alias WandererNotifier.Notifications.Helpers.Deduplication
+    alias WandererNotifier.Notifications.Deduplication
 
     uptime_seconds = calculate_uptime()
     days = div(uptime_seconds, 86_400)

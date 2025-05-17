@@ -21,28 +21,26 @@ defmodule WandererNotifier.ConfigProvider do
   def load(config, _opts) do
     config =
       case config do
-        nil -> %{}
-        [] -> %{}
-        list when is_list(list) -> Map.new(list)
-        map when is_map(map) -> map
+        nil -> []
+        [] -> []
+        list when is_list(list) -> list
+        map when is_map(map) -> Map.to_list(map)
       end
 
-    config = Map.put(config, :wanderer_notifier, %{})
-    config = put_in(config, [:wanderer_notifier, :features], %{})
+    config = Keyword.put(config, :wanderer_notifier, [])
+    config = put_in(config, [:wanderer_notifier, :features], [])
 
     config
     |> put_in([:wanderer_notifier, :port], parse_port())
     |> put_in(
       [:wanderer_notifier, :features],
-      %{
-        notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
-        kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
-        system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
-        character_notifications_enabled:
-          parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
-        status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
-        track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
-      }
+      notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
+      kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
+      system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
+      character_notifications_enabled:
+        parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
+      status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
+      track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
     )
     |> put_in([:wanderer_notifier, :character_exclude_list], parse_character_exclude_list())
   end

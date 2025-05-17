@@ -8,7 +8,7 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-  alias WandererNotifier.Notifications.Helpers.Deduplication
+  alias WandererNotifier.Notifications.Deduplication
   alias WandererNotifier.Map.MapCharacter
 
   @doc """

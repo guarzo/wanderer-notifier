@@ -357,22 +357,22 @@ defmodule WandererNotifier.Notifiers.Discord.NotifierTest do
       killmail_map = %{
         __struct__: Killmail,
         killmail_id: "12345",
-        zkb: %{"totalValue" => 1_000_000, "points" => 10},
-        esi_data: %{
-          "solar_system_id" => "30000142",
-          "victim" => %{
-            "character_id" => "1000001",
-            "corporation_id" => "2000001",
-            "ship_type_id" => "3000001"
-          },
-          "attackers" => [
-            %{
-              "character_id" => "1000002",
-              "corporation_id" => "2000002",
-              "ship_type_id" => "3000002"
-            }
+        zkb: [totalValue: 1_000_000, points: 10],
+        esi_data: [
+          solar_system_id: "30000142",
+          victim: [
+            character_id: "1000001",
+            corporation_id: "2000001",
+            ship_type_id: "3000001"
+          ],
+          attackers: [
+            [
+              character_id: "1000002",
+              corporation_id: "2000002",
+              ship_type_id: "3000002"
+            ]
           ]
-        }
+        ]
       }
 
       # Test with map data

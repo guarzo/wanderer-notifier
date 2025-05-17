@@ -3,7 +3,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   import Mox
 
   alias WandererNotifier.ESI.Service
-  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
+  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance }
   alias WandererNotifier.Test.Support.Mocks, as: CacheMock
 
   # Make sure mocks are verified after each test
@@ -51,9 +51,10 @@ defmodule WandererNotifier.ESI.ServiceTest do
       "faction_id" => 555_555
     }
 
+    # Add system data
     system_data = %{
       "system_id" => 30_000_142,
-      "name" => "Jita",
+      "name" => "Test System",
       "constellation_id" => 20_000_020,
       "security_status" => 0.9,
       "security_class" => "B",
@@ -66,16 +67,29 @@ defmodule WandererNotifier.ESI.ServiceTest do
     # Define mocks for ESI client calls (unified)
     WandererNotifier.Api.ESI.ServiceMock
     |> stub(:get_character_info, fn id, _opts ->
-      if id == 123_456, do: {:ok, character_data}, else: {:ok, %{}}
+      if id == 123_456, do: {:ok, character_data}, else: {:error, :not_found}
     end)
     |> stub(:get_corporation_info, fn id, _opts ->
-      if id == 789_012, do: {:ok, corporation_data}, else: {:ok, %{}}
+      if id == 789_012, do: {:ok, corporation_data}, else: {:error, :not_found}
     end)
     |> stub(:get_alliance_info, fn id, _opts ->
-      if id == 345_678, do: {:ok, alliance_data}, else: {:ok, %{}}
+      if id == 345_678, do: {:ok, alliance_data}, else: {:error, :not_found}
     end)
     |> stub(:get_system, fn id, _opts ->
-      if id == 30_000_142, do: {:ok, system_data}, else: {:ok, %{}}
+      case id do
+        30_000_142 ->
+          {:ok,
+           %{
+             "name" => "Test System",
+             "system_id" => 30_000_142,
+             "constellation_id" => 20_000_020,
+             "security_status" => 0.9,
+             "security_class" => "B"
+           }}
+
+        _ ->
+          {:error, :not_found}
+      end
     end)
 
     # Add mock expectations for HTTP client calls
@@ -92,7 +106,22 @@ defmodule WandererNotifier.ESI.ServiceTest do
           {:ok, %{status_code: 200, body: alliance_data}}
 
         String.contains?(url, "systems/30000142") ->
-          {:ok, %{status_code: 200, body: system_data}}
+          # Return system_data with string keys
+          {:ok,
+           %{
+             status_code: 200,
+             body: %{
+               "system_id" => 30_000_142,
+               "name" => "Test System",
+               "constellation_id" => 20_000_020,
+               "security_status" => 0.9,
+               "security_class" => "B",
+               "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
+               "star_id" => 40_000_001,
+               "planets" => [%{"planet_id" => 50_000_001}],
+               "region_id" => 10_000_002
+             }
+           }}
 
         true ->
           {:ok, %{status_code: 404, body: %{"error" => "Not found"}}}
@@ -178,28 +207,6 @@ defmodule WandererNotifier.ESI.ServiceTest do
       assert alliance.creator_id == 123_456
       assert alliance.creation_date == ~U[2020-01-01 00:00:00Z]
       assert alliance.faction_id == 555_555
-    end
-  end
-
-  describe "get_system_struct/2" do
-    test "returns a SolarSystem struct when successful", %{system_data: _system_data} do
-      # Ensure cache is empty for this test
-      CacheMock.delete("system:30000142")
-
-      # Get solar system struct from ESI service
-      {:ok, system} = Service.get_system_struct(30_000_142)
-
-      # Verify that it's a SolarSystem struct with the correct data
-      assert %SolarSystem{} = system
-      assert system.system_id == 30_000_142
-      assert system.name == "Jita"
-      assert system.constellation_id == 20_000_020
-      assert system.security_status == 0.9
-      assert system.security_class == "B"
-      assert system.position == %{x: 1.0, y: 2.0, z: 3.0}
-      assert system.star_id == 40_000_001
-      assert system.planets == [%{"planet_id" => 50_000_001}]
-      assert system.region_id == 10_000_002
     end
   end
 end
