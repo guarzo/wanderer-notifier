@@ -82,7 +82,6 @@ defmodule WandererNotifier.HttpClient.TestBehaviour do
 end
 
 # Define all mocks
-Mox.defmock(WandererNotifier.MockHTTP, for: WandererNotifier.HTTP)
 Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
 
 Mox.defmock(WandererNotifier.Killmail.ZKillClientMock,

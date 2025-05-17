@@ -158,52 +158,65 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   # Helper function to process ZKill responses
   defp process_zkill_response(response, url) do
-    if is_list(response) do
-      # Handle list type responses (direct JSON array)
-      # Take the limit from the URL if possible
-      limit =
-        case Regex.run(~r/limit\/(\d+)\//, url) do
-          [_, limit_str] -> String.to_integer(limit_str)
-          # Default limit
-          _ -> 10
-        end
+    cond do
+      is_list(response) ->
+        process_list_response(response, url)
 
-      # Only take the number we need before formatting
-      kills = Enum.take(response, limit)
+      is_binary(response) ->
+        process_binary_response(response, url)
 
-      # Try to format them - if it fails, return a safe message
-      try do
-        kill_strings = format_kills_from_list(kills)
-        {:ok, kill_strings}
-      rescue
-        e ->
-          Logger.error("Error formatting kills list: #{Exception.message(e)}")
-          {:ok, ["Error processing kill data"]}
-      end
-    else
-      # Try to decode JSON if it's a string
-      if is_binary(response) do
-        try do
-          case Jason.decode(response) do
-            {:ok, decoded} when is_list(decoded) ->
-              process_zkill_response(decoded, url)
-
-            {:ok, decoded} when is_map(decoded) ->
-              Logger.info("Received map response from ZKill, expected list")
-              {:ok, ["ZKill API response format changed"]}
-
-            _ ->
-              {:ok, ["ZKill API data unavailable at this time"]}
-          end
-        rescue
-          e ->
-            Logger.error("Error decoding JSON response: #{Exception.message(e)}")
-            {:ok, ["Error processing ZKill data"]}
-        end
-      else
-        # Handle any other response types with a safe fallback
+      true ->
+        # Safe fallback for any other response types
         {:ok, ["ZKill API data unavailable at this time"]}
+    end
+  end
+
+  # Process list type responses (direct JSON array)
+  defp process_list_response(response, url) do
+    # Extract limit from URL or use default
+    limit = extract_limit_from_url(url)
+
+    # Only take the number we need before formatting
+    kills = Enum.take(response, limit)
+
+    # Try to format them - if it fails, return a safe message
+    try do
+      kill_strings = format_kills_from_list(kills)
+      {:ok, kill_strings}
+    rescue
+      e ->
+        Logger.error("Error formatting kills list: #{Exception.message(e)}")
+        {:ok, ["Error processing kill data"]}
+    end
+  end
+
+  # Extract limit parameter from URL or use default
+  defp extract_limit_from_url(url) do
+    case Regex.run(~r/limit\/(\d+)\//, url) do
+      [_, limit_str] -> String.to_integer(limit_str)
+      # Default limit
+      _ -> 10
+    end
+  end
+
+  # Process string/binary response, likely JSON that needs decoding
+  defp process_binary_response(response, url) do
+    try do
+      case Jason.decode(response) do
+        {:ok, decoded} when is_list(decoded) ->
+          process_zkill_response(decoded, url)
+
+        {:ok, decoded} when is_map(decoded) ->
+          Logger.info("Received map response from ZKill, expected list")
+          {:ok, ["ZKill API response format changed"]}
+
+        _ ->
+          {:ok, ["ZKill API data unavailable at this time"]}
       end
+    rescue
+      e ->
+        Logger.error("Error decoding JSON response: #{Exception.message(e)}")
+        {:ok, ["Error processing ZKill data"]}
     end
   end
 
@@ -354,34 +367,40 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp get_ship_name(ship_type_id, esi_service) do
     require Logger
 
-    # Convert ship_type_id to integer if it's a string
-    ship_type_id =
-      if is_binary(ship_type_id) do
-        case Integer.parse(ship_type_id) do
-          {id, _} -> id
-          :error -> ship_type_id
-        end
-      else
-        ship_type_id
-      end
+    # Normalize the ship_type_id to ensure it's an integer
+    normalized_id = normalize_id(ship_type_id)
 
-    case esi_service.get_ship_type_name(ship_type_id, []) do
-      {:ok, %{"name" => name}} ->
-        name
+    # Query the ESI service and extract the name
+    extract_ship_name_from_esi_response(esi_service.get_ship_type_name(normalized_id, []))
+  end
 
-      {:ok, data} when is_map(data) ->
-        Map.get(data, "name", "Unknown Ship")
-
-      {:ok, data} when is_binary(data) ->
-        case Jason.decode(data) do
-          {:ok, %{"name" => name}} -> name
-          _ -> "Unknown Ship"
-        end
-
-      error ->
-        Logger.debug("Failed to get ship name: #{inspect(error)}")
-        "Unknown Ship"
+  # Helper to normalize IDs that might be strings to integers
+  defp normalize_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed_id, _} -> parsed_id
+      :error -> id
     end
+  end
+
+  defp normalize_id(id), do: id
+
+  # Extract ship name from ESI service response
+  defp extract_ship_name_from_esi_response({:ok, %{"name" => name}}), do: name
+
+  defp extract_ship_name_from_esi_response({:ok, data}) when is_map(data) do
+    Map.get(data, "name", "Unknown Ship")
+  end
+
+  defp extract_ship_name_from_esi_response({:ok, data}) when is_binary(data) do
+    case Jason.decode(data) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "Unknown Ship"
+    end
+  end
+
+  defp extract_ship_name_from_esi_response(error) do
+    Logger.debug("Failed to get ship name: #{inspect(error)}")
+    "Unknown Ship"
   end
 
   # Get victim name from victim ID
@@ -390,34 +409,30 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp get_victim_name(victim_id, esi_service) do
     require Logger
 
-    # Convert victim_id to integer if it's a string
-    victim_id =
-      if is_binary(victim_id) do
-        case Integer.parse(victim_id) do
-          {id, _} -> id
-          :error -> victim_id
-        end
-      else
-        victim_id
-      end
+    # Normalize the victim_id to ensure it's an integer
+    normalized_id = normalize_id(victim_id)
 
-    case esi_service.get_character_info(victim_id, []) do
-      {:ok, %{"name" => name}} ->
-        name
+    # Query the ESI service and extract the name
+    extract_character_name_from_esi_response(esi_service.get_character_info(normalized_id, []))
+  end
 
-      {:ok, data} when is_map(data) ->
-        Map.get(data, "name", "Unknown")
+  # Extract character name from ESI service response
+  defp extract_character_name_from_esi_response({:ok, %{"name" => name}}), do: name
 
-      {:ok, data} when is_binary(data) ->
-        case Jason.decode(data) do
-          {:ok, %{"name" => name}} -> name
-          _ -> "Unknown"
-        end
+  defp extract_character_name_from_esi_response({:ok, data}) when is_map(data) do
+    Map.get(data, "name", "Unknown")
+  end
 
-      error ->
-        Logger.debug("Failed to get character name: #{inspect(error)}")
-        "Unknown"
+  defp extract_character_name_from_esi_response({:ok, data}) when is_binary(data) do
+    case Jason.decode(data) do
+      {:ok, %{"name" => name}} -> name
+      _ -> "Unknown"
     end
+  end
+
+  defp extract_character_name_from_esi_response(error) do
+    Logger.debug("Failed to get character name: #{inspect(error)}")
+    "Unknown"
   end
 
   # Format kill time into a relative time string
@@ -632,9 +647,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   end
 
   defp http_client do
-    # Use the HttpClient.Httpoison module directly, which has the get/3 function
-    # This is the HTTP client that was originally expected here
-    WandererNotifier.HttpClient.Httpoison
+    # Use the configured HTTP client
+    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
   end
 
   defp make_request_with_retry(request_fn, r) when r < @max_retries do

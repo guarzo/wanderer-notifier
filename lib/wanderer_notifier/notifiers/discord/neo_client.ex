@@ -402,52 +402,65 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     try do
       AppLogger.api_debug("Normalizing channel ID", raw_channel_id: "#{inspect(channel_id)}")
 
-      # Remove any surrounding quotes if present
-      clean_id =
-        if is_binary(channel_id) do
-          channel_id
-          |> String.trim()
-          |> String.trim("\"")
-        else
-          channel_id
-        end
+      # First clean up the ID
+      clean_id = clean_channel_id(channel_id)
 
-      case clean_id do
-        channel_id when is_binary(channel_id) and channel_id != "" ->
-          case Integer.parse(channel_id) do
-            {int_id, _} ->
-              AppLogger.api_debug("Successfully parsed channel ID as integer",
-                raw: channel_id,
-                parsed: int_id
-              )
-
-              int_id
-
-            :error ->
-              AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
-                channel_id: channel_id
-              )
-
-              nil
-          end
-
-        channel_id when is_binary(channel_id) and channel_id == "" ->
-          AppLogger.api_warn("Empty channel ID string")
-          nil
-
-        channel_id when is_integer(channel_id) ->
-          AppLogger.api_debug("Channel ID is already an integer", channel_id: channel_id)
-          channel_id
-
-        nil ->
-          AppLogger.api_warn("Channel ID is nil")
-          nil
-      end
+      # Then process the cleaned ID
+      process_cleaned_channel_id(clean_id)
     rescue
       e ->
         AppLogger.api_error("Error normalizing channel ID",
           error: Exception.message(e),
           stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        nil
+    end
+  end
+
+  # Clean up the channel ID
+  defp clean_channel_id(channel_id) when is_binary(channel_id) do
+    channel_id
+    |> String.trim()
+    |> String.trim("\"")
+  end
+
+  defp clean_channel_id(channel_id), do: channel_id
+
+  # Process the cleaned channel ID
+  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id != "" do
+    parse_string_channel_id(channel_id)
+  end
+
+  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id == "" do
+    AppLogger.api_warn("Empty channel ID string")
+    nil
+  end
+
+  defp process_cleaned_channel_id(channel_id) when is_integer(channel_id) do
+    AppLogger.api_debug("Channel ID is already an integer", channel_id: channel_id)
+    channel_id
+  end
+
+  defp process_cleaned_channel_id(nil) do
+    AppLogger.api_warn("Channel ID is nil")
+    nil
+  end
+
+  # Parse string channel ID to integer if possible
+  defp parse_string_channel_id(channel_id) do
+    case Integer.parse(channel_id) do
+      {int_id, _} ->
+        AppLogger.api_debug("Successfully parsed channel ID as integer",
+          raw: channel_id,
+          parsed: int_id
+        )
+
+        int_id
+
+      :error ->
+        AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
+          channel_id: channel_id
         )
 
         nil

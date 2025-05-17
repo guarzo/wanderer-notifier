@@ -53,12 +53,16 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       WandererNotifier.Notifications.MockDeduplication
     )
 
-    Application.put_env(:wanderer_notifier, :http_module, WandererNotifier.MockHTTP)
+    Application.put_env(
+      :wanderer_notifier,
+      :http_module,
+      WandererNotifier.HttpClient.HttpoisonMock
+    )
 
     Application.put_env(:wanderer_notifier, :esi_client, WandererNotifier.Api.ESI.ServiceMock)
 
     # Set up HTTP mock expectations
-    WandererNotifier.MockHTTP
+    WandererNotifier.HttpClient.HttpoisonMock
     |> stub(:get, fn url, _headers ->
       case url do
         "https://esi.evetech.net/latest/universe/systems/30000142/" ->

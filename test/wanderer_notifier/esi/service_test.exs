@@ -19,7 +19,11 @@ defmodule WandererNotifier.ESI.ServiceTest do
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
 
     # Set HTTP client mock
-    Application.put_env(:wanderer_notifier, :http_client, WandererNotifier.MockHTTP)
+    Application.put_env(
+      :wanderer_notifier,
+      :http_client,
+      WandererNotifier.HttpClient.HttpoisonMock
+    )
 
     # Setup for character tests
     character_data = %{
@@ -93,7 +97,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
     end)
 
     # Add mock expectations for HTTP client calls
-    WandererNotifier.MockHTTP
+    WandererNotifier.HttpClient.HttpoisonMock
     |> stub(:get, fn url, _headers ->
       cond do
         String.contains?(url, "characters/123456") ->
