@@ -3,7 +3,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
   import Mox
 
   alias WandererNotifier.ESI.Service
-  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance }
+  alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Test.Support.Mocks, as: CacheMock
 
   # Make sure mocks are verified after each test
