@@ -11,6 +11,7 @@ defmodule WandererNotifier.HTTP do
 
   @callback get(url()) :: response()
   @callback get(url(), headers()) :: response()
+  @callback get(url(), headers(), options()) :: response()
   @callback post(url(), body(), headers()) :: response()
   @callback post_json(url(), body(), headers(), options()) :: response()
   @callback request(atom(), url(), headers(), body(), options()) :: response()

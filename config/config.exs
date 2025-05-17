@@ -10,7 +10,8 @@ config :wanderer_notifier,
 
 # Configure HTTP client
 config :wanderer_notifier,
-  http_client: WandererNotifier.HTTP.HttpoisonImpl
+  http_client: WandererNotifier.HTTP.HttpoisonImpl,
+  http_client_alt: WandererNotifier.HttpClient.Httpoison
 
 # Configure MIME types
 config :mime, :types, %{

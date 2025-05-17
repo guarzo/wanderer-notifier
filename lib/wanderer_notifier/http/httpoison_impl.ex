@@ -10,6 +10,15 @@ defmodule WandererNotifier.HTTP.HttpoisonImpl do
     HTTPoison.get(url, headers)
   end
 
+  @doc """
+  Get request with options for timeout and other settings.
+  This is needed by the ZKill client that calls get/3.
+  """
+  @impl true
+  def get(url, headers, options) do
+    HTTPoison.get(url, headers, options)
+  end
+
   @impl true
   def post(url, body, headers \\ []) do
     HTTPoison.post(url, body, headers)

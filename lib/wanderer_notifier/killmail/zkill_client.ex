@@ -137,9 +137,18 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         # Process the response based on its type
         process_zkill_response(response, url)
 
-      error ->
-        Logger.error("ZKill API error: #{inspect(error)}")
-        {:error, error}
+      {:error, error_details} = _error ->
+        # Get detailed info about the error type and what happened
+        error_type = typemap(error_details)
+        status_code = Process.get(:last_zkill_status, nil)
+        error_str = inspect(error_details)
+
+        # Log with detailed information
+        Logger.error(
+          "[ZKill API] Failed after retries: Error type: #{error_type}, Status: #{status_code}, Details: #{error_str}"
+        )
+
+        {:error, error_details}
     end
   rescue
     e ->
@@ -245,6 +254,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
       # Get kill details from ESI
       kill_details = get_kill_details(kill_id, hash, esi_service)
 
+      # Parse kill_details if it's a string (JSON)
+      kill_details = parse_if_string(kill_details)
+
       # Extract ship and victim information
       {ship_type_id, victim_id} = extract_ship_and_victim_ids(kill_details)
 
@@ -264,6 +276,18 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end
   end
 
+  # Parse a string to JSON if needed
+  defp parse_if_string(nil), do: nil
+
+  defp parse_if_string(data) when is_binary(data) do
+    case Jason.decode(data) do
+      {:ok, parsed} -> parsed
+      {:error, _} -> %{}
+    end
+  end
+
+  defp parse_if_string(data), do: data
+
   # Extract the kill value from ZKB data
   defp extract_kill_value(zkb) do
     Map.get(zkb, "totalValue", 0) || Map.get(zkb, "destroyedValue", 0) || 0
@@ -273,9 +297,27 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp get_kill_details(_kill_id, nil, _esi_service), do: nil
 
   defp get_kill_details(kill_id, hash, esi_service) do
+    require Logger
+
     case esi_service.get_killmail(kill_id, hash) do
-      {:ok, details} -> details
-      _ -> nil
+      {:ok, details} ->
+        # Log a small portion of the response to help with debugging
+        response_preview =
+          case details do
+            str when is_binary(str) -> String.slice(str, 0, 100)
+            map when is_map(map) -> inspect(map, limit: 2)
+            other -> inspect(other)
+          end
+
+        Logger.debug(
+          "ESI killmail response format: type=#{typemap(details)}, preview=#{response_preview}"
+        )
+
+        details
+
+      {:error, reason} ->
+        Logger.warning("Failed to get kill details from ESI: #{inspect(reason)}")
+        nil
     end
   end
 
@@ -283,21 +325,62 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp extract_ship_and_victim_ids(nil), do: {nil, nil}
 
   defp extract_ship_and_victim_ids(kill_details) do
-    victim = Map.get(kill_details, "victim", %{})
+    require Logger
 
-    {
-      Map.get(victim, "ship_type_id"),
-      Map.get(victim, "character_id")
-    }
+    try do
+      victim = Map.get(kill_details, "victim", %{})
+
+      ship_type_id = Map.get(victim, "ship_type_id")
+      character_id = Map.get(victim, "character_id")
+
+      Logger.debug(
+        "Extracted IDs from kill details - Ship Type ID: #{inspect(ship_type_id)}, Character ID: #{inspect(character_id)}"
+      )
+
+      {ship_type_id, character_id}
+    rescue
+      e ->
+        Logger.warning(
+          "Error extracting ship/victim IDs: #{Exception.message(e)}, data type: #{typemap(kill_details)}, data: #{inspect(kill_details, limit: 5)}"
+        )
+
+        {nil, nil}
+    end
   end
 
   # Get ship name from ship type ID
   defp get_ship_name(nil, _esi_service), do: "Unknown Ship"
 
   defp get_ship_name(ship_type_id, esi_service) do
+    require Logger
+
+    # Convert ship_type_id to integer if it's a string
+    ship_type_id =
+      if is_binary(ship_type_id) do
+        case Integer.parse(ship_type_id) do
+          {id, _} -> id
+          :error -> ship_type_id
+        end
+      else
+        ship_type_id
+      end
+
     case esi_service.get_ship_type_name(ship_type_id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "Unknown Ship"
+      {:ok, %{"name" => name}} ->
+        name
+
+      {:ok, data} when is_map(data) ->
+        Map.get(data, "name", "Unknown Ship")
+
+      {:ok, data} when is_binary(data) ->
+        case Jason.decode(data) do
+          {:ok, %{"name" => name}} -> name
+          _ -> "Unknown Ship"
+        end
+
+      error ->
+        Logger.debug("Failed to get ship name: #{inspect(error)}")
+        "Unknown Ship"
     end
   end
 
@@ -305,9 +388,35 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   defp get_victim_name(nil, _esi_service), do: "Unknown"
 
   defp get_victim_name(victim_id, esi_service) do
+    require Logger
+
+    # Convert victim_id to integer if it's a string
+    victim_id =
+      if is_binary(victim_id) do
+        case Integer.parse(victim_id) do
+          {id, _} -> id
+          :error -> victim_id
+        end
+      else
+        victim_id
+      end
+
     case esi_service.get_character_info(victim_id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "Unknown"
+      {:ok, %{"name" => name}} ->
+        name
+
+      {:ok, data} when is_map(data) ->
+        Map.get(data, "name", "Unknown")
+
+      {:ok, data} when is_binary(data) ->
+        case Jason.decode(data) do
+          {:ok, %{"name" => name}} -> name
+          _ -> "Unknown"
+        end
+
+      error ->
+        Logger.debug("Failed to get character name: #{inspect(error)}")
+        "Unknown"
     end
   end
 
@@ -387,11 +496,21 @@ defmodule WandererNotifier.Killmail.ZKillClient do
           {:ok, body}
 
         {:ok, %{status_code: status, body: body}} ->
+          # Parse body to see if there's additional error information
+          body_preview = sample(body)
+          parsed_error = try_parse_error_body(body)
+
           AppLogger.api_error("ZKill HTTP error", %{
             status: status,
             url: url,
-            sample: sample(body)
+            sample: body_preview,
+            parsed_error: parsed_error
           })
+
+          # Log the error with more details
+          Logger.error(
+            "[ZKill API] HTTP error: Status #{status}, URL: #{url}, Response: #{body_preview}, Parsed: #{inspect(parsed_error)}"
+          )
 
           {:error, {:http_error, status}}
 
@@ -423,27 +542,33 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     rescue
       e ->
         stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+        error_struct = inspect(e.__struct__)
+        error_message = Exception.message(e)
 
         AppLogger.api_error("Exception in ZKill HTTP request", %{
-          error_type: inspect(e.__struct__),
-          message: Exception.message(e),
+          error_type: error_struct,
+          message: error_message,
           url: url,
           stacktrace: stacktrace
         })
 
-        {:error, {:exception, Exception.message(e), inspect(e.__struct__)}}
+        Logger.error("[ZKill API] Exception: #{error_struct} - #{error_message}\n#{stacktrace}")
+        {:error, {:exception, error_message, error_struct}}
     catch
       kind, reason ->
         stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+        reason_type = typemap(reason)
+        reason_str = inspect(reason)
 
         AppLogger.api_error("Caught error in ZKill HTTP request", %{
           kind: kind,
-          reason_type: typemap(reason),
-          reason: inspect(reason),
+          reason_type: reason_type,
+          reason: reason_str,
           url: url,
           stacktrace: stacktrace
         })
 
+        Logger.error("[ZKill API] Caught #{kind}: #{reason_type} - #{reason_str}\n#{stacktrace}")
         {:error, {:caught, {kind, reason}}}
     end
   end
@@ -507,7 +632,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   end
 
   defp http_client do
-    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
+    # Use the HttpClient.Httpoison module directly, which has the get/3 function
+    # This is the HTTP client that was originally expected here
+    WandererNotifier.HttpClient.Httpoison
   end
 
   defp make_request_with_retry(request_fn, r) when r < @max_retries do
@@ -517,12 +644,17 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       {:error, :timeout} ->
         # Timeouts are transient, we should retry
+        Process.put(:last_zkill_error, :timeout)
+        Process.put(:last_zkill_status, nil)
         AppLogger.api_warn("ZKill API timeout, retrying", %{attempt: r + 1, max: @max_retries})
         :timer.sleep(@retry_backoff_ms * (r + 1))
         make_request_with_retry(request_fn, r + 1)
 
       {:error, :connection_refused} ->
         # Connection refusals indicate service might be down, long backoff
+        Process.put(:last_zkill_error, :connection_refused)
+        Process.put(:last_zkill_status, nil)
+
         AppLogger.api_warn("ZKill API connection refused, retrying with longer delay", %{
           attempt: r + 1,
           max: @max_retries
@@ -533,6 +665,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       {:error, :connection_closed} ->
         # Connection closed might be temporary
+        Process.put(:last_zkill_error, :connection_closed)
+        Process.put(:last_zkill_status, nil)
+
         AppLogger.api_warn("ZKill API connection closed, retrying", %{
           attempt: r + 1,
           max: @max_retries
@@ -543,6 +678,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       {:error, {:exception, message, type}} ->
         # Log detailed exception information
+        Process.put(:last_zkill_error, {:exception, message, type})
+        Process.put(:last_zkill_status, nil)
+
         AppLogger.api_error("ZKill API exception, retrying", %{
           attempt: r + 1,
           max: @max_retries,
@@ -555,6 +693,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       {:error, {:httpoison_error, reason}} ->
         # Log specific HTTPoison error
+        Process.put(:last_zkill_error, {:httpoison_error, reason})
+        Process.put(:last_zkill_status, nil)
+
         AppLogger.api_error("ZKill API HTTPoison error, retrying", %{
           attempt: r + 1,
           max: @max_retries,
@@ -564,9 +705,25 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         :timer.sleep(@retry_backoff_ms * (r + 1))
         make_request_with_retry(request_fn, r + 1)
 
+      {:error, {:http_error, status}} ->
+        # Store HTTP status code separately
+        Process.put(:last_zkill_error, :http_error)
+        Process.put(:last_zkill_status, status)
+
+        AppLogger.api_error("ZKill API HTTP error, retrying", %{
+          attempt: r + 1,
+          max: @max_retries,
+          status: status
+        })
+
+        :timer.sleep(@retry_backoff_ms * (r + 1))
+        make_request_with_retry(request_fn, r + 1)
+
       {:error, error} ->
         # Log the actual error data structure in detail
         error_type = typemap(error)
+        Process.put(:last_zkill_error, {error_type, inspect(error)})
+        Process.put(:last_zkill_status, nil)
 
         AppLogger.api_error("ZKill API error, retrying", %{
           attempt: r + 1,
@@ -581,7 +738,40 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   end
 
   defp make_request_with_retry(_request_fn, retries) do
-    AppLogger.api_error("ZKill API max retries reached", %{retries: retries})
+    # Improve error logging with more detailed information
+    AppLogger.api_error("ZKill API max retries reached", %{
+      retries: retries,
+      max_allowed: @max_retries,
+      last_error: Process.get(:last_zkill_error, "unknown"),
+      last_status: Process.get(:last_zkill_status, "unknown")
+    })
+
     {:error, :max_retries_reached}
   end
+
+  # Try to parse error body for additional information
+  defp try_parse_error_body(body) when is_binary(body) do
+    try do
+      case Jason.decode(body) do
+        {:ok, json} when is_map(json) ->
+          # Extract common error fields from JSON responses
+          %{
+            error: Map.get(json, "error"),
+            message: Map.get(json, "message"),
+            code: Map.get(json, "code"),
+            description: Map.get(json, "description")
+          }
+          |> Enum.filter(fn {_, v} -> v != nil end)
+          |> Map.new()
+
+        _ ->
+          # If it's not JSON or not a map, return nil
+          nil
+      end
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp try_parse_error_body(_), do: nil
 end
