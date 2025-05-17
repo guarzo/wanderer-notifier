@@ -4,8 +4,8 @@ defmodule WandererNotifier.License.Client do
   Provides functions for validating licenses and bots.
   """
   require Logger
-  alias WandererNotifier.Api.Http.Client, as: HttpClient
-  alias WandererNotifier.Config.Config
+  alias WandererNotifier.HttpClient.Httpoison, as: HttpClient
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # Define the behaviour callbacks
@@ -24,9 +24,6 @@ defmodule WandererNotifier.License.Client do
   """
   def validate_bot(notifier_api_token, license_key) do
     url = "#{Config.license_manager_api_url()}/api/validate_bot"
-
-    # Log minimal request information without exposing sensitive data
-    AppLogger.api_info("Making license validation request to License Manager API")
 
     # Set up request parameters
     headers = build_auth_headers(notifier_api_token)
@@ -54,17 +51,16 @@ defmodule WandererNotifier.License.Client do
            debug: true,
            timeout: 5000
          ) do
-      {:ok, response} = result ->
-        # Log minimal response information
-        AppLogger.api_debug("Received response from License Manager API",
-          status_code: response.status_code
-        )
-
-        process_validation_response(result)
+      {:ok, %{status_code: _status, body: decoded}} ->
+        process_successful_validation(decoded)
 
       {:error, :connect_timeout} ->
         AppLogger.api_error("License Manager API request timed out")
         {:error, :request_failed}
+
+      {:error, :rate_limited} ->
+        AppLogger.api_error("License Manager API rate limit exceeded")
+        {:error, :rate_limited}
 
       {:error, reason} ->
         AppLogger.api_error("License Manager API request failed", error: inspect(reason))
@@ -72,19 +68,8 @@ defmodule WandererNotifier.License.Client do
     end
   end
 
-  # Process the validation response
-  defp process_validation_response(result) do
-    case HttpClient.handle_response(result) do
-      {:ok, decoded} ->
-        process_successful_validation(decoded)
-
-      error ->
-        handle_validation_error(error)
-    end
-  end
-
   # Process a successful validation response
-  defp process_successful_validation(decoded) do
+  defp process_successful_validation(decoded) when is_map(decoded) do
     # Additional logging for easier debugging without exposing sensitive data
     license_valid = decoded["license_valid"] || false
 
@@ -93,6 +78,19 @@ defmodule WandererNotifier.License.Client do
     # Ensure the response contains both formats for compatibility
     enhanced_response = Map.merge(decoded, %{"valid" => license_valid})
     {:ok, enhanced_response}
+  end
+
+  # Handle case when response is not a map
+  defp process_successful_validation(decoded) do
+    AppLogger.api_error("Invalid license validation response format", response: inspect(decoded))
+
+    # Return a standardized error response
+    {:ok,
+     %{
+       "license_valid" => false,
+       "valid" => false,
+       "message" => "Invalid response format: #{inspect(decoded)}"
+     }}
   end
 
   # Log the validation result based on validity
@@ -107,31 +105,6 @@ defmodule WandererNotifier.License.Client do
       reason: error_msg,
       license_valid: false
     )
-  end
-
-  # Handle various validation error types
-  defp handle_validation_error({:error, :unauthorized}) do
-    AppLogger.api_error("License Manager API: Invalid notifier API token", status_code: 401)
-    {:error, :invalid_notifier_token}
-  end
-
-  defp handle_validation_error({:error, :forbidden}) do
-    AppLogger.api_error(
-      "License Manager API: Notifier is inactive or not associated with license",
-      status_code: 403
-    )
-
-    {:error, :notifier_not_authorized}
-  end
-
-  defp handle_validation_error({:error, :not_found}) do
-    AppLogger.api_error("License Manager API: Notifier or license not found", status_code: 404)
-    {:error, :not_found}
-  end
-
-  defp handle_validation_error(error) do
-    AppLogger.api_error("License Manager API error", error: inspect(error))
-    {:error, :api_error}
   end
 
   @doc """
@@ -184,28 +157,20 @@ defmodule WandererNotifier.License.Client do
     ]
 
     case HttpClient.post_json(url, body, headers, request_options) do
-      {:ok, _} = response ->
-        process_license_response(response)
+      {:ok, %{status_code: _status, body: decoded}} ->
+        process_decoded_license_data(decoded)
 
       {:error, :timeout} ->
         AppLogger.api_error("License Manager API request timed out")
         {:error, "Request timed out"}
 
+      {:error, :rate_limited} ->
+        AppLogger.api_error("License Manager API rate limit exceeded")
+        {:error, "Rate limit exceeded"}
+
       {:error, reason} ->
         AppLogger.api_error("License Manager API request failed", error: inspect(reason))
         {:error, "Request failed: #{inspect(reason)}"}
-    end
-  end
-
-  # Process the license validation response
-  defp process_license_response(response) do
-    case HttpClient.handle_response(response) do
-      {:ok, decoded} ->
-        AppLogger.api_debug("License validation response received")
-        process_decoded_license_data(decoded)
-
-      error ->
-        handle_license_error_response(error)
     end
   end
 
@@ -280,30 +245,5 @@ defmodule WandererNotifier.License.Client do
   defp log_valid_format_result(false, _, message) do
     error_msg = message || "License not valid"
     AppLogger.api_warn("License validation failed", reason: error_msg, license_valid: false)
-  end
-
-  # Handle error responses
-  defp handle_license_error_response({:error, :unauthorized}) do
-    AppLogger.api_error("License Manager API: Invalid notifier API token", status_code: 401)
-    {:error, "Invalid notifier API token"}
-  end
-
-  defp handle_license_error_response({:error, :forbidden}) do
-    AppLogger.api_error(
-      "License Manager API: Notifier is inactive or not associated with license",
-      status_code: 403
-    )
-
-    {:error, "Notifier not authorized"}
-  end
-
-  defp handle_license_error_response({:error, :not_found}) do
-    AppLogger.api_error("License Manager API: License not found", status_code: 404)
-    {:error, "License not found"}
-  end
-
-  defp handle_license_error_response({:error, reason}) do
-    AppLogger.api_error("License Manager API error", error: inspect(reason))
-    {:error, "API error: #{inspect(reason)}"}
   end
 end

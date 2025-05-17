@@ -4,27 +4,25 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   Handles sending notifications to Discord using the Nostrum client.
   """
   require Logger
-  alias WandererNotifier.Api.ESI.Service, as: ESI
-  alias WandererNotifier.Config.Application
+  alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Data.MapSystem
+  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Logger.Logger, as: AppLogger
-  alias WandererNotifier.Notifications.Determiner.Character, as: CharacterDeterminer
-  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
   alias WandererNotifier.Notifiers.Discord.ComponentBuilder
   alias WandererNotifier.Notifiers.Discord.FeatureFlags
   alias WandererNotifier.Notifiers.Discord.NeoClient
-  alias WandererNotifier.Notifiers.StructuredFormatter
-
-  @behaviour WandererNotifier.Notifiers.Behaviour
-
+  alias WandererNotifier.Notifications.Formatters.System, as: SystemFormatter
+  alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
+  alias WandererNotifier.Notifications.Formatters.Character, as: CharacterFormatter
+  alias WandererNotifier.Notifications.Formatters.Common, as: CommonFormatter
+  alias WandererNotifier.Notifications.Formatters.PlainText, as: PlainTextFormatter
+  alias WandererNotifier.Config
   # Default embed colors
   @default_embed_color 0x3498DB
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
 
-  defp env, do: Application.get_env()
+  defp env, do: Application.get_env(:wanderer_notifier, :env)
 
   # Helper function to handle test mode logging and response
   defp handle_test_mode(log_message) do
@@ -35,29 +33,28 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # -- MESSAGE SENDING --
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_message(message, _feature \\ nil) do
-    AppLogger.processor_info("Discord message requested")
-
     if env() == :test do
-      handle_test_mode("DISCORD MOCK: #{message}")
+      handle_test_mode("DISCORD MOCK: #{inspect(message)}")
     else
-      AppLogger.processor_info("Sending Discord message",
-        client: "Nostrum",
-        message_length: String.length(message)
-      )
+      case message do
+        msg when is_binary(msg) ->
+          NeoClient.send_message(msg)
 
-      NeoClient.send_message(message)
+        embed when is_map(embed) ->
+          NeoClient.send_embed(embed)
+
+        _ ->
+          AppLogger.processor_error("Unknown message type for Discord notification",
+            type: inspect(message)
+          )
+
+          {:error, :invalid_message_type}
+      end
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_embed(title, description, url \\ nil, color \\ @default_embed_color, _feature \\ nil) do
-    AppLogger.processor_info("Discord embed requested",
-      title: title,
-      url: url || "nil"
-    )
-
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{title} - #{description}")
     else
@@ -89,13 +86,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     %{"embeds" => [embed]}
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
-    AppLogger.processor_info("Sending file to Discord",
-      filename: filename,
-      title: title
-    )
-
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{filename} - #{title || "No title"}")
     else
@@ -103,7 +94,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_image_embed(
         title,
         description,
@@ -111,11 +101,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
         color \\ @default_embed_color,
         _feature \\ nil
       ) do
-    AppLogger.processor_info("Sending image embed to Discord",
-      title: title,
-      image_url: image_url || "nil"
-    )
-
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{title} - #{description} with image: #{image_url}")
     else
@@ -133,7 +118,6 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_enriched_kill_embed(killmail, kill_id) when is_struct(killmail, Killmail) do
     AppLogger.processor_debug("Preparing to format killmail for Discord", kill_id: kill_id)
 
@@ -141,11 +125,14 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     enriched_killmail = enrich_with_system_name(killmail)
 
     # Format the kill notification
-    formatted_embed = StructuredFormatter.format_kill_notification(enriched_killmail)
+    formatted_embed = KillmailFormatter.format_kill_notification(enriched_killmail)
+
+    # Get features as a map
+    features = Map.new(Config.features())
 
     # Only add components if the feature flag is enabled
     enhanced_notification =
-      if FeatureFlags.components_enabled?() do
+      if Map.get(features, :discord_components, false) do
         # Add interactive components based on the killmail
         components = [ComponentBuilder.kill_action_row(kill_id)]
 
@@ -168,114 +155,126 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     send_to_discord(enhanced_notification, "kill")
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
   def send_kill_notification(kill_data) do
-    # Log the received kill data for debugging
-    AppLogger.processor_debug("Kill notification received",
-      data_type: typeof(kill_data)
-    )
-
-    # Ensure we have a Killmail struct
-    killmail =
-      if is_struct(kill_data, Killmail),
-        do: kill_data,
-        else: struct(Killmail, Map.from_struct(kill_data))
-
-    # Delegate to the enriched killmail notification function
-    send_killmail_notification(killmail)
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_new_tracked_character_notification(character)
-      when is_struct(character, WandererNotifier.Data.Character) do
-    if env() == :test do
-      handle_test_mode("DISCORD MOCK: Character ID #{character.character_id}")
-    else
-      # Extract character ID for deduplication check
-      character_id = character.character_id
-
-      # Check if this character should trigger a notification
-      if CharacterDeterminer.should_notify?(character_id, character) do
-        # This is not a duplicate, proceed with notification
-        AppLogger.processor_info("Processing new character notification",
-          character_name: character.name,
-          character_id: character.character_id
+    try do
+      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:killmail) do
+        # Log the received kill data for debugging
+        AppLogger.processor_debug("Kill notification received",
+          data_type: typeof(kill_data)
         )
 
-        # Create notification with StructuredFormatter
-        generic_notification = StructuredFormatter.format_character_notification(character)
-        send_to_discord(generic_notification, :character_tracking)
+        # Ensure we have a Killmail struct
+        killmail =
+          if is_struct(kill_data, Killmail),
+            do: kill_data,
+            else: struct(Killmail, Map.from_struct(kill_data))
 
-        # Record stats
-        Stats.increment(:characters)
+        send_killmail_notification(killmail)
+        WandererNotifier.Notifications.LicenseLimiter.increment(:killmail)
       else
-        # This is a duplicate or doesn't meet criteria, skip notification
-        AppLogger.processor_info("Skipping character notification",
-          character_name: character.name,
-          character_id: character.character_id
+        message = PlainTextFormatter.plain_killmail_notification(kill_data)
+        NeoClient.send_message(message)
+      end
+    rescue
+      e ->
+        AppLogger.processor_error("[KILL_NOTIFICATION] Exception in send_kill_notification",
+          error: Exception.message(e),
+          kill_data: inspect(kill_data),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
         )
 
-        :ok
-      end
+        {:error, e}
     end
   end
 
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_new_system_notification(system) do
-    # Log system details before processing to diagnose cache issues
-    AppLogger.processor_info(
-      "[NEW_SYSTEM_NOTIFICATION] Processing system notification request",
-      system_type: typeof(system),
-      system_preview: inspect(system, limit: 200)
-    )
-
-    if env() == :test do
-      # Get system ID safely regardless of structure
-      system_id = extract_system_id(system)
-      handle_test_mode("DISCORD MOCK: System ID #{system_id}")
+  @doc """
+  Sends a kill notification to a specific Discord channel.
+  """
+  def send_kill_notification_to_channel(kill_data, channel_id) do
+    if WandererNotifier.Config.rich_notifications_enabled?() do
+      # Send rich notification
+      send_rich_kill_notification(kill_data, channel_id)
     else
-      # Extract system data safely with fallbacks
-      system_id = extract_system_id(system)
-      system_name = extract_system_name(system)
+      # Send simple notification
+      send_simple_kill_notification(kill_data, channel_id)
+    end
 
-      # Log extracted details for debugging
-      AppLogger.processor_info(
-        "[NEW_SYSTEM_NOTIFICATION] Extracted system details",
-        system_id: system_id,
-        system_name: system_name
-      )
+    # Handle feature flags
+    if WandererNotifier.Config.feature_flags_enabled?() do
+      # Additional feature flag handling
+      handle_feature_flags(kill_data, channel_id)
+    end
+  end
 
-      # Convert to MapSystem struct if needed for formatter
-      map_system = ensure_map_system(system)
+  # Send a rich kill notification with embed
+  defp send_rich_kill_notification(kill_data, channel_id) do
+    killmail = ensure_killmail_struct(kill_data)
+    notification = KillmailFormatter.format_kill_notification(killmail)
+    NeoClient.send_embed(notification, channel_id)
+  end
 
-      # Check if this system should trigger a notification
-      if SystemDeterminer.should_notify?(system_id, map_system) do
-        # This is not a duplicate, proceed with notification
-        AppLogger.processor_info("Processing new system notification",
-          system_id: system_id,
-          system_name: system_name
-        )
+  # Send a simple text-based kill notification
+  defp send_simple_kill_notification(kill_data, channel_id) do
+    message = PlainTextFormatter.plain_killmail_notification(kill_data)
+    NeoClient.send_message(message, channel_id)
+  end
 
-        # Create notification with StructuredFormatter
-        AppLogger.processor_info("Using StructuredFormatter for system notification")
-        generic_notification = StructuredFormatter.format_system_notification(map_system)
+  # Handle feature flags for kill notifications
+  defp handle_feature_flags(kill_data, channel_id) do
+    if FeatureFlags.components_enabled?() do
+      killmail = ensure_killmail_struct(kill_data)
+      components = [ComponentBuilder.kill_action_row(killmail.killmail_id)]
+      NeoClient.send_message_with_components(killmail.killmail_id, components, channel_id)
+    end
+  end
 
-        # Send using the standard send_to_discord helper
-        send_to_discord(generic_notification, :system_tracking)
-
-        # Record stats
-        Stats.increment(:systems)
-
-        :ok
+  def send_new_tracked_character_notification(character)
+      when is_struct(character, WandererNotifier.Map.MapCharacter) do
+    try do
+      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:character) do
+        generic_notification = CharacterFormatter.format_character_notification(character)
+        send_to_discord(generic_notification, :character_tracking)
+        WandererNotifier.Notifications.LicenseLimiter.increment(:character)
       else
-        # This is a duplicate or doesn't meet criteria, skip notification
-        AppLogger.processor_info("Skipping system notification",
-          system_id: system_id,
-          system_name: system_name
+        message = PlainTextFormatter.plain_character_notification(character)
+        NeoClient.send_message(message)
+      end
+
+      Stats.increment(:characters)
+    rescue
+      e ->
+        Logger.error(
+          "[Discord.Notifier] Exception in send_new_tracked_character_notification/1: #{Exception.message(e)}\nStacktrace:\n#{Exception.format_stacktrace(__STACKTRACE__)}"
         )
 
-        :ok
+        {:error, e}
+    end
+  end
+
+  def send_new_system_notification(system) do
+    try do
+      if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:system) do
+        enriched_system = system
+        generic_notification = SystemFormatter.format_system_notification(enriched_system)
+        send_to_discord(generic_notification, :system_tracking)
+        WandererNotifier.Notifications.LicenseLimiter.increment(:system)
+      else
+        message = PlainTextFormatter.plain_system_notification(system)
+        NeoClient.send_message(message)
       end
+
+      Stats.increment(:systems)
+      {:ok, :sent}
+    rescue
+      e ->
+        AppLogger.processor_error(
+          "[NEW_SYSTEM_NOTIFICATION] Exception in send_new_system_notification (detailed)",
+          error: Exception.message(e),
+          system: inspect(system, pretty: true, limit: 1000),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        {:error, e}
     end
   end
 
@@ -283,15 +282,22 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     case type do
       :send_discord_embed ->
         [embed] = data
-        NeoClient.send_embed(embed)
+        NeoClient.send_embed(embed, nil)
+        {:ok, :sent}
 
       :send_discord_embed_to_channel ->
         [channel_id, embed] = data
         NeoClient.send_embed(embed, channel_id)
+        {:ok, :sent}
 
       :send_message ->
         [message] = data
         send_message(message)
+        {:ok, :sent}
+
+      :send_new_tracked_character_notification ->
+        [character_struct] = data
+        send_new_tracked_character_notification(character_struct)
 
       _ ->
         AppLogger.processor_warn("Unknown notification type", type: type)
@@ -318,26 +324,26 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Send formatted notification to Discord
   defp send_to_discord(formatted_notification, feature) do
-    # Skip actual sending in test mode
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{inspect(feature)}")
+      {:ok, :sent}
     else
-      # Convert to Discord format
-      discord_embed = StructuredFormatter.to_discord_format(formatted_notification)
-
-      # Check if components are available
+      discord_embed = CommonFormatter.to_discord_format(formatted_notification)
       components = Map.get(formatted_notification, :components, [])
       use_components = components != [] && FeatureFlags.components_enabled?()
+      # Use kill_channel_id for kill notifications
+      channel_id =
+        if feature in ["kill", :killmail],
+          do: WandererNotifier.Config.discord_kill_channel_id(),
+          else: nil
 
       if use_components do
-        # If components are enabled, use enhanced format
-        AppLogger.processor_info("Using Discord components for #{feature} notification")
-        NeoClient.send_message_with_components(discord_embed, components)
+        NeoClient.send_message_with_components(discord_embed, components, channel_id)
       else
-        # Otherwise use standard embed
-        AppLogger.processor_info("Using standard embeds for #{feature} notification")
-        NeoClient.send_embed(discord_embed)
+        NeoClient.send_embed(discord_embed, channel_id)
       end
+
+      {:ok, :sent}
     end
   end
 
@@ -377,7 +383,7 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   defp get_system_name(nil), do: nil
 
   defp get_system_name(system_id) do
-    case ESI.get_system_info(system_id) do
+    case ESIService.get_system_info(system_id) do
       {:ok, system_info} -> Map.get(system_info, "name")
       {:error, :not_found} -> "Unknown-#{system_id}"
       _ -> nil
@@ -389,90 +395,19 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
     if env() == :test do
       handle_test_mode("DISCORD MOCK: Killmail ID #{killmail.killmail_id}")
     else
-      # Create notification with StructuredFormatter
-      AppLogger.processor_info("Formatting killmail notification")
-      notification = StructuredFormatter.format_kill_notification(killmail)
+      notification = KillmailFormatter.format_kill_notification(killmail)
 
       # Send notification
       send_to_discord(notification, :killmail)
     end
   end
 
-  # Helper to convert to MapSystem struct if needed
-  defp ensure_map_system(system) do
-    if is_struct(system, MapSystem) do
-      # Already a MapSystem, just return it
-      system
+  # Ensure the input is a Killmail struct
+  defp ensure_killmail_struct(kill_data) do
+    if is_struct(kill_data, Killmail) do
+      kill_data
     else
-      # Try to create MapSystem from a map or other structure
-      try do
-        # Check if we need to convert it
-        if is_map(system) do
-          MapSystem.new(system)
-        else
-          # Log error and return original
-          AppLogger.processor_error(
-            "[Discord.Notifier] Cannot convert to MapSystem: #{inspect(system)}"
-          )
-
-          system
-        end
-      rescue
-        e ->
-          # Log error and return original on conversion failure
-          AppLogger.processor_error(
-            "[Discord.Notifier] Failed to convert to MapSystem: #{Exception.message(e)}"
-          )
-
-          system
-      end
+      struct(Killmail, Map.from_struct(kill_data))
     end
-  end
-
-  # Extract system ID from killmail
-  defp extract_system_id(killmail) do
-    cond do
-      is_binary(killmail) ->
-        killmail
-
-      is_map(killmail) ->
-        system_id =
-          Map.get(killmail, "solar_system_id") ||
-            Map.get(killmail, "esi_data", %{})["solar_system_id"]
-
-        system_name =
-          Map.get(killmail, "solar_system_name") ||
-            Map.get(killmail, "esi_data", %{})["solar_system_name"]
-
-        # Return system_id, but log it with the name if available
-        AppLogger.processor_debug(
-          "Extracted system",
-          %{
-            system_id: system_id,
-            system_name: system_name
-          }
-        )
-
-        system_id
-
-      true ->
-        nil
-    end
-  end
-
-  # Extract system name from system data
-  defp extract_system_name(system) do
-    extract_field_value(system, [:name, "name"], "Unknown System")
-  end
-
-  # Helper to extract a field with a default value
-  defp extract_field_value(system, field_names, default) do
-    Enum.find_value(field_names, default, fn field ->
-      cond do
-        is_struct(system) && Map.has_key?(system, field) -> Map.get(system, field)
-        is_map(system) && Map.has_key?(system, field) -> Map.get(system, field)
-        true -> nil
-      end
-    end)
   end
 end

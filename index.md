@@ -55,17 +55,101 @@ Create a `.env` file in your working directory with the following content. Repla
 WANDERER_DISCORD_BOT_TOKEN=your_discord_bot_token
 WANDERER_DISCORD_CHANNEL_ID=your_discord_channel_id
 
+# Optional Discord Channel Configuration
+# WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID=your_system_kill_channel_id
+# WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID=your_character_kill_channel_id
+# WANDERER_DISCORD_SYSTEM_CHANNEL_ID=your_system_channel_id
+# WANDERER_DISCORD_CHARACTER_CHANNEL_ID=your_character_channel_id
+
 # Map Configuration
 WANDERER_MAP_URL="https://wanderer.ltd/<yourmap>"
 WANDERER_MAP_TOKEN=your_map_api_token
 
-# Note: Premium features are enabled with your map subscription
-WANDERER_LICENSE_KEY=your_map_license_key  # Provided with your map subscription
+# License Configuration
+WANDERER_LICENSE_KEY=your_license_key  # Provided with your map subscription
 
 # Feature Flags (default values shown below)
-# WANDERER_KILL_NOTIFICATIONS_ENABLED=true
-# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true
-# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true
-# WANDERER_DISABLE_STATUS_MESSAGES=false # Disable startup and status notifications
-# WANDERER_FEATURE_TRACK_KSPACE=false  # Set to 'true' to track K-Space systems in addition to wormholes
+# General Settings
+# WANDERER_NOTIFICATIONS_ENABLED=true  # Master switch for all notifications
+# WANDERER_ENABLE_STATUS_MESSAGES=true  # Controls startup/status notifications
+
+# Notification-Related Flags
+# WANDERER_KILL_NOTIFICATIONS_ENABLED=true  # Controls kill notifications
+# WANDERER_SYSTEM_NOTIFICATIONS_ENABLED=true  # Controls system notifications
+# WANDERER_CHARACTER_NOTIFICATIONS_ENABLED=true  # Controls character notifications
+
+# Tracking-Related Flags
+# WANDERER_FEATURE_TRACK_KSPACE=true  # Controls whether K-Space systems are tracked
+
+# Server Configuration
+# WANDERER_PORT=4000
+# WANDERER_HOST=localhost
+# WANDERER_SCHEME=http
+# WANDERER_PUBLIC_URL=your_public_url
+
+# Character Configuration
+# WANDERER_CHARACTER_EXCLUDE_LIST=character_id1,character_id2
 ```
+
+> **Note:** If you don't have a Discord bot yet, follow our [guide on creating a Discord bot](https://gist.github.com/guarzo/a4d238b932b6a168ad1c5f0375c4a561) or search the web for more information.
+
+#### 3. Create the Docker Compose Configuration
+
+Create a file named `docker-compose.yml` with the following content:
+
+```yaml
+services:
+  wanderer_notifier:
+    image: guarzo/wanderer-notifier:v1
+    container_name: wanderer-notifier
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${WANDERER_PORT:-4000}:4000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+#### 4. Run It
+
+Start the service with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+Your notifier is now up and running, delivering alerts to your Discord channel automatically!
+
+## Configuration Validation
+
+On startup, the application validates all configuration settings. If there are issues with your configuration, detailed error messages will be displayed in the logs to help you resolve them. This ensures that your notifier is properly configured before it begins operation.
+
+## Features
+
+- **Real-Time Monitoring:** Listens to live kill data via a WebSocket from ZKillboard
+- **Data Enrichment:** Retrieves detailed killmail information from ESI
+- **Map-Based Filtering:** Uses a custom map API to track wormhole systems (with option to include K-Space systems) and process only kills from systems you care about
+- **Periodic Maintenance:** Automatically updates system data and processes backup kills
+- **Discord Integration:** Sends beautifully formatted notifications to your Discord channel
+- **Web Dashboard:** Access system status and notification statistics via the built-in web interface
+- **Fault Tolerance:** Leverages Elixir's OTP and supervision trees for a robust and resilient system
+
+[Learn more about notification types](./notifications.html)
+
+[View on GitHub](https://github.com/guarzo/wanderer-notifier)

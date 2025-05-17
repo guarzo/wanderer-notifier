@@ -1,453 +1,135 @@
 defmodule WandererNotifier.Notifications.Determiner.Kill do
   @moduledoc """
-  Determines whether kill notifications should be sent.
-  Handles all kill-related notification decision logic.
+  Determines whether a killmail should trigger a notification.
   """
 
   require Logger
-
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Data.Killmail
-  alias WandererNotifier.Helpers.DeduplicationHelper
+  alias WandererNotifier.Killmail.Killmail
 
   @doc """
-  Determines if a notification should be sent for a kill.
+  Determines if a notification should be sent for a killmail.
 
   ## Parameters
-    - killmail: The killmail to check
+  - killmail: The killmail to check
 
   ## Returns
-    - {:ok, %{should_notify: boolean(), reason: String.t()}} with tracking information
+  - {:ok, %{should_notify: boolean, reason: String.t() | nil}} on success
+  - {:error, reason} on failure
   """
-  def should_notify?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    kill_id = get_kill_id(killmail)
+  def should_notify?(%Killmail{} = killmail) do
+    # First check if this is a duplicate kill
+    case deduplication_module().check(:kill, killmail.killmail_id) do
+      {:ok, :duplicate} ->
+        {:ok, %{should_notify: false, reason: "Duplicate kill"}}
 
-    # Deduplication check is performed before any persistence or notification.
-    # Only the first occurrence of a killmail (per kill_id) will be processed; all true duplicates are skipped.
-    with true <- check_notifications_enabled(kill_id),
-         true <- check_tracking(system_id, killmail) do
-      case DeduplicationHelper.duplicate_with_status?(kill_id) do
-        {:ok, :new} ->
-          # Determine notification status as before
-          result = check_deduplication_and_decide(kill_id)
-          # Mark the status and reason in the deduplication cache
-          status =
-            if result == {:ok, %{should_notify: true, reason: nil}},
-              do: "notified",
-              else: "skipped"
+      {:ok, :new} ->
+        # Then check configuration
+        config = Application.get_env(:wanderer_notifier, :config_module).get_config()
 
-          reason =
-            case result do
-              {:ok, %{reason: r}} -> r
-              _ -> nil
-            end
+        cond do
+          not Map.get(config, :notifications_enabled, false) ->
+            {:ok, %{should_notify: false, reason: "Notifications disabled"}}
 
-          DeduplicationHelper.mark_kill_status(kill_id, status, reason)
-          result
+          not Map.get(config, :kill_notifications_enabled, false) ->
+            {:ok, %{should_notify: false, reason: "Kill notifications disabled"}}
 
-        {:ok, :duplicate, orig_status, orig_reason} ->
-          Logger.info("[Deduplication] Duplicate killmail detected and skipped",
-            kill_id: kill_id,
-            original_status: orig_status,
-            original_reason: orig_reason
-          )
+          not Map.get(config, :system_notifications_enabled, false) and
+              not Map.get(config, :character_notifications_enabled, false) ->
+            {:ok,
+             %{should_notify: false, reason: "Both system and character notifications disabled"}}
 
-          {:ok,
-           %{
-             should_notify: false,
-             reason: "Duplicate kill",
-             original_status: orig_status,
-             original_reason: orig_reason
-           }}
-      end
-    else
-      false -> {:ok, %{should_notify: false, reason: "Not tracked by any character or system"}}
-      _ -> {:ok, %{should_notify: false, reason: "Notifications disabled"}}
-    end
-  end
-
-  defp check_notifications_enabled(_kill_id) do
-    notifications_enabled = Features.notifications_enabled?()
-    system_notifications_enabled = Features.system_notifications_enabled?()
-    notifications_enabled && system_notifications_enabled
-  end
-
-  defp check_tracking(system_id, killmail) do
-    is_tracked_system = tracked_system?(system_id)
-    has_tracked_char = has_tracked_character?(killmail)
-    is_tracked_system || has_tracked_char
-  end
-
-  defp check_deduplication_and_decide(kill_id) do
-    case DeduplicationHelper.duplicate?(:kill, kill_id) do
-      {:ok, :new} -> {:ok, %{should_notify: true, reason: nil}}
-      {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
-      {:error, _reason} -> {:ok, %{should_notify: true, reason: nil}}
-    end
-  end
-
-  # Get kill ID from killmail
-  defp get_kill_id(killmail) do
-    case killmail do
-      %Killmail{killmail_id: id} when not is_nil(id) -> id
-      %{killmail_id: id} when not is_nil(id) -> id
-      %{"killmail_id" => id} when not is_nil(id) -> id
-      _ -> "unknown"
-    end
-  end
-
-  @doc """
-  Gets the system ID from a kill.
-  """
-  def get_kill_system_id(kill) do
-    Logger.debug(
-      "[Kill Determiner] Extracting system ID from killmail:\n#{inspect(kill, pretty: true, limit: :infinity)}"
-    )
-
-    extract_system_id(kill)
-  end
-
-  # Private helper functions to extract system ID from different data structures
-  defp extract_system_id(kill) when is_struct(kill, Killmail) do
-    Logger.debug("[Kill Determiner] Processing Killmail struct")
-
-    case kill.esi_data do
-      nil ->
-        Logger.debug("[Kill Determiner] No ESI data found")
-        "unknown"
-
-      esi_data ->
-        Logger.debug("[Kill Determiner] Found ESI data:\n#{inspect(esi_data)}")
-
-        case Map.get(esi_data, "solar_system_id") do
-          nil ->
-            Logger.debug("[Kill Determiner] No solar_system_id in ESI data")
-            "unknown"
-
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Unexpected system ID format: #{inspect(other)}")
-            "unknown"
-        end
-    end
-  end
-
-  defp extract_system_id(kill) when is_map(kill) do
-    Logger.debug("[Kill Determiner] Processing map data")
-    extract_system_id_from_map(kill)
-  end
-
-  defp extract_system_id(other) do
-    Logger.debug("[Kill Determiner] Unexpected killmail format: #{inspect(other)}")
-    "unknown"
-  end
-
-  defp extract_system_id_from_map(kill) do
-    Logger.debug("[Kill Determiner] Checking map paths:\n#{inspect(kill)}")
-
-    cond do
-      esi_data = Map.get(kill, "esi_data") ->
-        Logger.debug("[Kill Determiner] Found ESI data path:\n#{inspect(esi_data)}")
-
-        case Map.get(esi_data, "solar_system_id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in map: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in map: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Invalid system ID in map: #{inspect(other)}")
-            "unknown"
+          true ->
+            check_tracking_status(killmail)
         end
 
-      system = Map.get(kill, "system") ->
-        Logger.debug("[Kill Determiner] Found system path:\n#{inspect(system)}")
-
-        case Map.get(system, "id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in system path: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in system path: #{id}")
-            id
-
-          other ->
-            Logger.debug("[Kill Determiner] Invalid system ID in system path: #{inspect(other)}")
-            "unknown"
-        end
-
-      solar_system = Map.get(kill, "solar_system") ->
-        Logger.debug("[Kill Determiner] Found solar_system path:\n#{inspect(solar_system)}")
-
-        case Map.get(solar_system, "id") do
-          id when is_integer(id) ->
-            Logger.debug("[Kill Determiner] Found integer system ID in solar_system path: #{id}")
-            to_string(id)
-
-          id when is_binary(id) ->
-            Logger.debug("[Kill Determiner] Found string system ID in solar_system path: #{id}")
-            id
-
-          other ->
-            Logger.debug(
-              "[Kill Determiner] Invalid system ID in solar_system path: #{inspect(other)}"
-            )
-
-            "unknown"
-        end
-
-      true ->
-        Logger.debug("[Kill Determiner] No valid system ID path found")
-        "unknown"
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  def should_notify?(%{"killmail_id" => id} = data) do
+    killmail = %Killmail{
+      killmail_id: id,
+      esi_data: data,
+      zkb: data["zkb"]
+    }
+
+    should_notify?(killmail)
   end
 
   @doc """
   Checks if a system is being tracked.
-
-  ## Parameters
-    - system_id: The ID of the system to check
-
-  ## Returns
-    - true if the system is tracked
-    - false otherwise
   """
-  def tracked_system?(system_id) when is_integer(system_id) do
-    system_id_str = Integer.to_string(system_id)
-    tracked_system?(system_id_str)
-  end
-
-  def tracked_system?(system_id_str) when is_binary(system_id_str) do
-    cache_key = CacheKeys.tracked_system(system_id_str)
-    CacheRepo.get(cache_key) != nil
-  end
-
-  def tracked_system?(_), do: false
-
-  @doc """
-  Checks if a killmail involves a tracked character (as victim or attacker).
-
-  ## Parameters
-    - killmail: The killmail data to check
-
-  ## Returns
-    - true if the killmail involves a tracked character
-    - false otherwise
-  """
-  def has_tracked_character?(killmail) do
-    kill_data = extract_kill_data(killmail)
-    all_character_ids = get_all_tracked_character_ids()
-
-    # Check if victim is tracked
-    victim_tracked = check_victim_tracked(kill_data, all_character_ids)
-
-    if victim_tracked do
-      true
-    else
-      check_attackers_tracked(kill_data, all_character_ids)
+  def tracked_system?(system_id) do
+    case Application.get_env(:wanderer_notifier, :system_module).is_tracked?(system_id) do
+      {:ok, result} -> result
+      {:error, _} -> false
+      false -> false
+      true -> true
     end
-  end
-
-  # Extract kill data from various killmail formats
-  defp extract_kill_data(killmail) do
-    case killmail do
-      %Killmail{esi_data: esi_data} when is_map(esi_data) -> esi_data
-      kill when is_map(kill) -> kill
-      _ -> %{}
-    end
-  end
-
-  # Get all tracked character IDs
-  defp get_all_tracked_character_ids do
-    all_characters = CacheRepo.get(CacheKeys.character_list()) || []
-
-    Enum.map(all_characters, fn char ->
-      character_id = Map.get(char, "character_id") || Map.get(char, :character_id)
-      if character_id, do: to_string(character_id), else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  # Extract victim ID from kill data
-  defp extract_victim_id(kill_data) do
-    victim = Map.get(kill_data, "victim") || Map.get(kill_data, :victim) || %{}
-    victim_id = Map.get(victim, "character_id") || Map.get(victim, :character_id)
-    if victim_id, do: to_string(victim_id), else: nil
-  end
-
-  # Check if victim is tracked through direct cache lookup
-  defp check_direct_victim_tracking(victim_id_str) do
-    direct_cache_key = CacheKeys.tracked_character(victim_id_str)
-    CacheRepo.get(direct_cache_key) != nil
-  end
-
-  # Check if the victim in this kill is being tracked
-  defp check_victim_tracked(kill_data, all_character_ids) do
-    victim_id_str = extract_victim_id(kill_data)
-    victim_tracked = victim_id_str && Enum.member?(all_character_ids, victim_id_str)
-
-    if !victim_tracked && victim_id_str do
-      check_direct_victim_tracking(victim_id_str)
-    else
-      victim_tracked
-    end
-  end
-
-  # Extract attackers from kill data
-  defp extract_attackers(kill_data) do
-    Map.get(kill_data, "attackers") || Map.get(kill_data, :attackers) || []
-  end
-
-  # Check if any attacker is tracked
-  defp check_attackers_tracked(kill_data, all_character_ids) do
-    attackers = extract_attackers(kill_data)
-
-    if attacker_in_tracked_list?(attackers, all_character_ids) do
-      true
-    else
-      attacker_directly_tracked?(attackers)
-    end
-  end
-
-  # Check if any attacker is in our tracked characters list
-  defp attacker_in_tracked_list?(attackers, all_character_ids) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(fn attacker_id -> Enum.member?(all_character_ids, attacker_id) end)
-  end
-
-  # Extract attacker ID from attacker data
-  defp extract_attacker_id(attacker) do
-    attacker_id = Map.get(attacker, "character_id") || Map.get(attacker, :character_id)
-    if attacker_id, do: to_string(attacker_id), else: nil
-  end
-
-  # Check if any attacker is directly tracked
-  defp attacker_directly_tracked?(attackers) do
-    attackers
-    |> Enum.map(&extract_attacker_id/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.any?(&check_direct_victim_tracking/1)
-  end
-
-  @doc """
-  Determines if a kill is in a tracked system.
-
-  ## Parameters
-    - killmail: The killmail to check
-
-  ## Returns
-    - true if the kill happened in a tracked system
-    - false otherwise
-  """
-  def tracked_in_system?(killmail) do
-    system_id = get_kill_system_id(killmail)
-    tracked_system?(system_id)
-  end
-
-  @doc """
-  Gets the list of tracked characters involved in a kill.
-
-  ## Parameters
-    - killmail: The killmail to check
-
-  ## Returns
-    - List of tracked character IDs involved in the kill
-  """
-  def get_tracked_characters(killmail) do
-    # Extract all character IDs from the killmail
-    all_character_ids = extract_all_character_ids(killmail)
-
-    # Filter to only include tracked characters
-    Enum.filter(all_character_ids, fn char_id -> tracked_character?(char_id) end)
-  end
-
-  @doc """
-  Determines if tracked characters are victims in a kill.
-
-  ## Parameters
-    - killmail: The killmail to check
-    - tracked_characters: List of tracked character IDs
-
-  ## Returns
-    - true if any tracked character is a victim
-    - false if all tracked characters are attackers
-  """
-  def are_tracked_characters_victims?(killmail, tracked_characters) do
-    # Get the victim character ID
-    victim_character_id = get_victim_character_id(killmail)
-
-    # Check if any tracked character is the victim
-    Enum.member?(tracked_characters, victim_character_id)
-  end
-
-  # Helper function to extract all character IDs from a killmail
-  defp extract_all_character_ids(killmail) do
-    # Get victim character ID
-    victim_id = get_victim_character_id(killmail)
-    victim_ids = if victim_id, do: [victim_id], else: []
-
-    # Get attacker character IDs
-    attacker_ids = get_attacker_character_ids(killmail)
-
-    # Combine and remove duplicates
-    (victim_ids ++ attacker_ids) |> Enum.uniq()
-  end
-
-  # Helper function to get the victim character ID
-  defp get_victim_character_id(killmail) when is_nil(killmail), do: nil
-
-  defp get_victim_character_id(killmail) do
-    esi_data = Map.get(killmail, :esi_data, %{})
-    victim = Map.get(esi_data, "victim", %{})
-    Map.get(victim, "character_id")
-  end
-
-  # Helper function to get attacker character IDs
-  defp get_attacker_character_ids(killmail) do
-    esi_data = Map.get(killmail, :esi_data, %{})
-    attackers = Map.get(esi_data, "attackers", [])
-
-    Enum.map(attackers, fn attacker ->
-      Map.get(attacker, "character_id")
-    end)
-    |> Enum.filter(fn id -> not is_nil(id) end)
   end
 
   @doc """
   Checks if a character is being tracked.
-
-  ## Parameters
-    - character_id: The ID of the character to check
-
-  ## Returns
-    - true if the character is tracked
-    - false otherwise
   """
-  def tracked_character?(character_id) when is_integer(character_id) do
-    character_id_str = Integer.to_string(character_id)
-    tracked_character?(character_id_str)
+  def tracked_character?(nil), do: false
+
+  def tracked_character?(character_id) do
+    case Application.get_env(:wanderer_notifier, :character_module).is_tracked?(character_id) do
+      {:ok, result} -> result
+      {:error, _} -> false
+      false -> false
+      true -> true
+    end
   end
 
-  def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    cache_key = CacheKeys.tracked_character(character_id_str)
-    CacheRepo.get(cache_key) != nil
+  @doc """
+  Checks if any character in a killmail is being tracked.
+  """
+  def has_tracked_character?(%Killmail{esi_data: esi_data}) do
+    victim_tracked = tracked_character?(esi_data["victim"]["character_id"])
+    attacker_tracked = any_attacker_tracked?(esi_data["attackers"])
+    victim_tracked or attacker_tracked
   end
 
-  def tracked_character?(_), do: false
+  def has_tracked_character?(%{"victim" => victim, "attackers" => attackers}) do
+    victim_tracked = tracked_character?(victim["character_id"])
+    attacker_tracked = any_attacker_tracked?(attackers)
+    victim_tracked or attacker_tracked
+  end
+
+  @doc """
+  Gets the system ID from a killmail.
+  """
+  def get_kill_system_id(%Killmail{esi_data: %{"solar_system_id" => id}}), do: id
+  def get_kill_system_id(%{"solar_system_id" => id}), do: id
+  def get_kill_system_id(_), do: "unknown"
+
+  defp check_tracking_status(killmail) do
+    system_tracked = tracked_system?(get_kill_system_id(killmail))
+    has_tracked_char = has_tracked_character?(killmail)
+
+    cond do
+      system_tracked ->
+        {:ok, %{should_notify: true, reason: nil}}
+
+      has_tracked_char ->
+        {:ok, %{should_notify: true, reason: nil}}
+
+      true ->
+        {:ok, %{should_notify: false, reason: "No tracked systems or characters involved"}}
+    end
+  end
+
+  defp any_attacker_tracked?(attackers) when is_list(attackers) do
+    Enum.any?(attackers, fn attacker ->
+      tracked_character?(attacker["character_id"])
+    end)
+  end
+
+  defp any_attacker_tracked?(_), do: false
+
+  defp deduplication_module do
+    Application.get_env(:wanderer_notifier, :deduplication_module)
+  end
 end

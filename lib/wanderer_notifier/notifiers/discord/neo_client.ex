@@ -7,7 +7,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   alias Nostrum.Api.Message
   alias Nostrum.Struct.Embed
-  alias WandererNotifier.Config.Notifications
+  alias WandererNotifier.Config
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   # -- ENVIRONMENT AND CONFIGURATION HELPERS --
@@ -18,10 +18,50 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   @doc """
   Gets the configured Discord channel ID as an integer.
+  Returns the normalized channel ID or nil if not set or invalid.
   """
   def channel_id do
-    config = Notifications.get_discord_config()
-    normalize_channel_id(config.main_channel)
+    try do
+      raw_id = Config.discord_channel_id()
+      AppLogger.api_debug("Fetching Discord channel ID", raw_id: inspect(raw_id))
+
+      # First try to normalize the channel ID
+      normalized_id = normalize_channel_id(raw_id)
+
+      # If we couldn't normalize it, try some fallbacks
+      if is_nil(normalized_id) do
+        AppLogger.api_warn("Could not normalize Discord channel ID, trying fallbacks")
+
+        # Try other channel IDs as fallbacks
+        cond do
+          fallback = normalize_channel_id(Config.discord_system_channel_id()) ->
+            AppLogger.api_info("Using system channel ID as fallback", fallback: fallback)
+            fallback
+
+          fallback = normalize_channel_id(Config.discord_kill_channel_id()) ->
+            AppLogger.api_info("Using kill channel ID as fallback", fallback: fallback)
+            fallback
+
+          fallback = normalize_channel_id(Config.discord_character_channel_id()) ->
+            AppLogger.api_info("Using character channel ID as fallback", fallback: fallback)
+            fallback
+
+          true ->
+            AppLogger.api_error("No valid Discord channel ID available, notifications may fail")
+            nil
+        end
+      else
+        normalized_id
+      end
+    rescue
+      e ->
+        AppLogger.api_error("Error getting Discord channel ID",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        nil
+    end
   end
 
   # -- MESSAGING API --
@@ -66,14 +106,29 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
 
   # Send embed to the specified channel
   defp send_embed_to_channel(embed, nil) do
-    AppLogger.api_error("Failed to send embed: nil channel ID", embed: inspect(embed))
-    {:error, :nil_channel_id}
+    # Try to get a default channel ID as a last resort
+    default_channel_id = try_get_default_channel_id()
+
+    if default_channel_id do
+      AppLogger.api_warn("Using default channel ID as fallback",
+        default_channel_id: default_channel_id
+      )
+
+      send_embed_to_channel(embed, default_channel_id)
+    else
+      AppLogger.api_error("Failed to send embed: missing channel ID and no fallback available",
+        embed_type: typeof(embed),
+        embed_title:
+          if(is_map(embed), do: Map.get(embed, "title", "Unknown title"), else: "Unknown")
+      )
+
+      {:error, :missing_channel_id}
+    end
   end
 
   defp send_embed_to_channel(embed, target_channel) do
     # Convert to Nostrum.Struct.Embed
     discord_embed = convert_to_nostrum_embed(embed)
-
     # Use Nostrum.Api.Message.create with embeds (plural) as an array
     case Message.create(target_channel, embeds: [discord_embed]) do
       {:ok, _message} ->
@@ -87,6 +142,18 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
       {:error, error} ->
         AppLogger.api_error("Failed to send embed via Nostrum", error: inspect(error))
         {:error, error}
+    end
+  end
+
+  # Try to get a default channel ID from various config options
+  defp try_get_default_channel_id do
+    # Try various channel ID config options in order of preference
+    cond do
+      id = Config.discord_channel_id() -> normalize_channel_id(id)
+      id = Config.discord_kill_channel_id() -> normalize_channel_id(id)
+      id = Config.discord_system_channel_id() -> normalize_channel_id(id)
+      id = Config.discord_character_channel_id() -> normalize_channel_id(id)
+      true -> nil
     end
   end
 
@@ -131,7 +198,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     # Convert to Nostrum structs
     discord_embed = convert_to_nostrum_embed(embed)
     discord_components = components
-
     # Log detailed info about what we're sending
     AppLogger.api_debug("Sending message with components via Nostrum",
       channel_id: target_channel,
@@ -333,10 +399,71 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # -- HELPERS --
 
   defp normalize_channel_id(channel_id) do
-    case channel_id do
-      channel_id when is_binary(channel_id) -> String.to_integer(channel_id)
-      channel_id when is_integer(channel_id) -> channel_id
-      nil -> nil
+    try do
+      AppLogger.api_debug("Normalizing channel ID", raw_channel_id: "#{inspect(channel_id)}")
+
+      # First clean up the ID
+      clean_id = clean_channel_id(channel_id)
+
+      # Then process the cleaned ID
+      process_cleaned_channel_id(clean_id)
+    rescue
+      e ->
+        AppLogger.api_error("Error normalizing channel ID",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        nil
+    end
+  end
+
+  # Clean up the channel ID
+  defp clean_channel_id(channel_id) when is_binary(channel_id) do
+    channel_id
+    |> String.trim()
+    |> String.trim("\"")
+  end
+
+  defp clean_channel_id(channel_id), do: channel_id
+
+  # Process the cleaned channel ID
+  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id != "" do
+    parse_string_channel_id(channel_id)
+  end
+
+  defp process_cleaned_channel_id(channel_id) when is_binary(channel_id) and channel_id == "" do
+    AppLogger.api_warn("Empty channel ID string")
+    nil
+  end
+
+  defp process_cleaned_channel_id(channel_id) when is_integer(channel_id) do
+    AppLogger.api_debug("Channel ID is already an integer", channel_id: channel_id)
+    channel_id
+  end
+
+  defp process_cleaned_channel_id(nil) do
+    AppLogger.api_warn("Channel ID is nil")
+    nil
+  end
+
+  # Parse string channel ID to integer if possible
+  defp parse_string_channel_id(channel_id) do
+    case Integer.parse(channel_id) do
+      {int_id, _} ->
+        AppLogger.api_debug("Successfully parsed channel ID as integer",
+          raw: channel_id,
+          parsed: int_id
+        )
+
+        int_id
+
+      :error ->
+        AppLogger.api_warn("Invalid channel ID format, couldn't parse as integer",
+          channel_id: channel_id
+        )
+
+        nil
     end
   end
 
@@ -426,7 +553,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # Apply system notification thumbnail fallback if needed
   defp get_thumbnail_with_fallback(embed) do
     thumbnail = extract_thumbnail(embed)
-
     # If this is a sun type notification with no thumbnail, use a hardcoded URL
     if is_nil(thumbnail) && Map.get(embed, "title", "") =~ "System Notification" do
       %Embed.Thumbnail{url: "https://images.evetech.net/types/45041/icon?size=64"}
@@ -438,7 +564,6 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
   # Extract thumbnail from the embed
   defp extract_thumbnail(embed) do
     thumbnail = Map.get(embed, "thumbnail")
-
     # Try different formats in order of likelihood
     cond do
       valid_thumbnail = extract_thumbnail_from_map(thumbnail) ->

@@ -2,73 +2,126 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   @moduledoc """
   Scheduler responsible for periodic system updates from the map.
   """
-  use WandererNotifier.Schedulers.IntervalScheduler,
-    name: __MODULE__
-
-  # Interval is now configured via the Timings module
-
-  alias WandererNotifier.Api.Map.SystemsClient
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Timings
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Map.Clients.SystemsClient
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+
+  @behaviour WandererNotifier.Schedulers.Scheduler
 
   @impl true
-  def execute(state) do
-    # Only update systems if system tracking feature is enabled
-    if Features.should_load_tracking_data?() do
-      # Use Task with timeout to prevent hanging
-      task =
-        Task.async(fn ->
-          try do
-            # Simply call SystemsClient.update_systems which handles caching
-            SystemsClient.update_systems()
-          rescue
-            e ->
-              AppLogger.api_error("⚠️ System update failed", error: Exception.message(e))
-              {:error, :exception}
-          end
-        end)
+  def config do
+    interval = WandererNotifier.Config.system_update_scheduler_interval()
+    %{type: :interval, spec: interval}
+  end
 
-      # Wait for the task with a timeout (30 seconds)
-      case Task.yield(task, 30_000) do
-        {:ok, {:ok, systems}} ->
-          AppLogger.api_info("🌍 Systems updated: #{length(systems)} systems synchronized")
-          {:ok, systems, Map.put(state, :systems_count, length(systems))}
+  @impl true
+  def run do
+    update_tracked_systems()
+    :ok
+  end
 
-        {:ok, {:error, reason}} ->
-          AppLogger.api_error("⚠️ System update failed", error: inspect(reason))
-          {:error, reason, state}
+  defp update_tracked_systems do
+    primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
 
-        nil ->
-          # Task took too long, kill it and return
-          Task.shutdown(task, :brutal_kill)
-          AppLogger.api_error("⚠️ System update timed out after 30 seconds")
-          {:error, :timeout, state}
+    task =
+      Task.async(fn ->
+        try do
+          SystemsClient.update_systems(suppress_notifications: !primed?)
+        rescue
+          e ->
+            AppLogger.api_error("⚠️ Exception in system update task",
+              error: Exception.message(e),
+              stacktrace: inspect(Process.info(self(), :current_stacktrace))
+            )
 
-        {:exit, reason} ->
-          AppLogger.api_error("⚠️ System update crashed", error: inspect(reason))
-          {:error, reason, state}
-      end
-    else
-      {:ok, :disabled, state}
+            {:error, :exception}
+        end
+      end)
+
+    case Task.yield(task, 50_000) do
+      {:ok, {:ok, _new_systems, all_systems}} ->
+        systems_count = length(ensure_list(all_systems))
+        AppLogger.api_info("🌍 Systems updated: #{systems_count} systems synchronized")
+
+        # Log a summary of the systems cache
+        log_system_cache_summary(all_systems)
+
+        if primed? do
+          handle_successful_system_update(all_systems)
+        else
+          CacheRepo.put(:map_systems_primed, true)
+        end
+
+      {:ok, {:error, reason}} ->
+        AppLogger.api_error("⚠️ System update failed", error: inspect(reason))
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.api_error("⚠️ System update timed out after 10 seconds")
+
+      {:exit, reason} ->
+        AppLogger.api_error("⚠️ System update crashed", reason: inspect(reason))
     end
   end
 
-  @impl true
-  def enabled? do
-    Features.should_load_tracking_data?()
+  # Log a summary of systems in the cache
+  defp log_system_cache_summary(systems) do
+    systems_list = ensure_list(systems)
+    system_count = length(systems_list)
+
+    if system_count > 0 do
+      # Just log the count, not all system IDs
+      AppLogger.api_info("📊 Tracked systems cache updated",
+        count: system_count
+      )
+    else
+      AppLogger.api_warn("📊 No tracked systems found in cache update")
+    end
   end
 
-  @impl true
-  def get_config do
-    %{
-      interval_ms: Timings.system_update_scheduler_interval(),
-      enabled: enabled?(),
-      feature_flags: %{
-        system_notifications: Features.tracked_systems_notifications_enabled?(),
-        should_load_tracking: Features.should_load_tracking_data?(),
-        map_charts: Features.map_charts_enabled?()
-      }
-    }
+  defp ensure_list(nil), do: []
+  defp ensure_list(list) when is_list(list), do: list
+  defp ensure_list({:ok, list}) when is_list(list), do: list
+  defp ensure_list({:error, _}), do: []
+  defp ensure_list(_), do: []
+
+  defp handle_successful_system_update(systems) do
+    systems_list = ensure_list(systems)
+    verify_and_update_systems_cache(systems_list)
+    WandererNotifier.Core.Stats.set_tracked_count(:systems, length(systems_list))
+    :ok
+  end
+
+  defp verify_and_update_systems_cache(systems) do
+    task =
+      Task.async(fn ->
+        try do
+          _perform_system_cache_verification(systems)
+        rescue
+          e ->
+            AppLogger.api_error("⚠️ System cache verification failed", error: Exception.message(e))
+        end
+      end)
+
+    case Task.yield(task, 5_000) do
+      {:ok, _} ->
+        :ok
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        AppLogger.api_error("⚠️ System cache verification timed out after 5 seconds")
+    end
+  end
+
+  defp _perform_system_cache_verification(systems) do
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    systems_list = ensure_list(systems)
+    updated_cache = CacheRepo.get(:system_list)
+    cache_list = ensure_list(updated_cache)
+
+    if cache_list == [] do
+      cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
+      CacheRepo.set(:system_list, systems_list, cache_ttl)
+    end
   end
 end

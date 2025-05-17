@@ -32,6 +32,15 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Setup Elixir for versioning
+      shell: bash
+      run: |
+        # Setup Mix
+        mix local.hex --force
+        mix local.rebar --force
+        # Install mix_version if not already installed
+        mix archive.install hex mix_version --force
+
     - name: Run versioning script
       id: versioning
       shell: bash
@@ -40,13 +49,16 @@ runs:
         SHORT_SHA=$(git rev-parse --short HEAD)
         echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
+        # Get current version using mix_version
+        CURRENT_VERSION=$(mix version)
+        echo "Current version from mix_version: ${CURRENT_VERSION}"
+
         if [ "${{ inputs.mode }}" = "adhoc" ]; then
           if [ -z "${{ inputs.branch }}" ]; then
             echo "Branch input is required for adhoc mode"
             exit 1
           fi
           SAFE_BRANCH=$(echo "${{ inputs.branch }}" | sed 's/\//-/g')
-          CURRENT_VERSION=$(./scripts/version.sh get)
           FULL_VERSION="${CURRENT_VERSION}-${SAFE_BRANCH}+$(date +'%Y%m%d').${SHORT_SHA}"
           DOCKER_TAG_LIST="guarzo/wanderer-notifier:branch-${SAFE_BRANCH},guarzo/wanderer-notifier:branch-${SAFE_BRANCH}-$(date +'%Y%m%d')-${SHORT_SHA}"
           {
@@ -68,30 +80,21 @@ runs:
             exit 1
           fi
           echo "Running in release mode with version_type: ${{ inputs.version_type }}"
-          chmod +x ./scripts/version.sh
           
-          echo "Current version from version.sh get:"
-          CURRENT_VERSION=$(./scripts/version.sh get)
-          echo "$CURRENT_VERSION"
+          echo "Current version: ${CURRENT_VERSION}"
           
           echo "Bumping version..."
-          NEW_VERSION=$(./scripts/version.sh bump ${{ inputs.version_type }})
-          echo "New version will be: ${NEW_VERSION}"
-          
-          echo "Updating version files..."
-          ./scripts/version.sh update ${{ inputs.version_type }}
-          
-          # Verify the version was updated and use it
-          UPDATED_VERSION=$(cat VERSION)
-          echo "Updated version from VERSION file: ${UPDATED_VERSION}"
+          mix version --bump ${{ inputs.version_type }}
+          NEW_VERSION=$(mix version)
+          echo "New version is: ${NEW_VERSION}"
           
           # Generate the full version string
-          FULL_VERSION="${UPDATED_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
+          FULL_VERSION="${NEW_VERSION}+$(date +'%Y%m%d').${SHORT_SHA}"
           echo "Full version will be: ${FULL_VERSION}"
 
           # Set outputs using GitHub Actions output syntax
           {
-            echo "version=${UPDATED_VERSION}"
+            echo "version=${NEW_VERSION}"
             echo "full_version=${FULL_VERSION}"
             echo "short_sha=${SHORT_SHA}"
           } >> $GITHUB_OUTPUT
@@ -103,15 +106,12 @@ runs:
           
           # Additional debug information
           echo "Debug: Version information:"
-          echo "- Version: ${UPDATED_VERSION}"
+          echo "- Version: ${NEW_VERSION}"
           echo "- Full version: ${FULL_VERSION}"
           echo "- Short SHA: ${SHORT_SHA}"
           
-          echo "Debug: File contents:"
-          echo "VERSION file:"
-          cat VERSION
-          echo "mix.exs version line:"
-          grep "version:" mix.exs
+          echo "Debug: mix.exs version information:"
+          mix version
         else
           echo "Invalid mode: ${{ inputs.mode }}"
           exit 1

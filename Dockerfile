@@ -1,163 +1,102 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:experimental
 
-# ----------------------------------------
-# 0. BASE
-# ----------------------------------------
-FROM elixir:1.18-otp-27-slim AS base
-
-ENV MIX_ENV=prod \
-    LANG=C.UTF-8 \
-    HOME=/app
+###############################################################################
+# 1. Dependencies Stage
+###############################################################################
+FROM elixir:1.18.3-otp-27-slim AS deps
 
 WORKDIR /app
 
-# ----------------------------------------
-# 1. NODE STAGE
-# ----------------------------------------
-FROM node:18-slim AS node_builder
-WORKDIR /renderer
+# Set a default version for builds - will be overridden by build args
+ENV APP_VERSION=0.1.0-docker
 
-# Install required fonts and dependencies for canvas
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    fonts-liberation \
-    fonts-dejavu \
-    fontconfig \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Install build tools
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       build-essential \
+       git \
+       ca-certificates \
+  && update-ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-# Copy package files first for effective caching
-COPY renderer/package*.json ./
+# Copy mix files
+COPY mix.exs mix.lock ./
+
+# Copy and fetch only prod deps (cached)
+RUN mix local.hex --force \
+  && mix local.rebar --force \
+  && mix deps.get --only prod \
+  && mix deps.compile
+
+###############################################################################
+# 2. Build Stage
+###############################################################################
+FROM deps AS build
+
+# Accept build arg for versioning
+ARG APP_VERSION=0.1.0-docker
+ENV APP_VERSION=${APP_VERSION}
+ENV MIX_ENV=prod
+
+# Install Node.js and npm for asset compilation
+RUN bash -c 'set -o pipefail \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
+       curl \
+       ca-certificates \
+  && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+  && apt-get update \
+  && apt-get install -y nodejs \
+  && npm install -g npm@latest \
+  && rm -rf /var/lib/apt/lists/*'
+
+# 2a. Frontend: cache npm install
+WORKDIR /app/renderer
+COPY renderer/package.json renderer/package-lock.json ./
 RUN npm ci
 
-# Copy the rest of the renderer code and build frontend assets
-COPY renderer/ ./
+# 2b. Frontend: build assets
+COPY renderer/. ./
 RUN npm run build && npm run postbuild
 
-# Set up chart-service
-WORKDIR /chart-service
+# 2c. Compile & release **without** bundling ERTS
+WORKDIR /app
+COPY . .
+RUN mix compile --warnings-as-errors \
+ && mix release --overwrite
 
-# Copy package files first for effective caching
-COPY chart-service/package*.json ./
-RUN npm install
-
-# Copy the rest of the chart-service code
-COPY chart-service/ ./
-
-# ----------------------------------------
-# 2. DEPS STAGE
-# ----------------------------------------
-FROM base AS deps
-
-# Update and install dependencies
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        build-essential \
-        git
-
-# Install hex and rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
-
-# Copy dependency files and fetch dependencies
-COPY mix.exs mix.lock ./
-RUN mix deps.get --only prod && mix deps.compile
-
-# ----------------------------------------
-# 3. BUILDER STAGE
-# ----------------------------------------
-FROM deps AS builder
-
-ARG WANDERER_NOTIFIER_API_TOKEN
-ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
-
-# Copy application code and configuration
-COPY config config/
-COPY lib lib/
-COPY priv priv/
-COPY rel rel/
-COPY VERSION /app/version
-
-# Copy built assets from the node stage's postbuild output (priv/static/app)
-COPY --from=node_builder /renderer/dist/* /app/priv/static/app/
-
-# Compile and build the release
-RUN mix compile --warnings-as-errors && \
-    mix release --overwrite
-
-# ----------------------------------------
-# 4. RUNTIME STAGE
-# ----------------------------------------
+###############################################################################
+# 3. Runtime Stage (Elixir slim)
+###############################################################################
 FROM elixir:1.18-otp-27-slim AS runtime
-
-ENV LANG=C.UTF-8 \
-    HOME=/app \
-    MIX_ENV=prod
-
-ARG WANDERER_NOTIFIER_API_TOKEN
-ENV WANDERER_NOTIFIER_API_TOKEN=${WANDERER_NOTIFIER_API_TOKEN}
-
-# Update and install runtime packages
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-        postgresql-client \
-        openssl \
-        ca-certificates \
-        wget \
-        lsof \
-        net-tools \
-        gnupg \
-        curl \
-        # Canvas dependencies
-        libcairo2-dev \
-        libpango1.0-dev \
-        libjpeg-dev \
-        libgif-dev \
-        librsvg2-dev \
-        fonts-liberation \
-        fonts-dejavu \
-        fontconfig && \
-    # Install Node.js
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    # Clean up
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy the full release directory from the builder stage to /app/wanderer_notifier
-COPY --from=builder /app/_build/prod/rel/wanderer_notifier /app/wanderer_notifier
+# Install wget for health‐checks
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && addgroup --system app \
+  && adduser --system --ingroup app app
 
-# Create necessary directories with appropriate permissions
-RUN mkdir -p /app/data/cache /app/data/backups /app/etc && \
-    chmod -R 777 /app/data
+# Copy the contents of your release
+COPY --from=build --chown=app:app /app/_build/prod/rel/wanderer_notifier/. ./
 
-# Copy static assets from builder (if needed)
-COPY --from=builder /app/priv/static /app/priv/static
+# Allow runtime config via ENV
+ENV REPLACE_OS_VARS=true HOME=/app
 
-# Copy chart-service from node builder
-COPY --from=node_builder /chart-service /app/chart-service
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+LABEL org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.revision=$VCS_REF \
+      org.opencontainers.image.version=$VERSION
 
-# Copy runtime scripts and set executable permissions
-COPY scripts/start_with_db.sh scripts/db_operations.sh /app/bin/
-RUN chmod +x /app/bin/*.sh
+# Switch to non-root user
+USER app
 
-COPY scripts/validate_and_start.sh /app/bin/validate_and_start.sh
-RUN chmod +x /app/bin/validate_and_start.sh
+ENTRYPOINT ["bin/wanderer_notifier"]
+CMD ["start"]
 
-# Create a symlink so that /app/bin/wanderer_notifier points to the release binary
-RUN mkdir -p /app/bin && \
-    ln -s /app/wanderer_notifier/bin/wanderer_notifier /app/bin/wanderer_notifier
-
-EXPOSE 4000
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget -q -O- http://localhost:4000/health || exit 1
-
-ENTRYPOINT ["/app/bin/validate_and_start.sh"]
-CMD ["/app/bin/start_with_db.sh"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl --fail --silent http://localhost:4000/health || exit 1

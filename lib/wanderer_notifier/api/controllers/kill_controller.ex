@@ -2,75 +2,122 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   @moduledoc """
   Controller for kill-related endpoints.
   """
-  use WandererNotifier.Api.Controllers.BaseController
-  alias WandererNotifier.Processing.Killmail.{Cache, Comparison, Processor}
+  use WandererNotifier.Api.ApiPipeline
+  import WandererNotifier.Api.Helpers
+
+  # Define a default for compile-time, but we'll use get_env at runtime
+  @default_cache_module WandererNotifier.Killmail.Cache
+
+  alias WandererNotifier.Killmail.Processor
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias Cachex
+
+  # Get the cache module at runtime to respect test configurations
+  defp cache_module do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_cache_module,
+      @default_cache_module
+    )
+  end
 
   # Get recent kills
   get "/recent" do
-    case get_recent_kills(conn) do
-      {:ok, kills} -> send_success_response(conn, kills)
-      {:error, reason} -> send_error_response(conn, 500, reason)
+    case get_recent_kills() do
+      {:ok, kills} -> send_success(conn, kills)
+      {:error, reason} -> send_error(conn, 500, reason)
     end
   end
 
   # Get kill details
   get "/kill/:kill_id" do
-    case Cache.get_kill(kill_id) do
-      {:ok, kill} -> send_success_response(conn, kill)
-      {:error, :not_cached} -> send_error_response(conn, 404, "Kill not found in cache")
-      {:error, :not_found} -> send_error_response(conn, 404, "Kill not found")
-      {:error, reason} -> send_error_response(conn, 500, reason)
+    # Convert kill_id to integer to ensure key type matches cache keys
+    case Integer.parse(kill_id) do
+      {id, ""} ->
+        case cache_module().get_kill(id) do
+          {:ok, kill} when not is_nil(kill) ->
+            send_success(conn, kill)
+
+          # Handle all 404 scenarios
+          {:ok, nil} ->
+            send_error(conn, 404, "Kill not found")
+
+          {:error, :not_cached} ->
+            send_error(conn, 404, "Kill not found")
+
+          {:error, :not_found} ->
+            send_error(conn, 404, "Kill not found")
+
+          {:error, reason} ->
+            send_error(conn, 500, reason)
+
+          _ ->
+            # Catch any unexpected response format
+            send_error(conn, 500, "Unexpected error retrieving kill data")
+        end
+
+      {_, _remainder} ->
+        AppLogger.api_debug("Kill ID contains non-numeric characters", %{kill_id: kill_id})
+        send_error(conn, 400, "Invalid kill ID format")
+        halt(conn)
+
+      :error ->
+        # If we can't parse it as an integer, we'll return a 400 error
+        AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
+        send_error(conn, 400, "Invalid kill ID format")
+        halt(conn)
     end
   end
 
-  # Get kill comparison data from cache
-  get "/compare-cache" do
-    # Get time range type from query params, default to "4h"
-    time_range_type = Map.get(conn.params, "type", "4h")
-
-    # Calculate start and end dates based on time range
-    {start_datetime, end_datetime} = get_time_range_dates(time_range_type)
-
-    case Comparison.generate_and_cache_comparison_data(
-           time_range_type,
-           start_datetime,
-           end_datetime
-         ) do
-      {:ok, comparison_data} ->
-        send_success_response(conn, comparison_data)
-
-      {:error, reason} ->
-        send_error_response(conn, 500, "Failed to generate comparison data: #{inspect(reason)}")
+  # Get killmail list
+  get "/kills" do
+    case cache_module().get_latest_killmails() do
+      {:ok, kills} -> send_success(conn, kills)
+      {:error, reason} -> send_error(conn, 500, reason)
+      kills when is_list(kills) -> send_success(conn, kills)
     end
   end
 
   match _ do
-    send_error_response(conn, 404, "Not found")
+    send_error(conn, 404, "not_found")
   end
 
-  defp get_recent_kills(conn) do
-    {:ok, Processor.get_recent_kills()}
+  # Private functions
+  defp get_recent_kills() do
+    Processor.get_recent_kills()
   rescue
-    error -> handle_error(conn, error, __MODULE__)
-  end
+    # Catch specific known transient errors that can be handled gracefully
+    e in HTTPoison.Error ->
+      AppLogger.api_error("HTTP error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
 
-  # Helper to calculate start and end dates based on time range type
-  defp get_time_range_dates(time_range_type) do
-    now = DateTime.utc_now()
+      {:error, "Temporary service unavailable"}
 
-    {hours_ago, _} =
-      case time_range_type do
-        "1h" -> {1, "1 hour"}
-        "4h" -> {4, "4 hours"}
-        "12h" -> {12, "12 hours"}
-        "24h" -> {24, "24 hours"}
-        # 7 * 24
-        "7d" -> {168, "7 days"}
-        # default to 4 hours
-        _ -> {4, "4 hours"}
-      end
+    e in Jason.DecodeError ->
+      AppLogger.api_error("JSON decode error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
 
-    start_datetime = DateTime.add(now, -hours_ago * 3600, :second)
-    {start_datetime, now}
+      {:error, "Temporary service unavailable"}
+
+    e in Cachex.Error ->
+      AppLogger.api_error("Cache error getting recent kills", %{
+        error_type: e.__struct__,
+        message: Exception.message(e)
+      })
+
+      {:error, "Temporary service unavailable"}
+
+    # For unknown errors, log and re-raise to let supervisor handle restart
+    error ->
+      AppLogger.api_error("Unexpected error getting recent kills", %{
+        error: inspect(error),
+        stacktrace: Exception.format(:error, error, __STACKTRACE__)
+      })
+
+      reraise error, __STACKTRACE__
   end
 end

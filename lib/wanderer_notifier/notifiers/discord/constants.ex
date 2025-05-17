@@ -1,52 +1,64 @@
 defmodule WandererNotifier.Notifiers.Discord.Constants do
   @moduledoc """
-  Constants for Discord API integration.
-  Centralizes API versions, endpoints, and other constants.
+  Constants used in Discord notifications.
   """
 
-  # Current Discord API version
-  @api_version "v10"
+  # Discord color codes
+  def colors do
+    %{
+      default: 0x3498DB,
+      success: 0x2ECC71,
+      warning: 0xF1C40F,
+      error: 0xE74C3C,
+      info: 0x3498DB,
+      highsec: 0x2ECC71,
+      lowsec: 0xF1C40F,
+      nullsec: 0xE74C3C,
+      wormhole: 0x9B59B6
+    }
+  end
 
-  # Base URL for Discord API
-  @base_api_url "https://discord.com/api/#{@api_version}"
+  # Discord embed limits
+  def embed_limits do
+    %{
+      title: 256,
+      description: 4096,
+      fields: 25,
+      field_name: 256,
+      field_value: 1024,
+      footer_text: 2048,
+      author_name: 256,
+      total: 6000
+    }
+  end
 
-  # Endpoint paths
-  @channels_path "/channels"
-  @messages_path "/messages"
+  # Discord message limits
+  def message_limits do
+    %{
+      content: 2000,
+      embeds: 10,
+      files: 10,
+      # 8MB
+      file_size: 8_388_608
+    }
+  end
 
-  # Rate limit constants
-  @rate_limit_retry_after 5000
-  @max_retry_attempts 3
+  # Discord component limits
+  def component_limits do
+    %{
+      action_rows: 5,
+      buttons_per_row: 5,
+      select_menu_options: 25,
+      custom_id: 100
+    }
+  end
 
-  # Component types
-  @button_component 2
-  @select_menu_component 3
-  @text_input_component 4
-
-  # Button styles
-  @button_style_primary 1
-  @button_style_secondary 2
-  @button_style_success 3
-  @button_style_danger 4
-  @button_style_link 5
-
-  # Public exports
-  def api_version, do: @api_version
-  def base_url, do: @base_api_url
-  def channels_url, do: "#{@base_api_url}#{@channels_path}"
-  def messages_url(channel_id), do: "#{channels_url()}/#{channel_id}#{@messages_path}"
-  def rate_limit_retry_after, do: @rate_limit_retry_after
-  def max_retry_attempts, do: @max_retry_attempts
-
-  # Component type helpers
-  def component_type(:button), do: @button_component
-  def component_type(:select_menu), do: @select_menu_component
-  def component_type(:text_input), do: @text_input_component
-
-  # Button style helpers
-  def button_style(:primary), do: @button_style_primary
-  def button_style(:secondary), do: @button_style_secondary
-  def button_style(:success), do: @button_style_success
-  def button_style(:danger), do: @button_style_danger
-  def button_style(:link), do: @button_style_link
+  # Discord rate limits
+  def rate_limits do
+    %{
+      messages_per_second: 5,
+      messages_per_minute: 120,
+      webhook_per_second: 30
+    }
+  end
 end

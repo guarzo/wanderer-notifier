@@ -5,11 +5,11 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   """
 
   require Logger
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Helpers.DeduplicationHelper
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Config
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Notifications.Deduplication
+  alias WandererNotifier.Map.MapCharacter
 
   @doc """
   Determines if a notification should be sent for a character.
@@ -22,18 +22,17 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
     - true if a notification should be sent
     - false otherwise
   """
-  def should_notify?(character_id, character_data) when is_map(character_data) do
-    with true <- Features.character_notifications_enabled?(),
-         true <- tracked_character?(character_id),
-         true <- character_changed?(character_id, character_data) do
-      check_deduplication_and_decide(character_id)
+  def should_notify?(character_id, _character_data) do
+    if Config.character_notifications_enabled?() do
+      case Deduplication.check(:character, character_id) do
+        {:ok, :new} -> true
+        {:ok, :duplicate} -> false
+        {:error, _reason} -> true
+      end
     else
-      false -> false
-      _ -> false
+      false
     end
   end
-
-  def should_notify?(_, _), do: false
 
   @doc """
   Checks if a character is being tracked.
@@ -51,48 +50,9 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   end
 
   def tracked_character?(character_id_str) when is_binary(character_id_str) do
-    AppLogger.processor_debug("[Determiner] Checking if character #{character_id_str} is tracked")
-
-    # First check if the character is in the exclude_list
-    character_exclude_list = Application.get_env(:wanderer_notifier, :character_exclude_list, [])
-
-    if character_id_str in character_exclude_list do
-      AppLogger.processor_debug(
-        "[Determiner] Character #{character_id_str} is in exclude_list, skipping"
-      )
-
-      false
-    else
-      # Check if we have a direct tracking entry for the character
-      cache_key = CacheKeys.tracked_character(character_id_str)
-      cache_value = CacheRepo.get(cache_key)
-
-      # Log the cache check
-      AppLogger.processor_debug("[Determiner] Tracked character cache check",
-        character_id: character_id_str,
-        value: inspect(cache_value)
-      )
-
-      # Get the character details from cache too
-      character_cache_key = CacheKeys.character(character_id_str)
-      character_in_cache = CacheRepo.get(character_cache_key)
-
-      AppLogger.processor_debug("[Determiner] Character cache check",
-        character_id: character_id_str,
-        character: inspect(character_in_cache)
-      )
-
-      # Return tracking status with detailed logging
-      tracked = cache_value != nil
-
-      AppLogger.processor_debug("[Determiner] Character tracking check result",
-        character_id: character_id_str,
-        tracked: tracked,
-        character_cache_key: character_cache_key,
-        character_in_cache: character_in_cache != nil
-      )
-
-      tracked
+    case MapCharacter.is_tracked?(character_id_str) do
+      {:ok, tracked} -> tracked
+      _ -> false
     end
   end
 
@@ -112,7 +72,12 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   def character_changed?(character_id, character_data) when is_map(character_data) do
     # Get cached character data
     cache_key = CacheKeys.character(character_id)
-    cached_data = CacheRepo.get(cache_key)
+
+    cached_data =
+      case CacheRepo.get(cache_key) do
+        {:ok, value} -> value
+        _ -> nil
+      end
 
     # Compare relevant fields
     case cached_data do
@@ -150,30 +115,5 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
       new_value = Map.get(new_data, field)
       old_value != new_value
     end)
-  end
-
-  # Apply deduplication check and decide whether to send notification
-  defp check_deduplication_and_decide(character_id) do
-    case DeduplicationHelper.duplicate?(:character, character_id) do
-      {:ok, :new} ->
-        # Not a duplicate, allow sending
-        true
-
-      {:ok, :duplicate} ->
-        # Duplicate, skip notification
-        false
-
-      {:error, reason} ->
-        # Error during deduplication check - default to allowing
-        AppLogger.processor_warn(
-          "Deduplication check failed, allowing notification by default",
-          %{
-            character_id: character_id,
-            error: inspect(reason)
-          }
-        )
-
-        true
-    end
   end
 end

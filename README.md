@@ -143,11 +143,10 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
    - `WANDERER_DISCORD_BOT_TOKEN`: Your Discord bot's authentication token
    - `WANDERER_DISCORD_CHANNEL_ID`: Main Discord channel ID for notifications
-   - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system kill notifications
-   - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character kill notifications
+   - `WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID`: Channel for system-based kill notifications
+   - `WANDERER_DISCORD_CHARACTER_KILL_CHANNEL_ID`: Channel for character-based kill notifications
    - `WANDERER_DISCORD_SYSTEM_CHANNEL_ID`: Channel for system tracking notifications
    - `WANDERER_DISCORD_CHARACTER_CHANNEL_ID`: Channel for character tracking notifications
-   - `WANDERER_DISCORD_CHARTS_CHANNEL_ID`: Channel for chart notifications
 
 2. **License Configuration**
 
@@ -155,25 +154,34 @@ All environment variables now use a standardized `WANDERER_` prefix.
 
 3. **Map API Configuration**
 
-   - `WANDERER_MAP_URL`: URL of the map service
+   - `WANDERER_MAP_URL`: URL for the wanderer map
    - `WANDERER_MAP_TOKEN`: Authentication token for map API
 
 4. **Web Server Configuration**
 
-   - `WANDERER_PORT`: Port for the web server (default: 4000)
+   - `PORT`: Port for the web server (default: 4000)
    - `WANDERER_HOST`: Host for the web server (default: localhost)
+   - `WANDERER_SCHEME`: HTTP scheme to use (default: http)
    - `WANDERER_PUBLIC_URL`: Public URL for the web interface
 
 5. **Feature Flags**
 
+   - `WANDERER_NOTIFICATIONS_ENABLED`: Enable all notifications (default: true)
    - `WANDERER_KILL_NOTIFICATIONS_ENABLED`: Enable kill notifications (default: true)
    - `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED`: Enable system notifications (default: true)
    - `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED`: Enable character notifications (default: true)
-   - `WANDERER_DISABLE_STATUS_MESSAGES`: Disable startup and status notifications (default: false)
+   - `WANDERER_ENABLE_STATUS_MESSAGES`: Enable startup and status notifications (default: true)
+   - `WANDERER_FEATURE_TRACK_KSPACE`: Track K-Space systems in addition to wormholes (default: true)
+
+   > **Note:** The following variables have been deprecated and removed:
+   >
+   > - `WANDERER_CHARACTER_TRACKING_ENABLED` (use `WANDERER_CHARACTER_NOTIFICATIONS_ENABLED` instead)
+   > - `WANDERER_SYSTEM_TRACKING_ENABLED` (use `WANDERER_SYSTEM_NOTIFICATIONS_ENABLED` instead)
 
 6. **Character Configuration**
 
    - `WANDERER_CHARACTER_EXCLUDE_LIST`: Comma-separated list of character IDs to exclude from tracking
+
 
 ## Development
 

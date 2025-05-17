@@ -32,16 +32,6 @@ config :logger, :debug_log,
   metadata: [:trace_id, :character_id, :kill_count, :killmail_id]
 
 # Set ZKill-specific logs to info level
-config :logger, :module_levels, %{
-  "WandererNotifier.Api.ZKill" => :info,
-  "WandererNotifier.Api.ZKill.Client" => :info,
-  "WandererNotifier.Api.ZKill.Service" => :info,
-  "WandererNotifier.Api.ZKill.Websocket" => :info
-}
-
-# Configure persistence feature overrides for development
-config :wanderer_notifier, :persistence,
-  enabled: true,
-  retention_period_days: 180,
-  # Run aggregation every 5 minutes in development for testing
-  aggregation_schedule: "*/5 * * * *"
+config :logger,
+       :module_levels,
+       %{}

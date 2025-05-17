@@ -1,0 +1,199 @@
+defmodule WandererNotifier.Map.MapCharacter do
+  @moduledoc """
+  Struct for standardizing character data from the map API (current flat format).
+
+  Expects API payloads like:
+
+  ```json
+  {
+    "data": [
+      {
+        "characters": [
+          {
+            "name": "Shiv Black",
+            "corporation_id": 98801377,
+            "alliance_id": null,
+            "alliance_ticker": null,
+            "corporation_ticker": "SAL.T",
+            "eve_id": "2118083819"
+          }
+          // ... more characters ...
+        ],
+        "main_character_eve_id": "2117608364"
+      }
+    ]
+  }
+  ```
+
+  Also implements character tracking functionality.
+  """
+
+  @behaviour Access
+  @behaviour WandererNotifier.Map.CharacterBehaviour
+
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+
+  @typedoc "Type representing a tracked character"
+  @type t :: %__MODULE__{
+          character_id: String.t(),
+          name: String.t(),
+          corporation_id: integer() | nil,
+          corporation_ticker: String.t() | nil,
+          alliance_id: integer() | nil,
+          alliance_ticker: String.t() | nil,
+          tracked: boolean()
+        }
+
+  defstruct [
+    :character_id,
+    :name,
+    :corporation_id,
+    :corporation_ticker,
+    :alliance_id,
+    :alliance_ticker,
+    :tracked
+  ]
+
+  @impl true
+  def is_tracked?(character_id) when is_integer(character_id) do
+    character_id_str = Integer.to_string(character_id)
+    is_tracked?(character_id_str)
+  end
+
+  def is_tracked?(character_id_str) when is_binary(character_id_str) do
+    case CacheRepo.get(CacheKeys.character_list()) do
+      {:ok, characters} when is_list(characters) ->
+        Enum.any?(characters, fn char ->
+          id = Map.get(char, :character_id) || Map.get(char, "character_id")
+          to_string(id) == character_id_str
+        end)
+
+      _ ->
+        {:ok, false}
+    end
+  end
+
+  def is_tracked?(_), do: {:error, :invalid_character_id}
+
+  @doc """
+  Fetch a field via the Access behaviour (allows `struct["key"]` syntax).
+  Supports special key mappings for compatibility with different API formats.
+  """
+  @impl true
+  @spec fetch(t(), atom() | String.t()) :: {:ok, any()} | :error
+  def fetch(struct, key) when is_atom(key) do
+    struct
+    |> Map.from_struct()
+    |> Map.fetch(key)
+  end
+
+  def fetch(struct, "id"), do: fetch(struct, :character_id)
+  def fetch(struct, "corporationID"), do: fetch(struct, :corporation_id)
+  def fetch(struct, "corporationName"), do: fetch(struct, :corporation_ticker)
+  def fetch(struct, "allianceID"), do: fetch(struct, :alliance_id)
+  def fetch(struct, "allianceName"), do: fetch(struct, :alliance_ticker)
+
+  def fetch(struct, key) when is_binary(key) do
+    try do
+      atom_key = String.to_existing_atom(key)
+      fetch(struct, atom_key)
+    rescue
+      ArgumentError -> :error
+    end
+  end
+
+  @doc """
+  Get a field with a default via the Access behaviour.
+  """
+  @spec get(t(), atom() | String.t(), any()) :: any()
+  def get(struct, key, default \\ nil) do
+    case fetch(struct, key) do
+      {:ok, val} -> val
+      :error -> default
+    end
+  end
+
+  @impl true
+  @doc "get_and_update not supported for immutable struct"
+  def get_and_update(_struct, _key, _fun), do: raise("not implemented")
+
+  @impl true
+  @doc "pop not supported for immutable struct"
+  def pop(_struct, _key), do: raise("not implemented")
+
+  @doc """
+  Create a MapCharacter from the current flat API format.
+  Expects a map with at least `"eve_id"` and `"name"` keys.
+  """
+  @spec new(map()) :: t()
+  def new(%{"eve_id" => eve_id} = attrs) do
+    # Convert eve_id to string
+    char_id =
+      case eve_id do
+        id when is_binary(id) -> id
+        id when is_integer(id) -> Integer.to_string(id)
+      end
+
+    # Required name field
+    name = attrs["name"] || raise(ArgumentError, "Missing name for character")
+
+    # Optional numeric IDs
+    corp_id = parse_integer(attrs["corporation_id"])
+    alliance_id = parse_integer(attrs["alliance_id"])
+
+    %__MODULE__{
+      character_id: char_id,
+      name: name,
+      corporation_id: corp_id,
+      corporation_ticker: attrs["corporation_ticker"],
+      alliance_id: alliance_id,
+      alliance_ticker: attrs["alliance_ticker"],
+      tracked: Map.get(attrs, "tracked", true)
+    }
+  end
+
+  def new(%{"character_id" => char_id} = attrs) do
+    # Required name field
+    name = attrs["name"] || raise(ArgumentError, "Missing name for character")
+
+    # Optional numeric IDs
+    corp_id = parse_integer(attrs["corporation_id"])
+    alliance_id = parse_integer(attrs["alliance_id"])
+
+    %__MODULE__{
+      character_id: char_id,
+      name: name,
+      corporation_id: corp_id,
+      corporation_ticker: attrs["corporation_ticker"],
+      alliance_id: alliance_id,
+      alliance_ticker: attrs["alliance_ticker"],
+      tracked: Map.get(attrs, "tracked", true)
+    }
+  end
+
+  def new(_) do
+    raise ArgumentError, "Missing required character identification (eve_id or character_id)"
+  end
+
+  # Parses integer or string to integer, returns nil on failure
+  defp parse_integer(nil), do: nil
+  defp parse_integer(val) when is_integer(val), do: val
+
+  defp parse_integer(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {int, _rem} -> int
+      :error -> nil
+    end
+  end
+
+  defp parse_integer(_), do: nil
+
+  @doc "Checks if the character has both corporation ID and ticker"
+  @spec has_corporation?(t()) :: boolean()
+  def has_corporation?(%__MODULE__{corporation_id: corp_id, corporation_ticker: corp_ticker}) do
+    not is_nil(corp_id) and not is_nil(corp_ticker)
+  end
+
+  def has_corporation?(_), do: false
+end

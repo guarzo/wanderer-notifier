@@ -1,103 +1,99 @@
 defmodule WandererNotifier.Notifiers.TestNotifier do
   @moduledoc """
-  Test notifier for use in test environment.
-  This module is the single source of truth for test notifications.
+  Test Notifier implementation for WandererNotifier.
+  Used for testing notification delivery in development and test environments.
+  Implements the Notification behaviour.
   """
 
-  @behaviour WandererNotifier.Notifiers.Behaviour
-
+  require Logger
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_message(message, _feature \\ nil) do
-    AppLogger.processor_debug("[TEST] Message", message: message)
-    :ok
-  end
+  @doc """
+  Stub implementation for determine/1 for test notifier.
+  """
+  def determine(_context), do: {:ok, %{test: true}}
 
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_embed(title, description, url \\ nil, color \\ nil, _feature \\ nil) do
-    AppLogger.processor_debug("[TEST] Embed",
-      title: title,
-      description: description,
-      url: url,
-      color: color
-    )
+  @doc """
+  Stub implementation for format/1 for test notifier.
+  """
+  def format(notification_data), do: {:ok, notification_data}
 
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_file(filename, file_data, title \\ nil, description \\ nil, _feature \\ nil) do
-    AppLogger.processor_debug("[TEST] File",
-      filename: filename,
-      file_size: byte_size(file_data),
-      title: title || "No title",
-      description: description || "No description"
-    )
-
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_image_embed(title, description, image_url, color \\ nil, _feature \\ nil) do
-    AppLogger.processor_debug("[TEST] Image embed",
-      title: title,
-      description: description,
-      image_url: image_url,
-      color: color
-    )
-
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_enriched_kill_embed(killmail, kill_id) do
-    AppLogger.processor_debug("[TEST] Enriched kill",
-      kill_id: kill_id,
-      killmail: inspect(killmail, limit: 50)
-    )
-
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_new_system_notification(system) do
-    system_id = Map.get(system, "system_id") || Map.get(system, :system_id)
-    system_name = Map.get(system, "name") || Map.get(system, :name)
-
-    AppLogger.processor_debug("[TEST] New system",
-      system_id: system_id,
-      system_name: system_name
-    )
-
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_new_tracked_character_notification(character) do
-    char_id = Map.get(character, "character_id") || Map.get(character, :character_id)
-    char_name = Map.get(character, "name") || Map.get(character, :name)
-
-    AppLogger.processor_debug("[TEST] New character",
-      character_id: char_id,
-      character_name: char_name
-    )
-
-    :ok
-  end
-
-  @impl WandererNotifier.Notifiers.Behaviour
-  def send_kill_notification(kill_data) do
-    kill_id = Map.get(kill_data, "killmail_id") || Map.get(kill_data, :killmail_id) || "unknown"
-    AppLogger.processor_debug("[TEST] Kill notification", kill_id: kill_id)
+  @doc """
+  Delivers a test notification. This function simulates notification delivery.
+  """
+  @spec deliver(map()) :: :ok | {:error, term()}
+  def deliver(notification) when is_map(notification) do
     :ok
   end
 
   @doc """
-  Sends a test notification for an activity chart.
+  Required by Notifier behaviour. Delegates to deliver/1 for test notifications.
   """
-  def send_activity_chart_notification(chart_info) do
-    AppLogger.processor_debug("[TEST] Activity chart", chart_info: inspect(chart_info))
-    :ok
+  @spec notify(map()) :: :ok | {:error, term()}
+  def notify(notification), do: deliver(notification)
+
+  @doc """
+  Generic function to handle sending notifications in test mode.
+  """
+  @spec send_notification(atom(), list()) :: {:ok, :sent} | {:error, term()}
+  def send_notification(:send_discord_embed, [embed]) do
+    AppLogger.info("TestNotifier: send_notification :send_discord_embed", %{
+      embed_type: Map.get(embed, :type, "unknown"),
+      title: Map.get(embed, :title, "untitled")
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(:send_discord_embed_to_channel, [_channel_id, embed]) do
+    AppLogger.info("TestNotifier: send_notification :send_discord_embed_to_channel", %{
+      embed_type: Map.get(embed, :type, "unknown"),
+      title: Map.get(embed, :title, "untitled")
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(:send_message, [message]) when is_binary(message) do
+    AppLogger.info("TestNotifier: send_notification :send_message", %{
+      message: String.slice(message, 0, 50)
+    })
+
+    {:ok, :sent}
+  end
+
+  def send_notification(type, data) do
+    AppLogger.info("TestNotifier: send_notification", %{type: type, data: inspect(data)})
+    {:ok, :sent}
+  end
+
+  # Utility: ensure_list/1 (if needed elsewhere, move to a shared helper)
+  @doc false
+  def ensure_list(nil), do: []
+  def ensure_list(list) when is_list(list), do: list
+  def ensure_list(item), do: [item]
+
+  @doc """
+  Simulates sending a test kill notification.
+  """
+  @spec send_test_kill_notification() :: {:ok, :sent}
+  def send_test_kill_notification do
+    {:ok, :sent}
+  end
+
+  @doc """
+  Simulates sending a test character notification.
+  """
+  @spec send_test_character_notification() :: {:ok, :sent}
+  def send_test_character_notification do
+    {:ok, :sent}
+  end
+
+  @doc """
+  Simulates sending a test system notification.
+  """
+  @spec send_test_system_notification() :: {:ok, :sent}
+  def send_test_system_notification do
+    {:ok, :sent}
   end
 end

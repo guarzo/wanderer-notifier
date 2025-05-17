@@ -2,63 +2,44 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
   @moduledoc """
   Scheduler responsible for periodic character updates from the map.
   """
-  use WandererNotifier.Schedulers.IntervalScheduler,
-    name: __MODULE__
 
-  # Interval is now configured via the Timings module
-
-  alias WandererNotifier.Api.Map.Client
-  alias WandererNotifier.Config.Cache, as: CacheConfig
-  alias WandererNotifier.Config.Features
-  alias WandererNotifier.Config.Timings
-  alias WandererNotifier.Data.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Data.Cache.Repository, as: CacheRepo
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  @behaviour WandererNotifier.Schedulers.Scheduler
 
   @impl true
-  def execute(state) do
-    # Check if character tracking is enabled or tracking data is needed for kill notifications
-    if Features.character_tracking_enabled?() ||
-         Features.tracked_characters_notifications_enabled?() ||
-         Features.should_load_tracking_data?() do
-      update_tracked_characters(state)
+  def config,
+    do: %{type: :interval, spec: WandererNotifier.Config.character_update_scheduler_interval()}
+
+  @impl true
+  def run do
+    # Core job logic from previous implementation
+    if WandererNotifier.Config.character_notifications_enabled?() do
+      update_tracked_characters()
+      :ok
     else
-      {:ok, :disabled, state}
+      :ok
     end
   end
 
-  @impl true
-  def enabled? do
-    Features.character_tracking_enabled?() ||
-      Features.tracked_characters_notifications_enabled?() ||
-      Features.should_load_tracking_data?()
-  end
+  defp update_tracked_characters do
+    alias WandererNotifier.Map.Clients.Client
+    alias WandererNotifier.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    alias WandererNotifier.Logger.Logger, as: AppLogger
 
-  @impl true
-  def get_config do
-    %{
-      interval_ms: Timings.character_update_scheduler_interval(),
-      enabled: enabled?(),
-      feature_flags: %{
-        character_tracking: Features.character_tracking_enabled?(),
-        characters_notifications: Features.tracked_characters_notifications_enabled?(),
-        kill_notifications: Features.should_load_tracking_data?()
-      }
-    }
-  end
-
-  # Process tracked characters update
-  defp update_tracked_characters(state) do
-    # Get cached characters and ensure they're in the right format
+    primed? = CacheRepo.get(:character_list_primed) == {:ok, true}
     cached_characters = CacheRepo.get(CacheKeys.character_list())
-    cached_characters_safe = normalize_cached_characters(cached_characters)
+    cached_characters_safe = ensure_list(cached_characters)
 
-    # Use Task with timeout to prevent hanging
     task =
       Task.async(fn ->
         try do
-          # Update characters through the MapClient with exception handling
-          Client.update_tracked_characters(cached_characters_safe)
+          AppLogger.maintenance_debug(
+            "Calling update_tracked_characters with #{length(cached_characters_safe)} cached characters"
+          )
+
+          Client.update_tracked_characters(cached_characters_safe,
+            suppress_notifications: !primed?
+          )
         rescue
           e ->
             AppLogger.maintenance_error("⚠️ Exception in character update task",
@@ -70,77 +51,58 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         end
       end)
 
-    # Wait for the task with a timeout (10 seconds should be plenty)
     case Task.yield(task, 10_000) do
       {:ok, {:ok, characters}} ->
+        characters_list = ensure_list(characters)
+
         AppLogger.maintenance_info(
-          "👥 Characters updated: #{length(ensure_list(characters))} characters synchronized"
+          "👥 Characters updated: #{length(characters_list)} characters from API (cached before: #{length(cached_characters_safe)})"
         )
 
-        handle_successful_character_update(state, characters)
+        if primed? do
+          handle_successful_character_update(characters)
+        else
+          CacheRepo.put(:character_list_primed, true)
+          AppLogger.maintenance_info("Character cache primed for first time")
+        end
 
       {:ok, {:error, :feature_disabled}} ->
-        {:ok, :disabled, state}
+        :ok
 
       {:ok, {:error, reason}} ->
-        AppLogger.maintenance_error("⚠️ Character update failed",
-          error: inspect(reason)
-        )
-
-        {:error, reason, state}
+        AppLogger.maintenance_error("⚠️ Character update failed", error: inspect(reason))
 
       nil ->
-        # Task took too long, kill it
         Task.shutdown(task, :brutal_kill)
         AppLogger.maintenance_error("⚠️ Character update timed out after 10 seconds")
-        {:error, :timeout, state}
 
       {:exit, reason} ->
-        AppLogger.maintenance_error("⚠️ Character update crashed",
-          reason: inspect(reason)
-        )
-
-        {:error, reason, state}
+        AppLogger.maintenance_error("⚠️ Character update crashed", reason: inspect(reason))
     end
-  rescue
-    e ->
-      # Catch any exception outside the task, log it, and return the state with updated timestamp
-      AppLogger.maintenance_error("⚠️ Exception in character update",
-        error: Exception.message(e),
-        stacktrace: inspect(Process.info(self(), :current_stacktrace))
-      )
-
-      # Return original state with error
-      {:error, e, state}
   end
 
-  # Normalize cached characters to ensure it's a list or nil
-  defp normalize_cached_characters(cached_characters) do
-    ensure_list(cached_characters)
-  end
-
-  # Helper function to ensure we're working with a list
   defp ensure_list(nil), do: []
   defp ensure_list(list) when is_list(list), do: list
   defp ensure_list({:ok, list}) when is_list(list), do: list
   defp ensure_list({:error, _}), do: []
   defp ensure_list(_), do: []
 
-  # Handle successful character update
-  defp handle_successful_character_update(state, characters) do
-    # Ensure characters is a list
+  defp handle_successful_character_update(characters) do
+    alias WandererNotifier.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    alias WandererNotifier.Logger.Logger, as: AppLogger
     characters_list = ensure_list(characters)
-
-    # Verify the characters were actually stored in cache
     verify_and_update_characters_cache(characters_list)
-
-    # Return updated state
-    {:ok, characters_list, Map.put(state, :characters_count, length(characters_list))}
+    # Update Stats with new characters count
+    WandererNotifier.Core.Stats.set_tracked_count(:characters, length(characters_list))
+    :ok
   end
 
-  # Verify characters are stored in cache and force update if needed
   defp verify_and_update_characters_cache(characters) do
-    # Use a task with timeout to prevent hanging
+    alias WandererNotifier.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    alias WandererNotifier.Logger.Logger, as: AppLogger
+
     task =
       Task.async(fn ->
         try do
@@ -153,34 +115,30 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         end
       end)
 
-    # Wait max 5 seconds for verification
     case Task.yield(task, 5_000) do
       {:ok, _} ->
         :ok
 
       nil ->
-        # Verification took too long, kill it
         Task.shutdown(task, :brutal_kill)
         AppLogger.maintenance_error("⚠️ Character cache verification timed out after 5 seconds")
     end
   end
 
-  # Internal function to perform the actual verification
   defp _perform_character_cache_verification(characters) do
-    # Ensure we're working with a list
+    alias WandererNotifier.Cache.Keys, as: CacheKeys
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    alias WandererNotifier.Logger.Logger, as: AppLogger
+
     characters_list = ensure_list(characters)
-    updated_cache = CacheRepo.get(CacheKeys.character_list())
-    cache_list = ensure_list(updated_cache)
 
-    if cache_list == [] do
-      # Get cache TTL from the proper module
-      cache_ttl = CacheConfig.characters_cache_ttl()
+    # Always update the cache with the latest characters from the API
+    # This ensures characters that are no longer present get removed
+    cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
+    CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)
 
-      CacheRepo.set(
-        CacheKeys.character_list(),
-        characters_list,
-        cache_ttl
-      )
-    end
+    AppLogger.maintenance_debug(
+      "Character cache updated with #{length(characters_list)} characters"
+    )
   end
 end

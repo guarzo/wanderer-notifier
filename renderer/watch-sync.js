@@ -15,7 +15,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Paths
+const distDir = path.resolve(__dirname, 'dist');
 const staticDir = path.resolve(__dirname, '../priv/static/app');
+
+// Flag to track last modification times
+let lastSyncTime = 0;
+let initialSyncDone = false;
 
 // Make sure the target directory exists
 console.log(`Ensuring target directory exists: ${staticDir}`);
@@ -36,9 +41,35 @@ const vite = spawn(cmd, ['run', 'watch'], {
 // Add a file watcher on dist directory
 console.log('Setting up watcher for changes...');
 
-// Set up a timer to periodically sync the directories
-const syncInterval = 1000; // 1 second
+// Set up a timer to periodically check for changes
+const syncInterval = 2000; // 2 seconds
 let lastRun = Date.now();
+
+function getNewestFileTime(dir) {
+  if (!fs.existsSync(dir)) return 0;
+
+  try {
+    const files = fs.readdirSync(dir, { withFileTypes: true });
+    let latestTime = 0;
+
+    for (const file of files) {
+      const fullPath = path.join(dir, file.name);
+
+      if (file.isDirectory()) {
+        const newestInDir = getNewestFileTime(fullPath);
+        if (newestInDir > latestTime) latestTime = newestInDir;
+      } else {
+        const stats = fs.statSync(fullPath);
+        if (stats.mtimeMs > latestTime) latestTime = stats.mtimeMs;
+      }
+    }
+
+    return latestTime;
+  } catch (err) {
+    console.error('Error checking file times:', err);
+    return 0;
+  }
+}
 
 function syncDirectories() {
   const now = Date.now();
@@ -47,8 +78,26 @@ function syncDirectories() {
   if (now - lastRun < syncInterval) return;
   lastRun = now;
   
-  // Use rsync for more efficient directory syncing
-  const syncProcess = spawn('cp', ['-r', 'dist/', '../priv/static/app/'], {
+  // Check if dist directory exists before attempting to copy
+  if (!fs.existsSync(distDir)) {
+    if (!initialSyncDone) {
+      console.log(`Waiting for dist directory to be created...`);
+    }
+    return;
+  }
+
+  // Check if files have been modified since last sync
+  const newestTime = getNewestFileTime(distDir);
+  if (newestTime <= lastSyncTime && initialSyncDone) {
+    return; // No changes since last sync
+  }
+
+  // Use cp -r for directory copying
+  const syncCommand = process.platform === 'win32'
+    ? `xcopy /E /Y /I "${distDir}\\*" "${staticDir}"`
+    : `cp -r ${distDir}/* ${staticDir}/`;
+
+  const syncProcess = spawn(syncCommand, {
     stdio: 'inherit',
     shell: true
   });
@@ -56,9 +105,26 @@ function syncDirectories() {
   syncProcess.on('error', (err) => {
     console.error('Error syncing directories:', err);
   });
+
+  syncProcess.on('close', (code) => {
+    if (code === 0) {
+      if (!initialSyncDone) {
+        console.log(`✅ Initial sync completed`);
+        initialSyncDone = true;
+      } else {
+        console.log(`✓ Files synced to backend`);
+      }
+
+      // Update the last sync time
+      lastSyncTime = now;
+    } else {
+      console.error(`❌ Sync failed with code ${code}`);
+    }
+  });
 }
 
-// Ensure initial build happens before watching
+// Initial delay to allow first build to complete
+console.log('Waiting for initial build...');
 setTimeout(() => {
   // Initial sync
   syncDirectories();

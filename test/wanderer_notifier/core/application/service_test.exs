@@ -3,51 +3,62 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
   import Mox
 
   alias WandererNotifier.Core.Application.Service
-  alias WandererNotifier.MockDiscordNotifier, as: DiscordNotifier
+  alias WandererNotifier.Notifications.DiscordNotifierMock
   alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
-  alias WandererNotifier.MockStructuredFormatter, as: StructuredFormatter
+  alias WandererNotifier.Core.Stats
+  alias WandererNotifier.License.Service, as: LicenseService
 
   setup :verify_on_exit!
 
   setup do
-    # Mock StructuredFormatter
-    stub(StructuredFormatter, :format_system_status_message, fn _title,
-                                                                _desc,
-                                                                _stats,
-                                                                _uptime,
-                                                                _features,
-                                                                _license,
-                                                                _systems,
-                                                                _chars ->
-      %{content: "Test message"}
-    end)
+    # Ensure Stats GenServer is started
+    case Process.whereis(Stats) do
+      nil ->
+        # Initialize test state for Stats
+        {:ok, _pid} = GenServer.start_link(Stats, [], name: Stats)
 
-    stub(StructuredFormatter, :to_discord_format, fn _message ->
-      %{content: "Test message"}
-    end)
+      _ ->
+        :ok
+    end
 
-    # Mock Discord notifier
-    stub(DiscordNotifier, :send_discord_embed, fn _embed ->
-      {:ok, %{status_code: 200}}
-    end)
+    # Ensure License Service is started with a valid mock response
+    case Process.whereis(LicenseService) do
+      nil ->
+        # Mock validate response
+        mock_response = %{
+          valid: true,
+          bot_assigned: true,
+          details: %{},
+          error: nil,
+          error_message: nil,
+          last_validated: DateTime.utc_now() |> DateTime.to_string()
+        }
 
-    stub(DiscordNotifier, :send_notification, fn _type, _data ->
-      {:ok, %{status_code: 200}}
-    end)
+        # Start the license service with mock state
+        {:ok, _pid} = GenServer.start_link(LicenseService, mock_response, name: LicenseService)
 
-    # Mock NotifierFactory to handle the notification properly
-    stub(NotifierFactory, :notify, fn
-      :send_discord_embed_to_channel, [_channel_id, _embed] -> :ok
-      :send_message, [_message] -> :ok
-      _type, _args -> :ok
-    end)
+      _ ->
+        :ok
+    end
+
+    # Mock DiscordNotifier
+    DiscordNotifierMock
+    |> stub(:send_kill_notification, fn _killmail, _type, _options -> :ok end)
+    |> stub(:send_discord_embed, fn _embed -> :ok end)
+
+    # Correctly stub send_message/1 for NotifierFactory
+    NotifierFactory
+    |> stub(:send_message, fn _notification -> :ok end)
+
+    # Stub the missing ESI.ServiceMock.get_system/2 call
+    WandererNotifier.Api.ESI.ServiceMock
+    |> stub(:get_system, fn _id, _opts -> {:ok, %{"name" => "Test System"}} end)
 
     :ok
   end
 
   describe "startup notification" do
     test "sends startup notification successfully" do
-      # Get the existing service PID or start a new one
       pid =
         case Process.whereis(Service) do
           nil ->
@@ -58,13 +69,8 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
             pid
         end
 
-      # Send startup notification
       send(pid, :send_startup_notification)
-
-      # Give it a moment to process
       Process.sleep(100)
-
-      # The service should still be alive
       assert Process.alive?(pid)
     end
   end

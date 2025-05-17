@@ -3,6 +3,15 @@ import Config
 # Set environment based on MIX_ENV at compile time
 config :wanderer_notifier, env: config_env()
 
+# Enable schedulers by default
+config :wanderer_notifier,
+  schedulers_enabled: true,
+  scheduler_supervisor_enabled: true
+
+# Configure HTTP client
+config :wanderer_notifier,
+  http_client: WandererNotifier.HttpClient.Httpoison
+
 # Configure MIME types
 config :mime, :types, %{
   "text/html" => ["html", "htm"],
@@ -21,12 +30,13 @@ config :mime, :extensions, %{
 }
 
 # Configure websocket defaults
-config :wanderer_notifier, :websocket,
+config :wanderer_notifier, :websocket, %{
   enabled: true,
   url: "wss://zkillboard.com/websocket/",
   reconnect_delay: 5000,
   max_reconnects: 20,
   reconnect_window: 3600
+}
 
 # Configure the logger
 config :logger,
@@ -36,8 +46,8 @@ config :logger,
 
 # Console logger configuration
 config :logger, :console,
-  format: "$time [$level] $message\n",
-  metadata: [:trace_id],
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:pid, :module, :file, :line],
   colors: [
     debug: :cyan,
     info: :green,
@@ -50,25 +60,22 @@ config :logger, :console,
 config :logger, :module_levels, %{
   "WandererNotifier.Service.KillProcessor" => :info,
   "WandererNotifier.Core.Maintenance.Scheduler" => :info,
-  "WandererNotifier.Config.Config" => :info,
-  "WandererNotifier.Config.Timings" => :info,
-  "WandererNotifier.Api.ESI.Client" => :warn,
-  "WandererNotifier.Api.Map.Client" => :info,
-  "WandererNotifier.Api.Map.Systems" => :info,
-  "WandererNotifier.Api.Map.Characters" => :info,
+  "WandererNotifier.Config" => :info,
+  "WandererNotifier.ESI.Client" => :warn,
+  "WandererNotifier.Map.Client" => :info,
+  "WandererNotifier.Map.SystemsClient" => :info,
+  "WandererNotifier.Map.CharactersClient" => :info,
   "WandererNotifier.Notifiers.Discord" => :info,
-  "WandererNotifier.Api.ZKill.Websocket" => :info,
   "WandererNotifier.Application" => :info,
   "WandererNotifier.License.Service" => :info,
   "WandererNotifier.Core.Stats" => :info,
-  "WandererNotifier.Data.Cache.Repository" => :info,
-  "WandererNotifier.Data.Cache.Helpers" => :warn,
-  "WandererNotifier.Data.Cache" => :warn,
   "WandererNotifier.Core.Application.Service" => :info,
   "WandererNotifier.Services.KillProcessor" => :debug,
   "WandererNotifier.Services.NotificationDeterminer" => :debug,
   "WandererNotifier.Supervisors.Basic" => :info,
-  "WandererNotifier" => :info
+  "WandererNotifier" => :info,
+  "WandererNotifier.Cache.Helpers" => :warn,
+  "WandererNotifier.Cache" => :warn
 }
 
 # Nostrum compile-time configuration
@@ -89,46 +96,17 @@ config :nostrum, :gateway,
     max: 120_000
   ]
 
-# Configure Ecto timestamps
-config :wanderer_notifier, WandererNotifier.Data.Repo,
-  migration_timestamps: [type: :utc_datetime_usec]
-
-# Configure persistence feature defaults
-config :wanderer_notifier, :persistence,
-  enabled: true,
-  retention_period_days: 180,
-  # Daily at midnight (minute 0, hour 0, any day, any month, any day of week)
-  aggregation_schedule: "0 0 * * *"
-
-# Configure Ash APIs
-config :wanderer_notifier, :ash_apis, [
-  WandererNotifier.Resources.Api
-]
-
-# Configure Ash Domains
-config :wanderer_notifier,
-  ash_domains: [
-    WandererNotifier.Resources.Api,
-    WandererNotifier.Resources.Domain
-  ]
-
-# Configure compatible foreign key types for Ash relationships
-# This must be set at compile time
-config :ash, :compatible_foreign_key_types, [
-  {Ash.Type.UUID, Ash.Type.Integer}
-]
-
-# Configure Ecto repositories
-config :wanderer_notifier, ecto_repos: [WandererNotifier.Data.Repo]
-
 # Configure cache
 config :wanderer_notifier, cache_name: :wanderer_cache
 
 # Configure service modules
 config :wanderer_notifier,
-  zkill_service: WandererNotifier.Api.ZKill.Service,
-  esi_service: WandererNotifier.Api.ESI.Service,
-  chart_service_dir: "/workspace/chart-service"
+  esi_service: WandererNotifier.ESI.Service,
+  cache_impl: WandererNotifier.Cache.CachexImpl,
+  character_module: WandererNotifier.Map.MapCharacter,
+  system_module: WandererNotifier.Map.MapSystem,
+  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
+  config_module: WandererNotifier.Config
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

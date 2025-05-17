@@ -1,57 +1,66 @@
 import Config
 
+# Environment-specific configuration
 config :wanderer_notifier,
-  # Environment
-  environment: :test,
-  start_external_connections: false,
-
-  # Cache configuration
+  test_env: true,
+  env: :test,
+  disable_status_messages: true,
   cache_name: :test_cache,
-  cache_repository: WandererNotifier.Data.Cache.RepositoryMock,
+  chart_service_dir: System.get_env("CHART_SERVICE_DIR", "/workspace/chart-service")
 
-  # Mock clients
-  http_client: WandererNotifier.MockHTTP,
-  discord_client: WandererNotifier.MockDiscord,
-  websocket_client: WandererNotifier.MockWebSocket,
+# Test mode configuration
+config :nostrum, token: "test_discord_token"
 
-  # Service mocks
-  zkill_service: WandererNotifier.Api.ZKill.ServiceMock,
-  esi_service: WandererNotifier.Api.ESI.ServiceMock,
-  cache_helpers: WandererNotifier.MockCacheHelpers,
-  repository: WandererNotifier.MockRepository,
-  killmail_persistence: WandererNotifier.MockKillmailPersistence,
-  logger: WandererNotifier.MockLogger,
-  notifier_factory: WandererNotifier.MockNotifierFactory,
-  discord_notifier: WandererNotifier.MockDiscordNotifier,
-  structured_formatter: WandererNotifier.MockStructuredFormatter,
-  killmail_chart_adapter: WandererNotifier.MockKillmailChartAdapter,
-  config_module: WandererNotifier.MockConfig,
-  date_module: WandererNotifier.MockDate,
-
-  # Test timeouts
-  api_timeout: 100,
-
-  # Feature flags
+# WandererNotifier test configuration
+config :wanderer_notifier,
+  discord: %{
+    bot_token: "test_token",
+    channel_id: "123456789"
+  },
+  map_url: "https://example.com",
+  map_token: "test_map_token",
+  test_mode: true,
+  minimal_test: System.get_env("MINIMAL_TEST") == "true",
   features: %{
-    "send_discord_notifications" => true,
-    "track_character_changes" => true,
-    "generate_tps_charts" => false
-  }
+    notifications_enabled: true,
+    character_notifications_enabled: true,
+    system_notifications_enabled: true,
+    kill_notifications_enabled: true,
+    character_tracking_enabled: true,
+    system_tracking_enabled: true,
+    tracked_systems_notifications_enabled: true,
+    tracked_characters_notifications_enabled: true,
+    status_messages_disabled: true,
+    track_kspace_systems: true
+  },
+  cache_repository: WandererNotifier.Cache.CachexImpl
 
-# Prevent Nostrum from starting during tests
-config :nostrum,
-  token: "fake_token_for_testing",
-  gateway_intents: [],
-  start_nostrum: false,
-  gateway: [
-    # Disable gateway connection in tests
-    connect_automatically: false
-  ],
-  # Add rate limit settings
-  request_handler: [
-    # Disable rate limiting in tests
-    rate_limit_requests: false
-  ]
+# Configure the test environment
+config :wanderer_notifier,
+  schedulers_enabled: false,
+  scheduler_supervisor_enabled: false
 
-# Configure logger for test environment
+# Configure the logger (simple format for tests)
 config :logger, level: :warning
+
+config :logger, :console,
+  format: "[$level] $message\n",
+  metadata: [:pid, :module]
+
+# Configure the cache
+config :wanderer_notifier, :cache,
+  backend: WandererNotifier.Cache.CachexImpl,
+  ttl: 60
+
+# Configure the ESI service
+config :wanderer_notifier, :esi, service: WandererNotifier.ESI.ServiceMock
+
+# Configure the notification service
+config :wanderer_notifier, :notifications, service: WandererNotifier.Notifiers.TestNotifier
+
+# Configure the kill determiner
+config :wanderer_notifier, :kill_determiner,
+  service: WandererNotifier.Notifications.Determiner.KillMock
+
+# Configure Mox
+config :mox, :global, true
