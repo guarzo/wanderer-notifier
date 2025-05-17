@@ -160,12 +160,25 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     has_tracked_system = KillDeterminer.tracked_system?(system_id)
     has_tracked_character = KillDeterminer.has_tracked_character?(killmail)
 
+    # Get config to check if notifications are enabled
+    config = Application.get_env(:wanderer_notifier, :config_module).get_config()
+    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
+    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+
     # Determine which channel to use based on the kill type
     channel_id =
       cond do
-        has_tracked_character -> Config.discord_character_kill_channel_id()
-        has_tracked_system -> Config.discord_system_kill_channel_id()
-        true -> Config.discord_channel_id()
+        # Check for tracked character first, but only if character notifications are enabled
+        has_tracked_character && character_notifications_enabled ->
+          Config.discord_character_kill_channel_id()
+
+        # Then check for tracked system, but only if system notifications are enabled
+        has_tracked_system && system_notifications_enabled ->
+          Config.discord_system_kill_channel_id()
+
+        # Default fallback
+        true ->
+          Config.discord_channel_id()
       end
 
     # Send to the appropriate channel

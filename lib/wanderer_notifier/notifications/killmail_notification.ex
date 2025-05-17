@@ -181,6 +181,11 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   defp extract_from_esi_data(_), do: nil
 
   defp check_notification_requirements(enriched_killmail) do
+    # Get configuration
+    config = Application.get_env(:wanderer_notifier, :config_module).get_config()
+    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
+    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+
     # Check if the killmail meets notification requirements
     system_id = KillDeterminer.get_kill_system_id(enriched_killmail)
     has_tracked_system = KillDeterminer.tracked_system?(system_id)
@@ -192,19 +197,50 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       kill_id: kill_id,
       system_id: system_id,
       has_tracked_system: has_tracked_system,
-      has_tracked_character: has_tracked_character
+      has_tracked_character: has_tracked_character,
+      character_notifications_enabled: character_notifications_enabled,
+      system_notifications_enabled: system_notifications_enabled
     })
 
-    if has_tracked_system || has_tracked_character do
-      {:ok, true}
-    else
-      AppLogger.kill_info("Kill notification requirements not met", %{
-        kill_id: kill_id,
-        system_id: system_id
-      })
+    # First check if it has a tracked character
+    cond do
+      has_tracked_character ->
+        if character_notifications_enabled do
+          # Character is tracked and notifications are enabled for characters
+          {:ok, true}
+        else
+          AppLogger.kill_info("Character tracked but character notifications disabled", %{
+            kill_id: kill_id
+          })
 
-      # Return {:ok, false} instead of error to allow proper flow
-      {:ok, false}
+          # Character is tracked but notifications are disabled, don't check system
+          {:ok, false}
+        end
+
+      # If no tracked character, check if it's in a tracked system
+      has_tracked_system ->
+        if system_notifications_enabled do
+          # System is tracked and notifications are enabled for systems
+          {:ok, true}
+        else
+          AppLogger.kill_info("System tracked but system notifications disabled", %{
+            kill_id: kill_id,
+            system_id: system_id
+          })
+
+          # System is tracked but notifications are disabled for systems
+          {:ok, false}
+        end
+
+      # Neither character nor system is tracked
+      true ->
+        AppLogger.kill_info("Kill notification requirements not met - no tracked entities", %{
+          kill_id: kill_id,
+          system_id: system_id
+        })
+
+        # Return {:ok, false} instead of error to allow proper flow
+        {:ok, false}
     end
   end
 

@@ -39,7 +39,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
              %{should_notify: false, reason: "Both system and character notifications disabled"}}
 
           true ->
-            check_tracking_status(killmail)
+            check_tracking_status(killmail, config)
         end
 
       {:error, reason} ->
@@ -105,17 +105,36 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def get_kill_system_id(%{"solar_system_id" => id}), do: id
   def get_kill_system_id(_), do: "unknown"
 
-  defp check_tracking_status(killmail) do
-    system_tracked = tracked_system?(get_kill_system_id(killmail))
+  defp check_tracking_status(killmail, config) do
+    system_id = get_kill_system_id(killmail)
+    system_tracked = tracked_system?(system_id)
     has_tracked_char = has_tracked_character?(killmail)
 
+    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
+    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+
     cond do
-      system_tracked ->
-        {:ok, %{should_notify: true, reason: nil}}
-
+      # First check if it has a tracked character
       has_tracked_char ->
-        {:ok, %{should_notify: true, reason: nil}}
+        if character_notifications_enabled do
+          # Character is tracked and notifications are enabled for characters
+          {:ok, %{should_notify: true, reason: nil}}
+        else
+          # Character is tracked but notifications are disabled for characters
+          {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
+        end
 
+      # If no tracked character, check if it's in a tracked system
+      system_tracked ->
+        if system_notifications_enabled do
+          # System is tracked and notifications are enabled for systems
+          {:ok, %{should_notify: true, reason: nil}}
+        else
+          # System is tracked but notifications are disabled for systems
+          {:ok, %{should_notify: false, reason: "System notifications disabled"}}
+        end
+
+      # Neither character nor system is tracked
       true ->
         {:ok, %{should_notify: false, reason: "No tracked systems or characters involved"}}
     end

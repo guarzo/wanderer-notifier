@@ -205,3 +205,6 @@ end
 6. Update tests to point to new module names
 7. Delete empty old directories once all tests pass
 
+-- Other Stuff --
+
+We want to segment the kill notifications based on characte
