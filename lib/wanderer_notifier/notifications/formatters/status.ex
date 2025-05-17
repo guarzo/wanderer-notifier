@@ -175,6 +175,15 @@ defmodule WandererNotifier.Notifiers.StatusNotifier do
   def send_status_message(title, description) do
     stats = Stats.get_stats()
     features_status = Config.features()
+
+    # Ensure features_status is a map for the formatter
+    features_map =
+      if is_list(features_status) do
+        Enum.into(features_status, %{})
+      else
+        features_status
+      end
+
     systems_count = Map.get(stats, :systems_count, 0)
     characters_count = Map.get(stats, :characters_count, 0)
 
@@ -187,13 +196,24 @@ defmodule WandererNotifier.Notifiers.StatusNotifier do
         description,
         stats,
         stats.uptime_seconds,
-        features_status,
+        features_map,
         license_status,
         systems_count,
         characters_count
       )
 
+    # Convert to discord format
     embed = CommonFormatter.to_discord_format(notification)
-    WandererNotifier.Notifications.Dispatcher.send_message(embed)
+
+    # Try to send the notification - if it fails, log but don't crash
+    try do
+      WandererNotifier.Notifications.Dispatcher.send_discord_embed(embed)
+    rescue
+      e ->
+        # Log but don't crash the process
+        require Logger
+        Logger.error("Failed to send status notification: #{Exception.message(e)}")
+        {:error, "Failed to send notification: #{Exception.message(e)}"}
+    end
   end
 end

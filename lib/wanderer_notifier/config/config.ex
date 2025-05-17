@@ -164,7 +164,18 @@ defmodule WandererNotifier.Config do
   end
 
   # --- Features ---
-  def features, do: get(:features, [])
+  def features do
+    # Always return a valid keyword list with at least basic features
+    features_from_config = get(:features, [])
+
+    if Keyword.keyword?(features_from_config) do
+      features_from_config
+    else
+      # Default empty keyword list if not configured
+      []
+    end
+  end
+
   def feature_enabled?(flag), do: Keyword.get(features(), flag, false)
 
   @impl true

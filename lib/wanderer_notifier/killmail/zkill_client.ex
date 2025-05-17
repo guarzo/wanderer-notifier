@@ -105,13 +105,25 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
     fn_request = fn -> make_http_request(url) end
 
-    case make_request_with_retry(fn_request) do
+    case make_request_with_retry(fn_request, 0) do
       {:ok, response} ->
         # Log response type for debugging
         require Logger
 
+        # Safe type analysis
         response_type = typemap(response)
-        response_keys = if is_map(response), do: Map.keys(response), else: []
+
+        response_keys =
+          cond do
+            is_map(response) ->
+              Map.keys(response)
+
+            is_list(response) && length(response) > 0 && is_map(hd(response)) ->
+              Map.keys(hd(response))
+
+            true ->
+              []
+          end
 
         response_sample =
           if is_map(response),
@@ -129,6 +141,10 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         Logger.error("ZKill API error: #{inspect(error)}")
         {:error, error}
     end
+  rescue
+    e ->
+      Logger.error("Exception in ZKill request_and_decode: #{inspect(e)}")
+      {:ok, ["Error retrieving zkill data"]}
   end
 
   # Helper function to process ZKill responses
@@ -145,11 +161,40 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
       # Only take the number we need before formatting
       kills = Enum.take(response, limit)
-      kill_strings = format_kills_from_list(kills)
-      {:ok, kill_strings}
+
+      # Try to format them - if it fails, return a safe message
+      try do
+        kill_strings = format_kills_from_list(kills)
+        {:ok, kill_strings}
+      rescue
+        e ->
+          Logger.error("Error formatting kills list: #{Exception.message(e)}")
+          {:ok, ["Error processing kill data"]}
+      end
     else
-      # Handle any other response types with a safe fallback
-      {:ok, ["ZKill API data unavailable at this time"]}
+      # Try to decode JSON if it's a string
+      if is_binary(response) do
+        try do
+          case Jason.decode(response) do
+            {:ok, decoded} when is_list(decoded) ->
+              process_zkill_response(decoded, url)
+
+            {:ok, decoded} when is_map(decoded) ->
+              Logger.info("Received map response from ZKill, expected list")
+              {:ok, ["ZKill API response format changed"]}
+
+            _ ->
+              {:ok, ["ZKill API data unavailable at this time"]}
+          end
+        rescue
+          e ->
+            Logger.error("Error decoding JSON response: #{Exception.message(e)}")
+            {:ok, ["Error processing ZKill data"]}
+        end
+      else
+        # Handle any other response types with a safe fallback
+        {:ok, ["ZKill API data unavailable at this time"]}
+      end
     end
   end
 
@@ -160,9 +205,17 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     # Get the ESI service
     esi_service = get_esi_service()
 
-    # Process each kill individually
+    # Process each kill individually, with safe handling
     kills
-    |> Enum.map(fn kill -> format_single_kill(kill, esi_service) end)
+    |> Enum.map(fn kill ->
+      try do
+        format_single_kill(kill, esi_service)
+      rescue
+        e ->
+          Logger.warning("Error formatting kill: #{Exception.message(e)}")
+          "Unknown kill"
+      end
+    end)
   end
 
   # Fallback for non-list inputs
@@ -325,20 +378,73 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   @spec make_http_request(String.t()) :: {:ok, String.t() | map()} | {:error, any()}
   defp make_http_request(url) do
     headers = build_headers()
-    opts = [recv_timeout: 10_000, timeout: 10_000]
+    opts = [recv_timeout: 5_000, timeout: 5_000, follow_redirect: true]
 
-    case http_client().get(url, headers, opts) do
-      {:ok, %{status_code: 200, body: body}} ->
-        AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
-        {:ok, body}
+    try do
+      case http_client().get(url, headers, opts) do
+        {:ok, %{status_code: 200, body: body}} ->
+          AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
+          {:ok, body}
 
-      {:ok, %{status_code: status, body: body}} ->
-        AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, sample: sample(body)})
-        {:error, {:http_error, status}}
+        {:ok, %{status_code: status, body: body}} ->
+          AppLogger.api_error("ZKill HTTP error", %{
+            status: status,
+            url: url,
+            sample: sample(body)
+          })
 
-      {:error, reason} ->
-        AppLogger.api_error("ZKill request failed", %{error: inspect(reason), url: url})
-        {:error, reason}
+          {:error, {:http_error, status}}
+
+        {:error, %HTTPoison.Error{reason: :timeout}} ->
+          AppLogger.api_error("ZKill request timeout", %{url: url})
+          {:error, :timeout}
+
+        {:error, %HTTPoison.Error{reason: :econnrefused}} ->
+          AppLogger.api_error("ZKill connection refused", %{url: url})
+          {:error, :connection_refused}
+
+        {:error, %HTTPoison.Error{reason: :closed}} ->
+          AppLogger.api_error("ZKill connection closed", %{url: url})
+          {:error, :connection_closed}
+
+        {:error, %HTTPoison.Error{reason: reason}} ->
+          AppLogger.api_error("ZKill HTTPoison error", %{
+            error_type: "HTTPoison.Error",
+            reason: inspect(reason),
+            url: url
+          })
+
+          {:error, {:httpoison_error, reason}}
+
+        {:error, reason} ->
+          AppLogger.api_error("ZKill request failed", %{error: inspect(reason), url: url})
+          {:error, reason}
+      end
+    rescue
+      e ->
+        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+
+        AppLogger.api_error("Exception in ZKill HTTP request", %{
+          error_type: inspect(e.__struct__),
+          message: Exception.message(e),
+          url: url,
+          stacktrace: stacktrace
+        })
+
+        {:error, {:exception, Exception.message(e), inspect(e.__struct__)}}
+    catch
+      kind, reason ->
+        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
+
+        AppLogger.api_error("Caught error in ZKill HTTP request", %{
+          kind: kind,
+          reason_type: typemap(reason),
+          reason: inspect(reason),
+          url: url,
+          stacktrace: stacktrace
+        })
+
+        {:error, {:caught, {kind, reason}}}
     end
   end
 
@@ -404,18 +510,78 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
   end
 
-  defp make_request_with_retry(request_fn, retries \\ 0)
-
   defp make_request_with_retry(request_fn, r) when r < @max_retries do
     case request_fn.() do
       {:ok, res} ->
         {:ok, res}
 
-      {:error, _} ->
+      {:error, :timeout} ->
+        # Timeouts are transient, we should retry
+        AppLogger.api_warn("ZKill API timeout, retrying", %{attempt: r + 1, max: @max_retries})
+        :timer.sleep(@retry_backoff_ms * (r + 1))
+        make_request_with_retry(request_fn, r + 1)
+
+      {:error, :connection_refused} ->
+        # Connection refusals indicate service might be down, long backoff
+        AppLogger.api_warn("ZKill API connection refused, retrying with longer delay", %{
+          attempt: r + 1,
+          max: @max_retries
+        })
+
+        :timer.sleep(@retry_backoff_ms * (r + 1) * 2)
+        make_request_with_retry(request_fn, r + 1)
+
+      {:error, :connection_closed} ->
+        # Connection closed might be temporary
+        AppLogger.api_warn("ZKill API connection closed, retrying", %{
+          attempt: r + 1,
+          max: @max_retries
+        })
+
+        :timer.sleep(@retry_backoff_ms * (r + 1))
+        make_request_with_retry(request_fn, r + 1)
+
+      {:error, {:exception, message, type}} ->
+        # Log detailed exception information
+        AppLogger.api_error("ZKill API exception, retrying", %{
+          attempt: r + 1,
+          max: @max_retries,
+          error_type: type,
+          message: message
+        })
+
+        :timer.sleep(@retry_backoff_ms * (r + 1))
+        make_request_with_retry(request_fn, r + 1)
+
+      {:error, {:httpoison_error, reason}} ->
+        # Log specific HTTPoison error
+        AppLogger.api_error("ZKill API HTTPoison error, retrying", %{
+          attempt: r + 1,
+          max: @max_retries,
+          reason: inspect(reason)
+        })
+
+        :timer.sleep(@retry_backoff_ms * (r + 1))
+        make_request_with_retry(request_fn, r + 1)
+
+      {:error, error} ->
+        # Log the actual error data structure in detail
+        error_type = typemap(error)
+
+        AppLogger.api_error("ZKill API error, retrying", %{
+          attempt: r + 1,
+          max: @max_retries,
+          error_type: error_type,
+          error: inspect(error)
+        })
+
         :timer.sleep(@retry_backoff_ms * (r + 1))
         make_request_with_retry(request_fn, r + 1)
     end
   end
 
-  defp make_request_with_retry(request_fn, _), do: request_fn.()
+  defp make_request_with_retry(_request_fn, retries) do
+    AppLogger.api_error("ZKill API max retries reached", %{retries: retries})
+    {:error, :max_retries_reached}
+  end
 end

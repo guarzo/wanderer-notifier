@@ -67,7 +67,7 @@ defmodule WandererNotifier.MockCache do
 end
 
 defmodule WandererNotifier.MockDeduplication do
-  @behaviour WandererNotifier.Notifications.DeduplicationBehaviour
+  @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
   # Make sure the ETS table exists
   def ensure_table_exists do

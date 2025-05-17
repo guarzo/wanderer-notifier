@@ -3,7 +3,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   Default implementation of the Deduplication behaviour using Cachex for storage.
   """
 
-  @behaviour WandererNotifier.Notifications.Deduplication
+  @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
 
@@ -36,6 +36,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @doc """
   Clears a deduplication key from the cache (for testing or manual reset).
   """
+  @impl true
   def clear_key(type, id)
       when type in [:system, :character, :kill] and (is_binary(id) or is_integer(id)) do
     cache_key = dedup_key(type, id)

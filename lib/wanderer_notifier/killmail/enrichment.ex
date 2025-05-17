@@ -232,27 +232,53 @@ defmodule WandererNotifier.Killmail.Enrichment do
   """
   def recent_kills_for_system(system_id, limit \\ 3) do
     try do
+      # Log the request
+      Logger.info("Fetching recent kills for system", %{
+        system_id: system_id,
+        limit: limit
+      })
+
       # Call ZKill client - response should be already formatted strings with links
       case @zkill_client.get_system_kills(system_id, limit) do
         {:ok, kill_strings} when is_list(kill_strings) and length(kill_strings) > 0 ->
+          # Log successful result
+          Logger.info("Found #{length(kill_strings)} kills for system", %{
+            system_id: system_id
+          })
+
           # Join the pre-formatted strings with newlines
           # The strings should already be formatted as markdown links
           Enum.join(kill_strings, "\n")
 
         {:ok, []} ->
+          Logger.info("No kills found for system", %{system_id: system_id})
           "No recent kills found"
 
         {:error, reason} ->
-          Logger.warning("Error getting kills", %{details: inspect(reason)})
+          Logger.warning("Error getting kills", %{
+            system_id: system_id,
+            details: inspect(reason)
+          })
+
           "Error retrieving kill data"
 
         unexpected ->
-          Logger.warning("Unexpected response from ZKillClient", %{details: inspect(unexpected)})
+          Logger.warning("Unexpected response from ZKillClient", %{
+            system_id: system_id,
+            details: inspect(unexpected)
+          })
+
           "Unexpected kill data response"
       end
     rescue
       e ->
-        Logger.error("Exception in recent_kills_for_system", %{details: Exception.message(e)})
+        Logger.error("Exception in recent_kills_for_system", %{
+          system_id: system_id,
+          error_type: inspect(e.__struct__),
+          details: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        })
+
         "Error retrieving kill data"
     end
   end

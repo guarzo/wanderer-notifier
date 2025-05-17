@@ -30,6 +30,36 @@ defmodule WandererNotifier.ConfigProvider do
     config = Keyword.put(config, :wanderer_notifier, [])
     config = put_in(config, [:wanderer_notifier, :features], [])
 
+    # Set core configuration values including the config_module
+    config = put_in(config, [:wanderer_notifier, :config], WandererNotifier.Config)
+
+    # Set discord channel ID
+    config =
+      put_in(
+        config,
+        [:wanderer_notifier, :discord_channel_id],
+        System.get_env("WANDERER_DISCORD_CHANNEL_ID")
+      )
+
+    # Set map token and URL
+    config =
+      put_in(config, [:wanderer_notifier, :map_token], System.get_env("WANDERER_MAP_TOKEN"))
+
+    config =
+      put_in(config, [:wanderer_notifier, :map_url_with_name], System.get_env("WANDERER_MAP_URL"))
+
+    # Set API token
+    config =
+      put_in(
+        config,
+        [:wanderer_notifier, :api_token],
+        System.get_env("WANDERER_NOTIFIER_API_TOKEN")
+      )
+
+    # Set license key
+    config =
+      put_in(config, [:wanderer_notifier, :license_key], System.get_env("WANDERER_LICENSE_KEY"))
+
     config
     |> put_in([:wanderer_notifier, :port], parse_port())
     |> put_in(

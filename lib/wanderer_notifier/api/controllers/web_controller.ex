@@ -132,11 +132,11 @@ defmodule WandererNotifier.Api.Controllers.WebController do
     # Get features and transform them for the frontend
     features =
       Config.features()
-      |> Map.new()
+      |> Enum.into(%{})
       |> Map.drop([:disable_status_messages])
       |> Map.put(
         :status_messages_enabled,
-        !Map.get(Config.features(), :disable_status_messages, false)
+        !Map.get(Config.features() |> Enum.into(%{}), :disable_status_messages, false)
       )
 
     limits = Config.get_all_limits()

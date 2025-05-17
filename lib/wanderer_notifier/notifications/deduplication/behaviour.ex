@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Notifications.DeduplicationBehaviour do
+defmodule WandererNotifier.Notifications.Deduplication.Behaviour do
   @moduledoc """
   Behaviour for deduplication functionality.
   Defines the contract for modules that handle notification deduplication.

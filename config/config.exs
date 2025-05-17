@@ -105,7 +105,8 @@ config :wanderer_notifier,
   cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
-  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl
+  deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,
+  config_module: WandererNotifier.Config
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

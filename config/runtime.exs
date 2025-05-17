@@ -38,13 +38,33 @@ end)
 config :nostrum,
   token: System.get_env("WANDERER_DISCORD_BOT_TOKEN") || "missing_token"
 
+# Load feature-specific environment variables
+feature_env_vars =
+  System.get_env()
+  |> Enum.filter(fn {key, _} -> String.starts_with?(key, "WANDERER_FEATURE_") end)
+  |> Enum.map(fn {key, value} ->
+    feature_name =
+      key
+      |> String.replace_prefix("WANDERER_FEATURE_", "")
+      |> String.downcase()
+      |> String.to_atom()
+
+    {feature_name, Helpers.parse_bool(value, true)}
+  end)
+  |> Enum.into(%{})
+
 config :wanderer_notifier,
   # Required settings (will raise at runtime if not set in production)
   map_token: System.get_env("WANDERER_MAP_TOKEN") || "missing_token",
   api_token: System.get_env("WANDERER_NOTIFIER_API_TOKEN") || "missing_token",
   license_key: System.get_env("WANDERER_LICENSE_KEY") || "missing_key",
   map_url_with_name: System.get_env("WANDERER_MAP_URL") || "missing_url",
-  discord_channel_id: System.get_env("WANDERER_DISCORD_CHANNEL_ID") || "missing_channel_id",
+
+  # Set discord_channel_id explicitly
+  discord_channel_id: System.get_env("WANDERER_DISCORD_CHANNEL_ID"),
+
+  # Explicitly set config module
+  config: WandererNotifier.Config,
 
   # Optional settings with sensible defaults
   port: Helpers.parse_int(System.get_env("PORT"), 4000),
@@ -54,19 +74,24 @@ config :wanderer_notifier,
   discord_character_channel_id: System.get_env("WANDERER_CHARACTER_CHANNEL_ID") || "",
   license_manager_api_url:
     System.get_env("WANDERER_LICENSE_MANAGER_URL") || "https://lm.wanderer.ltd",
-  features: %{
-    notifications_enabled:
-      Helpers.parse_bool(System.get_env("WANDERER_NOTIFICATIONS_ENABLED"), true),
-    kill_notifications_enabled:
-      Helpers.parse_bool(System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED"), true),
-    system_notifications_enabled:
-      Helpers.parse_bool(System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED"), true),
-    character_notifications_enabled:
-      Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED"), true),
-    disable_status_messages:
-      !Helpers.parse_bool(System.get_env("WANDERER_ENABLE_STATUS_MESSAGES"), true),
-    track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true)
-  },
+  # Merge base features with any WANDERER_FEATURE_ env vars
+  features:
+    Map.merge(
+      %{
+        notifications_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_NOTIFICATIONS_ENABLED"), true),
+        kill_notifications_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_KILL_NOTIFICATIONS_ENABLED"), true),
+        system_notifications_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED"), true),
+        character_notifications_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED"), true),
+        status_messages_disabled:
+          Helpers.parse_bool(System.get_env("WANDERER_DISABLE_STATUS_MESSAGES"), false),
+        track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true)
+      },
+      feature_env_vars
+    ),
   character_exclude_list:
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")
     |> String.split(",", trim: true)

@@ -112,7 +112,7 @@ Mox.defmock(WandererNotifier.MockNotificationsConfig,
 )
 
 Mox.defmock(WandererNotifier.Notifications.MockDeduplication,
-  for: WandererNotifier.Notifications.Deduplication
+  for: WandererNotifier.Notifications.Deduplication.Behaviour
 )
 
 Mox.defmock(WandererNotifier.Notifications.MockConfig,

@@ -42,7 +42,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   # Private functions
   defp get_notification_settings do
     features = Config.features()
-    features_map = Map.new(features)
+    features_map = Enum.into(features, %{})
 
     settings = %{
       channels: Config.discord_channel_id(),

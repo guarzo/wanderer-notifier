@@ -7,8 +7,6 @@ defmodule WandererNotifier.Notifications.Deduplication do
   @type notification_id :: String.t() | integer()
   @type result :: {:ok, :new} | {:ok, :duplicate} | {:error, term()}
 
-  @callback check(notification_type(), notification_id()) :: result()
-
   @doc """
   Checks if a notification for the given type and id is a duplicate.
   If not, marks it as seen for the deduplication TTL.
