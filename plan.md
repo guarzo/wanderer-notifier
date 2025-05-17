@@ -4,8 +4,6 @@
 
 Reorganize the codebase into clear domain contexts:
 
-✅ Created base directory structure
-
 ```
 lib/wanderer_notifier/
 ├── application.ex
@@ -17,8 +15,7 @@ lib/wanderer_notifier/
 │       └── license_controller.ex
 ├── cache/                # Cache contracts & implementations
 │   ├── behaviour.ex
-│   ├── cachex.ex
-│   ├── key.ex            ✅ DONE: Unified cache key generation
+│   └── cachex.ex
 ├── clients/              # External API clients
 │   ├── http/
 │   │   ├── behaviour.ex
@@ -27,14 +24,13 @@ lib/wanderer_notifier/
 │       ├── client.ex
 │       └── zkill_client.ex
 ├── config/               # Runtime configs per context
-│   ├── http.ex           ✅ DONE: Created HTTP config
-│   ├── websocket.ex      ✅ DONE: Created WebSocket config
-│   ├── notification.ex   ✅ DONE: Created Notification config
-│   ├── license.ex        ✅ DONE: Created License config
-│   └── utils.ex          ✅ DONE: Created Utils config helpers
+│   ├── http.ex
+│   ├── websocket.ex
+│   ├── notification.ex
+│   └── utils.ex
 ├── common/               # Shared helpers & types
 │   ├── tracking_utils.ex
-│   └── error_helpers.ex  ✅ DONE: Created error logging helpers
+│   └── error_helpers.ex
 ├── killmail/             # Killmail business logic
 │   ├── pipeline.ex
 │   ├── processor.ex
@@ -70,88 +66,101 @@ lib/wanderer_notifier/
 
 ## 2. Config Module Refactoring
 
-✅ Split the monolithic Config module into focused modules by concern:
+Split the monolithic Config module into focused modules by concern:
 
 ### 2.1. Identify Concern Boundaries
 
-| Concern       | Example functions                                       | Status  |
-| ------------- | ------------------------------------------------------- | ------- |
-| HTTP          | http_host/0, http_port/0, http_scheme/0                 | ✅ DONE |
-| WebSocket     | ws_endpoint/0, ws_timeout/0                             | ✅ DONE |
-| Notifications | discord_token/0, notification_ttl/0                     | ✅ DONE |
-| License       | license_key/0, license_ttl/0                            | ✅ DONE |
-| ESI           | esi_base_url/0, esi_token/0                             | ✅ DONE |
-| Generic Utils | parse_int/1, nil_or_empty?/1, parse_list/1, fetch_env/1 | ✅ DONE |
+| Concern       | Example functions                                       |
+| ------------- | ------------------------------------------------------- |
+| HTTP          | http_host/0, http_port/0, http_scheme/0                 |
+| WebSocket     | ws_endpoint/0, ws_timeout/0                             |
+| Notifications | discord_token/0, notification_ttl/0                     |
+| License       | license_key/0, license_ttl/0                            |
+| ESI           | esi_base_url/0, esi_token/0                             |
+| Generic Utils | parse_int/1, nil_or_empty?/1, parse_list/1, fetch_env/1 |
 
 ### 2.2. Create Modules Per Concern
 
-✅ Created config modules:
-
 ```
 lib/wanderer_notifier/config/
-├── http.ex          ✅ DONE
-├── websocket.ex     ✅ DONE
-├── notification.ex  ✅ DONE
-├── esi.ex           ✅ DONE
-├── license.ex       ✅ DONE
-└── utils.ex         ✅ DONE
+├── http.ex
+├── websocket.ex
+├── notification.ex
+├── esi.ex
+├── license.ex
+└── utils.ex
 ```
 
 ## 3. Specific Code Improvements
 
-### 3.1. Unify Cache-Key Generation ✅ DONE
+### 3.1. Unify Cache-Key Generation
 
 **Problem**: Multiple duplicate functions for cache keys.
 
-**Solution**: Created a centralized key builder in `lib/wanderer_notifier/cache/key.ex` with the following interface:
+**Solution**: Create a centralized key builder:
 
 ```elixir
-# Create a cache key object
-key_obj = WandererNotifier.Cache.Key.new(:killmail, killmail_id)
+defmodule WandererNotifier.Cache.Key do
+  @moduledoc "Generic cache-key generator."
 
-# Convert to string
-key_str = WandererNotifier.Cache.Key.to_string(key_obj)
-# "wn:killmail:12345"
+  @type t :: %__MODULE__{prefix: String.t(), entity: atom(), id: term()}
+  defstruct [:prefix, :entity, :id]
 
-# Or do it all in one step
-key_str = WandererNotifier.Cache.Key.for(:killmail, killmail_id)
-# "wn:killmail:12345"
+  @spec new(atom(), term()) :: t()
+  def new(entity, id) when is_atom(entity) do
+    %__MODULE__{
+      prefix: Application.get_env(:wanderer_notifier, :cache_prefix, "wn"),
+      entity: entity,
+      id: id
+    }
+  end
+
+  @spec to_string(t()) :: String.t()
+  def to_string(%__MODULE__{prefix: pre, entity: ent, id: id}) do
+    "#{pre}:#{ent}:#{id}"
+  end
+end
 ```
 
-### 3.2. Extract Shared Error-Logging Patterns ✅ DONE
+**Usage**: `key = WandererNotifier.Cache.Key.new(:killmail, killmail_id) |> to_string()`
+
+### 3.2. Extract Shared Error-Logging Patterns
 
 **Problem**: Duplicate error handling code across modules.
 
-**Solution**: Created error handling macros in `lib/wanderer_notifier/common/error_helpers.ex` with the following interfaces:
+**Solution**: Create a logging macro:
 
 ```elixir
-# Basic API error handling
-with_api_log "fetch_user" do
-  api_client.get_user(user_id)
-end
+defmodule WandererNotifier.Logging do
+  @moduledoc "Macros for consistent API error handling."
 
-# Custom error handling
-with_custom_error_handler "process_data", fn e -> {:error, e.message} end do
-  process_data(data)
+  defmacro with_api_log(context, do: block) do
+    quote do
+      try do
+        unquote(block)
+      rescue
+        e ->
+          AppLogger.api_error(unquote(context), %{error: Exception.message(e)})
+          {:error, :service_unavailable}
+      end
+    end
+  end
 end
-
-# Function-based approach
-safe_call(fn -> some_function_that_might_fail() end, "operation_name")
 ```
 
 ## 4. Bug Fixes and Optimizations
 
-1. **Fix in web_controller.ex (lines 133-140)**: Eliminate redundant `Config.features()` calls ✅ DONE
+1. **Fix in web_controller.ex (lines 133-140)**: Eliminate redundant `Config.features()` calls
 
    ```elixir
-   features_list = Config.features()
-   features_map = Enum.into(features_list, %{})
+   features = Config.features()
+   features_map = Enum.into(features, %{})
    enabled = Map.get(features_map, "feature_name", false)
    ```
 
-2. **Fix in application.ex (lines 78-100)**: Replace `Enum.map` with `Enum.each` in `log_environment_variables` ✅ DONE
+2. **Fix in application.ex (lines 78-100)**: Replace `Enum.map` with `Enum.each` in `log_environment_variables`
 
-3. **Fix in runtime.exs (lines 111-112, 119-120, 127-128)**: Replace incorrect `System.get_env/2` usage: ✅ DONE
+3. **Fix in runtime.exs (lines 111-112, 119-120, 127-128)**: Replace incorrect `System.get_env/2` usage:
 
    ```elixir
    # Replace this:
@@ -160,40 +169,29 @@ safe_call(fn -> some_function_that_might_fail() end, "operation_name")
    System.get_env("VAR") || "default"
    ```
 
-4. **Fix in application.ex (lines 146-168)**: Add production environment guard to `reload/1`: ✅ DONE
+4. **Fix in application.ex (lines 146-168)**: Add production environment guard to `reload/1`:
 
    ```elixir
    def reload(mods) when get_env() != :prod do
      # existing implementation
    end
-
-   def reload(_modules) do
-     AppLogger.config_error("Module reloading is disabled in production")
-     {:error, :disabled_in_production}
-   end
    ```
 
-5. **Fix in config.exs (lines 6-10)**: Consolidate duplicate scheduler flags ✅ DONE
+5. **Fix in config.exs (lines 6-10)**: Consolidate duplicate scheduler flags
 
-   - Scheduler flags were already consolidated in a proper map structure
+6. **Fix in config.exs (lines 104-110)**: Remove references to deleted ESI.Service module
 
-6. **Fix in config.exs (lines 104-110)**: Remove references to deleted ESI.Service module ✅ DONE
+7. **Fix in notification_controller.ex (lines 14-17)**: Distinguish not-found from internal failures
 
-   - ESI.Service reference was already removed from the configuration
+8. **Fix in notification_controller.ex (lines 55-59)**: Improve error logging
 
-7. **Fix in notification_controller.ex (lines 14-17)**: Distinguish not-found from internal failures ✅ DONE
-
-   - Added specific error cases with appropriate HTTP status codes
-
-8. **Fix in notification_controller.ex (lines 55-59)**: Improve error logging ✅ DONE
-
-   - Added additional logging for missing configuration
-
-9. **Fix in notification_controller.ex (lines 43-46)**: Guard against nil from Config.features/0: ✅ DONE
+9. **Fix in notification_controller.ex (lines 43-46)**: Guard against nil from Config.features/0:
 
    ```elixir
-   # Get features with a nil guard
-   features = Config.features() || []
+   features =
+     Config.features()
+     |> Kernel.||([])  # fall back to empty list
+
    features_map = Enum.into(features, %{})
    ```
 
@@ -207,67 +205,3 @@ safe_call(fn -> some_function_that_might_fail() end, "operation_name")
 6. Update tests to point to new module names
 7. Delete empty old directories once all tests pass
 
-## 6. Documentation
-
-Create a high-level architectural README documenting:
-
-- Data flows (e.g., killmail flows from ZKill → Killmail.Processor → cache → API)
-- Scheduler trigger mechanisms
-- Configuration source locations (compile vs runtime)
-
-## Progress Summary
-
-### Completed Tasks
-
-1. **Directory Structure**:
-
-   - Created base directory structure according to the plan
-   - Established foundation for domain-driven organization
-
-2. **Config Module Refactoring**:
-
-   - Implemented all 6 of the planned config modules (http, websocket, notification, license, esi, utils)
-   - Extracted specific concerns into their own modules
-   - Improved code organization and structure
-
-3. **Specific Code Improvements**:
-
-   - Created the Cache.Key module for unified cache key generation
-   - Implemented ErrorHelpers module with common error handling patterns
-
-4. **Bug Fixes**:
-
-   - Fixed application.ex to use Enum.each in log_environment_variables
-   - Added production environment guard to reload/1 function
-   - Fixed System.get_env/2 usage in runtime.exs
-   - Fixed redundant Config.features() calls in web_controller.ex
-   - Verified scheduler flags structure in config.exs (already consolidated)
-   - Verified ESI.Service references in config.exs (already removed)
-   - Improved error handling in notification_controller.ex
-   - Added guard against nil from Config.features/0
-
-5. **Migration and Testing**:
-
-   - Updated imports/aliases in files that reference the old Config module
-   - Updated references to old config functions with the new namespaced ones
-   - Fixed compilation errors and many warnings
-   - Implemented missing functions in Factory and Dispatcher modules
-   - Created needed formatters for notifications
-
-6. **Documentation**:
-   - Created comprehensive ARCHITECTURE.md detailing system components, data flows, scheduler mechanisms, and configuration sources
-
-### Pending Tasks
-
-1. **Address Remaining Format Warnings** (Optional):
-
-   - There are some remaining warnings about mismatched formatter methods, but these don't prevent the code from compiling
-   - If needed, add the missing formatter methods or update the call sites to use the proper method names
-
-2. **Testing**:
-
-   - Run integration tests to validate all changes
-   - Ensure the application starts correctly in all environments
-
-3. **Final Cleanup**:
-   - Delete empty old directories if any remain
