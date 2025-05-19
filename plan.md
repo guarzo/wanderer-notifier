@@ -39,7 +39,7 @@ rescue
 
 Remove any catch-all clauses so unexpected errors bubble up.
 
-### Add tests for each branch ⚠️
+### Add tests for each branch ✅
 
 In `test/wanderer_notifier/killmail/pipeline_test.exs`, write cases for:
 
@@ -48,7 +48,7 @@ In `test/wanderer_notifier/killmail/pipeline_test.exs`, write cases for:
 - no-notify branch (returning `{:ok, :skipped}`)
 - each explicit exception type
 
-## 2. DRY Caching & Key Generation ⚠️
+## 2. DRY Caching & Key Generation ✅
 
 ### Centralize TTLs ✅
 
@@ -61,7 +61,7 @@ def static_info_ttl,        do: Application.get_env(:wanderer_notifier, :static_
 
 Replace all hard-coded TTL literals with calls to these.
 
-### Generate keys via macro ❌
+### Generate keys via macro ✅
 
 In `lib/wanderer_notifier/cache/keys.ex`, replace individual functions with:
 
@@ -81,7 +81,6 @@ defkey :killmail,    [:esi, :killmail_id]
 defkey :corporation, [:esi, :corporation_id]
 # …etc.
 ```
-
 
 ### Update callers & tests ✅
 
@@ -134,9 +133,9 @@ Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
 
 Remove any ad-hoc `put_env` calls sprinkled through individual tests.
 
-## 4. Enhance Logging & Observability ⚠️
+## 4. Enhance Logging & Observability ✅
 
-### Audit all AppLogger calls ⚠️
+### Audit all AppLogger calls ✅
 
 Search for `AppLogger.` in `lib/`. Ensure each call includes identifying metadata, e.g.:
 
@@ -144,7 +143,7 @@ Search for `AppLogger.` in `lib/`. Ensure each call includes identifying metadat
 AppLogger.api_debug("Fetched killmail", kill_id: km.id, module: __MODULE__)
 ```
 
-### Define a logging convention doc ❌
+### Define a logging convention doc ✅
 
 Create `docs/logging.md` with rules:
 

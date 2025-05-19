@@ -31,7 +31,7 @@ defmodule WandererNotifier.Killmail.Cache do
     kill_id = to_string(killmail_id)
 
     # Cache individual kill
-    individual_key = "#{CacheKeys.zkill_recent_kills()}:#{kill_id}"
+    individual_key = CacheKeys.zkill_recent_kill(kill_id)
 
     AppLogger.cache_debug("Caching individual kill", key: individual_key)
     CacheRepo.set(individual_key, killmail, Config.static_info_ttl())
@@ -58,7 +58,7 @@ defmodule WandererNotifier.Killmail.Cache do
     # Check if this kill is in our tracked list
     if id in kill_ids do
       # Get the individual kill data
-      key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+      key = CacheKeys.zkill_recent_kill(id)
 
       kill_data =
         case CacheRepo.get(key) do
@@ -91,7 +91,7 @@ defmodule WandererNotifier.Killmail.Cache do
     kills =
       kill_ids
       |> Enum.map(fn id ->
-        key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+        key = CacheKeys.zkill_recent_kill(id)
 
         {id,
          case CacheRepo.get(key) do
@@ -122,7 +122,7 @@ defmodule WandererNotifier.Killmail.Cache do
     # Map through and get each kill
     kill_ids
     |> Enum.map(fn id ->
-      key = "#{CacheKeys.zkill_recent_kills()}:#{id}"
+      key = CacheKeys.zkill_recent_kill(id)
 
       kill =
         case CacheRepo.get(key) do

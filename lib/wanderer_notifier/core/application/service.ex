@@ -12,6 +12,7 @@ defmodule WandererNotifier.Core.Application.Service do
   alias WandererNotifier.Schedulers.{CharacterUpdateScheduler, SystemUpdateScheduler}
   alias WandererNotifier.Killmail.Websocket
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys
 
   @default_interval 30_000
 
@@ -71,7 +72,7 @@ defmodule WandererNotifier.Core.Application.Service do
   def handle_cast({:mark_as_processed, kill_id}, state) do
     ttl = Config.kill_dedup_ttl()
 
-    case CacheRepo.set("kill:#{kill_id}", true, ttl) do
+    case CacheRepo.set(Keys.kill(kill_id), true, ttl) do
       :ok ->
         :ok
 

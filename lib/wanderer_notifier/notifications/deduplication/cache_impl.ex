@@ -6,6 +6,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Config
 
   @impl true
@@ -41,7 +42,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
     CacheRepo.delete(cache_key)
   end
 
-  defp dedup_key(:system, id), do: "system:#{id}"
-  defp dedup_key(:character, id), do: "character:#{id}"
-  defp dedup_key(:kill, id), do: "kill:#{id}"
+  defp dedup_key(:system, id), do: CacheKeys.dedup_system(id)
+  defp dedup_key(:character, id), do: CacheKeys.dedup_character(id)
+  defp dedup_key(:kill, id), do: CacheKeys.dedup_kill(id)
 end

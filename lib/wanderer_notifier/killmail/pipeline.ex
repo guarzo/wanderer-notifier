@@ -97,18 +97,51 @@ defmodule WandererNotifier.Killmail.Pipeline do
   rescue
     # Handle timeouts in ESI service calls
     e in ESIService.TimeoutError ->
-      AppLogger.error("ESI timeout during enrichment", error: inspect(e))
+      AppLogger.api_error("ESI timeout during enrichment",
+        error: inspect(e),
+        module: __MODULE__,
+        kill_id: killmail.killmail_id,
+        service: "ESI"
+      )
+
       {:error, :timeout}
 
     # Handle other ESI API errors
     e in ESIService.ApiError ->
-      AppLogger.error("ESI API error during enrichment", error: inspect(e))
+      AppLogger.api_error("ESI API error during enrichment",
+        error: inspect(e),
+        reason: e.reason,
+        module: __MODULE__,
+        kill_id: killmail.killmail_id,
+        service: "ESI"
+      )
+
       {:error, e.reason}
   end
 
   # — Logging & metrics helpers ———————————————————————————————————————————
 
-  defp log_outcome(_killmail, _ctx, _opts) do
+  defp log_outcome(killmail, ctx, opts) do
+    kill_id = if killmail, do: killmail.killmail_id, else: "unknown"
+    context_id = if ctx, do: ctx.id, else: nil
+
+    if opts[:notified] do
+      AppLogger.kill_info("Killmail processed and notified",
+        kill_id: kill_id,
+        context_id: context_id,
+        module: __MODULE__,
+        source: get_in(ctx, [:options, :source])
+      )
+    else
+      AppLogger.kill_info("Killmail processed but not notified",
+        kill_id: kill_id,
+        context_id: context_id,
+        module: __MODULE__,
+        reason: opts[:reason],
+        source: get_in(ctx, [:options, :source])
+      )
+    end
+
     :ok
   end
 
@@ -116,12 +149,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
     kill_id = if is_map(data), do: Map.get(data, "killmail_id", "unknown"), else: "unknown"
     context_id = if ctx, do: ctx.id, else: nil
 
-    AppLogger.kill_error("Pipeline error processing killmail", %{
+    AppLogger.kill_error("Pipeline error processing killmail",
       kill_id: kill_id,
       context_id: context_id,
       module: __MODULE__,
-      error: inspect(reason)
-    })
+      error: inspect(reason),
+      source: get_in(ctx, [:options, :source])
+    )
 
     :ok
   end

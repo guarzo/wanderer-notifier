@@ -3,9 +3,6 @@ defmodule WandererNotifier.Cache.Keys do
   Module for generating and validating cache keys.
   Provides functions for creating standardized cache keys for various data types.
 
-  This module provides functions for generating and validating cache keys,
-  ensuring consistent naming conventions across the application.
-
   Key Format: `prefix:entity_type:id` or `prefix:name`
   Examples:
     - `map:system:12345`
@@ -14,30 +11,19 @@ defmodule WandererNotifier.Cache.Keys do
   """
 
   # Key prefixes
-  # For mapping data (systems, characters)
   @prefix_map "map"
-  # For tracked entities
   @prefix_tracked "tracked"
-  # For ESI API data
   @prefix_esi "esi"
-  # For zKillboard data
   @prefix_zkill "zkill"
-  # For recent/list data
   @prefix_recent "recent"
-  # For existence checks
   @prefix_exists "exists"
-  # For application state
   @prefix_state "state"
-  # For configuration
   @prefix_config "config"
-  # For critical application data
   @prefix_critical "critical"
-  # For array data
   @prefix_array "array"
-  # For list data
   @prefix_list "list"
-  # For general data
   @prefix_data "data"
+  @prefix_dedup "dedup"
 
   # Entity types
   @entity_system "system"
@@ -50,390 +36,216 @@ defmodule WandererNotifier.Cache.Keys do
   # Separator
   @separator ":"
 
-  # Private helper function to join parts with separator
+  @doc false
   defp join_parts(parts) when is_list(parts) do
     Enum.join(parts, @separator)
   end
 
-  @doc """
-  Generates a cache key for system data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.system(30004759)
-      "map:system:30004759"
-  """
-  @spec system(integer() | String.t() | nil) :: String.t() | nil
-  def system(nil), do: nil
-
-  def system(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_map, @entity_system, to_string(id)])
+  @doc false
+  defp combine(fixed_parts, dynamic_parts, extra) do
+    fixed_parts
+    |> Enum.map(&to_string/1)
+    |> Kernel.++(Enum.map(dynamic_parts, &to_string/1))
+    |> Kernel.++(if(extra, do: [to_string(extra)], else: []))
+    |> join_parts()
   end
 
-  @doc """
-  Generates a cache key for character data.
+  # ── Dynamic-single functions ────────────────────────────────────────────────────
 
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.character(12345)
-      "map:character:12345"
-  """
-  @spec character(integer() | String.t() | nil) :: String.t() | nil
-  def character(character_id) do
-    require Logger
+  @doc "Key for a map system"
+  @spec system(integer() | String.t(), String.t() | nil) :: String.t()
+  def system(id, extra \\ nil),
+    do: combine([@prefix_map, @entity_system], [id], extra)
 
-    cond do
-      is_nil(character_id) ->
-        Logger.warning("Cache.Keys.character/1 called with nil")
-        nil
+  @doc "Key for an ESI character"
+  @spec character(integer() | String.t(), String.t() | nil) :: String.t()
+  def character(id, extra \\ nil),
+    do: combine([@prefix_esi, @entity_character], [id], extra)
 
-      is_integer(character_id) or is_binary(character_id) ->
-        join_parts([@prefix_esi, @entity_character, to_string(character_id)])
+  @doc "Key for a tracked system"
+  @spec tracked_system(integer() | String.t(), String.t() | nil) :: String.t()
+  def tracked_system(id, extra \\ nil),
+    do: combine([@prefix_tracked, @entity_system], [id], extra)
 
-      true ->
-        Logger.warning(
-          "Cache.Keys.character/1 called with unexpected value: #{inspect(character_id)}"
-        )
+  @doc "Key for a tracked character"
+  @spec tracked_character(integer() | String.t(), String.t() | nil) :: String.t()
+  def tracked_character(id, extra \\ nil),
+    do: combine([@prefix_tracked, @entity_character], [id], extra)
 
-        nil
-    end
-  end
+  @doc "Key for an ESI killmail"
+  @spec esi_killmail(integer() | String.t(), String.t() | nil) :: String.t()
+  def esi_killmail(id, extra \\ nil),
+    do: combine([@prefix_esi, @entity_killmail], [id], extra)
 
-  @doc """
-  Generates a cache key for a tracked system.
+  @doc "Key for a corporation"
+  @spec corporation(integer() | String.t(), String.t() | nil) :: String.t()
+  def corporation(id, extra \\ nil),
+    do: combine([@prefix_esi, @entity_corporation], [id], extra)
 
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.tracked_system(30004759)
-      "tracked:system:30004759"
-  """
-  @spec tracked_system(integer() | String.t()) :: String.t()
-  def tracked_system(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_tracked, @entity_system, to_string(id)])
-  end
+  @doc "Key for an alliance"
+  @spec alliance(integer() | String.t(), String.t() | nil) :: String.t()
+  def alliance(id, extra \\ nil),
+    do: combine([@prefix_esi, @entity_alliance], [id], extra)
 
-  @doc """
-  Generates a cache key for a tracked character.
+  @doc "Key for a ship type"
+  @spec ship_type(integer() | String.t(), String.t() | nil) :: String.t()
+  def ship_type(id, extra \\ nil),
+    do: combine([@prefix_esi, "ship_type"], [id], extra)
 
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.tracked_character(12345)
-      "tracked:character:12345"
-  """
-  @spec tracked_character(integer() | String.t() | nil) :: String.t() | nil
-  def tracked_character(nil) do
-    require Logger
-    Logger.warning("Cache.Keys.tracked_character/1 called with nil")
-    nil
-  end
+  # ── Dynamic-multi functions ─────────────────────────────────────────────────────
 
-  def tracked_character(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_tracked, @entity_character, to_string(id)])
-  end
+  @doc "Key for an ESI killmail with hash"
+  @spec killmail(integer() | String.t(), integer() | String.t(), String.t() | nil) :: String.t()
+  def killmail(kill_id, killmail_hash, extra \\ nil),
+    do: combine([@prefix_esi, @entity_killmail], [kill_id, killmail_hash], extra)
 
-  def tracked_character(id) when is_map(id) or is_struct(id) do
-    require Logger
-    Logger.warning("Cache.Keys.tracked_character/1 called with invalid input: #{inspect(id)}")
-    nil
-  end
+  @doc "Key for zKill recent kills"
+  @spec zkill_recent_kills(String.t() | nil) :: String.t()
+  def zkill_recent_kills(extra \\ nil),
+    do: combine([@prefix_zkill, "recent_kills"], [], extra)
 
-  @doc """
-  Generates a cache key for ESI killmail data.
+  @doc "Key for map systems list"
+  @spec map_systems(String.t() | nil) :: String.t()
+  def map_systems(extra \\ nil),
+    do: combine([@prefix_map, "systems"], [], extra)
 
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.esi_killmail(12345)
-      "esi:killmail:12345"
-  """
-  @spec esi_killmail(integer() | String.t()) :: String.t()
-  def esi_killmail(id) when is_integer(id) or is_binary(id) do
-    join_parts([@prefix_esi, @entity_killmail, to_string(id)])
-  end
+  @doc "Key for map system IDs list"
+  @spec map_system_ids(String.t() | nil) :: String.t()
+  def map_system_ids(extra \\ nil),
+    do: combine([@prefix_map, "system_ids"], [], extra)
 
-  @doc """
-  Generates a cache key for recent kills.
+  @doc "Key for critical startup data"
+  @spec critical_startup_data(String.t() | nil) :: String.t()
+  def critical_startup_data(extra \\ nil),
+    do: combine([@prefix_critical, "startup_data"], [], extra)
 
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.recent_kills()
-      "recent:kills"
-  """
-  @spec recent_kills() :: String.t()
-  def recent_kills do
-    join_parts([@prefix_recent, @entity_kills])
-  end
+  @doc "Key for systems array"
+  @spec systems_array(String.t() | nil) :: String.t()
+  def systems_array(extra \\ nil),
+    do: combine([@prefix_array, "systems"], [], extra)
+
+  @doc "Key for killmails array"
+  @spec killmails_array(String.t() | nil) :: String.t()
+  def killmails_array(extra \\ nil),
+    do: combine([@prefix_array, "killmails"], [], extra)
+
+  @doc "Key for recent killmails list"
+  @spec recent_killmails_list(String.t() | nil) :: String.t()
+  def recent_killmails_list(extra \\ nil),
+    do: combine([@prefix_list, "recent_killmails"], [], extra)
+
+  @doc "Key for application state"
+  @spec application_state(String.t() | nil) :: String.t()
+  def application_state(extra \\ nil),
+    do: combine([@prefix_state, "application"], [], extra)
+
+  @doc "Key for arbitrary data"
+  @spec data(String.t(), String.t() | nil) :: String.t()
+  def data(key, extra \\ nil),
+    do: combine([@prefix_data], [key], extra)
+
+  @doc "Key for zKillboard data by type and id"
+  @spec zkill_data(String.t(), integer() | String.t(), String.t() | nil) :: String.t()
+  def zkill_data(type, id, extra \\ nil),
+    do: combine([@prefix_zkill], [type, id], extra)
+
+  @doc "Key for ESI data by type and id"
+  @spec esi_data(String.t(), integer() | String.t(), String.t() | nil) :: String.t()
+  def esi_data(type, id, extra \\ nil),
+    do: combine([@prefix_esi], [type, id], extra)
+
+  # ── Special-case functions ──────────────────────────────────────────────────────
 
   @doc """
   Generates a cache key for checking if a killmail exists.
 
   ## Examples
-      iex> WandererNotifier.Cache.Keys.killmail_exists(12345, 67890, "victim")
-      "exists:killmail:12345:67890:victim"
+      iex> WandererNotifier.Cache.Keys.killmail_exists(123, 456, "victim")
+      "exists:killmail:123:456:victim"
   """
   @spec killmail_exists(integer() | String.t(), integer() | String.t(), String.t()) :: String.t()
   def killmail_exists(killmail_id, character_id, role)
       when (is_integer(killmail_id) or is_binary(killmail_id)) and
              (is_integer(character_id) or is_binary(character_id)) and
              is_binary(role) do
-    join_parts([
-      @prefix_exists,
-      @entity_killmail,
-      to_string(killmail_id),
-      to_string(character_id),
-      role
-    ])
+    [@prefix_exists, @entity_killmail, killmail_id, character_id, role]
+    |> Enum.map(&to_string/1)
+    |> join_parts()
   end
 
-  @doc """
-  Generates a cache key for a character's recent kills.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.character_recent_kills(12345)
-      "character:12345:recent_kills"
-  """
+  @doc "Key for a character's recent kills"
   @spec character_recent_kills(integer() | String.t()) :: String.t()
-  def character_recent_kills(character_id)
-      when is_integer(character_id) or is_binary(character_id) do
-    join_parts([@entity_character, to_string(character_id), "recent_kills"])
+  def character_recent_kills(character_id) do
+    combine([@entity_character], [character_id, "recent_kills"], nil)
   end
 
-  @doc """
-  Generates a cache key for the character list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.character_list()
-      "map:characters"
-  """
+  @doc "Key for the full character list"
   @spec character_list() :: String.t()
   def character_list do
-    join_parts([@prefix_map, "characters"])
+    combine([@prefix_map], ["characters"], nil)
   end
 
-  @doc """
-  Generates a cache key for kill comparison data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.kill_comparison("daily", "date=2023-05-01")
-      "kill_comparison:daily:date=2023-05-01"
-  """
+  @doc "Key for kill comparison data"
   @spec kill_comparison(String.t(), String.t()) :: String.t()
-  def kill_comparison(type, params) when is_binary(type) and is_binary(params) do
-    join_parts(["kill_comparison", type, params])
+  def kill_comparison(type, params) do
+    combine(["kill_comparison"], [type, params], nil)
   end
 
-  @doc """
-  Generates a cache key for zkill recent kills.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.zkill_recent_kills()
-      "zkill:recent_kills"
-  """
-  @spec zkill_recent_kills() :: String.t()
-  def zkill_recent_kills do
-    join_parts([@prefix_zkill, "recent_kills"])
-  end
-
-  @doc """
-  Generates a cache key for the tracked systems list.
-
-  tracked_systems/0 is an alias for tracked_systems_list/0 for backward compatibility.
-  """
+  @doc "Alias for tracked_systems_list/0"
   @spec tracked_systems() :: String.t()
-  def tracked_systems do
-    tracked_systems_list()
-  end
+  def tracked_systems, do: tracked_systems_list()
 
-  @doc """
-  Generates a cache key for the tracked systems list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.tracked_systems_list()
-      "tracked:systems"
-  """
+  @doc "Key for tracked systems list"
   @spec tracked_systems_list() :: String.t()
-  def tracked_systems_list do
-    join_parts([@prefix_tracked, "systems"])
-  end
+  def tracked_systems_list, do: combine([@prefix_tracked], ["systems"], nil)
 
-  @doc """
-  Generates a cache key for the map systems list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.map_systems()
-      "map:systems"
-  """
-  @spec map_systems() :: String.t()
-  def map_systems do
-    join_parts([@prefix_map, "systems"])
-  end
-
-  @doc """
-  Generates a cache key for the map system IDs list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.map_system_ids()
-      "map:system_ids"
-  """
-  @spec map_system_ids() :: String.t()
-  def map_system_ids do
-    join_parts([@prefix_map, "system_ids"])
-  end
-
-  @doc """
-  Generates a cache key for the critical startup data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.critical_startup_data()
-      "critical:startup_data"
-  """
-  @spec critical_startup_data() :: String.t()
-  def critical_startup_data do
-    join_parts([@prefix_critical, "startup_data"])
-  end
-
-  @doc """
-  Generates a cache key for the systems array.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.systems_array()
-      "array:systems"
-  """
-  @spec systems_array() :: String.t()
-  def systems_array do
-    join_parts([@prefix_array, "systems"])
-  end
-
-  @doc """
-  Generates a cache key for the killmails array.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.killmails_array()
-      "array:killmails"
-  """
-  @spec killmails_array() :: String.t()
-  def killmails_array do
-    join_parts([@prefix_array, "killmails"])
-  end
-
-  @doc """
-  Generates a cache key for the recent killmails list.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.recent_killmails_list()
-      "list:recent_killmails"
-  """
-  @spec recent_killmails_list() :: String.t()
-  def recent_killmails_list do
-    join_parts([@prefix_list, "recent_killmails"])
-  end
-
-  @doc """
-  Generates a cache key for the application state.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.application_state()
-      "state:application"
-  """
-  @spec application_state() :: String.t()
-  def application_state do
-    join_parts([@prefix_state, "application"])
-  end
-
-  @doc """
-  Generates a cache key for configuration.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.config("websocket")
-      "config:websocket"
-  """
+  @doc "Key for configuration entries"
   @spec config(String.t()) :: String.t()
-  def config(name) when is_binary(name) do
-    join_parts([@prefix_config, name])
+  def config(name) when is_binary(name),
+    do: combine([@prefix_config], [name], nil)
+
+  @doc "Key for a specific zKill recent kill"
+  @spec zkill_recent_kill(integer() | String.t()) :: String.t()
+  def zkill_recent_kill(kill_id) do
+    combine([@prefix_zkill, "recent_kills"], [kill_id], nil)
   end
 
-  @doc """
-  Generates a cache key for zkill data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.zkill_data("characterID", 12345)
-      "zkill:characterID:12345"
-  """
-  @spec zkill_data(String.t(), integer() | String.t()) :: String.t()
-  def zkill_data(type, id) when is_binary(type) and (is_integer(id) or is_binary(id)) do
-    join_parts([@prefix_zkill, type, to_string(id)])
+  @doc "Key for deduplication of system notifications"
+  @spec dedup_system(integer() | String.t()) :: String.t()
+  def dedup_system(id) do
+    combine([@prefix_dedup, @entity_system], [id], nil)
   end
 
-  @doc """
-  Generates a cache key for ESI data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.esi_data("character", 12345)
-      "esi:character:12345"
-  """
-  @spec esi_data(String.t(), integer() | String.t()) :: String.t()
-  def esi_data(type, id) when is_binary(type) and (is_integer(id) or is_binary(id)) do
-    join_parts([@prefix_esi, type, to_string(id)])
+  @doc "Key for deduplication of character notifications"
+  @spec dedup_character(integer() | String.t()) :: String.t()
+  def dedup_character(id) do
+    combine([@prefix_dedup, @entity_character], [id], nil)
   end
 
-  @doc """
-  Generates a cache key for general data.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.data("some_key")
-      "data:some_key"
-  """
-  @spec data(String.t()) :: String.t()
-  def data(key) when is_binary(key) do
-    join_parts([@prefix_data, key])
+  @doc "Key for deduplication of kill notifications"
+  @spec dedup_kill(integer() | String.t()) :: String.t()
+  def dedup_kill(id) do
+    combine([@prefix_dedup, @entity_killmail], [id], nil)
   end
 
-  @doc """
-  Validates if a key follows the standard pattern.
+  # ── Validation & Inspection ────────────────────────────────────────────────────
 
-  ## Parameters
-    - key: The cache key to validate
-
-  ## Returns
-    - true if key is valid
-    - false if key is not valid
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.valid?("map:system:12345")
-      true
-
-      iex> WandererNotifier.Cache.Keys.valid?("invalid-key")
-      false
-  """
+  @doc "Returns true if the key contains at least one separator and two parts"
   @spec valid?(String.t()) :: boolean()
   def valid?(key) when is_binary(key) do
-    # Pattern: at least one segment with a separator
-    # Must have at least two parts
-    String.contains?(key, @separator) &&
-      length(String.split(key, @separator)) >= 2
+    String.contains?(key, @separator) and length(String.split(key, @separator)) >= 2
   end
 
   def valid?(_), do: false
 
-  @doc """
-  Extracts components from a key based on a pattern.
-
-  ## Parameters
-    - key: The cache key to extract from
-    - pattern: The pattern to match against
-
-  ## Returns
-    - List of extracted components if successful
-    - Empty list if no match
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.extract_pattern("map:system:12345", "map:system:*")
-      ["12345"]
-
-      iex> WandererNotifier.Cache.Keys.extract_pattern("map:character:98765", "map:*:*")
-      ["character", "98765"]
-  """
-  @spec extract_pattern(String.t(), String.t()) :: list(String.t())
+  @doc "Extracts wildcard segments from a key given a pattern"
+  @spec extract_pattern(String.t(), String.t()) :: [String.t()]
   def extract_pattern(key, pattern) when is_binary(key) and is_binary(pattern) do
     key_parts = String.split(key, @separator)
     pattern_parts = String.split(pattern, @separator)
 
-    # Only continue if the parts match in length
     if length(key_parts) == length(pattern_parts) do
-      extract_matching_parts(key_parts, pattern_parts, [])
+      do_extract(key_parts, pattern_parts, [])
     else
       []
     end
@@ -441,42 +253,13 @@ defmodule WandererNotifier.Cache.Keys do
 
   def extract_pattern(_, _), do: []
 
-  # Helper function to extract matching parts
-  defp extract_matching_parts([], [], acc), do: Enum.reverse(acc)
-
-  defp extract_matching_parts([key_part | key_rest], ["*" | pattern_rest], acc) do
-    # Wildcard matches any value, so add the key part to accumulator
-    extract_matching_parts(key_rest, pattern_rest, [key_part | acc])
-  end
-
-  defp extract_matching_parts([key_part | key_rest], [pattern_part | pattern_rest], acc) do
-    # Check if the parts match exactly
-    if key_part == pattern_part do
-      extract_matching_parts(key_rest, pattern_rest, acc)
-    else
-      # Pattern doesn't match
-      []
-    end
-  end
+  defp do_extract([], [], acc), do: Enum.reverse(acc)
+  defp do_extract([k | kr], ["*" | pr], acc), do: do_extract(kr, pr, [k | acc])
+  defp do_extract([k | kr], [p | pr], acc) when k == p, do: do_extract(kr, pr, acc)
+  defp do_extract(_, _, _), do: []
 
   @doc """
-  Returns detailed information about a cache key.
-
-  ## Parameters
-    - key: The cache key to analyze
-
-  ## Returns
-    - Map with key details if valid
-    - {:error, :invalid_key} if invalid
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.map_key_info("map:system:12345")
-      %{
-        prefix: "map",
-        entity_type: "system",
-        id: "12345",
-        parts: ["map", "system", "12345"]
-      }
+  Returns structured info about a cache key or {:error, :invalid_key}.
   """
   @spec map_key_info(String.t()) :: map() | {:error, :invalid_key}
   def map_key_info(key) when is_binary(key) do
@@ -484,28 +267,14 @@ defmodule WandererNotifier.Cache.Keys do
       parts = String.split(key, @separator)
 
       case parts do
-        # Standard format: prefix:entity_type:id
-        [prefix, entity_type, id | rest] ->
-          %{
-            prefix: prefix,
-            entity_type: entity_type,
-            id: id,
-            parts: parts,
-            extra: rest
-          }
+        [prefix, entity, id | rest] ->
+          %{prefix: prefix, entity_type: entity, id: id, parts: parts, extra: rest}
 
-        # Simple format: prefix:name
         [prefix, name] ->
-          %{
-            prefix: prefix,
-            name: name,
-            parts: parts
-          }
+          %{prefix: prefix, name: name, parts: parts}
 
         _ ->
-          %{
-            parts: parts
-          }
+          %{parts: parts}
       end
     else
       {:error, :invalid_key}
@@ -513,55 +282,4 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   def map_key_info(_), do: {:error, :invalid_key}
-
-  @doc """
-  Generates a cache key for a killmail.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.killmail(12345, "abc123")
-      "esi:killmail:12345:abc123"
-  """
-  @spec killmail(integer() | String.t(), String.t()) :: String.t()
-  def killmail(kill_id, killmail_hash)
-      when (is_integer(kill_id) or is_binary(kill_id)) and is_binary(killmail_hash) do
-    join_parts([@prefix_esi, @entity_killmail, to_string(kill_id), killmail_hash])
-  end
-
-  @doc """
-  Generates a cache key for a corporation.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.corporation(12345)
-      "esi:corporation:12345"
-  """
-  @spec corporation(integer() | String.t()) :: String.t()
-  def corporation(corporation_id) when is_integer(corporation_id) or is_binary(corporation_id) do
-    join_parts([@prefix_esi, @entity_corporation, to_string(corporation_id)])
-  end
-
-  @doc """
-  Generates a cache key for an alliance.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.alliance(12345)
-      "esi:alliance:12345"
-  """
-  @spec alliance(integer() | String.t()) :: String.t() | nil
-  def alliance(nil), do: nil
-
-  def alliance(alliance_id) when is_integer(alliance_id) or is_binary(alliance_id) do
-    join_parts([@prefix_esi, @entity_alliance, to_string(alliance_id)])
-  end
-
-  @doc """
-  Generates a cache key for a ship type.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.ship_type(12345)
-      "esi:ship_type:12345"
-  """
-  @spec ship_type(integer() | String.t()) :: String.t()
-  def ship_type(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
-    join_parts([@prefix_esi, "ship_type", to_string(ship_type_id)])
-  end
 end

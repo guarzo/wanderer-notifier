@@ -1,58 +1,108 @@
 # Logging Conventions
 
-This document describes the logging conventions and best practices for the WandererNotifier application.
+This document outlines the logging standards for the WandererNotifier application.
 
-## Log Levels
+## Log Levels and Functions
 
-- `AppLogger.debug/2` - Use for detailed developer information (only shown in dev mode)
-- `AppLogger.info/2` - Use for normal operational messages
-- `AppLogger.warn/2` - Use for concerning but non-critical issues
-- `AppLogger.error/2` - Use for errors that impact functionality
-- `AppLogger.critical/2` - Use for critical errors that require immediate attention
+The application uses the `AppLogger` module with the following severity functions:
 
-## Domain-Specific Loggers
+| Function              | Use Case           | When to Use                                                |
+| --------------------- | ------------------ | ---------------------------------------------------------- |
+| `AppLogger.*_info/2`  | Normal operations  | Successfully processed operations, important state changes |
+| `AppLogger.*_debug/2` | Detailed debugging | Development-only logs, fine-grained tracing                |
+| `AppLogger.*_warn/2`  | Warning conditions | Potential issues that don't block operations               |
+| `AppLogger.*_error/2` | Error conditions   | Failed operations, exceptions, unrecoverable states        |
 
-- `AppLogger.api_debug/2` - For API call details
-- `AppLogger.kill_info/2` - For killmail processing
-- `AppLogger.kill_error/2` - For killmail processing errors
-- `AppLogger.cache_debug/2` - For caching operations
+## Context Categories
 
-## Metadata Guidelines
+Each AppLogger function exists in several context-specific variants:
 
-Always include relevant context with logs to make them searchable and useful:
+- `api_*` - External API calls (ESI, ZKill, etc.)
+- `kill_*` - Killmail processing
+- `processor_*` - Background processors
+- `config_*` - Configuration-related operations
+- `web_*` - Web/HTTP operations
 
-### Required Metadata
+Example: `AppLogger.api_error/2`, `AppLogger.kill_info/2`
 
-- `module: __MODULE__` - Always include the module name
-- `id: entity_id` - Include the primary entity ID (killmail ID, character ID, etc.)
-- `error: inspect(reason)` - For error logs, always include the error details
+## Required Metadata
 
-### Additional Metadata
-
-- `context_id: context.id` - Include request/operation context when available
-- `source: "websocket"` - Identify the event source when important
-
-## Examples
+All log calls MUST include identifying metadata as the second parameter:
 
 ```elixir
-# Good example with context
-AppLogger.kill_info("Processing killmail", %{
-  kill_id: km.killmail_id,
-  module: __MODULE__,
-  victim_id: km.victim_id
-})
-
-# Error logging with context
-AppLogger.error("Failed to fetch data from ESI", %{
-  module: __MODULE__,
-  endpoint: "/endpoint",
-  error: inspect(error),
-  retry_count: retries
-})
+AppLogger.api_debug("Fetched killmail",
+  kill_id: km.id,
+  module: __MODULE__
+)
 ```
 
-## Performance Considerations
+### Required Keys
 
-- Avoid logging in tight loops unless needed
-- Use `if Config.dev_mode?()` to guard verbose debug logs in production
-- Do not log sensitive data (tokens, passwords, etc.)
+The following metadata keys are required for all log calls:
+
+| Context         | Required Keys        |
+| --------------- | -------------------- |
+| All messages    | `module: __MODULE__` |
+| API calls       | `endpoint`, `method` |
+| Kill processing | `kill_id`            |
+| Errors          | `error: reason`      |
+
+### Common Optional Keys
+
+Additional context-specific keys that should be included when available:
+
+- `context_id` - ID of the processing context
+- `system_id` - Solar system ID
+- `character_id` - Character ID
+- `duration_ms` - Operation duration in milliseconds
+
+## Error Handling
+
+When logging errors, always include the detailed error reason:
+
+```elixir
+# Good
+AppLogger.api_error("ESI request failed",
+  error: inspect(reason),
+  endpoint: url
+)
+
+# Bad - missing error details
+AppLogger.api_error("ESI request failed", endpoint: url)
+```
+
+### Error Formatting
+
+- Use `inspect/1` for complex error terms
+- Include both high-level error type and specific error details
+- For exceptions, include exception type and message
+
+## High-Volume Logs
+
+For logs in tight loops or high-frequency operations:
+
+1. Wrap in a conditional using `Config.dev_mode?/0` check
+2. Use rate limiting (log once per minute/hour)
+3. Use sampling (log only 1% of occurrences)
+
+```elixir
+if Config.dev_mode?() do
+  AppLogger.processor_debug("Processing item", item_id: id)
+end
+```
+
+## Correlation
+
+To correlate related log entries across a processing flow:
+
+1. Generate a unique ID at the entry point
+2. Pass this ID through the entire processing chain
+3. Include it in all log messages as `correlation_id`
+
+## Testing
+
+Avoid excessive logging in tests. In test environment:
+
+1. Set higher log levels to reduce noise
+2. Add custom log assertions only for critical paths
+3. Use tagged logs to easily identify test-related entries

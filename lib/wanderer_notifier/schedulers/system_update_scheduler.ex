@@ -5,6 +5,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Map.Clients.SystemsClient
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+  alias WandererNotifier.Cache.Keys
 
   @behaviour WandererNotifier.Schedulers.Scheduler
 
@@ -116,12 +117,12 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
   defp _perform_system_cache_verification(systems) do
     alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
     systems_list = ensure_list(systems)
-    updated_cache = CacheRepo.get(:system_list)
+    updated_cache = CacheRepo.get(Keys.system_list())
     cache_list = ensure_list(updated_cache)
 
     if cache_list == [] do
       cache_ttl = WandererNotifier.Config.static_info_ttl()
-      CacheRepo.set(:system_list, systems_list, cache_ttl)
+      CacheRepo.set(Keys.system_list(), systems_list, cache_ttl)
     end
   end
 end

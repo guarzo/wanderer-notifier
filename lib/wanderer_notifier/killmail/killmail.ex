@@ -31,27 +31,16 @@ defmodule WandererNotifier.Killmail.Killmail do
   @behaviour Access
 
   @impl Access
+  def fetch(killmail, key) when key in ["killmail_id", "zkb", "esi_data"] do
+    fetch_direct_property(killmail, key)
+  end
+
+  def fetch(%__MODULE__{esi_data: esi_data}, _key) when is_nil(esi_data) do
+    :error
+  end
+
   def fetch(killmail, key) do
-    cond do
-      direct_killmail_key?(key) ->
-        fetch_direct_property(killmail, key)
-
-      has_esi_data?(killmail) ->
-        fetch_from_esi_data(killmail, key)
-
-      true ->
-        :error
-    end
-  end
-
-  # Check if the key is a direct property of the killmail
-  defp direct_killmail_key?(key) do
-    key in ["killmail_id", "zkb", "esi_data"]
-  end
-
-  # Check if the killmail has ESI data
-  defp has_esi_data?(killmail) do
-    not is_nil(killmail.esi_data)
+    fetch_from_esi_data(killmail, key)
   end
 
   # Fetch direct property from the killmail

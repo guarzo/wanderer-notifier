@@ -25,22 +25,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
       {:ok, :new} ->
         # Then check configuration
         config = Application.get_env(:wanderer_notifier, :config_module).get_config()
-
-        cond do
-          not Map.get(config, :notifications_enabled, false) ->
-            {:ok, %{should_notify: false, reason: "Notifications disabled"}}
-
-          not Map.get(config, :kill_notifications_enabled, false) ->
-            {:ok, %{should_notify: false, reason: "Kill notifications disabled"}}
-
-          not Map.get(config, :system_notifications_enabled, false) and
-              not Map.get(config, :character_notifications_enabled, false) ->
-            {:ok,
-             %{should_notify: false, reason: "Both system and character notifications disabled"}}
-
-          true ->
-            check_tracking_status(killmail, config)
-        end
+        handle_config_check(config, killmail)
 
       {:error, reason} ->
         {:error, reason}
@@ -55,6 +40,41 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     }
 
     should_notify?(killmail)
+  end
+
+  defp handle_config_check(config, killmail) do
+    notifications_enabled = Map.get(config, :notifications_enabled, false)
+    kill_notifications_enabled = Map.get(config, :kill_notifications_enabled, false)
+    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
+
+    handle_notifications_status(
+      notifications_enabled,
+      kill_notifications_enabled,
+      system_notifications_enabled,
+      character_notifications_enabled,
+      killmail,
+      config
+    )
+  end
+
+  defp handle_notifications_status(false, _, _, _, _, _) do
+    {:ok, %{should_notify: false, reason: "Notifications disabled"}}
+  end
+
+  defp handle_notifications_status(_, false, _, _, _, _) do
+    {:ok, %{should_notify: false, reason: "Kill notifications disabled"}}
+  end
+
+  defp handle_notifications_status(_, _, false, false, _, _) do
+    {:ok, %{should_notify: false, reason: "Both system and character notifications disabled"}}
+  end
+
+  defp handle_notifications_status(true, true, system_enabled, character_enabled, killmail, _config) do
+    check_tracking_status(killmail, %{
+      system_notifications_enabled: system_enabled,
+      character_notifications_enabled: character_enabled
+    })
   end
 
   @doc """
@@ -105,38 +125,43 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def get_kill_system_id(%{"solar_system_id" => id}), do: id
   def get_kill_system_id(_), do: "unknown"
 
-  defp check_tracking_status(killmail, config) do
+  # Check if character is tracked and character notifications are enabled
+  defp check_tracking_status(killmail, %{character_notifications_enabled: true} = config) when is_map(config) do
+    if has_tracked_character?(killmail) do
+      {:ok, %{should_notify: true, reason: nil}}
+    else
+      check_system_tracking(killmail, config)
+    end
+  end
+
+  # Character is tracked but notifications for characters are disabled
+  defp check_tracking_status(killmail, %{character_notifications_enabled: false} = config) when is_map(config) do
+    if has_tracked_character?(killmail) do
+      {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
+    else
+      check_system_tracking(killmail, config)
+    end
+  end
+
+  # Check if system is tracked and system notifications are enabled
+  defp check_system_tracking(killmail, %{system_notifications_enabled: true}) do
     system_id = get_kill_system_id(killmail)
-    system_tracked = tracked_system?(system_id)
-    has_tracked_char = has_tracked_character?(killmail)
 
-    character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
-    system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
+    if tracked_system?(system_id) do
+      {:ok, %{should_notify: true, reason: nil}}
+    else
+      {:ok, %{should_notify: false, reason: "No tracked systems or characters involved"}}
+    end
+  end
 
-    cond do
-      # First check if it has a tracked character
-      has_tracked_char ->
-        if character_notifications_enabled do
-          # Character is tracked and notifications are enabled for characters
-          {:ok, %{should_notify: true, reason: nil}}
-        else
-          # Character is tracked but notifications are disabled for characters
-          {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
-        end
+  # System is tracked but notifications for systems are disabled
+  defp check_system_tracking(killmail, %{system_notifications_enabled: false}) do
+    system_id = get_kill_system_id(killmail)
 
-      # If no tracked character, check if it's in a tracked system
-      system_tracked ->
-        if system_notifications_enabled do
-          # System is tracked and notifications are enabled for systems
-          {:ok, %{should_notify: true, reason: nil}}
-        else
-          # System is tracked but notifications are disabled for systems
-          {:ok, %{should_notify: false, reason: "System notifications disabled"}}
-        end
-
-      # Neither character nor system is tracked
-      true ->
-        {:ok, %{should_notify: false, reason: "No tracked systems or characters involved"}}
+    if tracked_system?(system_id) do
+      {:ok, %{should_notify: false, reason: "System notifications disabled"}}
+    else
+      {:ok, %{should_notify: false, reason: "No tracked systems or characters involved"}}
     end
   end
 

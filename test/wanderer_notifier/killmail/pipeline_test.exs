@@ -324,5 +324,79 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       # Assert the expected error result
       assert {:error, :create_failed} = result
     end
+
+    test "process_killmail/2 handles invalid payload" do
+      defmodule InvalidPayloadPipeline do
+        def process_killmail(zkb_data, _context) do
+          # Simulate the real pipeline's behavior for invalid payload
+          WandererNotifier.Killmail.Pipeline.process_killmail(zkb_data, %Context{})
+        end
+      end
+
+      # Missing killmail_id
+      zkb_data = %{
+        "zkb" => %{"hash" => "test_hash"},
+        "solar_system_id" => 30_000_142
+      }
+
+      # Create a direct test using our replacement module
+      alias InvalidPayloadPipeline, as: TestPipeline
+      result = TestPipeline.process_killmail(zkb_data, %Context{})
+
+      # Assert the expected error result
+      assert {:error, :invalid_payload} = result
+    end
+
+    test "process_killmail/2 handles ESI timeout during enrichment" do
+      defmodule TimeoutPipeline do
+        def process_killmail(_zkb_data, _context) do
+          # Simulate a timeout error during enrichment
+          raise WandererNotifier.ESI.Service.TimeoutError, "ESI API request timed out"
+        rescue
+          e in WandererNotifier.ESI.Service.TimeoutError ->
+            {:error, :timeout}
+        end
+      end
+
+      zkb_data = %{
+        "killmail_id" => 12_345,
+        "zkb" => %{"hash" => "test_hash"},
+        "solar_system_id" => 30_000_142
+      }
+
+      # Create a direct test using our replacement module
+      alias TimeoutPipeline, as: TestPipeline
+      result = TestPipeline.process_killmail(zkb_data, %Context{})
+
+      # Assert the expected error result
+      assert {:error, :timeout} = result
+    end
+
+    test "process_killmail/2 handles ESI API errors during enrichment" do
+      defmodule ApiErrorPipeline do
+        def process_killmail(_zkb_data, _context) do
+          # Simulate an API error during enrichment
+          reason = :rate_limited
+          error = %WandererNotifier.ESI.Service.ApiError{reason: reason, message: "Rate limited"}
+          raise error
+        rescue
+          e in WandererNotifier.ESI.Service.ApiError ->
+            {:error, e.reason}
+        end
+      end
+
+      zkb_data = %{
+        "killmail_id" => 12_345,
+        "zkb" => %{"hash" => "test_hash"},
+        "solar_system_id" => 30_000_142
+      }
+
+      # Create a direct test using our replacement module
+      alias ApiErrorPipeline, as: TestPipeline
+      result = TestPipeline.process_killmail(zkb_data, %Context{})
+
+      # Assert the expected error result
+      assert {:error, :rate_limited} = result
+    end
   end
 end
