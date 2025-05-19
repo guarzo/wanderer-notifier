@@ -23,35 +23,30 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
   defp update_tracked_systems do
     primed? = CacheRepo.get(:map_systems_primed) == {:ok, true}
+    task = create_update_task(primed?)
+    handle_task_result(task, primed?)
+  end
 
-    task =
-      Task.async(fn ->
-        try do
-          SystemsClient.update_systems(suppress_notifications: !primed?)
-        rescue
-          e ->
-            AppLogger.api_error("⚠️ Exception in system update task",
-              error: Exception.message(e),
-              stacktrace: inspect(Process.info(self(), :current_stacktrace))
-            )
+  defp create_update_task(primed?) do
+    Task.async(fn ->
+      try do
+        SystemsClient.update_systems(suppress_notifications: !primed?)
+      rescue
+        e ->
+          AppLogger.api_error("⚠️ Exception in system update task",
+            error: Exception.message(e),
+            stacktrace: inspect(Process.info(self(), :current_stacktrace))
+          )
 
-            {:error, :exception}
-        end
-      end)
+          {:error, :exception}
+      end
+    end)
+  end
 
+  defp handle_task_result(task, primed?) do
     case Task.yield(task, 50_000) do
       {:ok, {:ok, _new_systems, all_systems}} ->
-        systems_count = length(ensure_list(all_systems))
-        AppLogger.api_info("🌍 Systems updated: #{systems_count} systems synchronized")
-
-        # Log a summary of the systems cache
-        log_system_cache_summary(all_systems)
-
-        if primed? do
-          handle_successful_system_update(all_systems)
-        else
-          CacheRepo.put(:map_systems_primed, true)
-        end
+        handle_successful_update(all_systems, primed?)
 
       {:ok, {:error, reason}} ->
         AppLogger.api_error("⚠️ System update failed", error: inspect(reason))
@@ -62,6 +57,20 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
 
       {:exit, reason} ->
         AppLogger.api_error("⚠️ System update crashed", reason: inspect(reason))
+    end
+  end
+
+  defp handle_successful_update(all_systems, primed?) do
+    systems_count = length(ensure_list(all_systems))
+    AppLogger.api_info("🌍 Systems updated: #{systems_count} systems synchronized")
+
+    # Log a summary of the systems cache
+    log_system_cache_summary(all_systems)
+
+    if primed? do
+      handle_successful_system_update(all_systems)
+    else
+      CacheRepo.put(:map_systems_primed, true)
     end
   end
 

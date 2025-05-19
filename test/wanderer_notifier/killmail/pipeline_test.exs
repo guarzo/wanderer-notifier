@@ -5,6 +5,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.Killmail.{Pipeline, Context}
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.Notifications.DiscordNotifierMock
+  alias WandererNotifier.Cache.Keys
 
   # Define MockConfig for testing
   defmodule MockConfig do
@@ -15,11 +16,11 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
   # Define MockCache for the tests
   defmodule MockCache do
-    def get("map:systems") do
+    def get(key) when key == Keys.system_list() do
       {:ok, [solar_system_id: "30000142", name: "Test System"]}
     end
 
-    def get("character:list") do
+    def get(key) when key == Keys.character_list() do
       {:ok, [character_id: "100", name: "Victim"]}
     end
 

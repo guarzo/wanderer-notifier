@@ -8,24 +8,24 @@ defmodule WandererNotifier.ESI.Entities.SolarSystem do
           system_id: integer(),
           name: String.t(),
           constellation_id: integer(),
-          security_status: float(),
-          security_class: String.t() | nil,
-          position: %{x: float(), y: float(), z: float()} | nil,
-          star_id: integer() | nil,
-          planets: list(map()) | nil,
-          region_id: integer() | nil
+          constellation_name: String.t(),
+          region_id: integer(),
+          region_name: String.t(),
+          star_id: integer(),
+          planets: list(map()),
+          security_status: float() | nil
         }
 
   defstruct [
     :system_id,
     :name,
     :constellation_id,
-    :security_status,
-    :security_class,
-    :position,
+    :constellation_name,
+    :region_id,
+    :region_name,
     :star_id,
     :planets,
-    :region_id
+    :security_status
   ]
 
   @doc """
@@ -39,50 +39,35 @@ defmodule WandererNotifier.ESI.Entities.SolarSystem do
       ...>   "system_id" => 30000142,
       ...>   "name" => "Jita",
       ...>   "constellation_id" => 20000020,
-      ...>   "security_status" => 0.9,
-      ...>   "security_class" => "B",
-      ...>   "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
+      ...>   "constellation_name" => "Test Constellation",
+      ...>   "region_id" => 10000002,
+      ...>   "region_name" => "Test Region",
       ...>   "star_id" => 40000001,
-      ...>   "planets" => [%{"planet_id" => 50000001}],
-      ...>   "region_id" => 10000002
+      ...>   "planets" => [%{"planet_id" => 50000001}]
       ...> })
       %WandererNotifier.ESI.Entities.SolarSystem{
         system_id: 30000142,
         name: "Jita",
         constellation_id: 20000020,
-        security_status: 0.9,
-        security_class: "B",
-        position: %{x: 1.0, y: 2.0, z: 3.0},
+        constellation_name: "Test Constellation",
+        region_id: 10000002,
+        region_name: "Test Region",
         star_id: 40000001,
-        planets: [%{"planet_id" => 50000001}],
-        region_id: 10000002
+        planets: [%{"planet_id" => 50000001}]
       }
   """
   @spec from_esi_data(map()) :: t()
   def from_esi_data(data) when is_map(data) do
-    position =
-      if Map.has_key?(data, "position") do
-        pos = Map.get(data, "position")
-
-        %{
-          x: Map.get(pos, "x", 0.0),
-          y: Map.get(pos, "y", 0.0),
-          z: Map.get(pos, "z", 0.0)
-        }
-      else
-        nil
-      end
-
     %__MODULE__{
-      system_id: Map.get(data, "system_id"),
-      name: Map.get(data, "name"),
-      constellation_id: Map.get(data, "constellation_id"),
-      security_status: Map.get(data, "security_status"),
-      security_class: Map.get(data, "security_class"),
-      position: position,
-      star_id: Map.get(data, "star_id"),
-      planets: Map.get(data, "planets"),
-      region_id: Map.get(data, "region_id")
+      system_id: data["system_id"],
+      name: data["name"],
+      constellation_id: data["constellation_id"],
+      constellation_name: data["constellation_name"],
+      region_id: data["region_id"],
+      region_name: data["region_name"],
+      star_id: data["star_id"],
+      planets: data["planets"],
+      security_status: data["security_status"]
     }
   end
 
@@ -97,27 +82,16 @@ defmodule WandererNotifier.ESI.Entities.SolarSystem do
   """
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = system) do
-    position =
-      if system.position do
-        %{
-          "x" => system.position.x,
-          "y" => system.position.y,
-          "z" => system.position.z
-        }
-      else
-        nil
-      end
-
     %{
       "system_id" => system.system_id,
       "name" => system.name,
       "constellation_id" => system.constellation_id,
-      "security_status" => system.security_status,
-      "security_class" => system.security_class,
-      "position" => position,
+      "constellation_name" => system.constellation_name,
+      "region_id" => system.region_id,
+      "region_name" => system.region_name,
       "star_id" => system.star_id,
       "planets" => system.planets,
-      "region_id" => system.region_id
+      "security_status" => system.security_status
     }
   end
 

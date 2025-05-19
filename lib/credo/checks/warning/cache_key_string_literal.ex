@@ -30,28 +30,26 @@ defmodule Credo.Check.Warning.CacheKeyStringLiteral do
   def run(source_file, _params \\ []) do
     source_file
     |> Credo.Code.to_tokens()
-    |> Enum.reduce([], fn token, issues ->
-      case token do
-        {:string_literal, {line_no, column, _}, string} ->
-          if String.match?(string, @cache_key_pattern) do
-            [
-              format_issue(
-                "Found cache key string literal. Use WandererNotifier.Cache.Keys helpers instead.",
-                line_no,
-                column,
-                string
-              )
-              | issues
-            ]
-          else
-            issues
-          end
-
-        _ ->
-          issues
-      end
-    end)
+    |> Enum.reduce([], &check_token/2)
   end
+
+  defp check_token({:string_literal, {line_no, column, _}, string}, issues) do
+    if String.match?(string, @cache_key_pattern) do
+      [
+        format_issue(
+          "Found cache key string literal. Use WandererNotifier.Cache.Keys helpers instead.",
+          line_no,
+          column,
+          string
+        )
+        | issues
+      ]
+    else
+      issues
+    end
+  end
+
+  defp check_token(_, issues), do: issues
 
   defp format_issue(message, line_no, column, trigger) do
     %{

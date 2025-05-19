@@ -208,9 +208,11 @@ defmodule WandererNotifier.Map.MapSystem do
   """
   @spec update_with_static_info(t(), map()) :: t()
   def update_with_static_info(system, static_info) do
-    struct = struct(__MODULE__, Map.merge(Map.from_struct(system), static_info))
-    validate_types(struct)
-    struct
+    system
+    |> Map.from_struct()
+    |> Map.merge(static_info)
+    |> then(&struct(__MODULE__, &1))
+    |> tap(&validate_types/1)
   end
 
   @doc """

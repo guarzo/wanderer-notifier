@@ -8,7 +8,10 @@ defmodule WandererNotifier.Config.Helpers do
   Returns the default value if parsing fails.
   """
   def parse_int(value, default) when is_binary(value) do
-    case Integer.parse(String.trim(value)) do
+    value
+    |> String.trim()
+    |> Integer.parse()
+    |> case do
       {int, _} -> int
       :error -> default
     end
@@ -24,7 +27,10 @@ defmodule WandererNotifier.Config.Helpers do
   Returns the default value for any other input.
   """
   def parse_bool(value, default) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> case do
       "true" -> true
       "false" -> false
       _ -> default

@@ -33,28 +33,28 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
         process_new_systems(filtered, opts)
       end
 
-    case result do
-      {:ok, _new, _all} ->
-        result
-
-      {:ok, %{status_code: status, body: body}} ->
-        log_http_error(status, body)
-
-      {:error, :no_systems} ->
-        fallback_to_cached_systems(:no_systems)
-
-      {:error, :json_decode_error} ->
-        Logger.api_error("SystemsClient JSON decode failed", [])
-        fallback_to_cached_systems(:json_decode_error)
-
-      {:error, reason} ->
-        Logger.api_error("SystemsClient unexpected error", reason: inspect(reason))
-        fallback_to_cached_systems(reason)
-
-      _ ->
-        fallback_to_cached_systems(:unexpected_error)
-    end
+    handle_update_result(result)
   end
+
+  # Result handling functions
+  defp handle_update_result({:ok, _new, _all} = result), do: result
+
+  defp handle_update_result({:ok, %{status_code: status, body: body}}),
+    do: log_http_error(status, body)
+
+  defp handle_update_result({:error, :no_systems}), do: fallback_to_cached_systems(:no_systems)
+
+  defp handle_update_result({:error, :json_decode_error}) do
+    Logger.api_error("SystemsClient JSON decode failed", [])
+    fallback_to_cached_systems(:json_decode_error)
+  end
+
+  defp handle_update_result({:error, reason}) do
+    Logger.api_error("SystemsClient unexpected error", reason: inspect(reason))
+    fallback_to_cached_systems(reason)
+  end
+
+  defp handle_update_result(_), do: fallback_to_cached_systems(:unexpected_error)
 
   ### — Helpers for URL & Headers
 
@@ -121,8 +121,12 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   end
 
   defp find_new(cached, systems) do
-    seen_ids = MapSet.new(Enum.map(cached, & &1.solar_system_id))
-    Enum.reject(systems, &(&1.solar_system_id in seen_ids))
+    cached
+    |> Enum.map(& &1.solar_system_id)
+    |> MapSet.new()
+    |> then(fn seen_ids ->
+      Enum.reject(systems, &(&1.solar_system_id in seen_ids))
+    end)
   end
 
   defp maybe_notify(new_systems, opts) do
@@ -151,19 +155,29 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
 
   @spec notify(MapSystem.t()) :: :ok
   defp notify(system) do
-    enriched =
-      case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
-        {:ok, e} -> e
-        _ -> system
-      end
+    system
+    |> enrich_system()
+    |> ensure_struct()
+    |> maybe_send_notification()
+  end
 
-    final = if is_struct(enriched, MapSystem), do: enriched, else: MapSystem.new(enriched)
+  defp enrich_system(system) do
+    case WandererNotifier.Map.SystemStaticInfo.enrich_system(system) do
+      {:ok, enriched} -> enriched
+      _ -> system
+    end
+  end
 
+  defp ensure_struct(data) do
+    if is_struct(data, MapSystem), do: data, else: MapSystem.new(data)
+  end
+
+  defp maybe_send_notification(system) do
     if WandererNotifier.Notifications.Determiner.System.should_notify?(
-         final.solar_system_id,
-         final
+         system.solar_system_id,
+         system
        ) do
-      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(final)
+      WandererNotifier.Notifiers.Discord.Notifier.send_new_system_notification(system)
     end
 
     :ok

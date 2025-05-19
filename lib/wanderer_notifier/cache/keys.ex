@@ -21,7 +21,6 @@ defmodule WandererNotifier.Cache.Keys do
   @prefix_config "config"
   @prefix_critical "critical"
   @prefix_array "array"
-  @prefix_list "list"
   @prefix_data "data"
   @prefix_dedup "dedup"
 
@@ -132,7 +131,7 @@ defmodule WandererNotifier.Cache.Keys do
   @doc "Key for recent killmails list"
   @spec recent_killmails_list(String.t() | nil) :: String.t()
   def recent_killmails_list(extra \\ nil),
-    do: combine([@prefix_list, "recent_killmails"], [], extra)
+    do: combine([@prefix_recent, @entity_kills], [], extra)
 
   @doc "Key for application state"
   @spec application_state(String.t() | nil) :: String.t()
@@ -282,4 +281,12 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   def map_key_info(_), do: {:error, :invalid_key}
+
+  @doc "Key for the full system list"
+  @spec system_list() :: String.t()
+  def system_list, do: combine([@prefix_map], ["systems"], nil)
+
+  @doc "Key for a killmail"
+  @spec kill(integer() | String.t()) :: String.t()
+  def kill(id), do: combine([@prefix_dedup, @entity_killmail], [id], nil)
 end

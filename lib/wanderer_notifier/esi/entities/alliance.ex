@@ -32,22 +32,22 @@ defmodule WandererNotifier.ESI.Entities.Alliance do
 
   ## Example
       iex> WandererNotifier.ESI.Entities.Alliance.from_esi_data(%{
-      ...>   "alliance_id" => 345678,
+      ...>   "alliance_id" => 345_678,
       ...>   "name" => "Test Alliance",
       ...>   "ticker" => "TSTA",
-      ...>   "executor_corporation_id" => 789012,
-      ...>   "creator_id" => 123456,
+      ...>   "executor_corporation_id" => 789_012,
+      ...>   "creator_id" => 123_456,
       ...>   "date_founded" => "2020-01-01T00:00:00Z",
-      ...>   "faction_id" => 555555
+      ...>   "faction_id" => 555_555
       ...> })
       %WandererNotifier.ESI.Entities.Alliance{
-        alliance_id: 345678,
+        alliance_id: 345_678,
         name: "Test Alliance",
         ticker: "TSTA",
-        executor_corporation_id: 789012,
-        creator_id: 123456,
+        executor_corporation_id: 789_012,
+        creator_id: 123_456,
         creation_date: ~U[2020-01-01 00:00:00Z],
-        faction_id: 555555
+        faction_id: 555_555
       }
   """
   @spec from_esi_data(map()) :: t()

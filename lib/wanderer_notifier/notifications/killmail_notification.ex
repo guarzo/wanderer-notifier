@@ -61,53 +61,18 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     })
 
     with {:ok, enriched_killmail} <- enrich_killmail(killmail),
-         _ =
-           AppLogger.kill_info("Killmail enriched successfully", %{
-             kill_id: kill_id,
-             struct_type: inspect(enriched_killmail.__struct__)
-           }),
-         # Actually check notification requirements - don't skip this logic!
+         _ = log_enrichment_success(kill_id, enriched_killmail),
          {:ok, should_notify} <- check_notification_requirements(enriched_killmail) do
-      if should_notify do
-        AppLogger.kill_info(
-          "Kill notification requirements met, proceeding to send",
-          %{kill_id: kill_id}
-        )
-
-        with {:ok, notification} <-
-               create_notification(enriched_killmail, notification_type, notification_data),
-             _ =
-               AppLogger.kill_info("Notification created", %{
-                 kill_id: kill_id,
-                 notification_type: notification_type,
-                 notification_data_keys: Map.keys(notification)
-               }),
-             {:ok, sent_notification} <- send_notification(notification) do
-          AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
-          {:ok, sent_notification}
-        else
-          {:error, reason} ->
-            AppLogger.kill_error("Failed to send kill notification", %{
-              kill_id: kill_id,
-              error: inspect(reason)
-            })
-
-            {:error, reason}
-        end
-      else
-        AppLogger.kill_info("Kill notification requirements not met, skipping notification", %{
-          kill_id: kill_id
-        })
-
-        {:ok, :skipped}
-      end
+      process_notification_decision(
+        enriched_killmail,
+        should_notify,
+        kill_id,
+        notification_type,
+        notification_data
+      )
     else
       {:error, reason} ->
-        AppLogger.kill_error("Failed to process kill notification", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
-
+        log_notification_error(kill_id, reason)
         {:error, reason}
     end
   end
@@ -291,5 +256,74 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       true ->
         :ok
     end
+  end
+
+  defp log_enrichment_success(kill_id, enriched_killmail) do
+    AppLogger.kill_info("Killmail enriched successfully", %{
+      kill_id: kill_id,
+      struct_type: inspect(enriched_killmail.__struct__)
+    })
+  end
+
+  defp process_notification_decision(
+         enriched_killmail,
+         should_notify,
+         kill_id,
+         notification_type,
+         notification_data
+       ) do
+    if should_notify do
+      AppLogger.kill_info(
+        "Kill notification requirements met, proceeding to send",
+        %{kill_id: kill_id}
+      )
+
+      send_notification_with_retry(
+        enriched_killmail,
+        kill_id,
+        notification_type,
+        notification_data
+      )
+    else
+      AppLogger.kill_info("Kill notification requirements not met, skipping notification", %{
+        kill_id: kill_id
+      })
+
+      {:ok, :skipped}
+    end
+  end
+
+  defp send_notification_with_retry(
+         enriched_killmail,
+         kill_id,
+         notification_type,
+         notification_data
+       ) do
+    with {:ok, notification} <-
+           create_notification(enriched_killmail, notification_type, notification_data),
+         _ = log_notification_created(kill_id, notification_type, notification),
+         {:ok, sent_notification} <- send_notification(notification) do
+      AppLogger.kill_info("Kill notification sent successfully", %{kill_id: kill_id})
+      {:ok, sent_notification}
+    else
+      {:error, reason} ->
+        log_notification_error(kill_id, reason)
+        {:error, reason}
+    end
+  end
+
+  defp log_notification_created(kill_id, notification_type, notification) do
+    AppLogger.kill_info("Notification created", %{
+      kill_id: kill_id,
+      notification_type: notification_type,
+      notification_data_keys: Map.keys(notification)
+    })
+  end
+
+  defp log_notification_error(kill_id, reason) do
+    AppLogger.kill_error("Failed to process kill notification", %{
+      kill_id: kill_id,
+      error: inspect(reason)
+    })
   end
 end

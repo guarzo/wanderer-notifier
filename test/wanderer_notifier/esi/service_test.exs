@@ -70,66 +70,17 @@ defmodule WandererNotifier.ESI.ServiceTest do
 
     # Define mocks for ESI client calls (unified)
     WandererNotifier.Api.ESI.ServiceMock
-    |> stub(:get_character_info, fn id, _opts ->
-      if id == 123_456, do: {:ok, character_data}, else: {:error, :not_found}
-    end)
-    |> stub(:get_corporation_info, fn id, _opts ->
-      if id == 789_012, do: {:ok, corporation_data}, else: {:error, :not_found}
-    end)
-    |> stub(:get_alliance_info, fn id, _opts ->
-      if id == 345_678, do: {:ok, alliance_data}, else: {:error, :not_found}
-    end)
-    |> stub(:get_system, fn id, _opts ->
-      case id do
-        30_000_142 ->
-          {:ok,
-           %{
-             "name" => "Test System",
-             "system_id" => 30_000_142,
-             "constellation_id" => 20_000_020,
-             "security_status" => 0.9,
-             "security_class" => "B"
-           }}
-
-        _ ->
-          {:error, :not_found}
-      end
-    end)
+    |> stub(:get_character_info, &get_character_info/2)
+    |> stub(:get_corporation_info, &get_corporation_info/2)
+    |> stub(:get_alliance_info, &get_alliance_info/2)
+    |> stub(:get_system, &get_system_info/2)
 
     # Add mock expectations for HTTP client calls
     WandererNotifier.HttpClient.HttpoisonMock
     |> stub(:get, fn url, _headers ->
-      cond do
-        String.contains?(url, "characters/123456") ->
-          {:ok, %{status_code: 200, body: character_data}}
-
-        String.contains?(url, "corporations/789012") ->
-          {:ok, %{status_code: 200, body: corporation_data}}
-
-        String.contains?(url, "alliances/345678") ->
-          {:ok, %{status_code: 200, body: alliance_data}}
-
-        String.contains?(url, "systems/30000142") ->
-          # Return system_data with string keys
-          {:ok,
-           %{
-             status_code: 200,
-             body: %{
-               "system_id" => 30_000_142,
-               "name" => "Test System",
-               "constellation_id" => 20_000_020,
-               "security_status" => 0.9,
-               "security_class" => "B",
-               "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
-               "star_id" => 40_000_001,
-               "planets" => [%{"planet_id" => 50_000_001}],
-               "region_id" => 10_000_002
-             }
-           }}
-
-        true ->
-          {:ok, %{status_code: 404, body: %{"error" => "Not found"}}}
-      end
+      url
+      |> get_response_body()
+      |> wrap_response()
     end)
 
     # Return test data for use in tests
@@ -140,6 +91,66 @@ defmodule WandererNotifier.ESI.ServiceTest do
       system_data: system_data
     }
   end
+
+  defp get_character_info(id, _opts) do
+    case id do
+      123_456 -> {:ok, character_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_corporation_info(id, _opts) do
+    case id do
+      789_012 -> {:ok, corporation_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_alliance_info(id, _opts) do
+    case id do
+      345_678 -> {:ok, alliance_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_system_info(id, _opts) do
+    case id do
+      30_000_142 ->
+        {:ok,
+         %{
+           "name" => "Test System",
+           "system_id" => 30_000_142,
+           "constellation_id" => 20_000_020,
+           "security_status" => 0.9,
+           "security_class" => "B"
+         }}
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp get_response_body(url) do
+    url
+    |> get_data_for_url()
+    |> case do
+      nil -> %{"error" => "Not found"}
+      data -> data
+    end
+  end
+
+  defp get_data_for_url(url) do
+    cond do
+      String.contains?(url, "characters/123456") -> character_data
+      String.contains?(url, "corporations/789012") -> corporation_data
+      String.contains?(url, "alliances/345678") -> alliance_data
+      String.contains?(url, "systems/30000142") -> system_data
+      true -> nil
+    end
+  end
+
+  defp wrap_response(%{"error" => _} = body), do: {:ok, %{status_code: 404, body: body}}
+  defp wrap_response(body), do: {:ok, %{status_code: 200, body: body}}
 
   describe "get_character_struct/2" do
     test "returns a Character struct when successful", %{character_data: _character_data} do

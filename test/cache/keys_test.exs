@@ -20,7 +20,7 @@ defmodule WandererNotifier.Cache.KeysTest do
 
     test "esi_killmail/1 generates correct key" do
       assert Keys.esi_killmail("12345") == "esi:killmail:12345"
-      assert Keys.esi_killmail(12345) == "esi:killmail:12345"
+      assert Keys.esi_killmail(12_345) == "esi:killmail:12345"
     end
 
     test "killmail/2 generates correct key" do
@@ -35,7 +35,7 @@ defmodule WandererNotifier.Cache.KeysTest do
 
     test "corporation/1 generates correct key" do
       assert Keys.corporation("12345") == "esi:corporation:12345"
-      assert Keys.corporation(12345) == "esi:corporation:12345"
+      assert Keys.corporation(12_345) == "esi:corporation:12345"
     end
 
     test "ship_type/1 generates correct key" do
@@ -56,7 +56,8 @@ defmodule WandererNotifier.Cache.KeysTest do
 
   describe "non-macro functions" do
     test "killmail_exists/3 generates correct key" do
-      assert Keys.killmail_exists(12_345, 67_890, "victim") == "exists:killmail:12345:67890:victim"
+      assert Keys.killmail_exists(12_345, 67_890, "victim") ==
+               "exists:killmail:12345:67890:victim"
     end
 
     test "character_recent_kills/1 generates correct key" do

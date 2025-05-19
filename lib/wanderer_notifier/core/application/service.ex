@@ -70,9 +70,9 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_cast({:mark_as_processed, kill_id}, state) do
-    ttl = Config.kill_dedup_ttl()
-
-    case CacheRepo.set(Keys.kill(kill_id), true, ttl) do
+    Config.kill_dedup_ttl()
+    |> CacheRepo.set(Keys.killmail(kill_id, "processed"), true)
+    |> case do
       :ok ->
         :ok
 
@@ -302,57 +302,75 @@ defmodule WandererNotifier.Core.Application.Service do
   defp connect_websocket(state) do
     if Config.websocket_enabled?() do
       AppLogger.websocket_debug("Starting Killmail Websocket")
-
-      # Clear any previous connection state
-      if state.ws_pid != nil do
-        AppLogger.websocket_debug("Clearing previous websocket PID",
-          old_pid: inspect(state.ws_pid)
-        )
-      end
-
-      # Ensure we have current Stats
-      WandererNotifier.Core.Stats.update_websocket(%{connecting: true})
-
-      # Give a short delay before connection attempt (helps with rapid reconnection)
-      Process.sleep(100)
-
-      try do
-        # Use the direct WebSocket module instead of supervised version
-        url = Application.fetch_env!(:wanderer_notifier, :websocket)[:url]
-
-        case Websocket.start_link(url: url, parent: self()) do
-          {:ok, ws_pid} ->
-            # Monitor the process so we get notified if it crashes
-            monitor_ref = Process.monitor(ws_pid)
-
-            AppLogger.websocket_info("Successfully started websocket",
-              pid: inspect(ws_pid),
-              monitor_ref: inspect(monitor_ref)
-            )
-
-            %{state | ws_pid: ws_pid}
-
-          {:error, reason} ->
-            AppLogger.websocket_error("Websocket start failed", error: inspect(reason))
-            # Use a shorter delay for faster retry
-            reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
-            Process.send_after(self(), :reconnect_ws, reconnect_delay)
-            state
-        end
-      rescue
-        e ->
-          AppLogger.websocket_error("Exception starting websocket",
-            error: Exception.message(e),
-            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-          )
-
-          Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
-          state
-      end
+      state = clear_previous_connection(state)
+      state = update_websocket_stats(state)
+      attempt_websocket_connection(state)
     else
       AppLogger.websocket_info("Websocket disabled by configuration")
       state
     end
+  end
+
+  defp clear_previous_connection(state) do
+    if state.ws_pid != nil do
+      AppLogger.websocket_debug("Clearing previous websocket PID",
+        old_pid: inspect(state.ws_pid)
+      )
+    end
+
+    %{state | ws_pid: nil}
+  end
+
+  defp update_websocket_stats(state) do
+    WandererNotifier.Core.Stats.update_websocket(%{connecting: true})
+    state
+  end
+
+  defp attempt_websocket_connection(state) do
+    # Short delay before connection attempt
+    Process.sleep(100)
+    url = Application.fetch_env!(:wanderer_notifier, :websocket)[:url]
+
+    try do
+      start_websocket(url, state)
+    rescue
+      e ->
+        AppLogger.websocket_error("Exception starting websocket",
+          error: Exception.message(e),
+          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        )
+
+        Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
+        state
+    end
+  end
+
+  defp start_websocket(url, state) do
+    case Websocket.start_link(url: url, parent: self()) do
+      {:ok, ws_pid} ->
+        handle_successful_connection(ws_pid, state)
+
+      {:error, reason} ->
+        handle_connection_error(reason, state)
+    end
+  end
+
+  defp handle_successful_connection(ws_pid, state) do
+    monitor_ref = Process.monitor(ws_pid)
+
+    AppLogger.websocket_info("Successfully started websocket",
+      pid: inspect(ws_pid),
+      monitor_ref: inspect(monitor_ref)
+    )
+
+    %{state | ws_pid: ws_pid}
+  end
+
+  defp handle_connection_error(reason, state) do
+    AppLogger.websocket_error("Websocket start failed", error: inspect(reason))
+    reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
+    Process.send_after(self(), :reconnect_ws, reconnect_delay)
+    state
   end
 
   # Schedule the startup notification

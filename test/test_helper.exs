@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Consistency.UnusedVariableNames
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 Application.put_env(:wanderer_notifier, :schedulers_enabled, false)

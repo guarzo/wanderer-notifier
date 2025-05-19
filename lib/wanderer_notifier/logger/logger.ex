@@ -249,51 +249,21 @@ defmodule WandererNotifier.Logger.Logger do
 
   # Helper to convert metadata to keyword list
   defp convert_metadata_to_keyword_list(metadata) when is_map(metadata) do
-    # Map is converted to keyword list
-    map_metadata = Enum.map(metadata, fn {k, v} -> {to_atom(k), v} end)
-    # Add diagnostics to show this was a map
-    Keyword.put(map_metadata, :_metadata_source, "map")
+    metadata
+    |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
+    |> Keyword.put(:_metadata_source, "map")
   end
 
   defp convert_metadata_to_keyword_list(metadata) when is_list(metadata) do
     cond do
-      # Valid keyword list
-      Enum.all?(metadata, &is_tuple/1) && Enum.all?(metadata, fn {k, _v} -> is_atom(k) end) ->
-        # Add diagnostics to show this was a keyword list
-        Keyword.put(metadata, :_metadata_source, "keyword_list")
+      valid_keyword_list?(metadata) ->
+        add_metadata_source(metadata, "keyword_list")
 
-      # Empty list
       metadata == [] ->
-        # Convert empty list to empty map with diagnostic
-        [
-          _metadata_source: "empty_list",
-          _metadata_warning: "Empty list converted to keyword list"
-        ]
+        create_empty_list_metadata()
 
-      # Non-keyword list (the problematic case)
       true ->
-        # Get caller information for debugging
-        caller = get_caller_info()
-
-        # Log warning about non-keyword list with detailed caller information
-        Logger.warning(
-          "[LOGGER] Non-keyword list passed as metadata! Convert to map. List: #{inspect(metadata)}\nCaller: #{caller}"
-        )
-
-        # Convert the non-keyword list to a map with indices as keys, then to keyword list
-        converted_data =
-          metadata
-          |> Enum.with_index()
-          |> Enum.map(fn {value, index} -> {"item_#{index}", value} end)
-          |> Enum.into(%{})
-          |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
-
-        # Add diagnostics about the conversion
-        converted_data
-        |> Keyword.put(:_metadata_source, "invalid_list_converted")
-        |> Keyword.put(:_metadata_warning, "Non-keyword list converted to keyword list")
-        |> Keyword.put(:_original_data, inspect(metadata))
-        |> Keyword.put(:_caller, caller)
+        handle_invalid_list(metadata)
     end
   end
 
@@ -312,6 +282,45 @@ defmodule WandererNotifier.Logger.Logger do
       _original_data: inspect(metadata),
       _caller: caller
     ]
+  end
+
+  defp valid_keyword_list?(metadata) do
+    Enum.all?(metadata, &is_tuple/1) && Enum.all?(metadata, fn {k, _v} -> is_atom(k) end)
+  end
+
+  defp create_empty_list_metadata do
+    [
+      _metadata_source: "empty_list",
+      _metadata_warning: "Empty list converted to keyword list"
+    ]
+  end
+
+  defp handle_invalid_list(metadata) do
+    caller = get_caller_info()
+    log_invalid_list_warning(metadata, caller)
+    convert_invalid_list_to_keyword_list(metadata, caller)
+  end
+
+  defp log_invalid_list_warning(metadata, caller) do
+    Logger.warning(
+      "[LOGGER] Non-keyword list passed as metadata! Convert to map. List: #{inspect(metadata)}\nCaller: #{caller}"
+    )
+  end
+
+  defp convert_invalid_list_to_keyword_list(metadata, caller) do
+    metadata
+    |> Enum.with_index()
+    |> Enum.map(fn {value, index} -> {"item_#{index}", value} end)
+    |> Enum.into(%{})
+    |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
+    |> add_metadata_source("invalid_list_converted")
+    |> Keyword.put(:_metadata_warning, "Non-keyword list converted to keyword list")
+    |> Keyword.put(:_original_data, inspect(metadata))
+    |> Keyword.put(:_caller, caller)
+  end
+
+  defp add_metadata_source(metadata, source) do
+    Keyword.put(metadata, :_metadata_source, source)
   end
 
   # Helper to get type of value
@@ -342,27 +351,26 @@ defmodule WandererNotifier.Logger.Logger do
 
   # Format the caller information to show file and line
   defp format_stacktrace(stacktrace) do
-    # Filter out Logger frames to focus on the actual caller
-    relevant_frames =
-      stacktrace
-      |> Enum.drop_while(fn {mod, _fun, _args, _loc} ->
-        String.contains?(inspect(mod), "Logger") ||
-          String.contains?(inspect(mod), "WandererNotifier.Logger.Logger")
-      end)
-      # Take first 3 relevant frames
-      |> Enum.take(3)
+    stacktrace
+    |> Enum.drop_while(fn {mod, _fun, _args, _loc} ->
+      mod
+      |> inspect()
+      |> String.contains?(["Logger", "WandererNotifier.Logger.Logger"])
+    end)
+    |> Enum.take(3)
+    |> format_frames()
+  end
 
-    case relevant_frames do
-      [] ->
-        "unknown caller"
+  defp format_frames([]), do: "unknown caller"
 
-      frames ->
-        Enum.map_join(frames, "\n  ", fn {mod, fun, args, location} ->
-          file = Keyword.get(location, :file, "unknown")
-          line = Keyword.get(location, :line, "?")
-          "#{inspect(mod)}.#{fun}/#{length(args)} at #{file}:#{line}"
-        end)
-    end
+  defp format_frames(frames) do
+    frames
+    |> Enum.map(fn {mod, fun, args, location} ->
+      file = Keyword.get(location, :file, "unknown")
+      line = Keyword.get(location, :line, "?")
+      "#{inspect(mod)}.#{fun}/#{length(args)} at #{file}:#{line}"
+    end)
+    |> Enum.join("\n  ")
   end
 
   # Convert string or atom keys to atoms safely
@@ -668,14 +676,13 @@ defmodule WandererNotifier.Logger.Logger do
     end_time = :os.system_time(:microsecond)
     duration_us = end_time - start_time
 
-    # Add timing information to metadata
-    metadata_with_timing =
-      Keyword.put(convert_metadata_to_keyword_list(metadata), :duration_us, duration_us)
+    metadata
+    |> convert_metadata_to_keyword_list()
+    |> Keyword.put(:duration_us, duration_us)
+    |> then(fn metadata_with_timing ->
+      log(level, category, "Operation completed", metadata_with_timing)
+    end)
 
-    # Log the operation with timing information
-    log(level, category, "Operation completed", metadata_with_timing)
-
-    # Return the original result
     result
   end
 end

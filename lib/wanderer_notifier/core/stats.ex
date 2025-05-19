@@ -164,6 +164,16 @@ defmodule WandererNotifier.Core.Stats do
 
   # Server Implementation
 
+  @killmail_metrics [
+    :killmail_processing_start,
+    :killmail_processing_complete,
+    :killmail_processing_complete_success,
+    :killmail_processing_complete_error,
+    :killmail_processing_skipped,
+    :killmail_processing_error,
+    :notification_sent
+  ]
+
   @impl true
   def init(_opts) do
     AppLogger.startup_debug("Initializing stats tracking service...")
@@ -199,35 +209,34 @@ defmodule WandererNotifier.Core.Stats do
      }}
   end
 
+  defp handle_kill_processed(state) do
+    processing = Map.update(state.processing, :kills_processed, 1, &(&1 + 1))
+    {:noreply, %{state | processing: processing}}
+  end
+
+  defp handle_kill_notified(state) do
+    processing = Map.update(state.processing, :kills_notified, 1, &(&1 + 1))
+    {:noreply, %{state | processing: processing}}
+  end
+
+  defp handle_killmail_metric(type, state) do
+    metrics = Map.update(state.metrics || %{}, type, 1, &(&1 + 1))
+    {:noreply, %{state | metrics: metrics}}
+  end
+
+  defp handle_notification_increment(type, state) do
+    notifications = Map.update(state.notifications, type, 1, &(&1 + 1))
+    notifications = Map.update(notifications, :total, 1, &(&1 + 1))
+    {:noreply, %{state | notifications: notifications}}
+  end
+
   @impl true
   def handle_cast({:increment, type}, state) do
     case type do
-      :kill_processed ->
-        processing = Map.update(state.processing, :kills_processed, 1, &(&1 + 1))
-        {:noreply, %{state | processing: processing}}
-
-      :kill_notified ->
-        processing = Map.update(state.processing, :kills_notified, 1, &(&1 + 1))
-        {:noreply, %{state | processing: processing}}
-
-      type
-      when type in [
-             :killmail_processing_start,
-             :killmail_processing_complete,
-             :killmail_processing_complete_success,
-             :killmail_processing_complete_error,
-             :killmail_processing_skipped,
-             :killmail_processing_error,
-             :notification_sent
-           ] ->
-        # Handle the killmail metrics
-        metrics = Map.update(state.metrics || %{}, type, 1, &(&1 + 1))
-        {:noreply, %{state | metrics: metrics}}
-
-      _ ->
-        notifications = Map.update(state.notifications, type, 1, &(&1 + 1))
-        notifications = Map.update(notifications, :total, 1, &(&1 + 1))
-        {:noreply, %{state | notifications: notifications}}
+      :kill_processed -> handle_kill_processed(state)
+      :kill_notified -> handle_kill_notified(state)
+      type when type in @killmail_metrics -> handle_killmail_metric(type, state)
+      _ -> handle_notification_increment(type, state)
     end
   end
 

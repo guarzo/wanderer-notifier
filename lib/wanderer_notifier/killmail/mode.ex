@@ -24,10 +24,15 @@ defmodule WandererNotifier.Killmail.Mode do
   """
   @spec new(t(), options()) :: %__MODULE__{}
   def new(mode, options \\ %{}) do
-    %__MODULE__{
-      mode: mode,
-      options: Map.merge(default_options(mode), options)
-    }
+    mode
+    |> default_options()
+    |> Map.merge(options)
+    |> then(fn merged_options ->
+      %__MODULE__{
+        mode: mode,
+        options: merged_options
+      }
+    end)
   end
 
   @doc """

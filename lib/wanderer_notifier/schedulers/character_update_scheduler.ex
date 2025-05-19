@@ -30,41 +30,41 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
     cached_characters = CacheRepo.get(CacheKeys.character_list())
     cached_characters_safe = ensure_list(cached_characters)
 
-    task =
-      Task.async(fn ->
-        try do
-          AppLogger.maintenance_debug(
-            "Calling update_tracked_characters with #{length(cached_characters_safe)} cached characters"
+    task = create_update_task(cached_characters_safe, primed?)
+    handle_task_result(task, primed?, cached_characters_safe)
+  end
+
+  defp create_update_task(cached_characters_safe, primed?) do
+    alias WandererNotifier.Map.Clients.Client
+    alias WandererNotifier.Logger.Logger, as: AppLogger
+
+    Task.async(fn ->
+      try do
+        AppLogger.maintenance_debug(
+          "Calling update_tracked_characters with #{length(cached_characters_safe)} cached characters"
+        )
+
+        Client.update_tracked_characters(cached_characters_safe,
+          suppress_notifications: !primed?
+        )
+      rescue
+        e ->
+          AppLogger.maintenance_error("⚠️ Exception in character update task",
+            error: Exception.message(e),
+            stacktrace: inspect(Process.info(self(), :current_stacktrace))
           )
 
-          Client.update_tracked_characters(cached_characters_safe,
-            suppress_notifications: !primed?
-          )
-        rescue
-          e ->
-            AppLogger.maintenance_error("⚠️ Exception in character update task",
-              error: Exception.message(e),
-              stacktrace: inspect(Process.info(self(), :current_stacktrace))
-            )
+          {:error, :exception}
+      end
+    end)
+  end
 
-            {:error, :exception}
-        end
-      end)
+  defp handle_task_result(task, primed?, cached_characters_safe) do
+    alias WandererNotifier.Logger.Logger, as: AppLogger
 
     case Task.yield(task, 10_000) do
       {:ok, {:ok, characters}} ->
-        characters_list = ensure_list(characters)
-
-        AppLogger.maintenance_info(
-          "👥 Characters updated: #{length(characters_list)} characters from API (cached before: #{length(cached_characters_safe)})"
-        )
-
-        if primed? do
-          handle_successful_character_update(characters)
-        else
-          CacheRepo.put(:character_list_primed, true)
-          AppLogger.maintenance_info("Character cache primed for first time")
-        end
+        handle_successful_update(characters, primed?, cached_characters_safe)
 
       {:ok, {:error, :feature_disabled}} ->
         :ok
@@ -78,6 +78,24 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
       {:exit, reason} ->
         AppLogger.maintenance_error("⚠️ Character update crashed", reason: inspect(reason))
+    end
+  end
+
+  defp handle_successful_update(characters, primed?, cached_characters_safe) do
+    alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
+    alias WandererNotifier.Logger.Logger, as: AppLogger
+
+    characters_list = ensure_list(characters)
+
+    AppLogger.maintenance_info(
+      "👥 Characters updated: #{length(characters_list)} characters from API (cached before: #{length(cached_characters_safe)})"
+    )
+
+    if primed? do
+      handle_successful_character_update(characters)
+    else
+      CacheRepo.put(:character_list_primed, true)
+      AppLogger.maintenance_info("Character cache primed for first time")
     end
   end
 

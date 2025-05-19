@@ -269,58 +269,38 @@ defmodule WandererNotifier.License.Service do
       {:noreply, invalid_state}
   end
 
-  @impl true
-  def handle_call(:validate, _from, state) do
-    # Get the license key from configuration
-    license_key = Config.license_key()
-    # Get the API token from configuration
-    notifier_api_token = Config.api_token()
-    # Validate the license with a timeout - use validate_bot for consistency with init/startup
-    validation_result =
-      Task.await(
-        Task.async(fn ->
-          # Use validate_bot for consistency with init/startup validation
-          LicenseClient.validate_bot(notifier_api_token, license_key)
-        end),
-        3000
-      )
+  defp process_validation_result({:ok, response}) do
+    {
+      response["valid"] || false,
+      response["bot_assigned"] || false,
+      response,
+      nil,
+      nil
+    }
+  end
 
-    # Process the validation result
-    {valid, bot_assigned, details, error, error_message} =
-      case validation_result do
-        {:ok, response} ->
-          # Extract validation details from response
-          {
-            response["valid"] || false,
-            response["bot_assigned"] || false,
-            response,
-            nil,
-            nil
-          }
+  defp process_validation_result({:error, :rate_limited}) do
+    {
+      false,
+      false,
+      nil,
+      :rate_limited,
+      "License validation failed: Rate limit exceeded"
+    }
+  end
 
-        {:error, :rate_limited} ->
-          # Handle rate limiting error
-          {
-            false,
-            false,
-            nil,
-            :rate_limited,
-            "License validation failed: Rate limit exceeded"
-          }
+  defp process_validation_result({:error, reason}) do
+    {
+      false,
+      false,
+      nil,
+      :validation_error,
+      "License validation failed: #{inspect(reason)}"
+    }
+  end
 
-        {:error, reason} ->
-          # Handle validation error
-          {
-            false,
-            false,
-            nil,
-            :validation_error,
-            "License validation failed: #{inspect(reason)}"
-          }
-      end
-
-    # Update state with validation results, preserving notification_counts
-    new_state = %{
+  defp create_new_state({valid, bot_assigned, details, error, error_message}, state) do
+    %{
       valid: valid,
       bot_assigned: bot_assigned,
       details: details,
@@ -329,42 +309,67 @@ defmodule WandererNotifier.License.Service do
       last_validated: :os.system_time(:second),
       notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
     }
+  end
 
+  defp reply_with_state(new_state) do
     {:reply, new_state, new_state}
+  end
+
+  defp handle_validation_timeout(state) do
+    AppLogger.config_error("License validation HTTP request timed out")
+
+    error_state = %{
+      valid: false,
+      bot_assigned: false,
+      details: nil,
+      error: :timeout,
+      error_message: "License validation timed out",
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    {:reply, error_state, error_state}
+  end
+
+  defp handle_validation_error(type, reason, state) do
+    AppLogger.config_error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
+
+    error_state = %{
+      valid: false,
+      bot_assigned: false,
+      error: reason,
+      error_message: "License validation error: #{inspect(reason)}",
+      details: nil,
+      last_validated: :os.system_time(:second),
+      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
+    }
+
+    {:reply, error_state, error_state}
+  end
+
+  @impl true
+  def handle_call(:validate, _from, state) do
+    notifier_api_token = Config.api_token()
+    license_key = Config.license_key()
+
+    validation_result =
+      Task.async(fn ->
+        LicenseClient.validate_bot(notifier_api_token, license_key)
+      end)
+      |> Task.await(3000)
+
+    new_state =
+      validation_result
+      |> process_validation_result()
+      |> create_new_state(state)
+
+    reply_with_state(new_state)
   catch
     :exit, {:timeout, _} ->
-      AppLogger.config_error("License validation HTTP request timed out")
-
-      error_state = %{
-        valid: false,
-        bot_assigned: false,
-        details: nil,
-        error: :timeout,
-        error_message: "License validation timed out",
-        last_validated: :os.system_time(:second),
-        notification_counts:
-          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-      }
-
-      {:reply, error_state, error_state}
+      handle_validation_timeout(state)
 
     type, reason ->
-      AppLogger.config_error(
-        "License validation HTTP error: #{inspect(type)}, #{inspect(reason)}"
-      )
-
-      error_state = %{
-        valid: false,
-        bot_assigned: false,
-        error: reason,
-        error_message: "License validation error: #{inspect(reason)}",
-        details: nil,
-        last_validated: :os.system_time(:second),
-        notification_counts:
-          state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-      }
-
-      {:reply, error_state, error_state}
+      handle_validation_error(type, reason, state)
   end
 
   @impl true
