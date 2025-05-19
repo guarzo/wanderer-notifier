@@ -48,9 +48,10 @@ defmodule WandererNotifier.Cache.KeysTest do
       assert Keys.character("12345", "detail") == "esi:character:12345:detail"
     end
 
-    test "nil values are filtered out" do
-      assert Keys.alliance(nil) == "esi:alliance"
-      assert Keys.system(nil) == "map:system"
+    test "key generation macros nil values are filtered out" do
+      assert Keys.alliance(nil) == "esi:alliance:"
+      assert Keys.corporation(nil) == "esi:corporation:"
+      assert Keys.character(nil) == "esi:character:"
     end
   end
 

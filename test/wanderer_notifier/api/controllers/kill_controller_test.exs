@@ -1,37 +1,159 @@
 defmodule WandererNotifier.Api.Controllers.KillControllerTest do
   use ExUnit.Case, async: true
   import Plug.Test
+  import Mox
 
   alias WandererNotifier.Web.Router
-  alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Api.Controllers.KillController
+  alias WandererNotifier.ESI.ServiceMock
+
+  # Define MockCache for the tests
+  defmodule MockCache do
+    def get(key) do
+      cond do
+        key == "kill:12345678" ->
+          {:ok,
+           %{
+             "killmail_id" => 12_345_678,
+             "zkb" => %{"hash" => "hash123", "totalValue" => 1_000_000.0},
+             "solar_system_id" => 30_000_142,
+             "killmail_time" => "2023-06-15T12:34:56Z"
+           }}
+
+        key == "zkill:recent_kills" ->
+          {:ok,
+           [
+             %{
+               "killmail_id" => 12_345_678,
+               "zkb" => %{"hash" => "hash123", "totalValue" => 1_000_000.0},
+               "solar_system_id" => 30_000_142,
+               "killmail_time" => "2023-06-15T12:34:56Z"
+             }
+           ]}
+
+        true ->
+          {:error, :not_found}
+      end
+    end
+
+    def put(_key, _value), do: {:ok, :mock}
+    def put(_key, _value, _ttl), do: {:ok, :mock}
+    def delete(_key), do: {:ok, :mock}
+    def clear(), do: {:ok, :mock}
+    def get_and_update(_key, _fun), do: {:ok, :mock, :mock}
+    def set(_key, _value, _opts), do: {:ok, :mock}
+    def init_batch_logging(), do: :ok
+
+    def get_recent_kills() do
+      {:ok,
+       [
+         %{
+           "killmail_id" => 12_345_678,
+           "zkb" => %{"hash" => "hash123", "totalValue" => 1_000_000.0},
+           "solar_system_id" => 30_000_142,
+           "killmail_time" => "2023-06-15T12:34:56Z"
+         }
+       ]}
+    end
+
+    def get_kill(kill_id) do
+      case kill_id do
+        12_345_678 ->
+          {:ok,
+           %{
+             "killmail_id" => 12_345_678,
+             "zkb" => %{"hash" => "hash123", "totalValue" => 1_000_000.0},
+             "solar_system_id" => 30_000_142,
+             "killmail_time" => "2023-06-15T12:34:56Z"
+           }}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end
+
+    def get_latest_killmails() do
+      {:ok,
+       [
+         %{
+           "killmail_id" => 12_345_678,
+           "zkb" => %{"hash" => "hash123", "totalValue" => 1_000_000.0},
+           "solar_system_id" => 30_000_142,
+           "killmail_time" => "2023-06-15T12:34:56Z"
+         }
+       ]}
+    end
+  end
 
   @opts Router.init([])
   @controller_opts KillController.init([])
-  @mock_kill_id "12345678"
-  @unknown_kill_id "999999999"
-  @mock_zkb [hash: "hash123", totalValue: 1_000_000.0]
-  @mock_esi_data [killmail_time: "2023-06-15T12:34:56Z", solar_system_id: 30_000_142]
+  @mock_kill_id 12_345_678
+  @unknown_kill_id 99_999_999
+
+  # Make sure mocks are verified when the test exits
+  setup :verify_on_exit!
 
   setup do
     # Configure the application to use our mock cache module
     Application.put_env(
       :wanderer_notifier,
       :killmail_cache_module,
-      WandererNotifier.Test.Support.Mocks
+      MockCache
     )
 
-    # Setup mock data in the cache
-    mock_kill = Killmail.new(@mock_kill_id, @mock_zkb, @mock_esi_data)
+    # Set up ESI service mocks
+    ServiceMock
+    |> stub(:get_killmail, fn kill_id, kill_hash, _opts ->
+      case {kill_id, kill_hash} do
+        {12_345, "test_hash"} ->
+          {:ok,
+           %{
+             "killmail_id" => 12_345,
+             "killmail_time" => "2024-01-01T00:00:00Z",
+             "solar_system_id" => 30_000_142,
+             "victim" => %{
+               "character_id" => 100,
+               "corporation_id" => 300,
+               "alliance_id" => 400,
+               "ship_type_id" => 200
+             },
+             "attackers" => []
+           }}
 
-    # Clear any existing cache data
-    Process.put({:cache, "zkill:recent_kills"}, [])
-    Process.delete({:cache, "zkill:recent_kills:#{@mock_kill_id}"})
-    Process.delete({:cache, "zkill:recent_kills:#{@unknown_kill_id}"})
-
-    # Add our test kill to the cache
-    Process.put({:cache, "zkill:recent_kills"}, [@mock_kill_id])
-    Process.put({:cache, "zkill:recent_kills:#{@mock_kill_id}"}, mock_kill)
+        _ ->
+          {:error, :not_found}
+      end
+    end)
+    |> stub(:get_character_info, fn id, _opts ->
+      case id do
+        100 -> {:ok, %{"name" => "Test Character"}}
+        _ -> {:error, :not_found}
+      end
+    end)
+    |> stub(:get_corporation_info, fn id, _opts ->
+      case id do
+        300 -> {:ok, %{"name" => "Test Corp", "ticker" => "TEST"}}
+        _ -> {:error, :not_found}
+      end
+    end)
+    |> stub(:get_alliance_info, fn id, _opts ->
+      case id do
+        400 -> {:ok, %{"name" => "Test Alliance", "ticker" => "TEST"}}
+        _ -> {:error, :not_found}
+      end
+    end)
+    |> stub(:get_type_info, fn id, _opts ->
+      case id do
+        200 -> {:ok, %{"name" => "Test Ship"}}
+        _ -> {:error, :not_found}
+      end
+    end)
+    |> stub(:get_system, fn id, _opts ->
+      case id do
+        30_000_142 -> {:ok, %{"name" => "Test System"}}
+        _ -> {:error, :not_found}
+      end
+    end)
 
     :ok
   end
@@ -75,6 +197,7 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
       response = Jason.decode!(conn.resp_body)
       # The controller returns the kills list directly
       assert is_list(response)
+      assert length(response) > 0
     end
   end
 
@@ -99,9 +222,6 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
       assert conn.status == 404
       response = Jason.decode!(conn.resp_body)
       assert Map.has_key?(response, "error")
-
-      # The controller will return either "Kill not found" or "Kill not found in cache"
-      # depending on the implementation, so accept either
       assert response["error"] in ["Kill not found", "Kill not found in cache"]
     end
 
@@ -114,6 +234,7 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
       response = Jason.decode!(conn.resp_body)
       # The controller returns the kills list directly
       assert is_list(response)
+      assert length(response) > 0
     end
 
     test "returns 404 for unknown routes" do

@@ -14,8 +14,8 @@ defmodule WandererNotifier.Killmail.ZKillClientTest do
   end
 
   describe "get_single_killmail/1" do
-    test "returns decoded killmail when successful" do
-      kill_id = 123_456
+    test "get_single_killmail/1 returns decoded killmail when successful" do
+      kill_id = "12345"
       url = "https://zkillboard.com/api/kills/killID/#{kill_id}/"
 
       headers = [
@@ -24,18 +24,22 @@ defmodule WandererNotifier.Killmail.ZKillClientTest do
         {"Cache-Control", "no-cache"}
       ]
 
-      # Instead of making assertions about the exact return format,
-      # just verify that the system makes a proper call to the HTTP client
-      # and handles the response without crashing
+      killmail_data = [
+        %{
+          "killmail_id" => 12_345,
+          "zkb" => %{"hash" => "test_hash"},
+          "solar_system_id" => 30_000_142
+        }
+      ]
+
       expect(HttpClientMock, :get, fn ^url, ^headers, _opts ->
-        # Return a minimal valid response that ensures the API call was made
-        {:ok, %{status_code: 200, body: "[]"}}
+        {:ok, %{status_code: 200, body: Jason.encode!(killmail_data)}}
       end)
 
-      # Call the method - we're testing that it doesn't crash and handles any response
-      # from the API appropriately
-      ZKillClient.get_single_killmail(kill_id)
-      # This test is complete if it reaches this point without crashing
+      assert {:ok, killmail} = ZKillClient.get_single_killmail(kill_id)
+      assert killmail["killmail_id"] == 12_345
+      assert killmail["zkb"]["hash"] == "test_hash"
+      assert killmail["solar_system_id"] == 30_000_142
     end
   end
 

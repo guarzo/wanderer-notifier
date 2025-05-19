@@ -40,16 +40,31 @@ defmodule WandererNotifier.ESI.ServiceMock do
   def get_killmail(@not_found_id, _hash), do: {:error, :not_found}
   def get_killmail(@service_unavailable_id, _hash), do: {:error, :service_unavailable}
 
-  def get_killmail(_killmail_id, _hash) do
+  @impl true
+  def get_killmail(kill_id, kill_hash, _opts \\ []) do
     {:ok,
      %{
+       "killmail_id" => kill_id,
+       "killmail_hash" => kill_hash,
+       "killmail_time" => "2024-01-01T00:00:00Z",
        "victim" => %{
-         "character_id" => 123,
-         "corporation_id" => 456,
-         "ship_type_id" => 789
+         "character_id" => 123_456,
+         "corporation_id" => 789_012,
+         "alliance_id" => 345_678,
+         "ship_type_id" => 670
        },
+       "attackers" => [
+         %{
+           "character_id" => 234_567,
+           "corporation_id" => 890_123,
+           "alliance_id" => 456_789,
+           "ship_type_id" => 670,
+           "weapon_type_id" => 1234,
+           "final_blow" => true
+         }
+       ],
        "solar_system_id" => 30_000_142,
-       "attackers" => []
+       "war_id" => nil
      }}
   end
 

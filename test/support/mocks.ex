@@ -425,16 +425,16 @@ defmodule WandererNotifier.Test.Mocks do
       end
     end
 
-    def set(key, value) do
-      {:ok, "OK"}
+    def set(_key, _value) do
+      :ok
     end
 
-    def set(key, value, ttl) do
-      {:ok, "OK"}
+    def set(_key, _value, _ttl) do
+      :ok
     end
 
-    def del(key) do
-      {:ok, 1}
+    def del(_key) do
+      :ok
     end
 
     def exists(key) do

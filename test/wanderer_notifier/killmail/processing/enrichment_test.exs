@@ -1,28 +1,87 @@
 defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
   use ExUnit.Case
+  import Mox
+
   alias WandererNotifier.Killmail.Killmail
   alias WandererNotifier.Killmail.Enrichment
+  alias WandererNotifier.Api.ESI.ServiceMock
 
-  # Mock ESI service for testing
-  defmodule MockESIService do
-    def get_character_info(100, _), do: {:ok, %{"name" => "Victim"}}
-    def get_character_info(_, _), do: {:error, :not_found}
-
-    def get_corporation_info(200, _), do: {:ok, %{"name" => "Corp", "ticker" => "CORP"}}
-    def get_corporation_info(_, _), do: {:error, :not_found}
-
-    def get_type_info(300, _), do: {:ok, %{"name" => "Ship"}}
-    def get_type_info(_, _), do: {:error, :not_found}
-
-    def get_system(400, _), do: {:ok, %{"name" => "System"}}
-    def get_system(_, _), do: {:error, :not_found}
-
-    def get_killmail(_, _), do: {:error, :not_found}
-  end
+  # Make sure mocks are verified when the test exits
+  setup :verify_on_exit!
 
   setup do
-    # Set up the mock ESI service
-    Application.put_env(:wanderer_notifier, :esi_service, MockESIService)
+    # Set up Mox for ESI.Service
+    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
+
+    # Set up default stubs
+    ServiceMock
+    |> stub(:get_character_info, fn id, _opts ->
+      case id do
+        100 -> {:ok, %{"name" => "Victim", "corporation_id" => 300, "alliance_id" => 400}}
+        101 -> {:ok, %{"name" => "Attacker", "corporation_id" => 301, "alliance_id" => 401}}
+        _ -> {:ok, %{"name" => "Unknown", "corporation_id" => nil, "alliance_id" => nil}}
+      end
+    end)
+    |> stub(:get_corporation_info, fn id, _opts ->
+      case id do
+        300 -> {:ok, %{"name" => "Victim Corp", "ticker" => "VC"}}
+        301 -> {:ok, %{"name" => "Attacker Corp", "ticker" => "AC"}}
+        _ -> {:ok, %{"name" => "Unknown Corp", "ticker" => "UC"}}
+      end
+    end)
+    |> stub(:get_alliance_info, fn id, _opts ->
+      case id do
+        400 -> {:ok, %{"name" => "Victim Alliance", "ticker" => "VA"}}
+        401 -> {:ok, %{"name" => "Attacker Alliance", "ticker" => "AA"}}
+        _ -> {:ok, %{"name" => "Unknown Alliance", "ticker" => "UA"}}
+      end
+    end)
+    |> stub(:get_universe_type, fn id, _opts ->
+      case id do
+        200 -> {:ok, %{"name" => "Victim Ship"}}
+        201 -> {:ok, %{"name" => "Attacker Ship"}}
+        301 -> {:ok, %{"name" => "Weapon"}}
+        _ -> {:ok, %{"name" => "Unknown Ship"}}
+      end
+    end)
+    |> stub(:get_system, fn id, _opts ->
+      case id do
+        30_000_142 ->
+          {:ok,
+           %{
+             "name" => "Test System",
+             "system_id" => 30_000_142,
+             "constellation_id" => 20_000_020,
+             "security_status" => 0.9,
+             "security_class" => "B"
+           }}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end)
+    |> stub(:get_killmail, fn kill_id, killmail_hash, _opts ->
+      case {kill_id, killmail_hash} do
+        {123, "abc123"} ->
+          {:ok,
+           %{
+             "killmail_id" => 123,
+             "killmail_time" => "2024-01-01T00:00:00Z",
+             "solar_system_id" => 30_000_142,
+             "victim" => %{
+               "character_id" => 100,
+               "corporation_id" => 300,
+               "alliance_id" => 400,
+               "ship_type_id" => 200
+             },
+             "attackers" => []
+           }}
+
+        _ ->
+          {:error, :killmail_not_found}
+      end
+    end)
+
     :ok
   end
 
@@ -34,10 +93,10 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
       esi_data: %{
         "victim" => %{
           "character_id" => 100,
-          "corporation_id" => 200,
-          "ship_type_id" => 300
+          "corporation_id" => 300,
+          "ship_type_id" => 200
         },
-        "solar_system_id" => 400,
+        "solar_system_id" => 30_000_142,
         "attackers" => []
       }
     }
@@ -47,9 +106,9 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
 
     # Verify the results
     assert enriched.victim_name == "Victim"
-    assert enriched.victim_corporation == "Corp"
-    assert enriched.victim_corp_ticker == "CORP"
-    assert enriched.ship_name == "Ship"
-    assert enriched.system_name == "System"
+    assert enriched.victim_corporation == "Victim Corp"
+    assert enriched.victim_corp_ticker == "VC"
+    assert enriched.ship_name == "Victim Ship"
+    assert enriched.system_name == "Test System"
   end
 end

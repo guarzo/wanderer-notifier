@@ -90,13 +90,12 @@ defmodule WandererNotifier.Map.MapUtil do
     Enum.reduce(field_mappings, %{}, &extract_field(map, &1))
   end
 
-  defp extract_field(map, {dest_key, key_paths, default}, acc) when is_list(key_paths) do
-    value = get_value(map, key_paths) || default
-    Map.put(acc, dest_key, value)
+  defp extract_field(map, {dest_key, key_paths}) do
+    {dest_key, get_value(map, key_paths)}
   end
 
-  defp extract_field(map, {dest_key, key_paths}, acc) when is_list(key_paths) do
-    Map.put(acc, dest_key, get_value(map, key_paths))
+  defp extract_field(map, {dest_key, key_paths, default_value}) do
+    {dest_key, get_value(map, key_paths) || default_value}
   end
 
   @doc """

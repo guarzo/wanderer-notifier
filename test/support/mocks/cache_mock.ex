@@ -81,32 +81,12 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
     end
   end
 
-  @impl true
   def get_kill(kill_id) do
-    key = "zkill:recent_kills:#{kill_id}"
-
-    case Process.get({:cache, key}) do
-      nil -> {:error, :not_cached}
-      value -> {:ok, value}
-    end
+    get("kill:#{kill_id}")
   end
 
-  @impl true
   def get_latest_killmails do
-    # Get the list of kill IDs
-    kill_ids = Process.get({:cache, "zkill:recent_kills"}) || []
-
-    # Convert to a list of killmails
-    kills =
-      kill_ids
-      |> Enum.map(fn id ->
-        kill = Process.get({:cache, "zkill:recent_kills:#{id}"})
-        if kill, do: Map.put(kill, "id", id), else: nil
-      end)
-      |> Enum.reject(&is_nil/1)
-
-    # Format return value to match controller expectation
-    {:ok, kills}
+    get("latest_killmails")
   end
 
   @impl true

@@ -29,9 +29,9 @@ defmodule WandererNotifier.Killmail.Enrichment do
     km
     |> maybe_use_cache(existing)
     |> fetch_esi(:get_killmail, [id, hash])
-    |> with_ok(&add_victim_info/2)
-    |> with_ok(&add_system_info/2)
-    |> with_ok(&add_attackers/2)
+    |> with_ok(&add_victim_info/1)
+    |> with_ok(&add_system_info/1)
+    |> with_ok(&add_attackers/1)
     |> case do
       {:ok, enriched} -> {:ok, enriched}
       {:error, :service_unavailable} = err -> err
@@ -71,8 +71,8 @@ defmodule WandererNotifier.Killmail.Enrichment do
   # --- Enrichment helpers ---
 
   # Adds victim info fields
-  defp add_victim_info({:ok, km}, _) do
-    with %{"victim" => victim} = esi <- km.esi_data,
+  defp add_victim_info({:ok, km}) do
+    with %{"victim" => victim} = _esi <- km.esi_data,
          {:ok, victim_info} <- fetch_victim_info(victim) do
       {:ok, Map.merge(km, victim_info)}
     else
@@ -95,7 +95,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   # Adds system name and id
-  defp add_system_info({:ok, km}, _) do
+  defp add_system_info({:ok, km}) do
     case get_system(km.esi_data["solar_system_id"]) do
       {:ok, name} ->
         {:ok, %{km | system_name: name, system_id: km.esi_data["solar_system_id"]}}
@@ -109,7 +109,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   # Adds enriched attackers list
-  defp add_attackers({:ok, km}, _) do
+  defp add_attackers({:ok, km}) do
     case km.esi_data["attackers"] do
       nil -> {:ok, %{km | attackers: []}}
       attackers when is_list(attackers) -> process_attackers(km, attackers)
@@ -142,9 +142,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
       _ -> {:error, :esi_data_missing}
     end
   end
-
-  # Helper to map through a nested map
-  defp fetch_map(map, key, fun), do: map[key] |> fun.()
 
   # Individual ESI lookups
   defp get_character(nil), do: {:error, :esi_data_missing}
@@ -232,6 +229,6 @@ defmodule WandererNotifier.Killmail.Enrichment do
   # --- Utilities ---
 
   # Chains {:ok, val} into fun, propagating errors
-  defp with_ok({:ok, val} = ok_val, fun), do: fun.(ok_val)
+  defp with_ok({:ok, val}, fun), do: fun.({:ok, val})
   defp with_ok({:error, _} = err, _fun), do: err
 end

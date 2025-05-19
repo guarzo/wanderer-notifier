@@ -172,7 +172,8 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
     )
 
     # Set up default stubs
-    Mox.stub(MockConfig, :get_config, fn ->
+    MockConfig
+    |> stub(:get_config, fn ->
       %{
         notifications_enabled: true,
         kill_notifications_enabled: true,

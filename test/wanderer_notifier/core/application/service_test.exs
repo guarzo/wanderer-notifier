@@ -50,9 +50,67 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
     NotifierFactory
     |> stub(:send_message, fn _notification -> :ok end)
 
-    # Stub the missing ESI.ServiceMock.get_system/2 call
-    WandererNotifier.Api.ESI.ServiceMock
-    |> stub(:get_system, fn _id, _opts -> {:ok, %{"name" => "Test System"}} end)
+    # Set up Mox for ESI.Service
+    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+
+    # Set up Mox for Deduplication
+    Application.put_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.Notifications.MockDeduplication
+    )
+
+    # Set up default stubs
+    WandererNotifier.ESI.ServiceMock
+    |> stub(:get_character_info, fn id, _opts ->
+      case id do
+        100 -> {:ok, %{"name" => "Victim", "corporation_id" => 300, "alliance_id" => 400}}
+        101 -> {:ok, %{"name" => "Attacker", "corporation_id" => 301, "alliance_id" => 401}}
+        _ -> {:ok, %{"name" => "Unknown", "corporation_id" => nil, "alliance_id" => nil}}
+      end
+    end)
+    |> stub(:get_corporation_info, fn id, _opts ->
+      case id do
+        300 -> {:ok, %{"name" => "Victim Corp", "ticker" => "VC"}}
+        301 -> {:ok, %{"name" => "Attacker Corp", "ticker" => "AC"}}
+        _ -> {:ok, %{"name" => "Unknown Corp", "ticker" => "UC"}}
+      end
+    end)
+    |> stub(:get_alliance_info, fn id, _opts ->
+      case id do
+        400 -> {:ok, %{"name" => "Victim Alliance", "ticker" => "VA"}}
+        401 -> {:ok, %{"name" => "Attacker Alliance", "ticker" => "AA"}}
+        _ -> {:ok, %{"name" => "Unknown Alliance", "ticker" => "UA"}}
+      end
+    end)
+    |> stub(:get_type_info, fn id, _opts ->
+      case id do
+        200 -> {:ok, %{"name" => "Victim Ship"}}
+        201 -> {:ok, %{"name" => "Attacker Ship"}}
+        301 -> {:ok, %{"name" => "Weapon"}}
+        _ -> {:ok, %{"name" => "Unknown Ship"}}
+      end
+    end)
+    |> stub(:get_system, fn id, _opts ->
+      case id do
+        30_000_142 ->
+          {:ok,
+           %{
+             "name" => "Test System",
+             "system_id" => 30_000_142,
+             "constellation_id" => 20_000_020,
+             "security_status" => 0.9,
+             "security_class" => "B"
+           }}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end)
+
+    # Set up deduplication mock
+    WandererNotifier.Notifications.MockDeduplication
+    |> stub(:check, fn :kill, _id -> {:ok, :new} end)
 
     :ok
   end

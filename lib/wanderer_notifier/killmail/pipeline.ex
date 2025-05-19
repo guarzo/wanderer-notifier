@@ -123,7 +123,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp log_outcome(killmail, ctx, opts) do
     kill_id = if killmail, do: killmail.killmail_id, else: "unknown"
-    context_id = if ctx, do: ctx.id, else: nil
+    context_id = if ctx, do: ctx.killmail_id, else: nil
 
     if opts[:notified] do
       AppLogger.kill_info("Killmail processed and notified",
@@ -147,7 +147,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp log_error(data, ctx, reason) do
     kill_id = if is_map(data), do: Map.get(data, "killmail_id", "unknown"), else: "unknown"
-    context_id = if ctx, do: ctx.id, else: nil
+    context_id = if ctx, do: ctx.killmail_id, else: nil
 
     AppLogger.kill_error("Pipeline error processing killmail",
       kill_id: kill_id,

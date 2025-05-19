@@ -5,7 +5,6 @@ defmodule WandererNotifier.Killmail.PipelineTest do
   alias WandererNotifier.Killmail.{Pipeline, Context}
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.Notifications.DiscordNotifierMock
-  alias WandererNotifier.Cache.Keys
 
   # Define MockConfig for testing
   defmodule MockConfig do
@@ -16,19 +15,22 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
   # Define MockCache for the tests
   defmodule MockCache do
-    def get(key) when key == Keys.system_list() do
-      {:ok, [solar_system_id: "30000142", name: "Test System"]}
+    def get(key) do
+      cond do
+        key == WandererNotifier.Cache.Keys.system_list() ->
+          {:ok, []}
+
+        key == WandererNotifier.Cache.Keys.character_list() ->
+          {:ok, [character_id: "100", name: "Victim"]}
+
+        String.starts_with?(key, "tracked_character:") ->
+          {:error, :not_found}
+
+        true ->
+          {:error, :not_found}
+      end
     end
 
-    def get(key) when key == Keys.character_list() do
-      {:ok, [character_id: "100", name: "Victim"]}
-    end
-
-    def get("tracked_character:" <> _) do
-      {:error, :not_found}
-    end
-
-    def get(_), do: {:error, :not_found}
     def put(_key, _value), do: {:ok, :mock}
     def put(_key, _value, _ttl), do: {:ok, :mock}
     def delete(_key), do: {:ok, :mock}
@@ -330,7 +332,13 @@ defmodule WandererNotifier.Killmail.PipelineTest do
       defmodule InvalidPayloadPipeline do
         def process_killmail(zkb_data, _context) do
           # Simulate the real pipeline's behavior for invalid payload
-          WandererNotifier.Killmail.Pipeline.process_killmail(zkb_data, %Context{})
+          WandererNotifier.Killmail.Pipeline.process_killmail(zkb_data, %Context{
+            killmail_id: nil,
+            system_name: nil,
+            options: %{
+              source: :test_source
+            }
+          })
         end
       end
 
@@ -342,7 +350,15 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
       # Create a direct test using our replacement module
       alias InvalidPayloadPipeline, as: TestPipeline
-      result = TestPipeline.process_killmail(zkb_data, %Context{})
+
+      result =
+        TestPipeline.process_killmail(zkb_data, %Context{
+          killmail_id: nil,
+          system_name: nil,
+          options: %{
+            source: :test_source
+          }
+        })
 
       # Assert the expected error result
       assert {:error, :invalid_payload} = result
@@ -354,7 +370,7 @@ defmodule WandererNotifier.Killmail.PipelineTest do
           # Simulate a timeout error during enrichment
           raise WandererNotifier.ESI.Service.TimeoutError, "ESI API request timed out"
         rescue
-          e in WandererNotifier.ESI.Service.TimeoutError ->
+          _e in WandererNotifier.ESI.Service.TimeoutError ->
             {:error, :timeout}
         end
       end
