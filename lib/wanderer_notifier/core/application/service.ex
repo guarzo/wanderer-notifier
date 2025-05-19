@@ -316,7 +316,10 @@ defmodule WandererNotifier.Core.Application.Service do
       Process.sleep(100)
 
       try do
-        case Websocket.start_link(self()) do
+        # Use the direct WebSocket module instead of supervised version
+        url = Application.fetch_env!(:wanderer_notifier, :websocket)[:url]
+
+        case Websocket.start_link(url: url, parent: self()) do
           {:ok, ws_pid} ->
             # Monitor the process so we get notified if it crashes
             monitor_ref = Process.monitor(ws_pid)

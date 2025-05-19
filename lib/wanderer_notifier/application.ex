@@ -86,17 +86,16 @@ defmodule WandererNotifier.Application do
     )
 
     # Get all environment variables, sorted by key
-    _env_vars =
-      System.get_env()
-      |> Enum.sort_by(fn {k, _} -> k end)
-      |> Enum.map(fn {key, value} ->
-        # Redact sensitive values
-        safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
-        # Log each variable individually, and focus on WANDERER_ variables
-        if String.starts_with?(key, "WANDERER_") do
-          AppLogger.startup_info("  #{key}: #{safe_value}")
-        end
-      end)
+    System.get_env()
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.each(fn {key, value} ->
+      # Redact sensitive values
+      safe_value = if key in sensitive_keys, do: "[REDACTED]", else: value
+      # Log each variable individually, and focus on WANDERER_ variables
+      if String.starts_with?(key, "WANDERER_") do
+        AppLogger.startup_info("  #{key}: #{safe_value}")
+      end
+    end)
 
     # Log app config as well
     log_application_config()
@@ -144,30 +143,34 @@ defmodule WandererNotifier.Application do
   Reloads modules.
   """
   def reload(modules) do
-    AppLogger.config_info("Reloading modules", modules: inspect(modules))
+    if get_env() == :prod do
+      {:error, :not_allowed_in_production}
+    else
+      AppLogger.config_info("Reloading modules", modules: inspect(modules))
 
-    # Save current compiler options
-    original_compiler_options = Code.compiler_options()
+      # Save current compiler options
+      original_compiler_options = Code.compiler_options()
 
-    # Set ignore_module_conflict to true
-    Code.compiler_options(ignore_module_conflict: true)
+      # Set ignore_module_conflict to true
+      Code.compiler_options(ignore_module_conflict: true)
 
-    try do
-      Enum.each(modules, fn module ->
-        :code.purge(module)
-        :code.delete(module)
-        :code.load_file(module)
-      end)
+      try do
+        Enum.each(modules, fn module ->
+          :code.purge(module)
+          :code.delete(module)
+          :code.load_file(module)
+        end)
 
-      AppLogger.config_info("Module reload complete")
-      {:ok, modules}
-    rescue
-      error ->
-        AppLogger.config_error("Error reloading modules", error: inspect(error))
-        {:error, error}
-    after
-      # Restore original compiler options
-      Code.compiler_options(original_compiler_options)
+        AppLogger.config_info("Module reload complete")
+        {:ok, modules}
+      rescue
+        error ->
+          AppLogger.config_error("Error reloading modules", error: inspect(error))
+          {:error, error}
+      after
+        # Restore original compiler options
+        Code.compiler_options(original_compiler_options)
+      end
     end
   end
 end

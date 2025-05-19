@@ -101,7 +101,6 @@ config :wanderer_notifier, cache_name: :wanderer_cache
 
 # Configure service modules
 config :wanderer_notifier,
-  esi_service: WandererNotifier.ESI.Service,
   cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
