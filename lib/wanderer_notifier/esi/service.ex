@@ -11,6 +11,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @behaviour WandererNotifier.ESI.ServiceBehaviour
 
+  # Define error structs
+  defmodule TimeoutError do
+    @moduledoc """
+    Error raised when an ESI API call times out.
+    """
+    defexception [:message]
+  end
+
+  defmodule ApiError do
+    @moduledoc """
+    Error raised when an ESI API call returns an error.
+    """
+    defexception [:reason, :message]
+  end
+
   defp cache_repo do
     repo =
       Application.get_env(

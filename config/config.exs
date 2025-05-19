@@ -99,8 +99,11 @@ config :nostrum, :gateway,
 # Configure cache
 config :wanderer_notifier, cache_name: :wanderer_cache
 
-# Configure service modules
+# Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
+  http_client: WandererNotifier.HttpClient.Httpoison,
+  zkill_client: WandererNotifier.Killmail.ZKillClient,
+  cache_repo: WandererNotifier.Cache.CachexImpl,
   cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,

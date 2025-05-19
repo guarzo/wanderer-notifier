@@ -104,7 +104,7 @@ Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.Htt
 Mox.defmock(WandererNotifier.ESI.ClientMock, for: WandererNotifier.ESI.ClientBehaviour)
 Mox.defmock(WandererNotifier.Map.MapSystemMock, for: WandererNotifier.Test.SystemBehaviour)
 Mox.defmock(WandererNotifier.Map.MapCharacterMock, for: WandererNotifier.Test.CharacterBehaviour)
-Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.Behaviour)
+Mox.defmock(WandererNotifier.MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
 
 Mox.defmock(WandererNotifier.MockNotificationsConfig,
   for: WandererNotifier.Test.ConfigBehaviour

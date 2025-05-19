@@ -120,7 +120,7 @@ defmodule WandererNotifier.Schedulers.SystemUpdateScheduler do
     cache_list = ensure_list(updated_cache)
 
     if cache_list == [] do
-      cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
+      cache_ttl = WandererNotifier.Config.static_info_ttl()
       CacheRepo.set(:system_list, systems_list, cache_ttl)
     end
   end

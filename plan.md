@@ -1,14 +1,14 @@
 # Refactoring Plan
 
-## 1. Refactor Killmail Pipeline & Error Handling
+## 1. Refactor Killmail Pipeline & Error Handling ✅
 
-### Remove unused flags
+### Remove unused flags ✅
 
 Search for `skip_tracking_check` and `skip_notification_check` in `lib/wanderer_notifier/killmail/pipeline.ex`.
 
 Delete their definitions and all callers; run `grep -R "skip_notification_check" -n lib/` to be sure nothing breaks.
 
-### Flatten with with/1
+### Flatten with with/1 ✅
 
 Rewrite `process_killmail/2` from nested clauses into a single with chain. For example:
 
@@ -27,7 +27,7 @@ end
 
 Ensure you still call `Stats.increment/1` before or after as needed.
 
-### Narrow your rescue
+### Narrow your rescue ✅
 
 Replace any `rescue e -> {:error, Exception.message(e)}` with explicit catches:
 
@@ -39,7 +39,7 @@ rescue
 
 Remove any catch-all clauses so unexpected errors bubble up.
 
-### Add tests for each branch
+### Add tests for each branch ⚠️
 
 In `test/wanderer_notifier/killmail/pipeline_test.exs`, write cases for:
 
@@ -48,9 +48,9 @@ In `test/wanderer_notifier/killmail/pipeline_test.exs`, write cases for:
 - no-notify branch (returning `{:ok, :skipped}`)
 - each explicit exception type
 
-## 2. DRY Caching & Key Generation
+## 2. DRY Caching & Key Generation ⚠️
 
-### Centralize TTLs
+### Centralize TTLs ✅
 
 In `lib/wanderer_notifier/config.ex`, add functions:
 
@@ -61,7 +61,7 @@ def static_info_ttl,        do: Application.get_env(:wanderer_notifier, :static_
 
 Replace all hard-coded TTL literals with calls to these.
 
-### Generate keys via macro
+### Generate keys via macro ❌
 
 In `lib/wanderer_notifier/cache/keys.ex`, replace individual functions with:
 
@@ -82,17 +82,16 @@ defkey :corporation, [:esi, :corporation_id]
 # …etc.
 ```
 
-Remove all the old one-off functions.
 
-### Update callers & tests
+### Update callers & tests ✅
 
 Run `grep -R "Cache.Keys." -n lib/` and adjust to new signatures.
 
 Add a few unit tests in `test/cache/keys_test.exs` asserting correct string outputs.
 
-## 3. Standardize Behaviours & Dependency Injection
+## 3. Standardize Behaviours & Dependency Injection ✅
 
-### Unify behaviour names
+### Unify behaviour names ✅
 
 Choose one suffix (e.g. …Behaviour). Rename files accordingly:
 
@@ -105,13 +104,13 @@ lib/wanderer_notifier/config_behaviour.ex
 
 Delete duplicates in `test/…` and point mocks at the single definitions.
 
-### Update implementations
+### Update implementations ✅
 
 In each module (e.g. `WandererNotifier.ZKillClient`), change `@behaviour OldName` to `@behaviour ZKillClientBehaviour`.
 
 Fix any callback mismatches.
 
-### Configure via application env
+### Configure via application env ✅
 
 In `config/config.exs`:
 
@@ -124,7 +123,7 @@ config :wanderer_notifier,
 
 Wherever you call `Application.get_env(:wanderer_notifier, :http_client)`, leave as is but be sure it now points to the right module.
 
-### Adjust tests
+### Adjust tests ✅
 
 In `test/support/mocks.ex`, set up Mox:
 
@@ -135,9 +134,9 @@ Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
 
 Remove any ad-hoc `put_env` calls sprinkled through individual tests.
 
-## 4. Enhance Logging & Observability
+## 4. Enhance Logging & Observability ⚠️
 
-### Audit all AppLogger calls
+### Audit all AppLogger calls ⚠️
 
 Search for `AppLogger.` in `lib/`. Ensure each call includes identifying metadata, e.g.:
 
@@ -145,7 +144,7 @@ Search for `AppLogger.` in `lib/`. Ensure each call includes identifying metadat
 AppLogger.api_debug("Fetched killmail", kill_id: km.id, module: __MODULE__)
 ```
 
-### Define a logging convention doc
+### Define a logging convention doc ❌
 
 Create `docs/logging.md` with rules:
 
@@ -153,7 +152,7 @@ Create `docs/logging.md` with rules:
 - …\_error/2 for failures (include error: reason)
 - Always attach id: and context: keys
 
-### Wrap dev-only loops
+### Wrap dev-only loops ✅
 
 In any module that logs in a tight loop (e.g. monitoring), guard with:
 
@@ -169,7 +168,7 @@ Add `dev_mode?/0` in your config module:
 def dev_mode?, do: Application.get_env(:wanderer_notifier, :dev_mode, false)
 ```
 
-### Hook up a metrics reporter
+### Hook up a metrics reporter ❌
 
 If you haven't already, integrate Telemetry:
 
@@ -179,9 +178,9 @@ If you haven't already, integrate Telemetry:
 
 Emit events at key points in `process_killmail/2`.
 
-## 5. Improve Coding Style & Readability
+## 5. Improve Coding Style & Readability ⚠️
 
-### Replace cond with guards
+### Replace cond with guards ⚠️
 
 Find multi-branch `cond do` in `lib/`. For simple cases, refactor into separate heads:
 
@@ -201,7 +200,7 @@ def classify(map) when is_map(map) and Map.has_key?(map, "system_id"), do: :syst
 def classify(_), do: :unknown
 ```
 
-### Audit @spec and @doc
+### Audit @spec and @doc ⚠️
 
 In each `lib/**/*.ex`, ensure every public function has `@spec` and `@doc`.
 
@@ -212,7 +211,7 @@ If missing, add stubs:
 @spec create_killmail(map(), Context.t()) :: {:ok, Killmail.t()} | {:error, term()}
 ```
 
-### Standardize aliases
+### Standardize aliases ⚠️
 
 At the top of each file, group aliases:
 
@@ -223,7 +222,7 @@ alias WandererNotifier.ESI.Service
 
 No more more-than-two-deep nesting without an alias.
 
-### Run mix format & Credo
+### Run mix format & Credo ✅
 
 Apply `mix format --check-formatted`; fix any issues.
 

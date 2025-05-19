@@ -50,6 +50,11 @@ defmodule WandererNotifier.Cache.Keys do
   # Separator
   @separator ":"
 
+  # Private helper function to join parts with separator
+  defp join_parts(parts) when is_list(parts) do
+    Enum.join(parts, @separator)
+  end
+
   @doc """
   Generates a cache key for system data.
 
@@ -508,11 +513,6 @@ defmodule WandererNotifier.Cache.Keys do
   end
 
   def map_key_info(_), do: {:error, :invalid_key}
-
-  # Private helper function to join parts with separator
-  defp join_parts(parts) when is_list(parts) do
-    Enum.join(parts, @separator)
-  end
 
   @doc """
   Generates a cache key for a killmail.

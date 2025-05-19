@@ -14,7 +14,7 @@ defmodule WandererNotifier.Config do
     - Web/server
     - API
   """
-  @behaviour WandererNotifier.Config.Behaviour
+  @behaviour WandererNotifier.Config.ConfigBehaviour
   # --- General ENV helpers ---
   def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
   def fetch(key, default \\ nil), do: System.get_env(key) || default
@@ -49,6 +49,17 @@ defmodule WandererNotifier.Config do
       character_notifications_enabled: character_notifications_enabled?()
     }
   end
+
+  # --- TTL Configuration ---
+  @doc """
+  Returns the TTL for notification deduplication in seconds.
+  """
+  def notification_dedup_ttl, do: Application.get_env(:wanderer_notifier, :dedup_ttl, 60)
+
+  @doc """
+  Returns the TTL for static information caching in seconds.
+  """
+  def static_info_ttl, do: Application.get_env(:wanderer_notifier, :static_info_ttl, 3600)
 
   # --- Version access ---
   @doc """
@@ -105,13 +116,19 @@ defmodule WandererNotifier.Config do
   end
 
   def map_api_key, do: get(:map_api_key, "")
-  def static_info_cache_ttl, do: get(:static_info_cache_ttl, 3600)
 
   # --- Debug config ---
   def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
   def enable_debug_logging, do: set(:debug_logging_enabled, true)
   def disable_debug_logging, do: set(:debug_logging_enabled, false)
   def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
+
+  @doc """
+  Returns whether the application is running in development mode.
+  Used to enable more verbose logging and other development features.
+  """
+  def dev_mode?, do: Application.get_env(:wanderer_notifier, :dev_mode, false)
+
   defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
   # --- Notification config ---
@@ -290,8 +307,6 @@ defmodule WandererNotifier.Config do
   @doc "Returns the characters cache TTL in seconds."
   def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
   def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
-  @doc "Returns the notification deduplication TTL in seconds."
-  def notification_dedup_ttl, do: get(:notification_dedup_ttl, 3600)
 
   # --- Tracking Data Feature ---
   @doc "Returns true if tracking data should be loaded."

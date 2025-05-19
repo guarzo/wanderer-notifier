@@ -6,9 +6,7 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
   @behaviour WandererNotifier.Notifications.Deduplication.Behaviour
 
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-
-  # Default TTL of 12 hours if not configured
-  @default_ttl 12 * 60 * 60
+  alias WandererNotifier.Config
 
   @impl true
   def check(type, id)
@@ -21,8 +19,8 @@ defmodule WandererNotifier.Notifications.Deduplication.CacheImpl do
           {:ok, :duplicate}
 
         _ ->
-          # Get TTL duration from config or use default
-          ttl = WandererNotifier.Config.notification_dedup_ttl() || @default_ttl
+          # Use centralized config for TTL
+          ttl = Config.notification_dedup_ttl()
           # Mark as seen in the cache with appropriate TTL
           CacheRepo.set(cache_key, true, ttl)
           {:ok, :new}

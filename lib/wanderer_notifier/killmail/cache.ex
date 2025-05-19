@@ -9,10 +9,7 @@ defmodule WandererNotifier.Killmail.Cache do
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
-
-  # Cache TTL values (in seconds)
-  # 1 hour
-  @kill_ttl 3600
+  alias WandererNotifier.Config
 
   # System name cache - process dictionary for performance
   @system_names_cache_key :system_names_cache
@@ -37,7 +34,7 @@ defmodule WandererNotifier.Killmail.Cache do
     individual_key = "#{CacheKeys.zkill_recent_kills()}:#{kill_id}"
 
     AppLogger.cache_debug("Caching individual kill", key: individual_key)
-    CacheRepo.set(individual_key, killmail, @kill_ttl)
+    CacheRepo.set(individual_key, killmail, Config.static_info_ttl())
 
     # Update the recent kills list
     update_recent_kills_list(kill_id)
@@ -179,6 +176,6 @@ defmodule WandererNotifier.Killmail.Cache do
       end
 
     # Update the cache
-    CacheRepo.set(CacheKeys.zkill_recent_kills(), updated_ids, @kill_ttl)
+    CacheRepo.set(CacheKeys.zkill_recent_kills(), updated_ids, Config.static_info_ttl())
   end
 end

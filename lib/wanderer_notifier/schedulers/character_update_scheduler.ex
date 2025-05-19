@@ -134,7 +134,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
 
     # Always update the cache with the latest characters from the API
     # This ensures characters that are no longer present get removed
-    cache_ttl = WandererNotifier.Config.static_info_cache_ttl()
+    cache_ttl = WandererNotifier.Config.static_info_ttl()
     CacheRepo.set(CacheKeys.character_list(), characters_list, cache_ttl)
 
     AppLogger.maintenance_debug(

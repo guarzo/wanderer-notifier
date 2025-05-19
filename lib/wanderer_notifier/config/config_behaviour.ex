@@ -1,4 +1,4 @@
-defmodule WandererNotifier.Config.Behaviour do
+defmodule WandererNotifier.Config.ConfigBehaviour do
   @moduledoc """
   Behaviour for application configuration.
   """

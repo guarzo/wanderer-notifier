@@ -5,7 +5,15 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   alias WandererNotifier.ESI.Service, as: ESIService
   alias WandererNotifier.Core.Stats
-  alias WandererNotifier.Killmail.{Context, Killmail, Enrichment, Notification}
+
+  alias WandererNotifier.Killmail.{
+    Context,
+    Killmail,
+    Enrichment,
+    Notification,
+    NotificationChecker
+  }
+
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
@@ -18,18 +26,23 @@ defmodule WandererNotifier.Killmail.Pipeline do
   @spec process_killmail(zkb_data, Context.t() | map()) :: result
   def process_killmail(zkb_data, ctx) do
     ctx = ensure_context(ctx)
-    maybe_track(:start)
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- build_killmail(zkb_data),
          {:ok, enriched} <- enrich(killmail),
-         {:ok, final_killmail} <- dispatch_notification(enriched, true, ctx) do
-      maybe_track(:complete, {:ok, final_killmail})
-      log_outcome(final_killmail, ctx, persisted: true, notified: true, reason: nil)
-      {:ok, final_killmail}
+         true <- NotificationChecker.should_notify?(enriched),
+         {:ok, _} <- Notification.send_kill_notification(enriched, enriched.killmail_id) do
+      Stats.track_notification_sent()
+      log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
+      {:ok, enriched}
     else
+      false ->
+        Stats.track_processing_complete({:ok, :skipped})
+        log_outcome(nil, ctx, persisted: true, notified: false, reason: "Notification not needed")
+        {:ok, :skipped}
+
       {:error, reason} ->
-        maybe_track(:error)
+        Stats.track_processing_error()
         log_error(zkb_data, ctx, reason)
         {:error, reason}
     end
@@ -82,29 +95,16 @@ defmodule WandererNotifier.Killmail.Pipeline do
         error
     end
   rescue
-    error ->
-      AppLogger.error("Error during enrichment: #{inspect(error)}")
-      {:error, :enrichment_failed}
+    # Handle timeouts in ESI service calls
+    e in ESIService.TimeoutError ->
+      AppLogger.error("ESI timeout during enrichment", error: inspect(e))
+      {:error, :timeout}
+
+    # Handle other ESI API errors
+    e in ESIService.ApiError ->
+      AppLogger.error("ESI API error during enrichment", error: inspect(e))
+      {:error, e.reason}
   end
-
-  # — dispatch_notification/3 — actually sends or skips the notify step
-  @spec dispatch_notification(Killmail.t(), boolean(), Context.t() | map()) ::
-          {:ok, Killmail.t()} | {:error, term()}
-  defp dispatch_notification(killmail, true, _ctx) do
-    killmail
-    |> Notification.send_kill_notification(killmail.killmail_id)
-    |> case do
-      {:ok, _} ->
-        maybe_track(:notify)
-        {:ok, killmail}
-
-      error ->
-        error
-    end
-  end
-
-  defp dispatch_notification({:error, _reason} = error, _, _), do: error
-  defp dispatch_notification(killmail, _, _), do: {:ok, killmail}
 
   # — Logging & metrics helpers ———————————————————————————————————————————
 
@@ -112,20 +112,17 @@ defmodule WandererNotifier.Killmail.Pipeline do
     :ok
   end
 
-  defp log_error(data, _ctx, reason) do
+  defp log_error(data, ctx, reason) do
     kill_id = if is_map(data), do: Map.get(data, "killmail_id", "unknown"), else: "unknown"
+    context_id = if ctx, do: ctx.id, else: nil
 
     AppLogger.kill_error("Pipeline error processing killmail", %{
       kill_id: kill_id,
+      context_id: context_id,
+      module: __MODULE__,
       error: inspect(reason)
     })
 
     :ok
   end
-
-  # Helper functions to track metrics using Stats instead of Metrics
-  defp maybe_track(:start), do: Stats.track_processing_start()
-  defp maybe_track(:error), do: Stats.track_processing_error()
-  defp maybe_track(:notify), do: Stats.track_notification_sent()
-  defp maybe_track(:complete, result), do: Stats.track_processing_complete(result)
 end

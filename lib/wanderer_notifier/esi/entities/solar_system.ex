@@ -135,13 +135,8 @@ defmodule WandererNotifier.ESI.Entities.SolarSystem do
     security_band(sec_status)
   end
 
-  def security_band(sec_status) when is_number(sec_status) do
-    cond do
-      sec_status >= 0.5 -> "High"
-      sec_status > 0.0 -> "Low"
-      true -> "Null"
-    end
-  end
-
+  def security_band(sec_status) when is_number(sec_status) and sec_status >= 0.5, do: "High"
+  def security_band(sec_status) when is_number(sec_status) and sec_status > 0.0, do: "Low"
+  def security_band(sec_status) when is_number(sec_status), do: "Null"
   def security_band(_), do: "Unknown"
 end
