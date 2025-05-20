@@ -3,6 +3,7 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   Controller for notification-related endpoints.
   """
   use WandererNotifier.Api.ApiPipeline
+  use WandererNotifier.Api.Controllers.ControllerHelpers
   import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Config

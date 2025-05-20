@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.Controllers.KillController do
   Controller for kill-related endpoints.
   """
   use WandererNotifier.Api.ApiPipeline
+  use WandererNotifier.Api.Controllers.ControllerHelpers
   import WandererNotifier.Api.Helpers
 
   # Define a default for compile-time, but we'll use get_env at runtime

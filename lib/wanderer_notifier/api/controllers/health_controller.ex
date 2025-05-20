@@ -3,6 +3,7 @@ defmodule WandererNotifier.Api.Controllers.HealthController do
   Controller for health check endpoints.
   """
   use WandererNotifier.Api.ApiPipeline
+  use WandererNotifier.Api.Controllers.ControllerHelpers
   import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Web.Server, as: WebServer

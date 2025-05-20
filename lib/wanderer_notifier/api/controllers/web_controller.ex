@@ -4,6 +4,7 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   Provides endpoints for service status, statistics, and scheduler management.
   """
   use WandererNotifier.Api.ApiPipeline
+  use WandererNotifier.Api.Controllers.ControllerHelpers
   import WandererNotifier.Api.Helpers
 
   alias WandererNotifier.Core.Stats
@@ -199,54 +200,25 @@ defmodule WandererNotifier.Api.Controllers.WebController do
       notifications: %{
         total: 0,
         success: 0,
-        error: 0,
-        kills: 0,
-        systems: 0,
-        characters: 0
+        failed: 0,
+        last_sent: nil
       },
       websocket: %{
         connected: false,
-        last_message: nil,
-        reconnects: 0
-      },
-      uptime: "0s",
-      uptime_seconds: 0,
-      processing: %{
-        kills_processed: 0,
-        kills_notified: 0
+        last_connected: nil,
+        last_disconnected: nil,
+        reconnect_attempts: 0
       },
       services: %{
         backend: "running",
         notifications: "running",
         api: "running"
-      },
-      license: %{
-        status: "unknown",
-        expires_in: nil,
-        valid: false,
-        bot_assigned: false,
-        details: %{},
-        last_validated: DateTime.utc_now() |> DateTime.to_string()
-      },
-      features: %{
-        debug: true,
-        notifications_enabled: true,
-        character_notifications_enabled: true,
-        system_notifications_enabled: true,
-        character_tracking_enabled: true,
-        system_tracking_enabled: true,
-        kill_notifications_enabled: true
-      },
-      limits: %{
-        tracked_systems: 1000,
-        tracked_characters: 1000,
-        notification_history: 1000
       }
     }
   end
 
-  defp format_schedulers(scheduler_info) do
-    Enum.map(scheduler_info, fn %{module: module, enabled: enabled, config: config} ->
+  defp format_schedulers(schedulers) do
+    Enum.map(schedulers, fn %{module: module, enabled: _enabled} = scheduler ->
       name =
         module
         |> to_string()
@@ -254,24 +226,10 @@ defmodule WandererNotifier.Api.Controllers.WebController do
         |> List.last()
         |> String.replace("Scheduler", "")
 
-      type = if Map.has_key?(config, :interval), do: "interval", else: "time"
-
-      %{
+      Map.merge(scheduler, %{
         name: name,
-        type: type,
-        enabled: enabled,
-        interval: Map.get(config, :interval),
-        hour: Map.get(config, :hour),
-        minute: Map.get(config, :minute),
-        last_run: Map.get(config, :last_run),
-        next_run: Map.get(config, :next_run),
-        stats:
-          Map.get(config, :stats, %{
-            success_count: 0,
-            error_count: 0,
-            last_duration_ms: nil
-          })
-      }
+        display_name: String.replace(name, ~r/([A-Z])/, " \\1") |> String.trim()
+      })
     end)
   end
 end

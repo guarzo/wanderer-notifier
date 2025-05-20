@@ -65,7 +65,7 @@ defmodule WandererNotifier.Killmail.Killmail do
     {:ok, value}
   end
 
-  # Fetch a key from the ESI data
+  # Fetch a key from the esi data
   defp fetch_from_esi_data(killmail, key) do
     # Handle special cases for victim and attackers explicitly
     case key do
@@ -143,7 +143,7 @@ defmodule WandererNotifier.Killmail.Killmail do
 
   @doc """
   Creates a new killmail struct with just ID and ZKB data.
-  This is used for scenarios where ESI data isn't available.
+  This is used for scenarios where esi data isn't available.
   """
   def new(killmail_id, zkb) do
     value = get_in(zkb, ["totalValue"]) || 0

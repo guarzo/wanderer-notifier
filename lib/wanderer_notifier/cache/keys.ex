@@ -98,7 +98,7 @@ defmodule WandererNotifier.Cache.Keys do
   def killmail(kill_id, killmail_hash, extra \\ nil),
     do: combine([@prefix_esi, @entity_killmail], [kill_id, killmail_hash], extra)
 
-  @doc "Key for zKill recent kills"
+  @doc "Key for zkill recent kills"
   @spec zkill_recent_kills(String.t() | nil) :: String.t()
   def zkill_recent_kills(extra \\ nil),
     do: combine([@prefix_zkill, "recent_kills"], [], extra)
@@ -203,7 +203,7 @@ defmodule WandererNotifier.Cache.Keys do
   def config(name) when is_binary(name),
     do: combine([@prefix_config], [name], nil)
 
-  @doc "Key for a specific zKill recent kill"
+  @doc "Key for a specific zkill recent kill"
   @spec zkill_recent_kill(integer() | String.t()) :: String.t()
   def zkill_recent_kill(kill_id) do
     combine([@prefix_zkill, "recent_kills"], [kill_id], nil)

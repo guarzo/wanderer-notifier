@@ -3,7 +3,7 @@ defmodule WandererNotifier.Killmail.Context do
   Defines the context for killmail processing, containing all necessary information
   for processing a killmail through the pipeline.
 
-  This module implements the Access behavior, allowing field access with pattern matching
+  This module implements the Access behaviour, allowing field access with pattern matching
   and providing a consistent interface for passing processing context through the
   killmail pipeline.
   """

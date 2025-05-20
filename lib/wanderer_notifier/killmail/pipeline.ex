@@ -91,7 +91,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     Application.get_env(:wanderer_notifier, :deduplication_module)
   end
 
-  # Checks if we should notify using just ZKill data
+  # Checks if we should notify using just zkill data
   defp should_notify_without_esi?(zkb_data) do
     system_id = get_in(zkb_data, ["solar_system_id"])
     victim = get_in(zkb_data, ["victim"])
