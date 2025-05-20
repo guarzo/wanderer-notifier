@@ -6,11 +6,11 @@ defmodule WandererNotifier.HttpTest do
 
   test "mocks HTTP client successfully" do
     WandererNotifier.HttpClient.HttpoisonMock
-    |> expect(:get, fn "https://example.com" ->
-      {:ok, %{status: 200, body: %{"message" => "Test successful"}, headers: []}}
+    |> expect(:get, fn "https://example.com", [], [] ->
+      {:ok, %{status_code: 200, body: "OK"}}
     end)
 
-    result = WandererNotifier.HttpClient.HttpoisonMock.get("https://example.com")
-    assert {:ok, %{status: 200, body: %{"message" => "Test successful"}}} = result
+    result = WandererNotifier.HttpClient.HttpoisonMock.get("https://example.com", [], [])
+    assert {:ok, %{status_code: 200, body: "OK"}} = result
   end
 end

@@ -66,6 +66,7 @@ defmodule WandererNotifier.ESI.ServiceTest do
     |> stub(:get_character_info, &get_character_info/2)
     |> stub(:get_corporation_info, &get_corporation_info/2)
     |> stub(:get_alliance_info, &get_alliance_info/2)
+    |> stub(:get_system, &get_system_info/1)
     |> stub(:get_system, &get_system_info/2)
     |> stub(:get_system_info, &get_system_info/2)
     |> stub(:get_type_info, fn _id, _opts -> {:ok, %{"name" => "Test Ship"}} end)
@@ -130,6 +131,10 @@ defmodule WandererNotifier.ESI.ServiceTest do
       345_678 -> {:ok, @alliance_data}
       _ -> {:error, :not_found}
     end
+  end
+
+  defp get_system_info(id) do
+    get_system_info(id, [])
   end
 
   defp get_system_info(id, _opts) do

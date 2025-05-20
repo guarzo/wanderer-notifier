@@ -31,7 +31,30 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
     |> stub(:get_system_info, fn _id, _opts ->
       {:ok, %{"name" => "Test System"}}
     end)
+    |> stub(:get_system, fn _id, _opts ->
+      {:ok,
+       %{
+         "system_id" => 30_000_142,
+         "name" => "Test System",
+         "security_status" => 0.5
+       }}
+    end)
     |> stub(:get_killmail, fn _id, _hash ->
+      {:ok,
+       %{
+         "killmail_id" => 123,
+         "killmail_time" => "2023-01-01T12:00:00Z",
+         "solar_system_id" => 30_000_142,
+         "victim" => %{
+           "character_id" => 100,
+           "corporation_id" => 300,
+           "alliance_id" => 400,
+           "ship_type_id" => 200
+         },
+         "attackers" => []
+       }}
+    end)
+    |> stub(:get_killmail, fn _id, _hash, _opts ->
       {:ok,
        %{
          "killmail_id" => 123,

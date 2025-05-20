@@ -3,7 +3,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
   import Mox
 
   alias WandererNotifier.Killmail.Processor
-  alias WandererNotifier.Killmail.Context
   alias WandererNotifier.ESI.ServiceMock
   alias WandererNotifier.MockSystem
   alias WandererNotifier.MockCharacter
@@ -94,7 +93,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
     :ok
   end
 
-  describe "process_killmail/1" do
+  describe "process_killmail/2" do
     test "processes killmail with tracked system" do
       killmail = %{
         "killmail_id" => 12_345,
@@ -109,12 +108,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Test System",
-        options: %{source: :test}
-      }
-
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, true} end)
 
@@ -127,7 +120,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockDeduplication
       |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
-      assert {:ok, :skipped} = Processor.process_killmail(killmail, context)
+      assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
 
     test "processes killmail with tracked character" do
@@ -144,12 +137,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Test System",
-        options: %{source: :test}
-      }
-
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
@@ -162,7 +149,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockDeduplication
       |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
-      assert {:ok, :skipped} = Processor.process_killmail(killmail, context)
+      assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
 
     test "skips killmail with no tracked entities" do
@@ -179,12 +166,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Test System",
-        options: %{source: :test}
-      }
-
       MockSystem
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
 
@@ -197,13 +178,13 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockDeduplication
       |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
-      assert {:ok, :skipped} = Processor.process_killmail(killmail, context)
+      assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
 
-    test "handles nil system ID" do
+    test "handles websocket state in context" do
       killmail = %{
         "killmail_id" => 12_345,
-        "solar_system_id" => nil,
+        "solar_system_id" => 30_000_142,
         "victim" => %{
           "character_id" => 93_345_033,
           "corporation_id" => 98_553_333,
@@ -214,14 +195,10 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
         }
       }
 
-      context = %Context{
-        killmail_id: "12345",
-        system_name: "Unknown",
-        options: %{source: :test}
-      }
+      state = %{some: :state}
 
       MockSystem
-      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
+      |> stub(:is_tracked?, fn _id -> {:ok, true} end)
 
       MockCharacter
       |> stub(:is_tracked?, fn _id -> {:ok, false} end)
@@ -232,7 +209,8 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       MockDeduplication
       |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
-      assert {:ok, :skipped} = Processor.process_killmail(killmail, context)
+      assert {:ok, :skipped} =
+               Processor.process_killmail(killmail, source: :zkill_websocket, state: state)
     end
   end
 end

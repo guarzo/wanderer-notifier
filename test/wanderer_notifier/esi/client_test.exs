@@ -179,38 +179,45 @@ defmodule WandererNotifier.ESI.ClientTest do
     end
   end
 
-  describe "get_solar_system/2" do
+  describe "get_system/2" do
     test "returns {:ok, body} on 2xx response" do
       Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
-        "https://esi.evetech.net/latest/universe/systems/42/", _headers ->
+        "https://esi.evetech.net/latest/universe/systems/42/",
+        [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
           {:ok, %{status_code: 200, body: %{system_name: "Test System"}}}
       end)
 
-      assert {:ok, %{system_name: "Test System"}} = Client.get_solar_system(42)
+      assert {:ok, %{system_name: "Test System"}} = Client.get_system(42)
     end
 
     test "returns {:error, {:system_not_found, system_id}} on 404 response" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers ->
-        {:ok, %{status_code: 404}}
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
+        "https://esi.evetech.net/latest/universe/systems/42/",
+        [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
+          {:ok, %{status_code: 404, body: "Not Found"}}
       end)
 
-      assert {:error, {:system_not_found, 42}} = Client.get_solar_system(42)
+      assert {:error, {:system_not_found, 42}} = Client.get_system(42)
     end
 
     test "returns {:error, {:http_error, status}} on other non-2xx responses" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers ->
-        {:ok, %{status_code: 500}}
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
+        "https://esi.evetech.net/latest/universe/systems/42/",
+        [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
+          {:ok, %{status_code: 500, body: "Internal Server Error"}}
       end)
 
-      assert {:error, {:http_error, 500}} = Client.get_solar_system(42)
+      assert {:error, {:http_error, 500}} = Client.get_system(42)
     end
 
     test "returns {:error, reason} on network error" do
-      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn _url, _headers ->
-        {:error, :timeout}
+      Mox.expect(WandererNotifier.HttpClient.HttpoisonMock, :get, fn
+        "https://esi.evetech.net/latest/universe/systems/42/",
+        [{"Accept", "application/json"}, {"User-Agent", "WandererNotifier/1.0"}] ->
+          {:error, :timeout}
       end)
 
-      assert {:error, :timeout} = Client.get_solar_system(42)
+      assert {:error, :timeout} = Client.get_system(42)
     end
   end
 

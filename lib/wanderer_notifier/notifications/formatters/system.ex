@@ -13,7 +13,7 @@ defmodule WandererNotifier.Notifications.Formatters.System do
   @highsec_color 0x5CB85C
   @lowsec_color 0xE28A0D
   @nullsec_color 0xD9534F
-  @wormhole_icon "https://images.evetech.net/types/45_041/icon"
+  @wormhole_icon "https://images.evetech.net/types/45041/icon"
   @highsec_icon "https://images.evetech.net/types/3802/icon"
   @lowsec_icon "https://images.evetech.net/types/3796/icon"
   @nullsec_icon "https://images.evetech.net/types/3799/icon"

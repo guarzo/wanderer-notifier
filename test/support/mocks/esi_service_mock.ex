@@ -37,7 +37,7 @@ defmodule WandererNotifier.ESI.ServiceMock do
   def get_killmail(@service_unavailable_id, _hash), do: {:error, :service_unavailable}
 
   def get_killmail(kill_id, hash) when is_binary(kill_id) or is_integer(kill_id),
-    do: {:ok, %{"killmail_id" => kill_id, "hash" => hash}}
+    do: {:ok, %{"killmail_id" => kill_id, "killmail_hash" => hash}}
 
   def get_killmail(_, _), do: {:error, :invalid_kill_id}
 
@@ -130,18 +130,20 @@ defmodule WandererNotifier.ESI.ServiceMock do
   def get_system(@error_id), do: {:error, :unknown_error}
   def get_system(@not_found_id), do: {:error, :not_found}
   def get_system(@service_unavailable_id), do: {:error, :service_unavailable}
-  def get_system(nil), do: {:ok, %{"name" => "Unknown"}}
+  def get_system(nil), do: {:ok, %{"name" => "Unknown", "system_id" => nil}}
 
   def get_system(system_id) when is_binary(system_id) or is_integer(system_id),
-    do: {:ok, %{"name" => "Test System"}}
+    do: {:ok, %{"name" => "Test System", "system_id" => system_id}}
 
   def get_system(_), do: {:error, :invalid_system_id}
 
   def get_system(@error_id, _opts), do: {:error, :unknown_error}
   def get_system(@not_found_id, _opts), do: {:error, :not_found}
   def get_system(@service_unavailable_id, _opts), do: {:error, :service_unavailable}
-  def get_system(nil, _opts), do: {:ok, %{"name" => "Unknown"}}
-  def get_system(_system_id, _opts), do: {:ok, @system_data}
+  def get_system(nil, _opts), do: {:ok, %{"name" => "Unknown", "system_id" => nil}}
+
+  def get_system(system_id, _opts),
+    do: {:ok, %{"name" => "Test System", "system_id" => system_id}}
 
   def get_system_info(@error_id, _opts), do: {:error, :unknown_error}
   def get_system_info(@not_found_id, _opts), do: {:error, :not_found}
@@ -182,25 +184,36 @@ defmodule WandererNotifier.ESI.ServiceMock do
   def get_system_kills(@not_found_id, _limit, _opts), do: {:error, :not_found}
   def get_system_kills(@service_unavailable_id, _limit, _opts), do: {:error, :service_unavailable}
 
-  def get_system_kills(_system_id, _limit, _opts) do
-    {:ok,
-     [
-       %{
-         "killmail_id" => 123,
-         "killmail_hash" => "abc123",
-         "killmail_time" => "2020-01-01T00:00:00Z",
-         "solar_system_id" => 30_000_142,
-         "victim" => %{
-           "character_id" => 100,
-           "corporation_id" => 300,
-           "alliance_id" => 400,
-           "ship_type_id" => 200
-         }
-       }
-     ]}
+  def get_system_kills(_system_id, limit, _opts) do
+    # Generate a list of killmails up to the specified limit
+    killmails =
+      Enum.map(1..limit, fn i ->
+        %{
+          "killmail_id" => 100 + i,
+          "killmail_hash" => "abc#{i}",
+          "killmail_time" => "2020-01-01T00:00:00Z",
+          "solar_system_id" => 30_000_142,
+          "victim" => %{
+            "character_id" => 100,
+            "corporation_id" => 300,
+            "alliance_id" => 400,
+            "ship_type_id" => 200
+          }
+        }
+      end)
+
+    {:ok, killmails}
   end
 
+  # These functions are stubbed to return :not_implemented because they are not currently used in tests.
+  # If you need to test functionality that uses these functions, implement them with appropriate test data.
+  @doc """
+  Stub for get_universe_type/2. Returns :not_implemented as this function is not currently used in tests.
+  """
   def get_universe_type(_id, _opts \\ []), do: {:error, :not_implemented}
 
+  @doc """
+  Stub for search/3. Returns :not_implemented as this function is not currently used in tests.
+  """
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
 end

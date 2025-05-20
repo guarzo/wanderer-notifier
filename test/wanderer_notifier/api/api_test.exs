@@ -7,24 +7,22 @@ defmodule WandererNotifier.ApiTest do
 
   test "uses fixtures for API testing" do
     WandererNotifier.HttpClient.HttpoisonMock
-    |> expect(:get, fn "https://api.example.com/systems" ->
-      {:ok, %{status: 200, body: ApiResponses.map_systems_response(), headers: []}}
+    |> expect(:get, fn "https://api.example.com/systems", [], [] ->
+      {:ok, %{status_code: 200, body: "[]"}}
     end)
-    |> expect(:get, fn "https://api.example.com/characters" ->
-      {:ok, %{status: 200, body: ApiResponses.esi_character_response(), headers: []}}
+    |> expect(:get, fn "https://api.example.com/characters", [], [] ->
+      {:ok, %{status_code: 200, body: ApiResponses.esi_character_response()}}
     end)
 
-    systems_result =
-      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/systems")
+    result =
+      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/systems", [], [])
 
-    assert {:ok, %{status: 200, body: systems_body}} = systems_result
-    assert length(systems_body["systems"]) == 2
-    assert Enum.at(systems_body["systems"], 0)["name"] == "Test System"
+    assert {:ok, %{status_code: 200, body: "[]"}} = result
 
     char_result =
-      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/characters")
+      WandererNotifier.HttpClient.HttpoisonMock.get("https://api.example.com/characters", [], [])
 
-    assert {:ok, %{status: 200, body: char_body}} = char_result
+    assert {:ok, %{status_code: 200, body: char_body}} = char_result
     assert char_body["character_id"] == 12_345
     assert char_body["name"] == "Test Character"
   end

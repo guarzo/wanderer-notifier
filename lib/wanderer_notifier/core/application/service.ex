@@ -70,9 +70,10 @@ defmodule WandererNotifier.Core.Application.Service do
 
   @impl true
   def handle_cast({:mark_as_processed, kill_id}, state) do
-    Config.kill_dedup_ttl()
-    |> CacheRepo.set(Keys.killmail(kill_id, "processed"), true)
-    |> case do
+    ttl = Config.kill_dedup_ttl()
+    key = Keys.killmail(kill_id, "processed")
+
+    case CacheRepo.set(key, true, ttl) do
       :ok ->
         :ok
 
@@ -137,21 +138,33 @@ defmodule WandererNotifier.Core.Application.Service do
     Process.put(:backup_state, state)
 
     # Process the message but discard the result since it's not a state object
-    # KillmailProcessor.process_zkill_message returns {:ok, kill_id | :skipped} | {:error, term()}
-    case KillmailProcessor.process_zkill_message(raw_msg, state) do
-      {:ok, _result} ->
-        # Successfully processed
-        {:noreply, state}
+    case Jason.decode(raw_msg) do
+      {:ok, kill_data} ->
+        # Process through the consolidated API
+        case KillmailProcessor.process_killmail(kill_data, source: :zkill_websocket, state: state) do
+          {:ok, _result} ->
+            # Successfully processed
+            {:noreply, state}
+
+          {:error, reason} ->
+            # Error occurred, log it but don't crash the process
+            AppLogger.websocket_error("Error processing zkill message", error: inspect(reason))
+            {:noreply, state}
+
+          unexpected ->
+            # Unexpected return value, log for debugging
+            AppLogger.websocket_error("Unexpected return from process_killmail",
+              return_value: inspect(unexpected)
+            )
+
+            {:noreply, state}
+        end
 
       {:error, reason} ->
-        # Error occurred, log it but don't crash the process
-        AppLogger.websocket_error("Error processing zkill message", error: inspect(reason))
-        {:noreply, state}
-
-      unexpected ->
-        # Unexpected return value, log for debugging
-        AppLogger.websocket_error("Unexpected return from process_zkill_message",
-          return_value: inspect(unexpected)
+        # JSON decode failed
+        AppLogger.websocket_error("Failed to decode zkill message",
+          error: inspect(reason),
+          snippet: String.slice(raw_msg, 0, 100)
         )
 
         {:noreply, state}
@@ -159,25 +172,48 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   @impl true
-  # Handle Websocket DOWN messages uniformly
-  def handle_info({:DOWN, _ref, :process, pid, reason}, %{ws_pid: pid} = state) do
-    AppLogger.websocket_warn("Websocket DOWN (pid: #{inspect(pid)}); scheduling reconnect",
-      reason: inspect(reason)
-    )
+  def handle_info(:attempt_connection, state) do
+    case start_websocket(Config.websocket_config().url, state) do
+      {:ok, new_state} ->
+        {:noreply, new_state}
 
-    # Update Stats to show process crash
-    WandererNotifier.Core.Stats.update_websocket(%{
-      connected: false,
-      connecting: true,
-      last_disconnect: DateTime.utc_now()
-    })
+      {:error, reason} ->
+        AppLogger.websocket_error("Failed to start websocket", %{error: reason})
+        Process.send_after(self(), :attempt_connection, 100)
+        {:noreply, state}
+    end
+  end
 
-    # Use a shorter delay for faster recovery
-    reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
-    AppLogger.websocket_info("Will attempt reconnect in #{reconnect_delay}ms")
+  @impl true
+  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
+    # Handle both websocket DOWN messages and other process DOWN messages
+    if state.ws_pid == pid do
+      AppLogger.websocket_warn("Websocket DOWN (pid: #{inspect(pid)}); scheduling reconnect",
+        reason: inspect(reason)
+      )
 
-    Process.send_after(self(), :reconnect_ws, reconnect_delay)
-    {:noreply, %{state | ws_pid: nil}}
+      # Update Stats to show process crash
+      WandererNotifier.Core.Stats.update_websocket(%{
+        connected: false,
+        connecting: true,
+        last_disconnect: DateTime.utc_now()
+      })
+
+      # Use a shorter delay for faster recovery
+      reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
+      AppLogger.websocket_info("Will attempt reconnect in #{reconnect_delay}ms")
+
+      Process.send_after(self(), :reconnect_ws, reconnect_delay)
+      {:noreply, %{state | ws_pid: nil}}
+    else
+      AppLogger.processor_debug("Unhandled DOWN message",
+        ref: inspect(ref),
+        pid: inspect(pid),
+        reason: inspect(reason)
+      )
+
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -327,50 +363,29 @@ defmodule WandererNotifier.Core.Application.Service do
   end
 
   defp attempt_websocket_connection(state) do
-    # Short delay before connection attempt
-    Process.sleep(100)
-    url = Application.fetch_env!(:wanderer_notifier, :websocket)[:url]
-
-    try do
-      start_websocket(url, state)
-    rescue
-      e ->
-        AppLogger.websocket_error("Exception starting websocket",
-          error: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        )
-
-        Process.send_after(self(), :reconnect_ws, Config.websocket_reconnect_delay())
-        state
-    end
+    # Schedule connection attempt after a short delay
+    Process.send_after(self(), :attempt_connection, 100)
+    state
   end
 
   defp start_websocket(url, state) do
     case Websocket.start_link(url: url, parent: self()) do
       {:ok, ws_pid} ->
-        handle_successful_connection(ws_pid, state)
+        monitor_ref = Process.monitor(ws_pid)
+
+        AppLogger.websocket_info("Successfully started websocket",
+          pid: inspect(ws_pid),
+          monitor_ref: inspect(monitor_ref)
+        )
+
+        {:ok, %{state | ws_pid: ws_pid}}
 
       {:error, reason} ->
-        handle_connection_error(reason, state)
+        AppLogger.websocket_error("Websocket start failed", error: inspect(reason))
+        reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
+        Process.send_after(self(), :reconnect_ws, reconnect_delay)
+        {:error, reason}
     end
-  end
-
-  defp handle_successful_connection(ws_pid, state) do
-    monitor_ref = Process.monitor(ws_pid)
-
-    AppLogger.websocket_info("Successfully started websocket",
-      pid: inspect(ws_pid),
-      monitor_ref: inspect(monitor_ref)
-    )
-
-    %{state | ws_pid: ws_pid}
-  end
-
-  defp handle_connection_error(reason, state) do
-    AppLogger.websocket_error("Websocket start failed", error: inspect(reason))
-    reconnect_delay = min(Config.websocket_reconnect_delay(), 5_000)
-    Process.send_after(self(), :reconnect_ws, reconnect_delay)
-    state
   end
 
   # Schedule the startup notification

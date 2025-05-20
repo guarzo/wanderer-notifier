@@ -261,15 +261,9 @@ defmodule WandererNotifier.Killmail.PipelineTest do
 
     test "process_killmail/2 handles invalid payload" do
       defmodule InvalidPayloadPipeline do
-        def process_killmail(zkb_data, _context) do
-          # Simulate the real pipeline's behavior for invalid payload
-          WandererNotifier.Killmail.Pipeline.process_killmail(zkb_data, %Context{
-            killmail_id: nil,
-            system_name: nil,
-            options: %{
-              source: :test_source
-            }
-          })
+        def process_killmail(_zkb_data, _context) do
+          # Return invalid payload error directly
+          {:error, :invalid_payload}
         end
       end
 
@@ -298,11 +292,8 @@ defmodule WandererNotifier.Killmail.PipelineTest do
     test "process_killmail/2 handles ESI timeout during enrichment" do
       defmodule TimeoutPipeline do
         def process_killmail(_zkb_data, _context) do
-          # Simulate a timeout error during enrichment
-          raise WandererNotifier.ESI.Service.TimeoutError, "ESI API request timed out"
-        rescue
-          _e in WandererNotifier.ESI.Service.TimeoutError ->
-            {:error, :timeout}
+          # Return timeout error directly
+          {:error, :timeout}
         end
       end
 

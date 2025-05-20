@@ -304,41 +304,40 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   ## Returns
     - {:ok, system_info} on success
     - {:error, :not_found} if the system is not found
+    - {:error, reason} on other errors
   """
   def get_system_info(system_id) do
-    case system_id do
-      30_000_142 ->
-        {:ok,
-         %{
-           "constellation_id" => 21_000_172,
-           "constellation_name" => "D-C00172",
-           "region_id" => 11_000_018,
-           "region_name" => "D-R00018",
-           "solar_system_id" => 31_001_503,
-           "solar_system_name" => "J155416",
-           "solar_system_name_lc" => "j155416",
-           "sun_type_id" => 45_032,
-           "max_jump_mass" => 300_000_000,
-           "max_mass" => 2_000_000_000
-         }}
+    headers = [
+      {"Authorization", "Bearer #{Config.map_token()}"},
+      {"Content-Type", "application/json"}
+    ]
 
-      30_000_143 ->
-        {:ok,
-         %{
-           "constellation_id" => 21_000_172,
-           "constellation_name" => "D-C00172",
-           "region_id" => 11_000_018,
-           "region_name" => "D-R00018",
-           "solar_system_id" => 31_001_504,
-           "solar_system_name" => "J155417",
-           "solar_system_name_lc" => "j155417",
-           "sun_type_id" => 45_032,
-           "max_jump_mass" => 62_000_000,
-           "max_mass" => 500_000_000
-         }}
+    base_url = Config.map_url_with_name()
+    url = "#{base_url}/systems/#{system_id}/static"
 
-      _ ->
+    case Req.get(url, headers: headers) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, body}
+
+      {:ok, %{status: 404}} ->
+        AppLogger.api_debug("[SystemStaticInfo] System not found", system_id: system_id)
         {:error, :not_found}
+
+      {:ok, %{status: status}} ->
+        AppLogger.api_error("[SystemStaticInfo] API request failed",
+          system_id: system_id,
+          status: status
+        )
+
+        {:error, {:api_error, status}}
+
+      {:error, reason} ->
+        AppLogger.api_error("[SystemStaticInfo] Request failed",
+          system_id: system_id,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
     end
   end
 end

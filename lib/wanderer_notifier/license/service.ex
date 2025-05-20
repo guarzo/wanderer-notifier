@@ -315,22 +315,6 @@ defmodule WandererNotifier.License.Service do
     {:reply, new_state, new_state}
   end
 
-  defp handle_validation_timeout(state) do
-    AppLogger.config_error("License validation HTTP request timed out")
-
-    error_state = %{
-      valid: false,
-      bot_assigned: false,
-      details: nil,
-      error: :timeout,
-      error_message: "License validation timed out",
-      last_validated: :os.system_time(:second),
-      notification_counts: state[:notification_counts] || %{system: 0, character: 0, killmail: 0}
-    }
-
-    {:reply, error_state, error_state}
-  end
-
   defp handle_validation_error(type, reason, state) do
     AppLogger.config_error("License validation HTTP error: #{inspect(type)}, #{inspect(reason)}")
 
@@ -352,11 +336,16 @@ defmodule WandererNotifier.License.Service do
     notifier_api_token = Config.api_token()
     license_key = Config.license_key()
 
-    validation_result =
+    task =
       Task.async(fn ->
         LicenseClient.validate_bot(notifier_api_token, license_key)
       end)
-      |> Task.await(3000)
+
+    validation_result =
+      case Task.yield(task, 3000) || Task.shutdown(task) do
+        {:ok, result} -> result
+        nil -> {:error, :timeout}
+      end
 
     new_state =
       validation_result
@@ -365,9 +354,6 @@ defmodule WandererNotifier.License.Service do
 
     reply_with_state(new_state)
   catch
-    :exit, {:timeout, _} ->
-      handle_validation_timeout(state)
-
     type, reason ->
       handle_validation_error(type, reason, state)
   end

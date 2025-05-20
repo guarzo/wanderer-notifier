@@ -60,6 +60,7 @@ defmodule WandererNotifier.MixProject do
     [
       {:dotenvy, "~> 1.1"},
       {:httpoison, "~> 2.2"},
+      {:req, "~> 0.4"},
       {:cachex, "~> 4.1"},
       {:nostrum, "~> 0.10"},
       {:websockex, "~> 0.4"},

@@ -1,228 +1,211 @@
-# Refactoring Plan
+## Detailed Refactoring Plan
 
-## 1. Refactor Killmail Pipeline & Error Handling ✅
+Below is a step-by-step roadmap to implement each of the five refactorings. Each step is broken down into small tasks suitable for a junior developer.
 
-### Remove unused flags ✅
+---
 
-Search for `skip_tracking_check` and `skip_notification_check` in `lib/wanderer_notifier/killmail/pipeline.ex`.
+### 1. Standardize Naming Conventions
 
-Delete their definitions and all callers; run `grep -R "skip_notification_check" -n lib/` to be sure nothing breaks.
+1. **Audit existing usage**
 
-### Flatten with with/1 ✅
+   - Grep for acronym variants:
+     ```bash
+     grep -R -E '\b(ESI|esi|ZKill|zkill)\b' lib/
+     ```
+   - List all modules/functions that use each variant.
 
-Rewrite `process_killmail/2` from nested clauses into a single with chain. For example:
+2. **Choose a style**
+
+   - **Option A:** PascalCase for modules (`ESI`, `ZKill`) and snake_case for variables (`esi_data`, `zkill_recent`).
+   - **Option B:** All-lowercase acronyms (`esi`, `zkill`) everywhere.
+
+3. **Rename modules/functions**
+
+   - In `lib/…/esi/` folder, update `defmodule WandererNotifier.ESI.Service` → `WandererNotifier.Esi.Service` (or vice versa).
+   - In `lib/…/killmail/zkill_client.ex`, rename `ZKillClient` → `ZkillClient` (or vice versa).
+   - **Tip:** Use `mix format —check-formatted` and your editor’s refactor-rename to catch references.
 
-```elixir
-def process_killmail(data, ctx) do
-  with {:ok, km}       <- create_killmail(data, ctx),
-       {:ok, enriched} <- Enrichment.enrich_killmail(enriched),
-       true            <- NotificationChecker.should_notify?(enriched) do
-    Notification.send(enriched)
-  else
-    false           -> {:ok, :skipped}
-    {:error, reason} -> {:error, reason}
-  end
-end
-```
+4. **Unify behaviour suffix**
 
-Ensure you still call `Stats.increment/1` before or after as needed.
+   - Pick one: `…Behaviour` or `…Behavior`.
+   - Rename files under `lib/.../behaviour.ex` to match (e.g. `cache_behaviour.ex` → `cache_behavior.ex`).
+   - Update all `@behaviour …` annotations accordingly.
 
-### Narrow your rescue ✅
+5. **Run tests & fix fallout**
+   - `mix test` → fix any compile errors.
+   - Update docs and READMEs to reflect new names.
 
-Replace any `rescue e -> {:error, Exception.message(e)}` with explicit catches:
+---
 
-```elixir
-rescue
-  e in ESIService.TimeoutError -> {:error, :timeout}
-  e in ESIService.ApiError     -> {:error, e.reason}
-```
+### 2. Extract Shared Controller Logic
 
-Remove any catch-all clauses so unexpected errors bubble up.
+1. **Create a new file for the macro**
 
-### Add tests for each branch ✅
+   - Path: `lib/wanderer_notifier_web/controllers/controller_helpers.ex`
+   - Define:
 
-In `test/wanderer_notifier/killmail/pipeline_test.exs`, write cases for:
+     ```elixir
+     defmodule WandererNotifierWeb.ControllerHelpers do
+       defmacro __using__(_) do
+         quote do
+           import Plug.Conn
+           import unquote(__MODULE__), only: [send_error: 3]
+           # fallback for unmatched routes
+           def match(conn), do: send_error(conn, 404, "not_found")
+         end
+       end
 
-- successful send
-- enrichment error
-- no-notify branch (returning `{:ok, :skipped}`)
-- each explicit exception type
+       def send_error(conn, status, msg) do
+         conn
+         |> put_status(status)
+         |> json(%{error: msg})
+         |> halt()
+       end
+     end
+     ```
 
-## 2. DRY Caching & Key Generation ✅
+2. **Update each controller**
 
-### Centralize TTLs ✅
+   - At the top of `lib/.../kill_controller.ex` (and others), replace:
+     ```elixir
+     import Api.Helpers
+     match _ do …
+     ```
+     with:
+     ```elixir
+     use WandererNotifierWeb.ControllerHelpers
+     ```
 
-In `lib/wanderer_notifier/config.ex`, add functions:
+3. **Remove duplicates**
 
-```elixir
-def notification_dedup_ttl, do: Application.get_env(:wanderer_notifier, :dedup_ttl, 60)
-def static_info_ttl,        do: Application.get_env(:wanderer_notifier, :static_info_ttl, 3600)
-```
+   - Delete any private `send_error/3` or fallback `match _` definitions.
 
-Replace all hard-coded TTL literals with calls to these.
+4. **Verify behavior**
+   - Run `mix test` and manually hit an endpoint to confirm errors still render correctly.
 
-### Generate keys via macro ✅
+---
 
-In `lib/wanderer_notifier/cache/keys.ex`, replace individual functions with:
+### 3. Refactor Nested `case` Blocks into `with`
 
-```elixir
-defmacro defkey(name, parts) do
-  quote do
-    def unquote(name)(unquote_splicing(Enum.map(parts, &Macro.var(&1, nil))), extra \\ nil) do
-      ([unquote_splicing(parts)] ++ [to_string(unquote(Macro.var(Enum.at(parts, -1), nil))), extra])
-      |> Enum.reject(&is_nil/1)
-      |> Enum.join(":")
-    end
-  end
-end
+1. **Identify nested `case` usages**
 
-# then at module top:
-defkey :killmail,    [:esi, :killmail_id]
-defkey :corporation, [:esi, :corporation_id]
-# …etc.
-```
+   - Grep for `case` inside `case` in controllers:
+     ```bash
+     grep -R "case .* do" lib/.../controllers
+     ```
 
-### Update callers & tests ✅
+2. **Refactor one example**
 
-Run `grep -R "Cache.Keys." -n lib/` and adjust to new signatures.
+   - Original:
+     ```elixir
+     case Integer.parse(id_str) do
+       {id, ""} ->
+         case Repo.get(Kill, id) do
+           nil -> send_error(conn, 404, "not found")
+           kill -> send_success(conn, kill)
+         end
+       :error -> send_error(conn, 400, "invalid id")
+     end
+     ```
+   - New:
+     ```elixir
+     with {id, ""} <- Integer.parse(id_str),
+          %Kill{} = kill <- Repo.get(Kill, id) do
+       send_success(conn, kill)
+     else
+       :error            -> send_error(conn, 400, "invalid id")
+       nil               -> send_error(conn, 404, "not found")
+       {:error, reason}  -> send_error(conn, 500, reason)
+     end
+     ```
 
-Add a few unit tests in `test/cache/keys_test.exs` asserting correct string outputs.
+3. **Apply to all controllers**
 
-## 3. Standardize Behaviours & Dependency Injection ✅
+   - Repeat the pattern for each nested `case`.
 
-### Unify behaviour names ✅
+4. **Add tests**
+   - For each refactored action, add a test for each branch (`:error`, `nil`, success).
 
-Choose one suffix (e.g. …Behaviour). Rename files accordingly:
+---
 
-```bash
-lib/wanderer_notifier/http_client_behaviour.ex
-lib/wanderer_notifier/zkill_client_behaviour.ex
-lib/wanderer_notifier/cache_behaviour.ex
-lib/wanderer_notifier/config_behaviour.ex
-```
+### 4. Generate Cache-Key Functions via Macro
 
-Delete duplicates in `test/…` and point mocks at the single definitions.
+1. **Define a macro generator**
 
-### Update implementations ✅
+   - In `lib/wanderer_notifier/cache/keys.ex`, replace manual defs with:
 
-In each module (e.g. `WandererNotifier.ZKillClient`), change `@behaviour OldName` to `@behaviour ZKillClientBehaviour`.
+     ```elixir
+     defmodule WandererNotifier.Cache.Keys do
+       @prefix_map "map:"
+       @entity_system "system"
+       @entity_character "character"
+       # … other prefixes/entities
 
-Fix any callback mismatches.
+       defmacro defkey(name, prefix, entity) do
+         quote do
+           def unquote(name)(id, extra \\ nil) do
+             base = "#{unquote(prefix)}#{unquote(entity)}:#{id}"
+             if extra, do: "#{base}:#{extra}", else: base
+           end
+         end
+       end
 
-### Configure via application env ✅
+       # Generate functions:
+       defkey :system,    @prefix_map,       @entity_system
+       defkey :character, @prefix_map,       @entity_character
+       # … etc.
+     end
+     ```
 
-In `config/config.exs`:
+2. **Remove old definitions**
 
-```elixir
-config :wanderer_notifier,
-  http_client: WandererNotifier.HttpClient,
-  zkill_client:  WandererNotifier.ZKillClient,
-  cache_repo:    WandererNotifier.Cache
-```
+   - Delete all manually written `def system/2`, `def character/2`, etc.
 
-Wherever you call `Application.get_env(:wanderer_notifier, :http_client)`, leave as is but be sure it now points to the right module.
+3. **Compile & test**
+   - `mix compile && mix test` to confirm macros generate correct functions.
 
-### Adjust tests ✅
+---
 
-In `test/support/mocks.ex`, set up Mox:
+### 5. Trim Custom Cachex Boilerplate
 
-```elixir
-Mox.defmock(HttpClientMock, for: HttpClientBehaviour)
-Application.put_env(:wanderer_notifier, :http_client, HttpClientMock)
-```
+1. **Locate custom wrappers**
 
-Remove any ad-hoc `put_env` calls sprinkled through individual tests.
+   - Find `Cache.CachexImpl` and note methods that simply wrap `Cachex.put/3`, `Cachex.get/2`, etc.
 
-## 4. Enhance Logging & Observability ✅
+2. **Replace calls**
 
-### Audit all AppLogger calls ✅
+   - In modules using `Cache.CachexImpl`, change:
+     ```elixir
+     Cache.CachexImpl.put(key, value, ttl)
+     ```
+     to:
+     ```elixir
+     Cachex.put(:my_cache, key, value, ttl: :timer.seconds(ttl))
+     ```
 
-Search for `AppLogger.` in `lib/`. Ensure each call includes identifying metadata, e.g.:
+3. **Remove custom code**
 
-```elixir
-AppLogger.api_debug("Fetched killmail", kill_id: km.id, module: __MODULE__)
-```
+   - Delete `lib/wanderer_notifier/cache/cachex_impl.ex` and its tests.
 
-### Define a logging convention doc ✅
+4. **Adjust supervision tree**
 
-Create `docs/logging.md` with rules:
+   - Ensure `Cachex` is started in `application.ex`:
+     ```elixir
+     children = [
+       {Cachex, name: :my_cache, expiration: expiration_opts()},
+       …
+     ]
+     ```
 
-- Use …\_info/2 for normal ops
-- …\_error/2 for failures (include error: reason)
-- Always attach id: and context: keys
+5. **Run full test suite**
+   - `mix test` and manually validate TTL behavior in iex.
 
-### Wrap dev-only loops ✅
+---
 
-In any module that logs in a tight loop (e.g. monitoring), guard with:
+**After all steps:**
 
-```elixir
-if Config.dev_mode?() do
-  # loop …
-end
-```
+- Run `mix format` and `mix credo —strict`.
+- Update README to document the new helper macro and cache setup.
+- Consider adding a CI check for naming conventions if desired.
 
-Add `dev_mode?/0` in your config module:
-
-```elixir
-def dev_mode?, do: Application.get_env(:wanderer_notifier, :dev_mode, false)
-```
-
-### Hook up a metrics reporter ❌
-
-If you haven't already, integrate Telemetry:
-
-```elixir
-:telemetry.attach("kill-pipeline-end", [:wanderer, :killmail, :processed], &MyReporter.handle_event/4, nil)
-```
-
-Emit events at key points in `process_killmail/2`.
-
-## 5. Improve Coding Style & Readability ⚠️
-
-### Replace cond with guards ⚠️
-
-Find multi-branch `cond do` in `lib/`. For simple cases, refactor into separate heads:
-
-```elixir
-# before
-def classify(map) do
-  cond do
-    Map.has_key?(map, "zkb") -> :killmail
-    Map.has_key?(map, "system_id") -> :system
-    true -> :unknown
-  end
-end
-
-# after
-def classify(map) when is_map(map) and Map.has_key?(map, "zkb"), do: :killmail
-def classify(map) when is_map(map) and Map.has_key?(map, "system_id"), do: :system
-def classify(_), do: :unknown
-```
-
-### Audit @spec and @doc ⚠️
-
-In each `lib/**/*.ex`, ensure every public function has `@spec` and `@doc`.
-
-If missing, add stubs:
-
-```elixir
-@doc "Fetches a killmail by ID and context"
-@spec create_killmail(map(), Context.t()) :: {:ok, Killmail.t()} | {:error, term()}
-```
-
-### Standardize aliases ⚠️
-
-At the top of each file, group aliases:
-
-```elixir
-alias WandererNotifier.Killmail.{Enrichment, Notification}
-alias WandererNotifier.ESI.Service
-```
-
-No more more-than-two-deep nesting without an alias.
-
-### Run mix format & Credo ✅
-
-Apply `mix format --check-formatted`; fix any issues.
-
-Re-enable strict Credo checks for complexity and unused code in `mix.exs`, then iterate until your score is green.
+Let me know if you need any code samples or further details on any sub-step!

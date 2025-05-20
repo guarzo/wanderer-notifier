@@ -24,7 +24,7 @@ defmodule Credo.Check.Warning.CacheKeyStringLiteral do
       params: []
     ]
 
-  @cache_key_pattern ~r/"[a-z_]+:[a-z_]+(?:[a-z_]+)*"/
+  @cache_key_pattern ~r/"(?:map|zkill|system|character|killmail):(?:[a-z_]+)(?::[a-z0-9_]+)*"/
 
   @impl true
   def run(source_file, _params \\ []) do

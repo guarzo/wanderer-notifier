@@ -49,17 +49,6 @@ defmodule WandererNotifier.ESI.Service.Behaviour do
   @callback search(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
 end
 
-defmodule WandererNotifier.ESI.ClientBehaviour do
-  @moduledoc """
-  Behaviour for ESI client operations
-  """
-  @callback get_killmail(String.t(), String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
-  @callback get_character_info(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
-  @callback get_corporation_info(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
-  @callback get_universe_type(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
-  @callback get_system(String.t(), Keyword.t()) :: {:ok, map()} | {:error, term()}
-end
-
 defmodule WandererNotifier.Killmail.Cache.Behaviour do
   @moduledoc """
   Behaviour for killmail cache operations

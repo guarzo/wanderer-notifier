@@ -250,7 +250,7 @@ defmodule WandererNotifier.Logger.Logger do
   # Helper to convert metadata to keyword list
   defp convert_metadata_to_keyword_list(metadata) when is_map(metadata) do
     metadata
-    |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
+    |> Enum.map(fn {k, v} -> {safe_to_atom(k), v} end)
     |> Keyword.put(:_metadata_source, "map")
   end
 
@@ -312,7 +312,7 @@ defmodule WandererNotifier.Logger.Logger do
     |> Enum.with_index()
     |> Enum.map(fn {value, index} -> {"item_#{index}", value} end)
     |> Enum.into(%{})
-    |> Enum.map(fn {k, v} -> {to_atom(k), v} end)
+    |> Enum.map(fn {k, v} -> {safe_to_atom(k), v} end)
     |> add_metadata_source("invalid_list_converted")
     |> Keyword.put(:_metadata_warning, "Non-keyword list converted to keyword list")
     |> Keyword.put(:_original_data, inspect(metadata))
@@ -374,13 +374,26 @@ defmodule WandererNotifier.Logger.Logger do
   end
 
   # Convert string or atom keys to atoms safely
-  defp to_atom(key) when is_atom(key), do: key
+  defp safe_to_atom(key) when is_atom(key), do: key
 
-  defp to_atom(key) when is_binary(key) do
-    String.to_existing_atom(key)
-  rescue
-    ArgumentError -> String.to_atom(key)
+  defp safe_to_atom(key) when is_binary(key) do
+    try do
+      String.to_existing_atom(key)
+    rescue
+      ArgumentError ->
+        # For known safe keys, we can create new atoms
+        case key do
+          "_metadata_source" -> :_metadata_source
+          "_metadata_warning" -> :_metadata_warning
+          "_original_type" -> :_original_type
+          "_original_data" -> :_original_data
+          "_caller" -> :_caller
+          _ -> String.to_atom("metadata_#{key}")
+        end
+    end
   end
+
+  defp safe_to_atom(key), do: String.to_atom("metadata_#{inspect(key)}")
 
   # API category helpers
   def api_debug(message, metadata \\ []), do: log(@level_debug, @category_api, message, metadata)

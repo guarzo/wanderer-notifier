@@ -105,6 +105,7 @@ defmodule WandererNotifier.Test.Support.Mocks do
   defdelegate get_kill(kill_id), to: CacheMock
   defdelegate get_latest_killmails, to: CacheMock
   defdelegate init_batch_logging, to: CacheMock
+  defdelegate mget(keys), to: CacheMock
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -321,18 +322,9 @@ defmodule WandererNotifier.Mocks do
   )
 end
 
-# Define common mocks
-Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
-
-Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
-  for: WandererNotifier.Notifications.Determiner.KillBehaviour
-)
-
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
   for: WandererNotifier.Notifiers.Discord.Behaviour
 )
-
-Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
 
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """
@@ -379,18 +371,25 @@ defmodule WandererNotifier.Test.Mocks do
     """
     def get_character_info(100, _opts), do: {:ok, %{"name" => "Victim"}}
     def get_character_info(_, _), do: {:error, :not_found}
+    def get_character_info(id), do: get_character_info(id, [])
 
     def get_corporation_info(200, _opts), do: {:ok, %{"name" => "Corp", "ticker" => "CORP"}}
     def get_corporation_info(_, _), do: {:error, :not_found}
+    def get_corporation_info(id), do: get_corporation_info(id, [])
 
     def get_type_info(300, _opts), do: {:ok, %{"name" => "Ship"}}
     def get_type_info(_, _), do: {:error, :not_found}
+    def get_type_info(id), do: get_type_info(id, [])
 
     def get_system(400, _opts), do: {:ok, %{"name" => "System"}}
     def get_system(_, _), do: {:error, :not_found}
+    def get_system(id), do: get_system(id, [])
 
     def get_alliance_info(_, _), do: {:ok, %{"name" => "Alliance"}}
+    def get_alliance_info(id), do: get_alliance_info(id, [])
+
     def get_killmail(_, _), do: {:ok, %{}}
+    def get_killmail(id, hash, _opts), do: get_killmail(id, hash)
   end
 
   defmodule MockDiscordClient do
@@ -509,6 +508,36 @@ defmodule WandererNotifier.Test.Mocks do
 
         {"54321", "error_hash"} ->
           {:error, :not_found}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end
+
+    def get_system_kills(system_id, limit \\ 3) do
+      case system_id do
+        "30000142" ->
+          {:ok,
+           Enum.map(1..limit, fn i ->
+             %{
+               "killmail_id" => 12_345 + i,
+               "killmail_hash" => "test_hash_#{i}",
+               "killmail_time" => "2021-01-01T00:00:00Z",
+               "solar_system_id" => 30_000_142,
+               "victim" => %{
+                 "character_id" => 100,
+                 "corporation_id" => 200,
+                 "ship_type_id" => 300
+               },
+               "attackers" => [
+                 %{
+                   "character_id" => 101,
+                   "corporation_id" => 201,
+                   "alliance_id" => 301
+                 }
+               ]
+             }
+           end)}
 
         _ ->
           {:error, :not_found}

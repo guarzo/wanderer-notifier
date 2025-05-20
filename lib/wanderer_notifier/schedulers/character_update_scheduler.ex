@@ -51,7 +51,7 @@ defmodule WandererNotifier.Schedulers.CharacterUpdateScheduler do
         e ->
           AppLogger.maintenance_error("⚠️ Exception in character update task",
             error: Exception.message(e),
-            stacktrace: inspect(Process.info(self(), :current_stacktrace))
+            stacktrace: Exception.format_stacktrace(__STACKTRACE__)
           )
 
           {:error, :exception}

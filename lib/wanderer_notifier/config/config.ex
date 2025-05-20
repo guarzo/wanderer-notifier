@@ -50,11 +50,33 @@ defmodule WandererNotifier.Config do
     }
   end
 
+  @impl true
+  def get_notification_setting(type, key) do
+    case Application.get_env(:wanderer_notifier, :config) do
+      nil -> {:ok, true}
+      mod -> mod.get_notification_setting(type, key)
+    end
+  end
+
   # --- TTL Configuration ---
   @doc """
   Returns the TTL for notification deduplication in seconds.
+  Defaults to 3600 seconds (1 hour) if not configured.
+  Can be configured via the :dedup_ttl environment variable.
   """
-  def notification_dedup_ttl, do: Application.get_env(:wanderer_notifier, :dedup_ttl, 60)
+  def notification_dedup_ttl do
+    # Get from environment variable first, then fall back to application config
+    case System.get_env("NOTIFICATION_DEDUP_TTL") do
+      nil ->
+        Application.get_env(:wanderer_notifier, :dedup_ttl, 3600)
+
+      ttl ->
+        case Integer.parse(ttl) do
+          {seconds, _} -> seconds
+          :error -> 3600
+        end
+    end
+  end
 
   @doc """
   Returns the TTL for static information caching in seconds.
@@ -123,11 +145,17 @@ defmodule WandererNotifier.Config do
   def disable_debug_logging, do: set(:debug_logging_enabled, false)
   def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
 
+  # Cache dev mode value at compile time
+  @dev_mode Application.compile_env(:wanderer_notifier, :dev_mode, false)
+
   @doc """
   Returns whether the application is running in development mode.
   Used to enable more verbose logging and other development features.
+
+  The value is cached at compile time for better performance.
+  To change the value, you must recompile the module or restart the application.
   """
-  def dev_mode?, do: Application.get_env(:wanderer_notifier, :dev_mode, false)
+  def dev_mode?, do: @dev_mode
 
   defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
@@ -313,7 +341,10 @@ defmodule WandererNotifier.Config do
   def should_load_tracking_data?, do: feature_enabled?(:should_load_tracking_data)
 
   # --- Map Debug Settings ---
-  @doc "Returns a map of debug-related map config."
+  @doc """
+  Returns a map of debug-related map config.
+  Useful for troubleshooting map API issues.
+  """
   def map_debug_settings do
     %{
       debug_logging_enabled: debug_logging_enabled?(),

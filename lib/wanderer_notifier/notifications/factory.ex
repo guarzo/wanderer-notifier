@@ -160,8 +160,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
     has_tracked_system = KillDeterminer.tracked_system?(system_id)
     has_tracked_character = KillDeterminer.has_tracked_character?(killmail)
 
-    # Get config to check if notifications are enabled
-    config = Application.get_env(:wanderer_notifier, :config_module).get_config()
+    # Get config module and retrieve settings once
+    config = Config.get_config()
     character_notifications_enabled = Map.get(config, :character_notifications_enabled, false)
     system_notifications_enabled = Map.get(config, :system_notifications_enabled, false)
 
