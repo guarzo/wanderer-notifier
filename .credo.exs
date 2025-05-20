@@ -68,8 +68,6 @@
       #
       checks: %{
         enabled: [
-          # Custom checks
-          {Credo.Check.Warning.CacheKeyStringLiteral, []},
 
           # Credo default checks
           {Credo.Check.Consistency.ExceptionNames, []},
