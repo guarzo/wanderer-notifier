@@ -202,6 +202,10 @@ Below is a step-by-step roadmap to implement each of the five refactorings. Each
 
 ---
 
+### 6. Review UI in ./renderer
+
+1 - ensure functionality works
+
 **After all steps:**
 
 - Run `mix format` and `mix credo —strict`.
