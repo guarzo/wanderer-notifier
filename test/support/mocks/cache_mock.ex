@@ -39,31 +39,47 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   defp get_by_key_type(key) do
     cond do
       key == CacheKeys.map_systems() ->
-        case :ets.lookup(:mock_cache, :systems) do
-          [{:systems, systems}] -> {:ok, systems}
-          _ -> {:ok, []}
-        end
+        get_systems()
 
       key == CacheKeys.character_list() ->
-        case :ets.lookup(:mock_cache, :characters) do
-          [{:characters, characters}] -> {:ok, characters}
-          _ -> {:ok, []}
-        end
+        get_characters()
 
       is_binary(key) ->
-        case String.split(key, ":") do
-          ["tracked", "character", character_id] ->
-            case :ets.lookup(:mock_cache, {:direct_character, character_id}) do
-              [{{:direct_character, ^character_id}, data}] -> {:ok, data}
-              _ -> {:error, :not_found}
-            end
-
-          _ ->
-            {:error, :not_found}
-        end
+        get_tracked_character(key)
 
       true ->
         {:error, :not_found}
+    end
+  end
+
+  defp get_systems do
+    case :ets.lookup(:mock_cache, :systems) do
+      [{:systems, systems}] -> {:ok, systems}
+      _ -> {:ok, []}
+    end
+  end
+
+  defp get_characters do
+    case :ets.lookup(:mock_cache, :characters) do
+      [{:characters, characters}] -> {:ok, characters}
+      _ -> {:ok, []}
+    end
+  end
+
+  defp get_tracked_character(key) do
+    case String.split(key, ":") do
+      ["tracked", "character", character_id] ->
+        get_direct_character(character_id)
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp get_direct_character(character_id) do
+    case :ets.lookup(:mock_cache, {:direct_character, character_id}) do
+      [{{:direct_character, ^character_id}, data}] -> {:ok, data}
+      _ -> {:error, :not_found}
     end
   end
 

@@ -11,6 +11,18 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
 
   @opts KillController.init([])
   @unknown_kill_id 99_999
+  @valid_kill_id 12_345
+  @valid_kill_data %{
+    "killmail_id" => 12_345,
+    "killmail_time" => "2023-01-01T12:00:00Z",
+    "solar_system_id" => 30_000_142,
+    "victim" => %{
+      "character_id" => 93_345_033,
+      "corporation_id" => 98_553_333,
+      "ship_type_id" => 602
+    },
+    "zkb" => %{"hash" => "hash12345"}
+  }
 
   setup do
     # Set up application environment
@@ -20,81 +32,44 @@ defmodule WandererNotifier.Api.Controllers.KillControllerTest do
 
   describe "GET /kill/:kill_id" do
     test "returns kill details when found in cache" do
-      WandererNotifier.MockCache
-      |> expect(:get_kill, fn 12_345 ->
-        {:ok,
-         %{
-           "killmail_id" => 12_345,
-           "killmail_time" => "2023-01-01T12:00:00Z",
-           "solar_system_id" => 30_000_142,
-           "victim" => %{
-             "character_id" => 93_345_033,
-             "corporation_id" => 98_553_333,
-             "ship_type_id" => 602
-           },
-           "zkb" => %{"hash" => "hash12345"}
-         }}
-      end)
-
-      conn =
-        :get
-        |> conn("/kill/12345")
-        |> KillController.call(@opts)
-
-      assert conn.status == 200
-      assert Jason.decode!(conn.resp_body)["killmail_id"] == 12_345
+      setup_mock_cache(@valid_kill_id, @valid_kill_data)
+      assert_kill_response(@valid_kill_id, 200, @valid_kill_data)
     end
 
     test "returns 404 for unknown killmail" do
-      WandererNotifier.MockCache
-      |> expect(:get_kill, fn @unknown_kill_id -> {:ok, nil} end)
-
-      conn =
-        :get
-        |> conn("/kill/#{@unknown_kill_id}")
-        |> KillController.call(@opts)
-
-      assert conn.status == 404
+      setup_mock_cache(@unknown_kill_id, nil)
+      assert_kill_response(@unknown_kill_id, 404, nil)
     end
   end
 
   describe "Testing through router" do
     test "returns kill details when found in cache" do
-      WandererNotifier.MockCache
-      |> expect(:get_kill, fn 12_345 ->
-        {:ok,
-         %{
-           "killmail_id" => 12_345,
-           "killmail_time" => "2023-01-01T12:00:00Z",
-           "solar_system_id" => 30_000_142,
-           "victim" => %{
-             "character_id" => 93_345_033,
-             "corporation_id" => 98_553_333,
-             "ship_type_id" => 602
-           },
-           "zkb" => %{"hash" => "hash12345"}
-         }}
-      end)
-
-      conn =
-        :get
-        |> conn("/kill/12345")
-        |> KillController.call(@opts)
-
-      assert conn.status == 200
-      assert Jason.decode!(conn.resp_body)["killmail_id"] == 12_345
+      setup_mock_cache(@valid_kill_id, @valid_kill_data)
+      assert_kill_response(@valid_kill_id, 200, @valid_kill_data)
     end
 
     test "returns 404 for unknown killmail" do
-      WandererNotifier.MockCache
-      |> expect(:get_kill, fn @unknown_kill_id -> {:ok, nil} end)
+      setup_mock_cache(@unknown_kill_id, nil)
+      assert_kill_response(@unknown_kill_id, 404, nil)
+    end
+  end
 
-      conn =
-        :get
-        |> conn("/kill/#{@unknown_kill_id}")
-        |> KillController.call(@opts)
+  # Helper functions
+  defp setup_mock_cache(kill_id, kill_data) do
+    WandererNotifier.MockCache
+    |> expect(:get_kill, fn ^kill_id -> {:ok, kill_data} end)
+  end
 
-      assert conn.status == 404
+  defp assert_kill_response(kill_id, expected_status, expected_data) do
+    conn =
+      :get
+      |> conn("/kill/#{kill_id}")
+      |> KillController.call(@opts)
+
+    assert conn.status == expected_status
+
+    if expected_data do
+      assert Jason.decode!(conn.resp_body)["killmail_id"] == expected_data["killmail_id"]
     end
   end
 end

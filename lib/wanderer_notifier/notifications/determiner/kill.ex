@@ -15,42 +15,9 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def should_notify?(%{"killmail_id" => id} = data) do
-    case check_duplicate(id) do
-      {:ok, :duplicate} ->
-        {:ok, %{should_notify: false, reason: "Duplicate kill"}}
-
-      {:ok, :new} ->
-        with {:ok, config} <- get_config() do
-          # Always check tracking first to ensure mock expectations are called
-          system_tracked? = tracked_system?(get_in(data, ["solar_system_id"]))
-          character_tracked? = tracked_character?(get_in(data, ["victim", "character_id"]))
-
-          cond do
-            not config.notifications.enabled ->
-              {:error, :notifications_disabled}
-
-            not config.notifications.kill.enabled ->
-              {:error, :kill_notifications_disabled}
-
-            system_tracked? and config.notifications.kill.system.enabled ->
-              {:ok, %{should_notify: true}}
-
-            character_tracked? and config.notifications.kill.character.enabled ->
-              {:ok, %{should_notify: true}}
-
-            not config.notifications.kill.system.enabled ->
-              {:ok, %{should_notify: false, reason: "System notifications disabled"}}
-
-            not config.notifications.kill.character.enabled ->
-              {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
-
-            true ->
-              {:ok, %{should_notify: false, reason: :no_tracked_entities}}
-          end
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, :new} <- check_duplicate(id),
+         {:ok, config} <- get_config() do
+      check_notification_rules(data, config)
     end
   end
 
@@ -59,17 +26,40 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def should_notify?(%{killmail: killmail, config: config}) do
-    # Always check tracking first to ensure mock expectations are called
-    system_tracked? = tracked_system?(get_in(killmail, ["solar_system_id"]))
-    character_tracked? = tracked_character?(get_in(killmail, ["victim", "character_id"]))
+    check_notification_rules(killmail, config)
+  end
 
+  def should_notify?(%{esi_data: esi_data} = data) do
+    should_notify?(Map.put(data, "killmail_id", esi_data["killmail_id"]))
+  end
+
+  defp check_notification_rules(data, config) do
+    with :ok <- check_notifications_enabled(config),
+         :ok <- check_kill_notifications_enabled(config),
+         system_tracked? <- tracked_system?(get_in(data, ["solar_system_id"])),
+         character_tracked? <- tracked_character?(get_in(data, ["victim", "character_id"])) do
+      check_tracking_status(system_tracked?, character_tracked?, config)
+    end
+  end
+
+  defp check_notifications_enabled(config) do
+    if config.notifications.enabled do
+      :ok
+    else
+      {:error, :notifications_disabled}
+    end
+  end
+
+  defp check_kill_notifications_enabled(config) do
+    if config.notifications.kill.enabled do
+      :ok
+    else
+      {:error, :kill_notifications_disabled}
+    end
+  end
+
+  defp check_tracking_status(system_tracked?, character_tracked?, config) do
     cond do
-      not config.notifications.enabled ->
-        {:error, :notifications_disabled}
-
-      not config.notifications.kill.enabled ->
-        {:error, :kill_notifications_disabled}
-
       system_tracked? and config.notifications.kill.system.enabled ->
         {:ok, %{should_notify: true}}
 
@@ -87,10 +77,6 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     end
   end
 
-  def should_notify?(%{esi_data: esi_data} = data) do
-    should_notify?(Map.put(data, "killmail_id", esi_data["killmail_id"]))
-  end
-
   defp check_duplicate(id) do
     Application.get_env(:wanderer_notifier, :deduplication_module).check(:kill, id)
   end
@@ -106,21 +92,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def tracked_system?("unknown"), do: false
 
   def tracked_system?(id) when is_binary(id) do
-    case Application.get_env(:wanderer_notifier, :system_module).is_tracked?(id) do
-      {:ok, result} -> result
-      {:error, _} -> false
-      false -> false
-      true -> true
-    end
+    check_tracking_status(:system_module, id)
   end
 
   def tracked_system?(id) do
-    case Application.get_env(:wanderer_notifier, :system_module).is_tracked?(id) do
-      {:ok, result} -> result
-      {:error, _} -> false
-      false -> false
-      true -> true
-    end
+    check_tracking_status(:system_module, id)
   end
 
   @doc """
@@ -129,7 +105,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   def tracked_character?(nil), do: false
 
   def tracked_character?(id) do
-    case Application.get_env(:wanderer_notifier, :character_module).is_tracked?(id) do
+    check_tracking_status(:character_module, id)
+  end
+
+  defp check_tracking_status(module_key, id) do
+    case Application.get_env(:wanderer_notifier, module_key).is_tracked?(id) do
       {:ok, result} -> result
       {:error, _} -> false
       false -> false

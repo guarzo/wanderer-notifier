@@ -80,36 +80,46 @@ defmodule WandererNotifier.Killmail.Cache do
   Gets all recent cached kills.
   """
   def get_recent_kills do
-    # Get the list of cached kill IDs
-    kill_ids =
-      case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
-        {:ok, ids} -> ids
-        _ -> []
-      end
+    with {:ok, kill_ids} <- get_cached_kill_ids(),
+         {:ok, kills} <- fetch_kills_by_ids(kill_ids) do
+      {:ok, kills}
+    else
+      _ -> {:ok, %{}}
+    end
+  end
 
-    # Get all kills in a single operation
+  defp get_cached_kill_ids do
+    case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+      {:ok, ids} -> {:ok, ids}
+      _ -> {:ok, []}
+    end
+  end
+
+  defp fetch_kills_by_ids(kill_ids) do
     keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
 
-    kills =
-      case CacheRepo.mget(keys) do
-        {:ok, results} ->
-          kill_ids
-          |> Enum.zip(results)
-          |> Enum.filter(fn {_id, result} ->
-            case result do
-              {:ok, data} -> data != nil
-              _ -> false
-            end
-          end)
-          |> Enum.map(fn {id, {:ok, data}} -> {id, data} end)
-          |> Enum.into(%{})
+    case CacheRepo.mget(keys) do
+      {:ok, results} ->
+        kills = process_kill_results(kill_ids, results)
+        {:ok, kills}
 
-        _ ->
-          %{}
-      end
-
-    {:ok, kills}
+      _ ->
+        {:ok, %{}}
+    end
   end
+
+  defp process_kill_results(kill_ids, results) do
+    kill_ids
+    |> Enum.zip(results)
+    |> Enum.filter(&valid_kill_result?/1)
+    |> Enum.map(&extract_kill_data/1)
+    |> Enum.into(%{})
+  end
+
+  defp valid_kill_result?({_id, {:ok, data}}) when not is_nil(data), do: true
+  defp valid_kill_result?(_), do: false
+
+  defp extract_kill_data({id, {:ok, data}}), do: {id, data}
 
   @doc """
   Gets all recent cached kills as a list for API consumption.

@@ -29,23 +29,49 @@ defmodule WandererNotifier.Killmail.Pipeline do
     Stats.increment(:kill_processed)
 
     with {:ok, killmail} <- build_killmail(zkb_data),
-         {:ok, enriched} <- enrich(killmail),
-         {:ok, %{should_notify: true}} <- NotificationChecker.should_notify?(enriched),
-         {:ok, _} <- Notification.send_kill_notification(enriched, enriched.killmail_id) do
-      Stats.track_notification_sent()
-      log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
-      {:ok, enriched.killmail_id}
+         {:ok, enriched} <- enrich(killmail) do
+      handle_notification_check(enriched, ctx)
     else
+      {:error, reason} ->
+        handle_error(zkb_data, ctx, reason)
+    end
+  end
+
+  defp handle_notification_check(enriched, ctx) do
+    case NotificationChecker.should_notify?(enriched) do
+      {:ok, %{should_notify: true}} ->
+        handle_notification_sent(enriched, ctx)
+
       {:ok, %{should_notify: false, reason: reason}} ->
-        Stats.track_processing_complete({:ok, :skipped})
-        log_outcome(nil, ctx, persisted: true, notified: false, reason: reason)
-        {:ok, :skipped}
+        handle_notification_skipped(ctx, reason)
 
       {:error, reason} ->
-        Stats.track_processing_error()
-        log_error(zkb_data, ctx, reason)
-        {:error, reason}
+        handle_error(enriched, ctx, reason)
     end
+  end
+
+  defp handle_notification_sent(enriched, ctx) do
+    case Notification.send_kill_notification(enriched, enriched.killmail_id) do
+      {:ok, _} ->
+        Stats.track_notification_sent()
+        log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
+        {:ok, enriched.killmail_id}
+
+      {:error, reason} ->
+        handle_error(enriched, ctx, reason)
+    end
+  end
+
+  defp handle_notification_skipped(ctx, reason) do
+    Stats.track_processing_complete({:ok, :skipped})
+    log_outcome(nil, ctx, persisted: true, notified: false, reason: reason)
+    {:ok, :skipped}
+  end
+
+  defp handle_error(data, ctx, reason) do
+    Stats.track_processing_error()
+    log_error(data, ctx, reason)
+    {:error, reason}
   end
 
   # Helper to ensure a proper Context struct
