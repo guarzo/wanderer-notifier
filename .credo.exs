@@ -41,9 +41,6 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [
-        "lib/credo/checks/warning/cache_key_string_literal.ex"
-      ],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
