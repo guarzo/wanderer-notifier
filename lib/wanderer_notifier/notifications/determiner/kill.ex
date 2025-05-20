@@ -26,7 +26,31 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def should_notify?(%{killmail: killmail, config: config}) do
-    check_notification_rules(killmail, config)
+    # First check for duplicates
+    case check_duplicate(killmail["killmail_id"]) do
+      {:ok, :new} ->
+        # Make tracking checks regardless of notification status
+        system_tracked? = tracked_system?(get_in(killmail, ["solar_system_id"]))
+        character_tracked? = tracked_character?(get_in(killmail, ["victim", "character_id"]))
+
+        # Then check if notifications are enabled
+        case check_notifications_enabled(config) do
+          :ok ->
+            # If notifications are enabled, proceed with the full check
+            with :ok <- check_kill_notifications_enabled(config) do
+              check_tracking_status(system_tracked?, character_tracked?, config)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:ok, %{should_notify: false, reason: reason}} ->
+        {:ok, %{should_notify: false, reason: reason}}
+
+      error ->
+        error
+    end
   end
 
   def should_notify?(%{esi_data: esi_data} = data) do
@@ -78,7 +102,11 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_duplicate(id) do
-    Application.get_env(:wanderer_notifier, :deduplication_module).check(:kill, id)
+    case Application.get_env(:wanderer_notifier, :deduplication_module).check(:kill, id) do
+      {:ok, :duplicate} -> {:ok, %{should_notify: false, reason: "Duplicate kill"}}
+      {:ok, :new} -> {:ok, :new}
+      error -> error
+    end
   end
 
   defp get_config do

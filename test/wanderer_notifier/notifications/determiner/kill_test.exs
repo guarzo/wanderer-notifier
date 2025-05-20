@@ -84,6 +84,9 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
         }
       }
 
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
+
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
 
@@ -118,6 +121,9 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
           "character_id" => 93_345_033
         }
       }
+
+      WandererNotifier.MockDeduplication
+      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
 
       WandererNotifier.MockSystem
       |> expect(:is_tracked?, fn 30_000_142 -> false end)
@@ -273,6 +279,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
 
     test "returns false with reason when duplicate" do
       killmail = %{
+        "killmail_id" => 12_345,
         "solar_system_id" => 30_000_142,
         "victim" => %{
           "character_id" => 93_345_033,
@@ -283,7 +290,7 @@ defmodule WandererNotifier.Notifications.Determiner.KillTest do
       }
 
       WandererNotifier.MockDeduplication
-      |> expect(:check, fn :kill, _killmail_id -> {:ok, :duplicate} end)
+      |> expect(:check, fn :kill, 12_345 -> {:ok, :duplicate} end)
 
       assert {:ok, %{should_notify: false, reason: "Duplicate kill"}} =
                Kill.should_notify?(killmail)
