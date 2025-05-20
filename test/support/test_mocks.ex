@@ -1,43 +1,94 @@
 defmodule WandererNotifier.TestMocks do
   @moduledoc """
-  Defines and sets up Mox mocks for test dependencies.
-  Provides utility functions for configuring standard mock behavior.
+  This module defines the mocks used in tests.
   """
+
   import Mox
 
-  # Define the mocks
-  Mox.defmock(MockDeduplication, for: WandererNotifier.Test.DeduplicationBehaviour)
-  Mox.defmock(MockCharacter, for: WandererNotifier.Test.CharacterBehaviour)
-  Mox.defmock(MockSystem, for: WandererNotifier.Test.SystemBehaviour)
+  # Define mocks
+  defmock(MockSystem, for: WandererNotifier.Map.SystemBehaviour)
+  defmock(MockCharacter, for: WandererNotifier.Map.CharacterBehaviour)
+  defmock(MockDeduplication, for: WandererNotifier.Notifications.Deduplication.Behaviour)
+  defmock(MockConfig, for: WandererNotifier.Config.ConfigBehaviour)
 
-  # Set up default mock behavior
-  def setup_default_mocks do
-    # Default config behavior
-    MockConfig
-    |> stub(:get_notification_setting, fn :kill, :enabled -> true end)
-    |> stub(:get_config, fn ->
-      %{
-        "tracked_systems" => ["Test System"],
-        "tracked_characters" => ["Test Character"],
-        "notifications" => %{
-          "kill" => %{
-            "enabled" => true
-          }
-        }
-      }
-    end)
+  @doc """
+  Sets up default stubs for all mocks.
+  """
+  def setup_default_stubs do
+    setup_tracking_mocks()
+    setup_deduplication_mocks()
+    setup_config_mocks()
+    setup_esi_mocks()
+  end
 
-    # Default deduplication behavior
-    MockDeduplication
-    |> stub(:check, fn :kill, _killmail_id -> {:ok, :new} end)
-    |> stub(:clear_key, fn :kill, _killmail_id -> {:ok, :cleared} end)
-
-    # Default character behavior
-    MockCharacter
-    |> stub(:is_tracked?, fn _id -> false end)
-
-    # Default system behavior
+  defp setup_tracking_mocks do
     MockSystem
-    |> stub(:is_tracked?, fn _id -> false end)
+    |> stub(:is_tracked?, fn _id -> true end)
+
+    MockCharacter
+    |> stub(:is_tracked?, fn _id -> true end)
+  end
+
+  defp setup_deduplication_mocks do
+    MockDeduplication
+    |> stub(:check, fn _type, _id -> {:ok, :new} end)
+  end
+
+  defp setup_config_mocks do
+    MockConfig
+    |> stub(:get_config, &get_default_config/0)
+    |> stub(:notifications_enabled?, fn -> true end)
+    |> stub(:kill_notifications_enabled?, fn -> true end)
+    |> stub(:system_notifications_enabled?, fn -> true end)
+    |> stub(:character_notifications_enabled?, fn -> true end)
+    |> stub(:get_notification_setting, fn _, _ -> true end)
+  end
+
+  defp setup_esi_mocks do
+    # Use the existing ServiceMock from test/support/mocks/esi_service_mock.ex
+    # No need to set up stubs since the mock already has full implementations
+    WandererNotifier.ESI.ServiceMock
+  end
+
+  # Mock response functions
+  defp get_default_config do
+    {:ok,
+     %{
+       notifications: %{
+         enabled: true,
+         kill: %{
+           enabled: true,
+           min_value: 100_000_000,
+           min_isk_per_character: 10_000_000,
+           min_isk_per_corporation: 50_000_000,
+           min_isk_per_alliance: 100_000_000,
+           min_isk_per_ship: 50_000_000,
+           min_isk_per_system: 50_000_000,
+           min_isk_per_region: 50_000_000,
+           min_isk_per_constellation: 50_000_000,
+           min_isk_per_character_in_corporation: 10_000_000,
+           min_isk_per_character_in_alliance: 10_000_000,
+           min_isk_per_corporation_in_alliance: 50_000_000,
+           min_isk_per_ship_in_corporation: 50_000_000,
+           min_isk_per_ship_in_alliance: 50_000_000,
+           min_isk_per_ship_in_system: 50_000_000,
+           min_isk_per_ship_in_region: 50_000_000,
+           min_isk_per_ship_in_constellation: 50_000_000,
+           min_isk_per_system_in_region: 50_000_000,
+           min_isk_per_system_in_constellation: 50_000_000,
+           min_isk_per_region_in_constellation: 50_000_000,
+           min_isk_per_constellation_in_region: 50_000_000,
+           min_isk_per_character_in_system: 10_000_000,
+           min_isk_per_character_in_region: 10_000_000,
+           min_isk_per_character_in_constellation: 10_000_000,
+           min_isk_per_corporation_in_system: 50_000_000,
+           min_isk_per_corporation_in_region: 50_000_000,
+           min_isk_per_corporation_in_constellation: 50_000_000,
+           min_isk_per_alliance_in_system: 100_000_000,
+           min_isk_per_alliance_in_region: 100_000_000,
+           min_isk_per_alliance_in_constellation: 100_000_000
+         }
+       }
+     }}
   end
 end

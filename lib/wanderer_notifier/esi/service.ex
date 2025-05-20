@@ -11,6 +11,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @behaviour WandererNotifier.ESI.ServiceBehaviour
 
+  # Define error structs
+  defmodule TimeoutError do
+    @moduledoc """
+    Error raised when an ESI API call times out.
+    """
+    defexception [:message]
+  end
+
+  defmodule ApiError do
+    @moduledoc """
+    Error raised when an ESI API call returns an error.
+    """
+    defexception [:reason, :message]
+  end
+
   defp cache_repo do
     repo =
       Application.get_env(
@@ -307,8 +322,26 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
-  def get_system_kills(system_id, limit \\ 50, _opts \\ []) do
-    esi_client().get_system_kills(system_id, limit)
+  def get_system_kills(system_id, limit, opts \\ []) do
+    cache_key = CacheKeys.system_kills(system_id, limit)
+
+    case cache_repo().get(cache_key) do
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for system kills", system_id: system_id)
+        {:ok, data}
+
+      {:error, _} ->
+        AppLogger.api_debug("🔍 ESI cache miss for system kills", system_id: system_id)
+
+        case esi_client().get_system_kills(system_id, limit, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} = result ->
+            cache_repo().put(cache_key, data)
+            result
+
+          error ->
+            error
+        end
+    end
   end
 
   # Get retry options with default values
@@ -346,4 +379,10 @@ defmodule WandererNotifier.ESI.Service do
     def delete(_key), do: {:error, :cache_not_available}
     def exists?(_key), do: false
   end
+
+  @impl true
+  def get_universe_type(_id, _opts \\ []), do: {:error, :not_implemented}
+
+  @impl true
+  def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
 end

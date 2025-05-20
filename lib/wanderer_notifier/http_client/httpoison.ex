@@ -13,19 +13,22 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   @impl true
   def get(url, headers \\ @default_headers) do
-    HTTPoison.get(url, headers)
+    url
+    |> HTTPoison.get(headers)
     |> handle_response()
   end
 
   @impl true
   def get(url, headers, options) do
-    HTTPoison.get(url, headers, options)
+    url
+    |> HTTPoison.get(headers, options)
     |> handle_response()
   end
 
   @impl true
   def post(url, body, headers \\ @default_headers) do
-    HTTPoison.post(url, body, headers)
+    url
+    |> HTTPoison.post(body, headers)
     |> handle_response()
   end
 
@@ -43,7 +46,8 @@ defmodule WandererNotifier.HttpClient.Httpoison do
       )
     end
 
-    HTTPoison.post(url, encoded_body, headers, options)
+    url
+    |> HTTPoison.post(encoded_body, headers, options)
     |> handle_response()
   end
 
@@ -52,15 +56,15 @@ defmodule WandererNotifier.HttpClient.Httpoison do
   """
   @impl true
   def request(method, url, headers \\ [], body \\ nil, opts \\ []) do
-    # Convert body to JSON if it's a map and not nil
     payload =
-      cond do
-        is_nil(body) -> ""
-        is_map(body) -> Jason.encode!(body)
-        true -> body
+      case body do
+        nil -> ""
+        body when is_map(body) -> Jason.encode!(body)
+        body -> body
       end
 
-    HTTPoison.request(method, url, payload, headers, opts)
+    url
+    |> HTTPoison.request(method, payload, headers, opts)
     |> handle_response()
   end
 

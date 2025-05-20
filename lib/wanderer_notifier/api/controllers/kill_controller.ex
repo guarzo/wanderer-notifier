@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Consistency.UnusedVariableNames
 defmodule WandererNotifier.Api.Controllers.KillController do
   @moduledoc """
   Controller for kill-related endpoints.

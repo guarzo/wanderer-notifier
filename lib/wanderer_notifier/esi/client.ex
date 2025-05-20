@@ -4,6 +4,7 @@ defmodule WandererNotifier.ESI.Client do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  @behaviour WandererNotifier.ESI.ClientBehaviour
 
   @base_url "https://esi.evetech.net/latest"
   @user_agent "WandererNotifier/1.0"
@@ -12,6 +13,7 @@ defmodule WandererNotifier.ESI.Client do
     Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
   end
 
+  @impl true
   @doc """
   Gets killmail information from ESI.
   """
@@ -52,6 +54,7 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets character information from ESI.
   """
@@ -86,6 +89,7 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets corporation information from ESI.
   """
@@ -120,6 +124,7 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets alliance information from ESI.
   """
@@ -154,6 +159,7 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets type information from ESI.
   """
@@ -188,6 +194,7 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Searches for inventory types in ESI.
   """
@@ -229,10 +236,11 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets solar system information from ESI.
   """
-  def get_solar_system(system_id, _opts \\ []) do
+  def get_system(system_id, _opts \\ []) do
     url = "#{@base_url}/universe/systems/#{system_id}/"
     headers = default_headers()
 
@@ -271,10 +279,11 @@ defmodule WandererNotifier.ESI.Client do
     end
   end
 
+  @impl true
   @doc """
   Gets system kill statistics from ESI.
   """
-  def get_system_kills(system_id, limit \\ 5) do
+  def get_system_kills(system_id, limit \\ 5, _opts \\ []) do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
 
@@ -304,14 +313,6 @@ defmodule WandererNotifier.ESI.Client do
 
         {:error, reason}
     end
-  end
-
-  @doc """
-  Gets solar system information from ESI.
-  Alias for backward compatibility with get_solar_system.
-  """
-  def get_system(system_id, opts \\ []) do
-    get_solar_system(system_id, opts)
   end
 
   # Private helper functions

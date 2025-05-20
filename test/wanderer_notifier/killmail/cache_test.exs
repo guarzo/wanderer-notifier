@@ -136,36 +136,22 @@ defmodule WandererNotifier.Killmail.CacheTest do
   describe "get_recent_kills/0" do
     test "retrieves all recent cached kills", %{sample_killmail: killmail} do
       kill_id = killmail["killmail_id"]
-
-      # Cache the killmail
       :ok = Cache.cache_kill(kill_id, killmail)
-
-      # Get recent kills
       {:ok, kills} = Cache.get_recent_kills()
-
-      # Verify the result
-      assert is_map(kills)
       assert Map.has_key?(kills, to_string(kill_id))
     end
 
     test "filters out null kills", %{sample_killmail: killmail} do
       kill_id = killmail["killmail_id"]
       invalid_id = 99_999
-
-      # Cache a valid killmail
       :ok = Cache.cache_kill(kill_id, killmail)
-
-      # Add an invalid ID to the recent_kills list
       kill_ids = [to_string(invalid_id), to_string(kill_id)]
       CacheRepo.set(CacheKeys.zkill_recent_kills(), kill_ids, @test_ttl)
-
-      # Get recent kills
       {:ok, kills} = Cache.get_recent_kills()
-
-      # Should only contain the valid kill, not the invalid one
       assert map_size(kills) == 1
       assert Map.has_key?(kills, to_string(kill_id))
       refute Map.has_key?(kills, to_string(invalid_id))
+      CacheRepo.delete(CacheKeys.zkill_recent_kills())
     end
 
     test "handles empty kill list" do

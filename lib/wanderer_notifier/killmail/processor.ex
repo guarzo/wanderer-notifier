@@ -68,6 +68,58 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   @doc """
+  Processes a raw killmail data map.
+
+  ## Options
+    - `:source` - The source of the killmail (e.g. :zkill_websocket, :direct, :test_notification)
+    - `:state` - Optional state to include in the context (used by websocket handler)
+
+  ## Returns
+    - `{:ok, kill_id}` - Killmail was processed successfully
+    - `{:ok, :skipped}` - Killmail was skipped (e.g. not relevant)
+    - `{:error, reason}` - Processing failed
+  """
+  @spec process_killmail(map(), keyword()) :: {:ok, kill_id | :skipped} | {:error, term()}
+  def process_killmail(killmail, opts \\ []) do
+    kill_id = Map.get(killmail, "killmail_id", "unknown")
+    system_id = Map.get(killmail, "solar_system_id")
+    source = Keyword.get(opts, :source, :direct)
+    state = Keyword.get(opts, :state)
+
+    # Create a context with relevant information
+    system_name = get_system_name(system_id)
+
+    context_opts = %{
+      source: source,
+      processing_started_at: DateTime.utc_now()
+    }
+
+    context_opts = if state, do: Map.put(context_opts, :original_state, state), else: context_opts
+
+    context = Context.new(kill_id, system_name, context_opts)
+
+    # Process through pipeline and let it handle notification
+    case killmail_pipeline().process_killmail(killmail, context) do
+      {:ok, :skipped} ->
+        # Pipeline indicated this should be skipped
+        {:ok, :skipped}
+
+      {:ok, _final_killmail} ->
+        # Successfully processed and notified in pipeline
+        {:ok, kill_id}
+
+      error ->
+        # Handle pipeline errors
+        AppLogger.kill_error("Failed to process kill data",
+          kill_id: kill_id,
+          error: inspect(error)
+        )
+
+        error
+    end
+  end
+
+  @doc """
   Sends a test notification using the most recent kill data.
   This is useful for verifying that the notification system is working correctly.
 
@@ -77,18 +129,8 @@ defmodule WandererNotifier.Killmail.Processor do
   """
   @spec send_test_kill_notification() :: {:ok, kill_id} | {:error, term()}
   def send_test_kill_notification do
-    with {:ok, kill_data} <- get_recent_kills(),
-         kill_id = Map.get(kill_data, "killmail_id", "unknown"),
-         context = %Context{
-           killmail_id: kill_id,
-           system_name: "Test System",
-           options: %{source: :test_notification}
-         },
-         {:ok, _} <- killmail_pipeline().process_killmail(kill_data, context) do
-      {:ok, kill_id}
-    else
-      {:error, :no_recent_kills} = error -> error
-      error -> error
+    with {:ok, kill_data} <- get_recent_kills() do
+      process_killmail(kill_data, source: :test_notification)
     end
   end
 
@@ -136,94 +178,60 @@ defmodule WandererNotifier.Killmail.Processor do
   # -- Private helpers -------------------------------------------------------
 
   defp should_notify?(%Killmail{} = killmail) do
-    system_id = WandererNotifier.Notifications.Determiner.Kill.get_kill_system_id(killmail)
-
-    # Check system directly
-    is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
-
     # Get the determination from the Kill Determiner
     result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
 
     # Only log errors and inconsistencies
     case result do
       {:ok, %{should_notify: false, reason: reason}} ->
-        # Log inconsistency between tracking and deduplication
-        if is_system_tracked && reason == "Duplicate kill" do
-          AppLogger.error(
-            "PROCESSOR INCONSISTENCY: System is tracked but deduplication prevented notification: #{killmail.killmail_id}"
-          )
-        end
+        AppLogger.error(
+          "PROCESSOR: Kill notification skipped: #{reason} (killmail_id=#{killmail.killmail_id})"
+        )
 
       {:ok, %{should_notify: true}} ->
         :ok
 
-      _ ->
+      {:error, reason} ->
         AppLogger.error(
-          "PROCESSOR: Unexpected result for kill_id=#{killmail.killmail_id}: #{inspect(result)}"
+          "PROCESSOR: Kill notification error: #{inspect(reason)} (killmail_id=#{killmail.killmail_id})"
         )
     end
 
     result
   end
 
-  defp should_notify?(data) when is_map(data) do
-    kill_id = Map.get(data, "killmail_id", "unknown")
-    system_id = Map.get(data, "solar_system_id", "unknown")
-
-    # Check system directly
-    is_system_tracked = WandererNotifier.Notifications.Determiner.Kill.tracked_system?(system_id)
-
-    # Convert map to Killmail struct
-    killmail = %Killmail{
-      killmail_id: kill_id,
-      zkb: Map.get(data, "zkb", %{}),
-      esi_data: data
-    }
-
+  defp should_notify?(kill_data) do
     # Get the determination from the Kill Determiner
-    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(killmail)
+    result = WandererNotifier.Notifications.Determiner.Kill.should_notify?(kill_data)
 
     # Only log errors and inconsistencies
     case result do
       {:ok, %{should_notify: false, reason: reason}} ->
-        # Log inconsistency between tracking and deduplication
-        if is_system_tracked && reason == "Duplicate kill" do
-          AppLogger.error(
-            "PROCESSOR INCONSISTENCY: System is tracked but deduplication prevented notification: #{kill_id}"
-          )
-        end
+        AppLogger.error(
+          "PROCESSOR: Kill notification skipped: #{reason} (killmail_id=#{kill_data["killmail_id"]})"
+        )
 
       {:ok, %{should_notify: true}} ->
         :ok
 
-      _ ->
-        AppLogger.error("PROCESSOR: Unexpected result for kill_id=#{kill_id}: #{inspect(result)}")
+      {:error, reason} ->
+        AppLogger.error(
+          "PROCESSOR: Kill notification error: #{inspect(reason)} (killmail_id=#{kill_data["killmail_id"]})"
+        )
     end
 
     result
   end
 
-  defp log_skipped(%{"killmail_id" => id, "solar_system_id" => sys}, reason) do
-    name = get_system_name(sys)
-
-    AppLogger.processor_info(
-      "Skipping killmail: #{reason} (killmail_id=#{id}, system_name=#{name})"
+  defp log_skipped(kill_data, reason) do
+    AppLogger.kill_info("Skipping killmail notification",
+      kill_id: kill_data["killmail_id"],
+      reason: reason
     )
   end
 
-  defp get_system_name(system_id) do
-    key = {:system_name, system_id}
-
-    Process.get(key) ||
-      case WandererNotifier.ESI.Service.get_system(system_id) do
-        {:ok, %{"name" => name}} ->
-          Process.put(key, name)
-          name
-
-        _ ->
-          "Unknown(#{system_id})"
-      end
-  end
+  defp get_system_name(nil), do: "unknown"
+  defp get_system_name(system_id), do: "System #{system_id}"
 
   defp killmail_pipeline do
     Application.get_env(
@@ -234,10 +242,6 @@ defmodule WandererNotifier.Killmail.Processor do
   end
 
   defp cache_repo do
-    Application.get_env(
-      :wanderer_notifier,
-      :cache_repo,
-      WandererNotifier.Cache
-    )
+    Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache)
   end
 end

@@ -1,5 +1,5 @@
 defmodule WandererNotifier.Core.Application.ServiceTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import Mox
 
   alias WandererNotifier.Core.Application.Service
@@ -7,7 +7,12 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
   alias WandererNotifier.MockNotifierFactory, as: NotifierFactory
   alias WandererNotifier.Core.Stats
   alias WandererNotifier.License.Service, as: LicenseService
+  alias WandererNotifier.MockSystem
+  alias WandererNotifier.MockCharacter
+  alias WandererNotifier.MockConfig
+  alias WandererNotifier.MockDispatcher
 
+  setup :set_mox_from_context
   setup :verify_on_exit!
 
   setup do
@@ -50,28 +55,68 @@ defmodule WandererNotifier.Core.Application.ServiceTest do
     NotifierFactory
     |> stub(:send_message, fn _notification -> :ok end)
 
-    # Stub the missing ESI.ServiceMock.get_system/2 call
-    WandererNotifier.Api.ESI.ServiceMock
-    |> stub(:get_system, fn _id, _opts -> {:ok, %{"name" => "Test System"}} end)
+    # Set up Mox for ESI.Service
+    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
+
+    # Set up Mox for Deduplication
+    Application.put_env(
+      :wanderer_notifier,
+      :deduplication_module,
+      WandererNotifier.MockDeduplication
+    )
+
+    # Set up application environment
+    Application.put_env(:wanderer_notifier, :system_module, MockSystem)
+    Application.put_env(:wanderer_notifier, :character_module, MockCharacter)
+    Application.put_env(:wanderer_notifier, :config_module, MockConfig)
+    Application.put_env(:wanderer_notifier, :dispatcher_module, MockDispatcher)
+
+    # Set up default mock responses
+    MockConfig
+    |> stub(:get_config, fn ->
+      %{
+        notifications: %{
+          enabled: true,
+          kill: %{
+            enabled: true,
+            system: %{enabled: true},
+            character: %{enabled: true}
+          }
+        }
+      }
+    end)
 
     :ok
   end
 
   describe "startup notification" do
     test "sends startup notification successfully" do
-      pid =
-        case Process.whereis(Service) do
-          nil ->
-            {:ok, pid} = Service.start_link([])
-            pid
+      # Stop the service if it's already running
+      if pid = Process.whereis(Service) do
+        Process.exit(pid, :normal)
+        # Give it time to fully stop
+        :timer.sleep(100)
+      end
 
-          pid ->
-            pid
-        end
+      # Set up the mock expectation before starting the service
+      MockDispatcher
+      |> stub(:send_message, fn message ->
+        assert message =~ "Wanderer Notifier"
+        :ok
+      end)
 
-      send(pid, :send_startup_notification)
-      Process.sleep(100)
-      assert Process.alive?(pid)
+      # Start the service and handle both success and already_started cases
+      case Service.start_link([]) do
+        {:ok, pid} ->
+          assert Process.alive?(pid)
+          # Give it time to send the startup message
+          :timer.sleep(100)
+
+        {:error, {:already_started, pid}} ->
+          assert Process.alive?(pid)
+          # Give it time to send the startup message
+          :timer.sleep(100)
+      end
     end
   end
 end

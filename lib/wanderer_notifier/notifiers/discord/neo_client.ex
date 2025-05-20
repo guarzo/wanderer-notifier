@@ -555,7 +555,7 @@ defmodule WandererNotifier.Notifiers.Discord.NeoClient do
     thumbnail = extract_thumbnail(embed)
     # If this is a sun type notification with no thumbnail, use a hardcoded URL
     if is_nil(thumbnail) && Map.get(embed, "title", "") =~ "System Notification" do
-      %Embed.Thumbnail{url: "https://images.evetech.net/types/45041/icon?size=64"}
+      %Embed.Thumbnail{url: "https://images.evetech.net/types/45_041/icon?size=64"}
     else
       thumbnail
     end

@@ -108,7 +108,7 @@ config :wanderer_notifier,
 
 # Configure the web server
 config :wanderer_notifier, WandererNotifierWeb.Endpoint,
-  url: [host: System.get_env("WANDERER_HOST", "localhost")],
+  url: [host: System.get_env("WANDERER_HOST") || "localhost"],
   http: [
     port: Helpers.parse_int(System.get_env("PORT"), 4000)
   ],
@@ -116,7 +116,10 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
 
 # Configure WebSocket settings
 config :wanderer_notifier, :websocket, %{
-  url: System.get_env("WANDERER_WS_URL", "wss://zkillboard.com/websocket/"),
+  url: System.get_env("WANDERER_WS_URL") || "wss://zkillboard.com/websocket/",
+  ping_interval: Helpers.parse_int(System.get_env("WANDERER_WS_PING_INTERVAL_MS"), 20_000),
+  heartbeat_interval:
+    Helpers.parse_int(System.get_env("WANDERER_WS_HEARTBEAT_INTERVAL_MS"), 30_000),
   reconnect_delay: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_DELAY_MS"), 5000),
   max_reconnects: Helpers.parse_int(System.get_env("WANDERER_WS_MAX_RECONNECTS"), 20),
   reconnect_window: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_WINDOW_MS"), 3600)
@@ -124,4 +127,4 @@ config :wanderer_notifier, :websocket, %{
 
 # Configure cache directory
 config :wanderer_notifier, :cache,
-  directory: System.get_env("WANDERER_CACHE_DIR", "/app/data/cache")
+  directory: System.get_env("WANDERER_CACHE_DIR") || "/app/data/cache"

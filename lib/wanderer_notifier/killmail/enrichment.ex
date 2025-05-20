@@ -1,285 +1,246 @@
 defmodule WandererNotifier.Killmail.Enrichment do
   @moduledoc """
-  Handles enrichment of killmail data with additional information from ESI.
+  Handles enrichment of killmail data with additional information from ESI
+  and fetching recent kills via ZKillboard.
   """
 
   alias WandererNotifier.Killmail.Killmail
   require Logger
 
-  @esi_service Application.compile_env(
-                 :wanderer_notifier,
-                 :esi_service,
-                 WandererNotifier.ESI.Service
-               )
   @zkill_client Application.compile_env(
                   :wanderer_notifier,
                   :zkill_client,
                   WandererNotifier.Killmail.ZKillClient
                 )
 
+  defp esi_service do
+    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
+  end
+
   @doc """
-  Enriches killmail data with additional information from ESI.
-
-  ## Parameters
-    - killmail: The killmail data to enrich
-
-  ## Returns
-    - {:ok, enriched_killmail} on success
-    - {:error, reason} on failure
+  Enriches a `%Killmail{}` with ESI lookups.
   """
-  def enrich_killmail_data(
-        %Killmail{killmail_id: _killmail_id, zkb: %{"hash" => _hash}, esi_data: esi_data} =
-          killmail
-      )
-      when map_size(esi_data) > 0 do
-    Logger.info("Enriching killmail with ESI data, system_id=#{esi_data["solar_system_id"]}")
-
-    case get_victim_info(esi_data["victim"]) do
-      {:error, :service_unavailable} = error ->
-        error
-
-      {:error, _} ->
-        {:error, :esi_data_missing}
-
-      {:ok, victim_info} ->
-        with {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
-             {:ok, attackers} <- enrich_attackers(esi_data["attackers"]) do
-          enriched_killmail = %{
-            killmail
-            | victim_name: victim_info.character_name,
-              victim_corporation: victim_info.corporation_name,
-              victim_corp_ticker: victim_info.corporation_ticker,
-              ship_name: victim_info.ship_name,
-              system_name: system_name,
-              system_id: esi_data["solar_system_id"],
-              attackers: attackers
-          }
-
-          {:ok, enriched_killmail}
-        else
-          {:error, :service_unavailable} = error -> error
-          {:error, _} -> {:error, :esi_data_missing}
-        end
+  @spec enrich_killmail_data(Killmail.t()) ::
+          {:ok, Killmail.t()} | {:error, :service_unavailable | :esi_data_missing}
+  def enrich_killmail_data(%Killmail{esi_data: existing} = km)
+      when is_map(existing) and map_size(existing) > 0 do
+    {:ok, km}
+    |> with_ok(&add_victim_info/1)
+    |> with_ok(&add_system_info/1)
+    |> with_ok(&add_attackers/1)
+    |> case do
+      {:ok, enriched} -> {:ok, enriched}
+      {:error, :service_unavailable} = err -> err
+      _ -> {:error, :esi_data_missing}
     end
   end
 
-  def enrich_killmail_data(%Killmail{killmail_id: killmail_id, zkb: %{"hash" => hash}} = killmail) do
-    case get_killmail_data(killmail_id, hash) do
-      {:error, :service_unavailable} = error ->
-        error
-
-      {:error, _} ->
-        {:error, :esi_data_missing}
-
-      {:ok, esi_data} ->
-        case get_victim_info(esi_data["victim"]) do
-          {:error, :service_unavailable} = error ->
-            error
-
-          {:error, _} ->
-            {:error, :esi_data_missing}
-
-          {:ok, victim_info} ->
-            with {:ok, system_name} <- get_system_name(esi_data["solar_system_id"]),
-                 {:ok, attackers} <- enrich_attackers(esi_data["attackers"]) do
-              enriched_killmail = %{
-                killmail
-                | esi_data: esi_data,
-                  victim_name: victim_info.character_name,
-                  victim_corporation: victim_info.corporation_name,
-                  victim_corp_ticker: victim_info.corporation_ticker,
-                  ship_name: victim_info.ship_name,
-                  system_name: system_name,
-                  system_id: esi_data["solar_system_id"],
-                  attackers: attackers
-              }
-
-              {:ok, enriched_killmail}
-            else
-              {:error, :service_unavailable} = error -> error
-              {:error, _} -> {:error, :esi_data_missing}
-            end
-        end
+  def enrich_killmail_data(%Killmail{killmail_id: id, zkb: %{"hash" => hash}} = km) do
+    km
+    |> maybe_use_cache(%{})
+    |> fetch_esi(:get_killmail, [id, hash])
+    |> with_ok(&add_victim_info/1)
+    |> with_ok(&add_system_info/1)
+    |> with_ok(&add_attackers/1)
+    |> case do
+      {:ok, enriched} -> {:ok, enriched}
+      {:error, :service_unavailable} = err -> err
+      _ -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_killmail_data(killmail_id, hash) do
-    case @esi_service.get_killmail(killmail_id, hash) do
-      {:ok, esi_data} -> {:ok, esi_data}
+  # If esi_data is already present, skip fetching.
+  defp maybe_use_cache(killmail, esi) when map_size(esi) > 0, do: {:ok, killmail}
+  defp maybe_use_cache(km, _), do: {:ok, km}
+
+  defp fetch_esi({:ok, %Killmail{} = km}, :get_killmail, [id, hash]) do
+    case esi_service().get_killmail(id, hash, []) do
+      {:ok, data} -> {:ok, %{km | esi_data: data}}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, :not_found} -> {:error, :esi_data_missing}
-      {:error, _} -> {:error, :esi_data_missing}
+      _ -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_system_name(nil), do: {:ok, "Unknown System"}
+  defp fetch_esi({:ok, %Killmail{esi_data: esi} = km}, fun, [key]) do
+    apply(esi_service(), fun, [key, []])
+    |> case do
+      {:ok, %{"name" => name}} ->
+        {:ok, %{km | esi_data: Map.put_new(esi, to_string(fun), name)}}
 
-  defp get_system_name(system_id) when is_integer(system_id) or is_binary(system_id) do
-    case @esi_service.get_system(system_id, []) do
-      {:ok, %{"name" => name}} -> {:ok, name}
-      {:error, :not_found} -> {:error, :system_not_found}
-      {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, _} -> {:error, :esi_data_missing}
+      {:ok, info} ->
+        {:ok, %{km | esi_data: Map.put_new(esi, to_string(fun), info)}}
+
+      {:error, :service_unavailable} ->
+        {:error, :service_unavailable}
+
+      _ ->
+        {:error, :esi_data_missing}
     end
   end
 
-  defp get_system_name(_), do: {:ok, "Unknown System"}
+  # --- Enrichment helpers ---
 
-  defp get_victim_info(victim) do
-    with {:ok, character_info} <- get_character_info(victim["character_id"]),
-         {:ok, corporation_info} <- get_corporation_info(victim["corporation_id"]),
-         {:ok, ship_info} <- get_ship_info(victim["ship_type_id"]) do
+  # Adds victim info fields
+  defp add_victim_info({:ok, km}) do
+    with %{"victim" => victim} = _esi <- km.esi_data,
+         {:ok, victim_info} <- fetch_victim_info(victim) do
+      {:ok, Map.merge(km, victim_info)}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp fetch_victim_info(victim) do
+    with {:ok, char} <- get_character(victim["character_id"]),
+         {:ok, corp} <- get_corporation(victim["corporation_id"]),
+         {:ok, alli} <- get_alliance(victim["alliance_id"]),
+         {:ok, ship} <- get_ship(victim["ship_type_id"]) do
       {:ok,
        %{
-         character_name: character_info["name"],
-         corporation_name: corporation_info["name"],
-         corporation_ticker: corporation_info["ticker"],
-         alliance_name: nil,
-         ship_name: ship_info["name"]
+         victim_name: char["name"],
+         victim_corporation: corp["name"],
+         victim_corp_ticker: corp["ticker"],
+         victim_alliance: alli["name"],
+         ship_name: ship["name"]
        }}
-    else
-      {:error, :service_unavailable} = error -> error
-      {:error, _} -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_ship_info(nil), do: {:error, :esi_data_missing}
+  # Adds system name and id
+  defp add_system_info({:ok, km}) do
+    case get_system(km.esi_data["solar_system_id"]) do
+      {:ok, name} ->
+        {:ok, %{km | system_name: name, system_id: km.esi_data["solar_system_id"]}}
 
-  defp get_ship_info(ship_type_id) when is_integer(ship_type_id) or is_binary(ship_type_id) do
-    case @esi_service.get_type_info(ship_type_id, []) do
-      {:ok, %{"name" => name}} -> {:ok, %{"name" => name}}
-      {:ok, ship} -> {:ok, ship}
+      {:error, :service_unavailable} = err ->
+        err
+
+      _ ->
+        {:error, :esi_data_missing}
+    end
+  end
+
+  # Adds enriched attackers list
+  defp add_attackers({:ok, km}) do
+    case km.esi_data["attackers"] do
+      nil -> {:ok, %{km | attackers: []}}
+      attackers when is_list(attackers) -> process_attackers(km, attackers)
+    end
+  end
+
+  defp process_attackers(km, attackers) do
+    attackers
+    |> Enum.reduce_while({:ok, []}, &process_attacker/2)
+    |> case do
+      {:ok, list} -> {:ok, %{km | attackers: Enum.reverse(list)}}
+      err -> err
+    end
+  end
+
+  defp process_attacker(atk, {:ok, acc}) do
+    case enrich_attacker(atk) do
+      {:ok, e} -> {:cont, {:ok, [e | acc]}}
+      err -> {:halt, err}
+    end
+  end
+
+  # Restore get_system/1
+  defp get_system(nil), do: {:ok, "Unknown System"}
+
+  defp get_system(system_id) when is_integer(system_id) or is_binary(system_id) do
+    case esi_service().get_system(system_id, []) do
+      {:ok, %{"name" => name}} -> {:ok, name}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, _} -> {:error, :esi_data_missing}
+      _ -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_ship_info(_), do: {:error, :esi_data_missing}
+  # Individual ESI lookups
+  defp get_character(nil), do: {:error, :esi_data_missing}
+  defp get_character(id), do: simple_fetch(:get_character_info, id)
 
-  defp get_character_info(character_id) when is_integer(character_id) do
-    case @esi_service.get_character_info(character_id, []) do
+  defp get_corporation(nil), do: {:error, :esi_data_missing}
+  defp get_corporation(id), do: simple_fetch(:get_corporation_info, id)
+
+  defp get_alliance(nil), do: {:ok, %{"name" => "Unknown"}}
+  defp get_alliance(id), do: simple_fetch(:get_alliance_info, id)
+
+  defp get_ship(nil), do: {:error, :esi_data_missing}
+  defp get_ship(id), do: simple_fetch(:get_universe_type, id)
+
+  # Pulls a single record via ESI and uniformly maps errors
+  defp simple_fetch(fun, id) do
+    apply(esi_service(), fun, [id, []])
+    |> case do
       {:ok, info} -> {:ok, info}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, _} -> {:error, :esi_data_missing}
+      _ -> {:error, :esi_data_missing}
     end
   end
 
-  defp get_character_info(nil), do: {:error, :esi_data_missing}
-  defp get_character_info(_), do: {:error, :esi_data_missing}
-
-  defp get_corporation_info(corporation_id) when is_integer(corporation_id) do
-    case @esi_service.get_corporation_info(corporation_id, []) do
-      {:ok, info} -> {:ok, info}
-      {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, _} -> {:error, :esi_data_missing}
+  # Builds each attacker record
+  defp enrich_attacker(atk) do
+    with {:ok, attacker_info} <- fetch_attacker_info(atk) do
+      {:ok, Map.merge(atk, attacker_info)}
     end
   end
 
-  defp get_corporation_info(_), do: {:error, :esi_data_missing}
-
-  defp get_alliance_info(alliance_id) when is_integer(alliance_id) do
-    case @esi_service.get_alliance_info(alliance_id, []) do
-      {:ok, info} -> {:ok, info}
-      {:error, :service_unavailable} -> {:error, :service_unavailable}
-      {:error, _} -> {:error, :esi_data_missing}
-    end
-  end
-
-  defp get_alliance_info(_), do: {:ok, %{"name" => "Unknown"}}
-
-  defp enrich_attackers(nil), do: {:ok, []}
-
-  defp enrich_attackers(attackers) when is_list(attackers) do
-    # Process each attacker and collect results
-    results = Enum.map(attackers, &enrich_attacker/1)
-
-    # Check if any errors occurred
-    case Enum.find(results, &match?({:error, _}, &1)) do
-      nil -> {:ok, Enum.map(results, fn {:ok, attacker} -> attacker end)}
-      error -> error
-    end
-  end
-
-  defp enrich_attacker(attacker) do
-    with {:ok, character_info} <- get_character_info(attacker["character_id"]),
-         {:ok, corporation_info} <- get_corporation_info(attacker["corporation_id"]),
-         {:ok, alliance_info} <- get_alliance_info(attacker["alliance_id"]),
-         {:ok, ship_info} <- get_ship_info(attacker["ship_type_id"]) do
+  defp fetch_attacker_info(atk) do
+    with {:ok, char} <- get_character(atk["character_id"]),
+         {:ok, corp} <- get_corporation(atk["corporation_id"]),
+         {:ok, alli} <- get_alliance(atk["alliance_id"]),
+         {:ok, ship} <- get_ship(atk["ship_type_id"]) do
       {:ok,
-       Map.merge(attacker, %{
-         "character_name" => character_info["name"],
-         "corporation_name" => corporation_info["name"],
-         "corporation_ticker" => corporation_info["ticker"],
-         "alliance_name" => alliance_info["name"],
-         "ship_name" => ship_info["name"]
-       })}
-    else
-      {:error, :service_unavailable} = error -> error
-      {:error, _} -> {:error, :esi_data_missing}
+       %{
+         "character_name" => char["name"],
+         "corporation_name" => corp["name"],
+         "corporation_ticker" => corp["ticker"],
+         "alliance_name" => alli["name"],
+         "ship_name" => ship["name"]
+       }}
     end
   end
+
+  # --- Recent kills via ZKillboard ---
 
   @doc """
-  Fetches and formats recent kills for a system.
-  Returns a formatted string that's safe to use in Discord.
-
-  ## Parameters
-    - system_id: The solar system ID
-    - limit: Number of kills to fetch
-
-  ## Returns
-    - A string with formatted kill data with links
+  Fetches and formats the latest kills for a system (default 3).
   """
+  @spec recent_kills_for_system(integer(), non_neg_integer()) :: String.t()
   def recent_kills_for_system(system_id, limit \\ 3) do
-    try do
-      # Log the request
-      Logger.info("Fetching recent kills for system", %{
-        system_id: system_id,
-        limit: limit
-      })
+    Logger.info("Fetching recent kills for system=#{system_id} limit=#{limit}")
 
-      # Call ZKill client - response should be already formatted strings with links
-      case @zkill_client.get_system_kills(system_id, limit) do
-        {:ok, kill_strings} when is_list(kill_strings) and length(kill_strings) > 0 ->
-          # Log successful result
-          Logger.info("Found #{length(kill_strings)} kills for system", %{
-            system_id: system_id
-          })
+    @zkill_client.get_system_kills(system_id, limit)
+    |> case do
+      {:ok, strs} when is_list(strs) and length(strs) > 0 ->
+        Logger.info("Found #{length(strs)} kills", system_id: system_id)
+        Enum.join(strs, "\n")
 
-          # Join the pre-formatted strings with newlines
-          # The strings should already be formatted as markdown links
-          Enum.join(kill_strings, "\n")
+      {:ok, []} ->
+        Logger.info("No kills found", system_id: system_id)
+        "No recent kills found"
 
-        {:ok, []} ->
-          Logger.info("No kills found for system", %{system_id: system_id})
-          "No recent kills found"
-
-        {:error, reason} ->
-          Logger.warning("Error getting kills", %{
-            system_id: system_id,
-            details: inspect(reason)
-          })
-
-          "Error retrieving kill data"
-
-        unexpected ->
-          Logger.warning("Unexpected response from ZKillClient", %{
-            system_id: system_id,
-            details: inspect(unexpected)
-          })
-
-          "Unexpected kill data response"
-      end
-    rescue
-      e ->
-        Logger.error("Exception in recent_kills_for_system", %{
-          system_id: system_id,
-          error_type: inspect(e.__struct__),
-          details: Exception.message(e),
-          stacktrace: Exception.format_stacktrace(__STACKTRACE__)
-        })
-
+      {:error, reason} ->
+        Logger.warning("Error getting kills", system_id: system_id, reason: inspect(reason))
         "Error retrieving kill data"
+
+      resp ->
+        Logger.warning("Unexpected ZKill response", system_id: system_id, resp: inspect(resp))
+        "Unexpected kill data response"
     end
+  rescue
+    e ->
+      Logger.error("Exception in recent_kills_for_system",
+        system_id: system_id,
+        error: Exception.format(:error, e, __STACKTRACE__)
+      )
+
+      "Error retrieving kill data"
   end
+
+  # --- Utilities ---
+
+  # Chains {:ok, val} into fun, propagating errors
+  defp with_ok({:ok, val}, fun), do: fun.({:ok, val})
+  defp with_ok({:error, _} = err, _fun), do: err
 end

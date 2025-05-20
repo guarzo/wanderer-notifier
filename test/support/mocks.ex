@@ -86,27 +86,6 @@ defmodule WandererNotifier.MockESI do
   def get_system_kills(30_000_142, _limit), do: {:ok, []}
   def get_system_kills(_system_id, _limit), do: {:error, :service_unavailable}
   def get_system_kills(system_id, limit, _opts), do: get_system_kills(system_id, limit)
-
-  def get_recent_kills do
-    kills = Process.get({:cache, "zkill:recent_kills"}) || []
-
-    if is_list(kills) && length(kills) > 0 do
-      # Process kills into a map format expected by the controller - return in a tuple
-      kills_map =
-        kills
-        |> Enum.map(fn id ->
-          key = "zkill:recent_kills:#{id}"
-          {id, Process.get({:cache, key})}
-        end)
-        |> Enum.reject(fn {_, v} -> is_nil(v) end)
-        |> Enum.into(%{})
-
-      {:ok, kills_map}
-    else
-      # Return empty map in a tuple
-      {:ok, %{}}
-    end
-  end
 end
 
 defmodule WandererNotifier.Test.Support.Mocks do
@@ -114,118 +93,19 @@ defmodule WandererNotifier.Test.Support.Mocks do
   Mock implementations for testing.
   """
 
-  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Test.Support.Mocks.CacheMock
 
-  @behaviour WandererNotifier.Cache.Behaviour
-
-  # -- Cache Implementation --
-
-  def get(key, _opts \\ []) do
-    if key == "test_key" do
-      {:ok, "test_value"}
-    else
-      {:error, :not_found}
-    end
-  end
-
-  def set(key, value, _ttl) do
-    AppLogger.cache_debug("Setting cache value with TTL",
-      key: key,
-      value: value
-    )
-
-    Process.put({:cache, key}, value)
-    :ok
-  end
-
-  def put(key, value) do
-    Process.put({:cache, key}, value)
-    :ok
-  end
-
-  def delete(key) do
-    Process.delete({:cache, key})
-    :ok
-  end
-
-  def clear do
-    Process.get_keys()
-    |> Enum.filter(fn
-      {:cache, _} -> true
-      _ -> false
-    end)
-    |> Enum.each(&Process.delete/1)
-
-    :ok
-  end
-
-  def get_and_update(key, update_fun) do
-    current = Process.get({:cache, key})
-    {current_value, new_value} = update_fun.(current)
-    Process.put({:cache, key}, new_value)
-    {:ok, current_value}
-  end
-
-  @doc """
-  Get a specific kill by ID. Used by the KillController.
-  """
-  def get_kill(kill_id) do
-    key = "zkill:recent_kills:#{kill_id}"
-
-    case Process.get({:cache, key}) do
-      nil -> {:error, :not_cached}
-      value -> {:ok, value}
-    end
-  end
-
-  @doc """
-  Get latest killmails as a list. Used by the KillController.
-  """
-  def get_latest_killmails do
-    # Get the list of kill IDs
-    kill_ids = Process.get({:cache, "zkill:recent_kills"}) || []
-
-    # Convert to a list of killmails
-    kills =
-      kill_ids
-      |> Enum.map(fn id ->
-        kill = Process.get({:cache, "zkill:recent_kills:#{id}"})
-        if kill, do: Map.put(kill, "id", id), else: nil
-      end)
-      |> Enum.reject(&is_nil/1)
-
-    # Format return value to match controller expectation
-    {:ok, kills}
-  end
-
-  @doc """
-  Get recent kills. Used by the KillController.
-  """
-  def get_recent_kills do
-    kills = Process.get({:cache, "zkill:recent_kills"}) || []
-
-    if is_list(kills) && length(kills) > 0 do
-      # Process kills into a map format expected by the controller - return in a tuple
-      kills_map =
-        kills
-        |> Enum.map(fn id ->
-          key = "zkill:recent_kills:#{id}"
-          {id, Process.get({:cache, key})}
-        end)
-        |> Enum.reject(fn {_, v} -> is_nil(v) end)
-        |> Enum.into(%{})
-
-      {:ok, kills_map}
-    else
-      # Return empty map in a tuple
-      {:ok, %{}}
-    end
-  end
-
-  def init_batch_logging, do: :ok
-
-  # -- Other Mock Implementations --
-  # Add other mock implementations here as needed
+  defdelegate get(key, opts \\ []), to: CacheMock
+  defdelegate set(key, value, ttl), to: CacheMock
+  defdelegate put(key, value), to: CacheMock
+  defdelegate delete(key), to: CacheMock
+  defdelegate clear, to: CacheMock
+  defdelegate get_and_update(key, update_fun), to: CacheMock
+  defdelegate get_recent_kills, to: CacheMock
+  defdelegate get_kill(kill_id), to: CacheMock
+  defdelegate get_latest_killmails, to: CacheMock
+  defdelegate init_batch_logging, to: CacheMock
+  defdelegate mget(keys), to: CacheMock
 end
 
 defmodule WandererNotifier.MockRepository do
@@ -442,18 +322,9 @@ defmodule WandererNotifier.Mocks do
   )
 end
 
-# Define common mocks
-Mox.defmock(WandererNotifier.ESI.ServiceMock, for: WandererNotifier.ESI.ServiceBehaviour)
-
-Mox.defmock(WandererNotifier.Notifications.Determiner.KillMock,
-  for: WandererNotifier.Notifications.Determiner.KillBehaviour
-)
-
 Mox.defmock(WandererNotifier.Notifications.DiscordNotifierMock,
   for: WandererNotifier.Notifiers.Discord.Behaviour
 )
-
-Mox.defmock(WandererNotifier.HttpClient.HttpoisonMock, for: WandererNotifier.HttpClient.Behaviour)
 
 defmodule WandererNotifier.Map.MapSystemMock do
   @moduledoc """
@@ -473,4 +344,230 @@ defmodule WandererNotifier.Map.MapCharacterMock do
 
   @impl true
   def is_tracked?(_character_id), do: false
+end
+
+defmodule WandererNotifier.Test.Mocks do
+  @moduledoc """
+  Mock modules for testing.
+  """
+
+  defmodule MockHttpClient do
+    @moduledoc """
+    Mock implementation of HTTP client for testing purposes.
+    Allows simulation of HTTP requests and responses in tests.
+    """
+    def get(_url, _headers), do: {:ok, %{status_code: 200, body: %{}}}
+    def get(_url, _headers, _opts), do: {:ok, %{status_code: 200, body: %{}}}
+    def post(_url, _body, _headers), do: {:ok, %{status_code: 200, body: %{}}}
+    def post_json(_url, _body, _headers, _opts), do: {:ok, %{status_code: 200, body: %{}}}
+    def request(_method, _url, _headers, _body, _opts), do: {:ok, %{status_code: 200, body: %{}}}
+    def handle_response(response), do: response
+  end
+
+  defmodule MockESIService do
+    @moduledoc """
+    Mock implementation of the ESI service for testing purposes.
+    Simulates EVE Online ESI API responses for testing scenarios.
+    """
+    def get_character_info(100, _opts), do: {:ok, %{"name" => "Victim"}}
+    def get_character_info(_, _), do: {:error, :not_found}
+    def get_character_info(id), do: get_character_info(id, [])
+
+    def get_corporation_info(200, _opts), do: {:ok, %{"name" => "Corp", "ticker" => "CORP"}}
+    def get_corporation_info(_, _), do: {:error, :not_found}
+    def get_corporation_info(id), do: get_corporation_info(id, [])
+
+    def get_type_info(300, _opts), do: {:ok, %{"name" => "Ship"}}
+    def get_type_info(_, _), do: {:error, :not_found}
+    def get_type_info(id), do: get_type_info(id, [])
+
+    def get_system(400, _opts), do: {:ok, %{"name" => "System"}}
+    def get_system(_, _), do: {:error, :not_found}
+    def get_system(id), do: get_system(id, [])
+
+    def get_alliance_info(_, _), do: {:ok, %{"name" => "Alliance"}}
+    def get_alliance_info(id), do: get_alliance_info(id, [])
+
+    def get_killmail(_, _), do: {:ok, %{}}
+    def get_killmail(id, hash, _opts), do: get_killmail(id, hash)
+  end
+
+  defmodule MockDiscordClient do
+    @moduledoc """
+    Mock implementation of Discord client for testing purposes.
+    Simulates Discord API interactions and message sending.
+    """
+    def send_message(channel_id, message) do
+      {:ok, %{id: channel_id, content: message}}
+    end
+
+    def send_embed(channel_id, embed) do
+      {:ok, %{id: channel_id, embed: embed}}
+    end
+  end
+
+  defmodule MockRedis do
+    @moduledoc """
+    Mock implementation of Redis for testing purposes.
+    Provides a simplified in-memory implementation of Redis functionality.
+    """
+    def get(key) do
+      case key do
+        "map:system:12345" -> {:ok, "Jita"}
+        "map:system:54321" -> {:ok, "Amarr"}
+        "map:system:98765" -> {:ok, "Dodixie"}
+        "map:system:123456" -> {:ok, "Hek"}
+        "map:system:1234567" -> {:ok, "Rens"}
+        "map:system:12345678" -> {:ok, "Sobaseki"}
+        "map:system:123456789" -> {:ok, "Tama"}
+        _ -> {:error, :not_found}
+      end
+    end
+
+    def set(_key, _value) do
+      :ok
+    end
+
+    def set(_key, _value, _ttl) do
+      :ok
+    end
+
+    def del(_key) do
+      :ok
+    end
+
+    def exists(key) do
+      case key do
+        "map:system:12345" -> {:ok, 1}
+        "map:system:54321" -> {:ok, 1}
+        "map:system:98765" -> {:ok, 1}
+        "map:system:123456" -> {:ok, 1}
+        "map:system:1234567" -> {:ok, 1}
+        "map:system:12345678" -> {:ok, 1}
+        "map:system:123456789" -> {:ok, 1}
+        _ -> {:ok, 0}
+      end
+    end
+
+    def keys(pattern) do
+      case pattern do
+        "map:system:*" ->
+          {:ok,
+           [
+             "map:system:12345",
+             "map:system:54321",
+             "map:system:98765",
+             "map:system:123456",
+             "map:system:1234567",
+             "map:system:12345678",
+             "map:system:123456789"
+           ]}
+
+        _ ->
+          {:ok, []}
+      end
+    end
+  end
+
+  defmodule MockLogger do
+    @moduledoc """
+    Mock implementation of logger for testing purposes.
+    Captures and verifies logging calls in tests.
+    """
+    def count_batch_event(event, metadata) do
+      {:ok, %{event: event, metadata: metadata}}
+    end
+  end
+
+  defmodule MockZKillClient do
+    @moduledoc """
+    Mock implementation of ZKill client for testing purposes.
+    Provides simulated ZKill API responses for testing scenarios.
+    """
+    def get_killmail(killmail_id, hash) do
+      case {killmail_id, hash} do
+        {"12345", "test_hash"} ->
+          {:ok,
+           %{
+             "killmail_id" => 12_345,
+             "killmail_time" => "2021-01-01T00:00:00Z",
+             "solar_system_id" => 30_000_142,
+             "victim" => %{
+               "character_id" => 100,
+               "corporation_id" => 200,
+               "ship_type_id" => 300
+             },
+             "attackers" => [
+               %{
+                 "character_id" => 101,
+                 "corporation_id" => 201,
+                 "alliance_id" => 301
+               }
+             ]
+           }}
+
+        {"54321", "error_hash"} ->
+          {:error, :not_found}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end
+
+    def get_system_kills(system_id, limit \\ 3) do
+      case system_id do
+        "30000142" ->
+          {:ok,
+           Enum.map(1..limit, fn i ->
+             %{
+               "killmail_id" => 12_345 + i,
+               "killmail_hash" => "test_hash_#{i}",
+               "killmail_time" => "2021-01-01T00:00:00Z",
+               "solar_system_id" => 30_000_142,
+               "victim" => %{
+                 "character_id" => 100,
+                 "corporation_id" => 200,
+                 "ship_type_id" => 300
+               },
+               "attackers" => [
+                 %{
+                   "character_id" => 101,
+                   "corporation_id" => 201,
+                   "alliance_id" => 301
+                 }
+               ]
+             }
+           end)}
+
+        _ ->
+          {:error, :not_found}
+      end
+    end
+  end
+
+  defmodule MockDiscordChannel do
+    @moduledoc """
+    Mock implementation of Discord channel for testing purposes.
+    Simulates Discord channel interactions and message sending.
+    """
+    def get_channel_id(type) do
+      case type do
+        :main -> "123_456_789"
+        :system_kill -> "123_456_789"
+        :character_kill -> "123_456_789"
+        :system -> "123_456_789"
+        :character -> "123_456_789"
+        _ -> "123_456_789"
+      end
+    end
+  end
+end
+
+defmodule WandererNotifier.Notifications.MockDeduplication do
+  @moduledoc """
+  Mock implementation of the deduplication service for testing.
+  """
+
+  def check(_type, _id), do: {:ok, :new}
+  def clear_key(_type, _id), do: :ok
 end

@@ -32,20 +32,20 @@ defmodule WandererNotifier.ESI.Entities.Corporation do
 
   ## Example
       iex> WandererNotifier.ESI.Entities.Corporation.from_esi_data(%{
-      ...>   "corporation_id" => 789012,
+      ...>   "corporation_id" => 789_012,
       ...>   "name" => "Test Corporation",
       ...>   "ticker" => "TSTC",
       ...>   "member_count" => 100,
-      ...>   "alliance_id" => 345678,
+      ...>   "alliance_id" => 345_678,
       ...>   "description" => "A test corporation",
       ...>   "date_founded" => "2020-01-01T00:00:00Z"
       ...> })
       %WandererNotifier.ESI.Entities.Corporation{
-        corporation_id: 789012,
+        corporation_id: 789_012,
         name: "Test Corporation",
         ticker: "TSTC",
         member_count: 100,
-        alliance_id: 345678,
+        alliance_id: 345_678,
         description: "A test corporation",
         founding_date: ~U[2020-01-01 00:00:00Z]
       }

@@ -14,7 +14,7 @@ defmodule WandererNotifier.Config do
     - Web/server
     - API
   """
-  @behaviour WandererNotifier.Config.Behaviour
+  @behaviour WandererNotifier.Config.ConfigBehaviour
   # --- General ENV helpers ---
   def fetch!(key), do: System.get_env(key) || raise("Missing ENV: #{key}")
   def fetch(key, default \\ nil), do: System.get_env(key) || default
@@ -49,6 +49,39 @@ defmodule WandererNotifier.Config do
       character_notifications_enabled: character_notifications_enabled?()
     }
   end
+
+  @impl true
+  def get_notification_setting(type, key) do
+    case Application.get_env(:wanderer_notifier, :config) do
+      nil -> {:ok, true}
+      mod -> mod.get_notification_setting(type, key)
+    end
+  end
+
+  # --- TTL Configuration ---
+  @doc """
+  Returns the TTL for notification deduplication in seconds.
+  Defaults to 3600 seconds (1 hour) if not configured.
+  Can be configured via the :dedup_ttl environment variable.
+  """
+  def notification_dedup_ttl do
+    # Get from environment variable first, then fall back to application config
+    case System.get_env("NOTIFICATION_DEDUP_TTL") do
+      nil ->
+        Application.get_env(:wanderer_notifier, :dedup_ttl, 3600)
+
+      ttl ->
+        case Integer.parse(ttl) do
+          {seconds, _} -> seconds
+          :error -> 3600
+        end
+    end
+  end
+
+  @doc """
+  Returns the TTL for static information caching in seconds.
+  """
+  def static_info_ttl, do: Application.get_env(:wanderer_notifier, :static_info_ttl, 3600)
 
   # --- Version access ---
   @doc """
@@ -105,13 +138,25 @@ defmodule WandererNotifier.Config do
   end
 
   def map_api_key, do: get(:map_api_key, "")
-  def static_info_cache_ttl, do: get(:static_info_cache_ttl, 3600)
 
   # --- Debug config ---
   def debug_logging_enabled?, do: get(:debug_logging_enabled, false)
   def enable_debug_logging, do: set(:debug_logging_enabled, true)
   def disable_debug_logging, do: set(:debug_logging_enabled, false)
   def set_debug_logging(state) when is_boolean(state), do: set(:debug_logging_enabled, state)
+
+  # Cache dev mode value at compile time
+  @dev_mode Application.compile_env(:wanderer_notifier, :dev_mode, false)
+
+  @doc """
+  Returns whether the application is running in development mode.
+  Used to enable more verbose logging and other development features.
+
+  The value is cached at compile time for better performance.
+  To change the value, you must recompile the module or restart the application.
+  """
+  def dev_mode?, do: @dev_mode
+
   defp set(key, value), do: Application.put_env(:wanderer_notifier, key, value)
 
   # --- Notification config ---
@@ -290,15 +335,16 @@ defmodule WandererNotifier.Config do
   @doc "Returns the characters cache TTL in seconds."
   def characters_cache_ttl, do: get(:characters_cache_ttl, 300)
   def kill_dedup_ttl, do: get(:kill_dedup_ttl, 600)
-  @doc "Returns the notification deduplication TTL in seconds."
-  def notification_dedup_ttl, do: get(:notification_dedup_ttl, 3600)
 
   # --- Tracking Data Feature ---
   @doc "Returns true if tracking data should be loaded."
   def should_load_tracking_data?, do: feature_enabled?(:should_load_tracking_data)
 
   # --- Map Debug Settings ---
-  @doc "Returns a map of debug-related map config."
+  @doc """
+  Returns a map of debug-related map config.
+  Useful for troubleshooting map API issues.
+  """
   def map_debug_settings do
     %{
       debug_logging_enabled: debug_logging_enabled?(),

@@ -19,60 +19,16 @@ defmodule WandererNotifier.ConfigProvider do
   Loads configuration from environment variables with options.
   """
   def load(config, _opts) do
-    config =
-      case config do
-        nil -> []
-        [] -> []
-        list when is_list(list) -> list
-        map when is_map(map) -> Map.to_list(map)
-      end
-
-    config = Keyword.put(config, :wanderer_notifier, [])
-    config = put_in(config, [:wanderer_notifier, :features], [])
-
-    # Set core configuration values including the config_module
-    config = put_in(config, [:wanderer_notifier, :config], WandererNotifier.Config)
-
-    # Set discord channel ID
-    config =
-      put_in(
-        config,
-        [:wanderer_notifier, :discord_channel_id],
-        System.get_env("WANDERER_DISCORD_CHANNEL_ID")
-      )
-
-    # Set map token and URL
-    config =
-      put_in(config, [:wanderer_notifier, :map_token], System.get_env("WANDERER_MAP_TOKEN"))
-
-    config =
-      put_in(config, [:wanderer_notifier, :map_url_with_name], System.get_env("WANDERER_MAP_URL"))
-
-    # Set API token
-    config =
-      put_in(
-        config,
-        [:wanderer_notifier, :api_token],
-        System.get_env("WANDERER_NOTIFIER_API_TOKEN")
-      )
-
-    # Set license key
-    config =
-      put_in(config, [:wanderer_notifier, :license_key], System.get_env("WANDERER_LICENSE_KEY"))
-
     config
-    |> put_in([:wanderer_notifier, :port], parse_port())
-    |> put_in(
-      [:wanderer_notifier, :features],
-      notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
-      kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
-      system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
-      character_notifications_enabled:
-        parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
-      status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
-      track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
-    )
-    |> put_in([:wanderer_notifier, :character_exclude_list], parse_character_exclude_list())
+    |> normalize_config()
+    |> add_base_config()
+    |> add_discord_config()
+    |> add_map_config()
+    |> add_api_config()
+    |> add_license_config()
+    |> add_port_config()
+    |> add_features_config()
+    |> add_character_exclude_list()
   end
 
   @doc """
@@ -143,9 +99,16 @@ defmodule WandererNotifier.ConfigProvider do
   end
 
   defp parse_bool(key, default) do
-    case System.get_env(key) do
-      nil -> default
-      value -> parse_bool_value(String.downcase(String.trim(value)), default)
+    System.get_env(key)
+    |> case do
+      nil ->
+        default
+
+      value ->
+        value
+        |> String.downcase()
+        |> String.trim()
+        |> parse_bool_value(default)
     end
   end
 
@@ -178,5 +141,74 @@ defmodule WandererNotifier.ConfigProvider do
         |> String.split(",", trim: true)
         |> Enum.map(&String.trim/1)
     end
+  end
+
+  # Configuration building functions
+  defp normalize_config(config) do
+    case config do
+      nil -> []
+      [] -> []
+      list when is_list(list) -> list
+      map when is_map(map) -> Map.to_list(map)
+    end
+  end
+
+  defp add_base_config(config) do
+    config
+    |> Keyword.put(:wanderer_notifier, [])
+    |> put_in([:wanderer_notifier, :features], [])
+    |> put_in([:wanderer_notifier, :config], WandererNotifier.Config)
+  end
+
+  defp add_discord_config(config) do
+    put_in(
+      config,
+      [:wanderer_notifier, :discord_channel_id],
+      System.get_env("WANDERER_DISCORD_CHANNEL_ID")
+    )
+  end
+
+  defp add_map_config(config) do
+    config
+    |> put_in([:wanderer_notifier, :map_token], System.get_env("WANDERER_MAP_TOKEN"))
+    |> put_in([:wanderer_notifier, :map_url_with_name], System.get_env("WANDERER_MAP_URL"))
+  end
+
+  defp add_api_config(config) do
+    put_in(
+      config,
+      [:wanderer_notifier, :api_token],
+      System.get_env("WANDERER_NOTIFIER_API_TOKEN")
+    )
+  end
+
+  defp add_license_config(config) do
+    put_in(config, [:wanderer_notifier, :license_key], System.get_env("WANDERER_LICENSE_KEY"))
+  end
+
+  defp add_port_config(config) do
+    put_in(config, [:wanderer_notifier, :port], parse_port())
+  end
+
+  defp add_features_config(config) do
+    put_in(
+      config,
+      [:wanderer_notifier, :features],
+      notifications_enabled: parse_bool("WANDERER_NOTIFICATIONS_ENABLED", true),
+      kill_notifications_enabled: parse_bool("WANDERER_KILL_NOTIFICATIONS_ENABLED", true),
+      system_notifications_enabled: parse_bool("WANDERER_SYSTEM_NOTIFICATIONS_ENABLED", true),
+      character_notifications_enabled:
+        parse_bool("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED", true),
+      status_messages_enabled: parse_bool("WANDERER_ENABLE_STATUS_MESSAGES", true),
+      track_kspace: parse_bool("WANDERER_FEATURE_TRACK_KSPACE", true)
+    )
+  end
+
+  defp add_character_exclude_list(config) do
+    put_in(
+      config,
+      [:wanderer_notifier, :character_exclude_list],
+      parse_character_exclude_list()
+    )
   end
 end

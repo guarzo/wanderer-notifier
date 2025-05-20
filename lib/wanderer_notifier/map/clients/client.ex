@@ -10,6 +10,7 @@ defmodule WandererNotifier.Map.Clients.Client do
   alias WandererNotifier.Map.Clients.CharactersClient
   alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys
 
   @doc """
   Updates system information from the map API.
@@ -81,11 +82,16 @@ defmodule WandererNotifier.Map.Clients.Client do
   """
   def update_tracked_characters(cached_characters \\ nil, opts \\ []) do
     AppLogger.api_debug("Starting character update")
-    current_characters = cached_characters || CacheRepo.get("map:characters") || []
-    current_characters_list = ensure_list(current_characters)
 
-    CharactersClient.update_tracked_characters(current_characters_list, opts)
+    cached_characters
+    |> get_current_characters()
+    |> ensure_list()
+    |> CharactersClient.update_tracked_characters(opts)
   end
+
+  # Helper function to get current characters from cache
+  defp get_current_characters(nil), do: CacheRepo.get(Keys.character_list()) || []
+  defp get_current_characters(chars), do: chars
 
   # Helper function to ensure we're working with a list
   defp ensure_list(nil), do: []

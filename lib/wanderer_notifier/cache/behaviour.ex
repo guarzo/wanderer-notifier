@@ -73,6 +73,20 @@ defmodule WandererNotifier.Cache.Behaviour do
   """
   @callback init_batch_logging() :: :ok
 
+  @doc """
+  Gets multiple values from the cache by keys.
+  Returns a list of {:ok, value} or {:error, reason} for each key.
+  """
+  @callback mget(keys :: list(key())) ::
+              {:ok, list({:ok, value()} | {:error, reason()})} | {:error, reason()}
+
+  @doc """
+  Gets a killmail from the cache by ID.
+  Returns {:ok, killmail} if found, {:error, :not_found} if not found, or {:error, reason} on error.
+  """
+  @callback get_kill(kill_id :: String.t() | integer()) ::
+              {:ok, map()} | {:error, :not_found | :not_cached | reason()}
+
   @optional_callbacks [
     get_recent_kills: 0,
     init_batch_logging: 0

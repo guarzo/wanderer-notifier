@@ -31,35 +31,24 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
     url = characters_url()
     headers = auth_header()
 
-    result =
-      with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
-           {:ok, decoded} <- decode_body(body),
-           chars when is_list(chars) <- extract_characters(decoded) do
-        Logger.api_debug("API responded with #{length(chars)} characters")
-        process_and_cache(chars, cached, opts)
-      else
-        {:ok, %{status_code: status, body: body}} ->
-          error_preview = if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
-
-          Logger.api_error("Character API HTTP error",
-            status: status,
-            body_preview: error_preview
-          )
-
-          {:error, {:http_error, status}}
-
-        {:error, reason} ->
-          Logger.api_error("Character API request failed", error: inspect(reason))
-          {:error, reason}
-
-        other ->
-          Logger.api_error("Unexpected result from character API", result: inspect(other))
-          {:error, :unexpected_result}
-      end
+    result = fetch_and_process_characters(url, headers, cached, opts)
 
     case result do
       {:ok, _} = ok -> ok
       {:error, reason} -> fallback(cached, reason)
+    end
+  end
+
+  defp fetch_and_process_characters(url, headers, cached, opts) do
+    with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
+         {:ok, decoded} <- decode_body(body),
+         chars when is_list(chars) <- extract_characters(decoded) do
+      Logger.api_debug("API responded with #{length(chars)} characters")
+      process_and_cache(chars, cached, opts)
+    else
+      {:ok, %{status_code: status, body: body}} -> handle_http_error(status, body)
+      {:error, reason} -> handle_request_error(reason)
+      other -> handle_unexpected_result(other)
     end
   end
 
@@ -120,22 +109,25 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   # Pull out the list of character maps
   defp extract_characters(%{"data" => groups}) when is_list(groups) do
-    Logger.api_debug("Extracting characters from API response with #{length(groups)} groups")
+    Logger.api_info("Extracting characters from API response with #{length(groups)} groups")
 
     processed_groups =
       groups
       |> Enum.filter(&is_list(&1["characters"]))
 
-    Logger.api_debug("Found #{length(processed_groups)} groups with character lists")
+    # Wrap verbose debug logging in dev_mode? check
+    if Config.dev_mode?() do
+      Logger.api_debug("Found #{length(processed_groups)} groups with character lists")
 
-    # Log group structure for debugging
-    if length(processed_groups) > 0 do
-      sample_group = List.first(processed_groups)
-      group_keys = Map.keys(sample_group)
-      Logger.api_debug("Group structure keys", keys: inspect(group_keys))
+      # Log group structure for debugging
+      if length(processed_groups) > 0 do
+        sample_group = List.first(processed_groups)
+        group_keys = Map.keys(sample_group)
+        Logger.api_debug("Group structure keys", keys: inspect(group_keys))
 
-      char_count = length(sample_group["characters"])
-      Logger.api_debug("First group has #{char_count} characters")
+        char_count = length(sample_group["characters"])
+        Logger.api_debug("First group has #{char_count} characters")
+      end
     end
 
     characters = processed_groups |> Enum.flat_map(& &1["characters"])
@@ -153,8 +145,8 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   # Main processing pipeline: detect new, cache, notify
   defp process_and_cache(chars, cached, opts) do
-    # Log a sample of the data for debugging
-    if length(chars) > 0 do
+    # Log a sample of the data for debugging - only in dev mode
+    if Config.dev_mode?() && length(chars) > 0 do
       sample_char = List.first(chars)
       # Use only a few key fields to avoid logging sensitive data
       sample_fields = Map.take(sample_char, ["character_id", "corporation_id", "eve_id", "name"])
@@ -178,36 +170,58 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
   # Compare against cached eve_ids
   defp detect_new(chars, cached) do
-    # Create a set of eve_ids from the cached list for faster lookup
-    seen = MapSet.new(cached, & &1["eve_id"])
+    seen = create_seen_set(cached)
+    log_detection_stats(chars, seen)
+    log_sample_ids(chars, seen)
+    find_new_characters(chars, seen)
+  end
 
+  defp create_seen_set(cached) do
+    MapSet.new(cached, & &1["eve_id"])
+  end
+
+  defp log_detection_stats(chars, seen) do
     Logger.api_debug(
       "Detecting new characters - API count: #{length(chars)}, cached IDs count: #{MapSet.size(seen)}"
     )
+  end
 
-    # Log a few eve_ids from both sets to help with debugging
+  defp log_sample_ids(chars, seen) do
+    if Config.dev_mode?() do
+      log_api_sample_ids(chars)
+      log_cached_sample_ids(seen)
+    end
+  end
+
+  defp log_api_sample_ids(chars) do
     if length(chars) > 0 do
-      # Sample some ids for debugging
       sample_api_ids = chars |> Enum.take(3) |> Enum.map(& &1["eve_id"])
       Logger.api_debug("Sample API eve_ids", ids: inspect(sample_api_ids))
     end
+  end
 
+  defp log_cached_sample_ids(seen) do
     if MapSet.size(seen) > 0 do
       sample_cached_ids = MapSet.to_list(seen) |> Enum.take(3)
       Logger.api_debug("Sample cached eve_ids", ids: inspect(sample_cached_ids))
     end
+  end
 
-    # Find characters in the API response that aren't in the cache
+  defp find_new_characters(chars, seen) do
     new_chars = Enum.reject(chars, &(&1["eve_id"] in seen))
+    log_new_characters(new_chars)
+    new_chars
+  end
 
-    # Log the result
+  defp log_new_characters(new_chars) do
     if length(new_chars) > 0 do
       Logger.api_info("Found #{length(new_chars)} new characters not in cache")
-      new_sample = new_chars |> Enum.take(2) |> Enum.map(&Map.take(&1, ["eve_id", "name"]))
-      Logger.api_debug("Sample new characters", sample: inspect(new_sample))
-    end
 
-    new_chars
+      if Config.dev_mode?() do
+        new_sample = new_chars |> Enum.take(2) |> Enum.map(&Map.take(&1, ["eve_id", "name"]))
+        Logger.api_debug("Sample new characters", sample: inspect(new_sample))
+      end
+    end
   end
 
   # Write to cache with TTL
@@ -221,7 +235,9 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
 
     case CachexImpl.set(key, chars, ttl) do
       :ok ->
-        Logger.api_debug("Characters successfully cached")
+        if Config.dev_mode?() do
+          Logger.api_debug("Characters successfully cached")
+        end
 
       {:error, reason} ->
         Logger.api_error("Failed to cache characters", reason: inspect(reason))
@@ -301,4 +317,26 @@ defmodule WandererNotifier.Map.Clients.CharactersClient do
   # Preview for logging
   defp slice(body) when is_binary(body), do: String.slice(body, 0, 200)
   defp slice(_), do: ""
+
+  # Error handling functions
+  defp handle_http_error(status, body) do
+    error_preview = if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
+
+    Logger.api_error("Character API HTTP error",
+      status: status,
+      body_preview: error_preview
+    )
+
+    {:error, {:http_error, status}}
+  end
+
+  defp handle_request_error(reason) do
+    Logger.api_error("Character API request failed", error: inspect(reason))
+    {:error, reason}
+  end
+
+  defp handle_unexpected_result(result) do
+    Logger.api_error("Unexpected result from character API", result: inspect(result))
+    {:error, :unexpected_result}
+  end
 end

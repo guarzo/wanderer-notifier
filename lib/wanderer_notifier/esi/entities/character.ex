@@ -30,18 +30,18 @@ defmodule WandererNotifier.ESI.Entities.Character do
 
   ## Example
       iex> WandererNotifier.ESI.Entities.Character.from_esi_data(%{
-      ...>   "character_id" => 123456,
+      ...>   "character_id" => 123_456,
       ...>   "name" => "Test Character",
-      ...>   "corporation_id" => 789012,
-      ...>   "alliance_id" => 345678,
+      ...>   "corporation_id" => 789_012,
+      ...>   "alliance_id" => 345_678,
       ...>   "security_status" => 0.5,
       ...>   "birthday" => "2020-01-01T00:00:00Z"
       ...> })
       %WandererNotifier.ESI.Entities.Character{
-        character_id: 123456,
+        character_id: 123_456,
         name: "Test Character",
-        corporation_id: 789012,
-        alliance_id: 345678,
+        corporation_id: 789_012,
+        alliance_id: 345_678,
         security_status: 0.5,
         birthday: ~U[2020-01-01 00:00:00Z]
       }

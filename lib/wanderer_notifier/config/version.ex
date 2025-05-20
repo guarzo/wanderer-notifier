@@ -69,15 +69,29 @@ defmodule WandererNotifier.Config.Version do
   end
 
   # Private helper to compare version tuples
-  defp compare_versions({major1, minor1, patch1}, {major2, minor2, patch2}) do
-    cond do
-      major1 > major2 -> 1
-      major1 < major2 -> -1
-      minor1 > minor2 -> 1
-      minor1 < minor2 -> -1
-      patch1 > patch2 -> 1
-      patch1 < patch2 -> -1
-      true -> 0
-    end
-  end
+  defp compare_versions({major1, _minor1, _patch1}, {major2, _minor2, _patch2})
+       when major1 > major2,
+       do: 1
+
+  defp compare_versions({major1, _minor1, _patch1}, {major2, _minor2, _patch2})
+       when major1 < major2,
+       do: -1
+
+  defp compare_versions({_major1, minor1, _patch1}, {_major2, minor2, _patch2})
+       when minor1 > minor2,
+       do: 1
+
+  defp compare_versions({_major1, minor1, _patch1}, {_major2, minor2, _patch2})
+       when minor1 < minor2,
+       do: -1
+
+  defp compare_versions({_major1, _minor1, patch1}, {_major2, _minor2, patch2})
+       when patch1 > patch2,
+       do: 1
+
+  defp compare_versions({_major1, _minor1, patch1}, {_major2, _minor2, patch2})
+       when patch1 < patch2,
+       do: -1
+
+  defp compare_versions({_, _, _}, {_, _, _}), do: 0
 end

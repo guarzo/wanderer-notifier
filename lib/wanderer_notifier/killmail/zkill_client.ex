@@ -2,11 +2,13 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   @moduledoc """
   Client for interacting with the ZKillboard API.
   """
-
   @behaviour WandererNotifier.Killmail.ZKillClientBehaviour
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.ESI.Service, as: ESIService
   require Logger
+
+  # -- Configuration --
 
   @base_url Application.compile_env(
               :wanderer_notifier,
@@ -18,32 +20,32 @@ defmodule WandererNotifier.Killmail.ZKillClient do
                 :zkill_user_agent,
                 "WandererNotifier/1.0"
               )
-  @rate_limit_ms Application.compile_env(:wanderer_notifier, :zkill_rate_limit_ms, 1_000)
   @max_retries Application.compile_env(:wanderer_notifier, :zkill_max_retries, 3)
   @retry_backoff_ms Application.compile_env(:wanderer_notifier, :zkill_retry_backoff_ms, 2_000)
 
   @type date_range :: %{start: DateTime.t(), end: DateTime.t()}
 
+  # -- Public Behaviour Implementation --
+
   @impl true
   @spec get_single_killmail(integer()) :: {:ok, map()} | {:error, any()}
   def get_single_killmail(kill_id) do
-    fetch_kill("#{@base_url}/killID/#{kill_id}/", kill_id: kill_id)
+    url = "#{@base_url}/killID/#{kill_id}/"
+    handle_single_request(url, kill_id)
   end
 
   @impl true
   @spec get_recent_kills(non_neg_integer()) :: {:ok, [map()]} | {:error, any()}
   def get_recent_kills(limit \\ 10) do
-    fetch_list("#{@base_url}/recent/", limit: limit, method: "get_recent_kills")
+    url = "#{@base_url}/recent/"
+    handle_list_request(url, limit, :get_recent_kills)
   end
 
   @impl true
   @spec get_system_kills(integer(), non_neg_integer()) :: {:ok, [map()]} | {:error, any()}
   def get_system_kills(system_id, limit \\ 5) do
-    fetch_list("#{@base_url}/systemID/#{system_id}/",
-      limit: limit,
-      method: "get_system_kills",
-      system_id: system_id
-    )
+    url = "#{@base_url}/systemID/#{system_id}/"
+    handle_list_request(url, limit, :get_system_kills)
   end
 
   @impl true
@@ -51,568 +53,114 @@ defmodule WandererNotifier.Killmail.ZKillClient do
           {:ok, [map()]} | {:error, any()}
   def get_character_kills(character_id, date_range \\ nil, limit \\ 100) do
     url = build_character_url(character_id, date_range)
-
-    fetch_list(url,
-      limit: limit,
-      method: "get_character_kills",
-      character_id: character_id,
-      date_range: format_date_range(date_range)
-    )
+    handle_list_request(url, limit, :get_character_kills)
   end
 
-  # PRIVATE PIPELINE
+  # -- Internal Request Handlers --
 
-  defp fetch_kill(url, opts) do
-    method = Keyword.get(opts, :method, "get_single_killmail")
-    log_info(method, opts)
+  defp handle_single_request(url, id) do
+    log_api(:get_single_killmail, url: url, kill_id: id)
 
-    with {:ok, decoded} <- request_and_decode(url) do
-      decode_single(decoded, Keyword.get(opts, :kill_id))
+    with {:ok, body} <- perform_request(url),
+         {:ok, parsed} <- parse_response(body),
+         {:ok, kill} <- extract_single(parsed, id) do
+      {:ok, kill}
     end
   end
 
-  defp fetch_list(url, opts) do
-    method = Keyword.get(opts, :method)
-    log_info(method, opts)
+  defp handle_list_request(url, limit, method) do
+    log_api(method, url: url, limit: limit)
 
-    with {:ok, decoded} <- request_and_decode(url) do
-      # At this point, decoded should either be already processed strings or an empty list
-      if is_list(decoded) do
-        # Just take the number of items we need
-        limit = Keyword.get(opts, :limit, 10)
-        result = Enum.take(decoded, limit)
+    with {:ok, body} <- perform_request(url),
+         {:ok, parsed} <- parse_response(body) do
+      items = parsed |> List.wrap() |> Enum.take(limit)
 
-        # Log that we processed and limited the results
-        AppLogger.api_debug("ZKill processed list", %{
-          items: length(result),
-          method: method,
-          limit: limit
-        })
+      AppLogger.api_debug("ZKill processed list", %{
+        method: method,
+        items: length(items),
+        limit: limit
+      })
 
-        {:ok, result}
-      else
-        AppLogger.api_warn("Unexpected decoded data format", %{
-          format: inspect(decoded)
-        })
-
-        {:ok, []}
-      end
+      {:ok, format_kills(items)}
     end
   end
 
-  defp request_and_decode(url) do
-    :timer.sleep(@rate_limit_ms)
+  # -- HTTP + Retry Pipeline --
 
-    fn_request = fn -> make_http_request(url) end
+  defp perform_request(url), do: retry(fn -> make_http_request(url) end, 0)
 
-    case make_request_with_retry(fn_request, 0) do
-      {:ok, response} ->
-        # Log response type for debugging
-        require Logger
-
-        # Safe type analysis
-        response_type = typemap(response)
-
-        response_keys =
-          cond do
-            is_map(response) ->
-              Map.keys(response)
-
-            is_list(response) && length(response) > 0 && is_map(hd(response)) ->
-              Map.keys(hd(response))
-
-            true ->
-              []
-          end
-
-        response_sample =
-          if is_map(response),
-            do: inspect(Map.get(response, :body, "no body")),
-            else: inspect(response)
-
-        Logger.info(
-          "ZKill response analysis: type=#{response_type}, keys=#{inspect(response_keys)}, sample=#{String.slice(response_sample, 0, 100)}"
-        )
-
-        # Process the response based on its type
-        process_zkill_response(response, url)
-
-      {:error, error_details} = _error ->
-        # Get detailed info about the error type and what happened
-        error_type = typemap(error_details)
-        status_code = Process.get(:last_zkill_status, nil)
-        error_str = inspect(error_details)
-
-        # Log with detailed information
-        Logger.error(
-          "[ZKill API] Failed after retries: Error type: #{error_type}, Status: #{status_code}, Details: #{error_str}"
-        )
-
-        {:error, error_details}
-    end
-  rescue
-    e ->
-      Logger.error("Exception in ZKill request_and_decode: #{inspect(e)}")
-      {:ok, ["Error retrieving zkill data"]}
-  end
-
-  # Helper function to process ZKill responses
-  defp process_zkill_response(response, url) do
-    cond do
-      is_list(response) ->
-        process_list_response(response, url)
-
-      is_binary(response) ->
-        process_binary_response(response, url)
-
-      true ->
-        # Safe fallback for any other response types
-        {:ok, ["ZKill API data unavailable at this time"]}
-    end
-  end
-
-  # Process list type responses (direct JSON array)
-  defp process_list_response(response, url) do
-    # Extract limit from URL or use default
-    limit = extract_limit_from_url(url)
-
-    # Only take the number we need before formatting
-    kills = Enum.take(response, limit)
-
-    # Try to format them - if it fails, return a safe message
-    try do
-      kill_strings = format_kills_from_list(kills)
-      {:ok, kill_strings}
-    rescue
-      e ->
-        Logger.error("Error formatting kills list: #{Exception.message(e)}")
-        {:ok, ["Error processing kill data"]}
-    end
-  end
-
-  # Extract limit parameter from URL or use default
-  defp extract_limit_from_url(url) do
-    case Regex.run(~r/limit\/(\d+)\//, url) do
-      [_, limit_str] -> String.to_integer(limit_str)
-      # Default limit
-      _ -> 10
-    end
-  end
-
-  # Process string/binary response, likely JSON that needs decoding
-  defp process_binary_response(response, url) do
-    try do
-      case Jason.decode(response) do
-        {:ok, decoded} when is_list(decoded) ->
-          process_zkill_response(decoded, url)
-
-        {:ok, decoded} when is_map(decoded) ->
-          Logger.info("Received map response from ZKill, expected list")
-          {:ok, ["ZKill API response format changed"]}
-
-        _ ->
-          {:ok, ["ZKill API data unavailable at this time"]}
-      end
-    rescue
-      e ->
-        Logger.error("Error decoding JSON response: #{Exception.message(e)}")
-        {:ok, ["Error processing ZKill data"]}
-    end
-  end
-
-  # Format a list of kill data maps into simple strings
-  defp format_kills_from_list(kills) when is_list(kills) do
-    require Logger
-
-    # Get the ESI service
-    esi_service = get_esi_service()
-
-    # Process each kill individually, with safe handling
-    kills
-    |> Enum.map(fn kill ->
-      try do
-        format_single_kill(kill, esi_service)
-      rescue
-        e ->
-          Logger.warning("Error formatting kill: #{Exception.message(e)}")
-          "Unknown kill"
-      end
-    end)
-  end
-
-  # Fallback for non-list inputs
-  defp format_kills_from_list(_), do: ["No kill data available"]
-
-  # Get the configured ESI service
-  defp get_esi_service do
-    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
-  end
-
-  # Format a single kill record into a formatted string
-  defp format_single_kill(kill, esi_service) do
-    require Logger
-
-    try do
-      # Extract the basic information we need
-      kill_id = Map.get(kill, "killmail_id", "Unknown")
-
-      # Get value from zkb object
-      zkb = Map.get(kill, "zkb", %{})
-      value = extract_kill_value(zkb)
-      hash = Map.get(zkb, "hash")
-
-      # Log for debugging
-      Logger.info("Processing kill: #{kill_id} with hash: #{hash}")
-
-      # Get kill details from ESI
-      kill_details = get_kill_details(kill_id, hash, esi_service)
-
-      # Parse kill_details if it's a string (JSON)
-      kill_details = parse_if_string(kill_details)
-
-      # Extract ship and victim information
-      {ship_type_id, victim_id} = extract_ship_and_victim_ids(kill_details)
-
-      # Get ship and victim names
-      ship_name = get_ship_name(ship_type_id, esi_service)
-      victim_name = get_victim_name(victim_id, esi_service)
-
-      # Format time string
-      time_ago = format_kill_time(kill_details)
-
-      # Format the kill data into a detailed string with link
-      "[#{ship_name} (#{format_isk(value)})](https://zkillboard.com/kill/#{kill_id}/) - #{victim_name} #{time_ago}"
-    rescue
-      e ->
-        Logger.warning("Error formatting kill data: #{Exception.message(e)}")
-        "Unknown Ship (0 ISK) - Unknown"
-    end
-  end
-
-  # Parse a string to JSON if needed
-  defp parse_if_string(nil), do: nil
-
-  defp parse_if_string(data) when is_binary(data) do
-    case Jason.decode(data) do
-      {:ok, parsed} -> parsed
-      {:error, _} -> %{}
-    end
-  end
-
-  defp parse_if_string(data), do: data
-
-  # Extract the kill value from ZKB data
-  defp extract_kill_value(zkb) do
-    Map.get(zkb, "totalValue", 0) || Map.get(zkb, "destroyedValue", 0) || 0
-  end
-
-  # Get kill details from ESI
-  defp get_kill_details(_kill_id, nil, _esi_service), do: nil
-
-  defp get_kill_details(kill_id, hash, esi_service) do
-    require Logger
-
-    case esi_service.get_killmail(kill_id, hash) do
-      {:ok, details} ->
-        # Log a small portion of the response to help with debugging
-        response_preview =
-          case details do
-            str when is_binary(str) -> String.slice(str, 0, 100)
-            map when is_map(map) -> inspect(map, limit: 2)
-            other -> inspect(other)
-          end
-
-        Logger.debug(
-          "ESI killmail response format: type=#{typemap(details)}, preview=#{response_preview}"
-        )
-
-        details
+  defp retry(fun, attempt) when attempt < @max_retries do
+    case fun.() do
+      {:ok, resp} ->
+        {:ok, resp}
 
       {:error, reason} ->
-        Logger.warning("Failed to get kill details from ESI: #{inspect(reason)}")
-        nil
+        Logger.warning("ZKill request error: #{inspect(reason)}, retry ##{attempt + 1}")
+        :timer.sleep(@retry_backoff_ms * (attempt + 1))
+        retry(fun, attempt + 1)
     end
   end
 
-  # Extract ship type ID and victim ID from kill details
-  defp extract_ship_and_victim_ids(nil), do: {nil, nil}
+  defp retry(_, attempt), do: {:error, {:max_retries_reached, attempt}}
 
-  defp extract_ship_and_victim_ids(kill_details) do
-    require Logger
+  # -- Raw HTTP Request (via configured HTTP client) --
 
-    try do
-      victim = Map.get(kill_details, "victim", %{})
-
-      ship_type_id = Map.get(victim, "ship_type_id")
-      character_id = Map.get(victim, "character_id")
-
-      Logger.debug(
-        "Extracted IDs from kill details - Ship Type ID: #{inspect(ship_type_id)}, Character ID: #{inspect(character_id)}"
-      )
-
-      {ship_type_id, character_id}
-    rescue
-      e ->
-        Logger.warning(
-          "Error extracting ship/victim IDs: #{Exception.message(e)}, data type: #{typemap(kill_details)}, data: #{inspect(kill_details, limit: 5)}"
-        )
-
-        {nil, nil}
-    end
-  end
-
-  # Get ship name from ship type ID
-  defp get_ship_name(nil, _esi_service), do: "Unknown Ship"
-
-  defp get_ship_name(ship_type_id, esi_service) do
-    require Logger
-
-    # Normalize the ship_type_id to ensure it's an integer
-    normalized_id = normalize_id(ship_type_id)
-
-    # Query the ESI service and extract the name
-    extract_ship_name_from_esi_response(esi_service.get_ship_type_name(normalized_id, []))
-  end
-
-  # Helper to normalize IDs that might be strings to integers
-  defp normalize_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {parsed_id, _} -> parsed_id
-      :error -> id
-    end
-  end
-
-  defp normalize_id(id), do: id
-
-  # Extract ship name from ESI service response
-  defp extract_ship_name_from_esi_response({:ok, %{"name" => name}}), do: name
-
-  defp extract_ship_name_from_esi_response({:ok, data}) when is_map(data) do
-    Map.get(data, "name", "Unknown Ship")
-  end
-
-  defp extract_ship_name_from_esi_response({:ok, data}) when is_binary(data) do
-    case Jason.decode(data) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "Unknown Ship"
-    end
-  end
-
-  defp extract_ship_name_from_esi_response(error) do
-    Logger.debug("Failed to get ship name: #{inspect(error)}")
-    "Unknown Ship"
-  end
-
-  # Get victim name from victim ID
-  defp get_victim_name(nil, _esi_service), do: "Unknown"
-
-  defp get_victim_name(victim_id, esi_service) do
-    require Logger
-
-    # Normalize the victim_id to ensure it's an integer
-    normalized_id = normalize_id(victim_id)
-
-    # Query the ESI service and extract the name
-    extract_character_name_from_esi_response(esi_service.get_character_info(normalized_id, []))
-  end
-
-  # Extract character name from ESI service response
-  defp extract_character_name_from_esi_response({:ok, %{"name" => name}}), do: name
-
-  defp extract_character_name_from_esi_response({:ok, data}) when is_map(data) do
-    Map.get(data, "name", "Unknown")
-  end
-
-  defp extract_character_name_from_esi_response({:ok, data}) when is_binary(data) do
-    case Jason.decode(data) do
-      {:ok, %{"name" => name}} -> name
-      _ -> "Unknown"
-    end
-  end
-
-  defp extract_character_name_from_esi_response(error) do
-    Logger.debug("Failed to get character name: #{inspect(error)}")
-    "Unknown"
-  end
-
-  # Format kill time into a relative time string
-  defp format_kill_time(nil), do: ""
-
-  defp format_kill_time(kill_details) do
-    kill_time = Map.get(kill_details, "killmail_time")
-    format_time_string(kill_time)
-  end
-
-  # Format time string from kill data
-  defp format_time_string(nil), do: ""
-
-  defp format_time_string(time_str) do
-    try do
-      case DateTime.from_iso8601(time_str) do
-        {:ok, datetime, _} ->
-          now = DateTime.utc_now()
-          diff_seconds = DateTime.diff(now, datetime)
-          format_time_diff(diff_seconds)
-
-        _ ->
-          ""
-      end
-    rescue
-      _ -> ""
-    end
-  end
-
-  # Format time difference
-  defp format_time_diff(seconds) when seconds < 60, do: "(just now)"
-  defp format_time_diff(seconds) when seconds < 3600, do: "(#{div(seconds, 60)}m ago)"
-  defp format_time_diff(seconds) when seconds < 86_400, do: "(#{div(seconds, 3600)}h ago)"
-  defp format_time_diff(seconds), do: "(#{div(seconds, 86_400)}d ago)"
-
-  # Format ISK value
-  defp format_isk(value) when is_number(value) do
-    cond do
-      value >= 1_000_000_000 -> "#{Float.round(value / 1_000_000_000, 1)}B ISK"
-      value >= 1_000_000 -> "#{Float.round(value / 1_000_000, 1)}M ISK"
-      value >= 1_000 -> "#{Float.round(value / 1_000, 1)}K ISK"
-      true -> "#{trunc(value)} ISK"
-    end
-  end
-
-  defp format_isk(_), do: "0 ISK"
-
-  # Helper function to get the type of any value as a string
-  defp typemap(value) when is_binary(value), do: "binary"
-  defp typemap(value) when is_list(value), do: "list"
-  defp typemap(value) when is_map(value), do: "map"
-  defp typemap(value) when is_struct(value), do: "struct:#{inspect(value.__struct__)}"
-  defp typemap(value) when is_tuple(value), do: "tuple:#{tuple_size(value)}"
-  defp typemap(value) when is_atom(value), do: "atom:#{value}"
-  defp typemap(value) when is_integer(value), do: "integer:#{value}"
-  defp typemap(value) when is_float(value), do: "float:#{value}"
-  defp typemap(value) when is_function(value), do: "function"
-  defp typemap(value) when is_pid(value), do: "pid"
-  defp typemap(value) when is_port(value), do: "port"
-  defp typemap(value) when is_reference(value), do: "reference"
-  defp typemap(_), do: "unknown"
-
-  defp log_info(method, meta) do
-    AppLogger.api_info("ZKill #{method}", Map.new(meta))
-  end
-
-  @spec make_http_request(String.t()) :: {:ok, String.t() | map()} | {:error, any()}
   defp make_http_request(url) do
-    headers = build_headers()
+    headers = [
+      {"Accept", "application/json"},
+      {"User-Agent", @user_agent},
+      {"Cache-Control", "no-cache"}
+    ]
+
     opts = [recv_timeout: 5_000, timeout: 5_000, follow_redirect: true]
 
-    try do
-      case http_client().get(url, headers, opts) do
-        {:ok, %{status_code: 200, body: body}} ->
-          AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
-          {:ok, body}
+    client =
+      Application.get_env(
+        :wanderer_notifier,
+        :http_client,
+        WandererNotifier.HttpClient.Httpoison
+      )
 
-        {:ok, %{status_code: status, body: body}} ->
-          # Parse body to see if there's additional error information
-          body_preview = sample(body)
-          parsed_error = try_parse_error_body(body)
+    case client.get(url, headers, opts) do
+      {:ok, %{status_code: 200, body: body}} ->
+        AppLogger.api_debug("ZKill response OK", %{url: url, sample: sample(body)})
+        {:ok, body}
 
-          AppLogger.api_error("ZKill HTTP error", %{
-            status: status,
-            url: url,
-            sample: body_preview,
-            parsed_error: parsed_error
-          })
+      {:ok, %{status_code: status, body: body}} ->
+        error_info = try_parse_error_body(body)
+        AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, error: error_info})
+        {:error, {:http_error, status}}
 
-          # Log the error with more details
-          Logger.error(
-            "[ZKill API] HTTP error: Status #{status}, URL: #{url}, Response: #{body_preview}, Parsed: #{inspect(parsed_error)}"
-          )
-
-          {:error, {:http_error, status}}
-
-        {:error, %HTTPoison.Error{reason: :timeout}} ->
-          AppLogger.api_error("ZKill request timeout", %{url: url})
-          {:error, :timeout}
-
-        {:error, %HTTPoison.Error{reason: :econnrefused}} ->
-          AppLogger.api_error("ZKill connection refused", %{url: url})
-          {:error, :connection_refused}
-
-        {:error, %HTTPoison.Error{reason: :closed}} ->
-          AppLogger.api_error("ZKill connection closed", %{url: url})
-          {:error, :connection_closed}
-
-        {:error, %HTTPoison.Error{reason: reason}} ->
-          AppLogger.api_error("ZKill HTTPoison error", %{
-            error_type: "HTTPoison.Error",
-            reason: inspect(reason),
-            url: url
-          })
-
-          {:error, {:httpoison_error, reason}}
-
-        {:error, reason} ->
-          AppLogger.api_error("ZKill request failed", %{error: inspect(reason), url: url})
-          {:error, reason}
-      end
-    rescue
-      e ->
-        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
-        error_struct = inspect(e.__struct__)
-        error_message = Exception.message(e)
-
-        AppLogger.api_error("Exception in ZKill HTTP request", %{
-          error_type: error_struct,
-          message: error_message,
-          url: url,
-          stacktrace: stacktrace
-        })
-
-        Logger.error("[ZKill API] Exception: #{error_struct} - #{error_message}\n#{stacktrace}")
-        {:error, {:exception, error_message, error_struct}}
-    catch
-      kind, reason ->
-        stacktrace = Exception.format_stacktrace(__STACKTRACE__)
-        reason_type = typemap(reason)
-        reason_str = inspect(reason)
-
-        AppLogger.api_error("Caught error in ZKill HTTP request", %{
-          kind: kind,
-          reason_type: reason_type,
-          reason: reason_str,
-          url: url,
-          stacktrace: stacktrace
-        })
-
-        Logger.error("[ZKill API] Caught #{kind}: #{reason_type} - #{reason_str}\n#{stacktrace}")
-        {:error, {:caught, {kind, reason}}}
+      {:error, reason} ->
+        Logger.error("ZKill HTTP client error: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
-  defp decode_single([single] = _list, _id) when is_map(single), do: {:ok, single}
-  defp decode_single(%{} = single, _id), do: {:ok, single}
+  # -- Decode JSON or pass through maps/lists --
 
-  defp decode_single(list, id) when is_list(list) and length(list) > 0 do
-    # The API sometimes returns a list of maps, try to extract the first one
+  defp parse_response(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> {:ok, decoded}
+      _ -> {:error, :invalid_json}
+    end
+  end
+
+  defp parse_response(data), do: {:ok, data}
+
+  # -- Single Kill Extraction --
+
+  defp extract_single(list, id) when is_list(list) do
     case hd(list) do
-      %{"killmail_id" => _} = single ->
-        # If we have a killmail_id, it's a valid killmail response
-        {:ok, single}
-
-      _ ->
-        AppLogger.api_warn("No killmail found in list", %{kill_id: id})
-        {:error, {:not_found, id}}
+      %{"killmail_id" => _} = item -> {:ok, item}
+      _ -> {:error, {:not_found, id}}
     end
   end
 
-  defp decode_single([], id) do
-    AppLogger.api_warn("No killmail found", %{kill_id: id})
-    {:error, {:not_found, id}}
-  end
+  defp extract_single(%{"killmail_id" => _} = map, _), do: {:ok, map}
+  defp extract_single(_, id), do: {:error, {:unexpected_format, id}}
 
-  defp decode_single(_other, id) do
-    AppLogger.api_warn("Unexpected format", %{kill_id: id})
-    {:error, {:unexpected_format, id}}
-  end
+  # -- URL Builders --
 
   defp build_character_url(id, nil), do: "#{@base_url}/characterID/#{id}/"
 
@@ -623,169 +171,100 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     "#{@base_url}/characterID/#{id}/startTime/#{start_iso}/endTime/#{end_iso}/"
   end
 
-  defp format_date_range(nil), do: "none"
+  # -- Formatting Kills into Strings --
 
-  defp format_date_range(%{start: s, end: e}),
-    do: %{start_time: DateTime.to_iso8601(s), end_time: DateTime.to_iso8601(e)}
+  defp format_kills(kills), do: Enum.map(kills, &format_kill/1)
 
-  defp sample(body) when is_binary(body) do
-    if String.valid?(body) do
-      String.slice(body, 0, 200)
+  defp format_kill(kill) do
+    kill_id = Map.get(kill, "killmail_id", "Unknown")
+    zkb = Map.get(kill, "zkb", %{})
+    value = Map.get(zkb, "totalValue", 0) || Map.get(zkb, "destroyedValue", 0) || 0
+    hash = Map.get(zkb, "hash")
+
+    Logger.info("Formatting kill #{kill_id} hash=#{hash}")
+
+    details = get_kill_details(kill_id, hash)
+    {ship_id, victim_id} = extract_ids(details)
+
+    ship = get_name(ship_id, &ESIService.get_ship_type_name/2, "Unknown Ship")
+    victim = get_name(victim_id, &ESIService.get_character_info/2, "Unknown")
+    time = format_time(details)
+
+    "[#{ship} (#{format_isk(value)})](https://zkillboard.com/kill/#{kill_id}/) - #{victim} #{time}"
+  rescue
+    e ->
+      Logger.warning("Error formatting kill #{Exception.message(e)}")
+      "Unknown kill"
+  end
+
+  defp get_kill_details(_id, nil), do: nil
+
+  defp get_kill_details(id, hash) do
+    case ESIService.get_killmail(id, hash) do
+      {:ok, resp} -> resp
+      {:error, _} -> nil
+    end
+  end
+
+  defp extract_ids(nil), do: {nil, nil}
+
+  defp extract_ids(details) do
+    victim = Map.get(details, "victim", %{})
+    {Map.get(victim, "ship_type_id"), Map.get(victim, "character_id")}
+  end
+
+  defp get_name(nil, _fun, default), do: default
+
+  defp get_name(id, fun, default) do
+    case fun.(id, []) do
+      {:ok, %{"name" => name}} -> name
+      _ -> default
+    end
+  end
+
+  # -- Relative Time Formatting --
+
+  defp format_time(nil), do: ""
+
+  defp format_time(details) do
+    with time_str when is_binary(time_str) <- Map.get(details, "killmail_time"),
+         {:ok, dt, _} <- DateTime.from_iso8601(time_str) do
+      diff = DateTime.diff(DateTime.utc_now(), dt)
+      format_diff(diff)
     else
-      inspect(binary_part(body, 0, min(200, byte_size(body))))
+      _ -> ""
     end
   end
 
-  defp sample(other), do: inspect(other)
+  defp format_diff(sec) when sec < 60, do: "(just now)"
+  defp format_diff(sec) when sec < 3_600, do: "(#{div(sec, 60)}m ago)"
+  defp format_diff(sec) when sec < 86_400, do: "(#{div(sec, 3_600)}h ago)"
+  defp format_diff(sec), do: "(#{div(sec, 86_400)}d ago)"
 
-  defp build_headers do
-    [
-      {"Accept", "application/json"},
-      {"User-Agent", @user_agent},
-      {"Cache-Control", "no-cache"}
-    ]
-  end
+  # -- ISK Formatting --
 
-  defp http_client do
-    # Use the configured HTTP client
-    Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
-  end
-
-  defp make_request_with_retry(request_fn, r) when r < @max_retries do
-    case request_fn.() do
-      {:ok, res} ->
-        {:ok, res}
-
-      {:error, :timeout} ->
-        # Timeouts are transient, we should retry
-        Process.put(:last_zkill_error, :timeout)
-        Process.put(:last_zkill_status, nil)
-        AppLogger.api_warn("ZKill API timeout, retrying", %{attempt: r + 1, max: @max_retries})
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, :connection_refused} ->
-        # Connection refusals indicate service might be down, long backoff
-        Process.put(:last_zkill_error, :connection_refused)
-        Process.put(:last_zkill_status, nil)
-
-        AppLogger.api_warn("ZKill API connection refused, retrying with longer delay", %{
-          attempt: r + 1,
-          max: @max_retries
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1) * 2)
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, :connection_closed} ->
-        # Connection closed might be temporary
-        Process.put(:last_zkill_error, :connection_closed)
-        Process.put(:last_zkill_status, nil)
-
-        AppLogger.api_warn("ZKill API connection closed, retrying", %{
-          attempt: r + 1,
-          max: @max_retries
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, {:exception, message, type}} ->
-        # Log detailed exception information
-        Process.put(:last_zkill_error, {:exception, message, type})
-        Process.put(:last_zkill_status, nil)
-
-        AppLogger.api_error("ZKill API exception, retrying", %{
-          attempt: r + 1,
-          max: @max_retries,
-          error_type: type,
-          message: message
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, {:httpoison_error, reason}} ->
-        # Log specific HTTPoison error
-        Process.put(:last_zkill_error, {:httpoison_error, reason})
-        Process.put(:last_zkill_status, nil)
-
-        AppLogger.api_error("ZKill API HTTPoison error, retrying", %{
-          attempt: r + 1,
-          max: @max_retries,
-          reason: inspect(reason)
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, {:http_error, status}} ->
-        # Store HTTP status code separately
-        Process.put(:last_zkill_error, :http_error)
-        Process.put(:last_zkill_status, status)
-
-        AppLogger.api_error("ZKill API HTTP error, retrying", %{
-          attempt: r + 1,
-          max: @max_retries,
-          status: status
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
-
-      {:error, error} ->
-        # Log the actual error data structure in detail
-        error_type = typemap(error)
-        Process.put(:last_zkill_error, {error_type, inspect(error)})
-        Process.put(:last_zkill_status, nil)
-
-        AppLogger.api_error("ZKill API error, retrying", %{
-          attempt: r + 1,
-          max: @max_retries,
-          error_type: error_type,
-          error: inspect(error)
-        })
-
-        :timer.sleep(@retry_backoff_ms * (r + 1))
-        make_request_with_retry(request_fn, r + 1)
+  defp format_isk(v) when is_number(v) do
+    cond do
+      v >= 1_000_000_000 -> "#{Float.round(v / 1_000_000_000, 1)}B ISK"
+      v >= 1_000_000 -> "#{Float.round(v / 1_000_000, 1)}M ISK"
+      v >= 1_000 -> "#{Float.round(v / 1_000, 1)}K ISK"
+      true -> "#{trunc(v)} ISK"
     end
   end
 
-  defp make_request_with_retry(_request_fn, retries) do
-    # Improve error logging with more detailed information
-    AppLogger.api_error("ZKill API max retries reached", %{
-      retries: retries,
-      max_allowed: @max_retries,
-      last_error: Process.get(:last_zkill_error, "unknown"),
-      last_status: Process.get(:last_zkill_status, "unknown")
-    })
+  defp format_isk(_), do: "0 ISK"
 
-    {:error, :max_retries_reached}
-  end
+  # -- Utilities --
 
-  # Try to parse error body for additional information
+  defp sample(body) when is_binary(body), do: String.slice(body, 0, 200)
+  defp sample(_), do: ""
+
   defp try_parse_error_body(body) when is_binary(body) do
-    try do
-      case Jason.decode(body) do
-        {:ok, json} when is_map(json) ->
-          # Extract common error fields from JSON responses
-          %{
-            error: Map.get(json, "error"),
-            message: Map.get(json, "message"),
-            code: Map.get(json, "code"),
-            description: Map.get(json, "description")
-          }
-          |> Enum.filter(fn {_, v} -> v != nil end)
-          |> Map.new()
-
-        _ ->
-          # If it's not JSON or not a map, return nil
-          nil
-      end
-    rescue
+    case Jason.decode(body) do
+      {:ok, json} -> json
       _ -> nil
     end
   end
 
-  defp try_parse_error_body(_), do: nil
+  defp log_api(method, meta), do: AppLogger.api_info("ZKill #{method}", meta)
 end

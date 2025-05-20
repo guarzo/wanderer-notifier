@@ -128,52 +128,36 @@ defmodule WandererNotifier.Map.MapCharacter do
   """
   @spec new(map()) :: t()
   def new(%{"eve_id" => eve_id} = attrs) do
-    # Convert eve_id to string
-    char_id =
-      case eve_id do
-        id when is_binary(id) -> id
-        id when is_integer(id) -> Integer.to_string(id)
-      end
-
-    # Required name field
-    name = attrs["name"] || raise(ArgumentError, "Missing name for character")
-
-    # Optional numeric IDs
-    corp_id = parse_integer(attrs["corporation_id"])
-    alliance_id = parse_integer(attrs["alliance_id"])
-
-    %__MODULE__{
-      character_id: char_id,
-      name: name,
-      corporation_id: corp_id,
-      corporation_ticker: attrs["corporation_ticker"],
-      alliance_id: alliance_id,
-      alliance_ticker: attrs["alliance_ticker"],
-      tracked: Map.get(attrs, "tracked", true)
-    }
+    attrs
+    |> Map.put("character_id", normalize_character_id(eve_id))
+    |> create_character()
   end
 
-  def new(%{"character_id" => char_id} = attrs) do
-    # Required name field
-    name = attrs["name"] || raise(ArgumentError, "Missing name for character")
-
-    # Optional numeric IDs
-    corp_id = parse_integer(attrs["corporation_id"])
-    alliance_id = parse_integer(attrs["alliance_id"])
-
-    %__MODULE__{
-      character_id: char_id,
-      name: name,
-      corporation_id: corp_id,
-      corporation_ticker: attrs["corporation_ticker"],
-      alliance_id: alliance_id,
-      alliance_ticker: attrs["alliance_ticker"],
-      tracked: Map.get(attrs, "tracked", true)
-    }
+  def new(%{"character_id" => _} = attrs) do
+    create_character(attrs)
   end
 
   def new(_) do
     raise ArgumentError, "Missing required character identification (eve_id or character_id)"
+  end
+
+  defp normalize_character_id(eve_id) when is_binary(eve_id), do: eve_id
+  defp normalize_character_id(eve_id) when is_integer(eve_id), do: Integer.to_string(eve_id)
+
+  defp create_character(attrs) do
+    name = attrs["name"] || raise(ArgumentError, "Missing name for character")
+    corp_id = parse_integer(attrs["corporation_id"])
+    alliance_id = parse_integer(attrs["alliance_id"])
+
+    %__MODULE__{
+      character_id: attrs["character_id"],
+      name: name,
+      corporation_id: corp_id,
+      corporation_ticker: attrs["corporation_ticker"],
+      alliance_id: alliance_id,
+      alliance_ticker: attrs["alliance_ticker"],
+      tracked: Map.get(attrs, "tracked", true)
+    }
   end
 
   # Parses integer or string to integer, returns nil on failure

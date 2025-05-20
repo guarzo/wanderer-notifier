@@ -87,16 +87,15 @@ defmodule WandererNotifier.Map.MapUtil do
           list({atom(), list(String.t() | atom())} | {atom(), list(String.t() | atom()), any()})
         ) :: map()
   def extract_map(map, field_mappings) when is_map(map) and is_list(field_mappings) do
-    Enum.reduce(field_mappings, %{}, fn
-      # With default value
-      {dest_key, key_paths, default}, acc when is_list(key_paths) ->
-        value = get_value(map, key_paths) || default
-        Map.put(acc, dest_key, value)
+    Enum.reduce(field_mappings, %{}, &extract_field(map, &1))
+  end
 
-      # Without default value
-      {dest_key, key_paths}, acc when is_list(key_paths) ->
-        Map.put(acc, dest_key, get_value(map, key_paths))
-    end)
+  defp extract_field(map, {dest_key, key_paths}) do
+    {dest_key, get_value(map, key_paths)}
+  end
+
+  defp extract_field(map, {dest_key, key_paths, default_value}) do
+    {dest_key, get_value(map, key_paths) || default_value}
   end
 
   @doc """
@@ -117,25 +116,23 @@ defmodule WandererNotifier.Map.MapUtil do
   @spec atomize_keys(map(), keyword()) :: map()
   def atomize_keys(map, opts \\ []) when is_map(map) do
     recursive = Keyword.get(opts, :recursive, false)
+    Enum.reduce(map, %{}, &atomize_key(&1, recursive, opts))
+  end
 
-    Enum.reduce(map, %{}, fn
-      # Atom key
-      {key, value}, acc when is_atom(key) ->
-        if recursive and is_map(value) do
-          Map.put(acc, key, atomize_keys(value, opts))
-        else
-          Map.put(acc, key, value)
-        end
+  defp atomize_key({key, value}, recursive, opts) when is_atom(key) do
+    process_value(key, value, recursive, opts)
+  end
 
-      # String key
-      {key, value}, acc when is_binary(key) ->
-        atom_key = String.to_atom(key)
+  defp atomize_key({key, value}, recursive, opts) when is_binary(key) do
+    atom_key = String.to_atom(key)
+    process_value(atom_key, value, recursive, opts)
+  end
 
-        if recursive and is_map(value) do
-          Map.put(acc, atom_key, atomize_keys(value, opts))
-        else
-          Map.put(acc, atom_key, value)
-        end
-    end)
+  defp process_value(key, value, recursive, opts) do
+    if recursive and is_map(value) do
+      {key, atomize_keys(value, opts)}
+    else
+      {key, value}
+    end
   end
 end

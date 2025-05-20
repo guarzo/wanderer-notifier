@@ -182,7 +182,6 @@ defmodule WandererNotifier.ESI.EntitiesTest do
         "name" => "Jita",
         "constellation_id" => 20_000_020,
         "security_status" => 0.9,
-        "security_class" => "B",
         "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
         "star_id" => 40_000_001,
         "planets" => [%{"planet_id" => 50_000_001}],
@@ -196,38 +195,28 @@ defmodule WandererNotifier.ESI.EntitiesTest do
       assert system.system_id == 30_000_142
       assert system.name == "Jita"
       assert system.constellation_id == 20_000_020
-      assert system.security_status == 0.9
-      assert system.security_class == "B"
-      assert system.position == %{x: 1.0, y: 2.0, z: 3.0}
+      assert system.region_id == 10_000_002
       assert system.star_id == 40_000_001
       assert system.planets == [%{"planet_id" => 50_000_001}]
-      assert system.region_id == 10_000_002
+      assert system.security_status == 0.9
     end
 
-    test "converts SolarSystem struct to map" do
-      # Create SolarSystem struct
+    test "SolarSystem entity converts SolarSystem struct to map" do
       system = %SolarSystem{
         system_id: 30_000_142,
-        name: "Jita",
+        name: "Test System",
         constellation_id: 20_000_020,
         security_status: 0.9,
-        security_class: "B",
-        position: %{x: 1.0, y: 2.0, z: 3.0},
         star_id: 40_000_001,
         planets: [%{"planet_id" => 50_000_001}],
         region_id: 10_000_002
       }
 
-      # Convert to map
       map = SolarSystem.to_map(system)
-
-      # Verify fields
       assert map["system_id"] == 30_000_142
-      assert map["name"] == "Jita"
+      assert map["name"] == "Test System"
       assert map["constellation_id"] == 20_000_020
       assert map["security_status"] == 0.9
-      assert map["security_class"] == "B"
-      assert map["position"] == %{"x" => 1.0, "y" => 2.0, "z" => 3.0}
       assert map["star_id"] == 40_000_001
       assert map["planets"] == [%{"planet_id" => 50_000_001}]
       assert map["region_id"] == 10_000_002

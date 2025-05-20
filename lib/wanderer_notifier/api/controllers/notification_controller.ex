@@ -13,7 +13,8 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   get "/settings" do
     case get_notification_settings() do
       {:ok, settings} -> send_success(conn, settings)
-      _error -> send_error(conn, 404, "Notification settings not found or could not be retrieved")
+      {:error, "not_found"} -> send_error(conn, 404, "Notification settings not found")
+      {:error, reason} -> send_error(conn, 500, reason)
     end
   end
 
@@ -41,7 +42,11 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
 
   # Private functions
   defp get_notification_settings do
-    features = Config.features()
+    features =
+      Config.features()
+      # fall back to empty list
+      |> Kernel.||([])
+
     features_map = Enum.into(features, %{})
 
     settings = %{
@@ -55,9 +60,10 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
     error ->
       AppLogger.api_error("Error getting notification settings", %{
         error: inspect(error),
-        stacktrace: Exception.format(:error, error, __STACKTRACE__)
+        stacktrace: Exception.format(:error, error, __STACKTRACE__),
+        context: "get_notification_settings"
       })
 
-      {:error, "An unexpected error occurred"}
+      {:error, "An unexpected error occurred while retrieving notification settings"}
   end
 end

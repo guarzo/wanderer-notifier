@@ -5,6 +5,49 @@ defmodule WandererNotifier.ESI.ServiceTest do
   alias WandererNotifier.ESI.Service
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance}
   alias WandererNotifier.Test.Support.Mocks, as: CacheMock
+  alias WandererNotifier.ESI.ServiceMock
+
+  # Test data
+  @character_data %{
+    "character_id" => 123_456,
+    "name" => "Test Character",
+    "corporation_id" => 789_012,
+    "alliance_id" => 345_678,
+    "security_status" => 0.5,
+    "birthday" => "2020-01-01T00:00:00Z"
+  }
+
+  @corporation_data %{
+    "corporation_id" => 789_012,
+    "name" => "Test Corporation",
+    "ticker" => "TSTC",
+    "member_count" => 100,
+    "alliance_id" => 345_678,
+    "description" => "A test corporation",
+    "date_founded" => "2020-01-01T00:00:00Z"
+  }
+
+  @alliance_data %{
+    "alliance_id" => 345_678,
+    "name" => "Test Alliance",
+    "ticker" => "TSTA",
+    "executor_corporation_id" => 789_012,
+    "creator_id" => 123_456,
+    "date_founded" => "2020-01-01T00:00:00Z",
+    "faction_id" => 555_555
+  }
+
+  @system_data %{
+    "system_id" => 30_000_142,
+    "name" => "Test System",
+    "constellation_id" => 20_000_020,
+    "security_status" => 0.9,
+    "security_class" => "B",
+    "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
+    "star_id" => 40_000_001,
+    "planets" => [%{"planet_id" => 50_000_001}],
+    "region_id" => 10_000_002
+  }
 
   # Make sure mocks are verified after each test
   setup :verify_on_exit!
@@ -15,136 +58,98 @@ defmodule WandererNotifier.ESI.ServiceTest do
     Application.put_env(:wanderer_notifier, :cache_repository, CacheMock)
     CacheMock.clear()
 
-    # Set the ESI client mock as the implementation (unified)
-    Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.Api.ESI.ServiceMock)
+    # Set the ESI client mock as the implementation
+    Application.put_env(:wanderer_notifier, :esi_client, ServiceMock)
 
-    # Set HTTP client mock
-    Application.put_env(
-      :wanderer_notifier,
-      :http_client,
-      WandererNotifier.HttpClient.HttpoisonMock
-    )
-
-    # Setup for character tests
-    character_data = %{
-      "character_id" => 123_456,
-      "name" => "Test Character",
-      "corporation_id" => 789_012,
-      "alliance_id" => 345_678,
-      "security_status" => 0.5,
-      "birthday" => "2020-01-01T00:00:00Z"
-    }
-
-    corporation_data = %{
-      "corporation_id" => 789_012,
-      "name" => "Test Corporation",
-      "ticker" => "TSTC",
-      "member_count" => 100,
-      "alliance_id" => 345_678,
-      "description" => "A test corporation",
-      "date_founded" => "2020-01-01T00:00:00Z"
-    }
-
-    alliance_data = %{
-      "alliance_id" => 345_678,
-      "name" => "Test Alliance",
-      "ticker" => "TSTA",
-      "executor_corporation_id" => 789_012,
-      "creator_id" => 123_456,
-      "date_founded" => "2020-01-01T00:00:00Z",
-      "faction_id" => 555_555
-    }
-
-    # Add system data
-    system_data = %{
-      "system_id" => 30_000_142,
-      "name" => "Test System",
-      "constellation_id" => 20_000_020,
-      "security_status" => 0.9,
-      "security_class" => "B",
-      "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
-      "star_id" => 40_000_001,
-      "planets" => [%{"planet_id" => 50_000_001}],
-      "region_id" => 10_000_002
-    }
-
-    # Define mocks for ESI client calls (unified)
-    WandererNotifier.Api.ESI.ServiceMock
-    |> stub(:get_character_info, fn id, _opts ->
-      if id == 123_456, do: {:ok, character_data}, else: {:error, :not_found}
+    # Define mocks for ESI client calls
+    ServiceMock
+    |> stub(:get_character_info, &get_character_info/2)
+    |> stub(:get_corporation_info, &get_corporation_info/2)
+    |> stub(:get_alliance_info, &get_alliance_info/2)
+    |> stub(:get_system, &get_system_info/1)
+    |> stub(:get_system, &get_system_info/2)
+    |> stub(:get_system_info, &get_system_info/2)
+    |> stub(:get_type_info, fn _id, _opts -> {:ok, %{"name" => "Test Ship"}} end)
+    |> stub(:get_system_kills, fn _id, _limit, _opts -> {:ok, []} end)
+    |> stub(:get_character, &get_character_info/2)
+    |> stub(:get_type, fn _id, _opts -> {:ok, %{"name" => "Test Ship"}} end)
+    |> stub(:get_ship_type_name, fn _id, _opts -> {:ok, %{"name" => "Test Ship"}} end)
+    |> stub(:get_killmail, fn _id, _hash ->
+      {:ok,
+       %{
+         "killmail_id" => 123,
+         "killmail_time" => "2020-01-01T00:00:00Z",
+         "solar_system_id" => 30_000_142,
+         "victim" => %{
+           "character_id" => 100,
+           "corporation_id" => 300,
+           "alliance_id" => 400,
+           "ship_type_id" => 200
+         }
+       }}
     end)
-    |> stub(:get_corporation_info, fn id, _opts ->
-      if id == 789_012, do: {:ok, corporation_data}, else: {:error, :not_found}
-    end)
-    |> stub(:get_alliance_info, fn id, _opts ->
-      if id == 345_678, do: {:ok, alliance_data}, else: {:error, :not_found}
-    end)
-    |> stub(:get_system, fn id, _opts ->
-      case id do
-        30_000_142 ->
-          {:ok,
-           %{
-             "name" => "Test System",
-             "system_id" => 30_000_142,
-             "constellation_id" => 20_000_020,
-             "security_status" => 0.9,
-             "security_class" => "B"
-           }}
-
-        _ ->
-          {:error, :not_found}
-      end
-    end)
-
-    # Add mock expectations for HTTP client calls
-    WandererNotifier.HttpClient.HttpoisonMock
-    |> stub(:get, fn url, _headers ->
-      cond do
-        String.contains?(url, "characters/123456") ->
-          {:ok, %{status_code: 200, body: character_data}}
-
-        String.contains?(url, "corporations/789012") ->
-          {:ok, %{status_code: 200, body: corporation_data}}
-
-        String.contains?(url, "alliances/345678") ->
-          {:ok, %{status_code: 200, body: alliance_data}}
-
-        String.contains?(url, "systems/30000142") ->
-          # Return system_data with string keys
-          {:ok,
-           %{
-             status_code: 200,
-             body: %{
-               "system_id" => 30_000_142,
-               "name" => "Test System",
-               "constellation_id" => 20_000_020,
-               "security_status" => 0.9,
-               "security_class" => "B",
-               "position" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0},
-               "star_id" => 40_000_001,
-               "planets" => [%{"planet_id" => 50_000_001}],
-               "region_id" => 10_000_002
-             }
-           }}
-
-        true ->
-          {:ok, %{status_code: 404, body: %{"error" => "Not found"}}}
-      end
+    |> stub(:get_killmail, fn _id, _hash, _opts ->
+      {:ok,
+       %{
+         "killmail_id" => 123,
+         "killmail_time" => "2020-01-01T00:00:00Z",
+         "solar_system_id" => 30_000_142,
+         "victim" => %{
+           "character_id" => 100,
+           "corporation_id" => 300,
+           "alliance_id" => 400,
+           "ship_type_id" => 200
+         }
+       }}
     end)
 
     # Return test data for use in tests
     %{
-      character_data: character_data,
-      corporation_data: corporation_data,
-      alliance_data: alliance_data,
-      system_data: system_data
+      character_data: @character_data,
+      corporation_data: @corporation_data,
+      alliance_data: @alliance_data,
+      system_data: @system_data
     }
+  end
+
+  defp get_character_info(id, _opts) do
+    case id do
+      123_456 -> {:ok, @character_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_corporation_info(id, _opts) do
+    case id do
+      789_012 -> {:ok, @corporation_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_alliance_info(id, _opts) do
+    case id do
+      345_678 -> {:ok, @alliance_data}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp get_system_info(id) do
+    get_system_info(id, [])
+  end
+
+  defp get_system_info(id, _opts) do
+    case id do
+      30_000_142 -> {:ok, @system_data}
+      _ -> {:error, :not_found}
+    end
   end
 
   describe "get_character_struct/2" do
     test "returns a Character struct when successful", %{character_data: _character_data} do
       # Ensure cache is empty for this test
-      CacheMock.delete(WandererNotifier.Cache.Keys.character(123_456))
+      123_456
+      |> WandererNotifier.Cache.Keys.character()
+      |> CacheMock.delete()
 
       # Get character struct from ESI service
       {:ok, character} = Service.get_character_struct(123_456)
@@ -211,6 +216,42 @@ defmodule WandererNotifier.ESI.ServiceTest do
       assert alliance.creator_id == 123_456
       assert alliance.creation_date == ~U[2020-01-01 00:00:00Z]
       assert alliance.faction_id == 555_555
+    end
+  end
+
+  describe "get_killmail/2" do
+    test "returns killmail data" do
+      assert {:ok, killmail} = Service.get_killmail(123, "hash")
+
+      assert killmail == %{
+               "killmail_id" => 123,
+               "killmail_time" => "2020-01-01T00:00:00Z",
+               "solar_system_id" => 30_000_142,
+               "victim" => %{
+                 "character_id" => 100,
+                 "corporation_id" => 300,
+                 "alliance_id" => 400,
+                 "ship_type_id" => 200
+               }
+             }
+    end
+  end
+
+  describe "get_killmail/3" do
+    test "returns killmail data with opts" do
+      assert {:ok, killmail} = Service.get_killmail(123, "hash", [])
+
+      assert killmail == %{
+               "killmail_id" => 123,
+               "killmail_time" => "2020-01-01T00:00:00Z",
+               "solar_system_id" => 30_000_142,
+               "victim" => %{
+                 "character_id" => 100,
+                 "corporation_id" => 300,
+                 "alliance_id" => 400,
+                 "ship_type_id" => 200
+               }
+             }
     end
   end
 end
