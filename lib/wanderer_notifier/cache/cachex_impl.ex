@@ -198,8 +198,6 @@ defmodule WandererNotifier.Cache.CachexImpl do
       # Pass update_fun directly to Cachex.get_and_update
       case Cachex.get_and_update(cache_name(), key, update_fun) do
         {:ok, {current, new}} -> {:ok, {current, new}}
-        # Handle case where Cachex returns just the new value
-        {:ok, result} -> {:ok, {nil, result}}
         {:error, reason} -> {:error, reason}
       end
     rescue
@@ -210,6 +208,47 @@ defmodule WandererNotifier.Cache.CachexImpl do
         )
 
         {:error, e}
+    end
+  end
+
+  @impl true
+  def get_kill(kill_id) when is_binary(kill_id) or is_integer(kill_id) do
+    id = to_string(kill_id)
+    key = Keys.zkill_recent_kill(id)
+
+    case get(key) do
+      {:ok, nil} -> {:error, :not_found}
+      {:ok, value} -> {:ok, value}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @impl true
+  def mget(keys) when is_list(keys) do
+    try do
+      # Get all values in parallel using Task.async
+      results =
+        keys
+        |> Enum.map(fn key -> Task.async(fn -> Cachex.get(cache_name(), key) end) end)
+        |> Enum.map(&Task.await/1)
+
+      # Format the results to match our get/1 format
+      formatted_results =
+        Enum.map(results, fn
+          {:ok, nil} -> {:error, :not_found}
+          {:ok, value} -> {:ok, value}
+          {:error, reason} -> {:error, reason}
+        end)
+
+      {:ok, formatted_results}
+    rescue
+      e ->
+        AppLogger.cache_error("Error in mget",
+          keys: keys,
+          error: Exception.message(e)
+        )
+
+        {:error, {:exception, Exception.message(e)}}
     end
   end
 

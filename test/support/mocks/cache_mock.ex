@@ -4,15 +4,66 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
 
   @behaviour WandererNotifier.Cache.Behaviour
 
+  # Mock state that can be configured per test
+  def configure(systems, characters) do
+    # Create the ETS table if it doesn't exist
+    if :ets.info(:mock_cache) == :undefined do
+      :ets.new(:mock_cache, [:set, :public, :named_table])
+    end
+
+    :ets.insert(:mock_cache, {:systems, systems})
+    :ets.insert(:mock_cache, {:characters, characters})
+  end
+
+  def configure_direct_character(character_id, character_data) do
+    # Create the ETS table if it doesn't exist
+    if :ets.info(:mock_cache) == :undefined do
+      :ets.new(:mock_cache, [:set, :public, :named_table])
+    end
+
+    :ets.insert(:mock_cache, {{:direct_character, character_id}, character_data})
+  end
+
   @impl true
-  def get(key, _opts \\ []) do
-    if key == "test_key" do
-      {:ok, "test_value"}
-    else
-      {:ok, Process.get({:cache, key})}
+  def get(key) do
+    case get_by_key_type(key) do
+      {:ok, value} -> {:ok, value}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp get_by_key_type(key) do
+    cond do
+      key == CacheKeys.map_systems() ->
+        case :ets.lookup(:mock_cache, :systems) do
+          [{:systems, systems}] -> {:ok, systems}
+          _ -> {:ok, []}
+        end
+
+      key == CacheKeys.character_list() ->
+        case :ets.lookup(:mock_cache, :characters) do
+          [{:characters, characters}] -> {:ok, characters}
+          _ -> {:ok, []}
+        end
+
+      is_binary(key) ->
+        case String.split(key, ":") do
+          ["tracked", "character", character_id] ->
+            case :ets.lookup(:mock_cache, {:direct_character, character_id}) do
+              [{{:direct_character, ^character_id}, data}] -> {:ok, data}
+              _ -> {:error, :not_found}
+            end
+
+          _ ->
+            {:error, :not_found}
+        end
+
+      true ->
+        {:error, :not_found}
     end
   end
 
@@ -61,34 +112,36 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
 
   @impl true
   def get_recent_kills do
-    kills = Process.get({:cache, "zkill:recent_kills"}) || []
-
-    if is_list(kills) && length(kills) > 0 do
-      # Process kills into a map format expected by the controller - return in a tuple
-      kills_map =
-        kills
-        |> Enum.map(fn id ->
-          key = "zkill:recent_kills:#{id}"
-          {id, Process.get({:cache, key})}
-        end)
-        |> Enum.reject(fn {_, v} -> is_nil(v) end)
-        |> Enum.into(%{})
-
-      {:ok, kills_map}
-    else
-      # Return empty map in a tuple
-      {:ok, %{}}
-    end
+    [
+      %{
+        "killmail_id" => 12_345,
+        "killmail_time" => "2023-01-01T12:00:00Z",
+        "solar_system_id" => 30_000_142,
+        "victim" => %{
+          "character_id" => 93_345_033,
+          "corporation_id" => 98_553_333,
+          "ship_type_id" => 602
+        },
+        "zkb" => %{"hash" => "hash12345"}
+      }
+    ]
   end
 
+  @impl true
   def get_kill(kill_id) do
-    get("kill:#{kill_id}")
+    get(CacheKeys.kill(kill_id))
   end
 
   def get_latest_killmails do
-    get("latest_killmails")
+    get(CacheKeys.recent_killmails_list())
   end
 
   @impl true
   def init_batch_logging, do: :ok
+
+  @impl true
+  def mget(_keys), do: {:error, :not_implemented}
+
+  @impl true
+  def get(key, _opts \\ []), do: get(key)
 end

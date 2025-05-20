@@ -15,13 +15,23 @@ defmodule WandererNotifier.Killmail.Killmail do
     :ship_name,
     :system_name,
     :system_id,
-    :attackers
+    :attackers,
+    :value
   ]
 
   @type t :: %__MODULE__{
-          killmail_id: any(),
+          killmail_id: String.t() | integer(),
           zkb: map(),
-          esi_data: map() | nil
+          esi_data: map() | nil,
+          victim_name: String.t() | nil,
+          victim_corporation: String.t() | nil,
+          victim_corp_ticker: String.t() | nil,
+          victim_alliance: String.t() | nil,
+          ship_name: String.t() | nil,
+          system_name: String.t() | nil,
+          system_id: integer() | nil,
+          attackers: list(map()) | nil,
+          value: number() | nil
         }
 
   @doc """
@@ -136,10 +146,15 @@ defmodule WandererNotifier.Killmail.Killmail do
   This is used for scenarios where ESI data isn't available.
   """
   def new(killmail_id, zkb) do
+    value = get_in(zkb, ["totalValue"]) || 0
+
     %__MODULE__{
       killmail_id: killmail_id,
       zkb: zkb,
-      esi_data: nil
+      esi_data: nil,
+      value: value,
+      system_name: "Unknown",
+      system_id: nil
     }
   end
 
@@ -148,10 +163,17 @@ defmodule WandererNotifier.Killmail.Killmail do
   Overloaded for compatibility with processing/killmail/core.ex
   """
   def new(kill_id, zkb, enriched_data) do
+    value = get_in(zkb, ["totalValue"]) || 0
+    system_id = get_in(enriched_data, ["solar_system_id"])
+    system_name = get_in(enriched_data, ["solar_system_name"]) || "Unknown"
+
     %__MODULE__{
       killmail_id: kill_id,
       zkb: zkb,
-      esi_data: enriched_data
+      esi_data: enriched_data,
+      value: value,
+      system_name: system_name,
+      system_id: system_id
     }
   end
 
@@ -165,10 +187,17 @@ defmodule WandererNotifier.Killmail.Killmail do
   A new %WandererNotifier.Killmail.Killmail{} struct
   """
   def from_map(map) when is_map(map) do
+    value = get_in(map, ["zkb", "totalValue"]) || 0
+    system_id = get_in(map, ["esi_data", "solar_system_id"])
+    system_name = get_in(map, ["esi_data", "solar_system_name"]) || "Unknown"
+
     %__MODULE__{
       killmail_id: map["killmail_id"],
       zkb: map["zkb"],
-      esi_data: map["esi_data"]
+      esi_data: map["esi_data"],
+      value: value,
+      system_name: system_name,
+      system_id: system_id
     }
   end
 
@@ -209,7 +238,7 @@ defmodule WandererNotifier.Killmail.Killmail do
   The solar system ID as an integer, or nil if not available
   """
   def get_system_id(killmail) do
-    get(killmail, "solar_system_id")
+    killmail.system_id || get(killmail, "solar_system_id")
   end
 
   @doc """

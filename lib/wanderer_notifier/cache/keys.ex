@@ -227,6 +227,12 @@ defmodule WandererNotifier.Cache.Keys do
     combine([@prefix_dedup, @entity_killmail], [id], nil)
   end
 
+  @doc "Key for system kills"
+  @spec system_kills(integer() | String.t(), integer() | String.t()) :: String.t()
+  def system_kills(system_id, limit) do
+    combine([@prefix_esi, @entity_kills], [system_id, limit], nil)
+  end
+
   # ── Validation & Inspection ────────────────────────────────────────────────────
 
   @doc "Returns true if the key contains at least one separator and two parts"

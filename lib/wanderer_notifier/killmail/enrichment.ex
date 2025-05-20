@@ -23,11 +23,22 @@ defmodule WandererNotifier.Killmail.Enrichment do
   """
   @spec enrich_killmail_data(Killmail.t()) ::
           {:ok, Killmail.t()} | {:error, :service_unavailable | :esi_data_missing}
-  def enrich_killmail_data(
-        %Killmail{killmail_id: id, zkb: %{"hash" => hash}, esi_data: existing} = km
-      ) do
+  def enrich_killmail_data(%Killmail{esi_data: existing} = km)
+      when is_map(existing) and map_size(existing) > 0 do
+    {:ok, km}
+    |> with_ok(&add_victim_info/1)
+    |> with_ok(&add_system_info/1)
+    |> with_ok(&add_attackers/1)
+    |> case do
+      {:ok, enriched} -> {:ok, enriched}
+      {:error, :service_unavailable} = err -> err
+      _ -> {:error, :esi_data_missing}
+    end
+  end
+
+  def enrich_killmail_data(%Killmail{killmail_id: id, zkb: %{"hash" => hash}} = km) do
     km
-    |> maybe_use_cache(existing)
+    |> maybe_use_cache(%{})
     |> fetch_esi(:get_killmail, [id, hash])
     |> with_ok(&add_victim_info/1)
     |> with_ok(&add_system_info/1)
@@ -83,12 +94,14 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp fetch_victim_info(victim) do
     with {:ok, char} <- get_character(victim["character_id"]),
          {:ok, corp} <- get_corporation(victim["corporation_id"]),
+         {:ok, alli} <- get_alliance(victim["alliance_id"]),
          {:ok, ship} <- get_ship(victim["ship_type_id"]) do
       {:ok,
        %{
          victim_name: char["name"],
          victim_corporation: corp["name"],
          victim_corp_ticker: corp["ticker"],
+         victim_alliance: alli["name"],
          ship_name: ship["name"]
        }}
     end

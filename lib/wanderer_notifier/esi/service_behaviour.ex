@@ -27,9 +27,14 @@ defmodule WandererNotifier.ESI.ServiceBehaviour do
               {:ok, map()} | {:error, term()}
   @callback get_type_info(type_id :: String.t() | integer()) :: response
   @callback get_character(character_id :: integer()) :: {:ok, map()} | {:error, term()}
+  @callback get_character(character_id :: integer(), opts :: keyword()) ::
+              {:ok, map()} | {:error, term()}
   @callback get_type(type_id :: integer()) :: {:ok, map()} | {:error, term()}
+  @callback get_type(type_id :: integer(), opts :: keyword()) :: {:ok, map()} | {:error, term()}
   @callback get_ship_type_name(ship_type_id :: integer()) :: {:ok, map()} | {:error, term()}
-  @callback get_system_kills(system_id :: integer(), limit :: integer()) ::
+  @callback get_ship_type_name(ship_type_id :: integer(), opts :: keyword()) ::
+              {:ok, map()} | {:error, term()}
+  @callback get_system_kills(system_id :: integer(), limit :: integer(), opts :: keyword()) ::
               {:ok, list(map())} | {:error, term()}
   @callback get_system(system_id :: integer(), opts :: keyword()) ::
               {:ok, map()} | {:error, term()}
@@ -37,4 +42,8 @@ defmodule WandererNotifier.ESI.ServiceBehaviour do
               {:ok, map()} | {:error, term()}
   @callback get_corporation_info(id :: integer()) :: {:ok, map()} | {:error, any()}
   @callback get_alliance_info(id :: integer()) :: {:ok, map()} | {:error, any()}
+  @callback get_universe_type(type_id :: integer(), opts :: keyword()) ::
+              {:ok, map()} | {:error, term()}
+  @callback search(query :: String.t(), categories :: list(String.t()), opts :: keyword()) ::
+              {:ok, map()} | {:error, term()}
 end

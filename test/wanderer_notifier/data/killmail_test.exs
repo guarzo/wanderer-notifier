@@ -9,15 +9,35 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       assert killmail.killmail_id == "12345"
       assert killmail.zkb == %{"totalValue" => 1_000_000}
       assert killmail.esi_data == nil
+      assert killmail.system_name == "Unknown"
+      assert killmail.system_id == nil
     end
 
     test "creates a valid killmail struct with three arguments" do
-      esi_data = %{"solar_system_id" => 30_000_142}
+      esi_data = %{
+        "solar_system_id" => 30_000_142,
+        "solar_system_name" => "Jita"
+      }
+
       killmail = Killmail.new("12345", %{"totalValue" => 1_000_000}, esi_data)
       assert %Killmail{} = killmail
       assert killmail.killmail_id == "12345"
       assert killmail.zkb == %{"totalValue" => 1_000_000}
       assert killmail.esi_data == esi_data
+      assert killmail.system_name == "Jita"
+      assert killmail.system_id == 30_000_142
+    end
+
+    test "handles nil system data" do
+      esi_data = %{
+        "solar_system_id" => nil,
+        "solar_system_name" => nil
+      }
+
+      killmail = Killmail.new("12345", %{"totalValue" => 1_000_000}, esi_data)
+      assert %Killmail{} = killmail
+      assert killmail.system_name == "Unknown"
+      assert killmail.system_id == nil
     end
   end
 
@@ -29,7 +49,8 @@ defmodule WandererNotifier.Killmail.KillmailTest do
         "esi_data" => %{
           "victim" => %{"character_id" => 98_765, "ship_type_id" => 12_345},
           "attackers" => [%{"character_id" => 54_321, "ship_type_id" => 67_890}],
-          "solar_system_id" => 30_000_142
+          "solar_system_id" => 30_000_142,
+          "solar_system_name" => "Jita"
         }
       }
 
@@ -39,6 +60,27 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       assert result.killmail_id == 123_456_789
       assert result.zkb == map["zkb"]
       assert result.esi_data == map["esi_data"]
+      assert result.system_name == "Jita"
+      assert result.system_id == 30_000_142
+    end
+
+    test "handles nil system data in map" do
+      map = %{
+        "killmail_id" => 123_456_789,
+        "zkb" => %{"hash" => "abcd1234", "totalValue" => 1_000_000.0},
+        "esi_data" => %{
+          "victim" => %{"character_id" => 98_765, "ship_type_id" => 12_345},
+          "attackers" => [%{"character_id" => 54_321, "ship_type_id" => 67_890}],
+          "solar_system_id" => nil,
+          "solar_system_name" => nil
+        }
+      }
+
+      result = Killmail.from_map(map)
+
+      assert %Killmail{} = result
+      assert result.system_name == "Unknown"
+      assert result.system_id == nil
     end
   end
 
@@ -155,6 +197,38 @@ defmodule WandererNotifier.Killmail.KillmailTest do
       assert recreated.killmail_id == killmail.killmail_id
       assert recreated.zkb == killmail.zkb
       assert recreated.esi_data == killmail.esi_data
+    end
+  end
+
+  describe "get_system_id/1" do
+    test "returns system_id from struct field" do
+      killmail = %Killmail{
+        killmail_id: "12345",
+        zkb: %{},
+        system_id: 30_000_142
+      }
+
+      assert Killmail.get_system_id(killmail) == 30_000_142
+    end
+
+    test "returns system_id from esi_data when struct field is nil" do
+      killmail = %Killmail{
+        killmail_id: "12345",
+        zkb: %{},
+        esi_data: %{"solar_system_id" => 30_000_142}
+      }
+
+      assert Killmail.get_system_id(killmail) == 30_000_142
+    end
+
+    test "returns nil when no system_id is available" do
+      killmail = %Killmail{
+        killmail_id: "12345",
+        zkb: %{},
+        esi_data: nil
+      }
+
+      assert Killmail.get_system_id(killmail) == nil
     end
   end
 end

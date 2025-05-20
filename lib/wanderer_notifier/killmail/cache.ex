@@ -87,20 +87,26 @@ defmodule WandererNotifier.Killmail.Cache do
         _ -> []
       end
 
-    # Map through and get each kill
-    kills =
-      kill_ids
-      |> Enum.map(fn id ->
-        key = CacheKeys.zkill_recent_kill(id)
+    # Get all kills in a single operation
+    keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
 
-        {id,
-         case CacheRepo.get(key) do
-           {:ok, data} -> data
-           _ -> nil
-         end}
-      end)
-      |> Enum.filter(fn {_id, kill} -> kill != nil end)
-      |> Enum.into(%{})
+    kills =
+      case CacheRepo.mget(keys) do
+        {:ok, results} ->
+          kill_ids
+          |> Enum.zip(results)
+          |> Enum.filter(fn {_id, result} ->
+            case result do
+              {:ok, data} -> data != nil
+              _ -> false
+            end
+          end)
+          |> Enum.map(fn {id, {:ok, data}} -> {id, data} end)
+          |> Enum.into(%{})
+
+        _ ->
+          %{}
+      end
 
     {:ok, kills}
   end

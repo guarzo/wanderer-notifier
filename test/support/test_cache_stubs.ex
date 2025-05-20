@@ -28,4 +28,10 @@ defmodule WandererNotifier.Test.Support.TestCacheStubs do
 
   @impl true
   def get_recent_kills, do: []
+
+  @impl true
+  def mget(_keys), do: {:error, :not_implemented}
+
+  @impl true
+  def get_kill(_kill_id), do: {:ok, %{}}
 end

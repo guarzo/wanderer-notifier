@@ -9,21 +9,25 @@ defmodule WandererNotifier.Killmail.NotificationChecker do
 
   @doc """
   Determines if a notification should be sent for a killmail.
-  Returns a boolean for use in a with expression.
+  Returns the full response from the Kill determiner.
 
   ## Parameters
   - killmail: The killmail to check
 
   ## Returns
-  - true if notification should be sent
-  - false if notification should not be sent
+  - {:ok, %{should_notify: true}} if notification should be sent
+  - {:ok, %{should_notify: false, reason: reason}} if notification should not be sent
+  - {:error, reason} if there was an error
   """
-  @spec should_notify?(Killmail.t()) :: boolean()
-  def should_notify?(killmail) do
-    case Kill.should_notify?(killmail) do
-      {:ok, %{should_notify: true}} -> true
-      {:ok, %{should_notify: false}} -> false
-      {:error, _reason} -> false
-    end
+  @spec should_notify?(Killmail.t()) ::
+          {:ok, %{should_notify: boolean, reason: String.t() | nil}} | {:error, term()}
+  def should_notify?(%Killmail{} = killmail) do
+    killmail
+    |> Map.from_struct()
+    |> Kill.should_notify?()
+  end
+
+  def should_notify?(killmail) when is_map(killmail) do
+    Kill.should_notify?(killmail)
   end
 end

@@ -17,7 +17,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
   alias WandererNotifier.Logger.Logger, as: AppLogger
 
   @type zkb_data :: map()
-  @type result :: {:ok, Killmail.t() | :skipped} | {:error, term()}
+  @type result :: {:ok, String.t() | :skipped} | {:error, term()}
 
   @doc """
   Main entry point: runs the killmail through creation, enrichment,
@@ -30,15 +30,15 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
     with {:ok, killmail} <- build_killmail(zkb_data),
          {:ok, enriched} <- enrich(killmail),
-         true <- NotificationChecker.should_notify?(enriched),
+         {:ok, %{should_notify: true}} <- NotificationChecker.should_notify?(enriched),
          {:ok, _} <- Notification.send_kill_notification(enriched, enriched.killmail_id) do
       Stats.track_notification_sent()
       log_outcome(enriched, ctx, persisted: true, notified: true, reason: nil)
-      {:ok, enriched}
+      {:ok, enriched.killmail_id}
     else
-      false ->
+      {:ok, %{should_notify: false, reason: reason}} ->
         Stats.track_processing_complete({:ok, :skipped})
-        log_outcome(nil, ctx, persisted: true, notified: false, reason: "Notification not needed")
+        log_outcome(nil, ctx, persisted: true, notified: false, reason: reason)
         {:ok, :skipped}
 
       {:error, reason} ->

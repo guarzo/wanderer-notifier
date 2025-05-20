@@ -10,7 +10,7 @@ defmodule WandererNotifier.Killmail.Context do
 
   @type t :: %__MODULE__{
           # Essential killmail data
-          killmail_id: String.t() | nil,
+          killmail_id: String.t() | integer() | nil,
           system_name: String.t() | nil,
           # A simple map of additional options
           options: map()
@@ -49,26 +49,21 @@ defmodule WandererNotifier.Killmail.Context do
   end
 
   @doc """
-  Creates a new context with the provided kill information.
+  Creates a new context for killmail processing.
 
   ## Parameters
-  - `killmail_id` - The ID of the killmail being processed
-  - `system_name` - The name of the system where the kill occurred
-  - `options` - Map containing additional context information
+  - killmail_id: The ID of the killmail
+  - system_name: The name of the system where the kill occurred
+  - options: Additional options for processing
 
-  ## Examples
-      iex> Context.new("12345", "Jita", %{source: :zkill_websocket})
-      %Context{
-        killmail_id: "12345",
-        system_name: "Jita",
-        options: %{source: :zkill_websocket}
-      }
+  ## Returns
+  A new context struct
   """
-  @spec new(String.t() | nil, String.t() | nil, map()) :: t()
+  @spec new(String.t() | integer() | nil, String.t() | nil, map()) :: t()
   def new(killmail_id \\ nil, system_name \\ nil, options \\ %{}) do
     %__MODULE__{
       killmail_id: killmail_id,
-      system_name: system_name,
+      system_name: system_name || "Unknown",
       options: options
     }
   end

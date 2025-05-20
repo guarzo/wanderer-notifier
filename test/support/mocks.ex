@@ -533,3 +533,12 @@ defmodule WandererNotifier.Test.Mocks do
     end
   end
 end
+
+defmodule WandererNotifier.Notifications.MockDeduplication do
+  @moduledoc """
+  Mock implementation of the deduplication service for testing.
+  """
+
+  def check(_type, _id), do: {:ok, :new}
+  def clear_key(_type, _id), do: :ok
+end
