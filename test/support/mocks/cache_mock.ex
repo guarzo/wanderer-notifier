@@ -29,7 +29,7 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
   end
 
   @impl true
-  def get(key) do
+  def get(key, _opts \\ []) do
     case get_by_key_type(key) do
       {:ok, value} -> {:ok, value}
       {:error, _} = error -> error
@@ -157,7 +157,4 @@ defmodule WandererNotifier.Test.Support.Mocks.CacheMock do
 
   @impl true
   def mget(_keys), do: {:error, :not_implemented}
-
-  @impl true
-  def get(key, _opts \\ []), do: get(key)
 end

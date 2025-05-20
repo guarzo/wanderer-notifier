@@ -11,10 +11,13 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
   setup :verify_on_exit!
 
   setup do
+    # Set up application environment
+    Application.put_env(:wanderer_notifier, :esi_service, ServiceMock)
+
     # Set up default stubs
     TestMocks.setup_default_stubs()
 
-    # Add expectations for ESI service calls
+    # Add expectations for ESI client calls
     ServiceMock
     |> stub(:get_character_info, fn _id, _opts ->
       {:ok, %{"name" => "Test Character"}}
@@ -28,30 +31,12 @@ defmodule WandererNotifier.Killmail.Processing.EnrichmentTest do
     |> stub(:get_universe_type, fn _type_id, _opts ->
       {:ok, %{"name" => "Test Ship"}}
     end)
-    |> stub(:get_system_info, fn _id, _opts ->
-      {:ok, %{"name" => "Test System"}}
-    end)
     |> stub(:get_system, fn _id, _opts ->
       {:ok,
        %{
          "system_id" => 30_000_142,
          "name" => "Test System",
          "security_status" => 0.5
-       }}
-    end)
-    |> stub(:get_killmail, fn _id, _hash ->
-      {:ok,
-       %{
-         "killmail_id" => 123,
-         "killmail_time" => "2023-01-01T12:00:00Z",
-         "solar_system_id" => 30_000_142,
-         "victim" => %{
-           "character_id" => 100,
-           "corporation_id" => 300,
-           "alliance_id" => 400,
-           "ship_type_id" => 200
-         },
-         "attackers" => []
        }}
     end)
     |> stub(:get_killmail, fn _id, _hash, _opts ->

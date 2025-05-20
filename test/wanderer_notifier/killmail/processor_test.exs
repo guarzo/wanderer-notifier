@@ -38,7 +38,7 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       }
     end)
 
-    # Set up default ESI mock responses
+    # Set up default ESI client mock responses
     ServiceMock
     |> stub(:get_killmail, fn _id, _hash, _opts ->
       {:ok,
@@ -65,13 +65,6 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
        %{
          "name" => "Test Corp",
          "ticker" => "TEST"
-       }}
-    end)
-    |> stub(:get_type_info, fn _id, _opts ->
-      {:ok,
-       %{
-         "name" => "Test Ship",
-         "group_id" => 123
        }}
     end)
     |> stub(:get_universe_type, fn _id, _opts ->

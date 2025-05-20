@@ -7,16 +7,15 @@ defmodule WandererNotifier.Killmail.Enrichment do
   alias WandererNotifier.Killmail.Killmail
   require Logger
 
-  @esi_service Application.compile_env(
-                 :wanderer_notifier,
-                 :esi_service,
-                 WandererNotifier.ESI.Service
-               )
   @zkill_client Application.compile_env(
                   :wanderer_notifier,
                   :zkill_client,
                   WandererNotifier.Killmail.ZKillClient
                 )
+
+  defp esi_service do
+    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
+  end
 
   @doc """
   Enriches a `%Killmail{}` with ESI lookups.
@@ -55,7 +54,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp maybe_use_cache(km, _), do: {:ok, km}
 
   defp fetch_esi({:ok, %Killmail{} = km}, :get_killmail, [id, hash]) do
-    case @esi_service.get_killmail(id, hash) do
+    case esi_service().get_killmail(id, hash, []) do
       {:ok, data} -> {:ok, %{km | esi_data: data}}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       _ -> {:error, :esi_data_missing}
@@ -63,7 +62,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   end
 
   defp fetch_esi({:ok, %Killmail{esi_data: esi} = km}, fun, [key]) do
-    apply(@esi_service, fun, [key, []])
+    apply(esi_service(), fun, [key, []])
     |> case do
       {:ok, %{"name" => name}} ->
         {:ok, %{km | esi_data: Map.put_new(esi, to_string(fun), name)}}
@@ -149,7 +148,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_system(nil), do: {:ok, "Unknown System"}
 
   defp get_system(system_id) when is_integer(system_id) or is_binary(system_id) do
-    case @esi_service.get_system(system_id, []) do
+    case esi_service().get_system(system_id, []) do
       {:ok, %{"name" => name}} -> {:ok, name}
       {:error, :service_unavailable} -> {:error, :service_unavailable}
       _ -> {:error, :esi_data_missing}
@@ -167,11 +166,11 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_alliance(id), do: simple_fetch(:get_alliance_info, id)
 
   defp get_ship(nil), do: {:error, :esi_data_missing}
-  defp get_ship(id), do: simple_fetch(:get_type_info, id)
+  defp get_ship(id), do: simple_fetch(:get_universe_type, id)
 
   # Pulls a single record via ESI and uniformly maps errors
   defp simple_fetch(fun, id) do
-    apply(@esi_service, fun, [id, []])
+    apply(esi_service(), fun, [id, []])
     |> case do
       {:ok, info} -> {:ok, info}
       {:error, :service_unavailable} -> {:error, :service_unavailable}

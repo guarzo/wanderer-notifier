@@ -10,10 +10,14 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   # -- Configuration --
 
-  @base_url Application.compile_env(:wanderer_notifier, :zkill_base_url,
-               "https://zkillboard.com/api/kills"
-             )
-  @user_agent Application.compile_env(:wanderer_notifier, :zkill_user_agent,
+  @base_url Application.compile_env(
+              :wanderer_notifier,
+              :zkill_base_url,
+              "https://zkillboard.com/api/kills"
+            )
+  @user_agent Application.compile_env(
+                :wanderer_notifier,
+                :zkill_user_agent,
                 "WandererNotifier/1.0"
               )
   @max_retries Application.compile_env(:wanderer_notifier, :zkill_max_retries, 3)
@@ -110,11 +114,12 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
     opts = [recv_timeout: 5_000, timeout: 5_000, follow_redirect: true]
 
-    client = Application.get_env(
-      :wanderer_notifier,
-      :http_client,
-      WandererNotifier.HttpClient.Httpoison
-    )
+    client =
+      Application.get_env(
+        :wanderer_notifier,
+        :http_client,
+        WandererNotifier.HttpClient.Httpoison
+      )
 
     case client.get(url, headers, opts) do
       {:ok, %{status_code: 200, body: body}} ->
@@ -181,9 +186,9 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     details = get_kill_details(kill_id, hash)
     {ship_id, victim_id} = extract_ids(details)
 
-    ship   = get_name(ship_id, &ESIService.get_ship_type_name/2, "Unknown Ship")
-    victim = get_name(victim_id, &ESIService.get_character_info/2,   "Unknown")
-    time   = format_time(details)
+    ship = get_name(ship_id, &ESIService.get_ship_type_name/2, "Unknown Ship")
+    victim = get_name(victim_id, &ESIService.get_character_info/2, "Unknown")
+    time = format_time(details)
 
     "[#{ship} (#{format_isk(value)})](https://zkillboard.com/kill/#{kill_id}/) - #{victim} #{time}"
   rescue
@@ -196,7 +201,7 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   defp get_kill_details(id, hash) do
     case ESIService.get_killmail(id, hash) do
-      {:ok, resp}   -> resp
+      {:ok, resp} -> resp
       {:error, _} -> nil
     end
   end
@@ -231,19 +236,19 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     end
   end
 
-  defp format_diff(sec) when sec < 60,       do: "(just now)"
-  defp format_diff(sec) when sec < 3_600,    do: "(#{div(sec, 60)}m ago)"
-  defp format_diff(sec) when sec < 86_400,  do: "(#{div(sec, 3_600)}h ago)"
-  defp format_diff(sec),                      do: "(#{div(sec, 86_400)}d ago)"
+  defp format_diff(sec) when sec < 60, do: "(just now)"
+  defp format_diff(sec) when sec < 3_600, do: "(#{div(sec, 60)}m ago)"
+  defp format_diff(sec) when sec < 86_400, do: "(#{div(sec, 3_600)}h ago)"
+  defp format_diff(sec), do: "(#{div(sec, 86_400)}d ago)"
 
   # -- ISK Formatting --
 
   defp format_isk(v) when is_number(v) do
     cond do
       v >= 1_000_000_000 -> "#{Float.round(v / 1_000_000_000, 1)}B ISK"
-      v >=   1_000_000  -> "#{Float.round(v /   1_000_000, 1)}M ISK"
-      v >=     1_000    -> "#{Float.round(v /     1_000, 1)}K ISK"
-      true               -> "#{trunc(v)} ISK"
+      v >= 1_000_000 -> "#{Float.round(v / 1_000_000, 1)}M ISK"
+      v >= 1_000 -> "#{Float.round(v / 1_000, 1)}K ISK"
+      true -> "#{trunc(v)} ISK"
     end
   end
 
@@ -252,12 +257,12 @@ defmodule WandererNotifier.Killmail.ZKillClient do
   # -- Utilities --
 
   defp sample(body) when is_binary(body), do: String.slice(body, 0, 200)
-  defp sample(_),                       do: ""
+  defp sample(_), do: ""
 
   defp try_parse_error_body(body) when is_binary(body) do
     case Jason.decode(body) do
       {:ok, json} -> json
-      _           -> nil
+      _ -> nil
     end
   end
 

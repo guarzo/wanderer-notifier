@@ -30,8 +30,8 @@ defmodule WandererNotifier.Killmail.Websocket do
     * `:name` — registered name (defaults to this module)
   """
   def start_link(opts) when is_list(opts) do
-    name   = opts[:name]   || __MODULE__
-    url    = opts[:url]    || @url
+    name = opts[:name] || __MODULE__
+    url = opts[:url] || @url
     parent = opts[:parent]
 
     WebSockex.start_link(
@@ -75,8 +75,12 @@ defmodule WandererNotifier.Killmail.Websocket do
 
   @impl true
   def handle_disconnect({kind, reason}, state) do
-    AppLogger.websocket_warn("Disconnected (#{inspect(kind)}), reconnecting", reason: inspect(reason))
+    AppLogger.websocket_warn("Disconnected (#{inspect(kind)}), reconnecting",
+      reason: inspect(reason)
+    )
+
     :telemetry.execute([:wanderer_notifier, :websocket, :disconnected], %{count: 1}, %{kind: kind})
+
     {:reconnect, state}
   end
 
@@ -90,7 +94,13 @@ defmodule WandererNotifier.Killmail.Websocket do
   @impl true
   def handle_info(:heartbeat, state) do
     schedule(:heartbeat, @heartbeat_interval)
-    :telemetry.execute([:wanderer_notifier, :websocket, :heartbeat], %{timestamp: System.system_time(:millisecond)}, %{})
+
+    :telemetry.execute(
+      [:wanderer_notifier, :websocket, :heartbeat],
+      %{timestamp: System.system_time(:millisecond)},
+      %{}
+    )
+
     {:ok, state}
   end
 
@@ -137,12 +147,12 @@ defmodule WandererNotifier.Killmail.Websocket do
   end
 
   # Simple classification for logging/metrics
-  defp classify(%{"action" => "tqStatus"}),  do: "tq_status"
-  defp classify(%{"zkb" => _}),             do: "killmail"
-  defp classify(%{"killmail_id" => _}),     do: "killmail"
-  defp classify(%{"action" => "pong"}),      do: "pong"
-  defp classify(%{"action" => "subed"}),     do: "subed"
-  defp classify(_),                         do: "unknown"
+  defp classify(%{"action" => "tqStatus"}), do: "tq_status"
+  defp classify(%{"zkb" => _}), do: "killmail"
+  defp classify(%{"killmail_id" => _}), do: "killmail"
+  defp classify(%{"action" => "pong"}), do: "pong"
+  defp classify(%{"action" => "subed"}), do: "subed"
+  defp classify(_), do: "unknown"
 
-  defp schedule(msg, interval),             do: Process.send_after(self(), msg, interval)
+  defp schedule(msg, interval), do: Process.send_after(self(), msg, interval)
 end
