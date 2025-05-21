@@ -6,7 +6,10 @@ config :wanderer_notifier, env: config_env()
 # Enable schedulers by default
 config :wanderer_notifier,
   schedulers_enabled: true,
-  scheduler_supervisor_enabled: true
+  features: [
+    system_tracking_enabled: true,
+    character_tracking_enabled: true
+  ]
 
 # Configure HTTP client
 config :wanderer_notifier,
@@ -92,19 +95,18 @@ config :nostrum,
 # Add backoff configuration to help with rate limiting
 config :nostrum, :gateway,
   backoff: [
-    initial: 1000,
-    max: 120_000
+    initial: 5000,
+    max: 300_000
   ]
 
 # Configure cache
-config :wanderer_notifier, cache_name: :wanderer_cache
+config :wanderer_notifier,
+  cache_name: :wanderer_cache
 
 # Configure service modules with standardized behavior implementations
 config :wanderer_notifier,
   http_client: WandererNotifier.HttpClient.Httpoison,
   zkill_client: WandererNotifier.Killmail.ZKillClient,
-  cache_repo: WandererNotifier.Cache.CachexImpl,
-  cache_impl: WandererNotifier.Cache.CachexImpl,
   character_module: WandererNotifier.Map.MapCharacter,
   system_module: WandererNotifier.Map.MapSystem,
   deduplication_module: WandererNotifier.Notifications.Deduplication.CacheImpl,

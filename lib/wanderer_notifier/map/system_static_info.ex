@@ -166,7 +166,7 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   def enrich_system(system) do
     try do
       with true <- valid_system_id?(system),
-           {:ok, static_info} <- get_system_static_info(system.solar_system_id),
+           {:ok, static_info} <- get_system_static_info(system["solar_system_id"]),
            data_to_merge <- extract_data_from_static_info(static_info),
            enhanced_system <- update_system_with_static_info(system, data_to_merge) do
         {:ok, enhanced_system}
@@ -192,6 +192,15 @@ defmodule WandererNotifier.Map.SystemStaticInfo do
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_integer(id), do: id > 0
 
   defp valid_system_id?(%MapSystem{solar_system_id: id}) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed_id, _} -> parsed_id > 0
+      :error -> false
+    end
+  end
+
+  defp valid_system_id?(%{"solar_system_id" => id}) when is_integer(id), do: id > 0
+
+  defp valid_system_id?(%{"solar_system_id" => id}) when is_binary(id) do
     case Integer.parse(id) do
       {parsed_id, _} -> parsed_id > 0
       :error -> false

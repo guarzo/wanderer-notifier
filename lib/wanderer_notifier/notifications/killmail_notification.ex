@@ -6,7 +6,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
   @behaviour WandererNotifier.Notifications.KillmailNotificationBehaviour
 
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Logger.Logger, as: AppLogger
   alias WandererNotifier.Notifications.Determiner.Kill, as: KillDeterminer
   alias WandererNotifier.Notifications.Formatters.Killmail, as: KillmailFormatter
@@ -106,10 +105,27 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     end
   end
 
+  @doc """
+  Gets the latest killmails for notification.
+  """
+  def get_latest_killmails do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      {:ok, kill_ids} when is_list(kill_ids) ->
+        get_kills_by_ids(kill_ids)
+
+      _ ->
+        []
+    end
+  end
+
   # Private helper functions
 
   defp get_recent_kill do
-    case CacheRepo.get(CacheKeys.zkill_recent_kills()) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
       {:ok, [kill | _]} -> {:ok, kill}
       _ -> {:error, :no_recent_kills}
     end
@@ -157,15 +173,6 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
     has_tracked_character = KillDeterminer.has_tracked_character?(enriched_killmail)
 
     kill_id = extract_kill_id(enriched_killmail)
-
-    AppLogger.kill_info("Checking notification requirements", %{
-      kill_id: kill_id,
-      system_id: system_id,
-      has_tracked_system: has_tracked_system,
-      has_tracked_character: has_tracked_character,
-      character_notifications_enabled: character_notifications_enabled,
-      system_notifications_enabled: system_notifications_enabled
-    })
 
     # Evaluate character condition
     character_should_notify = has_tracked_character && character_notifications_enabled
@@ -330,4 +337,31 @@ defmodule WandererNotifier.Notifications.KillmailNotification do
       error: inspect(reason)
     })
   end
+
+  defp get_kills_by_ids(kill_ids) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    keys = Enum.map(kill_ids, &CacheKeys.zkill_recent_kill/1)
+
+    results =
+      Enum.map(keys, fn key ->
+        case Cachex.get(cache_name, key) do
+          {:ok, value} -> {:ok, value}
+          _ -> {:ok, nil}
+        end
+      end)
+
+    process_kill_results(kill_ids, results)
+  end
+
+  defp process_kill_results(kill_ids, results) do
+    kill_ids
+    |> Enum.zip(results)
+    |> Enum.filter(&valid_kill_result?/1)
+    |> Enum.map(&extract_kill_data/1)
+  end
+
+  defp valid_kill_result?({_id, {:ok, data}}) when not is_nil(data), do: true
+  defp valid_kill_result?(_), do: false
+
+  defp extract_kill_data({id, {:ok, data}}), do: Map.put(data, "id", id)
 end

@@ -7,7 +7,6 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Deduplication
   alias WandererNotifier.Map.MapSystem
 
@@ -45,14 +44,16 @@ defmodule WandererNotifier.Notifications.Determiner.System do
     - true if the system is new (not in cache)
     - false otherwise
   """
-  def system_changed?(system_id, _system_data) do
+  def system_changed?(system_id, new_data) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     cache_key = CacheKeys.system(system_id)
 
-    case CacheRepo.get(cache_key) do
-      # Already exists, not new
-      {:ok, _cached} -> false
-      # Not in cache, so it's new
-      _ -> true
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, old_data} when not is_nil(old_data) ->
+        old_data != new_data
+
+      _ ->
+        true
     end
   end
 
@@ -78,11 +79,12 @@ defmodule WandererNotifier.Notifications.Determiner.System do
   def tracked_system?(_), do: false
 
   def tracked_system_info(system_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     system_cache_key = CacheKeys.system(system_id)
 
-    case CacheRepo.get(system_cache_key) do
-      {:ok, value} -> %{system_in_cache: true, value: value}
-      _ -> %{system_in_cache: false, value: nil}
+    case Cachex.get(cache_name, system_cache_key) do
+      {:ok, info} -> info
+      _ -> nil
     end
   end
 end

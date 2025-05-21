@@ -10,6 +10,8 @@ defmodule WandererNotifier.Cache.Keys do
     - `recent:kills`
   """
 
+  import WandererNotifier.Cache.KeyGenerator
+
   # Key prefixes
   @prefix_map "map"
   @prefix_tracked "tracked"
@@ -49,51 +51,22 @@ defmodule WandererNotifier.Cache.Keys do
     |> join_parts()
   end
 
-  # ── Dynamic-single functions ────────────────────────────────────────────────────
+  # Generate standard cache key functions
+  defkey(:system, @prefix_map, @entity_system)
+  defkey(:character, @prefix_esi, @entity_character)
+  defkey(:tracked_system, @prefix_tracked, @entity_system)
+  defkey(:tracked_character, @prefix_tracked, @entity_character)
+  defkey(:esi_killmail, @prefix_esi, @entity_killmail)
+  defkey(:corporation, @prefix_esi, @entity_corporation)
+  defkey(:alliance, @prefix_esi, @entity_alliance)
+  defkey(:ship_type, @prefix_esi, "ship_type")
+  defkey(:type, @prefix_esi, "type")
+  defkey(:dedup_system, @prefix_dedup, @entity_system)
+  defkey(:dedup_character, @prefix_dedup, @entity_character)
+  defkey(:dedup_kill, @prefix_dedup, @entity_killmail)
 
-  @doc "Key for a map system"
-  @spec system(integer() | String.t(), String.t() | nil) :: String.t()
-  def system(id, extra \\ nil),
-    do: combine([@prefix_map, @entity_system], [id], extra)
-
-  @doc "Key for an ESI character"
-  @spec character(integer() | String.t(), String.t() | nil) :: String.t()
-  def character(id, extra \\ nil),
-    do: combine([@prefix_esi, @entity_character], [id], extra)
-
-  @doc "Key for a tracked system"
-  @spec tracked_system(integer() | String.t(), String.t() | nil) :: String.t()
-  def tracked_system(id, extra \\ nil),
-    do: combine([@prefix_tracked, @entity_system], [id], extra)
-
-  @doc "Key for a tracked character"
-  @spec tracked_character(integer() | String.t(), String.t() | nil) :: String.t()
-  def tracked_character(id, extra \\ nil),
-    do: combine([@prefix_tracked, @entity_character], [id], extra)
-
-  @doc "Key for an ESI killmail"
-  @spec esi_killmail(integer() | String.t(), String.t() | nil) :: String.t()
-  def esi_killmail(id, extra \\ nil),
-    do: combine([@prefix_esi, @entity_killmail], [id], extra)
-
-  @doc "Key for a corporation"
-  @spec corporation(integer() | String.t(), String.t() | nil) :: String.t()
-  def corporation(id, extra \\ nil),
-    do: combine([@prefix_esi, @entity_corporation], [id], extra)
-
-  @doc "Key for an alliance"
-  @spec alliance(integer() | String.t(), String.t() | nil) :: String.t()
-  def alliance(id, extra \\ nil),
-    do: combine([@prefix_esi, @entity_alliance], [id], extra)
-
-  @doc "Key for a ship type"
-  @spec ship_type(integer() | String.t(), String.t() | nil) :: String.t()
-  def ship_type(id, extra \\ nil),
-    do: combine([@prefix_esi, "ship_type"], [id], extra)
-
-  # ── Dynamic-multi functions ─────────────────────────────────────────────────────
-
-  @doc "Key for an ESI killmail with hash"
+  # Special case functions that don't fit the standard pattern
+  @doc "Key for a killmail with hash"
   @spec killmail(integer() | String.t(), integer() | String.t(), String.t() | nil) :: String.t()
   def killmail(kill_id, killmail_hash, extra \\ nil),
     do: combine([@prefix_esi, @entity_killmail], [kill_id, killmail_hash], extra)
@@ -108,7 +81,7 @@ defmodule WandererNotifier.Cache.Keys do
   def map_systems(extra \\ nil),
     do: combine([@prefix_map, "systems"], [], extra)
 
-  @doc "Key for map system IDs list"
+  @doc "Key for map system IDs"
   @spec map_system_ids(String.t() | nil) :: String.t()
   def map_system_ids(extra \\ nil),
     do: combine([@prefix_map, "system_ids"], [], extra)
@@ -153,14 +126,8 @@ defmodule WandererNotifier.Cache.Keys do
   def esi_data(type, id, extra \\ nil),
     do: combine([@prefix_esi], [type, id], extra)
 
-  # ── Special-case functions ──────────────────────────────────────────────────────
-
   @doc """
   Generates a cache key for checking if a killmail exists.
-
-  ## Examples
-      iex> WandererNotifier.Cache.Keys.killmail_exists(123, 456, "victim")
-      "exists:killmail:123:456:victim"
   """
   @spec killmail_exists(integer() | String.t(), integer() | String.t(), String.t()) :: String.t()
   def killmail_exists(killmail_id, character_id, role)
@@ -207,24 +174,6 @@ defmodule WandererNotifier.Cache.Keys do
   @spec zkill_recent_kill(integer() | String.t()) :: String.t()
   def zkill_recent_kill(kill_id) do
     combine([@prefix_zkill, "recent_kills"], [kill_id], nil)
-  end
-
-  @doc "Key for deduplication of system notifications"
-  @spec dedup_system(integer() | String.t()) :: String.t()
-  def dedup_system(id) do
-    combine([@prefix_dedup, @entity_system], [id], nil)
-  end
-
-  @doc "Key for deduplication of character notifications"
-  @spec dedup_character(integer() | String.t()) :: String.t()
-  def dedup_character(id) do
-    combine([@prefix_dedup, @entity_character], [id], nil)
-  end
-
-  @doc "Key for deduplication of kill notifications"
-  @spec dedup_kill(integer() | String.t()) :: String.t()
-  def dedup_kill(id) do
-    combine([@prefix_dedup, @entity_killmail], [id], nil)
   end
 
   @doc "Key for system kills"

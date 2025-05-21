@@ -21,7 +21,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching killmail", %{
+    AppLogger.api_info("ESI fetching killmail", %{
       kill_id: kill_id,
       hash: hash,
       method: "get_killmail"
@@ -29,7 +29,7 @@ defmodule WandererNotifier.ESI.Client do
 
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        AppLogger.api_debug("ESI killmail response", %{
+        AppLogger.api_info("ESI killmail response", %{
           kill_id: kill_id,
           status: status
         })
@@ -62,7 +62,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/characters/#{character_id}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching character info", %{
+    AppLogger.api_info("ESI fetching character info", %{
       character_id: character_id,
       method: "get_character_info"
     })
@@ -97,7 +97,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/corporations/#{corporation_id}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching corporation info", %{
+    AppLogger.api_info("ESI fetching corporation info", %{
       corporation_id: corporation_id,
       method: "get_corporation_info"
     })
@@ -132,7 +132,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/alliances/#{alliance_id}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching alliance info", %{
+    AppLogger.api_info("ESI fetching alliance info", %{
       alliance_id: alliance_id,
       method: "get_alliance_info"
     })
@@ -167,7 +167,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/universe/types/#{type_id}/"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI fetching type info", %{
+    AppLogger.api_info("ESI fetching type info", %{
       type_id: type_id,
       method: "get_universe_type"
     })
@@ -208,7 +208,7 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/search/?#{URI.encode_query(query_params)}"
     headers = default_headers()
 
-    AppLogger.api_debug("ESI searching inventory type", %{
+    AppLogger.api_info("ESI searching inventory type", %{
       query: query,
       strict: strict,
       method: "search_inventory_type"
@@ -241,30 +241,21 @@ defmodule WandererNotifier.ESI.Client do
   Gets solar system information from ESI.
   """
   def get_system(system_id, _opts \\ []) do
-    url = "#{@base_url}/universe/systems/#{system_id}/"
+    url = "#{@base_url}/universe/systems/#{system_id}/?datasource=tranquility"
     headers = default_headers()
-
-    AppLogger.api_debug("ESI fetching solar system", %{
-      system_id: system_id,
-      method: "get_solar_system"
-    })
 
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
-      {:ok, %{status_code: status}} when status == 404 ->
-        AppLogger.api_debug("ESI solar system not found", %{
-          system_id: system_id,
-          status: status
-        })
-
+      {:ok, %{status_code: status, body: _body}} when status == 404 ->
         {:error, {:system_not_found, system_id}}
 
-      {:ok, %{status_code: status}} ->
+      {:ok, %{status_code: status, body: body}} ->
         AppLogger.api_error("ESI solar system error response", %{
           system_id: system_id,
-          status: status
+          status: status,
+          body: inspect(body)
         })
 
         {:error, {:http_error, status}}
@@ -283,15 +274,9 @@ defmodule WandererNotifier.ESI.Client do
   @doc """
   Gets system kill statistics from ESI.
   """
-  def get_system_kills(system_id, limit \\ 5, _opts \\ []) do
+  def get_system_kills(system_id, _limit \\ 5, _opts \\ []) do
     url = "#{@base_url}/universe/system_kills/"
     headers = default_headers()
-
-    AppLogger.api_debug("ESI fetching system kills", %{
-      system_id: system_id,
-      limit: limit,
-      method: "get_system_kills"
-    })
 
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->

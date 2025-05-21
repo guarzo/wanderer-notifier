@@ -7,7 +7,6 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
   require Logger
   alias WandererNotifier.Config
   alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Notifications.Deduplication
   alias WandererNotifier.Map.MapCharacter
 
@@ -69,51 +68,19 @@ defmodule WandererNotifier.Notifications.Determiner.Character do
     - true if the character data has changed
     - false otherwise
   """
-  def character_changed?(character_id, character_data) when is_map(character_data) do
-    # Get cached character data
+  def character_changed?(character_id, new_data)
+      when is_binary(character_id) or is_integer(character_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
     cache_key = CacheKeys.character(character_id)
 
-    cached_data =
-      case CacheRepo.get(cache_key) do
-        {:ok, value} -> value
-        _ -> nil
-      end
-
-    # Compare relevant fields
-    case cached_data do
-      nil ->
-        # No cached data, consider it changed
-        true
-
-      cached when is_map(cached) ->
-        # Compare relevant fields
-        changed?(cached, character_data, [
-          "character_name",
-          "corporation_id",
-          "corporation_name",
-          "alliance_id",
-          "alliance_name",
-          "security_status",
-          "ship_type_id",
-          "ship_name",
-          "location_id",
-          "location_name"
-        ])
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, old_data} when not is_nil(old_data) ->
+        old_data != new_data
 
       _ ->
-        # Invalid cache data, consider it changed
         true
     end
   end
 
   def character_changed?(_, _), do: false
-
-  # Check if any of the specified fields have changed
-  defp changed?(old_data, new_data, fields) do
-    Enum.any?(fields, fn field ->
-      old_value = Map.get(old_data, field)
-      new_value = Map.get(new_data, field)
-      old_value != new_value
-    end)
-  end
 end

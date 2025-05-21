@@ -30,22 +30,52 @@ defmodule WandererNotifier.Killmail.Pipeline do
   Main entry point: runs the killmail through creation, enrichment,
   tracking, notification decision, and (optional) dispatch.
   """
-  @spec process_killmail(zkb_data, Context.t() | map()) :: result
-  def process_killmail(zkb_data, ctx) do
-    ctx = ensure_context(ctx)
+  @spec process_killmail(map(), Context.t()) :: {:ok, map() | :skipped} | {:error, term()}
+  def process_killmail(zkb_data, context) do
     Stats.increment(:kill_processed)
+    context = ensure_context(context)
+    system_id = get_in(zkb_data, ["solar_system_id"])
+    context = %{context | system_id: system_id}
 
-    # First check for duplicates
-    case deduplication_module().check(:kill, zkb_data["killmail_id"]) do
-      {:ok, :duplicate} ->
-        handle_notification_skipped(ctx, :duplicate)
+    # First check if we should notify without ESI
+    case should_notify_without_esi?(zkb_data) do
+      {:ok, %{should_notify: false, reason: reason}} ->
+        handle_notification_skipped(context, reason)
 
-      {:ok, :new} ->
-        process_new_killmail(zkb_data, ctx)
+      {:ok, %{should_notify: true}} ->
+        # Then ensure we have a valid killmail_id
+        with {:ok, _killmail_id} <- extract_killmail_id(zkb_data) do
+          # Process the killmail
+          case process_new_killmail(zkb_data, context) do
+            {:ok, killmail} ->
+              {:ok, killmail}
+
+            error ->
+              error
+          end
+        else
+          {:error, :invalid_killmail_id} ->
+            {:error, :invalid_killmail_id}
+
+          error ->
+            {:error, error}
+        end
 
       {:error, reason} ->
-        handle_error(zkb_data, ctx, reason)
+        handle_error(zkb_data, context, reason)
     end
+  end
+
+  # Extract killmail_id from the data structure
+  defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, to_string(id)}
+
+  defp extract_killmail_id(data) do
+    AppLogger.kill_error("Failed to extract killmail_id - expected integer killmail_id field",
+      data: inspect(data, pretty: true),
+      module: __MODULE__
+    )
+
+    {:error, :invalid_killmail_id}
   end
 
   # Process a new (non-duplicate) killmail
@@ -87,20 +117,11 @@ defmodule WandererNotifier.Killmail.Pipeline do
     end
   end
 
-  defp deduplication_module do
-    Application.get_env(:wanderer_notifier, :deduplication_module)
-  end
-
   # Checks if we should notify using just zkill data
   defp should_notify_without_esi?(zkb_data) do
     system_id = get_in(zkb_data, ["solar_system_id"])
     victim = get_in(zkb_data, ["victim"])
-
-    AppLogger.kill_info("Checking notification requirements",
-      system_id: system_id,
-      victim: victim,
-      module: __MODULE__
-    )
+    killmail_id = get_in(zkb_data, ["killmail_id"])
 
     with {:ok, system_tracked} <- check_system_tracking(system_id),
          {:ok, character_tracked} <- check_character_tracking(victim) do
@@ -111,16 +132,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
           {:ok, %{should_notify: false, reason: :no_tracked_entities}}
         end
 
-      AppLogger.kill_info("Notification check result",
-        result: inspect(result),
-        module: __MODULE__
-      )
-
       result
     else
       error ->
         AppLogger.kill_error("Error checking notification requirements",
           error: inspect(error),
+          kill_id: killmail_id,
+          system: get_system_name(system_id),
           module: __MODULE__
         )
 
@@ -180,7 +198,18 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   defp handle_notification_skipped(ctx, reason) do
     Stats.track_processing_complete({:ok, :skipped})
-    log_outcome(nil, ctx, persisted: true, notified: false, reason: reason)
+    # Get killmail_id from context if available, otherwise use "unknown"
+    kill_id = if ctx && ctx.killmail_id, do: ctx.killmail_id, else: "unknown"
+    system_name = get_system_name(ctx && ctx.system_id)
+
+    AppLogger.kill_info("Killmail processed but not notified",
+      kill_id: kill_id,
+      system: system_name,
+      module: __MODULE__,
+      reason: reason,
+      source: get_in(ctx, [:options, :source])
+    )
+
     {:ok, :skipped}
   end
 
@@ -198,16 +227,29 @@ defmodule WandererNotifier.Killmail.Pipeline do
   @spec build_killmail(zkb_data) :: {:ok, Killmail.t()} | {:error, term()}
   defp build_killmail(%{"killmail_id" => id} = zkb_data) do
     hash = get_in(zkb_data, ["zkb", "hash"])
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    cache_key = "killmail:#{id}"
 
-    case esi_service().get_killmail(id, hash, []) do
-      {:ok, esi_data} ->
+    # Try cache first
+    case cache_repo().get(cache_name, cache_key) do
+      {:ok, cached_data} ->
         zkb_data = Map.get(zkb_data, "zkb", %{})
-        killmail = Killmail.new(id, zkb_data, esi_data)
+        killmail = Killmail.new(id, zkb_data, cached_data)
         {:ok, killmail}
 
-      error ->
-        log_error(zkb_data, nil, error)
-        {:error, :create_failed}
+      _ ->
+        case esi_service().get_killmail(id, hash, []) do
+          {:ok, esi_data} ->
+            # Cache the ESI data
+            cache_repo().put(cache_name, cache_key, esi_data)
+            zkb_data = Map.get(zkb_data, "zkb", %{})
+            killmail = Killmail.new(id, zkb_data, esi_data)
+            {:ok, killmail}
+
+          error ->
+            log_error(zkb_data, nil, error)
+            {:error, :create_failed}
+        end
     end
   end
 
@@ -265,11 +307,13 @@ defmodule WandererNotifier.Killmail.Pipeline do
   defp log_outcome(killmail, ctx, opts) do
     kill_id = if killmail, do: killmail.killmail_id, else: "unknown"
     context_id = if ctx, do: ctx.killmail_id, else: nil
+    system_name = get_system_name(get_in(killmail, [:system_id]))
 
     if opts[:notified] do
       AppLogger.kill_info("Killmail processed and notified",
         kill_id: kill_id,
         context_id: context_id,
+        system: system_name,
         module: __MODULE__,
         source: get_in(ctx, [:options, :source])
       )
@@ -277,6 +321,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
       AppLogger.kill_info("Killmail processed but not notified",
         kill_id: kill_id,
         context_id: context_id,
+        system: system_name,
         module: __MODULE__,
         reason: opts[:reason],
         source: get_in(ctx, [:options, :source])
@@ -287,17 +332,55 @@ defmodule WandererNotifier.Killmail.Pipeline do
   end
 
   defp log_error(data, ctx, reason) do
-    kill_id = if is_map(data), do: Map.get(data, "killmail_id", "unknown"), else: "unknown"
+    kill_id =
+      case extract_killmail_id(data) do
+        {:ok, id} -> id
+        {:error, _} -> "unknown"
+      end
+
     context_id = if ctx, do: ctx.killmail_id, else: nil
+    system_name = get_system_name(get_in(data, ["solar_system_id"]))
 
     AppLogger.kill_error("Pipeline error processing killmail",
       kill_id: kill_id,
       context_id: context_id,
+      system: system_name,
       module: __MODULE__,
       error: inspect(reason),
       source: get_in(ctx, [:options, :source])
     )
 
     :ok
+  end
+
+  defp get_system_name(nil), do: "unknown"
+
+  defp get_system_name(system_id) do
+    case esi_service().get_system_info(system_id) do
+      {:ok, data} ->
+        case data do
+          %{"name" => name} -> name
+          _ -> "System #{system_id}"
+        end
+
+      _error ->
+        "System #{system_id}"
+    end
+  end
+
+  @doc """
+  Returns the configured killmail pipeline module.
+  This allows for dependency injection and testing by swapping the pipeline module.
+  """
+  def killmail_pipeline do
+    Application.get_env(
+      :wanderer_notifier,
+      :killmail_pipeline,
+      WandererNotifier.Killmail.Pipeline
+    )
+  end
+
+  defp cache_repo do
+    Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache)
   end
 end

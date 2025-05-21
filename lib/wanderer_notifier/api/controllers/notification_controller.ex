@@ -23,16 +23,10 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   post "/test" do
     type = conn.body_params["type"] || "kill"
 
-    result =
-      case type do
-        "kill" -> NotificationHelpers.send_test_kill_notification()
-        "character" -> NotificationHelpers.send_test_character_notification()
-        "system" -> NotificationHelpers.send_test_system_notification()
-        _ -> {:error, "Invalid notification type"}
-      end
-
-    case result do
-      {:ok, _} -> send_success(conn, %{message: "Test notification sent"})
+    with {:ok, notification_type} <- validate_notification_type(type),
+         {:ok, _} <- send_test_notification(notification_type) do
+      send_success(conn, %{message: "Test notification sent"})
+    else
       {:error, reason} -> send_error(conn, 400, reason)
     end
   end
@@ -42,6 +36,22 @@ defmodule WandererNotifier.Api.Controllers.NotificationController do
   end
 
   # Private functions
+  defp validate_notification_type(type) do
+    case type do
+      "kill" -> {:ok, :kill}
+      "character" -> {:ok, :character}
+      "system" -> {:ok, :system}
+      _ -> {:error, "Invalid notification type"}
+    end
+  end
+
+  defp send_test_notification(:kill), do: NotificationHelpers.send_test_kill_notification()
+
+  defp send_test_notification(:character),
+    do: NotificationHelpers.send_test_character_notification()
+
+  defp send_test_notification(:system), do: NotificationHelpers.send_test_system_notification()
+
   defp get_notification_settings do
     features =
       Config.features()

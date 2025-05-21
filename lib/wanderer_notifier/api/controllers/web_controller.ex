@@ -45,36 +45,24 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   post "/schedulers/:name/execute" do
     scheduler_name = conn.params["name"]
 
-    # Find the scheduler module
-    scheduler_module =
-      WandererNotifier.Schedulers.Registry.all_schedulers()
-      |> Enum.find(fn %{module: module} ->
-        module
-        |> to_string()
-        |> String.split(".")
-        |> List.last()
-        |> String.replace("Scheduler", "")
-        |> String.downcase() == String.downcase(scheduler_name)
-      end)
+    with {:ok, module} <- find_scheduler_module(scheduler_name),
+         true <- module.enabled do
+      # Execute the scheduler asynchronously
+      Task.Supervisor.start_child(
+        WandererNotifier.TaskSupervisor,
+        fn ->
+          AppLogger.api_info("Running scheduler in background", %{module: inspect(module.module)})
+          module.module.run()
+        end
+      )
 
-    case scheduler_module do
-      %{module: module, enabled: true} ->
-        # Execute the scheduler asynchronously
-        Task.Supervisor.start_child(
-          WandererNotifier.TaskSupervisor,
-          fn ->
-            AppLogger.api_info("Running scheduler in background", %{module: inspect(module)})
-            module.run()
-          end
-        )
-
-        send_success(conn, %{message: "Scheduler execution triggered in background"})
-
-      %{enabled: false} ->
-        send_error(conn, 400, "Scheduler is disabled")
-
-      nil ->
+      send_success(conn, %{message: "Scheduler execution triggered in background"})
+    else
+      {:error, :not_found} ->
         send_error(conn, 404, "Scheduler not found")
+
+      false ->
+        send_error(conn, 400, "Scheduler is disabled")
     end
   end
 
@@ -112,6 +100,24 @@ defmodule WandererNotifier.Api.Controllers.WebController do
   end
 
   # Private functions
+
+  defp find_scheduler_module(scheduler_name) do
+    scheduler_module =
+      WandererNotifier.Schedulers.Registry.all_schedulers()
+      |> Enum.find(fn %{module: module} ->
+        module
+        |> to_string()
+        |> String.split(".")
+        |> List.last()
+        |> String.replace("Scheduler", "")
+        |> String.downcase() == String.downcase(scheduler_name)
+      end)
+
+    case scheduler_module do
+      nil -> {:error, :not_found}
+      module -> {:ok, module}
+    end
+  end
 
   defp get_service_status() do
     # Get license status safely

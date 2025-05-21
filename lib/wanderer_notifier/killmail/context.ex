@@ -11,6 +11,7 @@ defmodule WandererNotifier.Killmail.Context do
   @type t :: %__MODULE__{
           # Essential killmail data
           killmail_id: String.t() | integer() | nil,
+          system_id: integer() | nil,
           system_name: String.t() | nil,
           # A simple map of additional options
           options: map()
@@ -18,6 +19,7 @@ defmodule WandererNotifier.Killmail.Context do
 
   defstruct [
     :killmail_id,
+    :system_id,
     :system_name,
     :options
   ]
@@ -63,6 +65,7 @@ defmodule WandererNotifier.Killmail.Context do
   def new(killmail_id \\ nil, system_name \\ nil, options \\ %{}) do
     %__MODULE__{
       killmail_id: killmail_id,
+      system_id: nil,
       system_name: system_name || "Unknown",
       options: options
     }

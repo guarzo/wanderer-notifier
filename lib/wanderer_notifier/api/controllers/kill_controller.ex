@@ -33,38 +33,22 @@ defmodule WandererNotifier.Api.Controllers.KillController do
 
   # Get kill details
   get "/kill/:kill_id" do
-    # Convert kill_id to integer to ensure key type matches cache keys
-    case Integer.parse(kill_id) do
-      {id, ""} ->
-        case cache_module().get_kill(id) do
-          {:ok, kill} when not is_nil(kill) ->
-            send_success(conn, kill)
-
-          # Handle all 404 scenarios
-          {:ok, nil} ->
-            send_error(conn, 404, "Kill not found")
-
-          {:error, :not_cached} ->
-            send_error(conn, 404, "Kill not found")
-
-          {:error, :not_found} ->
-            send_error(conn, 404, "Kill not found")
-
-          {:error, reason} ->
-            send_error(conn, 500, reason)
-
-          _ ->
-            # Catch any unexpected response format
-            send_error(conn, 500, "Unexpected error retrieving kill data")
-        end
-
+    with {id, ""} <- Integer.parse(kill_id),
+         result <- cache_module().get_kill(id) do
+      case result do
+        {:ok, nil} -> send_error(conn, 404, "Kill not found")
+        {:ok, kill} -> send_success(conn, kill)
+        {:error, :not_found} -> send_error(conn, 404, "Kill not found")
+        {:error, reason} -> send_error(conn, 500, reason)
+        _ -> send_error(conn, 500, "Unexpected error retrieving kill data")
+      end
+    else
       {_, _remainder} ->
         AppLogger.api_debug("Kill ID contains non-numeric characters", %{kill_id: kill_id})
         send_error(conn, 400, "Invalid kill ID format")
         halt(conn)
 
       :error ->
-        # If we can't parse it as an integer, we'll return a 400 error
         AppLogger.api_debug("Failed to parse kill_id as integer", %{kill_id: kill_id})
         send_error(conn, 400, "Invalid kill ID format")
         halt(conn)

@@ -5,6 +5,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   require Logger
   alias WandererNotifier.Killmail.Killmail
+  alias WandererNotifier.Notifications.Deduplication
 
   @doc """
   Determines if a notification should be sent for a killmail.
@@ -14,9 +15,20 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
     should_notify?(Map.from_struct(killmail))
   end
 
-  def should_notify?(%{"killmail_id" => _id} = data) do
-    with {:ok, config} <- get_config() do
-      check_notification_rules(data, config)
+  def should_notify?(%{"killmail_id" => id} = data) do
+    # Check deduplication first
+    case Deduplication.check(:kill, id) do
+      {:ok, :duplicate} ->
+        {:ok, %{should_notify: false, reason: :duplicate}}
+
+      {:ok, :new} ->
+        # Only proceed with other checks if it's not a duplicate
+        with {:ok, config} <- get_config() do
+          check_notification_rules(data, config)
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -25,16 +37,27 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   def should_notify?(%{killmail: killmail, config: config}) do
-    # Make tracking checks regardless of notification status
-    system_tracked? = tracked_system?(get_in(killmail, ["solar_system_id"]))
-    character_tracked? = tracked_character?(get_in(killmail, ["victim", "character_id"]))
+    # Extract killmail_id from the nested structure
+    killmail_id = get_in(killmail, ["killmail_id"])
 
-    # Then check if notifications are enabled
-    case check_notifications_enabled(config) do
-      :ok ->
-        # If notifications are enabled, proceed with the full check
-        with :ok <- check_kill_notifications_enabled(config) do
-          check_tracking_status(system_tracked?, character_tracked?, config)
+    # Check deduplication first
+    case Deduplication.check(:kill, killmail_id) do
+      {:ok, :duplicate} ->
+        {:ok, %{should_notify: false, reason: :duplicate}}
+
+      {:ok, :new} ->
+        # Only proceed with other checks if it's not a duplicate
+        system_tracked? = tracked_system?(get_in(killmail, ["solar_system_id"]))
+        character_tracked? = tracked_character?(get_in(killmail, ["victim", "character_id"]))
+
+        case check_notifications_enabled(config) do
+          :ok ->
+            with :ok <- check_kill_notifications_enabled(config) do
+              check_tracking_status(system_tracked?, character_tracked?, config)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->

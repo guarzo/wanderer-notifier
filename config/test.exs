@@ -32,8 +32,7 @@ config :wanderer_notifier,
     tracked_characters_notifications_enabled: true,
     status_messages_disabled: true,
     track_kspace_systems: true
-  },
-  cache_repository: WandererNotifier.Cache.CachexImpl
+  }
 
 # Configure the test environment
 config :wanderer_notifier,
@@ -49,7 +48,7 @@ config :logger, :console,
 
 # Configure the cache
 config :wanderer_notifier, :cache,
-  backend: WandererNotifier.Cache.CachexImpl,
+  backend: Cachex,
   ttl: 60
 
 # Configure the ESI service
@@ -64,3 +63,7 @@ config :wanderer_notifier, :kill_determiner,
 
 # Configure Mox
 config :mox, :global, true
+
+# Configure the cache for testing
+config :wanderer_notifier,
+  cache_name: :wanderer_test_cache

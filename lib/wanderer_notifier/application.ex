@@ -37,17 +37,10 @@ defmodule WandererNotifier.Application do
       {WandererNotifier.Core.Stats, []},
       {WandererNotifier.License.Service, []},
       {WandererNotifier.Core.Application.Service, []},
-      {WandererNotifier.Web.Server, []}
+      {WandererNotifier.Web.Server, []},
+      # Add scheduler supervisor last to ensure all dependencies are started
+      {WandererNotifier.Schedulers.Supervisor, []}
     ]
-
-    # Conditionally add scheduler supervisor if enabled
-    children =
-      children ++
-        if Application.get_env(:wanderer_notifier, :scheduler_supervisor_enabled, false) do
-          [WandererNotifier.Schedulers.Supervisor]
-        else
-          []
-        end
 
     opts = [strategy: :one_for_one, name: WandererNotifier.Supervisor]
     Supervisor.start_link(children, opts)

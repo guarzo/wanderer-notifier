@@ -23,18 +23,11 @@ defmodule WandererNotifier.Killmail.Processor do
     :ok
   end
 
-  @spec process_zkill_message(String.t(), state) :: {:ok, kill_id | :skipped} | {:error, term()}
-  def process_zkill_message(raw_message, state) do
-    case Jason.decode(raw_message) do
-      {:error, reason} ->
-        AppLogger.error("Failed to decode ZKill message",
-          error: inspect(reason),
-          message: raw_message
-        )
-
-        {:error, {:decode_error, reason}}
-
-      {:ok, kill_data} ->
+  @spec process_zkill_message(map(), state) :: {:ok, kill_id | :skipped} | {:error, term()}
+  def process_zkill_message(kill_data, state) do
+    # Extract killmail_id from the data
+    case extract_killmail_id(kill_data) do
+      {:ok, _killmail_id} ->
         case should_notify?(kill_data) do
           {:ok, %{should_notify: true}} ->
             process_kill_data(kill_data, state)
@@ -44,14 +37,25 @@ defmodule WandererNotifier.Killmail.Processor do
             {:ok, :skipped}
 
           unexpected ->
-            AppLogger.error("Unexpected response from notification determiner", %{
-              kill_data: inspect(kill_data),
-              response: inspect(unexpected)
-            })
-
             {:error, {:invalid_notification_response, unexpected}}
         end
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  # Extract killmail_id from the data structure
+  defp extract_killmail_id(%{"killmail_id" => id}) when is_binary(id) and id != "", do: {:ok, id}
+  defp extract_killmail_id(%{"killmail_id" => id}) when is_integer(id), do: {:ok, to_string(id)}
+
+  defp extract_killmail_id(data) do
+    AppLogger.kill_error("Failed to extract killmail_id - expected killmail_id field",
+      data: inspect(data),
+      module: __MODULE__
+    )
+
+    {:error, :invalid_killmail_id}
   end
 
   @spec log_stats() :: :ok
@@ -65,6 +69,22 @@ defmodule WandererNotifier.Killmail.Processor do
       {:ok, [latest | _]} -> {:ok, latest}
       _ -> {:error, :no_recent_kills}
     end
+  end
+
+  # Creates a context for processing a killmail
+  defp create_context(kill_data, source, state) do
+    kill_id = Map.get(kill_data, "killmail_id", "unknown")
+    system_id = Map.get(kill_data, "solar_system_id")
+    system_name = get_system_name(system_id)
+
+    context_opts = %{
+      source: source,
+      processing_started_at: DateTime.utc_now()
+    }
+
+    context_opts = if state, do: Map.put(context_opts, :original_state, state), else: context_opts
+
+    Context.new(kill_id, system_name, context_opts)
   end
 
   @doc """
@@ -81,22 +101,9 @@ defmodule WandererNotifier.Killmail.Processor do
   """
   @spec process_killmail(map(), keyword()) :: {:ok, kill_id | :skipped} | {:error, term()}
   def process_killmail(killmail, opts \\ []) do
-    kill_id = Map.get(killmail, "killmail_id", "unknown")
-    system_id = Map.get(killmail, "solar_system_id")
     source = Keyword.get(opts, :source, :direct)
     state = Keyword.get(opts, :state)
-
-    # Create a context with relevant information
-    system_name = get_system_name(system_id)
-
-    context_opts = %{
-      source: source,
-      processing_started_at: DateTime.utc_now()
-    }
-
-    context_opts = if state, do: Map.put(context_opts, :original_state, state), else: context_opts
-
-    context = Context.new(kill_id, system_name, context_opts)
+    context = create_context(killmail, source, state)
 
     # Process through pipeline and let it handle notification
     case killmail_pipeline().process_killmail(killmail, context) do
@@ -106,12 +113,12 @@ defmodule WandererNotifier.Killmail.Processor do
 
       {:ok, _final_killmail} ->
         # Successfully processed and notified in pipeline
-        {:ok, kill_id}
+        {:ok, context.killmail_id}
 
       error ->
         # Handle pipeline errors
         AppLogger.kill_error("Failed to process kill data",
-          kill_id: kill_id,
+          kill_id: context.killmail_id,
           error: inspect(error)
         )
 
@@ -137,22 +144,7 @@ defmodule WandererNotifier.Killmail.Processor do
   @spec process_kill_data(kill_data, state) ::
           {:ok, kill_id | :skipped} | {:error, term()}
   def process_kill_data(kill_data, state) do
-    kill_id = Map.get(kill_data, "killmail_id", "unknown")
-    system_id = Map.get(kill_data, "solar_system_id")
-
-    # Create a context with relevant information
-    system_name = get_system_name(system_id)
-
-    context =
-      Context.new(
-        kill_id,
-        system_name,
-        %{
-          source: :zkill_websocket,
-          original_state: state,
-          processing_started_at: DateTime.utc_now()
-        }
-      )
+    context = create_context(kill_data, :zkill_websocket, state)
 
     # Process through pipeline and let it handle notification
     case killmail_pipeline().process_killmail(kill_data, context) do
@@ -162,12 +154,12 @@ defmodule WandererNotifier.Killmail.Processor do
 
       {:ok, _final_killmail} ->
         # Successfully processed and notified in pipeline
-        {:ok, kill_id}
+        {:ok, context.killmail_id}
 
       error ->
         # Handle pipeline errors
         AppLogger.kill_error("Failed to process kill data",
-          kill_id: kill_id,
+          kill_id: context.killmail_id,
           error: inspect(error)
         )
 

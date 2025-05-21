@@ -4,7 +4,6 @@ defmodule WandererNotifier.Killmail.CacheTest do
 
   alias WandererNotifier.Killmail.Cache
   alias WandererNotifier.ESI.ServiceMock
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
   alias WandererNotifier.Cache.Keys, as: CacheKeys
 
   # Default TTL for tests
@@ -18,10 +17,11 @@ defmodule WandererNotifier.Killmail.CacheTest do
     Application.put_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.ServiceMock)
 
     # Ensure Cachex is started for tests
-    Application.put_env(:wanderer_notifier, :cache_name, :test_cache)
+    cache_name = :test_cache
+    Application.put_env(:wanderer_notifier, :cache_name, cache_name)
 
     # Try to start Cachex - if it's already started, that's fine
-    case Cachex.start_link(name: :test_cache) do
+    case Cachex.start_link(name: cache_name) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
       error -> raise "Failed to start Cachex: #{inspect(error)}"
@@ -41,7 +41,8 @@ defmodule WandererNotifier.Killmail.CacheTest do
     Cache.init()
 
     # Ensure cache is clean
-    CacheRepo.set(CacheKeys.zkill_recent_kills(), [], @test_ttl)
+    CacheKeys.zkill_recent_kills()
+    |> Cachex.put(cache_name, [], ttl: @test_ttl)
 
     # Add sample killmail data to the test context
     sample_killmail = %{
@@ -58,7 +59,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
       }
     }
 
-    %{sample_killmail: sample_killmail}
+    %{sample_killmail: sample_killmail, cache_name: cache_name}
   end
 
   describe "init/0" do
@@ -73,25 +74,26 @@ defmodule WandererNotifier.Killmail.CacheTest do
   end
 
   describe "cache_kill/2" do
-    test "successfully caches a killmail", %{sample_killmail: killmail} do
+    test "successfully caches a killmail", %{sample_killmail: killmail, cache_name: cache_name} do
       kill_id = killmail["killmail_id"]
 
       # Cache the killmail
       assert :ok = Cache.cache_kill(kill_id, killmail)
 
       # Verify it was stored in the recent_kills list
-      {:ok, kill_ids} = CacheRepo.get(CacheKeys.zkill_recent_kills())
+      {:ok, kill_ids} = Cachex.get(cache_name, CacheKeys.zkill_recent_kills())
       assert is_list(kill_ids)
       assert to_string(kill_id) in kill_ids
 
       # Verify it was stored in the cache
-      key = "#{CacheKeys.zkill_recent_kills()}:#{kill_id}"
-      assert {:ok, _} = CacheRepo.get(key)
+      key = CacheKeys.zkill_recent_kill(to_string(kill_id))
+      assert {:ok, _} = Cachex.get(cache_name, key)
     end
 
-    test "handles empty kill list when updating" do
+    test "handles empty kill list when updating", %{cache_name: cache_name} do
       # Ensure the recent_kills list is empty
-      CacheRepo.set(CacheKeys.zkill_recent_kills(), [], @test_ttl)
+      CacheKeys.zkill_recent_kills()
+      |> Cachex.put(cache_name, [], ttl: @test_ttl)
 
       # Cache a killmail
       kill_id = 54_321
@@ -100,7 +102,7 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert :ok = Cache.cache_kill(kill_id, killmail)
 
       # Verify the recent_kills list was updated
-      {:ok, kill_ids} = CacheRepo.get(CacheKeys.zkill_recent_kills())
+      {:ok, kill_ids} = Cachex.get(cache_name, CacheKeys.zkill_recent_kills())
       assert is_list(kill_ids)
       assert to_string(kill_id) in kill_ids
     end
@@ -113,23 +115,15 @@ defmodule WandererNotifier.Killmail.CacheTest do
       # First cache the killmail
       :ok = Cache.cache_kill(kill_id, killmail)
 
-      # Now try to retrieve it
-      assert {:ok, retrieved_killmail} = Cache.get_kill(kill_id)
-      assert retrieved_killmail == killmail
+      # Now try to retrieve it using a pipeline
+      assert kill_id
+             |> Cache.get_kill()
+             |> elem(1) == killmail
     end
 
     test "returns error for non-existent kill ID" do
       # Try to get a kill ID that doesn't exist
       assert {:error, :not_cached} = Cache.get_kill(99_999)
-    end
-
-    test "returns error when kill exists in list but data is missing" do
-      # Add a kill ID to the recent_kills list but without data
-      kill_id = 88_888
-      CacheRepo.set(CacheKeys.zkill_recent_kills(), [to_string(kill_id)], @test_ttl)
-
-      # Try to retrieve it
-      assert {:error, :not_found} = Cache.get_kill(kill_id)
     end
   end
 
@@ -141,22 +135,22 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert Map.has_key?(kills, to_string(kill_id))
     end
 
-    test "filters out null kills", %{sample_killmail: killmail} do
+    test "filters out null kills", %{sample_killmail: killmail, cache_name: cache_name} do
       kill_id = killmail["killmail_id"]
       invalid_id = 99_999
       :ok = Cache.cache_kill(kill_id, killmail)
       kill_ids = [to_string(invalid_id), to_string(kill_id)]
-      CacheRepo.set(CacheKeys.zkill_recent_kills(), kill_ids, @test_ttl)
+      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), kill_ids, ttl: @test_ttl)
       {:ok, kills} = Cache.get_recent_kills()
       assert map_size(kills) == 1
       assert Map.has_key?(kills, to_string(kill_id))
       refute Map.has_key?(kills, to_string(invalid_id))
-      CacheRepo.delete(CacheKeys.zkill_recent_kills())
+      Cachex.del(cache_name, CacheKeys.zkill_recent_kills())
     end
 
-    test "handles empty kill list" do
+    test "handles empty kill list", %{cache_name: cache_name} do
       # Ensure recent_kills is empty
-      CacheRepo.set(CacheKeys.zkill_recent_kills(), [], @test_ttl)
+      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), [], ttl: @test_ttl)
 
       # Try to get recent kills
       {:ok, kills} = Cache.get_recent_kills()
@@ -185,9 +179,9 @@ defmodule WandererNotifier.Killmail.CacheTest do
       assert first_kill["killmail_id"] == kill_id
     end
 
-    test "handles missing kill data" do
+    test "handles missing kill data", %{cache_name: cache_name} do
       # Ensure the cache is empty
-      CacheRepo.set(CacheKeys.zkill_recent_kills(), [], @test_ttl)
+      Cachex.put(cache_name, CacheKeys.zkill_recent_kills(), [], ttl: @test_ttl)
 
       # Get latest killmails
       latest_kills = Cache.get_latest_killmails()

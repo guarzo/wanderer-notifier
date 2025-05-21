@@ -54,6 +54,13 @@ defmodule WandererNotifier.Killmail.Websocket do
     AppLogger.websocket_info("Connected to zKillboard WS")
     :telemetry.execute([:wanderer_notifier, :websocket, :connected], %{}, %{url: @url})
 
+    # Update stats to show we're connected
+    WandererNotifier.Core.Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now()
+    })
+
     # start heartbeat & ping loops
     schedule(:ping, @ping_interval)
     schedule(:heartbeat, @heartbeat_interval)
@@ -69,6 +76,13 @@ defmodule WandererNotifier.Killmail.Websocket do
     Stats.increment(:kill_processed)
     :telemetry.execute([:wanderer_notifier, :websocket, :message_received], %{count: 1}, %{})
 
+    # Update stats to show we received a message
+    WandererNotifier.Core.Stats.update_websocket(%{
+      connected: true,
+      connecting: false,
+      last_message: DateTime.utc_now()
+    })
+
     dispatch(raw, state)
     {:ok, state}
   end
@@ -80,6 +94,13 @@ defmodule WandererNotifier.Killmail.Websocket do
     )
 
     :telemetry.execute([:wanderer_notifier, :websocket, :disconnected], %{count: 1}, %{kind: kind})
+
+    # Update stats to show we're disconnected
+    WandererNotifier.Core.Stats.update_websocket(%{
+      connected: false,
+      connecting: true,
+      last_disconnect: DateTime.utc_now()
+    })
 
     {:reconnect, state}
   end
@@ -107,7 +128,6 @@ defmodule WandererNotifier.Killmail.Websocket do
   @impl true
   def handle_info(:subscribe, state) do
     msg = Jason.encode!(%{"action" => "sub", "channel" => "killstream"})
-    AppLogger.websocket_info("Subscribing to zKillboard killstream")
     {:reply, {:text, msg}, state}
   end
 
@@ -120,25 +140,20 @@ defmodule WandererNotifier.Killmail.Websocket do
   defp dispatch(raw, %State{parent: parent}) do
     case Jason.decode(raw) do
       {:ok, %{"action" => "subed", "channel" => "killstream"}} ->
-        AppLogger.websocket_info("Subscription to killstream confirmed")
         :telemetry.execute([:wanderer_notifier, :websocket, :subscribed], %{}, %{})
         :ok
 
       {:ok, data} ->
         type = classify(data)
-        AppLogger.websocket_debug("Received message", type: type)
 
-        if parent && Process.alive?(parent) do
-          send(parent, {:zkill_message, raw})
-        else
-          AppLogger.websocket_warn("Parent process not available, dropping message")
+        if type == "killmail" && parent && Process.alive?(parent) do
+          send(parent, {:zkill_message, data})
         end
 
         :ok
 
       {:error, reason} ->
         AppLogger.websocket_error("JSON decode failed",
-          snippet: String.slice(raw, 0, 100),
           error: inspect(reason)
         )
 

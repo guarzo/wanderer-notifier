@@ -27,6 +27,9 @@ defmodule WandererNotifier.Map.MapSystem do
 
   @behaviour WandererNotifier.Map.SystemBehaviour
 
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
+  alias Cachex
+
   @enforce_keys [:solar_system_id, :name]
   defstruct [
     :solar_system_id,
@@ -53,9 +56,6 @@ defmodule WandererNotifier.Map.MapSystem do
     :constellation_name
   ]
 
-  alias WandererNotifier.Cache.Keys, as: CacheKeys
-  alias WandererNotifier.Cache.CachexImpl, as: CacheRepo
-
   @impl true
   def is_tracked?(system_id) when is_integer(system_id) do
     system_id_str = Integer.to_string(system_id)
@@ -63,7 +63,9 @@ defmodule WandererNotifier.Map.MapSystem do
   end
 
   def is_tracked?(system_id_str) when is_binary(system_id_str) do
-    case CacheRepo.get(CacheKeys.map_systems()) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.map_systems()) do
       {:ok, systems} when is_list(systems) ->
         Enum.any?(systems, fn system ->
           id = Map.get(system, :solar_system_id) || Map.get(system, "solar_system_id")
@@ -206,11 +208,92 @@ defmodule WandererNotifier.Map.MapSystem do
   ## Returns
     - Updated MapSystem struct
   """
-  @spec update_with_static_info(t(), map()) :: t()
+  @spec update_with_static_info(t() | map(), map()) :: t()
   def update_with_static_info(system, static_info) do
-    system
-    |> Map.from_struct()
-    |> Map.merge(static_info)
+    # Get all valid struct fields from the module attributes
+    valid_fields = [
+      :solar_system_id,
+      :name,
+      :original_name,
+      :system_type,
+      :type_description,
+      :class_title,
+      :effect_name,
+      :is_shattered,
+      :locked,
+      :region_name,
+      :static_details,
+      :statics,
+      :system_class,
+      :temporary_name,
+      :sun_type_id,
+      :id,
+      :security_status,
+      :effect_power,
+      :region_id,
+      :triglavian_invasion_status,
+      :constellation_id,
+      :constellation_name
+    ]
+
+    # Convert only valid string keys to atoms, skipping others
+    atomized_static_info =
+      Enum.reduce(static_info, %{}, fn
+        {k, v}, acc when is_binary(k) ->
+          try do
+            atom = String.to_existing_atom(k)
+            if atom in valid_fields, do: Map.put(acc, atom, v), else: acc
+          rescue
+            ArgumentError -> acc
+          end
+
+        {k, v}, acc when is_atom(k) ->
+          if k in valid_fields, do: Map.put(acc, k, v), else: acc
+
+        _, acc ->
+          acc
+      end)
+
+    # Convert system to map if it's a struct
+    system_map =
+      case system do
+        %__MODULE__{} -> Map.from_struct(system)
+        %{} -> system
+      end
+
+    # Convert string keys in system_map to atoms
+    system_map =
+      Enum.reduce(system_map, %{}, fn
+        {k, v}, acc when is_binary(k) ->
+          try do
+            atom = String.to_existing_atom(k)
+            if atom in valid_fields, do: Map.put(acc, atom, v), else: acc
+          rescue
+            ArgumentError -> acc
+          end
+
+        {k, v}, acc when is_atom(k) ->
+          if k in valid_fields, do: Map.put(acc, k, v), else: acc
+
+        _, acc ->
+          acc
+      end)
+
+    # Convert numeric system_class to string if present
+    system_map =
+      case Map.get(system_map, :system_class) do
+        n when is_integer(n) -> Map.put(system_map, :system_class, Integer.to_string(n))
+        _ -> system_map
+      end
+
+    atomized_static_info =
+      case Map.get(atomized_static_info, :system_class) do
+        n when is_integer(n) -> Map.put(atomized_static_info, :system_class, Integer.to_string(n))
+        _ -> atomized_static_info
+      end
+
+    system_map
+    |> Map.merge(atomized_static_info)
     |> then(&struct(__MODULE__, &1))
     |> tap(&validate_types/1)
   end
@@ -322,4 +405,40 @@ defmodule WandererNotifier.Map.MapSystem do
             "MapSystem.#{field} must be a #{expected_type} or nil, got: #{inspect(value)}"
     end
   end
+
+  @doc """
+  Gets a system by ID from the cache.
+  """
+  def get_system(system_id) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.map_systems()) do
+      {:ok, systems} when is_list(systems) ->
+        Enum.find(systems, &(&1["id"] == system_id))
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Gets a system by name from the cache.
+  """
+  def get_system_by_name(system_name) do
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.map_systems()) do
+      {:ok, systems} when is_list(systems) ->
+        Enum.find(systems, &(&1["name"] == system_name))
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Checks if a system is in k-space.
+  """
+  def kspace?(%__MODULE__{system_class: cls}), do: cls in ["K", "HS", "LS", "NS"]
+  def kspace?(map), do: Map.get(map, :system_class) in ["K", "HS", "LS", "NS"]
 end

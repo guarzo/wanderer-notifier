@@ -35,3 +35,6 @@ config :logger, :debug_log,
 config :logger,
        :module_levels,
        %{}
+
+# Enable system tracking by default in dev
+config :wanderer_notifier, :features, system_tracking_enabled: true

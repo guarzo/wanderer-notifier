@@ -2,8 +2,8 @@
 # Configure test environment before anything else
 Application.put_env(:wanderer_notifier, :environment, :test)
 
-# Start ExUnit with global mode disabled
-ExUnit.start(capture_log: true)
+# Start ExUnit
+ExUnit.start()
 
 # Configure Mox
 Application.ensure_all_started(:mox)
@@ -162,7 +162,7 @@ Application.put_env(:wanderer_notifier, :schedulers_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_supervisor_enabled, false)
 
 # Configure cache implementation
-Application.put_env(:wanderer_notifier, :cache_impl, WandererNotifier.ETSCache)
+Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
 # Load shared test mocks
 Code.require_file("support/test_mocks.ex", __DIR__)

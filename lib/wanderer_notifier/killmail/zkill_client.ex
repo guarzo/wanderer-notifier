@@ -183,7 +183,8 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
     Logger.info("Formatting kill #{kill_id} hash=#{hash}")
 
-    details = get_kill_details(kill_id, hash)
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+    details = get_kill_details(kill_id, hash, cache_name)
     {ship_id, victim_id} = extract_ids(details)
 
     ship = get_name(ship_id, &ESIService.get_ship_type_name/2, "Unknown Ship")
@@ -197,10 +198,10 @@ defmodule WandererNotifier.Killmail.ZKillClient do
       "Unknown kill"
   end
 
-  defp get_kill_details(_id, nil), do: nil
+  defp get_kill_details(_id, nil, _cache_name), do: nil
 
-  defp get_kill_details(id, hash) do
-    case ESIService.get_killmail(id, hash) do
+  defp get_kill_details(id, hash, cache_name) do
+    case ESIService.get_killmail(id, hash, cache_name: cache_name) do
       {:ok, resp} -> resp
       {:error, _} -> nil
     end
