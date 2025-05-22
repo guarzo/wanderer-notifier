@@ -88,7 +88,11 @@ config :wanderer_notifier,
           Helpers.parse_bool(System.get_env("WANDERER_CHARACTER_NOTIFICATIONS_ENABLED"), true),
         status_messages_disabled:
           Helpers.parse_bool(System.get_env("WANDERER_DISABLE_STATUS_MESSAGES"), false),
-        track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true)
+        track_kspace: Helpers.parse_bool(System.get_env("WANDERER_FEATURE_TRACK_KSPACE"), true),
+        system_tracking_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_FEATURE_SYSTEM_TRACKING"), true),
+        character_tracking_enabled:
+          Helpers.parse_bool(System.get_env("WANDERER_FEATURE_CHARACTER_TRACKING"), true)
       },
       feature_env_vars
     ),

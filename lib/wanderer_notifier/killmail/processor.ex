@@ -5,6 +5,7 @@ defmodule WandererNotifier.Killmail.Processor do
   """
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Killmail.Context
   alias WandererNotifier.Killmail.Killmail
 
@@ -65,9 +66,11 @@ defmodule WandererNotifier.Killmail.Processor do
 
   @spec get_recent_kills() :: {:ok, kill_data} | {:error, :no_recent_kills}
   def get_recent_kills do
-    case cache_repo().get(WandererNotifier.Cache.Keys.zkill_recent_kills()) do
-      {:ok, [latest | _]} -> {:ok, latest}
-      _ -> {:error, :no_recent_kills}
+    cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+    case Cachex.get(cache_name, CacheKeys.zkill_recent_kills()) do
+      {:ok, kills} when is_list(kills) -> {:ok, kills}
+      _ -> {:ok, []}
     end
   end
 
@@ -231,9 +234,5 @@ defmodule WandererNotifier.Killmail.Processor do
       :killmail_pipeline,
       WandererNotifier.Killmail.Pipeline
     )
-  end
-
-  defp cache_repo do
-    Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache)
   end
 end

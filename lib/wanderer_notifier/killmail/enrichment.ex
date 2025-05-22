@@ -101,7 +101,9 @@ defmodule WandererNotifier.Killmail.Enrichment do
          victim_corporation: corp["name"],
          victim_corp_ticker: corp["ticker"],
          victim_alliance: alli["name"],
-         ship_name: ship["name"]
+         ship_name: ship["name"],
+         ship_type_id: victim["ship_type_id"],
+         character_id: victim["character_id"]
        }}
     end
   end
@@ -166,7 +168,7 @@ defmodule WandererNotifier.Killmail.Enrichment do
   defp get_alliance(id), do: simple_fetch(:get_alliance_info, id)
 
   defp get_ship(nil), do: {:error, :esi_data_missing}
-  defp get_ship(id), do: simple_fetch(:get_universe_type, id)
+  defp get_ship(id), do: simple_fetch(:get_ship_type_name, id)
 
   # Pulls a single record via ESI and uniformly maps errors
   defp simple_fetch(fun, id) do
@@ -180,24 +182,17 @@ defmodule WandererNotifier.Killmail.Enrichment do
 
   # Builds each attacker record
   defp enrich_attacker(atk) do
-    with {:ok, attacker_info} <- fetch_attacker_info(atk) do
-      {:ok, Map.merge(atk, attacker_info)}
-    end
-  end
-
-  defp fetch_attacker_info(atk) do
     with {:ok, char} <- get_character(atk["character_id"]),
          {:ok, corp} <- get_corporation(atk["corporation_id"]),
          {:ok, alli} <- get_alliance(atk["alliance_id"]),
          {:ok, ship} <- get_ship(atk["ship_type_id"]) do
       {:ok,
-       %{
+       Map.merge(atk, %{
          "character_name" => char["name"],
          "corporation_name" => corp["name"],
-         "corporation_ticker" => corp["ticker"],
          "alliance_name" => alli["name"],
-         "ship_name" => ship["name"]
-       }}
+         "ship_type_name" => ship["name"]
+       })}
     end
   end
 

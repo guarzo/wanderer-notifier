@@ -14,6 +14,9 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
   @callback process_data(list(), list(), Keyword.t()) :: {:ok, list()} | {:error, term()}
   @callback cache_key() :: String.t()
   @callback cache_ttl() :: integer()
+  @callback should_notify?(term(), term()) :: boolean()
+  @callback send_notification(term()) :: :ok | {:error, term()}
+  @callback enrich_item(term()) :: term()
 
   defmacro __using__(_opts) do
     quote do
@@ -56,17 +59,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       def update_data(cached \\ [], opts \\ []) do
-        base_url = Config.map_url_with_name()
-        map_name = Config.map_slug()
+        base_url = Config.base_map_url()
         endpoint = endpoint()
-        url = build_url(base_url, map_name, endpoint)
+        url = build_url(base_url, endpoint)
         headers = auth_header()
-
-        AppLogger.api_info("Starting data update",
-          url: url,
-          cached_count: length(cached),
-          opts: inspect(opts)
-        )
 
         case fetch_and_process(url, headers, cached, opts) do
           {:ok, _} = ok -> ok
@@ -75,40 +71,112 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fetch_and_process(url, headers, cached, opts) do
-        AppLogger.api_info("Fetching data from API", url: url)
-
         with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
              {:ok, decoded} <- decode_body(body),
              {:ok, items} <- extract_data(decoded) do
-          AppLogger.api_info("API responded with #{length(items)} items")
-
           case validate_data(items) do
             :ok ->
-              AppLogger.api_info("Data validation successful", count: length(items))
-              process_data(items, cached, opts)
+              process_with_notifications(items, cached, opts)
 
             {:error, :invalid_data} ->
-              # Validation already logged the details
+              AppLogger.api_error("Data validation failed",
+                url: url,
+                item_count: length(items)
+              )
+
               {:error, :invalid_data}
           end
         else
           {:ok, %{status_code: status, body: body}} ->
             AppLogger.api_error("HTTP error",
               status: status,
-              body_preview: slice(body)
+              url: url,
+              response: String.slice(body, 0, 100)
             )
 
-            handle_http_error(status, body)
+            {:error, {:http_error, status, body}}
 
           {:error, reason} ->
-            AppLogger.api_error("Request failed", error: inspect(reason))
-            handle_request_error(reason)
+            AppLogger.api_error("Request failed",
+              url: url,
+              error: inspect(reason)
+            )
+
+            {:error, {:request_error, reason}}
 
           other ->
-            AppLogger.api_error("Unexpected result", result: inspect(other))
-            handle_unexpected_result(other)
+            AppLogger.api_error("Unexpected result",
+              url: url,
+              result: inspect(other)
+            )
+
+            {:error, {:unexpected_result, other}}
         end
       end
+
+      defp process_with_notifications(new_items, cached_items, opts) do
+        cache_name = Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+
+        # Only process notifications if we had cached data
+        if cached_items != [] do
+          # Find new items that aren't in the cache
+          new_items = find_new_items(cached_items, new_items)
+
+          # Process notifications if not suppressed
+          unless Keyword.get(opts, :suppress_notifications, false) do
+            process_notifications(new_items)
+          end
+        end
+
+        # Cache the new data
+        case Cachex.put(cache_name, cache_key(), new_items, ttl: :timer.seconds(cache_ttl())) do
+          {:ok, true} ->
+            {:ok, new_items}
+
+          error ->
+            AppLogger.api_error("Failed to cache data",
+              error: inspect(error)
+            )
+
+            {:error, :cache_error}
+        end
+      end
+
+      defp find_new_items(cached_items, new_items) do
+        cached_ids = Enum.map(cached_items, &get_item_id/1) |> MapSet.new()
+
+        Enum.reject(new_items, fn item ->
+          get_item_id(item) in cached_ids
+        end)
+      end
+
+      defp process_notifications(items) do
+        Enum.each(items, fn item ->
+          item
+          |> enrich_item()
+          |> maybe_send_notification()
+        end)
+      end
+
+      defp maybe_send_notification(item) do
+        if should_notify?(get_item_id(item), item) do
+          send_notification(item)
+        end
+      rescue
+        e ->
+          AppLogger.api_error("Notification failed",
+            error: Exception.message(e),
+            item: inspect(item)
+          )
+
+          :error
+      end
+
+      defp get_item_id(%{"id" => id}), do: id
+      defp get_item_id(%{"eve_id" => id}), do: id
+      defp get_item_id(%{id: id}), do: id
+      defp get_item_id(%{eve_id: id}), do: id
+      defp get_item_id(_), do: nil
 
       defp fetch_and_cache do
         case fetch_from_api() do
@@ -121,23 +189,32 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
               ttl: cache_ttl()
             )
 
-            :ok = Cachex.put(cache_name, cache_key(), items, ttl: :timer.seconds(cache_ttl()))
-            {:ok, items}
+            case Cachex.put(cache_name, cache_key(), items, ttl: :timer.seconds(cache_ttl())) do
+              {:ok, true} ->
+                {:ok, items}
+
+              error ->
+                AppLogger.api_error("Failed to cache data",
+                  error: inspect(error)
+                )
+
+                {:error, :cache_error}
+            end
 
           error ->
-            AppLogger.api_error("Failed to fetch and cache data", error: inspect(error))
+            AppLogger.api_error("Failed to fetch and cache data",
+              error: inspect(error)
+            )
+
             error
         end
       end
 
       defp fetch_from_api do
-        base_url = Config.map_url_with_name()
-        map_name = Config.map_slug()
+        base_url = Config.base_map_url()
         endpoint = endpoint()
-        url = build_url(base_url, map_name, endpoint)
+        url = build_url(base_url, endpoint)
         headers = auth_header()
-
-        AppLogger.api_info("Fetching from API", url: url)
 
         with {:ok, %{status_code: 200, body: body}} <- HttpClient.get(url, headers),
              {:ok, decoded} <- decode_body(body),
@@ -145,36 +222,57 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
           {:ok, items}
         else
           {:ok, %{status_code: status, body: body}} ->
+            error_preview =
+              if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
+
             AppLogger.api_error("HTTP error",
               status: status,
-              body_preview: slice(body)
+              url: url,
+              response: error_preview
             )
 
-            {:error, {:http_error, status}}
+            {:error, {:http_error, status, error_preview}}
 
           {:error, reason} ->
-            AppLogger.api_error("Request failed", error: inspect(reason))
-            {:error, reason}
+            AppLogger.api_error("Request failed",
+              url: url,
+              error: inspect(reason)
+            )
+
+            {:error, {:request_error, reason}}
 
           other ->
-            AppLogger.api_error("Unexpected result", result: inspect(other))
-            {:error, :unexpected_result}
+            AppLogger.api_error("Unexpected result",
+              url: url,
+              result: inspect(other)
+            )
+
+            {:error, {:unexpected_result, other}}
         end
       end
 
       # Helper functions
-      defp build_url(base_url, map_name, endpoint) do
+      defp build_url(base_url, endpoint) do
         base_url
         |> String.trim_trailing("/")
         |> Kernel.<>("/api/maps/")
-        |> Kernel.<>(map_name)
+        |> Kernel.<>(Config.map_slug())
         |> Kernel.<>("/")
         |> Kernel.<>(endpoint)
       end
 
+      defp add_query_params(url) do
+        case endpoint() do
+          "map/user_characters" ->
+            url <> "?slug=" <> Config.map_slug()
+
+          _ ->
+            url
+        end
+      end
+
       defp auth_header do
         token = Config.map_token()
-        AppLogger.api_info("Using auth token", token_length: String.length(token))
         [{"Authorization", "Bearer #{token}"}]
       end
 
@@ -184,7 +282,10 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
             {:ok, data}
 
           error ->
-            AppLogger.api_error("Failed to decode JSON", error: inspect(error))
+            AppLogger.api_error("Failed to decode JSON",
+              error: inspect(error)
+            )
+
             {:error, :json_decode_failed}
         end
       end
@@ -192,40 +293,9 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       defp decode_body(map) when is_map(map), do: {:ok, map}
       defp decode_body(other), do: {:error, :invalid_body}
 
-      defp handle_http_error(status, body) do
-        error_preview = if is_binary(body), do: String.slice(body, 0, 100), else: inspect(body)
-
-        AppLogger.api_error("API HTTP error",
-          status: status,
-          body_preview: error_preview
-        )
-
-        {:error, {:http_error, status}}
-      end
-
-      defp handle_request_error(reason) do
-        AppLogger.api_error("Request failed", error: inspect(reason))
-        {:error, reason}
-      end
-
-      defp handle_unexpected_result(result) do
-        AppLogger.api_error("Unexpected result", result: inspect(result))
-        {:error, :unexpected_result}
-      end
-
-      defp slice(body) when is_binary(body) do
-        if String.length(body) > 100 do
-          String.slice(body, 0, 100) <> "..."
-        else
-          body
-        end
-      end
-
-      defp slice(body), do: inspect(body)
-
       defp fallback(cached, reason) when is_list(cached) and cached != [] do
-        AppLogger.api_info(
-          "Using #{length(cached)} cached items as fallback",
+        AppLogger.api_info("Using cached data as fallback",
+          count: length(cached),
           reason: inspect(reason)
         )
 
@@ -233,12 +303,18 @@ defmodule WandererNotifier.Map.Clients.BaseMapClient do
       end
 
       defp fallback([], reason) do
-        AppLogger.api_error("Fallback with empty cache", reason: inspect(reason))
+        AppLogger.api_error("Fallback with empty cache",
+          reason: inspect(reason)
+        )
+
         {:error, reason}
       end
 
       defp fallback(nil, reason) do
-        AppLogger.api_error("Fallback with nil cache", reason: inspect(reason))
+        AppLogger.api_error("Fallback with nil cache",
+          reason: inspect(reason)
+        )
+
         {:error, reason}
       end
 

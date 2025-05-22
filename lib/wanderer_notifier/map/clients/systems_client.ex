@@ -4,39 +4,98 @@ defmodule WandererNotifier.Map.Clients.SystemsClient do
   """
 
   use WandererNotifier.Map.Clients.BaseMapClient
+  alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Map.SystemStaticInfo
+  alias WandererNotifier.Notifications.Determiner.System, as: SystemDeterminer
+  alias WandererNotifier.Notifiers.Discord.Notifier, as: DiscordNotifier
+  alias WandererNotifier.Cache.Keys, as: CacheKeys
 
   @impl true
   def endpoint, do: "systems"
 
   @impl true
-  def extract_data(%{"systems" => systems}), do: {:ok, systems}
-  def extract_data(_), do: {:error, :invalid_data_format}
+  def extract_data(%{"data" => %{"systems" => systems}}) do
+    {:ok, systems}
+  end
+
+  def extract_data(data) do
+    AppLogger.api_error("Invalid systems data format",
+      data: inspect(data)
+    )
+
+    {:error, :invalid_data_format}
+  end
 
   @impl true
   def validate_data(systems) when is_list(systems) do
-    if Enum.all?(systems, &valid_system?/1), do: :ok, else: {:error, :invalid_data}
+    if Enum.all?(systems, &valid_system?/1) do
+      :ok
+    else
+      AppLogger.api_error("Systems data validation failed",
+        count: length(systems)
+      )
+
+      {:error, :invalid_data}
+    end
   end
 
-  def validate_data(_), do: {:error, :invalid_data}
+  def validate_data(other) do
+    AppLogger.api_error("Invalid systems data type",
+      type: inspect(other)
+    )
+
+    {:error, :invalid_data}
+  end
 
   @impl true
   def process_data(new_systems, _cached_systems, _opts) do
     # For now, just return the new systems
     # In the future, we could implement diffing or other processing here
+    AppLogger.api_info("Processing systems data",
+      count: length(new_systems)
+    )
+
     {:ok, new_systems}
   end
 
   @impl true
-  def cache_key, do: "map:systems"
+  def cache_key, do: CacheKeys.map_systems()
 
   @impl true
   def cache_ttl, do: 300
 
+  @impl true
+  def should_notify?(system_id, system) do
+    SystemDeterminer.should_notify?(system_id, system)
+  end
+
+  @impl true
+  def send_notification(system) do
+    DiscordNotifier.send_new_system_notification(system)
+  end
+
+  @impl true
+  def enrich_item(system) do
+    case SystemStaticInfo.enrich_system(system) do
+      {:ok, enriched} -> enriched
+      _ -> system
+    end
+  end
+
   defp valid_system?(system) do
     is_map(system) and
       is_binary(system["name"]) and
-      is_integer(system["id"]) and
-      is_integer(system["constellation_id"]) and
-      is_integer(system["region_id"])
+      is_binary(system["id"]) and
+      is_integer(system["solar_system_id"]) and
+      is_boolean(system["locked"]) and
+      is_boolean(system["visible"]) and
+      is_integer(system["position_x"]) and
+      is_integer(system["position_y"]) and
+      is_integer(system["status"]) and
+      (is_binary(system["custom_name"]) or is_nil(system["custom_name"])) and
+      (is_binary(system["description"]) or is_nil(system["description"])) and
+      (is_binary(system["original_name"]) or is_nil(system["original_name"])) and
+      (is_binary(system["temporary_name"]) or is_nil(system["temporary_name"])) and
+      (is_binary(system["tag"]) or is_nil(system["tag"]))
   end
 end

@@ -27,33 +27,7 @@ defmodule WandererNotifier.ESI.Service do
   end
 
   defp cache_repo do
-    repo =
-      Application.get_env(
-        :wanderer_notifier,
-        :cache_repo,
-        Cachex
-      )
-
-    # Ensure the module is loaded and available
-    if Code.ensure_loaded?(repo) do
-      repo
-    else
-      # Log this only once per minute to avoid log spam
-      cache_error_key = :esi_cache_repo_error_logged
-      last_logged = Process.get(cache_error_key)
-      now = System.monotonic_time(:second)
-
-      if is_nil(last_logged) || now - last_logged > 60 do
-        AppLogger.api_warn(
-          "Cache repository module #{inspect(repo)} not available in ESI Service, using fallback"
-        )
-
-        Process.put(cache_error_key, now)
-      end
-
-      # Return a dummy cache module that won't crash
-      SafeCache
-    end
+    Application.get_env(:wanderer_notifier, :cache_repo, Cachex)
   end
 
   defp cache_repo(cache_name) do
@@ -294,8 +268,63 @@ defmodule WandererNotifier.ESI.Service do
   @doc """
   Searches for inventory types using the ESI /search/ endpoint.
   """
-  def search_inventory_type(query, strict \\ true, _opts \\ []) do
-    esi_client().search_inventory_type(query, strict)
+  def search_inventory_type(query, strict \\ true, opts \\ []) do
+    cache_name =
+      Keyword.get(
+        opts,
+        :cache_name,
+        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+      )
+
+    cache_key = CacheKeys.search_inventory_type(query, strict)
+
+    case cache_repo(cache_name).(cache_key) do
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for inventory type search", query: query)
+        {:ok, data}
+
+      {:error, _} ->
+        AppLogger.api_debug("🔍 ESI cache miss for inventory type search", query: query)
+
+        case esi_client().search_inventory_type(query, strict, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} = result ->
+            cache_put(cache_name, cache_key, data)
+            result
+
+          error ->
+            error
+        end
+    end
+  end
+
+  @impl true
+  def get_universe_type(type_id, opts \\ []) do
+    cache_name =
+      Keyword.get(
+        opts,
+        :cache_name,
+        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
+      )
+
+    cache_key = CacheKeys.type(type_id)
+
+    case cache_repo(cache_name).(cache_key) do
+      {:ok, data} ->
+        AppLogger.api_debug("✨ ESI cache hit for universe type", type_id: type_id)
+        {:ok, data}
+
+      {:error, _} ->
+        AppLogger.api_debug("🔍 ESI cache miss for universe type", type_id: type_id)
+
+        case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} = result ->
+            cache_put(cache_name, cache_key, data)
+            result
+
+          error ->
+            error
+        end
+    end
   end
 
   @doc """
@@ -369,9 +398,11 @@ defmodule WandererNotifier.ESI.Service do
     case cache_repo(cache_name).(cache_key) do
       {:ok, data} when not is_nil(data) ->
         {:ok, data}
+
       {:ok, nil} ->
         cache_repo().del(cache_name, cache_key)
         fetch_and_cache_system(system_id, cache_name, cache_key, opts)
+
       {:error, _error} ->
         fetch_and_cache_system(system_id, cache_name, cache_key, opts)
     end
@@ -525,9 +556,6 @@ defmodule WandererNotifier.ESI.Service do
     def delete(_cache_name, _key), do: {:error, :cache_not_available}
     def exists?(_cache_name, _key), do: false
   end
-
-  @impl true
-  def get_universe_type(_id, _opts \\ []), do: {:error, :not_implemented}
 
   @impl true
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}

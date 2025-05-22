@@ -218,8 +218,15 @@ defmodule WandererNotifier.Killmail.ZKillClient do
 
   defp get_name(id, fun, default) do
     case fun.(id, []) do
-      {:ok, %{"name" => name}} -> name
-      _ -> default
+      {:ok, %{"name" => name}} ->
+        name
+
+      other ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} returned unexpected result: #{inspect(other)}. Using fallback: #{inspect(default)}"
+        )
+
+        default
     end
   end
 

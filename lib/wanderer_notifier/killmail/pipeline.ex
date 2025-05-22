@@ -231,7 +231,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     cache_key = "killmail:#{id}"
 
     # Try cache first
-    case cache_repo().get(cache_name, cache_key) do
+    case Cachex.get(cache_name, cache_key) do
       {:ok, cached_data} ->
         zkb_data = Map.get(zkb_data, "zkb", %{})
         killmail = Killmail.new(id, zkb_data, cached_data)
@@ -241,7 +241,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
         case esi_service().get_killmail(id, hash, []) do
           {:ok, esi_data} ->
             # Cache the ESI data
-            cache_repo().put(cache_name, cache_key, esi_data)
+            Cachex.put(cache_name, cache_key, esi_data)
             zkb_data = Map.get(zkb_data, "zkb", %{})
             killmail = Killmail.new(id, zkb_data, esi_data)
             {:ok, killmail}
@@ -378,9 +378,5 @@ defmodule WandererNotifier.Killmail.Pipeline do
       :killmail_pipeline,
       WandererNotifier.Killmail.Pipeline
     )
-  end
-
-  defp cache_repo do
-    Application.get_env(:wanderer_notifier, :cache_repo, WandererNotifier.Cache)
   end
 end

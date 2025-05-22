@@ -6,9 +6,17 @@ config :wanderer_notifier, env: config_env()
 # Enable schedulers by default
 config :wanderer_notifier,
   schedulers_enabled: true,
+  # 30 seconds
+  system_update_scheduler_interval: 30_000,
+  # 30 seconds
+  character_update_scheduler_interval: 30_000,
   features: [
     system_tracking_enabled: true,
-    character_tracking_enabled: true
+    character_tracking_enabled: true,
+    notifications_enabled: true,
+    kill_notifications_enabled: true,
+    system_notifications_enabled: true,
+    character_notifications_enabled: true
   ]
 
 # Configure HTTP client

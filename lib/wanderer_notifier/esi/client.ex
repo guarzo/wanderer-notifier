@@ -21,12 +21,6 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
     headers = default_headers()
 
-    AppLogger.api_info("ESI fetching killmail", %{
-      kill_id: kill_id,
-      hash: hash,
-      method: "get_killmail"
-    })
-
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         AppLogger.api_info("ESI killmail response", %{
@@ -62,11 +56,6 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/characters/#{character_id}/"
     headers = default_headers()
 
-    AppLogger.api_info("ESI fetching character info", %{
-      character_id: character_id,
-      method: "get_character_info"
-    })
-
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
@@ -96,11 +85,6 @@ defmodule WandererNotifier.ESI.Client do
   def get_corporation_info(corporation_id, _opts \\ []) do
     url = "#{@base_url}/corporations/#{corporation_id}/"
     headers = default_headers()
-
-    AppLogger.api_info("ESI fetching corporation info", %{
-      corporation_id: corporation_id,
-      method: "get_corporation_info"
-    })
 
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
@@ -132,11 +116,6 @@ defmodule WandererNotifier.ESI.Client do
     url = "#{@base_url}/alliances/#{alliance_id}/"
     headers = default_headers()
 
-    AppLogger.api_info("ESI fetching alliance info", %{
-      alliance_id: alliance_id,
-      method: "get_alliance_info"
-    })
-
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
         {:ok, body}
@@ -166,11 +145,6 @@ defmodule WandererNotifier.ESI.Client do
   def get_universe_type(type_id, _opts \\ []) do
     url = "#{@base_url}/universe/types/#{type_id}/"
     headers = default_headers()
-
-    AppLogger.api_info("ESI fetching type info", %{
-      type_id: type_id,
-      method: "get_universe_type"
-    })
 
     case http_client().get(url, headers) do
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->

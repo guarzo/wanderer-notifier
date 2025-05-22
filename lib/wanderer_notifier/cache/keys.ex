@@ -244,4 +244,10 @@ defmodule WandererNotifier.Cache.Keys do
   @doc "Key for a killmail"
   @spec kill(integer() | String.t()) :: String.t()
   def kill(id), do: combine([@prefix_dedup, @entity_killmail], [id], nil)
+
+  @doc "Key for inventory type search"
+  @spec search_inventory_type(String.t(), boolean()) :: String.t()
+  def search_inventory_type(query, strict) do
+    combine([@prefix_esi, "search"], [query, strict], nil)
+  end
 end

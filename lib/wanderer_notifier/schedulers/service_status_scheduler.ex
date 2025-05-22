@@ -15,6 +15,25 @@ defmodule WandererNotifier.Schedulers.ServiceStatusScheduler do
     :ok
   end
 
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 500
+    }
+  end
+
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+
+  def init(opts) do
+    {:ok, opts}
+  end
+
   defp generate_service_status_report do
     alias WandererNotifier.Notifications.Deduplication
 
