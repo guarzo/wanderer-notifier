@@ -8,7 +8,7 @@ defmodule WandererNotifier.Config do
     - Debug/logging
     - Notifications
     - Features
-    - Websocket
+    - RedisQ
     - Cache
     - License
     - Web/server
@@ -172,7 +172,7 @@ defmodule WandererNotifier.Config do
   def notification_feature_enabled?(flag), do: Map.get(notification_features(), flag, false)
   def min_kill_value, do: get(:min_kill_value, 0)
   def max_notifications_per_minute, do: get(:max_notifications_per_minute, 10)
-  def discord_kill_channel_id, do: get(:kill_channel_id)
+  def discord_kill_channel_id, do: get(:discord_kill_channel_id)
 
   @doc """
   Returns whether chain kills mode is enabled.
@@ -258,12 +258,11 @@ defmodule WandererNotifier.Config do
   def status_messages_disabled?, do: feature_enabled?(:status_messages_disabled)
   def track_kspace_systems?, do: feature_enabled?(:track_kspace_systems)
 
-  # --- Websocket ---
-  def websocket_config, do: get(:websocket, %{})
-  def websocket_enabled?, do: Map.get(websocket_config(), :enabled, true)
-  def websocket_reconnect_delay, do: Map.get(websocket_config(), :reconnect_delay, 5000)
-  def websocket_max_reconnects, do: Map.get(websocket_config(), :max_reconnects, 20)
-  def websocket_reconnect_window, do: Map.get(websocket_config(), :reconnect_window, 3600)
+  # --- RedisQ ---
+  def redisq_config, do: get(:redisq, %{})
+  def redisq_enabled?, do: Map.get(redisq_config(), :enabled, true)
+  def redisq_url, do: Map.get(redisq_config(), :url, "https://zkillredisq.stream/listen.php")
+  def redisq_poll_interval, do: Map.get(redisq_config(), :poll_interval, 1000)
 
   # --- Cache ---
   def cache_dir, do: get(:cache_dir, "/app/data/cache")

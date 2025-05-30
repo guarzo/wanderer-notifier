@@ -156,8 +156,15 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   end
 
   def send_kill_notification(kill_data) do
+    require Logger
+
+    Logger.info(
+      "DEBUG: DiscordNotifier.send_kill_notification called with kill_data: #{inspect(kill_data, limit: 200)}"
+    )
+
     try do
       if WandererNotifier.Notifications.LicenseLimiter.should_send_rich?(:killmail) do
+        Logger.info("DEBUG: Rich notifications enabled, sending rich notification")
         # Log the received kill data for debugging
         AppLogger.processor_debug("Kill notification received",
           data_type: typeof(kill_data)
@@ -169,14 +176,19 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
             do: kill_data,
             else: struct(Killmail, Map.from_struct(kill_data))
 
+        Logger.info("DEBUG: Sending killmail notification: #{inspect(killmail, limit: 200)}")
         send_killmail_notification(killmail)
         WandererNotifier.Notifications.LicenseLimiter.increment(:killmail)
       else
-        message = PlainTextFormatter.plain_killmail_notification(kill_data)
-        NeoClient.send_message(message)
+        Logger.info("DEBUG: Rich notifications disabled, sending plain text notification")
+        # Get the default channel ID
+        channel_id = Config.discord_channel_id()
+        send_simple_kill_notification(kill_data, channel_id)
       end
     rescue
       e ->
+        Logger.error("DEBUG: Exception in send_kill_notification: #{Exception.message(e)}")
+
         AppLogger.processor_error("[KILL_NOTIFICATION] Exception in send_kill_notification",
           error: Exception.message(e),
           kill_data: inspect(kill_data),
@@ -191,41 +203,116 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
   Sends a kill notification to a specific Discord channel.
   """
   def send_kill_notification_to_channel(kill_data, channel_id) do
-    if WandererNotifier.Config.rich_notifications_enabled?() do
-      # Send rich notification
-      send_rich_kill_notification(kill_data, channel_id)
-    else
-      # Send simple notification
-      send_simple_kill_notification(kill_data, channel_id)
-    end
+    require Logger
+    Logger.info("DEBUG: send_kill_notification_to_channel called with channel: #{channel_id}")
 
-    # Handle feature flags
-    if WandererNotifier.Config.feature_flags_enabled?() do
-      # Additional feature flag handling
-      handle_feature_flags(kill_data, channel_id)
+    case send_rich_kill_notification(kill_data, channel_id) do
+      :ok ->
+        Logger.info("DEBUG: Successfully sent kill notification to channel #{channel_id}")
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "DEBUG: Failed to send kill notification to channel #{channel_id}: #{inspect(reason)}"
+        )
+
+        AppLogger.api_error("Failed to send kill notification",
+          channel_id: channel_id,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+
+      unexpected ->
+        Logger.error(
+          "DEBUG: Unexpected result from send_rich_kill_notification: #{inspect(unexpected)}"
+        )
+
+        AppLogger.api_error("Unexpected result from send_rich_kill_notification",
+          channel_id: channel_id,
+          result: inspect(unexpected)
+        )
+
+        {:error, :unexpected_result}
     end
+  rescue
+    e ->
+      Logger.error(
+        "DEBUG: Exception in send_kill_notification_to_channel: #{Exception.message(e)}"
+      )
+
+      Logger.error("DEBUG: Stack trace: #{Exception.format_stacktrace(__STACKTRACE__)}")
+
+      AppLogger.api_error("Exception in send_kill_notification_to_channel",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        channel_id: channel_id
+      )
+
+      {:error, {:exception, Exception.message(e)}}
   end
 
   # Send a rich kill notification with embed
   defp send_rich_kill_notification(kill_data, channel_id) do
-    killmail = ensure_killmail_struct(kill_data)
+    require Logger
+    Logger.info("DEBUG: send_rich_kill_notification called with channel: #{channel_id}")
+
+    # Use the existing Killmail struct
+    killmail = kill_data
+    Logger.info("DEBUG: Using existing Killmail struct: #{inspect(killmail, limit: 200)}")
+
+    # Format the notification
     notification = KillmailFormatter.format_kill_notification(killmail)
-    NeoClient.send_embed(notification, channel_id)
+    Logger.info("DEBUG: Formatted notification: #{inspect(notification, limit: 200)}")
+
+    # Send the notification
+    Logger.info("DEBUG: Sending notification to channel #{channel_id}")
+
+    case NeoClient.send_embed(notification, channel_id) do
+      :ok ->
+        Logger.info("DEBUG: Successfully sent rich kill notification")
+        :ok
+
+      {:error, reason} ->
+        Logger.error("DEBUG: Failed to send rich kill notification: #{inspect(reason)}")
+
+        AppLogger.api_error("Failed to send rich kill notification",
+          channel_id: channel_id,
+          error: inspect(reason)
+        )
+
+        {:error, reason}
+
+      unexpected ->
+        Logger.error("DEBUG: Unexpected result from NeoClient.send_embed: #{inspect(unexpected)}")
+
+        AppLogger.api_error("Unexpected result from NeoClient.send_embed",
+          channel_id: channel_id,
+          result: inspect(unexpected)
+        )
+
+        {:error, :unexpected_result}
+    end
+  rescue
+    e ->
+      Logger.error("DEBUG: Exception in send_rich_kill_notification: #{Exception.message(e)}")
+      Logger.error("DEBUG: Stack trace: #{Exception.format_stacktrace(__STACKTRACE__)}")
+
+      AppLogger.api_error("Exception in send_rich_kill_notification",
+        error: Exception.message(e),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        channel_id: channel_id
+      )
+
+      {:error, {:exception, Exception.message(e)}}
   end
 
   # Send a simple text-based kill notification
   defp send_simple_kill_notification(kill_data, channel_id) do
+    require Logger
+    Logger.info("DEBUG: send_simple_kill_notification called")
     message = PlainTextFormatter.plain_killmail_notification(kill_data)
     NeoClient.send_message(message, channel_id)
-  end
-
-  # Handle feature flags for kill notifications
-  defp handle_feature_flags(kill_data, channel_id) do
-    if FeatureFlags.components_enabled?() do
-      killmail = ensure_killmail_struct(kill_data)
-      components = [ComponentBuilder.kill_action_row(killmail.killmail_id)]
-      NeoClient.send_message_with_components(killmail.killmail_id, components, channel_id)
-    end
   end
 
   def send_new_tracked_character_notification(character)
@@ -324,23 +411,74 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Send formatted notification to Discord
   defp send_to_discord(formatted_notification, feature) do
+    require Logger
+    Logger.info("DEBUG: send_to_discord called with feature: #{feature}")
+
     if env() == :test do
       handle_test_mode("DISCORD MOCK: #{inspect(feature)}")
       {:ok, :sent}
     else
-      discord_embed = CommonFormatter.to_discord_format(formatted_notification)
       components = Map.get(formatted_notification, :components, [])
       use_components = components != [] && FeatureFlags.components_enabled?()
-      # Use kill_channel_id for kill notifications
-      channel_id =
-        if feature in ["kill", :killmail],
-          do: WandererNotifier.Config.discord_kill_channel_id(),
-          else: nil
 
-      if use_components do
-        NeoClient.send_message_with_components(discord_embed, components, channel_id)
+      # Determine the appropriate channel ID based on the feature
+      channel_id =
+        case feature do
+          "kill" ->
+            Config.discord_channel_id()
+
+          :killmail ->
+            Config.discord_channel_id()
+
+          :system_tracking ->
+            Config.discord_system_channel_id() || Config.discord_channel_id()
+
+          :character_tracking ->
+            Config.discord_character_channel_id() || Config.discord_channel_id()
+
+          _ ->
+            Config.discord_channel_id()
+        end
+
+      Logger.info("DEBUG: Sending to channel: #{channel_id}, using components: #{use_components}")
+
+      # For killmail notifications, send the notification map directly without conversion
+      if feature in ["kill", :killmail] do
+        Logger.info("DEBUG: Sending kill notification directly without conversion")
+
+        # Extract only the Discord embed fields
+        discord_embed = %{
+          title: formatted_notification.title,
+          description: formatted_notification.description,
+          color: formatted_notification.color,
+          url: formatted_notification.url,
+          timestamp: formatted_notification.timestamp,
+          footer: formatted_notification.footer,
+          thumbnail: formatted_notification.thumbnail,
+          author: formatted_notification.author,
+          fields: formatted_notification.fields,
+          image: formatted_notification.image
+        }
+
+        Logger.info(
+          "DEBUG: Discord embed for kill notification: #{inspect(discord_embed, limit: 200)}"
+        )
+
+        if use_components do
+          NeoClient.send_message_with_components(discord_embed, components, channel_id)
+        else
+          NeoClient.send_embed(discord_embed, channel_id)
+        end
       else
-        NeoClient.send_embed(discord_embed, channel_id)
+        Logger.info("DEBUG: Converting notification to Discord format")
+        discord_embed = CommonFormatter.to_discord_format(formatted_notification)
+        Logger.info("DEBUG: Discord embed: #{inspect(discord_embed, limit: 200)}")
+
+        if use_components do
+          NeoClient.send_message_with_components(discord_embed, components, channel_id)
+        else
+          NeoClient.send_embed(discord_embed, channel_id)
+        end
       end
 
       {:ok, :sent}
@@ -392,22 +530,22 @@ defmodule WandererNotifier.Notifiers.Discord.Notifier do
 
   # Send killmail notification
   defp send_killmail_notification(killmail) do
+    require Logger
+
+    Logger.info(
+      "DEBUG: send_killmail_notification called with killmail: #{inspect(killmail, limit: 200)}"
+    )
+
     if env() == :test do
       handle_test_mode("DISCORD MOCK: Killmail ID #{killmail.killmail_id}")
     else
+      Logger.info("DEBUG: Formatting killmail notification")
       notification = KillmailFormatter.format_kill_notification(killmail)
+      Logger.info("DEBUG: Formatted notification: #{inspect(notification, limit: 200)}")
 
       # Send notification
+      Logger.info("DEBUG: Sending notification to Discord")
       send_to_discord(notification, :killmail)
-    end
-  end
-
-  # Ensure the input is a Killmail struct
-  defp ensure_killmail_struct(kill_data) do
-    if is_struct(kill_data, Killmail) do
-      kill_data
-    else
-      struct(Killmail, Map.from_struct(kill_data))
     end
   end
 end

@@ -15,9 +15,19 @@ defmodule WandererNotifier.Killmail.Notification do
     - {:error, reason} on failure
   """
   def send_kill_notification(killmail, kill_id) do
+    require Logger
+    Logger.info("DEBUG: send_kill_notification called with kill_id: #{kill_id}")
+
     try do
+      logger_module().notification_info("Starting kill notification process", %{
+        kill_id: kill_id,
+        killmail_type: inspect(killmail.__struct__)
+      })
+
       # Create the notification using the KillmailNotification module
       notification = killmail_notification_module().create(killmail)
+
+      Logger.info("DEBUG: Created notification: #{inspect(notification, limit: 200)}")
 
       # Send the notification through the dispatcher
       case dispatcher_module().send_message(notification) do
@@ -40,6 +50,8 @@ defmodule WandererNotifier.Killmail.Notification do
           {:ok, :disabled}
 
         {:error, reason} = error ->
+          Logger.error("DEBUG: Failed to send kill notification: #{inspect(reason)}")
+
           logger_module().notification_error("Failed to send kill notification", %{
             kill_id: kill_id,
             error: inspect(reason)
@@ -49,6 +61,8 @@ defmodule WandererNotifier.Killmail.Notification do
       end
     rescue
       e ->
+        Logger.error("DEBUG: Exception in send_kill_notification: #{Exception.message(e)}")
+
         logger_module().notification_error("Exception sending kill notification", %{
           kill_id: kill_id,
           error: Exception.message(e),

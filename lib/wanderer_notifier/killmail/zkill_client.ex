@@ -112,7 +112,11 @@ defmodule WandererNotifier.Killmail.ZKillClient do
       {"Cache-Control", "no-cache"}
     ]
 
-    opts = [recv_timeout: 5_000, timeout: 5_000, follow_redirect: true]
+    opts = [
+      recv_timeout: 10000,
+      timeout: 10000,
+      follow_redirect: true
+    ]
 
     client =
       Application.get_env(
@@ -131,8 +135,12 @@ defmodule WandererNotifier.Killmail.ZKillClient do
         AppLogger.api_error("ZKill HTTP error", %{status: status, url: url, error: error_info})
         {:error, {:http_error, status}}
 
+      {:error, %{reason: :timeout}} ->
+        AppLogger.api_error("ZKill timeout", %{url: url, timeout: 10000})
+        {:error, :timeout}
+
       {:error, reason} ->
-        Logger.error("ZKill HTTP client error: #{inspect(reason)}")
+        AppLogger.api_error("ZKill HTTP client error", %{url: url, error: inspect(reason)})
         {:error, reason}
     end
   end
@@ -220,6 +228,20 @@ defmodule WandererNotifier.Killmail.ZKillClient do
     case fun.(id, []) do
       {:ok, %{"name" => name}} ->
         name
+
+      {:error, :esi_data_missing} ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} returned missing data. Using fallback: #{inspect(default)}"
+        )
+
+        default
+
+      {:error, reason} ->
+        Logger.error(
+          "ESI lookup for id=#{inspect(id)} failed with reason: #{inspect(reason)}. Using fallback: #{inspect(default)}"
+        )
+
+        default
 
       other ->
         Logger.error(

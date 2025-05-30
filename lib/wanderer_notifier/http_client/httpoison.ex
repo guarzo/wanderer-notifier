@@ -8,28 +8,104 @@ defmodule WandererNotifier.HttpClient.Httpoison do
 
   @default_headers [{"Content-Type", "application/json"}]
 
+  # Default timeout settings
+  # 10 seconds
+  @default_timeout 10_000
+  # 10 seconds
+  @default_recv_timeout 10_000
+  # 5 seconds
+  @default_connect_timeout 5_000
+  # 5 seconds
+  @default_pool_timeout 5_000
+
+  # Retry settings
+  @max_retries 3
+  # 1 second
+  @base_backoff 1_000
+  # 30 seconds
+  @max_backoff 30_000
+
+  defp default_opts do
+    [
+      timeout: @default_timeout,
+      recv_timeout: @default_recv_timeout,
+      connect_timeout: @default_connect_timeout,
+      pool_timeout: @default_pool_timeout,
+      hackney: [pool: :default]
+    ]
+  end
+
+  defp merge_opts(opts) do
+    Keyword.merge(default_opts(), opts)
+  end
+
+  defp calculate_backoff(retry_count) do
+    base = @base_backoff * :math.pow(2, retry_count - 1)
+    # Add up to 20% jitter
+    jitter = :rand.uniform() * 0.2 * base
+    # Cap at max backoff
+    min(base + jitter, @max_backoff) |> round()
+  end
+
+  defp retry_request(fun, retry_count \\ 0) do
+    case fun.() do
+      {:ok, response} ->
+        {:ok, response}
+
+      {:error, :timeout} when retry_count < @max_retries ->
+        backoff = calculate_backoff(retry_count + 1)
+
+        AppLogger.api_warn(
+          "HTTP request timed out, retrying in #{backoff}ms (attempt #{retry_count + 1}/#{@max_retries})"
+        )
+
+        Process.sleep(backoff)
+        retry_request(fun, retry_count + 1)
+
+      {:error, :connect_timeout} when retry_count < @max_retries ->
+        backoff = calculate_backoff(retry_count + 1)
+
+        AppLogger.api_warn(
+          "HTTP connection timed out, retrying in #{backoff}ms (attempt #{retry_count + 1}/#{@max_retries})"
+        )
+
+        Process.sleep(backoff)
+        retry_request(fun, retry_count + 1)
+
+      error ->
+        error
+    end
+  end
+
   @callback get(url :: String.t(), headers :: list(), options :: keyword()) ::
               {:ok, map()} | {:error, any()}
 
   @impl true
   def get(url, headers \\ @default_headers) do
-    url
-    |> HTTPoison.get(headers)
-    |> handle_response()
+    get(url, headers, [])
   end
 
   @impl true
   def get(url, headers, options) do
-    url
-    |> HTTPoison.get(headers, options)
-    |> handle_response()
+    retry_request(fn ->
+      url
+      |> HTTPoison.get(headers, merge_opts(options))
+      |> handle_response()
+    end)
   end
 
   @impl true
   def post(url, body, headers \\ @default_headers) do
-    url
-    |> HTTPoison.post(body, headers)
-    |> handle_response()
+    post(url, body, headers, [])
+  end
+
+  @impl true
+  def post(url, body, headers, options) do
+    retry_request(fn ->
+      url
+      |> HTTPoison.post(body, headers, merge_opts(options))
+      |> handle_response()
+    end)
   end
 
   @impl true
@@ -46,9 +122,11 @@ defmodule WandererNotifier.HttpClient.Httpoison do
       )
     end
 
-    url
-    |> HTTPoison.post(encoded_body, headers, options)
-    |> handle_response()
+    retry_request(fn ->
+      url
+      |> HTTPoison.post(encoded_body, headers, merge_opts(options))
+      |> handle_response()
+    end)
   end
 
   @doc """
@@ -63,9 +141,11 @@ defmodule WandererNotifier.HttpClient.Httpoison do
         body -> body
       end
 
-    url
-    |> HTTPoison.request(method, payload, headers, opts)
-    |> handle_response()
+    retry_request(fn ->
+      url
+      |> HTTPoison.request(method, payload, headers, merge_opts(opts))
+      |> handle_response()
+    end)
   end
 
   @impl true
@@ -73,7 +153,6 @@ defmodule WandererNotifier.HttpClient.Httpoison do
         {:ok, %HTTPoison.Response{status_code: status, body: body, headers: _headers}}
       )
       when status in 200..299 do
-    # Special handling for license validation with empty response
     if String.trim(body) == "" do
       AppLogger.api_debug("Empty response body from HTTP request")
 
@@ -82,7 +161,7 @@ defmodule WandererNotifier.HttpClient.Httpoison do
     else
       # Add detailed debug logging for license validation responses
       if String.length(body) < 100 do
-        AppLogger.api_debug("Raw HTTP response body", body: inspect(body))
+        AppLogger.api_info("Raw HTTP response body", body: inspect(body))
       end
 
       case Jason.decode(body) do

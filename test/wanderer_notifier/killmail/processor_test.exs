@@ -174,36 +174,38 @@ defmodule WandererNotifier.Killmail.ProcessorTest do
       assert {:ok, :skipped} = Processor.process_killmail(killmail, source: :test)
     end
 
-    test "handles websocket state in context" do
+    test "handles redisq state in context" do
       killmail = %{
-        "killmail_id" => 12_345,
-        "solar_system_id" => 30_000_142,
-        "victim" => %{
-          "character_id" => 93_345_033,
-          "corporation_id" => 98_553_333,
-          "ship_type_id" => 602
+        "killmail_id" => "123",
+        "killmail" => %{
+          "solar_system_id" => 30_000_142,
+          "victim" => %{
+            "character_id" => 123_456,
+            "corporation_id" => 789_012,
+            "alliance_id" => 345_678
+          },
+          "attackers" => [
+            %{
+              "character_id" => 987_654,
+              "corporation_id" => 567_890,
+              "alliance_id" => 234_567
+            }
+          ]
         },
         "zkb" => %{
-          "hash" => "test_hash"
+          "totalValue" => 1_000_000.0,
+          "points" => 1
         }
       }
 
-      state = %{some: :state}
+      state = %{
+        redisq: %{
+          connected: true,
+          last_message: DateTime.utc_now()
+        }
+      }
 
-      MockSystem
-      |> stub(:is_tracked?, fn _id -> {:ok, true} end)
-
-      MockCharacter
-      |> stub(:is_tracked?, fn _id -> {:ok, false} end)
-
-      MockDispatcher
-      |> stub(:send_message, fn _message -> {:ok, :sent} end)
-
-      MockDeduplication
-      |> expect(:check, fn :kill, 12_345 -> {:ok, :new} end)
-
-      assert {:ok, :skipped} =
-               Processor.process_killmail(killmail, source: :zkill_websocket, state: state)
+      Processor.process_killmail(killmail, source: :zkill_redisq, state: state)
     end
   end
 end

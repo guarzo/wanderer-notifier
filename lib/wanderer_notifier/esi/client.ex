@@ -8,41 +8,77 @@ defmodule WandererNotifier.ESI.Client do
 
   @base_url "https://esi.evetech.net/latest"
   @user_agent "WandererNotifier/1.0"
+  @default_timeout 15000
+  @default_recv_timeout 15000
 
   defp http_client do
     Application.get_env(:wanderer_notifier, :http_client, WandererNotifier.HttpClient.Httpoison)
+  end
+
+  defp default_opts do
+    [
+      timeout: @default_timeout,
+      recv_timeout: @default_recv_timeout,
+      follow_redirect: true
+    ]
   end
 
   @impl true
   @doc """
   Gets killmail information from ESI.
   """
-  def get_killmail(kill_id, hash, _opts \\ []) do
+  def get_killmail(kill_id, hash, opts \\ []) do
     url = "#{@base_url}/killmails/#{kill_id}/#{hash}/"
     headers = default_headers()
+    opts = Keyword.merge(default_opts(), opts)
 
-    case http_client().get(url, headers) do
+    AppLogger.api_info(
+      "ESI Client: Starting killmail request for kill_id=#{kill_id} hash=#{hash} with timeout=#{Keyword.get(opts, :timeout, @default_timeout)}ms"
+    )
+
+    start_time = System.monotonic_time()
+
+    case http_client().get(url, headers, opts) do
+      {:ok, %{status_code: status, body: nil}} when status in 200..299 ->
+        AppLogger.api_error(
+          "ESI Client: Received 200 with nil body for kill_id=#{kill_id} hash=#{hash}"
+        )
+
+        {:error, :esi_data_missing}
+
       {:ok, %{status_code: status, body: body}} when status in 200..299 ->
-        AppLogger.api_info("ESI killmail response", %{
-          kill_id: kill_id,
-          status: status
-        })
+        duration = System.monotonic_time() - start_time
+
+        AppLogger.api_info(
+          "ESI Client: Received successful response for kill_id=#{kill_id} in #{duration}μs"
+        )
 
         {:ok, body}
 
       {:ok, %{status_code: status}} ->
-        AppLogger.api_error("ESI killmail error response", %{
-          kill_id: kill_id,
-          status: status
-        })
+        duration = System.monotonic_time() - start_time
+
+        AppLogger.api_error(
+          "ESI Client: Received error status #{status} for kill_id=#{kill_id} after #{duration}μs"
+        )
 
         {:error, {:http_error, status}}
 
+      {:error, %{reason: :timeout}} ->
+        duration = System.monotonic_time() - start_time
+
+        AppLogger.api_error(
+          "ESI Client: Request timed out for kill_id=#{kill_id} after #{duration}μs (timeout=#{Keyword.get(opts, :timeout, @default_timeout)}ms)"
+        )
+
+        {:error, :timeout}
+
       {:error, reason} ->
-        AppLogger.api_error("ESI killmail failed", %{
-          kill_id: kill_id,
-          error: inspect(reason)
-        })
+        duration = System.monotonic_time() - start_time
+
+        AppLogger.api_error(
+          "ESI Client: Request failed for kill_id=#{kill_id} after #{duration}μs with reason: #{inspect(reason)}"
+        )
 
         {:error, reason}
     end

@@ -79,7 +79,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_notifications_enabled(config) do
-    if config.notifications.enabled do
+    if config.notifications_enabled do
       :ok
     else
       {:error, :notifications_disabled}
@@ -87,7 +87,7 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
   end
 
   defp check_kill_notifications_enabled(config) do
-    if config.notifications.kill.enabled do
+    if config.kill_notifications_enabled do
       :ok
     else
       {:error, :kill_notifications_disabled}
@@ -96,16 +96,16 @@ defmodule WandererNotifier.Notifications.Determiner.Kill do
 
   defp check_tracking_status(system_tracked?, character_tracked?, config) do
     cond do
-      system_tracked? and config.notifications.kill.system.enabled ->
+      system_tracked? and config.system_notifications_enabled ->
         {:ok, %{should_notify: true}}
 
-      character_tracked? and config.notifications.kill.character.enabled ->
+      character_tracked? and config.character_notifications_enabled ->
         {:ok, %{should_notify: true}}
 
-      not config.notifications.kill.system.enabled ->
+      not config.system_notifications_enabled ->
         {:ok, %{should_notify: false, reason: "System notifications disabled"}}
 
-      not config.notifications.kill.character.enabled ->
+      not config.character_notifications_enabled ->
         {:ok, %{should_notify: false, reason: "Character notifications disabled"}}
 
       true ->

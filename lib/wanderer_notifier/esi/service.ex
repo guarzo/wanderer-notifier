@@ -4,10 +4,14 @@ defmodule WandererNotifier.ESI.Service do
   Provides high-level functions for common ESI operations.
   """
 
+  # 30 seconds default timeout
+  @default_timeout 30_000
+
   require Logger
   alias WandererNotifier.ESI.Entities.{Character, Corporation, Alliance, SolarSystem}
   alias WandererNotifier.Cache.Keys, as: CacheKeys
   alias WandererNotifier.Logger.Logger, as: AppLogger
+  alias WandererNotifier.Config
 
   @behaviour WandererNotifier.ESI.ServiceBehaviour
 
@@ -26,68 +30,92 @@ defmodule WandererNotifier.ESI.Service do
     defexception [:reason, :message]
   end
 
-  defp cache_repo do
-    Application.get_env(:wanderer_notifier, :cache_repo, Cachex)
-  end
-
-  defp cache_repo(cache_name) do
-    repo = cache_repo()
-    fn key -> repo.get(cache_name, key) end
-  end
-
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_killmail(kill_id, killmail_hash, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
+    AppLogger.api_info(
+      "ESI Service: Starting killmail request for kill_id=#{kill_id} hash=#{killmail_hash}"
+    )
 
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.killmail(kill_id, killmail_hash)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
-        AppLogger.api_debug("✨ ESI cache hit for killmail", kill_id: kill_id)
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        AppLogger.api_info("ESI Service: Cache hit for kill_id=#{kill_id}")
         {:ok, data}
 
-      {:error, _} ->
-        AppLogger.api_debug("🔍 ESI cache miss for killmail", kill_id: kill_id)
+      _ ->
+        AppLogger.api_info("ESI Service: Cache miss for kill_id=#{kill_id}, fetching from ESI")
+        fetch_from_esi(kill_id, killmail_hash, cache_name, cache_key, opts)
+    end
+  end
 
-        case esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
-            cache_put(cache_name, cache_key, data)
-            result
+  defp fetch_from_esi(kill_id, killmail_hash, cache_name, cache_key, opts) do
+    AppLogger.api_info(
+      "ESI Service: Starting ESI request for kill_id=#{kill_id} hash=#{killmail_hash} with opts=#{inspect(opts)}"
+    )
 
-          error ->
-            error
+    # Get the raw response from the client
+    response =
+      esi_client().get_killmail(kill_id, killmail_hash, Keyword.merge(retry_opts(), opts))
+
+    case response do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        AppLogger.api_info(
+          "ESI Service: Successfully fetched killmail data for kill_id=#{kill_id}"
+        )
+
+        # Only cache if we have a cache name and key
+        if cache_name && cache_key do
+          cache_put(cache_name, cache_key, data)
         end
+
+        {:ok, data}
+
+      {:ok, nil} ->
+        AppLogger.api_error("ESI Service: Received nil data for kill_id=#{kill_id}")
+        {:error, :esi_data_missing}
+
+      {:ok, data} ->
+        AppLogger.api_error(
+          "ESI Service: Invalid data format for kill_id=#{kill_id}: #{inspect(data)}"
+        )
+
+        {:error, :esi_data_missing}
+
+      {:error, :timeout} ->
+        AppLogger.api_error(
+          "ESI Service: Request timed out for kill_id=#{kill_id} after #{Keyword.get(opts, :timeout, @default_timeout)}ms"
+        )
+
+        {:error, :timeout}
+
+      error ->
+        AppLogger.api_error(
+          "ESI Service: Failed to fetch killmail data for kill_id=#{kill_id}: #{inspect(error)}"
+        )
+
+        error
     end
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character_info(character_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.character(character_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
 
         case esi_client().get_character_info(character_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -114,27 +142,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_corporation_info(corporation_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.corporation(corporation_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for corporation", corporation_id: corporation_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for corporation", corporation_id: corporation_id)
 
         case esi_client().get_corporation_info(corporation_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -161,27 +183,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_alliance_info(alliance_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.alliance(alliance_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for alliance", alliance_id: alliance_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for alliance", alliance_id: alliance_id)
 
         case esi_client().get_alliance_info(alliance_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -208,20 +224,14 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl true
   def get_ship_type_name(ship_type_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.type(ship_type_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         handle_cache_hit(ship_type_id, data)
 
-      {:error, _} ->
+      _ ->
         handle_cache_miss(ship_type_id, cache_key, opts)
     end
   end
@@ -229,38 +239,51 @@ defmodule WandererNotifier.ESI.Service do
   defp handle_cache_miss(ship_type_id, cache_key, opts) do
     AppLogger.api_debug("🔍 ESI cache miss for ship type", ship_type_id: ship_type_id)
 
-    case esi_client().get_ship_type_name(ship_type_id, Keyword.merge(retry_opts(), opts)) do
-      {:ok, type_info} -> process_type_info(type_info, cache_key)
-      error -> error
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
+
+    case esi_client().get_universe_type(ship_type_id, Keyword.merge(retry_opts(), opts)) do
+      {:ok, type_info} when is_map(type_info) and map_size(type_info) > 0 ->
+        case type_info do
+          %{"name" => name} ->
+            cache_put(cache_name, cache_key, type_info)
+            {:ok, %{"name" => name}}
+
+          _ ->
+            AppLogger.api_error("ESI Service: Missing name in type info",
+              type_info: inspect(type_info)
+            )
+
+            {:error, :esi_data_missing}
+        end
+
+      error ->
+        error
     end
   end
 
   defp handle_cache_hit(ship_type_id, data) do
     AppLogger.api_debug("✨ ESI cache hit for ship type", ship_type_id: ship_type_id)
-    {:ok, data}
-  end
 
-  defp process_type_info(type_info, cache_key) do
-    cache_repo().put(cache_key, type_info)
-    {:ok, type_info}
+    case data do
+      %{"name" => name} ->
+        {:ok, %{"name" => name}}
+
+      _ ->
+        AppLogger.api_error("ESI Service: Missing name in cached type info", data: inspect(data))
+        {:error, :esi_data_missing}
+    end
   end
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_type_info(type_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.type(type_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         handle_cache_hit(type_id, data)
 
-      {:error, _} ->
+      _ ->
         handle_cache_miss(type_id, cache_key, opts)
     end
   end
@@ -269,27 +292,21 @@ defmodule WandererNotifier.ESI.Service do
   Searches for inventory types using the ESI /search/ endpoint.
   """
   def search_inventory_type(query, strict \\ true, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.search_inventory_type(query, strict)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for inventory type search", query: query)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for inventory type search", query: query)
 
-        case esi_client().search_inventory_type(query, strict, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+        case esi_client().search_inventory_type(query, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -299,31 +316,48 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl true
   def get_universe_type(type_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.type(type_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for universe type", type_id: type_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for universe type", type_id: type_id)
+        fetch_and_cache_type(type_id, cache_name, cache_key, opts)
+    end
+  end
 
-        case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
-            cache_put(cache_name, cache_key, data)
-            result
+  defp fetch_and_cache_type(type_id, cache_name, cache_key, opts) do
+    case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
+        cache_put(cache_name, cache_key, data)
+        {:ok, data}
 
-          error ->
-            error
-        end
+      {:ok, nil} ->
+        AppLogger.api_error("ESI service got nil type data", %{
+          type_id: type_id
+        })
+
+        {:error, :type_not_found}
+
+      {:ok, invalid_data} ->
+        AppLogger.api_error("ESI service got invalid type data", %{
+          type_id: type_id,
+          data: inspect(invalid_data)
+        })
+
+        {:error, :invalid_type_data}
+
+      error ->
+        AppLogger.api_error("ESI service type error", %{
+          type_id: type_id,
+          error: inspect(error)
+        })
+
+        error
     end
   end
 
@@ -333,27 +367,21 @@ defmodule WandererNotifier.ESI.Service do
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system(system_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.system(system_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for solar system", system_id: system_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for solar system", system_id: system_id)
 
         case esi_client().get_system(system_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -373,7 +401,7 @@ defmodule WandererNotifier.ESI.Service do
     - {:error, reason} on failure
   """
   def get_system_struct(system_id, opts \\ []) do
-    with {:ok, data} when not is_nil(data) <- get_system(system_id, opts) do
+    with {:ok, data} when is_map(data) and map_size(data) > 0 <- get_system(system_id, opts) do
       {:ok, SolarSystem.from_esi_data(data)}
     else
       _ -> {:error, :system_not_found}
@@ -386,31 +414,21 @@ defmodule WandererNotifier.ESI.Service do
   """
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system_info(system_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.system(system_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} when not is_nil(data) ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         {:ok, data}
 
-      {:ok, nil} ->
-        cache_repo().del(cache_name, cache_key)
-        fetch_and_cache_system(system_id, cache_name, cache_key, opts)
-
-      {:error, _error} ->
+      _ ->
         fetch_and_cache_system(system_id, cache_name, cache_key, opts)
     end
   end
 
   defp fetch_and_cache_system(system_id, cache_name, cache_key, opts) do
     case esi_client().get_system(system_id, Keyword.merge(retry_opts(), opts)) do
-      {:ok, data} when not is_nil(data) ->
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         cache_put(cache_name, cache_key, data)
         {:ok, data}
 
@@ -433,27 +451,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_character(character_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.character(character_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for character", character_id: character_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for character", character_id: character_id)
 
-        case esi_client().get_character(character_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+        case esi_client().get_character_info(character_id, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -463,27 +475,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_type(type_id, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.type(type_id)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for type", type_id: type_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for type", type_id: type_id)
 
-        case esi_client().get_type(type_id, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+        case esi_client().get_universe_type(type_id, Keyword.merge(retry_opts(), opts)) do
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -493,27 +499,21 @@ defmodule WandererNotifier.ESI.Service do
 
   @impl WandererNotifier.ESI.ServiceBehaviour
   def get_system_kills(system_id, limit, opts \\ []) do
-    cache_name =
-      Keyword.get(
-        opts,
-        :cache_name,
-        Application.get_env(:wanderer_notifier, :cache_name, :wanderer_cache)
-      )
-
+    cache_name = Keyword.get(opts, :cache_name, Config.cache_name())
     cache_key = CacheKeys.system_kills(system_id, limit)
 
-    case cache_repo(cache_name).(cache_key) do
-      {:ok, data} ->
+    case Cachex.get(cache_name, cache_key) do
+      {:ok, data} when is_map(data) and map_size(data) > 0 ->
         AppLogger.api_debug("✨ ESI cache hit for system kills", system_id: system_id)
         {:ok, data}
 
-      {:error, _} ->
+      _ ->
         AppLogger.api_debug("🔍 ESI cache miss for system kills", system_id: system_id)
 
         case esi_client().get_system_kills(system_id, limit, Keyword.merge(retry_opts(), opts)) do
-          {:ok, data} = result ->
+          {:ok, data} when is_map(data) and map_size(data) > 0 ->
             cache_put(cache_name, cache_key, data)
-            result
+            {:ok, data}
 
           error ->
             error
@@ -525,24 +525,14 @@ defmodule WandererNotifier.ESI.Service do
   defp retry_opts do
     [
       max_attempts: 3,
-      base_timeout: 1000,
-      max_timeout: 5000
+      base_timeout: 5000,
+      max_timeout: 15000,
+      backoff: :exponential
     ]
   end
 
   defp esi_client do
-    client = Application.get_env(:wanderer_notifier, :esi_client, WandererNotifier.ESI.Client)
-
-    if Code.ensure_loaded?(client) do
-      client
-    else
-      # Fallback to the real client if the module is not available
-      AppLogger.api_warn(
-        "ESI client module #{inspect(client)} not available, falling back to WandererNotifier.ESI.Client"
-      )
-
-      WandererNotifier.ESI.Client
-    end
+    WandererNotifier.ESI.Client
   end
 
   # Fallback module that returns safe defaults to prevent crashes
@@ -561,7 +551,6 @@ defmodule WandererNotifier.ESI.Service do
   def search(_category, _search, _opts \\ []), do: {:error, :not_implemented}
 
   defp cache_put(cache_name, key, value) do
-    repo = cache_repo()
-    repo.put(cache_name, key, value)
+    Cachex.put(cache_name, key, value)
   end
 end

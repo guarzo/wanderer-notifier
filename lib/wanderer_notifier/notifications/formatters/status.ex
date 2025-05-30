@@ -34,7 +34,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       ) do
     uptime_str = format_uptime(uptime)
     license_icon = get_license_icon(license_status)
-    websocket_icon = get_websocket_status_icon(stats)
+    redisq_icon = get_redisq_status_icon(stats)
     notification_info = get_notification_info(stats)
     formatted_features = format_feature_statuses(features_status)
 
@@ -43,7 +43,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       description: description,
       uptime_str: uptime_str,
       license_icon: license_icon,
-      websocket_icon: websocket_icon,
+      redisq_icon: redisq_icon,
       systems_count: systems_count,
       characters_count: characters_count,
       notification_info: notification_info,
@@ -110,7 +110,7 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
       fields: [
         %{name: "Uptime", value: data.uptime_str, inline: true},
         %{name: "License", value: data.license_icon, inline: true},
-        %{name: "WebSocket", value: data.websocket_icon, inline: true},
+        %{name: "RedisQ", value: data.redisq_icon, inline: true},
         %{name: "Systems", value: "🗺️ #{data.systems_count}", inline: true},
         %{name: "Characters", value: "👤 #{data.characters_count}", inline: true},
         %{name: "📊 Notifications", value: data.notification_info, inline: false},
@@ -132,10 +132,10 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
     "Total: **#{total}** (Kills: **#{kills}**, Systems: **#{systems}**, Characters: **#{characters}**)"
   end
 
-  defp get_websocket_status_icon(stats) do
-    if Map.has_key?(stats, :websocket) do
-      ws_status = stats.websocket
-      get_icon_by_connection_state(ws_status)
+  defp get_redisq_status_icon(stats) do
+    if Map.has_key?(stats, :redisq) do
+      redisq_status = stats.redisq
+      get_icon_by_connection_state(redisq_status)
     else
       "❓"
     end
@@ -143,16 +143,8 @@ defmodule WandererNotifier.Notifications.Formatters.Status do
 
   defp get_icon_by_connection_state(%{connected: false}), do: "🔴"
   defp get_icon_by_connection_state(%{connected: true, last_message: nil}), do: "🟡"
-
-  defp get_icon_by_connection_state(%{connected: true, last_message: last_message}) do
-    time_diff = DateTime.diff(DateTime.utc_now(), last_message, :second)
-
-    cond do
-      time_diff < 60 -> "🟢"
-      time_diff < 300 -> "🟡"
-      true -> "🟠"
-    end
-  end
+  defp get_icon_by_connection_state(%{connected: true}), do: "🟢"
+  defp get_icon_by_connection_state(_), do: "❓"
 
   defp get_app_version do
     WandererNotifier.Config.Version.version()

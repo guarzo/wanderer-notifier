@@ -9,8 +9,7 @@ defmodule WandererNotifier.Killmail.Pipeline do
     Context,
     Killmail,
     Enrichment,
-    Notification,
-    NotificationChecker
+    Notification
   }
 
   alias WandererNotifier.Logger.Logger, as: AppLogger
@@ -32,36 +31,80 @@ defmodule WandererNotifier.Killmail.Pipeline do
   """
   @spec process_killmail(map(), Context.t()) :: {:ok, map() | :skipped} | {:error, term()}
   def process_killmail(zkb_data, context) do
+    require Logger
+
     Stats.increment(:kill_processed)
     context = ensure_context(context)
     system_id = get_in(zkb_data, ["solar_system_id"])
     context = %{context | system_id: system_id}
 
+    AppLogger.kill_info("Processing killmail",
+      kill_id: get_in(zkb_data, ["killmail_id"]),
+      system_id: system_id,
+      victim: get_in(zkb_data, ["victim", "character_id"]),
+      module: __MODULE__
+    )
+
     # First check if we should notify without ESI
     case should_notify_without_esi?(zkb_data) do
       {:ok, %{should_notify: false, reason: reason}} ->
+        AppLogger.kill_info("Skipping killmail - no notification needed",
+          kill_id: get_in(zkb_data, ["killmail_id"]),
+          reason: reason,
+          system_id: system_id
+        )
+
         handle_notification_skipped(context, reason)
 
       {:ok, %{should_notify: true}} ->
         # Then ensure we have a valid killmail_id
-        with {:ok, _killmail_id} <- extract_killmail_id(zkb_data) do
+        with {:ok, killmail_id} <- extract_killmail_id(zkb_data) do
+          AppLogger.kill_info("Processing new killmail",
+            kill_id: killmail_id,
+            system_id: system_id
+          )
+
           # Process the killmail
           case process_new_killmail(zkb_data, context) do
             {:ok, killmail} ->
-              {:ok, killmail}
+              # Send notification for the processed killmail
+              handle_notification_sent(killmail, context)
 
             error ->
+              AppLogger.kill_error("Failed to process killmail",
+                kill_id: killmail_id,
+                error: inspect(error),
+                system_id: system_id
+              )
+
               error
           end
         else
           {:error, :invalid_killmail_id} ->
+            AppLogger.kill_error("Invalid killmail ID",
+              data: inspect(zkb_data, pretty: true),
+              system_id: system_id
+            )
+
             {:error, :invalid_killmail_id}
 
           error ->
+            AppLogger.kill_error("Error extracting killmail ID",
+              error: inspect(error),
+              data: inspect(zkb_data, pretty: true),
+              system_id: system_id
+            )
+
             {:error, error}
         end
 
       {:error, reason} ->
+        AppLogger.kill_error("Error checking notification requirements",
+          error: inspect(reason),
+          kill_id: get_in(zkb_data, ["killmail_id"]),
+          system_id: system_id
+        )
+
         handle_error(zkb_data, context, reason)
     end
   end
@@ -80,40 +123,150 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
   # Process a new (non-duplicate) killmail
   defp process_new_killmail(zkb_data, ctx) do
+    killmail_id = get_in(zkb_data, ["killmail_id"])
+    system_id = get_in(zkb_data, ["solar_system_id"])
+
+    AppLogger.kill_info("Processing new killmail",
+      kill_id: killmail_id,
+      system_id: system_id
+    )
+
     case should_notify_without_esi?(zkb_data) do
       {:ok, %{should_notify: false, reason: reason}} ->
+        AppLogger.kill_info("Skipping killmail - no notification needed",
+          kill_id: killmail_id,
+          reason: reason,
+          system_id: system_id
+        )
+
         handle_notification_skipped(ctx, reason)
 
       {:ok, %{should_notify: true}} ->
+        AppLogger.kill_info("Processing tracked killmail",
+          kill_id: killmail_id,
+          system_id: system_id
+        )
+
         process_tracked_killmail(zkb_data, ctx)
 
       {:error, reason} ->
+        AppLogger.kill_error("Error checking notification requirements",
+          error: inspect(reason),
+          kill_id: killmail_id,
+          system_id: system_id
+        )
+
         handle_error(zkb_data, ctx, reason)
     end
   end
 
   # Process a killmail that has tracked entities
   defp process_tracked_killmail(zkb_data, ctx) do
+    killmail_id = get_in(zkb_data, ["killmail_id"])
+    system_id = get_in(zkb_data, ["solar_system_id"])
+
+    AppLogger.kill_info("Building and enriching killmail",
+      kill_id: killmail_id,
+      system_id: system_id
+    )
+
     with {:ok, killmail} <- build_killmail(zkb_data),
-         {:ok, enriched} <- enrich(killmail) do
+         _ =
+           AppLogger.kill_info("Killmail built successfully",
+             kill_id: killmail_id,
+             system_id: system_id
+           ),
+         {:ok, enriched} <- enrich(killmail),
+         _ =
+           AppLogger.kill_info("Killmail enriched successfully",
+             kill_id: killmail_id,
+             system_id: system_id
+           ) do
       check_notification_requirements(enriched, ctx)
     else
       {:error, reason} ->
+        AppLogger.kill_error("Failed to process tracked killmail",
+          error: inspect(reason),
+          kill_id: killmail_id,
+          system_id: system_id
+        )
+
         handle_error(zkb_data, ctx, reason)
     end
   end
 
   # Check if notification should be sent for an enriched killmail
-  defp check_notification_requirements(enriched, ctx) do
-    case NotificationChecker.should_notify?(enriched) do
-      {:ok, %{should_notify: true}} ->
-        handle_notification_sent(enriched, ctx)
+  defp check_notification_requirements(killmail, character_id) do
+    config = WandererNotifier.Config.get_config()
+    killmail_id = killmail.killmail_id
+    system_id = killmail.system_id
 
-      {:ok, %{should_notify: false, reason: reason}} ->
-        handle_notification_skipped(ctx, reason)
+    AppLogger.kill_info("Checking notification requirements",
+      kill_id: killmail_id,
+      system_id: system_id,
+      notifications_enabled: config.notifications_enabled,
+      system_notifications_enabled: config.system_notifications_enabled,
+      character_notifications_enabled: config.character_notifications_enabled,
+      kill_notifications_enabled: config.kill_notifications_enabled
+    )
 
-      {:error, reason} ->
-        handle_error(enriched, ctx, reason)
+    if config.notifications_enabled do
+      case killmail do
+        %{system_id: system_id} when not is_nil(system_id) ->
+          if config.system_notifications_enabled do
+            AppLogger.kill_info("System notification requirements met",
+              kill_id: killmail_id,
+              system_id: system_id
+            )
+
+            {:ok, killmail}
+          else
+            AppLogger.kill_info("System notifications disabled",
+              kill_id: killmail_id,
+              system_id: system_id
+            )
+
+            {:error, :system_notifications_disabled}
+          end
+
+        %{victim: %{character_id: ^character_id}} ->
+          if config.character_notifications_enabled do
+            AppLogger.kill_info("Character notification requirements met",
+              kill_id: killmail_id,
+              character_id: character_id
+            )
+
+            {:ok, killmail}
+          else
+            AppLogger.kill_info("Character notifications disabled",
+              kill_id: killmail_id,
+              character_id: character_id
+            )
+
+            {:error, :character_notifications_disabled}
+          end
+
+        _ ->
+          if config.kill_notifications_enabled do
+            AppLogger.kill_info("Kill notification requirements met",
+              kill_id: killmail_id
+            )
+
+            {:ok, killmail}
+          else
+            AppLogger.kill_info("Kill notifications disabled",
+              kill_id: killmail_id
+            )
+
+            {:error, :kill_notifications_disabled}
+          end
+      end
+    else
+      AppLogger.kill_info("All notifications disabled",
+        kill_id: killmail_id
+      )
+
+      {:error, :notifications_disabled}
     end
   end
 
@@ -232,19 +385,36 @@ defmodule WandererNotifier.Killmail.Pipeline do
 
     # Try cache first
     case Cachex.get(cache_name, cache_key) do
-      {:ok, cached_data} ->
+      {:ok, cached_data} when not is_nil(cached_data) ->
         zkb_data = Map.get(zkb_data, "zkb", %{})
         killmail = Killmail.new(id, zkb_data, cached_data)
         {:ok, killmail}
 
       _ ->
         case esi_service().get_killmail(id, hash, []) do
-          {:ok, esi_data} ->
-            # Cache the ESI data
+          {:ok, esi_data} when is_map(esi_data) and map_size(esi_data) > 0 ->
+            # Only cache valid ESI data
             Cachex.put(cache_name, cache_key, esi_data)
             zkb_data = Map.get(zkb_data, "zkb", %{})
             killmail = Killmail.new(id, zkb_data, esi_data)
             {:ok, killmail}
+
+          {:ok, nil} ->
+            AppLogger.api_error("Received nil ESI data for killmail",
+              kill_id: id,
+              module: __MODULE__
+            )
+
+            {:error, :esi_data_missing}
+
+          {:ok, invalid_data} ->
+            AppLogger.api_error("Received invalid ESI data for killmail",
+              kill_id: id,
+              data: inspect(invalid_data),
+              module: __MODULE__
+            )
+
+            {:error, :invalid_esi_data}
 
           error ->
             log_error(zkb_data, nil, error)

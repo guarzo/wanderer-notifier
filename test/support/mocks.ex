@@ -86,6 +86,76 @@ defmodule WandererNotifier.MockESI do
   def get_system_kills(30_000_142, _limit), do: {:ok, []}
   def get_system_kills(_system_id, _limit), do: {:error, :service_unavailable}
   def get_system_kills(system_id, limit, _opts), do: get_system_kills(system_id, limit)
+
+  def processor_info(_message, _metadata \\ []), do: :ok
+  def processor_error(_message, _metadata \\ []), do: :ok
+  def processor_debug(_message, _metadata \\ []), do: :ok
+  def processor_warn(_message, _metadata \\ []), do: :ok
+
+  def scheduler_info(_message, _metadata \\ []), do: :ok
+  def scheduler_error(_message, _metadata \\ []), do: :ok
+  def scheduler_debug(_message, _metadata \\ []), do: :ok
+  def scheduler_warn(_message, _metadata \\ []), do: :ok
+
+  def config_info(_message, _metadata \\ []), do: :ok
+  def config_error(_message, _metadata \\ []), do: :ok
+  def config_debug(_message, _metadata \\ []), do: :ok
+  def config_warn(_message, _metadata \\ []), do: :ok
+
+  def startup_info(_message, _metadata \\ []), do: :ok
+  def startup_error(_message, _metadata \\ []), do: :ok
+  def startup_debug(_message, _metadata \\ []), do: :ok
+  def startup_warn(_message, _metadata \\ []), do: :ok
+
+  def kill_info(_message, _metadata \\ []), do: :ok
+  def kill_error(_message, _metadata \\ []), do: :ok
+  def kill_debug(_message, _metadata \\ []), do: :ok
+  def kill_warn(_message, _metadata \\ []), do: :ok
+
+  def character_info(_message, _metadata \\ []), do: :ok
+  def character_error(_message, _metadata \\ []), do: :ok
+  def character_debug(_message, _metadata \\ []), do: :ok
+  def character_warn(_message, _metadata \\ []), do: :ok
+
+  def system_info(_message, _metadata \\ []), do: :ok
+  def system_error(_message, _metadata \\ []), do: :ok
+  def system_debug(_message, _metadata \\ []), do: :ok
+  def system_warn(_message, _metadata \\ []), do: :ok
+
+  def notification_info(_message, _metadata \\ []), do: :ok
+  def notification_error(_message, _metadata \\ []), do: :ok
+  def notification_debug(_message, _metadata \\ []), do: :ok
+  def notification_warn(_message, _metadata \\ []), do: :ok
+
+  def api_info(_message, _metadata \\ []), do: :ok
+  def api_error(_message, _metadata \\ []), do: :ok
+  def api_debug(_message, _metadata \\ []), do: :ok
+  def api_warn(_message, _metadata \\ []), do: :ok
+
+  def cache_info(_message, _metadata \\ []), do: :ok
+  def cache_error(_message, _metadata \\ []), do: :ok
+  def cache_debug(_message, _metadata \\ []), do: :ok
+  def cache_warn(_message, _metadata \\ []), do: :ok
+
+  def license_info(_message, _metadata \\ []), do: :ok
+  def license_error(_message, _metadata \\ []), do: :ok
+  def license_debug(_message, _metadata \\ []), do: :ok
+  def license_warn(_message, _metadata \\ []), do: :ok
+
+  def feature_info(_message, _metadata \\ []), do: :ok
+  def feature_error(_message, _metadata \\ []), do: :ok
+  def feature_debug(_message, _metadata \\ []), do: :ok
+  def feature_warn(_message, _metadata \\ []), do: :ok
+
+  def test_info(_message, _metadata \\ []), do: :ok
+  def test_error(_message, _metadata \\ []), do: :ok
+  def test_debug(_message, _metadata \\ []), do: :ok
+  def test_warn(_message, _metadata \\ []), do: :ok
+
+  def redisq_info(_message, _metadata \\ []), do: :ok
+  def redisq_error(_message, _metadata \\ []), do: :ok
+  def redisq_debug(_message, _metadata \\ []), do: :ok
+  def redisq_warn(_message, _metadata \\ []), do: :ok
 end
 
 defmodule WandererNotifier.Test.Support.Mocks do

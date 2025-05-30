@@ -36,7 +36,11 @@ end)
 # Base configuration with defaults
 # These will be used in dev/test and as fallbacks in production
 config :nostrum,
-  token: System.get_env("WANDERER_DISCORD_BOT_TOKEN") || "missing_token"
+  token: System.get_env("WANDERER_DISCORD_BOT_TOKEN") || "missing_token",
+  gateway_intents: [
+    :guilds,
+    :guild_messages
+  ]
 
 # Load feature-specific environment variables
 feature_env_vars =
@@ -61,15 +65,17 @@ config :wanderer_notifier,
   map_url_with_name: System.get_env("WANDERER_MAP_URL") || "missing_url",
 
   # Set discord_channel_id explicitly
-  discord_channel_id: System.get_env("WANDERER_DISCORD_CHANNEL_ID"),
+  discord_channel_id: System.get_env("WANDERER_DISCORD_CHANNEL_ID") || "971101320138350603",
 
   # Explicitly set config module
   config: WandererNotifier.Config,
 
   # Optional settings with sensible defaults
   port: Helpers.parse_int(System.get_env("PORT"), 4000),
-  discord_system_kill_channel_id: System.get_env("WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID") || "",
-  discord_character_kill_channel_id: System.get_env("WANDERER_CHARACTER_KILL_CHANNEL_ID") || "",
+  discord_system_kill_channel_id:
+    System.get_env("WANDERER_DISCORD_SYSTEM_KILL_CHANNEL_ID") || "971101320138350603",
+  discord_character_kill_channel_id:
+    System.get_env("WANDERER_CHARACTER_KILL_CHANNEL_ID") || "971101320138350603",
   discord_system_channel_id: System.get_env("WANDERER_SYSTEM_CHANNEL_ID") || "",
   discord_character_channel_id: System.get_env("WANDERER_CHARACTER_CHANNEL_ID") || "",
   license_manager_api_url:
@@ -100,11 +106,6 @@ config :wanderer_notifier,
     (System.get_env("WANDERER_CHARACTER_EXCLUDE_LIST") || "")
     |> String.split(",", trim: true)
     |> Enum.map(&String.trim/1),
-  websocket: %{
-    reconnect_delay: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_DELAY_MS"), 5000),
-    max_reconnects: Helpers.parse_int(System.get_env("WANDERER_WS_MAX_RECONNECTS"), 20),
-    reconnect_window: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_WINDOW_MS"), 3600)
-  },
   cache_dir: System.get_env("WANDERER_CACHE_DIR") || "/app/data/cache",
   public_url: System.get_env("WANDERER_PUBLIC_URL"),
   host: System.get_env("WANDERER_HOST") || "localhost",
@@ -118,15 +119,11 @@ config :wanderer_notifier, WandererNotifierWeb.Endpoint,
   ],
   server: true
 
-# Configure WebSocket settings
-config :wanderer_notifier, :websocket, %{
-  url: System.get_env("WANDERER_WS_URL") || "wss://zkillboard.com/websocket/",
-  ping_interval: Helpers.parse_int(System.get_env("WANDERER_WS_PING_INTERVAL_MS"), 20_000),
-  heartbeat_interval:
-    Helpers.parse_int(System.get_env("WANDERER_WS_HEARTBEAT_INTERVAL_MS"), 30_000),
-  reconnect_delay: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_DELAY_MS"), 5000),
-  max_reconnects: Helpers.parse_int(System.get_env("WANDERER_WS_MAX_RECONNECTS"), 20),
-  reconnect_window: Helpers.parse_int(System.get_env("WANDERER_WS_RECONNECT_WINDOW_MS"), 3600)
+# Configure RedisQ settings
+config :wanderer_notifier, :redisq, %{
+  enabled: true,
+  url: System.get_env("WANDERER_REDISQ_URL") || "https://zkillredisq.stream/listen.php",
+  poll_interval: Helpers.parse_int(System.get_env("WANDERER_REDISQ_POLL_INTERVAL_MS"), 1000)
 }
 
 # Configure cache directory

@@ -80,10 +80,10 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @doc """
-  Updates the websocket status.
+  Updates the redisq status.
   """
-  def update_websocket(status) do
-    GenServer.cast(__MODULE__, {:update_websocket, status})
+  def update_redisq(status) do
+    GenServer.cast(__MODULE__, {:update_redisq, status})
   end
 
   @doc """
@@ -136,23 +136,23 @@ defmodule WandererNotifier.Core.Stats do
     processing_skipped = Map.get(metrics, :killmail_processing_skipped, 0)
     processing_error = Map.get(metrics, :killmail_processing_error, 0)
 
-    # Format websocket status
-    websocket = stats.websocket
-    connected = if websocket.connected, do: "connected", else: "disconnected"
+    # Format redisq status
+    redisq = stats.redisq
+    connected = if redisq.connected, do: "connected", else: "disconnected"
 
     last_message =
-      case websocket.last_message do
+      case redisq.last_message do
         nil -> "never"
         dt -> "#{DateTime.diff(DateTime.utc_now(), dt)}s ago"
       end
 
     # Log the summary
-    AppLogger.kill_info("📊 Stats Summary:
+    AppLogger.processor_info("📊 Stats Summary:
     Uptime: #{uptime}
     Notifications: #{total_notifications} total (#{kills_notified} kills, #{systems_notified} systems, #{characters_notified} characters)
     Processing: #{kills_processed} kills processed, #{kills_notified} kills notified
     Killmail Metrics: #{processing_start} started, #{processing_complete} completed, #{processing_skipped} skipped, #{processing_error} errors
-    WebSocket: #{connected}, last message #{last_message}")
+    RedisQ: #{connected}, last message #{last_message}")
   end
 
   @doc """
@@ -180,7 +180,7 @@ defmodule WandererNotifier.Core.Stats do
     # Initialize the state with default values
     {:ok,
      %{
-       websocket: %{
+       redisq: %{
          connected: false,
          connecting: false,
          last_message: nil,
@@ -241,19 +241,19 @@ defmodule WandererNotifier.Core.Stats do
   end
 
   @impl true
-  def handle_cast({:update_websocket, status}, state) do
-    # Merge the new status with existing websocket state to preserve fields
+  def handle_cast({:update_redisq, status}, state) do
+    # Merge the new status with existing redisq state to preserve fields
     # Convert any DateTime fields to ensure proper comparison
     normalized_status = normalize_datetime_fields(status)
-    updated_websocket = Map.merge(state.websocket, normalized_status)
+    updated_redisq = Map.merge(state.redisq, normalized_status)
 
     # Log the update for debugging
-    AppLogger.websocket_debug("Updated websocket status",
-      old_status: state.websocket,
-      new_status: updated_websocket
+    AppLogger.processor_debug("Updated RedisQ status",
+      old_status: state.redisq,
+      new_status: updated_redisq
     )
 
-    {:noreply, %{state | websocket: updated_websocket}}
+    {:noreply, %{state | redisq: updated_redisq}}
   end
 
   @impl true
@@ -301,7 +301,7 @@ defmodule WandererNotifier.Core.Stats do
   @impl true
   def handle_call(:get_stats, _from, state) do
     uptime_seconds =
-      case state.websocket.startup_time do
+      case state.redisq.startup_time do
         nil -> 0
         startup_time -> DateTime.diff(DateTime.utc_now(), startup_time)
       end
@@ -309,9 +309,9 @@ defmodule WandererNotifier.Core.Stats do
     stats = %{
       uptime: format_uptime(uptime_seconds),
       uptime_seconds: uptime_seconds,
-      startup_time: state.websocket.startup_time,
+      startup_time: state.redisq.startup_time,
       notifications: state.notifications,
-      websocket: state.websocket,
+      redisq: state.redisq,
       first_notifications: Map.get(state, :first_notifications, %{}),
       processing: state.processing,
       systems_count: Map.get(state, :systems_count, 0),

@@ -386,22 +386,22 @@ export default function Dashboard() {
           </div>
         </DataCard>
 
-        {/* WebSocket Status */}
-        <DataCard title="WebSocket Connection" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
+        {/* RedisQ Connection */}
+        <DataCard title="RedisQ Connection" className="border border-indigo-100 shadow-md rounded-xl card-hover-effect">
           <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-100">
             <div className="flex items-center space-x-3">
-              <div className={`h-3 w-3 rounded-full ${status?.websocket?.connected ? 'bg-green-500 status-indicator online' : 'bg-red-500 status-indicator offline'}`}></div>
+              <div className={`h-3 w-3 rounded-full ${status?.redisq?.connected ? 'bg-green-500 status-indicator online' : 'bg-red-500 status-indicator offline'}`}></div>
               <div>
                 <p className="font-medium">
-                  {status?.websocket?.connected 
+                  {status?.redisq?.connected 
                     ? "Connected to Killstream" 
-                    : status?.websocket?.connecting 
+                    : status?.redisq?.connecting 
                       ? "Connecting..." 
                       : "Disconnected"}
                 </p>
                 <p className="text-sm text-gray-600">
-                  {status?.websocket?.connected 
-                    ? `Last message: ${new Date(status?.websocket?.last_message || Date.now()).toLocaleTimeString()}` 
+                  {status?.redisq?.connected 
+                    ? `Last message: ${new Date(status?.redisq?.last_message || Date.now()).toLocaleTimeString()}` 
                     : "No recent messages"}
                 </p>
               </div>

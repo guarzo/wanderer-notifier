@@ -82,8 +82,13 @@ defmodule WandererNotifier.Cache.KeysTest do
       assert Keys.tracked_systems_list() == "tracked:systems"
     end
 
-    test "config/1 generates correct key" do
-      assert Keys.config("websocket") == "config:websocket"
+    test "config keys" do
+      assert Keys.config("api") == "config:api"
+      assert Keys.config("cache") == "config:cache"
+      assert Keys.config("license") == "config:license"
+      assert Keys.config("feature") == "config:feature"
+      assert Keys.config("test") == "config:test"
+      assert Keys.config("redisq") == "config:redisq"
     end
   end
 

@@ -40,15 +40,6 @@ config :mime, :extensions, %{
   "mjs" => "text/javascript"
 }
 
-# Configure websocket defaults
-config :wanderer_notifier, :websocket, %{
-  enabled: true,
-  url: "wss://zkillboard.com/websocket/",
-  reconnect_delay: 5000,
-  max_reconnects: 20,
-  reconnect_window: 3600
-}
-
 # Configure the logger
 config :logger,
   level: :info,
@@ -92,7 +83,10 @@ config :logger, :module_levels, %{
 # Nostrum compile-time configuration
 config :nostrum,
   token: "intentionally invalid for runtime config only",
-  gateway_intents: [],
+  gateway_intents: [
+    :guilds,
+    :guild_messages
+  ],
   cache_guilds: false,
   cache_users: false,
   cache_channels: false,

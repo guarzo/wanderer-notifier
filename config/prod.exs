@@ -28,7 +28,7 @@ config :logger, :module_levels, %{
   "WandererNotifier.Map.Client" => :warn,
   "WandererNotifier.Map.SystemsClient" => :warn,
   "WandererNotifier.Map.CharactersClient" => :warn,
-  "WandererNotifier.Notifiers.Discord" => :warn
+  "WandererNotifier.Notifiers.Discord" => :debug
 }
 
 # Runtime configuration should be in runtime.exs

@@ -82,6 +82,12 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   """
   @impl true
   def send_message(notification) when is_map(notification) do
+    require Logger
+
+    Logger.info(
+      "DEBUG: Dispatcher.send_message called with notification: #{inspect(notification, limit: 200)}"
+    )
+
     # Check for string keys from JSON conversions (specifically for CommonFormatter.to_discord_format output)
     if Map.has_key?(notification, "title") && Map.has_key?(notification, "description") do
       send_discord_embed(notification)
@@ -92,16 +98,22 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   # Send plain text messages
   def send_message(message) when is_binary(message) do
+    require Logger
+    Logger.info("DEBUG: Dispatcher.send_message called with text message: #{message}")
     run(:send_message, [message])
   end
 
   # Private function to handle different notification types
   defp handle_notification_by_type(%{type: :kill_notification} = kill) do
+    require Logger
+    Logger.info("DEBUG: Handling kill notification: #{inspect(kill, limit: 200)}")
     # Handle a killmail notification
     handle_kill_notification(kill)
   end
 
   defp handle_notification_by_type(%{type: :system_notification} = system) do
+    require Logger
+    Logger.info("DEBUG: Handling system notification: #{inspect(system, limit: 200)}")
     # Check if this is the first notification
     if WandererNotifier.Core.Stats.is_first_notification?(:system) do
       # Skip notification for first run
@@ -114,6 +126,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   end
 
   defp handle_notification_by_type(%{type: :character_notification} = character) do
+    require Logger
+    Logger.info("DEBUG: Handling character notification: #{inspect(character, limit: 200)}")
     # Check if this is the first notification
     if WandererNotifier.Core.Stats.is_first_notification?(:character) do
       # Skip notification for first run
@@ -126,6 +140,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   end
 
   defp handle_notification_by_type(%{type: :status_notification} = status) do
+    require Logger
+    Logger.info("DEBUG: Handling status notification: #{inspect(status, limit: 200)}")
     # Handle status notifications (for startup and periodic status reports)
     AppLogger.info("Sending status notification", %{
       title: Map.get(status, :title, "Status")
@@ -136,6 +152,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   defp handle_notification_by_type(%{type: message_type} = notification)
        when is_atom(message_type) do
+    require Logger
+    Logger.info("DEBUG: Handling unknown notification type: #{message_type}")
     # Convert the notification map to an embed if needed
     if Map.has_key?(notification, :title) && Map.has_key?(notification, :description) do
       send_discord_embed(notification)
@@ -146,6 +164,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
   end
 
   defp handle_notification_by_type(other) do
+    require Logger
+    Logger.info("DEBUG: Handling other notification type: #{inspect(other, limit: 200)}")
     # For backwards compatibility, try to handle string messages
     if is_binary(other) do
       send_message(other)
@@ -157,6 +177,8 @@ defmodule WandererNotifier.Notifications.Dispatcher do
 
   # Handle kill notifications, separates complex logic
   defp handle_kill_notification(kill) do
+    require Logger
+    Logger.info("DEBUG: handle_kill_notification called with kill: #{inspect(kill, limit: 200)}")
     notifier = get_notifier()
 
     if not Map.has_key?(kill, :data) or not Map.has_key?(kill.data, :killmail) do
