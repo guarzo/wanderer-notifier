@@ -99,7 +99,8 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       corp_ticker: victim_corp_ticker,
       alliance: victim_alliance,
       ship_type_id: victim_ship_type_id,
-      character_id: victim_character_id
+      character_id: victim_character_id,
+      raw_victim_data: victim
     }
   end
 
@@ -400,7 +401,17 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
     attacker_part = build_attacker_description_part(final_blow_details, kill_context)
     system_link = build_system_link(kill_context)
 
-    "#{victim_part} lost their #{victim_info.ship} to #{attacker_part} in #{system_link}."
+    base_description =
+      "#{victim_part} lost their #{victim_info.ship} to #{attacker_part} in #{system_link}."
+
+    notable_items = extract_notable_items(victim_info)
+
+    if Enum.any?(notable_items) do
+      items_text = format_notable_items(notable_items)
+      "#{base_description}\n\n**Notable Items:**\n#{items_text}"
+    else
+      base_description
+    end
   end
 
   defp build_victim_description_part(victim_info) do
@@ -662,5 +673,195 @@ defmodule WandererNotifier.Notifications.Formatters.Killmail do
       _ ->
         "Unknown"
     end
+  end
+
+  defp extract_notable_items(victim_info) do
+    # Get items from victim data if available
+    victim_data = victim_info[:raw_victim_data] || %{}
+    items = Map.get(victim_data, "items", [])
+
+    items
+    |> Enum.map(&enrich_item_data/1)
+    |> Enum.filter(& &1.is_notable)
+    # Limit to 10 notable items to keep message manageable
+    |> Enum.take(10)
+  end
+
+  defp enrich_item_data(item) do
+    type_id = Map.get(item, "type_id") || Map.get(item, "item_type_id")
+    quantity = Map.get(item, "quantity_destroyed", 0) + Map.get(item, "quantity_dropped", 0)
+
+    # Get item info from ESI with error handling
+    item_info = get_item_info_safe(type_id)
+    item_name = Map.get(item_info, "name", "Unknown Item")
+
+    # Check for special item types
+    is_abyssal = String.contains?(String.downcase(item_name), "abyssal")
+
+    # Check if item is likely worth 50M+ ISK
+    is_high_value = is_expensive_item(type_id, item_name)
+
+    # Notable if abyssal OR high value
+    is_notable = is_abyssal or is_high_value
+
+    %{
+      type_id: type_id,
+      name: item_name,
+      quantity: quantity,
+      is_notable: is_notable,
+      is_abyssal: is_abyssal,
+      is_high_value: is_high_value,
+      category: get_item_category_simple(is_abyssal, is_high_value, item_name)
+    }
+  end
+
+  defp get_item_info_safe(type_id) do
+    case esi_service().get_type_info(type_id, []) do
+      {:ok, info} when is_map(info) -> info
+      _ -> %{"name" => "Unknown Item"}
+    end
+  rescue
+    _ -> %{"name" => "Unknown Item"}
+  end
+
+  # Heuristic to identify items likely worth 50M+ ISK
+  defp is_expensive_item(type_id, item_name) when is_integer(type_id) do
+    item_name_lower = String.downcase(item_name)
+
+    # Check by item name patterns (high-value item types)
+    name_indicators = [
+      "deadspace",
+      "officer",
+      "faction",
+      "capital",
+      "dread",
+      "carrier",
+      "titan",
+      "supercarrier",
+      "fortizar",
+      "keepstar",
+      "azbel",
+      "sotiyo",
+      "tatara",
+      "x-type",
+      "a-type",
+      "b-type",
+      "c-type",
+      "shadow serpentis",
+      "true sansha",
+      "dark blood",
+      "dread guristas",
+      "domination",
+      "republic fleet",
+      "imperial navy",
+      "caldari navy",
+      "federation navy",
+      "drone",
+      "plex",
+      "injector",
+      "extractor"
+    ]
+
+    has_valuable_name =
+      Enum.any?(name_indicators, fn indicator ->
+        String.contains?(item_name_lower, indicator)
+      end)
+
+    # Check by type ID ranges (approximate)
+    has_valuable_type_id =
+      cond do
+        # Capital ship modules and rigs
+        type_id >= 2048 and type_id <= 3000 -> true
+        # High-end modules
+        type_id >= 10000 and type_id <= 25000 -> true
+        # Faction/officer modules
+        type_id >= 40000 and type_id <= 50000 -> true
+        # Ships (many expensive ships in these ranges)
+        type_id >= 11000 and type_id <= 12000 -> true
+        type_id >= 23000 and type_id <= 24000 -> true
+        # Blueprints
+        type_id >= 44000 and type_id <= 45000 -> true
+        # Default
+        true -> false
+      end
+
+    has_valuable_name or has_valuable_type_id
+  end
+
+  defp is_expensive_item(_, _), do: false
+
+  defp get_item_category_simple(is_abyssal, is_high_value, item_name) do
+    item_name_lower = String.downcase(item_name)
+
+    cond do
+      is_abyssal -> "Abyssal"
+      String.contains?(item_name_lower, "officer") -> "Officer"
+      String.contains?(item_name_lower, "deadspace") -> "Deadspace"
+      String.contains?(item_name_lower, "faction") -> "Faction"
+      String.contains?(item_name_lower, "capital") -> "Capital"
+      is_high_value -> "High-Value"
+      true -> "Notable"
+    end
+  end
+
+  # TEMPORARY TESTING FUNCTION - makes most items notable for testing
+  defp is_testable_item(type_id, item_name) when is_integer(type_id) do
+    # Skip very common/basic items to avoid spam
+    excluded_items = [
+      "tritanium",
+      "pyerite",
+      "mexallon",
+      "isogen",
+      "nocxium",
+      "zydrine",
+      "megacyte",
+      "ammunition",
+      "charge",
+      "cap booster",
+      "nanite repair",
+      "civilian"
+    ]
+
+    item_name_lower = String.downcase(item_name)
+
+    # Exclude basic materials and ammo
+    is_excluded =
+      Enum.any?(excluded_items, fn excluded ->
+        String.contains?(item_name_lower, excluded)
+      end)
+
+    # For testing: consider most items notable unless they're excluded basic items
+    not is_excluded
+  end
+
+  defp is_testable_item(_, _), do: false
+
+  defp get_item_category(is_abyssal, is_deadspace, is_officer, is_faction, is_likely_expensive) do
+    cond do
+      is_abyssal -> "Abyssal"
+      is_officer -> "Officer"
+      is_deadspace -> "Deadspace"
+      is_faction -> "Faction"
+      is_likely_expensive -> "High-Value"
+      true -> "Notable"
+    end
+  end
+
+  defp format_notable_items(notable_items) do
+    notable_items
+    |> Enum.map(&format_notable_item/1)
+    |> Enum.join("\n")
+  end
+
+  defp format_notable_item(item) do
+    quantity_text = if item.quantity > 1, do: " x#{item.quantity}", else: ""
+    category_text = if item.category != "Notable", do: " [#{item.category}]", else: ""
+
+    "• #{item.name}#{quantity_text}#{category_text}"
+  end
+
+  # ESI service configuration
+  defp esi_service do
+    Application.get_env(:wanderer_notifier, :esi_service, WandererNotifier.ESI.Service)
   end
 end
