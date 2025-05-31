@@ -161,6 +161,9 @@ Application.put_env(:wanderer_notifier, :system_notifications_enabled, false)
 Application.put_env(:wanderer_notifier, :schedulers_enabled, false)
 Application.put_env(:wanderer_notifier, :scheduler_supervisor_enabled, false)
 
+# Disable RedisQ client in tests to prevent HTTP calls
+Application.put_env(:wanderer_notifier, :redisq, %{enabled: false})
+
 # Configure cache implementation
 Application.put_env(:wanderer_notifier, :cache_name, :wanderer_test_cache)
 
